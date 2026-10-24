@@ -12,8 +12,8 @@ export const metadata = { title: "AI Work Board" };
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string; report?: string }> }) {
-  const [{ status, job, report }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
+export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string; report?: string; schedule?: string }> }) {
+  const [{ status, job, report, schedule }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
   const referenceTime = new Date().toISOString();
   const filter: WorkBoardFilter = status === "active" || status === "attention" || status === "completed" ? status : "all";
   const [jobs, summary, agents, schedules, triggers, reports, monitoring] = await Promise.all([
@@ -81,6 +81,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       focusReportId={typeof report === "string" && UUID.test(report) ? report : null}
       employeeNames={employeeNames}
       referenceTime={referenceTime}
+      focusScheduleId={typeof schedule === "string" && UUID.test(schedule) ? schedule : null}
     />
   );
 }

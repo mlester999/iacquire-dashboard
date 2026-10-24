@@ -184,16 +184,14 @@ describe("tenant AI workforce schedules", () => {
       const initial = await saveSchedule(ctxFor(owner, org, "owner"), {
         capability: "proactive_review", cadence: "daily", enabled: false,
       });
-      const original = (await withSystem((db) => db.query<{ updated_at: string }>(
-        "select updated_at::text as updated_at from ai_work_schedules where id = $1",
-        [initial.id],
-      ))).rows[0].updated_at;
+      const original = (await listSchedules(ctxFor(owner, org, "owner"))).find((schedule) => schedule.id === initial.id)?.updatedAt;
+      expect(original).toBeTruthy();
       const updated = await saveSchedule(ctxFor(owner, org, "owner"), {
         capability: "proactive_review",
         cadence: "weekly",
         enabled: false,
         recurrenceRule: { kind: "weekly", localTime: "09:00", weekdays: ["mon"] },
-        expectedExistingSchedule: { id: initial.id, updatedAt: original },
+        expectedExistingSchedule: { id: initial.id, updatedAt: original! },
       });
       expect(updated).toEqual({ id: initial.id, enabled: false });
 
@@ -201,7 +199,7 @@ describe("tenant AI workforce schedules", () => {
         capability: "proactive_review",
         cadence: "daily",
         enabled: false,
-        expectedExistingSchedule: { id: initial.id, updatedAt: original },
+        expectedExistingSchedule: { id: initial.id, updatedAt: original! },
       })).rejects.toMatchObject({ code: "conflict" });
       await expect(saveSchedule(ctxFor(owner, org, "owner"), {
         capability: "proactive_review",
@@ -209,6 +207,17 @@ describe("tenant AI workforce schedules", () => {
         enabled: false,
         expectedExistingSchedule: null,
       })).rejects.toMatchObject({ code: "conflict" });
+
+      const updatedVersion = (await listSchedules(ctxFor(owner, org, "owner"))).find((schedule) => schedule.id === initial.id)?.updatedAt;
+      expect(updatedVersion).toBeTruthy();
+      await withSystem((db) => db.query("delete from ai_work_schedules where id = $1", [initial.id]));
+      await expect(saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "proactive_review",
+        cadence: "daily",
+        enabled: false,
+        expectedExistingSchedule: { id: initial.id, updatedAt: updatedVersion! },
+      })).rejects.toMatchObject({ code: "conflict" });
+      expect((await listSchedules(ctxFor(owner, org, "owner"))).some((schedule) => schedule.id === initial.id)).toBe(false);
     } finally {
       await withSystem((db) => db.query(
         "delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",

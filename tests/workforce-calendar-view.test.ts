@@ -4,11 +4,37 @@ import {
   calendarDateKeyAt,
   calendarDateKeys,
   getWorkforceCalendarRange,
+  nextWorkforceScheduleAt,
   shiftCalendarMonth,
   startOfCalendarWeek,
 } from "@/lib/workforce-calendar-view";
 
 describe("workforce calendar view dates", () => {
+  it("calculates the next recurrence for paused daily and weekly schedules", () => {
+    expect(nextWorkforceScheduleAt({
+      enabled: false,
+      nextRunAt: "2027-03-14T13:00:00.000Z",
+      recurrenceRule: { kind: "daily", localTime: "09:00" },
+      timezone: "America/New_York",
+    }, "2027-03-15T14:00:00.000Z")).toBe("2027-03-16T13:00:00.000Z");
+
+    expect(nextWorkforceScheduleAt({
+      enabled: false,
+      nextRunAt: "2027-03-14T13:00:00.000Z",
+      recurrenceRule: { kind: "weekly", localTime: "09:00", weekdays: ["mon", "wed"] },
+      timezone: "America/New_York",
+    }, "2027-03-15T14:00:00.000Z")).toBe("2027-03-17T13:00:00.000Z");
+  });
+
+  it("does not imply a next run for a paused legacy interval without a recurrence rule", () => {
+    expect(nextWorkforceScheduleAt({
+      enabled: false,
+      nextRunAt: "2027-03-14T13:00:00.000Z",
+      recurrenceRule: null,
+      timezone: "America/New_York",
+    }, "2027-03-15T14:00:00.000Z")).toBeNull();
+  });
+
   it("formats event dates in the workspace timezone across daylight-saving transitions", () => {
     expect(calendarDateKeyAt(new Date("2027-03-14T06:59:00.000Z"), "America/New_York")).toBe("2027-03-14");
     expect(calendarDateKeyAt(new Date("2027-03-14T07:01:00.000Z"), "America/New_York")).toBe("2027-03-14");

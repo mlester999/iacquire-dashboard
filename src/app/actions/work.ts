@@ -36,11 +36,22 @@ export async function startReviewAction(capability: string) {
   }
 }
 
-export async function saveScheduleAction(capability: string, cadence: string, businessHours?: unknown, payload?: unknown, recurrenceRule?: unknown) {
+export async function saveScheduleAction(
+  capability: string,
+  cadence: string,
+  businessHours?: unknown,
+  payload?: unknown,
+  recurrenceRule?: unknown,
+  expectedExistingSchedule?: { id: string; updatedAt: string } | null,
+) {
   try {
+    if (expectedExistingSchedule && (!UUID.test(expectedExistingSchedule.id) || !Number.isFinite(Date.parse(expectedExistingSchedule.updatedAt)))) {
+      throw new AppError("invalid_input", "The schedule version is invalid. Refresh and try again.");
+    }
     const ctx = await requireOrgContextOrThrow("agents.configure");
-    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours, payload, recurrenceRule });
+    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours, payload, recurrenceRule, expectedExistingSchedule });
     revalidatePath("/work");
+    revalidatePath("/work/calendar");
     return { ok: true as const, data: saved };
   } catch (err) {
     return actionError(err);
@@ -53,6 +64,7 @@ export async function setScheduleEnabledAction(scheduleId: string, enabled: bool
     const ctx = await requireOrgContextOrThrow("agents.configure");
     await setScheduleEnabled(ctx, scheduleId, enabled);
     revalidatePath("/work");
+    revalidatePath("/work/calendar");
     return { ok: true as const };
   } catch (err) {
     return actionError(err);

@@ -1,3 +1,5 @@
+import { nextWorkforceScheduleOccurrence, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type WorkforceCalendarView = "month" | "week" | "day" | "agenda";
@@ -10,6 +12,25 @@ export interface WorkforceCalendarRange {
   /** UTC-padded bounds for querying jobs and projecting schedules across all IANA offsets. */
   from: Date;
   to: Date;
+}
+
+export function nextWorkforceScheduleAt(input: {
+  enabled: boolean;
+  nextRunAt: string;
+  recurrenceRule: WorkforceScheduleRule | null;
+  timezone: string;
+}, referenceTime: string): string | null {
+  const anchor = new Date(input.nextRunAt);
+  const reference = new Date(referenceTime);
+  if (!Number.isFinite(anchor.getTime()) || !Number.isFinite(reference.getTime())) return null;
+  if (input.enabled) return anchor.toISOString();
+  if (!input.recurrenceRule) return null;
+  const after = new Date(Math.max(anchor.getTime(), reference.getTime()) - 1);
+  try {
+    return nextWorkforceScheduleOccurrence(input.recurrenceRule, input.timezone, after).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 function dateFromKey(key: string): Date {

@@ -53,6 +53,7 @@ export interface ScheduleView {
   payload: { prompt?: string; target?: string; location?: string; quantity?: number };
   enabled: boolean;
   nextRunAt: string;
+  updatedAt: string;
   lastRunAt: string | null;
   lastJobId: string | null;
   lastSkippedReason: string | null;
@@ -98,10 +99,10 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
     const { rows } = await db.query<{
       id: string; capability: string; cadence: ScheduleCadence; interval_minutes: number; timezone: string; business_hours: unknown; payload: unknown; enabled: boolean;
       recurrence_rule: unknown;
-      next_run_at: Date; last_run_at: Date | null; last_job_id: string | null; last_skipped_reason: string | null; last_skipped_at: Date | null;
+      next_run_at: Date; updated_at: string; last_run_at: Date | null; last_job_id: string | null; last_skipped_reason: string | null; last_skipped_at: Date | null;
       employee_role: AgentRoleKey; employee_name: string;
     }>(
-      `select s.id, s.capability, s.cadence, s.interval_minutes, s.recurrence_rule, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,
+      `select s.id, s.capability, s.cadence, s.interval_minutes, s.recurrence_rule, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.updated_at::text as updated_at, s.last_run_at, s.last_job_id,
               s.last_skipped_reason, s.last_skipped_at,
               a.role_key as employee_role, a.display_name as employee_name
          from ai_work_schedules s
@@ -134,6 +135,7 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
         : {},
       enabled: row.enabled,
       nextRunAt: new Date(row.next_run_at).toISOString(),
+      updatedAt: row.updated_at,
       lastRunAt: iso(row.last_run_at),
       lastJobId: row.last_job_id,
       lastSkippedReason: row.last_skipped_reason,
@@ -217,8 +219,25 @@ export async function saveScheduleInTransaction(
   }
 
   const { rows } = await db.query<{ id: string; enabled: boolean }>(
-    `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, case when $11 then coalesce($12::timestamptz, now() + make_interval(mins => $6)) else now() end)
+    `with expected_schedule as materialized (
+         select expected.id
+           from ai_work_schedules expected
+          where $13::boolean
+            and $14::uuid is not null
+            and expected.agent_instance_id = $2::uuid
+            and expected.capability = $4::text
+            and expected.id = $14::uuid
+            and expected.updated_at = $15::timestamptz
+          for update
+       )
+     insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
+       select $1::uuid, $2::uuid, $3::uuid, $4::text, $5::text, $6::integer, $7::text, $8::jsonb, $9::jsonb, $10::jsonb, $11::boolean,
+              case when $11 then coalesce($12::timestamptz, now() + make_interval(mins => $6)) else now() end
+        where not $13::boolean
+           or $14::uuid is null
+           or exists (
+                select 1 from expected_schedule
+           )
        on conflict (agent_instance_id, capability) do update set
          cadence = excluded.cadence,
          interval_minutes = excluded.interval_minutes,

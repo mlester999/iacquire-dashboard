@@ -2,12 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CalendarRange, Clock3, ExternalLink, List, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/primitives";
+import { Switch } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
 import { StatusPill } from "@/components/ui/status";
+import { setScheduleEnabledAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
 import {
   addCalendarDays,
@@ -18,6 +21,7 @@ import {
   calendarTimestampLabel,
   formatCalendarDateKey,
   getWorkforceCalendarRange,
+  nextWorkforceScheduleAt,
   shiftCalendarMonth,
   type WorkforceCalendarView,
 } from "@/lib/workforce-calendar-view";
@@ -111,6 +115,30 @@ function titleOf(item: CalendarItem): string {
   return item.kind === "job" ? item.job.title : item.schedule.capabilityLabel;
 }
 
+function scheduleRecurrenceLabel(schedule: WorkforceCalendarSchedule): string {
+  const rule = schedule.recurrenceRule;
+  if (rule?.kind === "daily") return `Daily at ${rule.localTime}`;
+  if (rule?.kind === "weekly") {
+    const order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+    const labels: Record<(typeof order)[number], string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+    return `Weekly on ${order.filter((day) => rule.weekdays.includes(day)).map((day) => labels[day]).join(", ")} at ${rule.localTime}`;
+  }
+  return schedule.cadence === "hourly" ? "Every hour" : `Every ${schedule.intervalMinutes} minutes`;
+}
+
+function scheduleBusinessHoursLabel(schedule: WorkforceCalendarSchedule): string {
+  const order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+  const labels: Record<(typeof order)[number], string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+  const windows = order.flatMap((day) => (schedule.businessHours[day] ?? []).map(([start, end]) => ({ day, start, end })));
+  if (!windows.length) return "Any time";
+  const grouped = new Map<string, string[]>();
+  for (const window of windows) {
+    const key = `${window.start}–${window.end}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), labels[window.day]]);
+  }
+  return [...grouped.entries()].map(([hours, days]) => `${days.join(", ")} · ${hours}`).join("; ");
+}
+
 function EventButton({
   item,
   timeZone,
@@ -145,22 +173,38 @@ function EventButton({
   );
 }
 
-function SelectedItem({ item, data, timeZone }: { item: CalendarItem | null; data: WorkforceCalendarData; timeZone: string }) {
+function SelectedItem({
+  item,
+  data,
+  timeZone,
+  canManageSchedules,
+  scheduleBusy,
+  referenceTime,
+  onToggleSchedule,
+}: {
+  item: CalendarItem | null;
+  data: WorkforceCalendarData;
+  timeZone: string;
+  canManageSchedules: boolean;
+  scheduleBusy: string | null;
+  referenceTime: string;
+  onToggleSchedule: (scheduleId: string, enabled: boolean) => void;
+}) {
   if (!item) return null;
   if (item.kind === "job") {
     const { job } = item;
     return (
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft" aria-labelledby="calendar-selected-title">
         <div className="flex items-start justify-between gap-3">
-          <div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary">Recorded job</p><p className="mt-1 text-[10.5px] text-muted">{calendarTimestampLabel(job.startsAt, timeZone)}</p></div>
+          <div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary-ink">Recorded job</p><p className="mt-1 text-[10.5px] text-ink-2">{calendarTimestampLabel(job.startsAt, timeZone)}</p></div>
           <StatusPill tone={JOB_TONE[job.status]} size="sm">{job.statusLabel}</StatusPill>
         </div>
-        <div className="mt-3 flex items-center gap-2.5"><AgentAvatar role={AGENT_BY_KEY[job.employeeRole]} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{job.title}</h2><p className="mt-0.5 text-[11px] text-muted">{job.employeeName} · {job.source === "schedule" ? "Created from a schedule" : "Requested work"}</p></div></div>
+        <div className="mt-3 flex items-center gap-2.5"><AgentAvatar role={AGENT_BY_KEY[job.employeeRole]} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{job.title}</h2><p className="mt-0.5 text-[11px] text-ink-2">{job.employeeName} · {job.source === "schedule" ? "Created from a schedule" : "Requested work"}</p></div></div>
         <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-2">{job.failureMessage ?? job.resultSummary ?? job.stageLabel ?? "No additional execution detail is recorded."}</p>
-        {job.resultCount > 0 && <p className="mt-2 text-[10.5px] text-muted">{job.resultCount} result{job.resultCount === 1 ? "" : "s"} recorded</p>}
+        {job.resultCount > 0 && <p className="mt-2 text-[10.5px] text-ink-2">{job.resultCount} result{job.resultCount === 1 ? "" : "s"} recorded</p>}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-          <span className="text-[10px] text-muted">Created {calendarTimestampLabel(job.createdAt, timeZone)}</span>
-          <Link href={`/work?job=${job.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary hover:bg-primary-soft/60">Open work details<ExternalLink className="size-3" aria-hidden /></Link>
+          <span className="text-[10px] text-ink-2">Created {calendarTimestampLabel(job.createdAt, timeZone)}</span>
+          <Link href={`/work?job=${job.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary-ink hover:bg-primary-soft/60">Open work details<ExternalLink className="size-3" aria-hidden /></Link>
         </div>
       </section>
     );
@@ -168,10 +212,15 @@ function SelectedItem({ item, data, timeZone }: { item: CalendarItem | null; dat
 
   const { schedule } = item;
   const runnableGate = schedule.enabled && data.operatorEnabled;
+  const scheduleState = !schedule.enabled ? "Schedule paused" : data.operatorEnabled ? "Schedule enabled" : "Enabled · operator off";
+  const nextScheduleAt = nextWorkforceScheduleAt(schedule, referenceTime);
+  const nextScheduleValue = nextScheduleAt
+    ? calendarTimestampLabel(nextScheduleAt, schedule.timezone)
+    : schedule.enabled || schedule.recurrenceRule || schedule.recurrenceInvalid || !schedule.timezoneValid ? "Unavailable" : "Set when enabled";
   return (
     <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft" aria-labelledby="calendar-selected-title">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary">Future occurrence · not a job</p><p className="mt-1 text-[10.5px] text-muted">{calendarTimestampLabel(item.startsAt, timeZone)}</p></div><span className={cn("rounded-full px-2.5 py-1 text-[9.5px] font-semibold", runnableGate ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{runnableGate ? "Schedule enabled" : "Paused"}</span></div>
-      <div className="mt-3 flex items-center gap-2.5"><AgentAvatar role={AGENT_BY_KEY[schedule.employeeRole]} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{schedule.capabilityLabel}</h2><p className="mt-0.5 text-[11px] text-muted">{schedule.employeeName} · {schedule.cadence} · {schedule.timezone}</p></div></div>
+      <div className="flex items-start justify-between gap-3"><div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary-ink">Future occurrence · not a job</p><p className="mt-1 text-[10.5px] text-ink-2">{calendarTimestampLabel(item.startsAt, timeZone)}</p></div><div className="flex items-center gap-2"><span className={cn("rounded-full px-2.5 py-1 text-[9.5px] font-semibold", runnableGate ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{scheduleState}</span>{canManageSchedules && <Switch checked={schedule.enabled} disabled={scheduleBusy !== null} onCheckedChange={(next) => onToggleSchedule(schedule.id, next)} aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`} />}</div></div>
+      <div className="mt-3 flex items-center gap-2.5"><AgentAvatar role={AGENT_BY_KEY[schedule.employeeRole]} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{schedule.capabilityLabel}</h2><p className="mt-0.5 text-[11px] text-ink-2">{schedule.employeeName} · {schedule.cadence} · {schedule.timezone}</p></div></div>
       <div className="mt-3 rounded-xl border border-warning/25 bg-warning-soft/50 px-3 py-2.5 text-[11px] leading-relaxed text-warning-ink">
         {runnableGate
           ? "An occurrence is planned, but the calendar entry is not a job. Employee readiness, business hours and worker checks still apply when the scheduler runs."
@@ -180,12 +229,16 @@ function SelectedItem({ item, data, timeZone }: { item: CalendarItem | null; dat
             : "The workforce schedule operator is off. No job will be created from this occurrence."}
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-2 text-[10.5px]">
-        <div className="rounded-lg border border-line p-2.5"><dt className="text-muted">Schedule time zone</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.timezone}</dd></div>
-        <div className="rounded-lg border border-line p-2.5"><dt className="text-muted">Workspace display</dt><dd className="mt-1 font-semibold text-ink-2">{timeZone}</dd></div>
-        <div className="rounded-lg border border-line p-2.5"><dt className="text-muted">Last actual run</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.lastRunAt ? calendarTimestampLabel(schedule.lastRunAt, timeZone) : "No run recorded"}</dd></div>
-        <div className="rounded-lg border border-line p-2.5"><dt className="text-muted">Worker job</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.lastJobId ? "Recorded separately" : "None for this occurrence"}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Recurrence</dt><dd className="mt-1 font-semibold text-ink-2">{scheduleRecurrenceLabel(schedule)} · {schedule.timezone}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">{schedule.enabled ? "Next scheduled run" : "Next recurrence"}</dt><dd className="mt-1 font-semibold text-ink-2">{nextScheduleValue}</dd></div>
+        <div className="col-span-2 rounded-lg border border-line p-2.5"><dt className="text-ink-2">Business-hour window</dt><dd className="mt-1 font-semibold text-ink-2">{scheduleBusinessHoursLabel(schedule)}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Schedule time zone</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.timezone}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Workspace display</dt><dd className="mt-1 font-semibold text-ink-2">{timeZone}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Last actual run</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.lastRunAt ? calendarTimestampLabel(schedule.lastRunAt, timeZone) : "No run recorded"}</dd></div>
+        <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Worker job</dt><dd className="mt-1 font-semibold text-ink-2">{schedule.lastJobId ? "Recorded separately" : "None for this occurrence"}</dd></div>
       </dl>
-      {schedule.lastJobId && <Link href={`/work?job=${schedule.lastJobId}`} className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary hover:bg-primary-soft/60">Open last recorded job<ExternalLink className="size-3" aria-hidden /></Link>}
+      {canManageSchedules && <Link href={`/work?schedule=${schedule.id}#scheduled-work`} className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary-ink hover:bg-primary-soft/60">Edit schedule<ExternalLink className="size-3" aria-hidden /></Link>}
+      {schedule.lastJobId && <Link href={`/work?job=${schedule.lastJobId}`} className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary-ink hover:bg-primary-soft/60">Open last recorded job<ExternalLink className="size-3" aria-hidden /></Link>}
     </section>
   );
 }
@@ -193,11 +246,13 @@ function SelectedItem({ item, data, timeZone }: { item: CalendarItem | null; dat
 export function WorkforceCalendar({
   initialData,
   initialDateKey,
+  referenceTime,
   canManageSchedules,
   employeeNames,
 }: {
   initialData: WorkforceCalendarData;
   initialDateKey: string;
+  referenceTime: string;
   canManageSchedules: boolean;
   employeeNames?: Partial<Record<AgentRoleKey, string>>;
 }) {
@@ -210,6 +265,7 @@ export function WorkforceCalendar({
   const [loaded, setLoaded] = React.useState(() => ({ key: initialRangeKey, data: initialData }));
   const [requestError, setRequestError] = React.useState<{ key: string; retryCount: number; message: string } | null>(null);
   const [retryCount, setRetryCount] = React.useState(0);
+  const [scheduleBusy, setScheduleBusy] = React.useState<string | null>(null);
   const range = React.useMemo(() => getWorkforceCalendarRange(dateKey, view), [dateKey, view]);
   const rangeKey = `${range.from.toISOString()}|${range.to.toISOString()}`;
   const data = loaded.data;
@@ -266,8 +322,27 @@ export function WorkforceCalendar({
 
   const retry = () => setRetryCount((current) => current + 1);
 
+  const toggleSchedule = async (scheduleId: string, enabled: boolean) => {
+    if (scheduleBusy !== null) return;
+    setScheduleBusy(scheduleId);
+    try {
+      const result = await setScheduleEnabledAction(scheduleId, enabled);
+      if (!result.ok) return toast.error(result.error);
+      toast.success(enabled ? "Schedule enabled" : "Schedule paused", {
+        description: enabled && !data.operatorEnabled
+          ? "The schedule row is enabled, but the operator switch is off, so no job will be created."
+          : "The change is recorded in the audit trail.",
+      });
+      setLoaded((current) => ({ ...current, key: `stale:${Date.now()}` }));
+    } catch {
+      toast.error("Could not update this schedule. Try again.");
+    } finally {
+      setScheduleBusy(null);
+    }
+  };
+
   function renderEventList(dayItems: CalendarItem[], compact = false) {
-    if (!dayItems.length) return <p className="px-1 py-2 text-[10px] text-faint">No recorded jobs or projected schedule occurrences.</p>;
+    if (!dayItems.length) return <p className="px-1 py-2 text-[10px] text-ink-2">No recorded jobs or projected schedule occurrences.</p>;
     return <div className={cn("space-y-1", compact && "mt-1")}>{dayItems.map((item) => <EventButton key={item.key} item={item} timeZone={data.timezone} selected={selectedKey === item.key} onClick={() => selectItem(item)} compact={compact} />)}</div>;
   }
 
@@ -283,27 +358,27 @@ export function WorkforceCalendar({
       />
 
       <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-primary/10 bg-primary-soft/50 p-1.5" aria-label="Workforce section">
-        <Link href="/work" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-muted hover:bg-surface hover:text-ink">Work Board</Link>
+        <Link href="/work" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Work Board</Link>
         <Link href="/work/calendar" aria-current="page" className="rounded-lg bg-surface px-3 py-2 text-[11.5px] font-semibold text-primary-ink shadow-soft">Schedules &amp; Calendar</Link>
-        <Link href="/activity" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-muted hover:bg-surface hover:text-ink">Activity</Link>
-        <Link href="/approvals" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-muted hover:bg-surface hover:text-ink">Approvals</Link>
-        <span className="ml-auto hidden px-2 text-[9.5px] font-semibold uppercase tracking-[.1em] text-muted md:block">{data.timezone}</span>
+        <Link href="/activity" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Activity</Link>
+        <Link href="/approvals" className="rounded-lg px-3 py-2 text-[11.5px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Approvals</Link>
+        <span className="ml-auto hidden px-2 text-[9.5px] font-semibold uppercase tracking-[.1em] text-ink-2 md:block">{data.timezone}</span>
       </nav>
 
       <section className="space-y-3" aria-label="Workforce calendar">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 shadow-soft">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex h-9 items-center gap-1 rounded-xl border border-line bg-surface-2/60 p-1">
-              <button type="button" aria-label={`Previous ${view}`} onClick={() => navigate(-1)} className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="size-3.5" aria-hidden /></button>
+              <button type="button" aria-label={`Previous ${view}`} onClick={() => navigate(-1)} className="flex size-7 items-center justify-center rounded-lg text-ink-2 hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="size-3.5" aria-hidden /></button>
               <span className="min-w-[150px] px-1 text-center text-[12px] font-semibold text-ink">{label}</span>
-              <button type="button" aria-label={`Next ${view}`} onClick={() => navigate(1)} className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowRight className="size-3.5" aria-hidden /></button>
+              <button type="button" aria-label={`Next ${view}`} onClick={() => navigate(1)} className="flex size-7 items-center justify-center rounded-lg text-ink-2 hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowRight className="size-3.5" aria-hidden /></button>
             </div>
             <Button variant="secondary" size="sm" className="h-9" onClick={() => { setDateKey(today); setSelectedKey(null); }}>Today</Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {loading && <span role="status" className="inline-flex items-center gap-1.5 text-[10.5px] text-muted"><RefreshCw className="size-3.5 animate-spin" aria-hidden />Updating calendar</span>}
+            {loading && <span role="status" className="inline-flex items-center gap-1.5 text-[10.5px] text-ink-2"><RefreshCw className="size-3.5 animate-spin" aria-hidden />Updating calendar</span>}
             <div className="flex h-9 items-center rounded-xl border border-line bg-surface-2/60 p-1" role="group" aria-label="Calendar view">
-              {VIEWS.map((option) => <button key={option.key} type="button" aria-label={option.label} title={option.label} aria-pressed={view === option.key} onClick={() => { setView(option.key); setSelectedKey(null); }} className={cn("inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10.5px] font-medium", view === option.key ? "bg-surface text-primary-ink shadow-soft" : "text-muted hover:text-ink")}><option.icon className="size-3.5" aria-hidden /><span className="hidden sm:inline">{option.label}</span></button>)}
+              {VIEWS.map((option) => <button key={option.key} type="button" aria-label={option.label} title={option.label} aria-pressed={view === option.key} onClick={() => { setView(option.key); setSelectedKey(null); }} className={cn("inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10.5px] font-medium", view === option.key ? "bg-surface text-primary-ink shadow-soft" : "text-ink-2 hover:text-ink")}><option.icon className="size-3.5" aria-hidden /><span className="hidden sm:inline">{option.label}</span></button>)}
             </div>
           </div>
         </div>
@@ -321,47 +396,47 @@ export function WorkforceCalendar({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter by employee">
-            <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[10.5px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All employees</button>
-            {AGENT_ROLES.map((role) => <button key={role.key} type="button" aria-pressed={employeeFilter === role.key} onClick={() => setEmployeeFilter(role.key)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10.5px] font-medium", employeeFilter === role.key ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}><AgentAvatar role={role} size="xs" />{employeeNames?.[role.key] ?? role.shortName}</button>)}
+            <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[10.5px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All employees</button>
+            {AGENT_ROLES.map((role) => <button key={role.key} type="button" aria-pressed={employeeFilter === role.key} onClick={() => setEmployeeFilter(role.key)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10.5px] font-medium", employeeFilter === role.key ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}><AgentAvatar role={role} size="xs" />{employeeNames?.[role.key] ?? role.shortName}</button>)}
           </div>
-          <span className="text-[10.5px] text-muted">{items.length} item{items.length === 1 ? "" : "s"} · times use {data.timezone}</span>
+          <span className="text-[10.5px] text-ink-2">{items.length} item{items.length === 1 ? "" : "s"} · times use {data.timezone}</span>
         </div>
 
         <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0">
             {view === "month" && <section aria-label={`${calendarMonthLabel(dateKey)} calendar`} className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft">
-              <div className="grid grid-cols-7 border-b border-line bg-surface-2/40 text-center text-[9.5px] font-semibold uppercase tracking-[.08em] text-muted">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <div key={day} className="py-2.5">{day}</div>)}</div>
+              <div className="grid grid-cols-7 border-b border-line bg-surface-2/40 text-center text-[9.5px] font-semibold uppercase tracking-[.08em] text-ink-2">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <div key={day} className="py-2.5">{day}</div>)}</div>
               <div className="grid grid-cols-7">
                 {visibleDays.map((day, index) => {
                   const dayItems = byDay.get(day) ?? [];
                   const outside = day.slice(0, 7) !== currentMonth;
                   return <div key={day} aria-label={`${dateHeading(day)}${dayItems.length ? `, ${dayItems.length} item${dayItems.length === 1 ? "" : "s"}` : ""}`} className={cn("min-h-[104px] border-b border-r border-line p-1.5 sm:min-h-[118px] sm:p-2", index % 7 === 6 && "border-r-0", outside && "bg-surface-2/25", day === dateKey && "bg-primary-soft/30")}>
-                    <button type="button" onClick={() => { setDateKey(day); setSelectedKey(null); }} aria-current={day === today ? "date" : undefined} aria-pressed={day === dateKey} className={cn("flex size-6 items-center justify-center rounded-full text-[10.5px] font-medium", outside ? "text-faint" : "text-ink-2", day === today && "bg-primary text-white", day === dateKey && day !== today && "ring-1 ring-primary/40")}>{formatCalendarDateKey(day, { day: "numeric" })}</button>
+                    <button type="button" onClick={() => { setDateKey(day); setSelectedKey(null); }} aria-current={day === today ? "date" : undefined} aria-pressed={day === dateKey} className={cn("flex size-6 items-center justify-center rounded-full text-[10.5px] font-medium", outside ? "text-ink-2" : "text-ink-2", day === today && "bg-primary-soft text-primary-ink", day === dateKey && day !== today && "ring-1 ring-primary/40")}>{formatCalendarDateKey(day, { day: "numeric" })}</button>
                     <div className="mt-1.5 space-y-1">{dayItems.slice(0, 3).map((item) => <EventButton key={item.key} item={item} timeZone={data.timezone} selected={selectedKey === item.key} onClick={() => selectItem(item)} />)}{dayItems.length > 3 && <button type="button" onClick={() => { setDateKey(day); setView("day"); setSelectedKey(null); }} className="px-1 text-[9px] font-semibold text-primary hover:underline">+{dayItems.length - 3} more</button>}</div>
                   </div>;
                 })}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-line px-4 py-3 text-[9.5px] text-muted"><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary" />Scheduled occurrence · not a job</span><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-success" />Recorded job result</span><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-warning" />Needs attention</span></div>
+              <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-line px-4 py-3 text-[9.5px] text-ink-2"><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary" />Scheduled occurrence · not a job</span><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-success" />Recorded job result</span><span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-warning" />Needs attention</span></div>
             </section>}
 
-            {view === "week" && <section aria-label={`${label} calendar`} className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-soft"><div className="grid min-w-[800px] grid-cols-7">{visibleDays.map((day, index) => { const dayItems = byDay.get(day) ?? []; return <div key={day} className={cn("min-h-[360px] border-r border-line p-2", index === 6 && "border-r-0", day === dateKey && "bg-primary-soft/20")}><button type="button" onClick={() => { setDateKey(day); setView("day"); setSelectedKey(null); }} className="mb-2 block w-full rounded-lg p-1.5 text-left hover:bg-surface-2"><span className="block text-[9px] font-semibold uppercase tracking-wide text-muted">{formatCalendarDateKey(day, { weekday: "short" })}</span><span className={cn("mt-1 inline-flex size-7 items-center justify-center rounded-full text-[11px] font-semibold", day === today ? "bg-primary text-white" : "text-ink")}>{formatCalendarDateKey(day, { day: "numeric" })}</span></button>{renderEventList(dayItems, true)}</div>; })}</div></section>}
+            {view === "week" && <section aria-label={`${label} calendar`} className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-soft"><div className="grid min-w-[800px] grid-cols-7">{visibleDays.map((day, index) => { const dayItems = byDay.get(day) ?? []; return <div key={day} className={cn("min-h-[360px] border-r border-line p-2", index === 6 && "border-r-0", day === dateKey && "bg-primary-soft/20")}><button type="button" onClick={() => { setDateKey(day); setView("day"); setSelectedKey(null); }} className="mb-2 block w-full rounded-lg p-1.5 text-left hover:bg-surface-2"><span className="block text-[9px] font-semibold uppercase tracking-wide text-ink-2">{formatCalendarDateKey(day, { weekday: "short" })}</span><span className={cn("mt-1 inline-flex size-7 items-center justify-center rounded-full text-[11px] font-semibold", day === today ? "bg-primary-soft text-primary-ink" : "text-ink")}>{formatCalendarDateKey(day, { day: "numeric" })}</span></button>{renderEventList(dayItems, true)}</div>; })}</div></section>}
 
-            {view === "day" && <section aria-label={`${dateHeading(dateKey)} calendar`} className="rounded-2xl border border-line bg-surface p-4 shadow-soft"><div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-line pb-3"><div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary">Selected day</p><h2 className="mt-1 text-[16px] font-semibold text-ink">{dateHeading(dateKey)}</h2></div><span className="text-[10.5px] text-muted">{currentItems.length} item{currentItems.length === 1 ? "" : "s"}</span></div>{renderEventList(currentItems, true)}</section>}
+            {view === "day" && <section aria-label={`${dateHeading(dateKey)} calendar`} className="rounded-2xl border border-line bg-surface p-4 shadow-soft"><div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-line pb-3"><div><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary-ink">Selected day</p><h2 className="mt-1 text-[16px] font-semibold text-ink">{dateHeading(dateKey)}</h2></div><span className="text-[10.5px] text-ink-2">{currentItems.length} item{currentItems.length === 1 ? "" : "s"}</span></div>{renderEventList(currentItems, true)}</section>}
 
-            {view === "agenda" && <section aria-label="Calendar agenda" className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft"><div className="border-b border-line px-4 py-3"><h2 className="text-[13px] font-semibold text-ink">Agenda</h2><p className="mt-0.5 text-[10.5px] text-muted">Items are grouped by their local date in {data.timezone}.</p></div><div className="divide-y divide-line">{visibleDays.map((day) => { const dayItems = byDay.get(day) ?? []; if (!dayItems.length) return null; return <div key={day} className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_minmax(0,1fr)]"><div><p className="text-[11px] font-semibold text-ink">{dateHeading(day)}</p><p className="mt-0.5 text-[9.5px] text-muted">{dayItems.length} item{dayItems.length === 1 ? "" : "s"}</p></div>{renderEventList(dayItems, true)}</div>; })}{items.length === 0 && <div className="px-4 py-8"><EmptyState icon={<CalendarDays className="size-5" />} title="Nothing in this period" description="No recorded jobs or projected schedule occurrences match this calendar view." compact /></div>}</div></section>}
+            {view === "agenda" && <section aria-label="Calendar agenda" className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft"><div className="border-b border-line px-4 py-3"><h2 className="text-[13px] font-semibold text-ink">Agenda</h2><p className="mt-0.5 text-[10.5px] text-ink-2">Items are grouped by their local date in {data.timezone}.</p></div><div className="divide-y divide-line">{visibleDays.map((day) => { const dayItems = byDay.get(day) ?? []; if (!dayItems.length) return null; return <div key={day} className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_minmax(0,1fr)]"><div><p className="text-[11px] font-semibold text-ink">{dateHeading(day)}</p><p className="mt-0.5 text-[9.5px] text-ink-2">{dayItems.length} item{dayItems.length === 1 ? "" : "s"}</p></div>{renderEventList(dayItems, true)}</div>; })}{items.length === 0 && <div className="px-4 py-8"><EmptyState icon={<CalendarDays className="size-5" />} title="Nothing in this period" description="No recorded jobs or projected schedule occurrences match this calendar view." compact /></div>}</div></section>}
           </div>
 
           <aside className="space-y-3">
-            {selectedOrDayItem ? <SelectedItem item={selectedOrDayItem} data={data} timeZone={data.timezone} /> : <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft"><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary">Selected day</p><h2 className="mt-1 text-[14px] font-semibold text-ink">{dateHeading(dateKey)}</h2><p className="mt-2 text-[11.5px] leading-relaxed text-muted">Nothing is recorded or scheduled for this date.</p>{canManageSchedules && <Link href="/work#scheduled-work" className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary hover:bg-primary-soft/60">Create a schedule<ArrowRight className="size-3.5" aria-hidden /></Link>}</section>}
+            {selectedOrDayItem ? <SelectedItem item={selectedOrDayItem} data={data} timeZone={data.timezone} canManageSchedules={canManageSchedules} scheduleBusy={scheduleBusy} referenceTime={referenceTime} onToggleSchedule={toggleSchedule} /> : <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft"><p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary-ink">Selected day</p><h2 className="mt-1 text-[14px] font-semibold text-ink">{dateHeading(dateKey)}</h2><p className="mt-2 text-[11.5px] leading-relaxed text-ink-2">Nothing is recorded or scheduled for this date.</p>{canManageSchedules && <Link href="/work#scheduled-work" className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-primary-ink hover:bg-primary-soft/60">Create a schedule<ArrowRight className="size-3.5" aria-hidden /></Link>}</section>}
 
             <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft" aria-labelledby="calendar-upcoming-heading">
-              <div className="flex items-start justify-between gap-2"><div><h2 id="calendar-upcoming-heading" className="text-[13px] font-semibold text-ink">Work in this period</h2><p className="mt-0.5 text-[10px] text-muted">Projected occurrences and recorded jobs</p></div><span className="rounded-full bg-surface-2 px-2 py-1 text-[9px] font-medium text-muted">{data.timezone}</span></div>
-              {items.length === 0 ? <p className="mt-3 text-[11px] leading-relaxed text-muted">No entries appear in this calendar period.</p> : <div className="mt-3 space-y-2">{items.slice(0, 5).map((item) => <button key={item.key} type="button" onClick={() => selectItem(item)} className={cn("flex w-full items-start gap-2 rounded-xl border p-2.5 text-left hover:bg-surface-2", selectedKey === item.key ? "border-primary/30 bg-primary-soft/30" : "border-line")}><AgentAvatar role={AGENT_BY_KEY[roleOf(item)]} size="xs" /><span className="min-w-0 flex-1"><span className="block text-[10.5px] font-semibold text-ink">{titleOf(item)}</span><span className="mt-0.5 block text-[9.5px] text-muted">{employeeOf(item)} · {calendarTimestampLabel(item.startsAt, data.timezone)}</span><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide", item.kind === "schedule" ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>{item.kind === "schedule" ? "Scheduled · not a job" : item.job.statusLabel}</span></span></button>)}</div>}
+              <div className="flex items-start justify-between gap-2"><div><h2 id="calendar-upcoming-heading" className="text-[13px] font-semibold text-ink">Work in this period</h2><p className="mt-0.5 text-[10px] text-ink-2">Projected occurrences and recorded jobs</p></div><span className="rounded-full bg-surface-2 px-2 py-1 text-[9px] font-medium text-ink-2">{data.timezone}</span></div>
+              {items.length === 0 ? <p className="mt-3 text-[11px] leading-relaxed text-ink-2">No entries appear in this calendar period.</p> : <div className="mt-3 space-y-2">{items.slice(0, 5).map((item) => <button key={item.key} type="button" onClick={() => selectItem(item)} className={cn("flex w-full items-start gap-2 rounded-xl border p-2.5 text-left hover:bg-surface-2", selectedKey === item.key ? "border-primary/30 bg-primary-soft/30" : "border-line")}><AgentAvatar role={AGENT_BY_KEY[roleOf(item)]} size="xs" /><span className="min-w-0 flex-1"><span className="block text-[10.5px] font-semibold text-ink">{titleOf(item)}</span><span className="mt-0.5 block text-[9.5px] text-ink-2">{employeeOf(item)} · {calendarTimestampLabel(item.startsAt, data.timezone)}</span><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide", item.kind === "schedule" ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>{item.kind === "schedule" ? "Scheduled · not a job" : item.job.statusLabel}</span></span></button>)}</div>}
             </section>
 
             {invalidSchedules.length > 0 && <section className="rounded-2xl border border-warning/25 bg-warning-soft/50 p-3.5" role="status"><p className="flex items-center gap-2 text-[11px] font-semibold text-warning-ink"><AlertTriangle className="size-3.5" aria-hidden />{invalidSchedules.length} schedule{invalidSchedules.length === 1 ? " has" : "s have"} a recurrence or time-zone issue</p><p className="mt-1 text-[10px] leading-relaxed text-warning-ink">Those schedules are omitted from projected calendar entries until their settings are corrected.</p></section>}
 
-            <p className="flex items-start gap-2 px-1 text-[9.5px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />Calendar entries do not prove that a job ran. Actual execution is linked to a persisted job with its own status and recorded results.</p>
+            <p className="flex items-start gap-2 px-1 text-[9.5px] leading-relaxed text-ink-2"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />Calendar entries do not prove that a job ran. Actual execution is linked to a persisted job with its own status and recorded results.</p>
           </aside>
         </div>
       </section>

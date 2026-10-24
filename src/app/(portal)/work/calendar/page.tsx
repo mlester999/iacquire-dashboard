@@ -19,6 +19,6 @@ export default async function WorkforceCalendarPage() {
   ]);
   const employeeNames = Object.fromEntries(agents.map((agent) => [agent.role_key, agent.display_name])) as Partial<Record<AgentRoleKey, string>>;
 
-  return <WorkforceCalendar initialData={initialData} initialDateKey={initialDateKey} canManageSchedules={ctx.can("agents.configure")} employeeNames={employeeNames} />;
+  return <WorkforceCalendar initialData={initialData} initialDateKey={initialDateKey} referenceTime={now.toISOString()} canManageSchedules={ctx.can("agents.configure")} employeeNames={employeeNames} />;
 }
 

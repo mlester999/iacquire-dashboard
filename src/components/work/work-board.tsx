@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, CalendarClock, CheckCircle2, ListChecks, Loader2, Play, ShieldCheck, Trash2, Zap } from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, CheckCircle2, ListChecks, Loader2, Pencil, Play, ShieldCheck, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, Textarea } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
@@ -17,6 +17,7 @@ import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-trigg
 import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import type { AgentRoleKey } from "@/lib/agents";
+import { nextWorkforceScheduleAt } from "@/lib/workforce-calendar-view";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
 import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/reports";
@@ -25,6 +26,33 @@ import type { WorkBoardJob, WorkBoardSummary, WorkBoardFilter } from "@/server/w
 
 const DAY_LABEL: Record<Weekday, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
 const WEEKDAY_ORDER: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+function localTimeAt(instant: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(instant));
+}
+
+function scheduleNextOccurrenceLabel(schedule: ScheduleView, referenceTime: string, timeZone: string): string {
+  const next = nextWorkforceScheduleAt(schedule, referenceTime);
+  if (schedule.enabled) return `next ${formatDateTime(next ?? schedule.nextRunAt, timeZone)}`;
+  const value = next
+    ? formatDateTime(next, timeZone)
+    : schedule.recurrenceRule || schedule.recurrenceInvalid ? "unavailable" : "set when enabled";
+  return `next recurrence ${value}`;
+}
+
+function simpleBusinessHours(hours: BusinessHours): {
+  supported: boolean;
+  days: Weekday[];
+  start: string;
+  end: string;
+} {
+  const days = WEEKDAY_ORDER.filter((day) => Boolean(hours[day]?.length));
+  const windows = days.map((day) => hours[day] ?? []);
+  const signatures = new Set(windows.flatMap((items) => items.map(([start, end]) => `${start}|${end}`)));
+  const supported = windows.every((items) => items.length <= 1) && signatures.size <= 1;
+  const first = windows.find((items) => items.length > 0)?.[0];
+  return { supported, days, start: first?.[0] ?? "09:00", end: first?.[1] ?? "17:00" };
+}
 
 export function WorkBoard({
   jobs,
@@ -45,6 +73,7 @@ export function WorkBoard({
   scheduleActions,
   employeeNames,
   referenceTime,
+  focusScheduleId = null,
 }: {
   jobs: WorkBoardJob[];
   summary: WorkBoardSummary;
@@ -65,6 +94,7 @@ export function WorkBoard({
   focusReportId?: string | null;
   employeeNames?: Partial<Record<AgentRoleKey, string>>;
   referenceTime: string;
+  focusScheduleId?: string | null;
 }) {
   const router = useRouter();
   const [starting, setStarting] = React.useState(false);
@@ -73,13 +103,19 @@ export function WorkBoard({
   });
   const selected = reviewActions.find((action) => action.capability === selectedCapability) ?? reviewActions[0] ?? null;
   const scheduleOptions = scheduleActions ?? reviewActions;
-  const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => scheduleOptions.find((action) => action.capability !== "lead_research")?.capability ?? scheduleOptions[0]?.capability ?? "");
-  const [leadResearchPrompt, setLeadResearchPrompt] = React.useState("");
-  const [scheduleCadence, setScheduleCadence] = React.useState<"hourly" | "daily" | "weekly">("daily");
-  const [restrictHours, setRestrictHours] = React.useState(false);
-  const [businessStart, setBusinessStart] = React.useState("09:00");
-  const [businessEnd, setBusinessEnd] = React.useState("17:00");
-  const [businessDays, setBusinessDays] = React.useState<Weekday[]>(["mon", "tue", "wed", "thu", "fri"]);
+  const initialSchedule = focusScheduleId ? schedules.find((item) => item.id === focusScheduleId) ?? null : null;
+  const initialHours = initialSchedule ? simpleBusinessHours(initialSchedule.businessHours) : null;
+  const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => initialSchedule?.capability ?? scheduleOptions.find((action) => action.capability !== "lead_research")?.capability ?? scheduleOptions[0]?.capability ?? "");
+  const [leadResearchPrompt, setLeadResearchPrompt] = React.useState(() => initialSchedule?.payload.prompt ?? "");
+  const [scheduleCadence, setScheduleCadence] = React.useState<"hourly" | "daily" | "weekly">(() => initialSchedule?.recurrenceRule?.kind ?? initialSchedule?.cadence ?? "daily");
+  const [restrictHours, setRestrictHours] = React.useState(() => (initialHours?.days.length ?? 0) > 0);
+  const [businessStart, setBusinessStart] = React.useState(() => initialHours?.start ?? "09:00");
+  const [businessEnd, setBusinessEnd] = React.useState(() => initialHours?.end ?? "17:00");
+  const [businessDays, setBusinessDays] = React.useState<Weekday[]>(() => initialHours?.days.length ? initialHours.days : ["mon", "tue", "wed", "thu", "fri"]);
+  const [scheduleLocalTime, setScheduleLocalTime] = React.useState(() => initialSchedule?.recurrenceRule?.localTime ?? (initialSchedule ? localTimeAt(initialSchedule.nextRunAt, timeZone) : "09:00"));
+  const [scheduleWeekdays, setScheduleWeekdays] = React.useState<Weekday[]>(() => initialSchedule?.recurrenceRule?.kind === "weekly" ? [...initialSchedule.recurrenceRule.weekdays] : ["mon", "tue", "wed", "thu", "fri"]);
+  const [editingSchedule, setEditingSchedule] = React.useState<ScheduleView | null>(initialSchedule);
+  const [unsupportedBusinessHours, setUnsupportedBusinessHours] = React.useState(() => Boolean(initialHours && !initialHours.supported));
   const [scheduleBusy, setScheduleBusy] = React.useState<string | null>(null);
   const businessHours: BusinessHours = restrictHours && businessDays.length
     ? Object.fromEntries(businessDays.map((day) => [day, [[businessStart, businessEnd]]])) as BusinessHours
@@ -89,16 +125,53 @@ export function WorkBoard({
   const schedulingLeadResearch = selectedScheduleAction?.capability === "lead_research";
   const schedulePayload = schedulingLeadResearch ? { prompt: leadResearchPrompt.trim() } : undefined;
   const schedulePayloadValid = !schedulingLeadResearch || leadResearchPrompt.trim().length >= 10;
+  const recurrenceRule = scheduleCadence === "hourly"
+    ? undefined
+    : scheduleCadence === "daily"
+      ? { kind: "daily" as const, localTime: scheduleLocalTime }
+      : { kind: "weekly" as const, localTime: scheduleLocalTime, weekdays: scheduleWeekdays };
+  const recurrenceValid = scheduleCadence !== "weekly" || scheduleWeekdays.length > 0;
+
+  const beginScheduleEdit = React.useCallback((schedule: ScheduleView) => {
+    const hours = simpleBusinessHours(schedule.businessHours);
+    setEditingSchedule(schedule);
+    setScheduleCapability(schedule.capability);
+    setScheduleCadence(schedule.recurrenceRule?.kind ?? schedule.cadence);
+    setScheduleLocalTime(schedule.recurrenceRule?.localTime ?? localTimeAt(schedule.nextRunAt, timeZone));
+    setScheduleWeekdays(schedule.recurrenceRule?.kind === "weekly" ? [...schedule.recurrenceRule.weekdays] : ["mon", "tue", "wed", "thu", "fri"]);
+    setLeadResearchPrompt(schedule.payload.prompt ?? "");
+    setRestrictHours(hours.days.length > 0);
+    setBusinessDays(hours.days.length > 0 ? hours.days : ["mon", "tue", "wed", "thu", "fri"]);
+    setBusinessStart(hours.start);
+    setBusinessEnd(hours.end);
+    setUnsupportedBusinessHours(!hours.supported);
+  }, [timeZone]);
+
+  const cancelScheduleEdit = () => {
+    setEditingSchedule(null);
+    setUnsupportedBusinessHours(false);
+  };
 
   const saveSchedule = async () => {
     if (!scheduleCapability || scheduleBusy) return;
     if (!businessHoursValid) return toast.error("Choose at least one day and an end time after the start time.");
+    if (!recurrenceValid) return toast.error("Choose at least one weekday for this schedule.");
+    if (unsupportedBusinessHours) return toast.error("This schedule has business-hour windows the editor cannot preserve. No changes were saved.");
     if (!schedulePayloadValid) return toast.error("Describe who to research, where and how many. The schedule runs only that assignment.");
     setScheduleBusy("save");
-    const res = await saveScheduleAction(scheduleCapability, scheduleCadence, businessHours, schedulePayload);
+    const expectedExistingSchedule = editingSchedule
+      ? { id: editingSchedule.id, updatedAt: editingSchedule.updatedAt }
+      : null;
+    const res = await saveScheduleAction(scheduleCapability, scheduleCadence, businessHours, schedulePayload, recurrenceRule, expectedExistingSchedule);
     setScheduleBusy(null);
     if (!res.ok) return toast.error(res.error);
-    toast.success("Schedule saved paused", { description: "Enable it when you are ready. It still only runs when the operator switch is on." });
+    toast.success(editingSchedule ? "Schedule updated paused" : "Schedule saved paused", {
+      description: editingSchedule
+        ? "The saved version was checked and the update is paused. Review it, then enable it when ready."
+        : "Enable it when you are ready. It still only runs when the operator switch is on.",
+    });
+    setEditingSchedule(null);
+    setUnsupportedBusinessHours(false);
     router.refresh();
   };
 
@@ -253,7 +326,7 @@ export function WorkBoard({
             <div className="flex flex-wrap items-end gap-2">
               <label className="block min-w-[15rem] flex-1 text-[12px] font-medium text-ink-2">
                 Work
-                <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!scheduleOptions.length}>
+                <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!scheduleOptions.length || editingSchedule !== null}>
                   {scheduleOptions.map((action) => (
                     <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
                   ))}
@@ -267,10 +340,30 @@ export function WorkBoard({
                   <option value="weekly">Weekly</option>
                 </Select>
               </label>
-              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null || !businessHoursValid || !schedulePayloadValid || Boolean(selectedScheduleAction && !selectedScheduleAction.available)}>
-                Save paused schedule
+              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null || !businessHoursValid || !recurrenceValid || unsupportedBusinessHours || !schedulePayloadValid || Boolean(selectedScheduleAction && !selectedScheduleAction.available)}>
+                {editingSchedule ? "Update paused schedule" : "Save paused schedule"}
               </Button>
+              {editingSchedule && <Button variant="ghost" onClick={cancelScheduleEdit} disabled={scheduleBusy !== null}><X className="size-3.5" aria-hidden />Cancel edit</Button>}
             </div>
+            {editingSchedule && <p className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[11.5px] leading-relaxed text-warning-ink">Saving this edit pauses the schedule. Re-enable it after reviewing the updated local time and recurrence.</p>}
+            {scheduleCadence !== "hourly" && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface-2/30 p-3">
+                <label className="block text-[12px] font-medium text-ink-2">
+                  Local run time · {timeZone}
+                  <input type="time" aria-label="Schedule local run time" value={scheduleLocalTime} onChange={(event) => setScheduleLocalTime(event.target.value)} className="mt-1 block h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                </label>
+                {scheduleCadence === "weekly" && <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-[12px] font-medium text-ink-2">Run on</p>
+                  <div className="flex flex-wrap gap-1" role="group" aria-label="Schedule weekdays">
+                    {WEEKDAY_ORDER.map((day) => {
+                      const active = scheduleWeekdays.includes(day);
+                      return <button key={day} type="button" aria-pressed={active} onClick={() => setScheduleWeekdays((current) => active ? current.filter((item) => item !== day) : [...current, day])} className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[11.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[11.5px] font-medium text-ink-2 hover:bg-surface-2"}>{DAY_LABEL[day]}</button>;
+                    })}
+                  </div>
+                </div>}
+              </div>
+            )}
+            {unsupportedBusinessHours && <p role="alert" className="rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-[11.5px] leading-relaxed text-danger-ink">This saved schedule uses different or multiple daily business-hour windows. It is unchanged; this editor will not overwrite hours it cannot preserve.</p>}
             {schedulingLeadResearch && (
               <div className="rounded-xl border border-line bg-surface-2/30 p-3">
                 <label className="block text-[12px] font-medium text-ink-2" htmlFor="lead-research-assignment">
@@ -348,13 +441,21 @@ export function WorkBoard({
                       <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
                       {schedule.payload.prompt && <p className="mt-0.5 truncate text-[11.5px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
                       <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
-                        {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
+                        {schedule.recurrenceRule
+                          ? schedule.recurrenceRule.kind === "daily"
+                            ? `Daily · ${schedule.recurrenceRule.localTime} · ${schedule.timezone}`
+                            : `Weekly ${schedule.recurrenceRule.weekdays.map((day) => DAY_LABEL[day]).join(", ")} · ${schedule.recurrenceRule.localTime} · ${schedule.timezone}`
+                          : `${sentenceCase(schedule.cadence)} interval`}
+                        {` · ${scheduleNextOccurrenceLabel(schedule, referenceTime, timeZone)}`}
                         {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}
                         {Object.keys(schedule.businessHours).length ? " · business hours only" : " · any time"}
                         {schedule.lastSkippedReason === "outside_business_hours" ? " · waiting for opening" : ""}
                         {schedule.enabled && !scheduleOperatorEnabled ? " · paused by operator" : ""}
                       </p>
                     </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => beginScheduleEdit(schedule)} disabled={scheduleBusy !== null} aria-label={`Edit ${schedule.capabilityLabel} schedule`}>
+                      <Pencil className="size-3.5" aria-hidden />Edit
+                    </Button>
                     <button
                       type="button"
                       onClick={() => removeSchedule(schedule.id)}

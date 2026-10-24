@@ -177,6 +177,7 @@ function JobCard({
 function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; operatorEnabled: boolean; timeZone: string }) {
   const { schedule } = item;
   const mayCreateJob = schedule.enabled && operatorEnabled;
+  const scheduleState = !schedule.enabled ? "Schedule paused" : operatorEnabled ? "Enabled" : "Operator off";
   return (
     <article className="rounded-xl border border-line bg-surface p-3 shadow-soft">
       <div className="flex items-start gap-2.5">
@@ -184,7 +185,7 @@ function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; o
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="inline-flex h-5 items-center gap-1 rounded-full border border-primary/15 bg-primary-soft px-2 text-[9px] font-semibold uppercase tracking-wide text-primary-ink"><CalendarClock className="size-3" aria-hidden />Scheduled · not a job</span>
-            <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold", mayCreateJob ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{mayCreateJob ? "Enabled" : "Paused"}</span>
+            <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold", mayCreateJob ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{scheduleState}</span>
           </div>
           <h3 className="mt-2 text-[13px] font-semibold leading-snug text-ink">{schedule.capabilityLabel}</h3>
           <p className="mt-1 text-[11px] text-muted">{schedule.employeeName} · <time dateTime={item.startsAt}>{calendarTimestampLabel(item.startsAt, timeZone)}</time></p>

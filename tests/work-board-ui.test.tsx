@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { WorkBoard } from "@/components/work/work-board";
-import { setScheduleEnabledAction, setTriggerEnabledAction } from "@/app/actions/work";
+import { saveScheduleAction, setScheduleEnabledAction, setTriggerEnabledAction } from "@/app/actions/work";
 import type { WorkBoardJob } from "@/server/workforce/work-board";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
@@ -200,6 +200,7 @@ describe("AI Work Board", () => {
       payload: {},
       enabled: true,
       nextRunAt: "2026-10-22T07:00:00.000Z",
+      updatedAt: "2026-10-21T07:00:00.000Z",
       lastRunAt: null,
       lastJobId: null,
       lastSkippedReason: null,
@@ -212,6 +213,71 @@ describe("AI Work Board", () => {
     expect(screen.getByText(/no schedule creates work even when its row is enabled/i)).toBeTruthy();
     await userEvent.click(screen.getByRole("switch", { name: /Pause On-demand operations review schedule/ }));
     await waitFor(() => expect(setScheduleEnabledAction).toHaveBeenCalledWith("s1", false));
+  });
+
+  it("creates a new paused schedule only when no existing version is expected", async () => {
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T08:00:00.000Z" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Save paused schedule" }));
+
+    await waitFor(() => expect(saveScheduleAction).toHaveBeenCalledWith(
+      "proactive_review",
+      "daily",
+      {},
+      undefined,
+      { kind: "daily", localTime: "09:00" },
+      null,
+    ));
+  });
+
+  it("lets an operator choose weekly recurrence weekdays", async () => {
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T08:00:00.000Z" />);
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Cadence" }), "weekly");
+
+    const weekdays = screen.getByRole("group", { name: "Schedule weekdays" });
+    await userEvent.click(within(weekdays).getByRole("button", { name: "Sat" }));
+    expect(within(weekdays).getByRole("button", { name: "Sat" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("edits only the schedule version shown and saves the update paused", async () => {
+    const schedule: ScheduleView = {
+      id: "s-edit",
+      capability: "proactive_review",
+      capabilityLabel: "On-demand operations review",
+      employeeRole: "operations_manager",
+      employeeName: "Operations Manager",
+      cadence: "daily",
+      intervalMinutes: 1440,
+      recurrenceRule: { kind: "daily", localTime: "09:00" },
+      recurrenceInvalid: false,
+      timezone: "UTC",
+      businessHours: {},
+      payload: {},
+      enabled: true,
+      nextRunAt: "2026-10-25T09:00:00.000Z",
+      updatedAt: "2026-10-24T07:00:00.000Z",
+      lastRunAt: null,
+      lastJobId: null,
+      lastSkippedReason: null,
+      lastSkippedAt: null,
+      operatorEnabled: false,
+    };
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[schedule]} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T08:00:00.000Z" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit On-demand operations review schedule" }));
+    expect(screen.getByRole("button", { name: "Update paused schedule" })).toBeTruthy();
+    expect((screen.getByLabelText("Schedule local run time") as HTMLInputElement).value).toBe("09:00");
+    await userEvent.click(screen.getByRole("button", { name: "Update paused schedule" }));
+
+    await waitFor(() => expect(saveScheduleAction).toHaveBeenCalledWith(
+      "proactive_review",
+      "daily",
+      {},
+      undefined,
+      { kind: "daily", localTime: "09:00" },
+      { id: "s-edit", updatedAt: "2026-10-24T07:00:00.000Z" },
+    ));
   });
 
   it("shows event triggers with their operator gate and pauses one through the audited action", async () => {
