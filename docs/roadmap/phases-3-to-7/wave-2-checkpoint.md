@@ -21,7 +21,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 * Targeted Wave 2 files: 24 files, 512 tests before the last fixes; 8 failed in `invoices-from-proposal` / `invoices-actions-delivery` and were fixed (monthly lines were being copied as one-time, idempotency was disabled, the further-invoice permission was not enforced, and the draft closed the deal). Re-run: 27/27 pass.
 * Staff Messages screens/routes/stream/snapshot: 5 files, 142 tests pass after fixing the around-message window, thread-root validation, a stream-cancel test, an upload test fixture and two over-broad textbox assertions.
-* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s, exit 0), at `b05c69e`. After purchase intents: first run 610 files, 10,271 passed, 1 failed (a fixed-window rate-limit test crossed a wall-clock minute under load; now pinned to a fixed clock and passing alone); later whole runs had environment-wide 30 s timeouts while a separate QA server held ~2 GB, so a clean whole run at the purchase commit is still pending. The affected set, including all purchase tests, passes when re-run: 10 files, 160 tests.
+* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s), at `b05c69e`. After purchase intents, at `f96f1a7` with a 120 s per-test ceiling: **610 files, 10,272 passed, 8 skipped, 0 failed** (935 s, exit 0). The 120 s ceiling only gives the slow host headroom; the default 30 s had timed out one unrelated static scan, which passed alone in 6 s.
 * `tsconfig.clean.json` and `tsconfig.scripts.json`: both clean.
 * ESLint: clean (0 errors, 0 warnings).
 * `tests/client-bundle-safety.test.ts` and `tests/docs-modules.test.ts`: pass.
@@ -47,7 +47,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 ## Remaining Wave 2 work and next actions
 
-1. Run one clean whole-suite pass at the purchase-intent commit on a quiet machine (the last whole green pass predates 0101); then browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: Messages, Requests change/survey, onboarding, demo room/admin, invoice delivery and invoice-from-proposal.
+1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: Messages, Requests change/survey, onboarding, demo room/admin, invoice delivery and invoice-from-proposal.
 2. Keep the purchase-intent admin and public browser QA evidence with the commit; rerun it only if the pages change.
 3. Update `README.md`, `handoff.md`, `implementation-checklist.md`, `verification-evidence.md` and `blockers.md` with the committed evidence and exact next actions.
 

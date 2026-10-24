@@ -150,7 +150,7 @@ This section records what the resumed session measured; it does not replace a fu
 | --- | --- | --- |
 | Full suite, first run at the resumed tree | `vitest run` | 603 files; **10,235 passed, 9 failed, 8 skipped**, 836 s. The 9 are listed below with their fixes. |
 | Full suite before purchase intents | `vitest run` | **607 files passed, 10,255 tests passed, 8 skipped, 0 failed** (823 s), exit 0, at `b05c69e`. |
-| Full suite after purchase intents | `vitest run` | **Not clean.** First run: 610 files, 10,271 passed, 1 failed (`automation-studio-connections` crossed a minute in its fixed-window rate-limit test under load); fixed with a frozen clock and passes alone. Later runs on the same machine had environment-wide 30 s timeouts (a separate QA server held ~2 GB and the suite had already run for 17+ minutes). The affected files, including purchase intents, pass when re-run: **10 files, 160 tests passed**. A clean full-suite run at the exact purchase commit is still required. |
+| Full suite after purchase intents | `vitest run --testTimeout=120000` | **610 files passed, 10,272 tests passed, 8 skipped, 0 failed** (935 s), exit 0, at `f96f1a7`. The default 30 s per-test timeout timed out one unrelated static scan on this slow host; the 120 s ceiling only gives headroom, it does not skip or weaken a test. A separate 30 s run timed out `reputation-gating-guard`, which then passed alone in 6 s. |
 | Targeted Wave 2 new files | 24 files | 512 tests; 8 failed in invoice-from-proposal/delivery, fixed, then 27/27 in the two files. |
 | Staff Messages screens/routes/stream/snapshot | 5 files | 142 passed after fixing the around-window, thread-root and test-fixture defects. |
 | Workload rules, labels, migration, job, views, presentation, page renders | 8 files | The rules/labels/migration/job/views/screens/page tests pass. |
@@ -180,4 +180,4 @@ The nine full-suite failures and their disposition:
 
 The resumed session also fixed a real scheduled-job failure that the new job test exposed: `tidyDeparted` built SQL with `String.replace` and a replacement containing `$'`, which truncated the UUID pattern and made every run with a departed-person notice fail.
 
-**Not shown by this evidence:** a clean full-suite run at the exact purchase-intent commit (the last whole green run predates 0101; the post-0101 runs hit a fixed-window test flake and then environment-wide timeouts), browser QA of Messages/Requests/onboarding/demo/invoice delivery, any real provider, any hosted migration. The purchase-intent online checkout and provider-webhook auto-provisioning are **Not built**.
+**Not shown by this evidence:** browser QA of Messages/Requests/onboarding/demo/invoice delivery, any real provider, any hosted migration. The purchase-intent online checkout and provider-webhook auto-provisioning are **Not built**.

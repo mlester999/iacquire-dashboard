@@ -137,10 +137,10 @@ Nothing here has been done. Wave 1 is built and verified locally and is dormant 
 | Item | Why it is blocked | What was done instead |
 | --- | --- | --- |
 | Purchase intents (0101) | The verified manual-payment path, hashed link, frozen price and workspace creation are **implemented and locally tested**; an online checkout/provider webhook and automatic recurring billing for the $299 plan are **Not built** | Needs a PayMongo/PayPal account, a signed webhook, recurring-billing approval and the founder's contract wording before live purchase collection |
-| Purchase-intent browser QA and final gates | The admin/public pages are not browser-QA'd; the full suite, build and rehearsal have not been re-run since 0101 | Run them before calling Wave 2 gated |
+| Purchase-intent browser QA and final gates | **Closed:** the admin/public flow is browser-QA'd; the whole suite, clean build and 96-file rehearsal are green at `f96f1a7` | No action; online checkout and webhook auto-provisioning remain **Not built** and need provider approval |
 | Every workload rule number | The point weights, five label thresholds, overdue floors, horizon, team default capacity and project-health limits are audit proposals. A Super Admin can inspect them at `/admin/workload/settings`; editing is deliberately not exposed | The engine, history and notifications are built and tested; no number is presented as founder-approved. The screen says so |
 | Switching staff workload on in production | The module is dormant (`org_features.staff_workload` absent) and no production switch has been touched | A Super Admin switch exists on `/admin/workload/settings`; the isolated QA database is the only place it may be switched on until approval |
-| Remaining Wave 2 browser pass | Workload is browser-QA'd; Messages, Requests, onboarding, demo and invoice delivery are not | Unit/integration tests, typechecks, lint, full suite, client-bundle safety, docs tests, migration rehearsal and build are green; the remaining browser QA is the next gate |
+| Remaining Wave 2 browser pass | Workload and purchase intents are browser-QA'd; Messages, Requests, onboarding, demo and invoice delivery are not | Unit/integration tests, typechecks, lint, whole suite, client-bundle safety, docs tests, migration rehearsal and build are green; the remaining browser QA is the next gate |
 
 ### Behaviour that changes when this code deploys, whatever the switches say
 
