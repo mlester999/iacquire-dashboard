@@ -41,18 +41,18 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def regular_file(path: Path) -> os.stat_result:
+def regular_file(path: Path, expected_mode: int = 0o600) -> os.stat_result:
     require(not path.is_symlink(), "unexpected_symlink")
     info = path.stat()
     require(stat.S_ISREG(info.st_mode), "expected_regular_file")
     require(info.st_uid == os.getuid(), "file_owner_mismatch")
     require(info.st_gid == os.getgid(), "file_group_mismatch")
-    require(stat.S_IMODE(info.st_mode) == 0o600, "private_file_mode_mismatch")
+    require(stat.S_IMODE(info.st_mode) == expected_mode, "private_file_mode_mismatch")
     return info
 
 
-def read_private_text(path: Path) -> str:
-    regular_file(path)
+def read_private_text(path: Path, expected_mode: int = 0o600) -> str:
+    regular_file(path, expected_mode)
     return path.read_text(encoding="utf-8")
 
 
@@ -186,10 +186,12 @@ def main() -> dict[str, int | str]:
                 cross_tenant_denials += 1
     require(wrong_profile_key_denials == 132 and cross_tenant_denials == 72, "profile_key_isolation_count_mismatch")
 
-    model_config = json.loads(read_private_text(Path("/run/secrets/profile_model_env.json")))
+    model_config = json.loads(
+        read_private_text(Path("/run/secrets/profile_model_env.json"), expected_mode=0o400)
+    )
     secret_values = [
-        read_private_text(Path("/run/secrets/provisioner_token")).strip(),
-        read_private_text(Path("/run/secrets/hermes_api_key")).strip(),
+        read_private_text(Path("/run/secrets/provisioner_token"), expected_mode=0o400).strip(),
+        read_private_text(Path("/run/secrets/hermes_api_key"), expected_mode=0o400).strip(),
         str(model_config.get("value", "")),
         *api_keys,
     ]

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import threading
 import tempfile
 import unittest
@@ -19,9 +20,28 @@ from acceptance_harness import (
     _portal_status_state,
     _synthetic_model_counters,
 )
+from verify_portal_acceptance import VerificationError, read_private_text
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
+    def test_readonly_mounted_secret_mode_does_not_weaken_profile_file_mode(self):
+        if os.name == "nt":
+            self.skipTest("POSIX file permission modes are required for this check")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "synthetic-secret"
+            path.write_text("synthetic-value", encoding="utf-8")
+            path.chmod(0o400)
+
+            self.assertEqual(read_private_text(path, expected_mode=0o400), "synthetic-value")
+            with self.assertRaises(VerificationError) as profile_mode_error:
+                read_private_text(path)
+            self.assertEqual(str(profile_mode_error.exception), "private_file_mode_mismatch")
+
+            path.chmod(0o644)
+            with self.assertRaises(VerificationError) as exposed_mode_error:
+                read_private_text(path, expected_mode=0o400)
+            self.assertEqual(str(exposed_mode_error.exception), "private_file_mode_mismatch")
+
     def test_model_diagnostics_capture_portal_deltas_without_request_contents(self):
         model_key = "synthetic-model-key-not-for-diagnostics"
         challenge = "0123456789abcdef0123456789abcdef"
