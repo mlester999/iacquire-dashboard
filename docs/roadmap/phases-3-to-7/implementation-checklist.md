@@ -50,7 +50,7 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 
 ## Phase 5: sales closing and customer retention
 
-Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally at `2e192a1`. **Wave 2 stages A to G are now implemented in the worktree** (staff Messages 0096, staff workload 0097 including its screens, Requests completion 0098, payment controls 0099, demo funnel 0100, onboarding snapshot 0102, consent-aware invoice delivery and invoice-from-proposal); stage H (purchase intents, 0101) is **Not Started**. Wave 3 is not built. The workload screens are browser-QA'd at 1280/375 px, light and dark; the other Wave 2 screens are not yet. The final full suite is green. See `wave-2-checkpoint.md`. "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
+Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally at `2e192a1`. **Wave 2 stages A to H are now implemented in the worktree** (staff Messages 0096, staff workload 0097 including its screens, Requests completion 0098, payment controls 0099, demo funnel 0100, purchase intents 0101, onboarding snapshot 0102, consent-aware invoice delivery and invoice-from-proposal). Purchase intents use a hashed public link, frozen $1,499/$299 snapshot, buyer confirmation and a Super Admin's verified manual payment; there is no online checkout or provider webhook auto-provisioning. Wave 3 is not built. The workload screens are browser-QA'd at 1280/375 px, light and dark; the other Wave 2 screens are not yet. The final full suite was green before the purchase-intent addition and is being re-run. See `wave-2-checkpoint.md`. "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
 
 | Subphase | Overall state |
 | --- | --- |
@@ -169,6 +169,7 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 | 6.2 | Staff Messages: direct, group and channel screens, threads, search, attachments, reactions, read state, notices, settings and permissions (0096) | **Implemented, Verified Locally** (142 targeted screen/route/service tests plus the migration and isolation suites); not browser-QA'd |
 | 6.3 | Staff workload: engine, labels, permissions, snapshot/alerts job, overview, board with skill-aware suggestions, calendar, project health, person and manage screens (0097) | **Implemented, Verified Locally, Browser-QA'd** at 1280/375 px light/dark (six pages, axe 0 on overview/board; assignment, capacity save and time-off add/remove driven); every rule number is still a proposal |
 | 6.4 | Requests + Messages + workload + projects + support working as one system | **Not yet verified**; the Wave 2 cross-module scenarios are pending |
+| 6.5 | Purchase intents: frozen $1,499/$299 offer, hashed expiring link, buyer confirmation, verified manual payment, idempotent workspace creation (0101) | **Implemented, Verified Locally** (rules, integration, migration/RLS/rollback, tenant-isolation guard); admin/public pages not browser-QA'd; online checkout and webhook auto-provisioning **Not built** |
 
 ## Phase 7: system-wide integration and launch readiness
 
@@ -176,7 +177,7 @@ Wave 1 delivered four pieces that the plan placed in the Phase 7 hardening wave.
 
 | Id | Task | State |
 | --- | --- | --- |
-| 7.x | Integration audit, employee verification, onboarding, demo funnel (absent from this tree), billing, storage, super admin, scenarios, performance, security, UX, launch operations | Not Started |
+| 7.x | Integration audit, employee verification, onboarding, demo funnel and purchase intents (now present in this tree), billing, storage, super admin, scenarios, performance, security, UX, launch operations | Not Started |
 | 7.W1.1 | AI cost metering of every `llmComplete` caller (not the streaming AQi and builder paths or the Hermes reply path), and the public website chat's daily cap and kill switch (the plan's W3 hardening) | Verified Locally (= 5X.1, 5X.2); zero cost until an `llm` rate is published; gates before the call are narrower than D29's first text |
 | 7.W1.2 | Consent rule for visitor-typed contact details (the plan's W3 hardening) | Verified Locally (= 5X.3); covers the website chat only |
 | 7.W1.3 | Kill switches on the public pages (proposals, invoices, reviews, website chat) | Verified Locally (= 5X.2, 5X.5); none run with the switch on in a deployed environment |

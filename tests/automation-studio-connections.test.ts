@@ -478,6 +478,8 @@ describe("one outside call", () => {
   });
 
   it("limits how often one connection is called, and how many calls a workspace has going at once", async () => {
+    // Keep the 61 rapid calls in one fixed-window bucket even when a slow full-suite run crosses a wall-clock minute.
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-24T12:00:00Z"));
     const ws = await studioWorkspace();
     const c = await verifiedHttp(ws);
     const get = () => performOutbound({ kind: "http", orgId: ws.o.org.id, connectionId: c.id, origin: "step", idempotencyKey: `k-${uid()}`, method: "GET", path: "/x" });

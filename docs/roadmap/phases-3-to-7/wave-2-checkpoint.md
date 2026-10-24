@@ -15,13 +15,13 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 | E | Client onboarding completion: snapshot answers, employee status, media/storage step, setup payment line | 0102 | Implemented; targeted tests pass |
 | F | Demo funnel: verified prospect access, guided four-step room, ten-message limit, 24-hour window, admin, retention | 0100 | Implemented; targeted tests pass |
 | G | Consent-aware proposal/invoice sending and invoice from an accepted proposal | 0091 edit, 0093 edit, delivery files | Implemented; targeted tests pass; no real email provider |
-| H | Purchase intents | 0101 (free) | **Not Started** — next dependent stage |
+| H | Purchase intents | 0101 | **Implemented, Verified Locally** — frozen $1,499/$299 snapshot, hashed expiring public link, buyer confirmation, Super Admin verified payment, idempotent workspace creation through `createClientTenant` + `recordManualPayment`; no online checkout or provider webhook yet |
 
 ## Evidence collected in this session
 
 * Targeted Wave 2 files: 24 files, 512 tests before the last fixes; 8 failed in `invoices-from-proposal` / `invoices-actions-delivery` and were fixed (monthly lines were being copied as one-time, idempotency was disabled, the further-invoice permission was not enforced, and the draft closed the deal). Re-run: 27/27 pass.
 * Staff Messages screens/routes/stream/snapshot: 5 files, 142 tests pass after fixing the around-message window, thread-root validation, a stream-cancel test, an upload test fixture and two over-broad textbox assertions.
-* Full suite, final: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s, exit 0), after the nine fixes, the workload screens, the breadcrumb label and the proposal-link test fix. Earlier runs: 10,235 passed/9 failed, then 10,243 passed/2 failed; every failure was fixed and re-run.
+* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s, exit 0), at `b05c69e`. After purchase intents: first run 610 files, 10,271 passed, 1 failed (a fixed-window rate-limit test crossed a wall-clock minute under load; now pinned to a fixed clock and passing alone); later whole runs had environment-wide 30 s timeouts while a separate QA server held ~2 GB, so a clean whole run at the purchase commit is still pending. The affected set, including all purchase tests, passes when re-run: 10 files, 160 tests.
 * `tsconfig.clean.json` and `tsconfig.scripts.json`: both clean.
 * ESLint: clean (0 errors, 0 warnings).
 * `tests/client-bundle-safety.test.ts` and `tests/docs-modules.test.ts`: pass.
@@ -39,10 +39,16 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 * Asking for a reply id as a thread root returned that reply as if it were a thread; a thread root must itself be a root.
 * Three workload RLS policies had no direct org reference; all six now name the agency workspace and the guard recognises the workload permission helpers.
 
+## Purchase intents (stage H, added after the first checkpoint)
+
+`0101_purchase_intents.sql` and its rollback add a stable, hashed public link, the frozen approved price, buyer confirmation, a Super Admin's verified manual payment evidence, and one idempotent workspace creation through the existing `createClientTenant` and `recordManualPayment` services. The public page takes no card and creates no account. The internal pages are `/admin/purchase-intents` and `/admin/purchase-intents/[id]`; the public page is `/purchase/[token]`. Tests: rules, integration on embedded Postgres (including duplicate email, expiry, rotation, wrong amount, idempotent provisioning, cancellation and role refusals), migration/RLS/rollback, and the schema-wide tenant-isolation guard — 31 tests, all passing. Real-browser QA drove the whole flow at 1280/375 px: create the invitation with the raw link shown once, open it unauthenticated, confirm, record the exact $1,499 payment, create the workspace, and read the public page as complete; 0 console errors, 0 overflow, axe 0. The combined rehearsal (96 files, all sections A–F) and the clean build (all purchase routes) pass. Detail: `docs/purchase-intents.md`.
+
+**Not built:** an online checkout for a purchase intent, automatic provisioning from a provider webhook, and automatic recurring billing for the optional $299 plan. Those need provider credentials/approval and are explicitly not claimed.
+
 ## Remaining Wave 2 work and next actions
 
-1. Commit the checkpoint, then browser-QA the other Wave 2 screens at 375/768/1280 px, light and dark: Messages (the QA seed had it switched off), Requests change/survey flow, onboarding, demo room/admin, invoice delivery and invoice-from-proposal. The workload screens have been driven (see above).
-2. Implement purchase intents (0101) after the remaining Wave 2 acceptance gates.
+1. Run one clean whole-suite pass at the purchase-intent commit on a quiet machine (the last whole green pass predates 0101); then browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: Messages, Requests change/survey, onboarding, demo room/admin, invoice delivery and invoice-from-proposal.
+2. Keep the purchase-intent admin and public browser QA evidence with the commit; rerun it only if the pages change.
 3. Update `README.md`, `handoff.md`, `implementation-checklist.md`, `verification-evidence.md` and `blockers.md` with the committed evidence and exact next actions.
 
 ## Approvals still owned by the founder

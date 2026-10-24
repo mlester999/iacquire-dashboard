@@ -46,10 +46,13 @@ const PUBLIC = [
   // The prospect demo: asking for it, the emailed link's button and the demo room. A prospect is not a user; the emailed link (works once) and the demo's own cookie are the only
   // credentials, and they open nothing but that prospect's own demo. Its API is already public through /api/public/ above.
   /^\/demo(?:\/|$)/,
+  // A purchase invitation: the random token in the URL is the only authorization. It shows one frozen offer and can only record that buyer's confirmation; no account,
+  // payment or workspace is created by the public page.
+  /^\/purchase\//,
 ];
 
 /** Pages whose URL carries a customer's manage secret: never cached, indexed, or sent on as a referrer. */
-const SECRET_URL = /^(?:\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)|\/proposal\/|\/api\/public\/proposals\/|\/pay\/|\/api\/public\/invoices\/|\/api\/webhooks\/esign\/|\/demo\/(?:verify|room)(?:\/|$)|\/api\/public\/demo\/)/;
+const SECRET_URL = /^(?:\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)|\/proposal\/|\/api\/public\/proposals\/|\/pay\/|\/api\/public\/invoices\/|\/api\/webhooks\/esign\/|\/demo\/(?:verify|room)(?:\/|$)|\/api\/public\/demo\/|\/purchase\/)/;
 
 function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, framable = false) {
   const dev = process.env.NODE_ENV !== "production";

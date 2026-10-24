@@ -149,7 +149,8 @@ This section records what the resumed session measured; it does not replace a fu
 | Check | Command / scope | Result |
 | --- | --- | --- |
 | Full suite, first run at the resumed tree | `vitest run` | 603 files; **10,235 passed, 9 failed, 8 skipped**, 836 s. The 9 are listed below with their fixes. |
-| Final full suite | `vitest run` | **607 files passed, 10,255 tests passed, 8 skipped, 0 failed** (823 s), exit 0. |
+| Full suite before purchase intents | `vitest run` | **607 files passed, 10,255 tests passed, 8 skipped, 0 failed** (823 s), exit 0, at `b05c69e`. |
+| Full suite after purchase intents | `vitest run` | **Not clean.** First run: 610 files, 10,271 passed, 1 failed (`automation-studio-connections` crossed a minute in its fixed-window rate-limit test under load); fixed with a frozen clock and passes alone. Later runs on the same machine had environment-wide 30 s timeouts (a separate QA server held ~2 GB and the suite had already run for 17+ minutes). The affected files, including purchase intents, pass when re-run: **10 files, 160 tests passed**. A clean full-suite run at the exact purchase commit is still required. |
 | Targeted Wave 2 new files | 24 files | 512 tests; 8 failed in invoice-from-proposal/delivery, fixed, then 27/27 in the two files. |
 | Staff Messages screens/routes/stream/snapshot | 5 files | 142 passed after fixing the around-window, thread-root and test-fixture defects. |
 | Workload rules, labels, migration, job, views, presentation, page renders | 8 files | The rules/labels/migration/job/views/screens/page tests pass. |
@@ -157,10 +158,12 @@ This section records what the resumed session measured; it does not replace a fu
 | ESLint | whole tree | 0 errors, 0 warnings. |
 | Client bundle safety | `tests/client-bundle-safety.test.ts` | Pass. |
 | Documentation consistency | `tests/docs-modules.test.ts` | Pass after adding `docs/staff-workload.md` and `tests/staff-workload-jobs.test.ts`. |
-| Tenant isolation, schema-wide | `tests/tenant-isolation-generic.test.ts` | Pass after every workload policy was given an explicit agency-org predicate. |
-| Combined migration rehearsal | `scripts/rehearse-combined-migrations.mjs` | **All sections A–F passed** on 95 files `0001..0102` (0 duplicate numbers, 0 stray files; 0101 is free), populated upgrade and rollback/reapply paths, **after** the 0097 policy edit. |
-| Clean webpack build | `node scripts/build-clean.mjs --webpack` | **Passes**, all `/admin/workload*` routes included, with `NODE_OPTIONS=--max-old-space-size=8192`. The default 4 GB heap OOM'd first, an environment limit. |
+| Tenant isolation, schema-wide | `tests/tenant-isolation-generic.test.ts` | Pass after every workload policy was given an explicit agency-org predicate and the purchase-intent policies were added. |
+| Combined migration rehearsal | `scripts/rehearse-combined-migrations.mjs` | **All sections A–F passed** on 96 files `0001..0102` (0 duplicate numbers, 0 stray files; 0101 and 0102 present, next 0103), 25 of 25 rollbacks from 0077, populated upgrade, rollback/reapply and hosted-procedure paths, after the 0101 agency-org helper. |
+| Clean webpack build | `node scripts/build-clean.mjs --webpack` | **Passes**, all `/admin/workload*`, `/admin/purchase-intents*` and `/purchase/[token]` routes included, with `NODE_OPTIONS=--max-old-space-size=8192`. The default 4 GB heap OOM'd first, an environment limit. |
 | Workload browser QA | Chromium, isolated QA app, 1280/375 px, light/dark | **Pass**: six pages, HTTP 200, 0 console/page errors, 0 horizontal overflow, axe 0 on overview/board; module switch, person/edit pages, capacity save, time-off add/remove and assignment dialog driven. Agency staff and client-owner boundaries checked. |
+| Purchase-intent browser QA | Chromium, isolated QA app, 1280/375 px, light | **Pass end to end:** created an invitation with the raw link shown once, opened it unauthenticated at 375 px, confirmed as the buyer, recorded the exact $1,499 payment with a reference and note, created the workspace, saw the canonical setup payment and client link, and the public page then read complete. 0 console errors, 0 horizontal overflow, axe 0 on the admin list/detail and public page. |
+| Purchase-intent tests | rules + integration + migration/RLS/rollback | 31 tests passed; the 0101 migration is included in the schema-wide tenant-isolation guard. |
 | Browser QA, other Wave 2 screens | Messages, Requests, onboarding, demo, invoice delivery | **None**; not browser-QA'd. |
 | Real provider | any | **None.** No email, payment, e-signature, review, social or model provider was called. |
 
@@ -177,4 +180,4 @@ The nine full-suite failures and their disposition:
 
 The resumed session also fixed a real scheduled-job failure that the new job test exposed: `tidyDeparted` built SQL with `String.replace` and a replacement containing `$'`, which truncated the UUID pattern and made every run with a departed-person notice fail.
 
-**Not shown by this evidence:** browser QA of Messages/Requests/onboarding/demo/invoice delivery, any real provider, any hosted migration. Stage H (purchase intents, 0101) has no code.
+**Not shown by this evidence:** a clean full-suite run at the exact purchase-intent commit (the last whole green run predates 0101; the post-0101 runs hit a fixed-window test flake and then environment-wide timeouts), browser QA of Messages/Requests/onboarding/demo/invoice delivery, any real provider, any hosted migration. The purchase-intent online checkout and provider-webhook auto-provisioning are **Not built**.

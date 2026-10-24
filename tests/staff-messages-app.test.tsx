@@ -161,6 +161,8 @@ describe("writing", () => {
     mocks.a.sendMessageAction.mockResolvedValue(ok({ message: sent, duplicate: false }));
     open();
     typeAndSend("Hello team");
+    // The optimistic copy appears before the action answers; wait for the server's copy and the pending "Sending…" state to be gone.
+    await waitFor(() => expect(screen.queryByText("Sending…")).toBeNull());
     await waitFor(() => expect(within(screen.getByRole("log")).getByText("Hello team")).toBeTruthy());
     expect(mocks.a.sendMessageAction).toHaveBeenCalledTimes(1);
     const arg = mocks.a.sendMessageAction.mock.calls[0][0];

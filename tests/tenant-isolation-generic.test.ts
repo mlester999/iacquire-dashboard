@@ -23,7 +23,7 @@ const grants = new Map<string, { insert: boolean; update: boolean; delete: boole
 // The staff Messages and staff workload tables belong to the one agency workspace, so they are scoped by the caller's current standing instead:
 // staff_conversation_ids is the caller's active conversations (empty unless the caller is an active agency account that may use Messages), and the
 // staff_workload_* helpers check the agency role, the workload permission and the module switch. The workload policies also name the agency org id directly.
-const SCOPING = /app\.(can_access_org|has_permission|is_agency_admin|is_agency_staff|staff_assigned|can_view_conversation|file_permission|current_user_id|permitted_orgs|accessible_orgs|staff_conversation_ids|staff_messages_allowed|staff_workload_(?:allowed|team_allowed|manage_allowed))/;
+const SCOPING = /app\.(can_access_org|has_permission|is_agency_admin|is_agency_staff|staff_assigned|can_view_conversation|file_permission|current_user_id|permitted_orgs|accessible_orgs|staff_conversation_ids|staff_messages_allowed|staff_workload_(?:allowed|team_allowed|manage_allowed)|purchase_intents_allowed|purchase_intent_agency_org)/;
 
 /** A policy may scope a child table through an EXISTS on a parent table, whose own row-level security then applies. */
 function scoped(table: string, expr: string, depth = 0): boolean {

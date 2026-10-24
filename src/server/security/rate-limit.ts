@@ -184,4 +184,8 @@ export const RATE_LIMITS = {
   staffWorkloadReadByUser: { name: "staffwork:read:user", limit: 60, windowSeconds: 60 },
   staffWorkloadAssignByUser: { name: "staffwork:assign:user", limit: 120, windowSeconds: 3600 },
   staffWorkloadManageByUser: { name: "staffwork:manage:user", limit: 60, windowSeconds: 3600 },
+  // Purchase intents are public links: reading one is cheap, but a malformed token must not become a guessing oracle, and confirming one writes a status. The admin
+  // actions are already behind the agency session and the service's permission check.
+  purchaseIntentViewByIp: { name: "purchase:view:ip", limit: 120, windowSeconds: 900 },
+  purchaseIntentStartByIp: { name: "purchase:start:ip", limit: 10, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

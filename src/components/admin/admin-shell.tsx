@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { adminCrumbs, isNavActive } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, BarChart3, Blocks, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, Handshake, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MessagesSquare, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, BarChart3, Blocks, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, Handshake, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MessagesSquare, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, ShoppingBag, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
@@ -38,6 +38,8 @@ const NAV = [
   { href: "/admin/workload", label: "Staff workload", icon: Gauge, group: "Operations" },
   // Agency managers and Super Admins: the people who asked for a demo, before they are clients (agency.prospects.view; every page and action checks it again on the server).
   { href: "/admin/prospects", label: "Demo prospects", icon: Handshake, managerUp: true, group: "Operations" },
+  // Managers and Super Admins: the frozen-price purchase path from an invited buyer to a created client workspace.
+  { href: "/admin/purchase-intents", label: "Purchase intents", icon: ShoppingBag, managerUp: true, group: "Operations" },
   { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
   { href: "/admin/projects", label: "Custom projects", icon: FolderKanban, group: "Client experience" },
   { href: "/admin/maintenance", label: "Maintenance", icon: Wrench, group: "Client experience" },
