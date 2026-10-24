@@ -4,6 +4,11 @@
 
 export type Connection = "live" | "reconnecting" | "polling";
 
+/** The four routes the open page talks to. The download route takes a file's id, which only a member of its conversation can use. */
+export const SNAPSHOT_URL = "/api/admin/messages/snapshot";
+export const STREAM_URL = "/api/admin/messages/stream";
+export const UPLOAD_URL = "/api/admin/messages/upload";
+
 /** A visible tab asks every 15 to 20 seconds when no stream is open (the jitter keeps many tabs from asking in the same second). */
 export const POLL_VISIBLE_MS = 15_000;
 export const POLL_JITTER_MS = 5_000;
@@ -34,6 +39,23 @@ export function frameRevision(data: string): number | null {
   }
 }
 
+/** The reason an `access_changed` frame (or a refused request) gives, or "forbidden" when it gives none that is known. */
+export function frameReason(data: string): "forbidden" | "not_enabled" {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    return parsed !== null && typeof parsed === "object" && (parsed as { reason?: unknown }).reason === "not_enabled" ? "not_enabled" : "forbidden";
+  } catch {
+    return "forbidden";
+  }
+}
+
+/** Which of the page's messages a refused request means: a signed-out session, the module switched off, or a person who may no longer use it. */
+export function accessLostFor(status: number, reason: string | null | undefined): AccessLostReason | null {
+  if (status === 401) return "signed_out";
+  if (status === 403) return reason === "not_enabled" ? "not_enabled" : "forbidden";
+  return null;
+}
+
 /** A line to show about the connection, only when it is true and matters: the page is offline. A stream that is down while polling works is not worth a warning. */
 export function connectionNotice(_connection: Connection, offline: boolean): string | null {
   return offline ? "You are offline. Messages will update when your connection returns." : null;
@@ -51,12 +73,16 @@ export function accessLostText(reason: AccessLostReason): string {
 // The snapshot request
 // ---------------------------------------------------------------------------
 
-/** What the page asks for. `since` is the revision it already holds; `beforeSeq` asks only for an older page; `badgeOnly` asks only for the unread total. */
+/**
+ * What the page asks for. `since` is the revision it already holds; `beforeSeq` asks only for an older page; `aroundSeq` asks for the newest page to end a little after that
+ * message (a search hit, shown with some of what came before it); `badgeOnly` asks only for the unread total.
+ */
 export interface SnapshotQuery {
   since: number | null;
   conversationId: string | null;
   threadRootId: string | null;
   beforeSeq: number | null;
+  aroundSeq: number | null;
   badgeOnly: boolean;
 }
 
@@ -80,14 +106,16 @@ export function parseSnapshotQuery(params: URLSearchParams): SnapshotQueryResult
   };
   const since = whole("since");
   const before = whole("before");
+  const around = whole("around");
   const conversationId = id("conversation");
   const threadRootId = id("thread");
   if (since === "bad") return bad("That is not a revision number.");
   if (before === "bad" || before === 0) return bad("That is not a message number.");
+  if (around === "bad" || around === 0) return bad("That is not a message number.");
   if (conversationId === "bad") return bad("That conversation was not found.");
   if (threadRootId === "bad") return bad("That message was not found.");
-  if ((threadRootId || before) && !conversationId) return bad("Say which conversation.");
-  return { ok: true, q: { since, conversationId, threadRootId, beforeSeq: before, badgeOnly: params.get("badge") === "1" } };
+  if ((threadRootId || before || around) && !conversationId) return bad("Say which conversation.");
+  return { ok: true, q: { since, conversationId, threadRootId, beforeSeq: before, aroundSeq: around, badgeOnly: params.get("badge") === "1" } };
 }
 
 /** The query string for a request (the reverse of parseSnapshotQuery). */
@@ -97,6 +125,7 @@ export function snapshotQueryString(q: SnapshotQuery): string {
   if (q.conversationId) parts.push(`conversation=${q.conversationId}`);
   if (q.threadRootId) parts.push(`thread=${q.threadRootId}`);
   if (q.beforeSeq !== null) parts.push(`before=${q.beforeSeq}`);
+  if (q.aroundSeq !== null) parts.push(`around=${q.aroundSeq}`);
   if (q.badgeOnly) parts.push("badge=1");
   return parts.join("&");
 }

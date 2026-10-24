@@ -82,7 +82,7 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
               <DraftBadge />
             </div>
             <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
-              {DRAFT_EXPLAINER} {calendar.origin === "blueprint" ? "It was created from a Blueprint, which never carries people or connections, so this workspace sets those up here." : ""}
+              {DRAFT_EXPLAINER} {calendar.origin === "blueprint" ? "It was created from a Blueprint, which never carries people or connections, so this workspace sets those up here." : calendar.origin === "onboarding" ? "It was drafted from your answers about booking in the onboarding questionnaire. Nobody is assigned to it yet, so assign the people who take these appointments here." : ""}
             </p>
           </div>
           {canManage && (

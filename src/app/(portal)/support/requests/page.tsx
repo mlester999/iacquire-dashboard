@@ -34,7 +34,7 @@ export default async function MyRequestsPage({ searchParams }: { searchParams: P
   return (
     <div className="module-stack">
       <PageHero eyebrow="Requests · My Requests" title="Everything you've sent us, in one place" tone="neutral"
-        description={seesAll ? "Support requests, issue reports and feedback from your workspace, with every reply and its progress." : "Your support requests, issue reports and feedback, with every reply and its progress."}
+        description={seesAll ? "Support requests, issue reports, feedback and change requests from your workspace, with every reply and its progress." : "Your support requests, issue reports, feedback and change requests, with every reply and its progress."}
         icon={<LifeBuoy className="size-5" />}
         action={<><ButtonLink href="/support" variant="brand"><LifeBuoy className="size-4" aria-hidden /> Get support</ButtonLink><ButtonLink href="/support/report-issue" variant="secondary"><TriangleAlert className="size-4" aria-hidden /> Report an issue</ButtonLink><ButtonLink href="/support/feedback" variant="secondary"><ThumbsUp className="size-4" aria-hidden /> Provide feedback</ButtonLink></>} />
       <RequestsList data={data} counts={counts} query={query} seesAll={seesAll} timeZone={ctx.org.timezone} />

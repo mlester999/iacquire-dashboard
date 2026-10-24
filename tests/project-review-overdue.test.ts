@@ -17,8 +17,10 @@ import { updateAgencyUserPermission } from "@/server/admin/team";
 import { runProjectReviewOverdue, PROJECT_REVIEW_OVERDUE_BUDGET_MS } from "@/server/projects/jobs";
 import { assignProject, completeReviewTask, updateProjectStatus } from "@/server/projects/agency";
 import { createProjectRequest } from "@/server/projects/client";
+import { startChangeReview, submitChangeOrder, withdrawChangeOrder } from "@/server/projects/change-orders";
+import { setRequestChangesEnabled } from "@/server/support/change-feature";
 import { notificationsFor, resetRateLimits } from "./support/support-world";
-import { projectInput, projectsWorld, type ProjectsWorld } from "./support/projects-world";
+import { approvedProject, projectInput, projectsWorld, type ProjectsWorld } from "./support/projects-world";
 
 let w: ProjectsWorld;
 let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -188,6 +190,41 @@ describe("who is told, and when", () => {
     expect(await waiting()).toBe(0);
     // Each task was announced once under its own key.
     expect((await rows("select count(distinct dedupe_key)::int as n from notifications where kind = 'project_review_overdue' and dedupe_key like $1", [`project:${busy.id}:review-overdue:%`]))[0].n).toBe(12);
+  });
+});
+
+describe("a change request nobody has looked at", () => {
+  async function lateChange(title: string) {
+    const project = await approvedProject(w, `${title} project`, { start: true });
+    const { id, ref } = await submitChangeOrder(w.ctx.owner, project.id, { title, description: "Each front desk needs its own calendar for bookings." });
+    await withSystem((db) => db.query("update project_review_tasks set due_at = now() - interval '3 hours' where change_order_id = $1", [id]));
+    return { projectId: project.id, changeId: id, ref };
+  }
+
+  it("is announced to the team once when its first look is late, naming the change and the client and nothing the client wrote", async () => {
+    await setRequestChangesEnabled(w.agency.superAdmin, w.org.id, true);
+    const { projectId, changeId, ref } = await lateChange("Late second calendar");
+    await runProjectReviewOverdue();
+    const mine = (await overdueNotices(w.raw.staff.id)).filter((n) => n.link === `/admin/projects/${projectId}`);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].title).toMatch(/the first look at a change request is overdue$/);
+    expect(`${mine[0].title} ${mine[0].body}`).not.toMatch(/calendar|front desk/i);
+    expect(mine[0].dedupe_key).toMatch(new RegExp(`^project:${projectId}:review-overdue:[0-9a-f-]{36}:\\d+$`));
+    expect((await rows("select overdue_notified_at from project_review_tasks where change_order_id = $1", [changeId]))[0].overdue_notified_at).not.toBeNull();
+    const before = (await rows("select count(*)::int as n from notifications where kind = 'project_review_overdue'"))[0].n;
+    expect(await runProjectReviewOverdue()).toBe(0);
+    expect((await rows("select count(*)::int as n from notifications where kind = 'project_review_overdue'"))[0].n).toBe(before);
+    expect(ref).toMatch(/^CHG-/);
+  });
+
+  it("is not announced once the team has looked at it, or the client has taken it back", async () => {
+    await setRequestChangesEnabled(w.agency.superAdmin, w.org.id, true);
+    const looked = await lateChange("Looked at in time");
+    await startChangeReview(w.agency.staff, looked.changeId);
+    const withdrawn = await lateChange("Taken back in time");
+    await withdrawChangeOrder(w.ctx.owner, withdrawn.changeId);
+    await runProjectReviewOverdue();
+    for (const p of [looked, withdrawn]) expect((await overdueNotices(w.raw.staff.id)).filter((n) => n.link === `/admin/projects/${p.projectId}`), p.ref).toHaveLength(0);
   });
 });
 

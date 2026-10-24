@@ -1,11 +1,13 @@
 // The browser-QA world (scripts/proposals-qa-world.ts) proves itself on a synthetic workspace: every story ends in the state it says it does, nothing leaves the machine, and the
 // customer addresses it prints open the pages it describes. If this passes, the QA seed's logic works; only its wrapper (the isolated QA database) is not exercised here.
 import { describe, expect, it } from "vitest";
-import { seedDeliveryWorld, seedProposalWorld } from "../scripts/proposals-qa-world";
+import { seedDeliveryWorld, seedInvoicingStories, seedProposalWorld } from "../scripts/proposals-qa-world";
+import { createInvoiceFromProposal, invoicingForProposal } from "@/server/invoices/from-proposal";
 import { previewDelivery } from "@/server/proposals/delivery";
 import { loadPublicProposal } from "@/server/proposals/public";
 import { getProposal } from "@/server/proposals/proposals";
 import { freshIp, proposalOrg, rows } from "./support/proposals";
+import { ctxFor } from "./support/fixtures";
 
 describe("the proposals QA world", () => {
   it("builds eighteen proposals in the states it describes, with customer links that open the right pages, and sends nothing to anyone", async () => {
@@ -93,6 +95,46 @@ describe("the proposals QA world", () => {
     // Run again, it changes nothing that matters.
     await seedDeliveryWorld({ owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") });
     expect(await rows("select 1 from messaging_channels where org_id = $1 and channel = 'email' and provider = 'resend'", [p.org.id])).toHaveLength(1);
+  }, 120_000);
+
+  it("adds three accepted proposals for the Invoice tab: one already invoiced as a draft, one to invoice by hand with its monthly and yearly lines left off, one with nothing to invoice, and nothing is issued or sent", async () => {
+    const p = await proposalOrg();
+    const emailsBefore = (await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n;
+    const actors = { owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") };
+    const owner = ctxFor(p.people.owner, p.org, "owner");
+    const out = await seedInvoicingStories(actors, owner);
+    expect(out.map((s) => s.title)).toEqual([
+      "Boiler service for the Soto household", "Heat pump installation with a care plan for the Lindqvist household", "Monthly care plan for the Navarro household",
+    ]);
+    const idOf = async (title: string) => (await rows<{ id: string }>("select id from proposals where org_id = $1 and title = $2", [p.org.id, title]))[0].id;
+    for (const s of out) {
+      expect((await rows<{ status: string }>("select status from proposals where id = $1", [await idOf(s.title)]))[0].status, s.title).toBe("accepted");
+      expect(s.proposalPath).toBe(`/proposals/${await idOf(s.title)}?tab=invoice`);
+    }
+    // Soto: a draft was made, and the tab says one version has one.
+    const soto = await invoicingForProposal(owner, await idOf(out[0].title));
+    expect(soto.existing).toHaveLength(1);
+    expect(soto.existing[0]).toMatchObject({ status: "draft", number: null, proposalVersion: 1 });
+    expect(out[0].invoicePath).toBe(`/invoices/${soto.existing[0].id}`);
+    expect(soto.preview).toMatchObject({ alreadyForThisVersion: 1, problem: null });
+    // Lindqvist: nothing yet; the discounted installation and the bracket kit would be copied, the care plan and the filter set left off.
+    const lindqvistId = await idOf(out[1].title);
+    expect(out[1].invoicePath).toBeNull();
+    const lindqvist = await invoicingForProposal(owner, lindqvistId);
+    expect(lindqvist.existing).toEqual([]);
+    expect(lindqvist.preview?.lines.map((l) => [l.description.split(" - ")[0], l.discountMinor])).toEqual([["Heat pump installation (QA)", 24_000], ["Wall bracket kit (QA)", 0]]);
+    expect(lindqvist.preview?.recurring.map((r) => [r.name, r.billing])).toEqual([["Care plan (QA)", "monthly"], ["Filter set (QA)", "yearly"]]);
+    const made = await createInvoiceFromProposal(owner, lindqvistId, { version: 1 });
+    expect(made).toMatchObject({ status: "created", lines: 2, recurringLines: 2 });
+    expect(Number((await rows<{ t: string }>("select total_minor::text as t from customer_invoices where id = $1", [made.invoiceId]))[0].t)).toBe(Number((await rows<{ t: string }>("select one_time_total_minor::text as t from proposals where id = $1", [lindqvistId]))[0].t));
+    // Navarro: a monthly plan only, so nothing can be made.
+    const navarro = await invoicingForProposal(owner, await idOf(out[2].title));
+    expect(navarro.preview?.problem?.code).toBe("no_one_time_lines");
+    // The workspace has invoicing on now, and nothing was issued, sent or charged.
+    expect((await rows<{ enabled: boolean }>("select enabled from org_features where org_id = $1 and feature = 'invoices'", [p.org.id]))[0].enabled).toBe(true);
+    expect(await rows("select 1 from customer_invoices where org_id = $1 and status <> 'draft'", [p.org.id])).toEqual([]);
+    expect(await rows("select 1 from conversation_messages where org_id = $1", [p.org.id])).toEqual([]);
+    expect((await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n).toBe(emailsBefore);
   }, 120_000);
 
   it("adds only the signing stories to a workspace that was seeded before signing existed, and only once", async () => {

@@ -6,6 +6,10 @@
 
 do $$
 begin
+  -- An invoice made from a proposal points at it (0093), so 0093 is rolled back first, newest first like every other rollback; the database would refuse the drop anyway.
+  if to_regclass('public.customer_invoices') is not null then
+    raise exception 'Rollback refused: customer invoices (0093) point at proposals. Roll 0093_customer_invoices_payments back first.';
+  end if;
   if exists (select 1 from proposals)
      or exists (select 1 from proposal_catalog_items)
      or exists (select 1 from proposal_tax_rates)

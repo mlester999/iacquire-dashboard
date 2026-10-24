@@ -158,9 +158,9 @@ export function computeWorkload(input: WorkloadInput): WorkloadResult {
     if (cap.availableHalfDays < cap.horizonDays * 2) reasons.push(`Capacity is reduced because ${left} of the ${cap.horizonDays} ${days} can be worked (time off or days not worked).`);
   }
   if (cap.source === "default") reasons.push(`Capacity is the team default of ${cap.capacityPoints} points, not a number set for this person.`);
-  if (floor.why && label !== null && label === floor.label) reasons.push(floor.why);
-  else if (floor.why && label !== null && labelRank(floor.label) <= labelRank(label)) reasons.push(floor.why);
-  if (cap.capacityPoints === null && floor.why) reasons.push(floor.why.replace(/, so the label is.*$/, "."));
+  // A floor is explained only when it changed the answer: when the points already gave the same label or a higher one, it said nothing new.
+  if (floor.why && label !== null && base !== null && labelRank(label) > labelRank(base)) reasons.push(floor.why);
+  else if (floor.why && cap.capacityPoints === null) reasons.push(floor.why.replace(/, so the label is.*$/, "."));
 
   return {
     label,

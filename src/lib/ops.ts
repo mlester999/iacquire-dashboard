@@ -132,4 +132,5 @@ export const JOB_LABELS: Record<string, string> = {
   invoiceReminders: "Queue authorized reminders for unpaid customer invoices",
   maintenanceRenewalSweep: "Remind the team and clients before a maintenance plan's paid period ends, tell the team when it passed with no payment recorded, and close checkouts nobody completed",
   staffMessagesMaintenance: "Clear out unsent staff message files, close former staff out of conversations and apply the staff message retention period if one is set",
+  staffWorkloadSnapshots: "Record each agency person's workload history, open and end overload alerts, tell managers and people about overdue work, and tidy up after people who left",
 };

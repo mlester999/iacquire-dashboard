@@ -9,12 +9,13 @@ import type { PeekResult } from "@/server/demo/public";
 // The page an emailed link opens. Opening it only READS: it changes nothing, so a mail scanner that follows every link cannot use the link up. The person presses the button, which
 // posts the link's token (in the body, never in an address) to the demo API; that is what starts the demo.
 
-export function VerifyPanel({ token, peek, notice }: { token: string; peek: PeekResult | null; notice: Notice | null }) {
-  // A post that failed sends the person back here without the link; the notice says why and where to go.
+export function VerifyPanel({ token, peek, notice, linkUnused }: { token: string; peek: PeekResult | null; notice: Notice | null; linkUnused: boolean }) {
+  // A post that failed sends the person back here without the link; the notice says why and where to go. When the refusal left the link unused, the email's link still works.
   if (!peek) {
     return (
       <DemoMessage icon={Link2Off} title="That did not work">
         <DemoNotice notice={notice} />
+        {linkUnused && <p>Your link has not been used up. Open it from your email again to try once more.</p>}
         <p>
           <Link href="/demo" className={linkClass}>
             Ask for a new link

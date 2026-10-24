@@ -8,7 +8,7 @@ import { ArrowLeft, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, Field, Input, Textarea } from "@/components/ui/primitives";
 import { saveDemoSettingsAction } from "@/app/actions/demo-admin";
-import { visitorsSee, type SwitchState } from "@/lib/demo/admin-view";
+import { visitorsSee } from "@/lib/demo/admin-view";
 import { checkSettingsPatch, DEMO_RANGES, type DemoSettings } from "@/lib/demo/settings";
 
 // The demo's settings. Switching the demo on, switching the AI chat on, and every number below are a Super Admin's decision; a manager can read them. A save carries the version the
@@ -53,7 +53,9 @@ function patchOf(form: Form, saved: DemoSettings): Record<string, unknown> {
   }
   if (form.consultationUrl.trim() !== (saved.consultationUrl ?? "")) patch.consultationUrl = form.consultationUrl.trim();
   const domains = form.blockedEmailDomains.split(/[\s,]+/).filter(Boolean);
-  if (JSON.stringify(domains.map((d) => d.toLowerCase().replace(/^@/, ""))) !== JSON.stringify(saved.blockedEmailDomains)) patch.blockedEmailDomains = domains;
+  // The same tidying the server does (lower case, no leading @, no repeats), so a list that only differs in how it was typed is not a change.
+  const tidy = [...new Set(domains.map((d) => d.toLowerCase().replace(/^@/, "")))];
+  if (JSON.stringify(tidy) !== JSON.stringify(saved.blockedEmailDomains)) patch.blockedEmailDomains = domains;
   return patch;
 }
 
@@ -129,7 +131,8 @@ export function DemoSettingsForm({ settings, version, env, canManage }: { settin
       )}
       {off && <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">Only a Super Admin can change these settings. You can read them.</p>}
 
-      <form onSubmit={save} className="space-y-5" aria-describedby={problems.form ? "settings-form-error" : undefined}>
+      {/* noValidate: the checks below say what is wrong in plain sentences beside the field (the same checks the server makes), instead of a different bubble in each browser. */}
+      <form onSubmit={save} noValidate className="space-y-5" aria-describedby={problems.form ? "settings-form-error" : undefined}>
         <Card className="space-y-4 p-4">
           <h2 className="text-[15px] font-semibold text-ink">Switches</h2>
           <dl className="space-y-1 text-[13px] text-muted">

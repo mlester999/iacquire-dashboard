@@ -28,6 +28,10 @@ async function seeded(name: string, marker: string) {
   const [payment] = await paymentsOf(inv.id);
   await recordRefund(io.ctx("owner"), payment.id, { amount: "100.00", reason: `${marker}-REFUND-REASON` });
   await withSystem((db) => db.query("insert into customer_invoice_reminders (org_id, invoice_id, step_key, due_at, status) values ($1, $2, 'on_due:0', now() + interval '1 day', 'cancelled')", [io.orgId, inv.id]));
+  // A message that carried the customer's link to them: the invoice stays issued once paid, so the database still takes the row. It holds the placeholder, never the link.
+  const conversation = (await rows<{ id: string }>("insert into conversations (org_id, contact_id, channel, thread_key, status, owner_kind) values ($1, $2, 'email', $3, 'open', 'unassigned') returning id", [io.orgId, contactId, `invoice:${inv.id}`]))[0].id;
+  const message = (await rows<{ id: string }>("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, scope) values ($1, $2, 'outbound', 'system', 'Your invoice: {{invoice.link}}', 'queued', 'delivery') returning id", [io.orgId, conversation]))[0].id;
+  await withSystem((db) => db.query("insert into customer_invoice_deliveries (org_id, invoice_id, link_version, channel, message_id, wording_version, wording_hash, address_mask) values ($1, $2, 1, 'email', $3, 'draft-test', repeat('d', 64), $4)", [io.orgId, inv.id, message, `${marker.toLowerCase().slice(0, 1)}***@example.test`]));
   const sealed = (await rows<{ credentials: string }>("select credentials from customer_payment_connections where id = $1", [conn.id]))[0].credentials;
   return { io, inv, token, conn, a, sealed, marker };
 }
@@ -78,7 +82,7 @@ describe("taking invoices and payments with you", () => {
     const out = await buildExport(mine.io.orgId);
     const files = readZip(out.bytes);
     const names = files.map((f) => f.name);
-    for (const must of ["invoices/invoices.json", "invoices/lines.json", "invoices/history.json", "invoices/reminders.json", "invoices/payments.json", "invoices/refunds.json", "invoices/checkouts.json", "invoices/provider-notices.json", "invoices/payment-account.json"]) expect(names, must).toContain(must);
+    for (const must of ["invoices/invoices.json", "invoices/lines.json", "invoices/history.json", "invoices/reminders.json", "invoices/deliveries.json", "invoices/payments.json", "invoices/refunds.json", "invoices/checkouts.json", "invoices/provider-notices.json", "invoices/payment-account.json"]) expect(names, must).toContain(must);
     const text = (n: string) => files.find((f) => f.name === n)!.data.toString("utf8");
     const json = <T,>(n: string) => JSON.parse(text(n)) as T[];
 
@@ -93,6 +97,10 @@ describe("taking invoices and payments with you", () => {
     expect(json("invoices/lines.json")).toHaveLength(1);
     expect(json<{ kind: string }>("invoices/history.json").map((e) => e.kind)).toEqual(expect.arrayContaining(["created", "issued", "payment_verified", "paid", "refund_recorded"]));
     expect(json("invoices/reminders.json")).toHaveLength(1);
+    // The messages sent to give the customer the link: who asked, the channel, the shortened address and the wording's fingerprint; never the link or the text.
+    const deliveries = json<Record<string, unknown>>("invoices/deliveries.json");
+    expect(deliveries).toEqual([expect.objectContaining({ channel: "email", link_version: 1, wording_version: "draft-test", address_mask: "m***@example.test" })]);
+    expect(JSON.stringify(deliveries)).not.toMatch(/invoice\.link|https?:/);
     const payments = json<Record<string, unknown>>("invoices/payments.json");
     expect(payments).toEqual([expect.objectContaining({ provider: "paymongo", verification: "provider_confirmed", livemode: true, status: "partially_refunded", provider_payment_id: "MINE-payment" })]);
     expect(Number(payments[0].amount_minor)).toBe(150000);
@@ -118,7 +126,7 @@ describe("taking invoices and payments with you", () => {
     expect(readme).toMatch(/\*\*invoices\/\*\*: the invoices you sent your customers/);
     expect(readme).toMatch(/never its keys or your customers' payment links/);
     const manifest = JSON.parse(text("manifest.json")) as { tables: Record<string, number> };
-    expect(manifest.tables).toMatchObject({ customer_invoices: 1, customer_invoice_lines: 1, customer_payments: 1, customer_refunds: 1, customer_payment_attempts: 1, customer_payment_events: 1, customer_payment_connections: 1, customer_invoice_reminders: 1 });
+    expect(manifest.tables).toMatchObject({ customer_invoices: 1, customer_invoice_lines: 1, customer_payments: 1, customer_refunds: 1, customer_payment_attempts: 1, customer_payment_events: 1, customer_payment_connections: 1, customer_invoice_reminders: 1, customer_invoice_deliveries: 1 });
   });
 
   it("leaves nothing behind: every customer invoice and payment table is in the export", async () => {
@@ -128,7 +136,7 @@ describe("taking invoices and payments with you", () => {
       `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attname = 'org_id' and not a.attisdropped
        where n.nspname = 'public' and c.relkind = 'r' and (c.relname like 'customer\\_invoice%' or c.relname like 'customer\\_payment%' or c.relname like 'customer\\_refund%') order by c.relname`,
     )).map((r) => r.relname);
-    expect(tables).toEqual(["customer_invoice_events", "customer_invoice_lines", "customer_invoice_reminders", "customer_invoice_settings", "customer_invoices", "customer_payment_attempts", "customer_payment_connections", "customer_payment_events", "customer_payments", "customer_refunds"].sort());
+    expect(tables).toEqual(["customer_invoice_deliveries", "customer_invoice_events", "customer_invoice_lines", "customer_invoice_reminders", "customer_invoice_settings", "customer_invoices", "customer_payment_attempts", "customer_payment_connections", "customer_payment_events", "customer_payments", "customer_refunds"].sort());
     for (const t of tables) expect(t in manifest.tables, `${t} is not in the export`).toBe(true);
     expect(manifest.skippedTables.filter((t) => t.startsWith("customer_invoice") || t.startsWith("customer_payment") || t === "customer_refunds")).toEqual([]);
   });
@@ -151,7 +159,7 @@ describe("taking invoices and payments with you", () => {
       await executeDeletion(gone.io.superAdmin, req.id, { confirmName: gone.io.c.org.name, waiveExportReason: "Test run without a download." });
 
       const count = async (table: string, orgId: string) => Number((await rows<{ n: string }>(`select count(*)::text as n from ${table} where org_id = $1`, [orgId]))[0].n);
-      for (const t of ["customer_invoices", "customer_invoice_lines", "customer_invoice_events", "customer_invoice_reminders", "customer_payments", "customer_refunds", "customer_payment_attempts", "customer_payment_events", "customer_payment_connections"]) {
+      for (const t of ["customer_invoices", "customer_invoice_lines", "customer_invoice_events", "customer_invoice_reminders", "customer_invoice_deliveries", "customer_payments", "customer_refunds", "customer_payment_attempts", "customer_payment_events", "customer_payment_connections"]) {
         expect(await count(t, gone.io.orgId), t).toBe(0);
         expect(await count(t, stays.io.orgId), `${t} (the other workspace)`).toBeGreaterThan(0);
       }

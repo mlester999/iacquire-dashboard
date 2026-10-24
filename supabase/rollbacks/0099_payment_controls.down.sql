@@ -19,7 +19,7 @@ begin
     raise exception 'Rollback refused: a maintenance plan names a billing provider and subscription. Export them first.';
   end if;
   if exists (select 1 from agency_billing_settings where auto_past_due or auto_past_due_by is not null or auto_past_due_at is not null) then
-    raise exception 'Rollback refused: the automatic past-due switch was used. Record its setting first, then switch it off.';
+    raise exception 'Rollback refused: the automatic past-due switch is on or was used (auto_past_due, auto_past_due_by, auto_past_due_at). Keep the audit entries billing.auto_past_due_enabled and billing.auto_past_due_disabled, switch it off and clear those three columns first.';
   end if;
   if exists (select 1 from notifications where kind in ('billing_setup_payment_required', 'billing_setup_cleared', 'billing_renewal_due', 'billing_refund_recorded')) then
     raise exception 'Rollback refused: billing notifications of the new kinds exist. Delete or archive them first.';

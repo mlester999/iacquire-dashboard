@@ -247,12 +247,21 @@ export async function removeMember(user: StaffUser, conversationId: unknown, mem
   }).catch(translate);
 }
 
-export async function updateConversation(user: StaffUser, conversationId: unknown, input: { name?: unknown; topic?: unknown }): Promise<void> {
+export const RENAME_CONFLICT_MESSAGE = "Someone else changed this conversation's name or topic while you were editing. Nothing was saved. Look at the new values and try again.";
+
+/**
+ * Renames a conversation or changes its topic. `expectedName` and `expectedTopic` are the values the form started from: when one is given and the stored value is different
+ * now, nothing is saved and the person is told, so two people editing at once cannot silently overwrite each other.
+ */
+export async function updateConversation(user: StaffUser, conversationId: unknown, input: { name?: unknown; topic?: unknown; expectedName?: string | null; expectedTopic?: string | null }): Promise<void> {
   const actor = await loadStaffActor(user);
   await limitManage(actor.userId);
   await withSystem(async (db) => {
     const c = await loadConversation(db, actor, conversationId, { lock: true });
     if (!canRename(factsOf(c), standingOf(actor, c))) throw new AppError(c.memberRole ? "forbidden" : "not_found", c.memberRole ? "You can't rename this conversation." : "That conversation was not found.");
+    if ((input.name !== undefined && input.expectedName !== undefined && (c.name ?? null) !== input.expectedName) || (input.topic !== undefined && input.expectedTopic !== undefined && (c.topic ?? null) !== input.expectedTopic)) {
+      throw new AppError("conflict", RENAME_CONFLICT_MESSAGE);
+    }
     if (input.name !== undefined) {
       const name = normaliseName(c.kind === "channel" ? "channel" : "group", input.name);
       if (!name.ok) throw new AppError("invalid_input", name.message);

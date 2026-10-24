@@ -4,6 +4,8 @@ import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { connectorsFor, connectorSummary } from "@/server/setup/connectors";
+import { mediaStorageStepDescription } from "@/server/setup/storage-step";
+import { MEDIA_STORAGE_STEP_KEY } from "@/lib/onboarding/media-storage-step";
 import { fleetHealth } from "@/lib/setup/health";
 import type { CrmMode } from "@/lib/crm/types";
 import {
@@ -79,6 +81,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
     );
     const tasks = await db.query<{
       id: string;
+      template_key: string;
       title: string;
       client_title: string | null;
       description: string;
@@ -99,7 +102,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       completed_at: Date | null;
       updated_at: Date;
     }>(
-      `select id, title, client_title, description, section, completion_mode, status, required, hidden, service_excluded, sort_order,
+      `select id, template_key, title, client_title, description, section, completion_mode, status, required, hidden, service_excluded, sort_order,
               to_char(estimated_completion_at, 'YYYY-MM-DD') as estimated_completion_at, client_note, blocked_reason, completion_note,
               client_action, client_response, client_responded_at, completed_at, updated_at
        from client_setup_tasks where org_id = $1 order by sort_order`,
@@ -145,6 +148,8 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
   }));
   const byId = new Map(rule.map((r) => [r.id, r]));
   const canRespond = data.canRespond;
+  // The optional storage step shows what the storage policy says today, not the text it was created with (src/server/setup/storage-step.ts).
+  const storageText = data.tasks.some((t) => t.template_key === MEDIA_STORAGE_STEP_KEY) ? await withSystem((db) => mediaStorageStepDescription(db, ctx.org.orgId)) : null;
 
   const tasks: ClientTaskView[] = data.tasks
     .filter((t) => isApplicable({ hidden: t.hidden, serviceExcluded: t.service_excluded }))
@@ -156,7 +161,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       return {
         id: t.id,
         title: clientTitle(t),
-        description: t.description,
+        description: t.template_key === MEDIA_STORAGE_STEP_KEY && storageText ? storageText : t.description,
         section: t.section === "client" || open ? "client" : "agency",
         status: t.status,
         isActivation: t.completion_mode === "activation",

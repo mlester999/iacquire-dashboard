@@ -694,10 +694,10 @@ describe("stopping a message that has not gone out", () => {
 });
 
 describe("checked again right before it leaves", () => {
-  const dispatchBlocked = async (s: Shop, reason: string) => {
+  const dispatchBlocked = async (s: Shop, reason: string, label = reason) => {
     const m = await onlyMessage(s.id);
     const rec = recordingProvider("resend");
-    expect((await dispatchMessage(m.id, { transport: rec.transport, now: NOW })).status).toBe("blocked");
+    expect((await dispatchMessage(m.id, { transport: rec.transport, now: NOW })).status, label).toBe("blocked");
     expect(rec.calls).toHaveLength(0);
     const after = await message(m.id);
     expect(after).toMatchObject({ status: "blocked", blocked_reason: reason });
@@ -738,7 +738,7 @@ describe("checked again right before it leaves", () => {
       ["the proposal was answered", "update proposals set status = 'declined', closed_at = now() where id = $1"],
       ["the version moved on", "update proposals set version = version + 1, status = 'draft', approved_version = null, approved_by = null, approved_at = null where id = $1"],
       ["the link was closed", "update proposal_share_links set revoked_at = now() where proposal_id = $1"],
-      ["the link ran out", "update proposal_share_links set expires_at = now() - interval '1 day' where proposal_id = $1"],
+      ["the link ran out", "update proposal_share_links set expires_at = '2026-10-20T00:00:00Z'::timestamptz where proposal_id = $1"],
       ["the last day passed", "update proposals set valid_until = '2026-10-01' where id = $1"],
     ];
     for (const [what, sql] of cases) {
@@ -746,9 +746,8 @@ describe("checked again right before it leaves", () => {
       await send(s);
       // Written straight to the rows, the way a fault in some other code path could leave them: the dispatcher reads the facts, not the history of how they came about.
       await withSystem((db) => db.query(sql, [s.id]));
-      const view = await dispatchBlocked(s, "proposal_link_unavailable");
-      expect(view.explain, what).toContain("link had stopped working");
-    }
+      const view = await dispatchBlocked(s, "proposal_link_unavailable", what);
+      expect(view.explain, what).toContain("link had stopped working");    }
   });
 
   it("does not send a link for a workspace whose proposals were switched off", async () => {

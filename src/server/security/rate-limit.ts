@@ -179,4 +179,9 @@ export const RATE_LIMITS = {
   staffMessageSearchByUser: { name: "staffmsg:search:user", limit: 60, windowSeconds: 60 },
   staffMessageManageByUser: { name: "staffmsg:manage:user", limit: 40, windowSeconds: 3600 },
   staffMessageUploadByUser: { name: "staffmsg:upload:user", limit: 30, windowSeconds: 3600 },
+  // Staff workload (src/server/staff-workload), per signed-in agency person. Reading the team's load runs the whole engine over every open item, so it is limited; giving work
+  // to someone sends them a notice, and changing a profile, time off or the rules is rare. The numbers are proposals (docs/staff-workload.md).
+  staffWorkloadReadByUser: { name: "staffwork:read:user", limit: 60, windowSeconds: 60 },
+  staffWorkloadAssignByUser: { name: "staffwork:assign:user", limit: 120, windowSeconds: 3600 },
+  staffWorkloadManageByUser: { name: "staffwork:manage:user", limit: 60, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

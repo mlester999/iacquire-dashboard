@@ -129,8 +129,17 @@ Nothing here has been done. Wave 1 is built and verified locally and is dormant 
 | Birthdays and anniversaries; customer-facing renewal notices | No date-of-birth field or program exists; a renewal notice to a customer needs a contact link and legal review | Not built; renewal reminders are internal only |
 | A scheduled capture of approved PayPal orders | A customer who approves and closes the tab leaves an uncaptured order | Not built; a product decision (it would take money on a guess about intent) |
 | A platform-run master signing account | Alternative to each client's own account | Not built; a decision (D38) |
-| The setup-payment gate and payment clearance (5E, the plan's W2-C) | Setup payment is still never checked before activation or AI-employee provisioning; refunds and manual receipts for iAcquire's own billing never reach `payments` | Not started; needs the founder's rule for existing clients (waive, require payment, grandfather by date) |
+| The setup-payment gate and payment clearance (5E, the plan's W2-C) | The gate and manual clearance records are now implemented (migration 0099); the remaining decision is the rule for existing clients | **Implemented, Verified Locally**; needs the founder's rule for existing clients (waive, require payment, grandfather by date) before production |
 | The remaining browser pass | The proposal editor, the AI draft button, the invoice issue, record-payment, refund and void dialogs, the review request dialog and batch approval, `/r/<token>` with the 11-button scale, Lead Sources verified revenue, the Inbox identity confirm form, the web chat widget under the switch and the cap, dark mode, print, a real phone | Not done; listed in `handoff.md` |
+
+### Wave 2 blockers and approvals
+
+| Item | Why it is blocked | What was done instead |
+| --- | --- | --- |
+| Purchase intents (0101) | Depends on the payment/intent product contract and the founder's decision on pricing snapshots and expiry; the setup fee (US$1,499) and optional US$299/month are stated, but a purchase-intent record must freeze the exact product and price and no contract document exists yet | Not started; the next free migration number is 0101. Wave 2 stages A–G are implemented first |
+| Every workload rule number | The point weights, five label thresholds, overdue floors, horizon, team default capacity and project-health limits are audit proposals. A Super Admin can inspect them at `/admin/workload/settings`; editing is deliberately not exposed | The engine, history and notifications are built and tested; no number is presented as founder-approved. The screen says so |
+| Switching staff workload on in production | The module is dormant (`org_features.staff_workload` absent) and no production switch has been touched | A Super Admin switch exists on `/admin/workload/settings`; the isolated QA database is the only place it may be switched on until approval |
+| Remaining Wave 2 browser pass | Workload is browser-QA'd; Messages, Requests, onboarding, demo and invoice delivery are not | Unit/integration tests, typechecks, lint, full suite, client-bundle safety, docs tests, migration rehearsal and build are green; the remaining browser QA is the next gate |
 
 ### Behaviour that changes when this code deploys, whatever the switches say
 

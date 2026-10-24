@@ -319,7 +319,7 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
                 <span className="block text-[14px] font-medium">Mark a plan past due automatically</span>
                 <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
                   {overview.planRenewals.autoPastDue ? `On${overview.planRenewals.changedAt ? ` since ${formatDateTime(overview.planRenewals.changedAt, "UTC")}` : ""}.` : "Off, which is the default: the team is told, and nothing changes until someone records it."}{" "}
-                  When on, a plan whose paid period ended {overview.planRenewals.minDaysOver} or more days ago with no payment recorded is marked past due, and its owner is told Automation Studio keeps working for {overview.planRenewals.graceDays} more days. This never pauses, expires or deletes anything; recording a payment brings the plan back.
+                  When on, a plan whose paid period ended {overview.planRenewals.minDaysOver} or more days ago with no payment recorded is marked past due, and its owner is told Automation Studio keeps working for {overview.planRenewals.graceDays} more days. Recording a payment before then brings the plan back to active. If none is recorded, the plan expires when that time is up and its Automation Studio workflows are paused (nothing is deleted).
                 </span>
               </span>
               <Switch checked={overview.planRenewals.autoPastDue} disabled={!canManage || busy === "autopd"} aria-label="Mark a plan past due automatically" onCheckedChange={(v) => void act("autopd", () => setAutoPastDueAction(v), v ? "Switched on" : "Switched off")} />

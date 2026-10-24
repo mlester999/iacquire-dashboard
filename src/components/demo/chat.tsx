@@ -74,9 +74,10 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice }: Demo
         else setText("");
       } else if (json?.error) {
         pendingKey.current = null;
-        setNotice({ tone: "error", text: json.error.message ?? "That message could not be sent." });
-        // A refusal that is about the demo itself (not a busy moment) ends the form.
-        if (["limit_reached", "window_ended", "ai_off", "closed", "blocked", "not_verified", "no_session"].includes(json.error.code ?? "")) setState((s) => ({ ...s, canSend: false, refusalMessage: json.error?.message ?? s.refusalMessage }));
+        const message = json.error.message ?? "That message could not be sent.";
+        // A refusal that is about the demo itself (not a busy moment) ends the form, and the sentence takes its place: it is said once, where the form was.
+        if (["limit_reached", "window_ended", "ai_off", "closed", "blocked", "not_verified", "no_session"].includes(json.error.code ?? "")) setState((s) => ({ ...s, canSend: false, refusalMessage: message }));
+        else setNotice({ tone: "error", text: message });
       } else {
         setNotice({ tone: "error", text: "We could not confirm your message was sent. Press Send again; it will not be counted twice." });
       }

@@ -70,8 +70,8 @@ export interface CalendarView {
   /** A draft takes no bookings until it is verified and activated (src/server/calendars/activation.ts). */
   status: CalendarStatus;
   verifiedAt: string | null;
-  /** Where it came from: made here, or created by applying a Blueprint or importing from GoHighLevel. */
-  origin: "manual" | "blueprint" | "ghl_import";
+  /** Where it came from: made here, created by applying a Blueprint or importing from GoHighLevel, or drafted from the onboarding questionnaire's booking answers. */
+  origin: "manual" | "blueprint" | "ghl_import" | "onboarding";
   /** The time zone and weekly hours a Blueprint suggests for hosts who have none yet. Empty when there is no suggestion. */
   suggestedTimezone: string | null;
   hoursTemplate: WeeklyRule[];

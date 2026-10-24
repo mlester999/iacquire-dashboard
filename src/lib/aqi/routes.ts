@@ -57,6 +57,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/admin/health", label: "Health", description: "Platform health and incidents.", agency: "staff", permission: "agency.security.manage" },
   { path: "/admin/usage", label: "Usage", description: "Platform usage and limits.", agency: "staff" },
   { path: "/admin/support", label: "Requests", description: "Client support requests, issue reports and feedback.", agency: "staff" },
+  { path: "/admin/messages", label: "Messages", description: "The agency team's own chat: direct messages, groups and channels.", agency: "staff", permission: "agency.messages.use" },
   { path: "/admin/prospects", label: "Demo prospects", description: "People who asked for a demo, their demo windows and the demo settings.", agency: "staff", permission: "agency.prospects.view" },
   { path: "/admin/aqi", label: "AQi Management", description: "Configure AQi, its knowledge and publishing.", agency: "super_admin" },
   { path: "/admin/operations", label: "AQi Operations", description: "The Super Admin AI Platform Operations Copilot.", agency: "super_admin" },

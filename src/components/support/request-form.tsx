@@ -63,7 +63,7 @@ const COPY: Record<RequestType, {
   change: {
     subjectLabel: "What should change?", subjectHint: "A few words are enough.", subjectPlaceholder: "For example: Make the voice agent greet callers by name", categoryLabel: "What is the change about?", categoryHint: "This sends your request to the right person.",
     featureLabel: "Which part of iAcquire does it relate to?", messageLabel: "What would you like different?", messageHint: "Say what you want changed and why. Nothing is done, priced or promised until the team has replied.", messagePlaceholder: "Describe the change you have in mind…",
-    submit: "Send change request", sentTitle: "Your change request has been sent", sentBody: "The team will look at it and tell you here whether it is covered, a small change, or needs a quote first. Nothing is done or charged until you agree.",
+    submit: "Send change request", sentTitle: "Your change request has been sent", sentBody: "The team will look at it and tell you here whether it is covered, a small change, or needs a quote first. Nothing is charged unless you accept a price.",
   },
 };
 

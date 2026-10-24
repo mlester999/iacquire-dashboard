@@ -6,12 +6,13 @@
  *
  * It is a plain module (no vitest, no database setup) so that both scripts/ui-qa-proposals-seed.qa.ts and tests/proposals-qa-seed.test.ts can run it.
  */
-import crypto from "node:crypto";
 import { withSystem } from "../src/server/db/index";
 import type { CrmActor } from "../src/server/crm/actor";
 import { createContact, setContactConsent } from "../src/server/crm/contacts";
-import { saveCredential } from "../src/server/security/credentials";
 import { adjustCredits, getBalance } from "../src/server/billing/ledger";
+import { connectQaEmail } from "./qa-delivery-channel";
+import { createInvoiceFromProposal } from "../src/server/invoices/from-proposal";
+import type { OrgContext } from "../src/server/tenancy/context";
 import { draftProposalWithAi } from "../src/server/proposals/ai";
 import { createCatalogItem, createTaxRate, listCatalogItems, type CatalogItemView } from "../src/server/proposals/catalog";
 import { connectSimulated, getConnection as getSigningConnection } from "../src/server/esign/connections";
@@ -257,30 +258,7 @@ export async function seedProposalWorld(a: ProposalWorldActors, opts: { now?: Da
  */
 export async function seedDeliveryWorld(a: ProposalWorldActors): Promise<{ ready: string[]; refused: string[] }> {
   const orgId = a.owner.orgId;
-  const ownerId = a.owner.userId as string;
-  await withSystem(async (db) => {
-    // Only an agency Super Admin may store a credential. The throwaway QA database has one from the other seeds, or gets one here.
-    const admin = (await db.query<{ id: string }>("select id from users where platform_role = 'agency_super_admin' order by created_at limit 1")).rows[0]
-      ?? (await db.query<{ id: string }>("insert into users (email, full_name, email_verified_at, platform_role) values ('qa-delivery-admin@example.test', 'QA Super Admin', now(), 'agency_super_admin') returning id")).rows[0];
-    const saved = await saveCredential(db, { orgId, provider: "resend", label: "Resend (made up, for QA)", secret: `qa-made-up-${crypto.randomBytes(12).toString("hex")}`, actorId: admin.id });
-    await db.query(
-      `insert into messaging_channels (org_id, channel, provider, enabled, sender_identity, sender_verified_at, registration_status, provider_sender_id, credential_id, capability_test, capability_tested_at)
-       values ($1, 'email', 'resend', true, 'Harbor Home Services <hello@harbor.example.test>', now(), 'not_required', $2, $3, $4::jsonb, now())
-       on conflict (org_id, channel) do update set provider = 'resend', enabled = true, sender_identity = excluded.sender_identity, sender_verified_at = now(), registration_status = 'not_required',
-         provider_sender_id = excluded.provider_sender_id, provider_account_id = null, credential_id = excluded.credential_id, capability_test = excluded.capability_test, capability_tested_at = now()`,
-      [orgId, crypto.randomUUID(), saved.id, JSON.stringify({ ok: true, checkedAt: new Date().toISOString(), checks: [{ label: "Made up for QA", ok: true, detail: "Nothing was checked with the provider." }] })],
-    );
-    const version = (await db.query<{ id: string }>("select id from usage_rate_versions order by version desc limit 1")).rows[0];
-    if (!version) throw new Error("No usage rate version exists, so an email cannot be priced.");
-    await db.query(
-      "insert into usage_unit_rates (rate_version_id, provider, unit_type, unit_label, wholesale_micros_per_unit, client_micros_per_unit) values ($1, 'resend', 'email_send', 'email_send', 900, 1170) on conflict do nothing",
-      [version.id],
-    );
-  });
-  const balance = await withSystem((db) => getBalance(db, orgId));
-  if (balance.availableMicros < 5_000_000) {
-    await withSystem((db) => adjustCredits(db, { orgId, deltaMicros: 5_000_000, reason: "QA credit for sending messages (isolated QA database)", userId: ownerId }));
-  }
+  await connectQaEmail(orgId, a.owner.userId as string);
   const contactOf = async (email: string) => (await withSystem((db) => db.query<{ id: string }>("select id from contacts where org_id = $1 and email = $2 and deleted_at is null", [orgId, email]))).rows[0]?.id;
   const ready: string[] = [];
   for (const email of ["elena.alvarez@example.test", "marcus.brooks@example.test", "linh.nguyen@example.test"]) {
@@ -290,6 +268,75 @@ export async function seedDeliveryWorld(a: ProposalWorldActors): Promise<{ ready
     ready.push(email);
   }
   return { ready, refused: ["dr.chen@example.test"] };
+}
+
+export interface InvoicingStory {
+  number: string;
+  title: string;
+  /** What state the story leaves it in, in a few words. */
+  state: string;
+  /** The proposal's own page, on its Invoice tab. */
+  proposalPath: string;
+  /** The draft invoice made from it, when the story made one. */
+  invoicePath: string | null;
+}
+
+/**
+ * Three ACCEPTED proposals for browser QA of the proposal's Invoice tab ("Make a draft invoice"), added on top of whatever the workspace has. It contacts NO ONE and charges no one:
+ * every answer is one a person at the business wrote down (a phone call), and a draft invoice is only a draft. It switches customer invoices ON for the workspace (the switch a Super
+ * Admin uses), which is the only change outside the proposal and invoice tables. The prices are made up; they exist so the totals have something to add up.
+ *
+ *   - Soto household, boiler service: lines the customer pays once only. A draft invoice was already made from it, so its tab lists that draft and offers a further one only to an owner or manager;
+ *   - Lindqvist household, heat pump with a care plan: a taxed, discounted installation and a bracket kit (paid once), a monthly care plan and a yearly filter set. No invoice yet: make the draft
+ *     and see the two recurring lines listed as left off;
+ *   - Navarro household, a monthly care plan only: nothing the customer pays once, so the tab says there is nothing to put on an invoice and offers no button.
+ */
+export async function seedInvoicingStories(a: ProposalWorldActors, owner: OrgContext, opts: { now?: Date } = {}): Promise<InvoicingStory[]> {
+  const now = opts.now ?? new Date();
+  const orgId = a.owner.orgId;
+  await withSystem((db) => db.query("insert into org_features (org_id, feature, enabled) values ($1, 'invoices', true) on conflict (org_id, feature) do update set enabled = true", [orgId]));
+  await withSystem((db) => db.query("insert into org_features (org_id, feature, enabled) values ($1, 'proposals', true) on conflict (org_id, feature) do update set enabled = true", [orgId]));
+  clearFeatureCache(orgId);
+  const tax = await createTaxRate(a.owner, { name: "Sales tax (QA invoicing)", rateBps: 825 });
+  const item = (name: string, description: string, unitLabel: string, unitPriceMinor: number, billing: "one_time" | "monthly" | "yearly" = "one_time", taxed = true) =>
+    createCatalogItem(a.owner, { name, description, unitLabel, unitPriceMinor, currency: "USD", billing, taxRateId: taxed ? tax.id : null });
+  const line = (i: CatalogItemView, quantityMilli = 1000, over: Partial<LineInput> = {}): LineInput => ({ catalogItemId: i.id, quantityMilli, ...over });
+  const day = (offset: number) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
+  const terms = "Payment is due within 14 days of the invoice.";
+
+  // A manager writes and approves each one (a discount needs the manager's permission), sales sends it, and the owner writes down the customer's answer.
+  const accepted = async (title: string, first: string, last: string, doc: { lines: LineInput[] }) => {
+    const email = `${first}.${last}.invoicing@example.test`.toLowerCase();
+    const contact = await createContact(a.owner, { firstName: first, lastName: last, email });
+    const draft = await createProposal(a.manager, { title, validUntil: day(21), contactId: contact.id, clientName: `${first} ${last}`, clientEmail: email, doc: { terms, ...doc } }, { now });
+    const pending = await submitForApproval(a.manager, draft.id, { now });
+    await decideProposal(a.manager, pending.id, { decision: "approve", version: pending.version }, { now });
+    await sendProposal(a.sales, draft.id, {}, { now });
+    await recordOfflineDecision(a.owner, draft.id, { decision: "accepted", note: "Said yes on the phone (QA data)", version: 1 }, { now });
+    return draft;
+  };
+
+  const boiler = await item("Boiler service visit (QA)", "A full service of the boiler, with a written report.", "visit", 21_000);
+  const valve = await item("Replacement pressure valve (QA)", "A new pressure relief valve, fitted.", "valve", 6_400);
+  const soto = await accepted("Boiler service for the Soto household", "Rosa", "Soto", { lines: [line(boiler), line(valve, 2000)] });
+  const sotoDraft = await createInvoiceFromProposal(owner, soto.id, { version: 1 });
+
+  const install = await item("Heat pump installation (QA)", "Supply and fit a ducted heat pump, with a two-year labour guarantee.", "unit", 480_000);
+  const bracket = await item("Wall bracket kit (QA)", "Brackets and fixings for the outdoor unit.", "kit", 12_000);
+  const care = await item("Care plan (QA)", "Two scheduled visits a year and priority booking.", "month", 4_900, "monthly", false);
+  const filters = await item("Filter set (QA)", "A set of filters, posted to you each year.", "set", 6_000, "yearly");
+  const lindqvist = await accepted("Heat pump installation with a care plan for the Lindqvist household", "Erik", "Lindqvist", {
+    lines: [line(install, 1000, { discount: { kind: "percent", bps: 500 } }), line(bracket), line(care), line(filters)],
+  });
+
+  const navarro = await accepted("Monthly care plan for the Navarro household", "Lucia", "Navarro", { lines: [line(care)] });
+
+  const path = (id: string) => `/proposals/${id}?tab=invoice`;
+  return [
+    { number: soto.number, title: soto.title, state: "Accepted (written down by a person). A draft invoice was already made from it.", proposalPath: path(soto.id), invoicePath: sotoDraft.status === "created" ? `/invoices/${sotoDraft.invoiceId}` : null },
+    { number: lindqvist.number, title: lindqvist.title, state: "Accepted (written down by a person). No invoice yet: make the draft and see the monthly and yearly lines listed as left off.", proposalPath: path(lindqvist.id), invoicePath: null },
+    { number: navarro.number, title: navarro.title, state: "Accepted (written down by a person). A monthly plan only: nothing the customer pays once, so there is nothing to put on an invoice.", proposalPath: path(navarro.id), invoicePath: null },
+  ];
 }
 
 /**

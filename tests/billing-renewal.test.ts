@@ -447,6 +447,23 @@ describe("how much it does in one run", () => {
     for (const m of made) expect(keys(await noticesOf(m.orgId, "billing_renewal_due", "agency")), m.through).toEqual([`renewal-overdue:${m.sub}:${m.through}`]);
   });
 
+  it("does each plan once when two runs start together: one marking, one audit line, one notice per person and key", async () => {
+    const o = await crmOrg();
+    const sub = await planRow(o, { status: "active", paidThroughOn: plus(-4) });
+    const old = (await rows<{ id: string }>("insert into payments (org_id, kind, description, usd_amount_micros, charged_currency, charged_amount_minor, livemode, provider, reference_number, status, created_at) values ($1, 'other', 'Old', 10000000, 'PHP', 58000, false, 'paymongo', $2, 'pending', $3) returning id", [o.org.id, `IAQ-CONC${Date.now()}`, new Date(NOW.getTime() - 60 * 3_600_000).toISOString()]))[0];
+    await setAutoPastDue(superAdmin, true);
+    const [a, b] = await Promise.all([sweep(), sweep()]);
+    expect(a.pastDue + b.pastDue).toBe(1);
+    expect(a.checkoutsExpired + b.checkoutsExpired).toBe(1);
+    expect(a.failed + b.failed).toBe(0);
+    expect(await planStatus(sub)).toMatchObject({ status: "past_due" });
+    expect(await auditOf(o.org.id, "maintenance.payment_failed")).toHaveLength(1);
+    expect(await auditOf(o.org.id, "billing.checkout_expired")).toHaveLength(1);
+    expect((await rows<{ status: string }>("select status from payments where id = $1", [old.id]))[0].status).toBe("expired");
+    const perPerson = (await noticesOf(o.org.id, "billing_renewal_due")).map((n) => `${n.user_id}:${n.dedupe_key}`);
+    expect(new Set(perPerson).size).toBe(perPerson.length);
+  });
+
   it("does nothing when its time is already spent, and the next run picks up where there was nothing yet", async () => {
     const o = await crmOrg();
     await planRow(o, { status: "active", paidThroughOn: plus(-1) });

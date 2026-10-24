@@ -53,6 +53,10 @@ export function verifyNotice(word: string | undefined): Notice | null {
   return { tone: "error", text: PUBLIC_COPY[word as PublicRefusal] };
 }
 
+/** Refusals that leave the emailed link unused (the day was full, a busy moment, the demo closed): the person can open the same link from their email again later. */
+const LINK_STILL_GOOD: readonly string[] = ["daily_cap", "rate_limited", "unavailable", "not_available"];
+export const linkStillGood = (word: string | undefined): boolean => word !== undefined && LINK_STILL_GOOD.includes(word);
+
 // ---------------------------------------------------------------------------
 // The room (/demo/room?m=word&c=word)
 // ---------------------------------------------------------------------------

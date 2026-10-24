@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, ArrowUpRight, CheckCircle2, HeadsetIcon, LifeBuoy, MessageCircleQuestion, Send, Ticket, X } from "lucide-react";
 import { LogoMark, ThinkingDots } from "@/components/brand";
+import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/primitives";
@@ -22,7 +23,7 @@ interface HelpMessage {
 
 const SUGGESTIONS = [
   "How do I set up my AI employees?",
-  "What does 'Setup required' mean?",
+  `What does '${SETUP_REQUIRED_LABEL}' mean?`,
   "How do approvals work?",
   "How do I invite my team?",
 ];

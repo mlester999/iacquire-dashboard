@@ -29,6 +29,8 @@ import { applyInScopeRevision, classifyChangeOrder, declineChangeOrder, sendChan
 import { addPrerequisite } from "../src/server/projects/prerequisites";
 import { classifyChangeRequest } from "../src/server/support/change";
 import { setRequestChangesEnabled } from "../src/server/support/change-feature";
+import { addDays } from "../src/lib/calendars/slots";
+import { todayIn } from "../src/lib/invoices/state";
 
 const DATA_DIR = path.resolve(".data/crm-qa");
 const CRED_FILE = path.join(DATA_DIR, "support-credentials.local.json");
@@ -157,7 +159,8 @@ async function seedChangeRequests() {
   // 2. Outside what was agreed, with a quote waiting for the owner.
   const quoted = await submitChangeOrder(cOwner, projectId, { title: "Second location calendar", description: "We opened a second office and its appointments live in another Google calendar." });
   await classifyChangeOrder(staff, quoted.id, { classification: "out_of_scope", internalNotes: "QA: they will probably ask for a discount." });
-  const validUntil = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+  // Two weeks from today in the workspace's own calendar (the day a person reads), not the server's UTC day.
+  const validUntil = addDays(todayIn(new Date(), TZ), 14);
   await sendChangeQuote(staff, quoted.id, { additionalMinor: 45000, currency: "USD", weeksMin: 1, weeksMax: 2, validUntil, termsText: "Reads the second office's calendar and sends its reminders from the same flow. Includes one test with the front desk.", prerequisiteLabel: "Deposit for the second location received" });
   // 3. A revision the agreement includes, already made.
   const revision = await submitChangeOrder(cOwner, projectId, { title: "Warmer wording in the first reminder", description: "The first reminder sounds stiff. Could it say hello to the patient by first name?" });

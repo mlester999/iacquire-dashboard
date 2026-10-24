@@ -37,7 +37,8 @@ begin
       ('support_tickets', 'support_tickets_category_check', 'category', array['change_ai_employee', 'change_website', 'change_automation', 'change_integration', 'change_project', 'change_other'], 15),
       ('support_ticket_events', 'support_ticket_events_kind_check', 'kind', array['mentioned', 'change_classified', 'survey_answered', 'ai_triage_applied'], 10),
       ('support_notification_rules', 'support_notification_rules_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8),
-      ('support_notification_log', 'support_notification_log_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8)
+      ('support_notification_log', 'support_notification_log_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8),
+      ('project_review_tasks', 'project_review_tasks_kind_check', 'kind', array['review_change'], 4)
     ) as s(tbl, con, col, extra, minimum)
   loop
     select pg_get_constraintdef(c.oid) into def from pg_constraint c where c.conname = spec.con and c.conrelid = spec.tbl::regclass;
@@ -244,6 +245,13 @@ create unique index client_project_requests_idempotency_idx on client_project_re
 -- open and the job never has to walk the tasks it already announced. Agency-only table: nothing here is granted to the application role.
 alter table project_review_tasks add column overdue_notified_at timestamptz;
 create index project_review_tasks_due_idx on project_review_tasks (due_at) where status = 'open' and due_at is not null and overdue_notified_at is null;
+
+-- A change request nobody has looked at is a task like a new project request's first review, so the same job sees it when it is late. The key names the project as well, so a
+-- task can only point at a change of its own project, and only a change-review task names one.
+alter table project_review_tasks add column change_order_id uuid;
+alter table project_review_tasks add constraint project_review_tasks_change_fkey foreign key (change_order_id, request_id) references project_change_orders (id, request_id) on delete cascade;
+alter table project_review_tasks add constraint project_review_tasks_change_kind_check check ((kind = 'review_change') = (change_order_id is not null));
+create index project_review_tasks_change_idx on project_review_tasks (change_order_id) where change_order_id is not null;
 
 create function app.project_change_order_guard() returns trigger
 language plpgsql set search_path = public, pg_temp

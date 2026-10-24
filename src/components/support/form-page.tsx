@@ -18,7 +18,7 @@ const HERO: Record<RequestType, { eyebrow: string; title: string; description: s
   support: { eyebrow: "Requests · Get Support", title: "How can we help?", description: "Ask a question or tell us what you need. A person from the iAcquire team will reply right here, and you can follow everything in My Requests.", icon: <LifeBuoy className="size-5" /> },
   issue: { eyebrow: "Requests · Report an Issue", title: "What seems to be the problem?", description: "Tell us what happened and we'll look into it. The more you can tell us, the faster we can help.", icon: <TriangleAlert className="size-5" /> },
   feedback: { eyebrow: "Requests · Provide Feedback", title: "How can we make iAcquire better?", description: "Share an idea, an improvement, or what's working well. Every note is read by the team.", icon: <ThumbsUp className="size-5" /> },
-  change: { eyebrow: "Requests · Request a Change", title: "What would you like changed?", description: "Tell us what you want different in your setup or a custom project. The team will tell you whether it is covered, a small change, or needs a quote. Nothing is done or charged until you agree.", icon: <PencilRuler className="size-5" /> },
+  change: { eyebrow: "Requests · Request a Change", title: "What would you like changed?", description: "Tell us what you want different in your setup or a custom project. The team will tell you whether it is covered, a small change, or needs a quote. Nothing is charged until you accept a price.", icon: <PencilRuler className="size-5" /> },
 };
 
 const STEPS: Record<RequestType, Array<{ icon: React.ReactNode; title: string; text: string }>> = {
@@ -39,8 +39,8 @@ const STEPS: Record<RequestType, Array<{ icon: React.ReactNode; title: string; t
   ],
   change: [
     { icon: <ClipboardCheck className="size-4" />, title: "We log it", text: "Your request gets a reference number." },
-    { icon: <Scale className="size-4" />, title: "The team decides", text: "Covered, a small change, or a quote first. The team tells you which, in your own words and before anything is done." },
-    { icon: <BellRing className="size-4" />, title: "You agree before anything is charged", text: "If a change needs a price, the owner accepts or declines it here. We never start on a guess." },
+    { icon: <Scale className="size-4" />, title: "The team decides", text: "Covered, a small change, or a quote first. The team replies here and tells you which." },
+    { icon: <BellRing className="size-4" />, title: "You accept any price first", text: "If a change needs a price, the workspace owner accepts or declines it here. Nothing is charged without that." },
   ],
 };
 

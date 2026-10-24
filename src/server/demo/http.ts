@@ -72,35 +72,52 @@ interface Body {
   json: boolean;
 }
 
+/**
+ * The body as text, read in pieces and abandoned the moment it passes the bound, so a body sent without a Content-Length (or with a false one) cannot make the server hold more than
+ * MAX_BODY_BYTES. Null when it is too large.
+ */
+async function readBounded(req: Request): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 async function readBody(req: Request): Promise<Body | { status: 400 | 413 | 415 }> {
   const type = (req.headers.get("content-type") ?? "").toLowerCase();
   const wantsJson = type.startsWith("application/json") || (req.headers.get("accept") ?? "").toLowerCase().includes("application/json");
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return { status: 413 };
+  // An action with no fields at all (leave, history) may have no body and no type.
+  if (!type) return { data: {}, json: wantsJson };
+  const isJson = type.startsWith("application/json");
+  // A page's own forms are urlencoded; nothing here takes a file, so multipart is refused rather than parsed.
+  if (!isJson && !type.startsWith("application/x-www-form-urlencoded")) return { status: 415 };
   try {
-    if (type.startsWith("application/json")) {
-      const text = await req.text();
-      if (text.length > MAX_BODY_BYTES) return { status: 413 };
+    const text = await readBounded(req);
+    if (text === null) return { status: 413 };
+    if (isJson) {
       const parsed: unknown = text ? JSON.parse(text) : {};
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { status: 400 };
       return { data: parsed as Record<string, unknown>, json: true };
     }
-    if (type.startsWith("application/x-www-form-urlencoded") || type.startsWith("multipart/form-data")) {
-      const data: Record<string, unknown> = Object.create(null);
-      if (type.startsWith("multipart/form-data")) {
-        for (const [k, v] of (await req.formData()).entries()) if (typeof v === "string" && !(k in data)) data[k] = v.slice(0, MAX_FIELD_CHARS);
-      } else {
-        const text = await req.text();
-        if (text.length > MAX_BODY_BYTES) return { status: 413 };
-        for (const [k, v] of new URLSearchParams(text).entries()) if (!(k in data)) data[k] = v.slice(0, MAX_FIELD_CHARS);
-      }
-      return { data, json: wantsJson };
-    }
-    // An action with no fields at all (leave, history) may have no body and no type.
-    if (!type) return { data: {}, json: wantsJson };
+    const data: Record<string, unknown> = Object.create(null);
+    for (const [k, v] of new URLSearchParams(text).entries()) if (!(k in data)) data[k] = v.slice(0, MAX_FIELD_CHARS);
+    return { data, json: wantsJson };
   } catch {
     return { status: 400 };
   }
-  return { status: 415 };
 }
 
 const truthy = (v: unknown): boolean => v === true || v === "true" || v === "on" || v === "1" || v === "yes";
@@ -114,6 +131,8 @@ function refusal(action: DemoAction, json: boolean, r: { reason: string; message
   const status = STATUS[r.reason] ?? 400;
   const retry: Record<string, string> = r.retryAfterSeconds ? { "Retry-After": String(r.retryAfterSeconds) } : {};
   if (json) return jsonRes(status, { ok: false, error: { code: r.reason, message: r.message }, ...(r.fields ? { fields: r.fields } : {}) }, retry);
+  // A browser with no session (or an ended one) is sent to the request page, which says what to do. Decided before the words below, which do not include it.
+  if (r.reason === "no_session" && action !== "start") return seeOther("/demo?r=no_session", retry);
   let word = r.reason;
   // A word a page does not know would be shown as nothing; the page says "unavailable" for those.
   if (action === "start" || action === "return-link") {
@@ -121,7 +140,6 @@ function refusal(action: DemoAction, json: boolean, r: { reason: string; message
   } else if (action === "verify") {
     if (!(VERIFY_REFUSALS as readonly string[]).includes(word)) word = "link_invalid";
   } else if (!MESSAGE_WORDS.includes(word)) word = "unavailable";
-  if (word === "no_session" && action !== "start") return seeOther("/demo?r=no_session", retry);
   const page = PAGE[action];
   const fields = r.fields ? fieldWords(Object.keys(r.fields)) : "";
   return seeOther(`${page.path}?${page.param}=${encodeURIComponent(word)}${fields ? `&f=${fields}` : ""}`, retry);

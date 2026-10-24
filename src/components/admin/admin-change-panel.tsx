@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { CheckCircle2, ClipboardCheck, HelpCircle, Lock, PencilRuler, Plus, Send, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { InfoChip, StatusPill } from "@/components/ui/status";
@@ -79,8 +80,31 @@ function ChangeRow({ project: p, change: c, currency, closed }: { project: Agenc
   const [dialog, setDialog] = React.useState<null | "quote" | "ask" | "decline" | "applied">(null);
   const [text, setText] = React.useState("");
   const [notes, setNotes] = React.useState(c.internalNotes ?? "");
+  const [notesSaving, setNotesSaving] = React.useState(false);
+  // Set when a colleague saved the notes after this person read them; `readAs` is the copy this person had, so their version is shown only once it has actually arrived.
+  const [notesConflict, setNotesConflict] = React.useState<{ message: string; readAs: string } | null>(null);
   const messages = p.messages.filter((m) => m.changeOrderId === c.id);
   const id = p.request.id;
+  async function saveNotes() {
+    setNotesSaving(true);
+    try {
+      const res = await saveChangeNotesAction(id, c.id, notes, c.internalNotes ?? null);
+      if (res.ok) {
+        setNotesConflict(null);
+        toast.success("Notes saved");
+        router.refresh();
+      } else if (res.code === "conflict") {
+        setNotesConflict({ message: res.error, readAs: c.internalNotes ?? "" });
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setNotesSaving(false);
+    }
+  }
   // `run` toasts the outcome and returns null when the action failed (a void action returns undefined on success).
   const act = async (key: string, fn: () => Promise<ActionResult<unknown>>, success: string) => {
     const res = await run(key, fn, success);
@@ -146,8 +170,21 @@ function ChangeRow({ project: p, change: c, currency, closed }: { project: Agenc
       <details className="mt-3">
         <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-[12.5px] font-medium text-ink-2 hover:text-ink"><Lock className="size-3.5" aria-hidden /> Team notes</summary>
         <div className="mt-1 space-y-2">
+          {notesConflict && (
+            <div role="alert" className="rounded-xl bg-warning-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+              <p className="font-medium">{notesConflict.message}</p>
+              {(c.internalNotes ?? "") !== notesConflict.readAs ? (
+                <>
+                  <p className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-surface px-2.5 py-2 text-ink-2">{c.internalNotes ?? ""}</p>
+                  <Button size="sm" variant="secondary" className="mt-2" onClick={() => { setNotes(c.internalNotes ?? ""); setNotesConflict(null); }}>Use their version</Button>
+                </>
+              ) : (
+                <p className="mt-1">Loading their version…</p>
+              )}
+            </div>
+          )}
           <Textarea aria-label={`Team notes for ${c.ref}`} rows={3} value={notes} maxLength={4000} placeholder="Only the agency can see this." onChange={(e) => setNotes(e.target.value)} />
-          <Button size="sm" variant="secondary" loading={isPending("notes")} disabled={notes === (c.internalNotes ?? "")} onClick={() => void act("notes", () => saveChangeNotesAction(id, c.id, notes), "Notes saved")}>Save notes</Button>
+          <Button size="sm" variant="secondary" loading={notesSaving} disabled={notes === (c.internalNotes ?? "")} onClick={() => void saveNotes()}>Save notes</Button>
         </div>
       </details>
 

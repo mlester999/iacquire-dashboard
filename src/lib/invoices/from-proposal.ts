@@ -144,6 +144,7 @@ export function planInvoiceFromSnapshot(snapshot: ProposalSnapshot): PlanResult 
   const recurring: RecurringLine[] = [];
   const picked: Array<{ line: SnapshotLine; proposalLine: number }> = [];
   snapshot.lines.forEach((line, i) => {
+    // Only one-time lines are copied. A monthly or yearly line is a future billing decision for the owner, never an invoice line by itself.
     if (line.billing === "one_time") picked.push({ line, proposalLine: i + 1 });
     else recurring.push({ name: line.name.replace(/\s+/g, " ").trim(), billing: line.billing, billingLabel: BILLING_WORDS[line.billing], quantityMilli: line.quantityMilli, totalMinor: line.amounts.total });
   });

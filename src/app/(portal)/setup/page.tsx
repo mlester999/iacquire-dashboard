@@ -3,6 +3,7 @@ import { requireOrgContext } from "@/server/tenancy/context";
 import { getClientSetupSnapshot } from "@/server/setup/snapshots";
 import { SetupCenter } from "@/components/setup/setup-center";
 import { OnboardedBanner, type EmployeeProvisioningState } from "@/components/setup/onboarded-banner";
+import { SetupPaymentLine } from "@/components/setup/setup-payment-line";
 import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
@@ -62,10 +63,12 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       return rows;
     }),
   ]) : [[], []];
-  const paymentCleared = onboarded === "1" ? await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId) : undefined;
+  // The database's yes or no (app.setup_payment_cleared), asked as this member. A sample workspace has no setup fee, so it says nothing about one.
+  const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
   return (
     <>
       {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} />}
+      <SetupPaymentLine cleared={paymentCleared} billingHref={ctx.can("billing.view") ? "/settings/billing" : null} />
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

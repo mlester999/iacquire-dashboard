@@ -5,6 +5,7 @@ import { AppError } from "@/server/errors";
 import type { SessionUser } from "@/server/auth/service";
 import type { ProjectStatus } from "@/lib/projects";
 import { todayIn } from "@/lib/invoices/state";
+import { loadSupportSettings } from "@/server/support/settings";
 
 // What every agency action on a custom project asks first, shared by the project, change-order and prerequisite services.
 
@@ -57,6 +58,19 @@ export async function addUpdate(db: Queryable, r: { id: string; org_id: string }
   const { rows } = await db.query<{ id: string }>("insert into project_updates (request_id, org_id, author_id, kind, body, visibility) values ($1,$2,$3,$4,$5,$6) returning id", [r.id, r.org_id, userId, kind, body.slice(0, 4000), visibility]);
   await db.query("update client_project_requests set last_activity_at = now() where id = $1", [r.id]);
   return rows[0].id;
+}
+
+/** Hours a new project request, or a change request, waits for its first look unless a Super Admin set a review target. */
+export const DEFAULT_FIRST_LOOK_HOURS = 48;
+
+/** When the team's first look at something new is due, in hours from now: the Super Admin's review target if there is one, otherwise two days. */
+export async function firstLookHours(db: Queryable): Promise<number> {
+  return (await loadSupportSettings(db)).projectReviewTargetHours ?? DEFAULT_FIRST_LOOK_HOURS;
+}
+
+/** Marks the team's "review this change" task done. `userId` is the team member who looked, or null when nobody on the team did (the client took the request back). */
+export async function finishChangeReviewTask(db: Queryable, changeId: string, userId: string | null): Promise<void> {
+  await db.query("update project_review_tasks set status = 'done', completed_at = now(), completed_by = $2 where change_order_id = $1 and status = 'open'", [changeId, userId]);
 }
 
 /** Today's date in the workspace's own calendar. A date a person sees, or a deadline, never comes from the server's UTC day. */

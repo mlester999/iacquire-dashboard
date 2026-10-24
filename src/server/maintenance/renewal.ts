@@ -15,8 +15,9 @@ import {
 //   * seven days and one day before the day a plan is paid through, the team and the client's owners are reminded;
 //   * once the paid-through day has passed with no payment recorded, the team is told;
 //   * ONLY if a Super Admin switched "mark past due automatically" on (it is off), a plan whose paid period ended two or more days ago is marked past due, as the system, with the
-//     same disclosed grace period a person's record starts. Nothing is ever expired, paused, refunded or revoked here: that stays with a person, and the grace period is what the
-//     client is told it is;
+//     same disclosed grace period a person's record starts. This job never expires, pauses, refunds or revokes anything itself. A plan it marks past due follows the usual path: a
+//     recorded payment brings it back, and if none is recorded by the end of the grace period the plan sweep (studioEntitlementSweep) expires it and pauses its Automation Studio
+//     workflows, as for a plan a person marked past due. The owner is told that date;
 //   * a checkout nobody completed for 48 hours is closed, so an abandoned one cannot block a second setup checkout for ever. A payment that arrives for it later is still recorded.
 // It sends nothing to a customer outside the portal, calls no payment provider, and never says a payment was detected: a missing record is a missing record. Every step is idempotent
 // (notice keys per plan and period, a plan row locked and read again before it changes) and works in pages inside a time budget; what it did not reach waits for the next run.

@@ -419,6 +419,10 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // lists) must already be in. It replaces app.notification_visible with 0067's definition plus one branch, so 0067 must be in. The staff-messages bucket, its file rule and the
   // use of the agency.messages.use permission in it are 0090's.
   "0096_staff_messages": ["0065_support_requests", "0067_notification_authorization", "0090_document_buckets"],
+  // 0097 extends the two agency permission-override lists from the live constraints, so 0065 (which copied them) and 0096 (the last to extend them) must already be in: applied
+  // before 0096, 0096 would still read the lists from the live constraint, but applied before 0065, 0065 would put its copied list back and drop the four workload permissions.
+  // The notification kinds staff_workload_alert and staff_work_overdue and the 'staff' audience are 0096's; 0097 changes no notification list.
+  "0097_staff_workload": ["0065_support_requests", "0096_staff_messages"],
   // 0098 extends the request-type, category and timeline-kind checks of 0065 and 0015 and the notification kinds from the live constraints, so 0065 must already be in (applied
   // before it, 0065 would put its copied lists back and drop the new values). It hangs change orders and prerequisites off the custom-project tables, so 0015 must be in too.
   "0098_requests_completion": ["0015_custom_projects", "0065_support_requests"],

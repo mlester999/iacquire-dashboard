@@ -427,7 +427,9 @@ describe("the rollback", () => {
       await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'staff_messages', true) on conflict do nothing", [agency]);
       await runDown(db);
       const q = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T & Record<string, unknown>>(sql, params)).rows;
-      expect(await q("select relname from pg_class where relnamespace = 'public'::regnamespace and relname like 'staff\\_%' and relname not like 'staff\\_assignments%' and relname not like 'staff\\_profiles%'")).toEqual([]);
+      // This test is 0096's rollback. 0097 owns every staff_work_* relation (tables and indexes) and staff_time_off (and its indexes); an operator rolls 0097 back before
+      // 0096, so those are not leftovers here.
+      expect(await q("select relname from pg_class where relnamespace = 'public'::regnamespace and relname like 'staff\\_%' and relname not like 'staff\\_assignments%' and relname not like 'staff\\_profiles%' and relname not like 'staff\\_work%' and relname not like 'staff\\_time\\_off%'")).toEqual([]);
       expect(await q("select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and proname in ('staff_messages_enabled', 'staff_messages_allowed', 'staff_conversation_ids', 'staff_directory', 'staff_org_guard', 'staff_member_guard', 'staff_message_insert_guard', 'staff_message_guard', 'staff_attachment_cap')")).toEqual([]);
       expect(await q("select 1 from role_permissions where permission like 'agency.messages.%'")).toEqual([]);
       expect(await q("select 1 from org_features where feature = 'staff_messages'")).toEqual([]);

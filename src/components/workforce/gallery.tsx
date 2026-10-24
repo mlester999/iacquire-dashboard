@@ -11,6 +11,7 @@ import { RequestSetupButton } from "@/components/workforce/request-setup";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
 import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { employeeCardStatus } from "@/lib/onboarding/employee-status";
 import { cn } from "@/lib/utils";
 
 type Employee = {
@@ -96,6 +97,8 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
             const role = AGENT_BY_KEY[a.role_key];
             const readiness = readinessFor(a);
             const connected = readiness.chatAvailable;
+            // "Setup required" says why: the setup payment, or the Hermes profile (src/lib/onboarding/employee-status.ts).
+            const cardStatus = employeeCardStatus(readiness, { status: a.status, enabled: a.enabled, paymentCleared });
             return (
               <motion.article key={a.id} data-aqi-target="workforce.employee" initial={reduced ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: reduced ? 1 : .97 }} transition={{ duration: reduced ? 0 : .3, delay: reduced ? 0 : index * .035 }} whileHover={reduced ? undefined : { y: -4 }} className={cn("group flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-soft transition hover:border-line-strong", !a.enabled && "opacity-80")}>
                 <div className="relative flex h-32 items-center justify-between overflow-hidden border-b border-line px-5" style={{ background: `radial-gradient(ellipse at 85% 20%,${role.accent}30,transparent 72%),var(--surface-2)` }}>
@@ -115,7 +118,7 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
                   </div>
                   <p className="mt-2 min-h-12 text-[13px] leading-relaxed text-muted" title={a.summary ?? undefined}>{a.summary?.split(/(?<=[.!?])\s/)[0] ?? role.tagline}</p>
                   <div className="mt-4 border-t border-line pt-4"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-muted">What this employee handles</p><ul className="space-y-2">{(capabilities[a.role_key] ?? []).slice(0, 3).map((capability) => <li key={capability} className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-2"><Check className="mt-0.5 size-3.5 shrink-0 text-primary" />{capability}</li>)}</ul></div>
-                  <div className="mt-4 border-t border-line pt-4"><ReadinessInline readiness={readiness} /><p className="mt-1.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{readiness.chatAvailable && !readiness.inventoryAttestationCurrent ? "Ready for authorized work · tools refresh before chat" : readiness.title}</p></div>
+                  <div className="mt-4 border-t border-line pt-4"><ReadinessInline readiness={{ ...readiness, label: cardStatus.label }} /><p className="mt-1.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{readiness.chatAvailable && !readiness.inventoryAttestationCurrent ? "Ready for authorized work · tools refresh before chat" : cardStatus.line}</p></div>
                   <div className="mt-auto flex items-center justify-between gap-2 pt-5">
                     {connected && canUse ? <ButtonLink href={`/chat/${role.slug}`} size="sm" variant="brand"><MessageSquare className="size-3.5" />Open chat</ButtonLink> : canConfigure ? <ButtonLink href={`/employees/${role.slug}?tab=configure`} size="sm" variant="brand"><SlidersHorizontal className="size-3.5" />{readiness.stage === "setup" ? "Complete setup" : "Review setup"}</ButtonLink> : <span className="max-w-36 text-[12px] text-muted">{a.enabled ? "Chat opens after verification" : "Not included in your package"}</span>}
                     <Link href={`/employees/${role.slug}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-ink-2 hover:bg-surface-2">{canConfigure ? "Profile" : "Details"}<ArrowRight className="size-3.5" /></Link>

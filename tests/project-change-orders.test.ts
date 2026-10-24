@@ -5,9 +5,10 @@ import {
   applyInScopeRevision, classifyChangeOrder, declineChangeOrder, decideChangeOrder, markChangeApplied, postChangeMessage, pullBackChangeQuote, requestChangeInfo, saveChangeInternalNotes,
   sendChangeQuote, startChangeReview, submitChangeOrder, withdrawChangeOrder,
 } from "@/server/projects/change-orders";
-import { getAgencyProject, recordHandover, saveMilestone, setMilestoneStatus, setProjectTerms, updateProjectStatus } from "@/server/projects/agency";
+import { getAgencyProject, postAgencyMessage, recordHandover, saveMilestone, setMilestoneStatus, setProjectTerms, updateProjectStatus } from "@/server/projects/agency";
 import { getProject } from "@/server/projects/client";
 import { setRequestChangesEnabled } from "@/server/support/change-feature";
+import { loadSupportSettings, updateSupportSettings } from "@/server/support/settings";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { notificationsFor, resetRateLimits } from "./support/support-world";
 import { approvedProject, projectsWorld, quotedProject, type ProjectsWorld } from "./support/projects-world";
@@ -469,6 +470,35 @@ describe("withdrawing, declining and the questions between", () => {
     expect(await count("select 1 from notifications where (title like $1 or coalesce(body, '') like $1)", [`%${marker}%`])).toBe(0);
   });
 
+  it("saves the team's notes only if nobody changed them since they were read, and says so when someone did", async () => {
+    const projectId = await live("Notes race project");
+    const { id } = await ask(projectId);
+    const notes = async () => (await row(id)).internal_notes;
+    await saveChangeInternalNotes(w.agency.staff, id, "first version", null);
+    expect(await notes()).toBe("first version");
+    // A colleague read "first version" too, and saves on top of it: that is allowed once, and the notes move on.
+    await saveChangeInternalNotes(w.agency.staff2, id, "second version", "first version");
+    expect(await notes()).toBe("second version");
+    // The first person still holds the old copy: nothing is saved, and the message says why.
+    await expect(saveChangeInternalNotes(w.agency.staff, id, "my edit of the first version", "first version")).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/changed these notes/) });
+    expect(await notes()).toBe("second version");
+    // An empty copy against notes that exist is a conflict too, and clearing the notes on purpose works from the right copy.
+    await expect(saveChangeInternalNotes(w.agency.staff, id, "starting over", null)).rejects.toMatchObject({ code: "conflict" });
+    await saveChangeInternalNotes(w.agency.staff, id, "   ", "second version");
+    expect(await notes()).toBeNull();
+    // Two saves made from the same copy at the same moment: one wins and the other is told.
+    const results = await Promise.allSettled([
+      saveChangeInternalNotes(w.agency.staff, id, "from Stan", null),
+      saveChangeInternalNotes(w.agency.staff2, id, "from Sia", null),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(["from Stan", "from Sia"]).toContain(await notes());
+    // Without a copy to compare against, a save works as it always did (callers that never read the notes first).
+    await saveChangeInternalNotes(w.agency.staff, id, "written blind");
+    expect(await notes()).toBe("written blind");
+  });
+
   it("marks an accepted change as made, once, and only then", async () => {
     const { id, projectId } = await quotedChange("Made project");
     await expect(markChangeApplied(w.agency.staff, id)).rejects.toThrow(/Only a change the client accepted/);
@@ -529,6 +559,121 @@ describe("who on the team may act, and who is told", () => {
     const audit = await rows("select action, metadata::text as meta from audit_logs where target_id = $1 order by created_at", [id]);
     expect(audit.map((a) => a.action)).toEqual(["project.change_submitted", "project.change_classified", "project.change_quote_sent", "project.change_decided"]);
     for (const a of audit) expect(a.meta as string).not.toMatch(/Audit (title|description|note|terms|decline) text/);
+  });
+});
+
+describe("the first look at a change", () => {
+  // A change nobody has looked at is a task for the team, like a new project request's first review, so the overdue-review job can see it and say so.
+  const tasks = (projectId: string) => rows("select kind, title, status, change_order_id, completed_by, completed_at, extract(epoch from (due_at - created_at)) / 3600 as hours from project_review_tasks where request_id = $1 and kind = 'review_change' order by created_at", [projectId]);
+
+  it("opens one task for the team, named for the change and due in two days, and a client never reads it", async () => {
+    const projectId = await live("First look project");
+    const { id, ref } = await ask(projectId, "Add a second calendar");
+    const list = await tasks(projectId);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ kind: "review_change", status: "open", change_order_id: id, title: `Review ${ref}: Add a second calendar`, completed_by: null });
+    expect(Math.round(Number(list[0].hours))).toBe(48);
+    expect((await getAgencyProject(w.agency.staff, projectId))!.tasks.map((t) => t.kind)).toContain("review_change");
+    await expect(withUser(w.people.owner.id, (db) => db.query("select 1 from project_review_tasks"))).rejects.toThrow(/permission denied/);
+  });
+
+  it("is due at the Super Admin's review target when one is set", async () => {
+    const projectId = await live("Target project");
+    const s = await loadSupportSettings();
+    const saved = await updateSupportSettings(w.agency.superAdmin, { projectReviewTargetHours: 6 }, s.revision);
+    try {
+      await ask(projectId);
+      expect(Math.round(Number((await tasks(projectId))[0].hours))).toBe(6);
+    } finally {
+      await updateSupportSettings(w.agency.superAdmin, { projectReviewTargetHours: null, showProjectTargetsToClients: false }, saved.revision);
+    }
+  });
+
+  it("is made once for one submission, however many times it is sent", async () => {
+    const projectId = await live("Retry task project");
+    const key = "retry-key-for-task-0001";
+    await ask(projectId, "Same change", "The same words sent again after a dropped connection.", key);
+    await ask(projectId, "Same change", "The same words sent again after a dropped connection.", key);
+    expect(await tasks(projectId)).toHaveLength(1);
+  });
+
+  it("is finished by the team looking at the change, in any of the ways it can: starting the review, classifying, asking a question or declining", async () => {
+    const started = await live("Started project");
+    const a = await ask(started);
+    await startChangeReview(w.agency.staff, a.id);
+    const classified = await live("Classified project");
+    const b = await ask(classified);
+    await classifyChangeOrder(w.agency.staff, b.id, { classification: "in_scope_revision" });
+    const asked = await live("Asked project");
+    const c = await ask(asked);
+    await requestChangeInfo(w.agency.staff, c.id, "Which front desk comes first?");
+    const declined = await live("Declined project");
+    const d = await ask(declined);
+    await declineChangeOrder(w.agency.staff, d.id, "That is a new project, not a change.");
+    for (const projectId of [started, classified, asked, declined]) {
+      const [t] = await tasks(projectId);
+      expect(t, projectId).toMatchObject({ status: "done", completed_by: w.raw.staff.id });
+      expect(t.completed_at).not.toBeNull();
+    }
+  });
+
+  it("stays open while the change is only waiting, and a second look at a change that is already moving finishes nothing twice", async () => {
+    const projectId = await live("Waiting project");
+    const { id } = await ask(projectId);
+    await postChangeMessage(w.ctx.owner, id, "Any news on this one?");
+    expect((await tasks(projectId))[0]).toMatchObject({ status: "open" });
+    await startChangeReview(w.agency.staff, id);
+    await startChangeReview(w.agency.staff, id);
+    expect(await tasks(projectId)).toHaveLength(1);
+    expect((await tasks(projectId))[0]).toMatchObject({ status: "done" });
+  });
+
+  it("is finished, with nobody credited, when the client takes the request back, and by the person who cancels the project", async () => {
+    const withdrawn = await live("Withdrawn task project");
+    const a = await ask(withdrawn);
+    await withdrawChangeOrder(w.ctx.owner, a.id);
+    expect((await tasks(withdrawn))[0]).toMatchObject({ status: "done", completed_by: null });
+    const cancelled = await live("Cancelled task project");
+    await ask(cancelled);
+    await updateProjectStatus(w.agency.staff, cancelled, { status: "cancelled", reason: "The client changed plans entirely" });
+    expect((await tasks(cancelled))[0]).toMatchObject({ status: "done", completed_by: w.raw.staff.id });
+  });
+
+  it("leaves a reply owed to the client when they write about a change, once however many times they write, and finished by the team's question or any reply in the conversation", async () => {
+    const projectId = await live("Reply owed project");
+    const { id } = await ask(projectId);
+    const owed = () => rows("select title, status, due_at is not null as timed, change_order_id from project_review_tasks where request_id = $1 and kind = 'respond_to_client' order by created_at", [projectId]);
+    await postChangeMessage(w.ctx.owner, id, "Any news on this one?");
+    await postChangeMessage(w.ctx.owner, id, "And one more detail about it.");
+    const list = await owed();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ status: "open", timed: true, change_order_id: null });
+    // Asking the client a question is a reply to them.
+    await requestChangeInfo(w.agency.staff, id, "Which front desk comes first?");
+    expect((await owed())[0]).toMatchObject({ status: "done" });
+    // Their answer is owed a reply again, and a reply in the project's conversation settles it.
+    await postChangeMessage(w.ctx.owner, id, "The north desk.");
+    expect((await owed()).map((t) => t.status)).toEqual(["done", "open"]);
+    await postAgencyMessage(w.agency.staff, projectId, "Thanks, we have it.");
+    expect((await owed()).map((t) => t.status)).toEqual(["done", "done"]);
+  });
+
+  it("belongs to its own change: finishing one change's look leaves another's open", async () => {
+    const projectId = await live("Two changes project");
+    const first = await ask(projectId, "First of two", "The first of two changes asked together.");
+    const second = await ask(projectId, "Second of two", "The second of two changes asked together.");
+    await startChangeReview(w.agency.staff, first.id);
+    const byChange = Object.fromEntries((await tasks(projectId)).map((t) => [t.change_order_id as string, t.status]));
+    expect(byChange).toEqual({ [first.id]: "done", [second.id]: "open" });
+  });
+
+  it("is checked by the database: only a change-review task names a change, and it names one of the same project", async () => {
+    const projectId = await live("Constraint project");
+    const { id } = await ask(projectId);
+    const other = await live("Another constraint project");
+    await expect(withSystem((db) => db.query("insert into project_review_tasks (request_id, org_id, kind, title, change_order_id) values ($1, $2, 'initial_review', 'x', $3)", [projectId, w.org.id, id]))).rejects.toThrow();
+    await expect(withSystem((db) => db.query("insert into project_review_tasks (request_id, org_id, kind, title) values ($1, $2, 'review_change', 'x')", [projectId, w.org.id]))).rejects.toThrow();
+    await expect(withSystem((db) => db.query("insert into project_review_tasks (request_id, org_id, kind, title, change_order_id) values ($1, $2, 'review_change', 'x', $3)", [other, w.org.id, id]))).rejects.toThrow();
   });
 });
 

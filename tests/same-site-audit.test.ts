@@ -89,6 +89,38 @@ const POSTS: Post[] = [
     pages: [{ dir: "src/app/dev/simulated-checkout/[attemptId]", addresses: ["/dev/simulated-checkout/abc"] }],
     why: "the route uses isSameSite (development only)",
   },
+  // The prospect demo (src/server/demo/http.ts decides for every action; the route file only hands over). Every page under /demo is no-referrer through its layout, so every one of
+  // these posts arrives with Origin: null, and the endpoint answers it through sameSiteRequest.
+  {
+    form: "src/components/demo/request-form.tsx", target: "/api/public/demo/start", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo", addresses: ["/demo"] }],
+    why: "no-referrer page; the demo API uses sameSiteRequest, which accepts Origin: null from a same-origin form",
+  },
+  {
+    form: "src/components/demo/landing.tsx", target: "/api/public/demo/return-link", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo", addresses: ["/demo"] }],
+    why: "same endpoint as above",
+  },
+  {
+    form: "src/components/demo/verify-panel.tsx", target: "/api/public/demo/verify", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo/verify", addresses: ["/demo/verify"] }],
+    why: "same endpoint as above; the emailed link's token travels in the body, never in an address",
+  },
+  {
+    form: "src/components/demo/chat.tsx", target: "/api/public/demo/message", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo/room", addresses: ["/demo/room"] }],
+    why: "same endpoint as above",
+  },
+  {
+    form: "src/components/demo/actions.tsx", target: "/api/public/demo/cta", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo/room", addresses: ["/demo/room"] }],
+    why: "same endpoint as above",
+  },
+  {
+    form: "src/components/demo/room.tsx", target: "/api/public/demo/leave", route: "src/server/demo/http.ts", check: "same-site",
+    pages: [{ dir: "src/app/demo/room", addresses: ["/demo/room"] }],
+    why: "same endpoint as above",
+  },
 ];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
@@ -119,6 +151,7 @@ describe("older public endpoints and the Origin: null a no-referrer page sends",
     expect(noReferrer("src/app/unsubscribe/[token]", ["/unsubscribe/abc"])).toBe(true);
     expect(noReferrer("src/app/proposal/[token]", ["/proposal/abc"])).toBe(true);
     expect(noReferrer("src/app/book/manage/[token]", ["/book/manage/abc"])).toBe(true);
+    for (const [dir, address] of [["src/app/demo", "/demo"], ["src/app/demo/verify", "/demo/verify"], ["src/app/demo/room", "/demo/room"]]) expect(noReferrer(dir, [address]), dir).toBe(true);
     expect(noReferrer("src/app/site-runtime/[host]/book/done/[...ref]", ["/site-runtime/example.com/book/done/x"])).toBe(true);
     expect(noReferrer("src/app/f/[org]/[key]", ["/f/acme/contact"])).toBe(false);
     expect(noReferrer("src/app/site-runtime/[host]/p/[[...path]]", ["/", "/contact"])).toBe(false);

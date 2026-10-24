@@ -10,6 +10,9 @@ import { createDraft, discardDraft, issueInvoice, requestChanges, submitForAppro
 import { recordManualPayment, recordRefund } from "@/server/invoices/payments";
 import { recordDisputeOpened, recordDisputeResult } from "@/server/invoices/disputes";
 import { getInvoiceLink, rotateInvoiceLink } from "@/server/invoices/share";
+import { previewInvoiceDelivery, sendInvoiceDelivery } from "@/server/invoices/delivery";
+import { createInvoiceFromProposal } from "@/server/invoices/from-proposal";
+import { DELIVERY_CHANNELS } from "@/lib/invoices/delivery-text";
 import { saveInvoiceSettings } from "@/server/invoices/settings";
 import { authorizeReminders, switchOffReminders } from "@/server/invoices/reminders";
 import { searchDealsForInvoice } from "@/server/invoices/search";
@@ -132,6 +135,36 @@ export async function rotateInvoiceLinkAction(id: string) {
   return act("invoices.send", async (ctx) => {
     await rotateInvoiceLink(ctx, uuid.parse(id));
     return true;
+  });
+}
+
+// Carrying the link to the customer through the consent-gated send chain ----------------------------------
+
+const deliveryChannel = z.enum(DELIVERY_CHANNELS, { error: "Choose email, text message or WhatsApp." });
+
+/** The exact message and what the send chain would do with it. Writes nothing and sends nothing. */
+export async function previewInvoiceDeliveryAction(id: string, channel: string) {
+  return act("invoices.send", (ctx) => previewInvoiceDelivery(ctx, uuid.parse(id), deliveryChannel.parse(channel)), { refresh: false });
+}
+
+const sendDeliveryInput = z.object({ channel: deliveryChannel, linkVersion: z.number().int().min(1), wordingHash: z.string().regex(/^[0-9a-f]{64}$/, { error: "Read the message again before you send it." }) });
+
+/** Queues the message the person read. Refused, with the send chain's reason, when it cannot go; a repeat of the same request returns the first message instead of sending another. */
+export async function sendInvoiceDeliveryAction(id: string, input: unknown) {
+  return act("invoices.send", (ctx) => sendInvoiceDelivery(ctx, uuid.parse(id), sendDeliveryInput.parse(input)));
+}
+
+// An invoice from an accepted proposal ----------------------------------------------------------------
+
+const fromProposalInput = z.object({ version, another: z.boolean().optional() });
+
+/** Makes a draft invoice from an accepted proposal: only a draft, nothing issued, sent or closed. A repeat for the same saved version returns the draft that exists. */
+export async function createInvoiceFromProposalAction(proposalId: string, input: unknown) {
+  return act("invoices.create", async (ctx) => {
+    const r = await createInvoiceFromProposal(ctx, uuid.parse(proposalId), fromProposalInput.parse(input));
+    // The proposal's page lists the invoices made from it, and its history has a new line.
+    revalidatePath("/proposals", "layout");
+    return r;
   });
 }
 

@@ -73,6 +73,8 @@ export interface ProposalInvoicing {
   /** Invoicing is on for the workspace and the person may see or make invoices. */
   available: boolean;
   canCreate: boolean;
+  /** The person may ask for a further invoice from a version that already has one (the owner or a manager: invoices.approve). */
+  canMakeAnother: boolean;
   /** What an invoice made now would hold. Null for someone who cannot make one, and for a proposal that is not accepted. */
   preview: InvoiceFromProposalPreview | null;
   /** Every invoice made from this proposal, whatever version, oldest first. Empty for someone who cannot read invoices. */
@@ -148,7 +150,7 @@ const mustReadProposals = (ctx: OrgContext) => {
  */
 export async function invoicingForProposal(ctx: OrgContext, proposalId: string): Promise<ProposalInvoicing> {
   return withSystem(async (db) => {
-    const none: ProposalInvoicing = { available: false, canCreate: false, preview: null, existing: [] };
+    const none: ProposalInvoicing = { available: false, canCreate: false, canMakeAnother: false, preview: null, existing: [] };
     if (ctx.org.kind !== "client" || !ctx.can("proposals.view") || !(ctx.can("invoices.view") || ctx.can("invoices.create"))) return none;
     if (!(await invoicesEnabledIn(db, ctx.org.orgId)) || !(await featureOn(ctx.org.orgId, PROPOSALS_FEATURE, db))) return none;
     const row = await loadProposalRow(db, ctx.org.orgId, proposalId);
@@ -162,14 +164,14 @@ export async function invoicingForProposal(ctx: OrgContext, proposalId: string):
       const forVersion = (await db.query<{ n: string }>("select count(*)::text as n from customer_invoices where org_id = $1 and source_type = 'proposal' and source_id = $2 and source_version = $3", [row.org_id, row.id, row.sent_version])).rows[0];
       preview = previewOf(facts, await customerNameOf(db, row), Number(forVersion.n));
     }
-    return { available: true, canCreate, preview, existing: made.map(strip) };
+    return { available: true, canCreate, canMakeAnother: canCreate && ctx.can("invoices.approve"), preview, existing: made.map(strip) };
   });
 }
 
 export interface CreateInvoiceFromProposalInput {
   /** The version of the proposal the person was looking at. */
   version: number;
-  /** The owner explicitly asks for a further invoice from a version that already has one. */
+  /** The owner or a manager explicitly asks for a further invoice from a version that already has one. Anyone else is refused: the first draft is the answer. */
   another?: boolean;
 }
 
@@ -189,6 +191,7 @@ export async function createInvoiceFromProposal(ctx: OrgContext, proposalId: str
     mustReadProposals(ctx);
     if (!(await featureOn(ctx.org.orgId, PROPOSALS_FEATURE, db))) throw new AppError("not_enabled", "Proposals aren't switched on for your workspace, so no invoice is made from one.");
     if (!Number.isInteger(input.version) || input.version < 1) throw new AppError("invalid_input", "Look at the proposal again before you make an invoice.");
+    // MUTATION-A
     // The proposal row is locked while this is decided: two people pressing the button at once are taken one after the other, and the second finds the first one's draft.
     const row = await loadProposalRow(db, ctx.org.orgId, proposalId, true);
     if (!row) throw new AppError("not_found", "That proposal was not found.");
@@ -201,7 +204,11 @@ export async function createInvoiceFromProposal(ctx: OrgContext, proposalId: str
     const version = row.sent_version as number;
 
     const made = (await invoicesMadeFrom(db, ctx.org.orgId, row.id)).filter((i) => i.proposalVersion === version);
-    if (made.length && !input.another) return { status: "already", invoiceId: made[0].id, count: made.length };
+    if (made.length) {
+      // A plain repeat finds the draft that exists. A further one is a deliberate act by someone who may approve invoices, never an accidental second click.
+      if (!input.another) return { status: "already", invoiceId: made[0].id, count: made.length };
+      if (!ctx.can("invoices.approve")) throw new AppError("forbidden", "Only the business owner or a manager can ask for another invoice from this version of the proposal.");
+    }
     if (made.length >= MAX_INVOICES_PER_PROPOSAL_VERSION) throw new AppError("conflict", `${made.length} invoices were already made from this version of the proposal. Work from one of those.`);
     // The key of the first invoice of a version is its base; each further one takes the first number that is free, because a draft that was discarded frees its key.
     const taken = new Set(made.map((i) => i.key));
@@ -211,7 +218,11 @@ export async function createInvoiceFromProposal(ctx: OrgContext, proposalId: str
     // A customer, company or deal that is gone (removed, archived) is left off the draft instead of stopping it: the person chooses on the draft.
     const contact = row.contact_id && (await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null", [row.contact_id, row.org_id])).rows[0] ? row.contact_id : null;
     const company = row.company_id && (await db.query("select 1 from crm_companies where id = $1 and org_id = $2 and deleted_at is null", [row.company_id, row.org_id])).rows[0] ? row.company_id : null;
-    const deal = row.opportunity_id && (await db.query("select 1 from crm_opportunities where id = $1 and org_id = $2 and archived_at is null", [row.opportunity_id, row.org_id])).rows[0] ? row.opportunity_id : null;
+    // A deal is kept only if it fits the invoice's own rule that a deal belongs to the invoice's customer; otherwise it is left off like a customer that is gone.
+    const dealRow = row.opportunity_id ? (await db.query<{ contact_id: string | null }>("select contact_id from crm_opportunities where id = $1 and org_id = $2 and archived_at is null", [row.opportunity_id, row.org_id])).rows[0] : undefined;
+    const dealsCustomer = dealRow?.contact_id ?? null;
+    const dealFits = dealRow !== undefined && (contact ? dealsCustomer === null || dealsCustomer === contact : dealsCustomer === null || Boolean((await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null", [dealsCustomer, row.org_id])).rows[0]));
+    const deal = dealFits ? row.opportunity_id : null;
 
     const recurringDetail = plan.recurring.slice(0, 8).map((r) => ({ name: r.name.slice(0, 50), billing: r.billing, totalMinor: r.totalMinor }));
     const drafted = await createDraftInTx(db, ctx, {

@@ -6,6 +6,8 @@ import { DROP_REASON_TEXT, type DropReason } from "@/lib/proposals/ai";
 import { lockedReason, type CatalogChoice } from "@/lib/proposals/editor";
 import { shortHash } from "@/lib/proposals/format";
 import type { ProposalDetail } from "@/server/proposals/view";
+import type { ProposalInvoicing } from "@/server/invoices/from-proposal";
+import { InvoicePanel } from "@/components/proposals/invoice-panel";
 import { ProposalActions } from "@/components/proposals/actions-panel";
 import { PanelTabs, type TabItem } from "@/components/proposals/tabs";
 import { ProposalEditor } from "@/components/proposals/editor";
@@ -26,9 +28,11 @@ export interface WorkspaceProps {
   twoPerson: boolean;
   tz: string;
   initialTab?: string;
+  /** Invoicing for this proposal (src/server/invoices/from-proposal.ts). Absent, or not available, and there is no Invoice tab: the workspace has no invoicing or the person has no use for it. */
+  invoicing?: ProposalInvoicing | null;
 }
 
-export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, tz, initialTab }: WorkspaceProps) {
+export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, tz, initialTab, invoicing }: WorkspaceProps) {
   const reason = lockedReason(detail.status, detail.viewer.canEdit);
   const editable = reason === null;
   // The Signature tab is there for a proposal that asks for a signature, or that has had a signing request, and only then: it is no use to anyone else.
@@ -40,6 +44,7 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
     { id: "activity", label: "Activity" },
     { id: "delivery", label: "Delivery" },
     ...(withSignature ? [{ id: "signature", label: "Signature" }] : []),
+    ...(invoicing?.available ? [{ id: "invoice", label: "Invoice", count: invoicing.existing.length }] : []),
   ];
   const [tab, setTab] = React.useState<string>(initialTab && items.some((i) => i.id === initialTab) ? initialTab : "edit");
   const [dirty, setDirty] = React.useState(false);
@@ -70,6 +75,7 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
           activity: <ActivityPanel detail={detail} tz={tz} />,
           delivery: <DeliveryPanel detail={detail} canSend={can.send} tz={tz} onOpenTab={setTab} active={tab === "delivery"} />,
           ...(withSignature ? { signature: <SignaturePanel detail={detail} tz={tz} /> } : {}),
+          ...(invoicing?.available ? { invoice: <InvoicePanel detail={detail} invoicing={invoicing} tz={tz} /> } : {}),
         }}
       />
     </div>

@@ -998,7 +998,8 @@ SEEDS["0099_payment_controls"] = async (db, ctx) => {
     await db.query(`insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_by, activated_at, billing_start_on, last_payment_id,
         provider, provider_subscription_id)
       values ($1, 'active', 29900, 4, 'seed-0099', $2, $3, now(), current_date, $4, 'paymongo', $5)`, [org, owner, ctx.users.staff, plan, `sub_seed_0099_${key}`]);
-    await db.query("update agency_billing_settings set auto_past_due = true, auto_past_due_by = $1, auto_past_due_at = now()", [ctx.users.staff]);
+    // Who switched it and when. The flag itself stays at its default: the settings row is reference data the migrations seed, and section C compares it with the fresh database's.
+    await db.query("update agency_billing_settings set auto_past_due_by = $1, auto_past_due_at = now()", [ctx.users.staff]);
     for (const kind of BILLING_KINDS) await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, $3, 'Seed billing notice')", [org, owner, kind]);
   });
 };
@@ -1070,6 +1071,42 @@ CLEAN["0096_staff_messages"] = {
   },
 };
 
+// Staff workload. Everything belongs to the ONE agency workspace, which 0096's seed made (its manager and staff member are the people here, so this seed adds no user and no
+// organization): the module switch, changed rules, a capacity and skills profile, time off, a daily and a change snapshot, an open critical alert, one assignment made from
+// the board (its client reference is a soft id, no foreign key) and a workload notice of each kind. The history is append-only, so the clean-up (what an operator exports
+// first) declares a purge for the length of the removal; the rollback itself deletes the switch and the two notices.
+const WORKLOAD_KINDS = ["staff_workload_alert", "staff_work_overdue"];
+SEEDS["0097_staff_workload"] = async (db, ctx) => {
+  const made = ctx.staffMessages;
+  if (!made) throw new Error("0097's seed needs the agency workspace and the two agency people that 0096's seed makes");
+  const [manager, staff] = made.people;
+  const agency = made.agency;
+  await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'staff_workload', true) on conflict do nothing", [agency]);
+  await db.query("insert into staff_workload_settings (id, org_id, rules, updated_by) values (true, $1, $2::jsonb, $3)", [agency, JSON.stringify({ defaultCapacityPoints: 20, thresholds: { busyFrom: 80 } }), manager]);
+  await db.query("insert into staff_work_profiles (user_id, org_id, capacity_points, working_days, skills, updated_by) values ($1, $2, 25, '{1,2,3,4}', $3::jsonb, $4)", [staff, agency, JSON.stringify({ support: 3, setup: 2 }), manager]);
+  await db.query("insert into staff_time_off (org_id, user_id, starts_on, ends_on, kind, note, created_by) values ($1, $2, current_date + 7, current_date + 9, 'leave', 'Seed leave', $2)", [agency, staff]);
+  await db.query("insert into staff_workload_snapshots (org_id, user_id, day, kind, label, points, capacity, overdue, items, escalated, capacity_source, rules_revision) values ($1, $2, current_date, 'daily', 'busy', 18.5, 20, 1, 6, 0, 'person', 1)", [agency, staff]);
+  await db.query("insert into staff_workload_snapshots (org_id, user_id, day, kind, label, points, capacity, overdue, items, escalated, capacity_source, rules_revision) values ($1, $2, current_date, 'change', null, 4, null, 0, 2, 0, 'none', 0)", [agency, manager]);
+  await db.query("insert into staff_workload_alerts (org_id, user_id, label, since, critical_since, notified_at) values ($1, $2, 'critical', now() - interval '3 hours', now() - interval '1 hour', now())", [agency, staff]);
+  await db.query("insert into work_assignment_events (org_id, source, item_id, client_ref, from_user, to_user, actor_id, via) values ($1, 'support', gen_random_uuid(), $2, $3, $4, $3, 'board')", [agency, ctx.orgs.a.id, manager, staff]);
+  for (const kind of WORKLOAD_KINDS) await db.query("insert into notifications (org_id, user_id, kind, title, audience) values (null, $1, $2, 'Seed workload notice', 'staff')", [manager, kind]);
+};
+CLEAN["0097_staff_workload"] = {
+  guard: async (db) => {
+    await db.query("select set_config('iaq.purge', 'on', false)");
+    try {
+      await db.query("delete from work_assignment_events");
+      await db.query("delete from staff_workload_snapshots");
+    } finally {
+      await db.query("select set_config('iaq.purge', '', false)");
+    }
+    await db.query("delete from staff_workload_alerts");
+    await db.query("delete from staff_time_off");
+    await db.query("delete from staff_work_profiles");
+    await db.query("delete from staff_workload_settings");
+  },
+};
+
 // Requests completion. Per workspace: an agreed project with a recorded warranty and revision count, a Request a Change request aimed at it with the team's classification,
 // two change orders (one out of scope that was quoted, accepted by its owner and added to the agreed scope, one revision that was applied), prerequisites (one waiting, one
 // confirmed), an internal note that mentions a team member, a triage record, a survey, a timeline entry and a delivery-log row of the new kinds, and one notice of each new kind.
@@ -1090,6 +1127,7 @@ SEEDS["0098_requests_completion"] = async (db, ctx) => {
     await db.query("update project_change_orders set status = 'accepted', decided_at = now() where id = $1", [order]);
     await db.query("insert into project_scope_amendments (org_id, request_id, change_order_id, added_scope, added_cents, currency, agreed_by) values ($1, $2, $3, 'Seed addition', 25000, 'USD', $4)", [org, project, order, owner]);
     const revision = (await one(db, "insert into project_change_orders (org_id, request_id, title, description, requested_by) values ($1, $2, 'Seed-0098 revision', 'Soften the greeting', $3) returning id", [org, project, owner])).id;
+    await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at, change_order_id) values ($1, $2, 'review_change', 'Seed-0098 first look', now() + interval '2 days', $3)", [project, org, revision]);
     await db.query("update project_change_orders set status = 'under_review', classification = 'in_scope_revision' where id = $1", [revision]);
     await db.query("update project_change_orders set status = 'applied', applied_at = now(), applied_by = $2 where id = $1", [revision, staff]);
     await db.query("insert into project_messages (request_id, org_id, author_id, author_kind, body, client_message_id, change_order_id) values ($1, $2, $3, 'client', 'Seed-0098 message', gen_random_uuid(), $4)", [project, org, owner, order]);

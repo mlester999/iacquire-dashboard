@@ -4,7 +4,7 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
+import { notifyAgency, notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { createTicket } from "@/server/support/service";
 import { applyStatusChange } from "@/server/support/lifecycle";
 import type { TicketCore } from "@/server/support/access";
@@ -16,6 +16,8 @@ import { roleHasPermission } from "@/lib/permissions";
 import { MAINTENANCE_TERMS_VERSION, type MaintenanceStatus, type ServiceView } from "@/lib/projects";
 import { paidThroughProblem } from "@/lib/automation-studio/plan";
 import { MAINTENANCE_PAYMENT_NOTE } from "@/lib/billing-clearance";
+import { daysUntil, paidPeriodEnded } from "@/lib/billing-renewal";
+import { agencyToday } from "@/server/entitlements";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import { noticeCancelled, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import { iso } from "@/server/projects/shared";
@@ -324,6 +326,8 @@ export async function listAgencyMaintenance(user: SessionUser) {
        order by m.created_at desc limit 200`,
       [user.id],
     )).rows;
+    // The paid-through day is the agency's own day, so "ended N days ago" is counted in the agency's time zone.
+    const today = await agencyToday(db);
     return {
       subscriptions: subs.map((s) => ({
         ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" && s.cleared === true,
@@ -333,6 +337,8 @@ export async function listAgencyMaintenance(user: SessionUser) {
         lifecycle: {
           pastDueSince: iso(s.past_due_since), graceEndsAt: iso(s.grace_ends_at), expiredAt: iso(s.expired_at), paidThroughOn: s.paid_through_on,
           lastPaymentVerifiedAt: iso(s.last_payment_verified_at), lastPaymentVerifiedBy: s.verified_by_name, studioWorkflows: s.studio_workflows, studioPaused: s.studio_paused,
+          // Days since the day the plan was paid through, while it is still running and nobody has recorded a payment since (information only: nothing changes by itself).
+          periodEndedDaysAgo: paidPeriodEnded(s.status, s.paid_through_on, today) ? -(daysUntil(s.paid_through_on, today) ?? 0) : null,
         },
       })),
       requests: reqs.map((r) => ({ id: r.id, ref: r.ref, kind: r.kind as "core_defect" | "managed_change", title: r.title, description: r.description, status: r.status, countsAgainstAllowance: r.counts_against_allowance, orgId: r.org_id, orgName: r.org_name, ticketId: r.ticket_id, createdAt: iso(r.created_at)!, internalNotes: r.internal_notes })),
@@ -404,14 +410,51 @@ export async function updateMaintenanceRequest(user: SessionUser, requestId: str
     if (d.waiveAllowance && m.kind !== "managed_change") throw new AppError("conflict", "Only managed requests use the allowance.");
     await db.query(
       `update maintenance_requests set status = coalesce($2, status), resolution_note = coalesce($3, resolution_note), internal_notes = coalesce($4, internal_notes),
-         counts_against_allowance = case when $5::boolean then false else counts_against_allowance end, assigned_to = coalesce(assigned_to, $6),
+         counts_against_allowance = case when $5::boolean then false else counts_against_allowance end,
          closed_at = case when $2 in ('completed','declined') then now() when $2 is not null then null else closed_at end where id = $1`,
-      [requestId, d.status ?? null, d.resolutionNote ?? null, d.internalNotes ?? null, Boolean(d.waiveAllowance), user.id],
+      [requestId, d.status ?? null, d.resolutionNote ?? null, d.internalNotes ?? null, Boolean(d.waiveAllowance)],
     );
     if (d.status && m.ticket_id) await mirrorOntoTicket(db, m.ticket_id, TICKET_STATUS_FOR[d.status], user.id);
     if (d.status && ["completed", "declined", "in_progress"].includes(d.status)) {
       await notifyOrgRoles(db, m.org_id, ["owner", "admin"], { kind: "maintenance_update", title: `${m.ref} is now ${d.status.replace("_", " ")}`, body: m.title, link: "/maintenance" });
     }
     await recordAudit({ orgId: m.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.request_updated", targetType: "maintenance_request", targetId: requestId, result: "success", metadata: { status: d.status, waived: d.waiveAllowance } }, db);
+  });
+}
+
+/**
+ * Gives a maintenance request to a team member, or takes it away. This replaces the silent claim updateMaintenanceRequest used to make: touching a request no longer makes the
+ * person its owner, so nobody's workload moves unless someone chose it. The person must be an active agency account that can open the client and may operate maintenance.
+ * Giving it to the person who already has it changes nothing and announces nothing (a double click, a retry).
+ */
+export async function assignMaintenanceRequest(user: SessionUser, requestId: string, assigneeId: string | null) {
+  assertManage(user);
+  const id = z.string().uuid();
+  if (!id.safeParse(requestId).success) throw new AppError("not_found", "Request not found.");
+  if (assigneeId !== null && !id.safeParse(assigneeId).success) throw new AppError("invalid_input", "Choose a team member.");
+  await withSystem(async (db) => {
+    // The session names who the person is; the database says whether they still are, and whether they still may.
+    const me = (await db.query<{ ok: boolean }>(
+      "select (status = 'active' and platform_role = $2 and coalesce(app.user_has_agency_permission(id, 'maintenance.manage'), false)) as ok from users where id = $1", [user.id, user.platformRole],
+    )).rows[0];
+    if (!me?.ok) throw new AppError("forbidden", "Agency access is required; authorization has changed.");
+    const m = (await db.query<{ org_id: string; ref: string; title: string; status: string; assigned_to: string | null }>("select org_id, ref, title, status, assigned_to from maintenance_requests where id = $1 for update", [requestId])).rows[0];
+    const reach = m && (await db.query<{ allowed: boolean }>("select app.user_can_access_org($1, $2) as allowed", [user.id, m.org_id])).rows[0]?.allowed === true;
+    if (!m || !reach) throw new AppError("not_found", "Request not found.");
+    if (!["open", "in_progress", "waiting_for_client"].includes(m.status)) throw new AppError("conflict", "A request that is finished cannot be given to someone.");
+    if (assigneeId) {
+      const eligible = (await db.query<{ ok: boolean }>(
+        `select exists (select 1 from users u where u.id = $1 and u.status = 'active' and u.platform_role in ('agency_staff', 'agency_manager', 'agency_super_admin')
+           and app.user_can_access_org(u.id, $2) and coalesce(app.user_has_agency_permission(u.id, 'maintenance.manage'), false)) as ok`, [assigneeId, m.org_id],
+      )).rows[0]?.ok === true;
+      if (!eligible) throw new AppError("invalid_input", "Choose a team member who works on this client's maintenance.");
+    }
+    const changed = await db.query<{ updated_at: Date }>("update maintenance_requests set assigned_to = $2 where id = $1 and assigned_to is distinct from $2 returning updated_at", [requestId, assigneeId]);
+    if (!changed.rows[0]) return;
+    // The moment of the change names this assignment, so handing it back and forth is announced each time and only once each.
+    if (assigneeId && assigneeId !== user.id) {
+      await notifyUser(db, assigneeId, m.org_id, { kind: "maintenance_update", title: `${m.ref} was assigned to you`, body: m.title, link: "/admin/maintenance", dedupeKey: `maintenance:${requestId}:assigned:${assigneeId}:${new Date(changed.rows[0].updated_at).getTime()}` });
+    }
+    await recordAudit({ orgId: m.org_id, actorUserId: user.id, actorKind: "agency", action: assigneeId ? "maintenance.assigned" : "maintenance.unassigned", targetType: "maintenance_request", targetId: requestId, result: "success", metadata: { from: m.assigned_to, to: assigneeId } }, db);
   });
 }

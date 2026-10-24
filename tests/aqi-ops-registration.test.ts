@@ -140,6 +140,7 @@ describe("scheduled jobs", () => {
       "invoiceOverdueSweep",
       "invoiceReminders",
       "staffMessagesMaintenance",
+      "staffWorkloadSnapshots",
     ]);
   });
 });

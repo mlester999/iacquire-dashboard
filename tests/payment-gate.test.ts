@@ -338,6 +338,7 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/components/billing/billing-workspace.tsx",
       "src/components/setup/onboarded-banner.tsx",
       "src/components/workforce/request-setup.tsx",
+      "src/lib/onboarding/setup-payment-line.ts",
       "src/lib/setup.ts",
       "src/lib/workforce-readiness.ts",
       "src/server/admin/queries.ts",

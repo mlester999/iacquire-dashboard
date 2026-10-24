@@ -141,3 +141,40 @@ Environment: `node scripts/inbox-qa.mjs` on `127.0.0.1:3270` with the simulated 
 * Two review claims were never tested (see the review row above), and the full suite has not been run on the head `2e192a1`.
 
 Where the raw evidence is (this machine only): the workflow results `wf_4177e5ee-108.json` (build and resume), `wf_a6e794e5-d76.json` (review) and `wf_9e6099ce-31a.json` (fix wave) under `C:\Users\ZEPHY\.claude\projects\C--Users-ZEPHY-Documents-Marky-Files-Programming-Projects-iAcquire-dashboard\32890764-5c6b-4d98-a485-d33dd7eeb47d\workflows`; the gate outputs `g-*.txt` (first tree) and `g2-*.txt` (fixed tree) and the browser findings `fixes\qa-findings.md` in that session's scratchpad (`C:\Users\ZEPHY\AppData\Local\Temp\claude\C--Users-ZEPHY-Documents-Marky-Files-Programming-Projects-iAcquire-dashboard\32890764-5c6b-4d98-a485-d33dd7eeb47d\scratchpad`). The scratchpad is temporary; the numbers above are the durable copy.
+
+### Wave 2 resume (2026-10-24, on top of `e3275d5`)
+
+This section records what the resumed session measured; it does not replace a full-suite/browser run that has not happened.
+
+| Check | Command / scope | Result |
+| --- | --- | --- |
+| Full suite, first run at the resumed tree | `vitest run` | 603 files; **10,235 passed, 9 failed, 8 skipped**, 836 s. The 9 are listed below with their fixes. |
+| Final full suite | `vitest run` | **607 files passed, 10,255 tests passed, 8 skipped, 0 failed** (823 s), exit 0. |
+| Targeted Wave 2 new files | 24 files | 512 tests; 8 failed in invoice-from-proposal/delivery, fixed, then 27/27 in the two files. |
+| Staff Messages screens/routes/stream/snapshot | 5 files | 142 passed after fixing the around-window, thread-root and test-fixture defects. |
+| Workload rules, labels, migration, job, views, presentation, page renders | 8 files | The rules/labels/migration/job/views/screens/page tests pass. |
+| Typechecks | `tsconfig.clean.json`, `tsconfig.scripts.json` | Both pass. |
+| ESLint | whole tree | 0 errors, 0 warnings. |
+| Client bundle safety | `tests/client-bundle-safety.test.ts` | Pass. |
+| Documentation consistency | `tests/docs-modules.test.ts` | Pass after adding `docs/staff-workload.md` and `tests/staff-workload-jobs.test.ts`. |
+| Tenant isolation, schema-wide | `tests/tenant-isolation-generic.test.ts` | Pass after every workload policy was given an explicit agency-org predicate. |
+| Combined migration rehearsal | `scripts/rehearse-combined-migrations.mjs` | **All sections A–F passed** on 95 files `0001..0102` (0 duplicate numbers, 0 stray files; 0101 is free), populated upgrade and rollback/reapply paths, **after** the 0097 policy edit. |
+| Clean webpack build | `node scripts/build-clean.mjs --webpack` | **Passes**, all `/admin/workload*` routes included, with `NODE_OPTIONS=--max-old-space-size=8192`. The default 4 GB heap OOM'd first, an environment limit. |
+| Workload browser QA | Chromium, isolated QA app, 1280/375 px, light/dark | **Pass**: six pages, HTTP 200, 0 console/page errors, 0 horizontal overflow, axe 0 on overview/board; module switch, person/edit pages, capacity save, time-off add/remove and assignment dialog driven. Agency staff and client-owner boundaries checked. |
+| Browser QA, other Wave 2 screens | Messages, Requests, onboarding, demo, invoice delivery | **None**; not browser-QA'd. |
+| Real provider | any | **None.** No email, payment, e-signature, review, social or model provider was called. |
+
+The nine full-suite failures and their disposition:
+
+1. `tests/appointments.test.ts` — the test's fixed `NOW` was not passed into `savePolicy`, so the 1440-minute reminder fell in the real past. `savePolicy` now accepts an optional clock and the test passes `NOW`; production still uses the real clock.
+2. `tests/docs-modules.test.ts` (scheduler file/links) — `docs/staff-workload.md` and `tests/staff-workload-jobs.test.ts` did not exist. Both added; the job test exercises the real service through its dormant and overloaded paths.
+3. `tests/module-rollout-admin.test.tsx` — the writer inventory expected only three services; the staff Messages and staff workload settings services are legitimate writers of the agency `org_features` row. The expected list now names all five, and the page service still writes none.
+4. `tests/rollback-feature-switches.test.ts` — rolling back 0091 while 0093 exists is correctly refused; the test now rolls 0093 and 0092 back first, newest first.
+5. `tests/staff-messages-migration.test.ts` — the 0096 rollback test counted 0097's tables and indexes as leftovers; the query now excludes the relations owned by 0097, which an operator rolls back first.
+6–7. `tests/staff-messages-stream.test.ts` — two timing tests needed a wider poll window under full-suite load; poll 20 ms/max 600 ms.
+8. `tests/tenant-isolation-generic.test.ts` — three workload policies had no direct org predicate. All six now include `org_id = (select o.id from organizations o where o.kind = 'agency')`; the guard recognises the workload permission helpers.
+9. Two invoice-from-proposal tests — monthly lines were copied as one-time lines, idempotency was disabled, the further-invoice permission was absent and the draft closed the deal. All fixed and re-tested.
+
+The resumed session also fixed a real scheduled-job failure that the new job test exposed: `tidyDeparted` built SQL with `String.replace` and a replacement containing `$'`, which truncated the UUID pattern and made every run with a departed-person notice fail.
+
+**Not shown by this evidence:** browser QA of Messages/Requests/onboarding/demo/invoice delivery, any real provider, any hosted migration. Stage H (purchase intents, 0101) has no code.

@@ -247,7 +247,9 @@ describe("writing a mention", () => {
     expect(filterMembers(members, "may", ID_A).map((m) => m.name)).toEqual(["Maya", "Maya Santos"]);
     // A name that only contains the word comes after the ones that start with it.
     expect(filterMembers([{ id: ID_A, name: "Ana Maya" }, ...members.slice(1)], "may", ID_C).map((m) => m.name)).toEqual(["Maya Santos", "Ana Maya"]);
-    expect(filterMembers(members, "", ID_A).map((m) => m.id)).toEqual([ID_B, ID_C]);
+    // Nothing typed yet: everyone else, alphabetically ("Maya" before "Maya Santos").
+    expect(filterMembers(members, "", ID_A).map((m) => m.id)).toEqual([ID_C, ID_B]);
+    expect(filterMembers([{ id: ID_A, name: "Zed" }, { id: ID_B, name: "Al" }, { id: ID_C, name: "Bartholomew" }], "", "00000000-0000-4000-8000-000000000000").map((m) => m.name)).toEqual(["Al", "Bartholomew", "Zed"]);
     expect(filterMembers(members, "avery", ID_A)).toEqual([]);
     expect(filterMembers(members, "AVERY", ID_B).map((m) => m.id)).toEqual([ID_A]);
     const many = Array.from({ length: 30 }, (_, i) => ({ id: `${i}`.padStart(8, "0") + ID_A.slice(8), name: `Person ${i}` }));
@@ -338,9 +340,14 @@ describe("what the composer will send", () => {
     expect(zeros).toBe("00000000-0000-4000-8000-000000000000");
     const ones = newClientId((n) => new Uint8Array(n).fill(255));
     expect(ones).toBe("ffffffff-ffff-4fff-bfff-ffffffffffff");
-    let counter = 0;
+    // A small linear congruential generator: different bytes every call, the same on every run.
+    let state = 12345;
+    const nextByte = () => {
+      state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+      return (state >>> 16) & 255;
+    };
     const seen = new Set<string>();
-    for (let i = 0; i < 50; i++) seen.add(newClientId((n) => Uint8Array.from({ length: n }, () => (counter++ * 37) % 256)));
+    for (let i = 0; i < 50; i++) seen.add(newClientId((n) => Uint8Array.from({ length: n }, nextByte)));
     expect(seen.size).toBe(50);
     for (const id of seen) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
@@ -393,16 +400,19 @@ describe("keeping a page in step", () => {
 
   it("reads the snapshot query strictly and builds it back the same", () => {
     const ok = (qs: string) => parseSnapshotQuery(new URLSearchParams(qs));
-    expect(ok("")).toEqual({ ok: true, q: { since: null, conversationId: null, threadRootId: null, beforeSeq: null, badgeOnly: false } });
-    expect(ok(`since=12&conversation=${ID_A}&thread=${ID_B}`)).toEqual({ ok: true, q: { since: 12, conversationId: ID_A, threadRootId: ID_B, beforeSeq: null, badgeOnly: false } });
-    expect(ok(`conversation=${ID_A}&before=40`)).toEqual({ ok: true, q: { since: null, conversationId: ID_A, threadRootId: null, beforeSeq: 40, badgeOnly: false } });
-    expect(ok("badge=1")).toEqual({ ok: true, q: { since: null, conversationId: null, threadRootId: null, beforeSeq: null, badgeOnly: true } });
-    for (const bad of ["since=-1", "since=1.5", "since=abc", "conversation=nope", `thread=${ID_B}`, `conversation=${ID_A}&thread=nope`, `before=5`, `conversation=${ID_A}&before=0`, `conversation=${ID_A}&before=x`, `since=${"9".repeat(30)}`]) {
+    expect(ok("")).toEqual({ ok: true, q: { since: null, conversationId: null, threadRootId: null, beforeSeq: null, aroundSeq: null, badgeOnly: false } });
+    expect(ok(`since=12&conversation=${ID_A}&thread=${ID_B}`)).toEqual({ ok: true, q: { since: 12, conversationId: ID_A, threadRootId: ID_B, beforeSeq: null, aroundSeq: null, badgeOnly: false } });
+    expect(ok(`conversation=${ID_A}&before=40`)).toEqual({ ok: true, q: { since: null, conversationId: ID_A, threadRootId: null, beforeSeq: 40, aroundSeq: null, badgeOnly: false } });
+    expect(ok(`conversation=${ID_A}&around=120`)).toEqual({ ok: true, q: { since: null, conversationId: ID_A, threadRootId: null, beforeSeq: null, aroundSeq: 120, badgeOnly: false } });
+    expect(ok("badge=1")).toEqual({ ok: true, q: { since: null, conversationId: null, threadRootId: null, beforeSeq: null, aroundSeq: null, badgeOnly: true } });
+    for (const bad of ["since=-1", "since=1.5", "since=abc", "conversation=nope", `thread=${ID_B}`, `conversation=${ID_A}&thread=nope`, `before=5`, `conversation=${ID_A}&before=0`, `conversation=${ID_A}&before=x`, `around=5`, `conversation=${ID_A}&around=0`, `conversation=${ID_A}&around=-3`, `since=${"9".repeat(30)}`]) {
       expect(ok(bad), bad).toMatchObject({ ok: false });
     }
-    const q = { since: 3, conversationId: ID_A, threadRootId: ID_B, beforeSeq: null, badgeOnly: false };
+    const q = { since: 3, conversationId: ID_A, threadRootId: ID_B, beforeSeq: null, aroundSeq: null, badgeOnly: false };
     expect(snapshotQueryString(q)).toBe(`since=3&conversation=${ID_A}&thread=${ID_B}`);
     expect(ok(snapshotQueryString(q))).toEqual({ ok: true, q });
-    expect(snapshotQueryString({ since: null, conversationId: null, threadRootId: null, beforeSeq: null, badgeOnly: true })).toBe("badge=1");
+    expect(snapshotQueryString({ since: null, conversationId: null, threadRootId: null, beforeSeq: null, aroundSeq: null, badgeOnly: true })).toBe("badge=1");
+    const around = { since: null, conversationId: ID_A, threadRootId: null, beforeSeq: null, aroundSeq: 77, badgeOnly: false };
+    expect(ok(snapshotQueryString(around))).toEqual({ ok: true, q: around });
   });
 });

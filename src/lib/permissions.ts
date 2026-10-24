@@ -222,6 +222,14 @@ export const PERMISSION_MATRIX = {
   "agency.messages.use": row(...STAFF),
   "agency.messages.channels": row("agency_manager", "agency_super_admin"),
   "agency.messages.moderate": row("agency_super_admin"),
+  // Staff workload (migration 0097). Agency roles only: no client role is ever in these rows. Everyone on the agency team sees their own load, their own items and their own
+  // time off; managers and the Super Admin see everyone's labels, the board, the calendar and the escalations, give work to others (the module's own assign permission is also
+  // needed) and record capacity, working days, skills and time off for others. The rules (weights, thresholds) are the Super Admin's alone and are never delegable.
+  "agency.workload.view": row(...STAFF),
+  "agency.workload.team": row("agency_manager", "agency_super_admin"),
+  "agency.workload.assign": row("agency_manager", "agency_super_admin"),
+  "agency.workload.manage": row("agency_manager", "agency_super_admin"),
+  "agency.workload.settings": row("agency_super_admin"),
   "agency.security.manage": row("agency_super_admin"),
   "agency.billing.manage": row("agency_super_admin"),
   // The demo funnel's prospects (migration 0100). People who asked for a demo are not users and belong to no workspace: seeing them (their details, timeline and transcripts, each
@@ -283,6 +291,11 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.messages.use": { label: "Use the agency's internal Messages (direct messages, groups and channels)", group: "Agency Messages", delegable: true },
   "agency.messages.channels": { label: "Create channels and groups of any kind and manage who is in a channel", group: "Agency Messages", delegable: true },
   "agency.messages.moderate": { label: "Moderate channels: archive any channel and delete a message in a channel", group: "Agency Messages", delegable: false },
+  "agency.workload.view": { label: "See your own workload, your own work items and your own time off", group: "Agency workload", delegable: true },
+  "agency.workload.team": { label: "See everyone's workload labels, the workload board, calendar and escalations", group: "Agency workload", delegable: true },
+  "agency.workload.assign": { label: "Give work to team members from the workload board (the module's own assign permission is also needed)", group: "Agency workload", delegable: true },
+  "agency.workload.manage": { label: "Set other people's capacity, working days, skills and time off", group: "Agency workload", delegable: true },
+  "agency.workload.settings": { label: "Change the workload rules: point weights, label thresholds and the team default capacity", group: "Agency workload", delegable: false },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", delegable: false },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", delegable: false },
   "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", delegable: false },
@@ -310,6 +323,10 @@ export const AGENCY_DELEGABLE_PERMISSIONS = [
   "agency.support.analytics",
   "agency.messages.use",
   "agency.messages.channels",
+  "agency.workload.view",
+  "agency.workload.team",
+  "agency.workload.assign",
+  "agency.workload.manage",
 ] as const satisfies readonly AgencyPermission[];
 
 /** Client actions that Agency Managers and Staff can have individually customized. */
@@ -560,6 +577,7 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", note: "Super Admin only." },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Support", note: "Super Admin only." },
   "agency.messages.moderate": { label: "Moderate channels in the agency's internal Messages", group: "Agency Messages", note: "Super Admin only. It does not allow reading anyone's direct messages or private groups." },
+  "agency.workload.settings": { label: "Change the workload rules: point weights, label thresholds and the team default capacity", group: "Agency workload", note: "Super Admin only. Every number is a proposal until the founder approves it." },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", note: "Super Admin only." },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", note: "Super Admin only." },
   "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", note: "Agency Managers and Super Admins. Reading a prospect's conversation is recorded in the audit history." },

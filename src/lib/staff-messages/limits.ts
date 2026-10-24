@@ -33,6 +33,15 @@ export const SEARCH_MAX_RESULTS = 30;
 export const RETENTION_DAYS_MIN = 30;
 export const RETENTION_DAYS_MAX = 3650;
 
+/** The retention field as a number, or null when it is empty (keep everything), or "invalid" when it is not a whole number in the allowed range. */
+export function parseRetentionInput(text: string): number | null | "invalid" {
+  const t = text.trim();
+  if (t === "") return null;
+  if (!/^[0-9]{1,5}$/.test(t)) return "invalid";
+  const n = Number(t);
+  return n >= RETENTION_DAYS_MIN && n <= RETENTION_DAYS_MAX ? n : "invalid";
+}
+
 /** How much one run of the maintenance job may do, so a tick (cut off at 120 seconds) is never held up by it. */
 export const MAINTENANCE_BUDGET_MS = 20_000;
 export const MAINTENANCE_BATCH = 100;

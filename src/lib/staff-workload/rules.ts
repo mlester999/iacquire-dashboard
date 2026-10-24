@@ -131,6 +131,7 @@ export const RULE_STATEMENTS: readonly string[] = [
   "A person's label comes from their points as a share of that capacity, then the floors below can only raise it: overdue items and escalated requests are real facts, whatever the points say.",
   "Only items with a due date set by someone can be overdue. An item with no due date is listed as having none; it is never shown as on track.",
   "Support requests have a due time only when response targets are switched on in Support settings. Maintenance requests have no due date at all.",
+  "A maintenance request is counted through the support request that mirrors it while that request is open, so the same work is never counted twice.",
   "Custom project review tasks give the project its due time and carry no points of their own.",
   "Someone with no capacity of their own and no team default gets no label, only their counts.",
   "A person whose time off covers the whole horizon and who still has open work is shown as Critical, because nothing can be done on it.",

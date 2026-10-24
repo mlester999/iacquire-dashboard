@@ -61,7 +61,10 @@ describe("the page", () => {
     const t = text(html);
     expect(html).toContain("<form");
     expect(t).toContain("What would you like changed?");
-    expect(t).toContain("Nothing is done or charged until you agree");
+    // Honest about what happens: nothing is charged without an accepted price, and nothing says the team will wait for a yes before it does work that costs nothing.
+    expect(t).toContain("Nothing is charged until you accept a price");
+    expect(t).toContain("Nothing is charged without that");
+    expect(t).not.toMatch(/never start on a guess|Nothing is done or charged until you agree/);
     expect(t).toContain("The team decides");
     expect(html).not.toContain("Which project?");
     // The other request pages point at it now that it is on.

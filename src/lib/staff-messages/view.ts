@@ -1,7 +1,7 @@
 // What the Messages screens decide, kept apart from React so each rule can be tested without a browser: how the rail is sectioned and read aloud, how a conversation is laid
 // out in days and in runs by one author, how a page of messages joins what is already loaded, and how files and conversations are addressed. Pure: the clock is passed in.
 
-import type { ChannelVisibility, ConversationKind } from "@/lib/staff-messages/conversations";
+import { canDeleteMessage, canEditMessage, canPost, canReact, type Caps, type ChannelVisibility, type ConversationKind, type MemberRole } from "@/lib/staff-messages/conversations";
 import { formatBytes } from "@/lib/utils";
 
 export const MESSAGES_HOME = "/admin/messages";
@@ -12,6 +12,26 @@ export const conversationHref = (conversationId: string): string => `${MESSAGES_
 export const downloadHref = (attachmentId: string): string => `${FILE_ROUTE}/${attachmentId}`;
 
 export const attachmentLabel = (file: { filename: string; sizeBytes: number }): string => `${file.filename}, ${formatBytes(file.sizeBytes)}`;
+
+/** Where a search hit opens: its conversation around that message, and the thread too when the hit is a reply. Built from ids and numbers only. */
+export function searchHitHref(hit: { conversationId: string; seq: number; threadRootId: string | null }): string {
+  const base = `${conversationHref(hit.conversationId)}?at=${hit.seq}`;
+  return hit.threadRootId ? `${base}&thread=${hit.threadRootId}` : base;
+}
+
+/** What a search hit says its conversation is: a channel with its #, everything else as named. */
+export const searchHitTitle = (hit: { conversationKind: ConversationKind; conversationName: string }): string => railTitle({ kind: hit.conversationKind, name: hit.conversationName });
+
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The ways an address can ask to open a conversation somewhere other than the newest messages: `?at=<message number>` and `?thread=<message id>`. Anything else is ignored. */
+export function parseDeepLink(params: Record<string, string | string[] | undefined>): { aroundSeq: number | null; threadId: string | null } {
+  const one = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+  const at = one(params.at);
+  const thread = one(params.thread);
+  const aroundSeq = at !== undefined && /^[0-9]{1,15}$/.test(at) && Number(at) > 0 ? Number(at) : null;
+  return { aroundSeq, threadId: thread !== undefined && UUID_TEXT.test(thread) ? thread.toLowerCase() : null };
+}
 
 // ---------------------------------------------------------------------------
 // The rail
@@ -180,4 +200,91 @@ export function mergeOlder<T extends { seq: number }>(loaded: readonly T[], olde
   if (loaded.length === 0) return [...older];
   const first = loaded[0].seq;
   return [...older.filter((m) => m.seq < first), ...loaded];
+}
+
+// ---------------------------------------------------------------------------
+// What the buttons on a message offer
+// ---------------------------------------------------------------------------
+
+export interface MessageAllowances {
+  canReact: boolean;
+  canReply: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+/**
+ * Which buttons a message shows to this person, from the same rules the server applies (src/lib/staff-messages/conversations.ts). A button is only an offer: the server decides
+ * again on every request.
+ */
+export function messageAllowances(
+  conversation: { kind: ConversationKind; visibility: ChannelVisibility; archived: boolean; memberRole: MemberRole | null },
+  caps: Omit<Caps, "use">,
+  selfId: string,
+  message: { authorId: string | null; deleted: boolean },
+): MessageAllowances {
+  const facts = { kind: conversation.kind, visibility: conversation.visibility, archived: conversation.archived };
+  const standing = { caps: { use: true, ...caps }, memberRole: conversation.memberRole };
+  return {
+    canReact: canReact(facts, standing, message),
+    canReply: canPost(facts, standing) && !message.deleted,
+    canEdit: canEditMessage(facts, standing, selfId, message),
+    canDelete: canDeleteMessage(facts, standing, selfId, message),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+export type StaffRole = "agency_staff" | "agency_manager" | "agency_super_admin";
+
+export const ROLE_LABEL: Record<StaffRole, string> = { agency_staff: "Agency staff", agency_manager: "Manager", agency_super_admin: "Super Admin" };
+
+export interface PersonOption {
+  id: string;
+  name: string;
+  role: StaffRole;
+  self: boolean;
+}
+
+/** The people to choose from for what was typed: names that contain it (case does not matter), the ones that start with it first, in name order; optionally without some people. */
+export function filterPeople<T extends PersonOption>(people: readonly T[], query: string, opts: { exclude?: ReadonlySet<string>; includeSelf?: boolean } = {}): T[] {
+  const needle = query.trim().toLowerCase();
+  const pool = people.filter((p) => !opts.exclude?.has(p.id) && (opts.includeSelf || !p.self));
+  const byName = (a: T, b: T) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  if (!needle) return [...pool].sort(byName);
+  const starts = pool.filter((p) => p.name.toLowerCase().startsWith(needle)).sort(byName);
+  const contains = pool.filter((p) => !p.name.toLowerCase().startsWith(needle) && p.name.toLowerCase().includes(needle)).sort(byName);
+  return [...starts, ...contains];
+}
+
+// ---------------------------------------------------------------------------
+// What happened in a conversation
+// ---------------------------------------------------------------------------
+
+export type ConversationEventKind = "created" | "member_added" | "member_removed" | "member_left" | "renamed" | "topic_changed" | "archived" | "unarchived";
+
+/** One line about a change to a conversation, from the names of the people involved ("Former team member" stays as it is). */
+export function eventText(kind: ConversationEventKind, actor: string, subject: string | null): string {
+  switch (kind) {
+    case "created": return `${actor} started this conversation`;
+    case "member_added": return actor === subject || !subject ? `${actor} joined` : `${actor} added ${subject}`;
+    case "member_removed": return `${actor} removed ${subject ?? "someone"}`;
+    case "member_left": return `${actor} left`;
+    case "renamed": return `${actor} renamed it`;
+    case "topic_changed": return `${actor} changed the topic`;
+    case "archived": return `${actor} archived it`;
+    case "unarchived": return `${actor} brought it back`;
+  }
+}
+
+/** The line under a conversation's name in its header: who is in it, or what a channel is for. */
+export function headerSubtitle(c: { kind: ConversationKind; topic: string | null; memberCount: number; archived: boolean }): string {
+  const people = c.memberCount === 1 ? "1 person" : `${c.memberCount} people`;
+  const parts: string[] = [];
+  if (c.archived) parts.push("Archived");
+  if (c.kind !== "direct") parts.push(people);
+  if (c.topic) parts.push(c.topic);
+  return parts.join(" · ");
 }

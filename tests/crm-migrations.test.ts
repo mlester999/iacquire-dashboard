@@ -60,6 +60,10 @@ const CRM_MIGRATION_NAMES = [
   // two entries in the agency override lists, the 'staff' notification audience and five notification kinds; its rollback refuses while a conversation, message, attachment or
   // staff notification exists (none does here).
   "0096_staff_messages.sql",
+  // Staff workload: six agency-only tables with read policies on the caller's current standing (app.staff_workload_allowed and its team and manage forms), five
+  // agency.workload.* permission rows and four entries in the agency override lists; its rollback refuses while a capacity profile, time off, a history row, an alert, an
+  // assignment or a changed rule exists (none does here) and deletes the workload notices that 0096's rollback would refuse on. It is rolled back before 0096.
+  "0097_staff_workload.sql",
   // Payment controls for iAcquire's own billing: columns on billing_accounts, payments and maintenance_subscriptions, a function and four notification kinds; its rollback
   // refuses while a payment recorded by hand, a waiver a person made or a plan period tied to a payment exists (none does here).
   "0099_payment_controls.sql",

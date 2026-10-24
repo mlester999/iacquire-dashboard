@@ -22,10 +22,12 @@ const KEY = "s".repeat(40);
 // workspace, so the GoHighLevel flow below is unchanged.
 const TEMPLATE_KEYS = [
   "company_info", "organization_created", "ghl_subaccount", "crm_snapshot", "crm_tags", "lead_forms", "crm_assets", "ai_configuration", "ai_profiles", "ai_employees", "automation_preparation", "business_hours", "workflows",
-  "website_built", "website_review", "website_published", "funnel_built", "funnel_review", "funnel_published", "email_domain", "sms_sender", "whatsapp_sender", "calendar", "booking_test", "knowledge_review", "integration_tests", "final_review",
+  "website_built", "website_review", "website_published", "funnel_built", "funnel_review", "funnel_published", "email_domain", "sms_sender", "whatsapp_sender", "calendar", "booking_test", "knowledge_review", "media_storage", "integration_tests", "final_review",
 ];
 /** Steps that never apply to a GoHighLevel workspace. */
 const NATIVE_ONLY = 2;
+/** Optional steps that apply to every workspace and so never count toward the percentage (0102: media_storage). */
+const OTHER_OPTIONAL = 1;
 
 /**
  * These tests describe the Setup Center for a client that keeps GoHighLevel (the flow every client had before iAcquire CRM). Since 0037 a
@@ -383,8 +385,8 @@ describe("progress rules", () => {
     const { org, ownerCtx } = await fresh("Package Co");
     const a = await admin();
     const full = await getClientSetupSnapshot(ownerCtx);
-    // Every step but the activation step, and the native-only sender steps (optional, and not applicable to GoHighLevel anyway).
-    expect(full!.progress.total).toBe(TEMPLATE_KEYS.length - 1 - NATIVE_ONLY);
+    // Every step but the activation step, the native-only sender steps (optional, and not applicable to GoHighLevel anyway) and the optional media storage step.
+    expect(full!.progress.total).toBe(TEMPLATE_KEYS.length - 1 - NATIVE_ONLY - OTHER_OPTIONAL);
     await setServices(a, org.id, ["crm"]);
     const crm = await getClientSetupSnapshot(ownerCtx);
     expect(crm!.progress.total).toBe(8); // company info, organization, 5 CRM steps, final system checks

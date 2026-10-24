@@ -9,6 +9,7 @@ import type { CatalogChoice } from "@/lib/proposals/editor";
 import { listCatalogItems, listTaxRates } from "@/server/proposals/catalog";
 import { getProposal } from "@/server/proposals/proposals";
 import { getProposalSettings } from "@/server/proposals/settings";
+import { invoicingForProposal } from "@/server/invoices/from-proposal";
 import { parseWorkspaceTab } from "@/lib/proposals/list";
 import { ProposalWorkspace } from "@/components/proposals/workspace";
 
@@ -28,7 +29,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   }
-  const [items, taxRates, settings] = await Promise.all([listCatalogItems(actor), listTaxRates(actor, { includeArchived: true }), getProposalSettings(actor)]);
+  const [items, taxRates, settings, invoicing] = await Promise.all([listCatalogItems(actor), listTaxRates(actor, { includeArchived: true }), getProposalSettings(actor), invoicingForProposal(ctx, id)]);
   const catalog: CatalogChoice[] = items.map((i) => ({
     id: i.id, name: i.name, description: i.description, unitLabel: i.unitLabel, unitPriceMinor: i.unitPriceMinor, currency: i.currency, billing: i.billing, taxRateId: i.taxRateId, taxBps: i.taxBps,
   }));
@@ -41,7 +42,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
         <p className="mt-1 text-[13px] text-muted">{customer ? `For ${customer}` : "No customer chosen yet"}{detail.ownerName ? ` · Owner: ${detail.ownerName}` : ""}</p>
       </div>
       <ProposalWorkspace
-        detail={detail} catalog={catalog} twoPerson={settings.twoPerson} tz={ctx.org.timezone || "UTC"} initialTab={parseWorkspaceTab(sp.tab)}
+        detail={detail} catalog={catalog} twoPerson={settings.twoPerson} tz={ctx.org.timezone || "UTC"} initialTab={parseWorkspaceTab(sp.tab)} invoicing={invoicing}
         taxRates={taxRates.map((t) => ({ id: t.id, name: t.name, rateBps: t.rateBps, archived: t.archived }))}
         can={{ create: ctx.can("proposals.create"), approve: ctx.can("proposals.approve"), send: ctx.can("proposals.send"), record: ctx.can("proposals.record_decision"), discount: ctx.can("proposals.discount") }}
       />

@@ -9,6 +9,8 @@ import { registerProspect, confirmVerification, type DemoContext, type RegisterI
 import { readDemoSettings, saveDemoSettings } from "@/server/demo/settings";
 import { reserveDemoMessage, completeDemoMessage, type ReserveResult } from "@/server/demo/chat";
 import type { DemoSettings } from "@/lib/demo/settings";
+import type { DemoModelDeps } from "@/server/demo/generator";
+import type { LlmConfig, LlmUsage } from "@/server/llm/client";
 
 export const rows = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await withSystem((db) => db.query<T & Record<string, unknown>>(sql, params))).rows;
 export const count = async (table: string, where = "true", params: unknown[] = []) => Number((await rows<{ n: number }>(`select count(*)::int as n from ${table} where ${where}`, params))[0].n);
@@ -121,3 +123,38 @@ export async function say(s: Started, text: string, over: { at?: Date; employeeR
 }
 
 export const prospectRow = async (id: string) => (await rows<Record<string, unknown>>("select * from demo_prospects where id = $1", [id]))[0];
+
+// ---------------------------------------------------------------------------
+// A stand-in for the language model. Nothing real is ever asked: the "model" is a function the test supplies, and the connection it is handed is made up.
+// ---------------------------------------------------------------------------
+
+export const MODEL_CONFIG: LlmConfig = { baseUrl: "https://llm.example.test/v1", format: "openai", model: "stub-model", apiKey: "stub-key-never-shown", source: "environment" };
+
+export interface ModelCall {
+  system: string;
+  user: string;
+  maxTokens?: number;
+  temperature?: number;
+  timeoutMs?: number;
+  apiKey: string;
+}
+
+/** A model that answers with the given text (or a function of the call number), reports the given usage, and records every call it gets. `agencyOrgId` is the workspace usage is recorded against. */
+export function stubModel(agencyOrgId: string, answer: string | ((n: number) => string), over: { usage?: LlmUsage | null; delayMs?: number; fail?: number | "throw" } = {}) {
+  const calls: ModelCall[] = [];
+  const deps: DemoModelDeps = {
+    complete: (async (config: LlmConfig, input: { system: string; user: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) => {
+      calls.push({ system: input.system, user: input.user, maxTokens: input.maxTokens, temperature: input.temperature, timeoutMs: input.timeoutMs, apiKey: config.apiKey });
+      if (over.delayMs) await new Promise((r) => setTimeout(r, over.delayMs));
+      if (over.fail === "throw") throw new Error("socket hang up");
+      if (over.fail) return { ok: false as const, status: over.fail };
+      const text = typeof answer === "function" ? answer(calls.length) : answer;
+      const usage = over.usage === undefined ? { inputTokens: 900, outputTokens: 120 } : over.usage;
+      return usage ? { ok: true as const, text, usage } : { ok: true as const, text };
+    }) as unknown as DemoModelDeps["complete"],
+    config: async () => MODEL_CONFIG,
+    agencyOrg: async () => agencyOrgId,
+    catalog: async () => ({ services: ["Website build"], plan: { name: "Managed Maintenance", included: ["Monthly updates"] } }),
+  };
+  return { calls, deps };
+}

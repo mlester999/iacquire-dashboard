@@ -236,6 +236,8 @@ export interface InvoiceSourceView {
   /** Null for someone who cannot read proposals: they are told it came from one, and not which. */
   proposalNumber: string | null;
   recurring: Array<{ name: string; billing: "monthly" | "yearly"; totalMinor: number }>;
+  /** How many there were: the first line of history keeps the names of the first eight only. */
+  recurringCount: number;
 }
 
 export interface InvoiceFullDetail extends InvoiceDetail {
@@ -292,7 +294,9 @@ export async function getInvoiceDetail(ctx: OrgContext, id: string, deps: { now?
     if (row.source_type === "proposal" && row.source_id && row.source_version) {
       const proposal = (await db.query<{ number: string }>("select number from proposals where id = $1 and org_id = $2", [row.source_id, ctx.org.orgId])).rows[0];
       const created = ev.rows.find((e) => e.kind === "created");
-      source = { proposalId: row.source_id, proposalVersion: row.source_version, proposalNumber: proposal?.number ?? null, recurring: recurringOf(created?.detail) };
+      const recurring = recurringOf(created?.detail);
+      const counted = Number(created?.detail?.recurringLines);
+      source = { proposalId: row.source_id, proposalVersion: row.source_version, proposalNumber: proposal?.number ?? null, recurring, recurringCount: Number.isInteger(counted) && counted >= recurring.length ? counted : recurring.length };
     }
     return {
       ...base,

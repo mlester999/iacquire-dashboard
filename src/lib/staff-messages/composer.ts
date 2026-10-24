@@ -36,7 +36,10 @@ export function activeMention(text: string, caret: number): { start: number; que
   return null;
 }
 
-/** People to offer for what was typed after the @: the ones whose name starts with it first, then the ones that contain it; never the person writing; at most eight. */
+/**
+ * People to offer for what was typed after the @: the ones whose name starts with it first (the shorter, closer match before the longer), then the ones that contain it; with
+ * nothing typed yet, everyone in alphabetical order. Never the person writing; at most eight.
+ */
 export function filterMembers<T extends ChosenMention>(members: readonly T[], query: string, selfId: string): T[] {
   const needle = query.trim().toLowerCase();
   const starts: T[] = [];
@@ -47,8 +50,10 @@ export function filterMembers<T extends ChosenMention>(members: readonly T[], qu
     if (needle === "" || name.startsWith(needle)) starts.push(m);
     else if (name.includes(needle)) contains.push(m);
   }
-  const byLength = (a: T, b: T) => a.name.length - b.name.length || a.name.localeCompare(b.name);
-  return [...starts.sort(byLength), ...contains.sort(byLength)].slice(0, 8);
+  const alphabetical = (a: T, b: T) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  const byLength = (a: T, b: T) => a.name.length - b.name.length || alphabetical(a, b);
+  const order = needle === "" ? alphabetical : byLength;
+  return [...starts.sort(order), ...contains.sort(order)].slice(0, 8);
 }
 
 /** Puts the chosen name where the typed word was ("@Maya Santos " with one space after), and returns the text and where the caret goes. */
@@ -139,10 +144,23 @@ export function newClientId(randomBytes: (length: number) => Uint8Array): string
 /** A message the page has composed and is sending (or could not send). It keeps its id, so trying again cannot post it twice. */
 export interface PendingMessage {
   clientId: string;
+  conversationId: string;
   body: string;
   threadRootId: string | null;
   attachments: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number }>;
   status: "sending" | "failed";
   error: string | null;
+  /** The server's code for a refusal (null for a request that never got an answer), which decides whether trying again can work. */
+  errorCode: string | null;
   createdAt: string;
+}
+
+/**
+ * Whether the Enter key sends the message. With a mouse and keyboard Enter sends and Shift+Enter starts a new line; on a touch screen Enter always starts a new line (there is
+ * a Send button, and a phone keyboard has no Shift+Enter). Ctrl or Command with Enter sends in both. While an input method is composing a word, Enter belongs to it.
+ */
+export function enterSends(event: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; isComposing?: boolean }, finePointer: boolean): boolean {
+  if (event.key !== "Enter" || event.isComposing) return false;
+  if (event.ctrlKey || event.metaKey) return true;
+  return finePointer && !event.shiftKey;
 }

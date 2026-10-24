@@ -112,6 +112,30 @@ export function paymongoPaidEvent(o: { eventId?: string; checkoutId: string; ref
   });
 }
 
+const wrapEvent = (type: string, livemode: boolean, resource: { id: string; type: string; attributes: Record<string, unknown> }, eventId?: string) =>
+  JSON.stringify({ data: { id: eventId ?? evt(), type: "event", attributes: { type, livemode, created_at: 1700000000, updated_at: 1700000000, data: resource } } });
+
+/** A refund notice whose resource is the refund itself (the shape of payment.refund.updated). Hand-written: never seen from a PayMongo account. */
+export function paymongoRefundEvent(o: { eventId?: string; paymentId: string; refundId?: string; amount?: number; currency?: string; status?: string; livemode?: boolean }) {
+  return wrapEvent("payment.refund.updated", o.livemode ?? false, {
+    id: o.refundId ?? `ref_${crypto.randomBytes(6).toString("hex")}`, type: "refund",
+    attributes: { payment_id: o.paymentId, amount: o.amount, currency: o.currency ?? "PHP", status: o.status ?? "succeeded" },
+  }, o.eventId);
+}
+
+/** A refund notice whose resource is the payment, listing its refunds (the shape of payment.refunded). */
+export function paymongoPaymentRefundedEvent(o: { eventId?: string; paymentId: string; refunds: Array<{ id: string; amount: number; status: string; createdAt: number }>; livemode?: boolean }) {
+  return wrapEvent("payment.refunded", o.livemode ?? false, {
+    id: o.paymentId, type: "payment",
+    attributes: { currency: "PHP", refunds: o.refunds.map((r) => ({ id: r.id, type: "refund", attributes: { amount: r.amount, currency: "PHP", status: r.status, created_at: r.createdAt } })) },
+  }, o.eventId);
+}
+
+/** A dispute notice. PayMongo's dispute event name and shape have never been seen by this code, so the body is the careful reading's minimum: a name that says dispute and a payment id. */
+export function paymongoDisputeEvent(o: { eventId?: string; paymentId: string; type?: string; livemode?: boolean }) {
+  return wrapEvent(o.type ?? "payment.dispute.created", o.livemode ?? false, { id: `dsp_${crypto.randomBytes(6).toString("hex")}`, type: "dispute", attributes: { payment_id: o.paymentId } }, o.eventId);
+}
+
 /** A stand-in for PayMongo's checkout creation: answers with the given checkout id and records what was asked. */
 export function mockCheckoutFetch(checkoutId: string) {
   const calls: Array<{ url: string; body: { data: { attributes: Record<string, unknown> } } }> = [];

@@ -1,4 +1,4 @@
-import type { AgentStatus } from "@/lib/agents";
+import { SETUP_REQUIRED_LABEL, type AgentStatus } from "@/lib/agents";
 import { toolInventoryReady, toolInventoryRecorded } from "@/lib/hermes-tool-inventory";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 
@@ -223,7 +223,7 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
   } else if (input.paymentCleared === false && !authorized) {
     stage = "setup";
     tone = "warning";
-    label = "Setup required";
+    label = SETUP_REQUIRED_LABEL;
     title = "Waiting for your setup payment";
     description = `${PAYMENT_REQUIRED_SENTENCE}.`;
     cta = "none";
@@ -237,7 +237,7 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
   } else if (!configured) {
     stage = "setup";
     tone = "warning";
-    label = "Setup required";
+    label = SETUP_REQUIRED_LABEL;
     title = `Finish setting up ${input.displayName ?? "this employee"}`;
     description = "Apply an initial configuration, then verify the Hermes connection. Conversations stay unavailable until the required checks pass.";
     cta = "configure";

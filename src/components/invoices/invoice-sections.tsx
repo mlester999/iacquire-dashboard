@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BellRing, History } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
-import { eventSentence, formatDay, formatInstant, money } from "@/lib/invoices/labels";
+import { eventSentence, formatDay, formatInstant, madeByText, money, moneyCode } from "@/lib/invoices/labels";
 import { formatBps } from "@/lib/invoices/lines";
 import { stepLabel } from "@/lib/invoices/reminders";
 import type { InvoiceFullDetail } from "@/server/invoices/invoices";
@@ -20,7 +20,7 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
         {i.status === "issued" && (!i.isTest || i.paymentStatus !== "unpaid") && <PaymentBadge status={i.paymentStatus} />}
         {i.overdue && <OverdueBadge days={i.daysOverdue} />}
         {i.writtenOffAt && <Badge tone="outline" title={i.writeOffReason ?? undefined}>Written off</Badge>}
-        {i.createdVia !== "manual" && <Badge tone="violet">Made by {i.createdVia === "workflow" ? "an automation" : "a deal"}</Badge>}
+        {madeByText(i.createdVia) && <Badge tone="violet">{madeByText(i.createdVia)}</Badge>}
       </div>
       {i.isTest && <p role="note" className="rounded-xl border border-violet-ink/20 bg-violet-soft px-3 py-2 text-[13px] text-violet-ink">This is a test invoice: nothing is owed on it and no money moves. It has its own numbers, is never reminded about, is left out of what is owed, overdue, your revenue and your deals, and can be voided or deleted even after a test payment.</p>}
       <dl className="grid gap-x-8 gap-y-3 text-[13.5px] sm:grid-cols-2 lg:grid-cols-3">
@@ -40,6 +40,39 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
         ))}
       </dl>
       {i.overpaidMinor > 0 && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">More than the total was received ({money(i.overpaidMinor, i.currency)} extra). Nothing was refunded; decide what to do with the difference.</p>}
+    </section>
+  );
+}
+
+const BILLING_WORDS = { monthly: "every month", yearly: "every year" } as const;
+
+/** Where an invoice made from a proposal came from, and the monthly or yearly lines that were left for the owner to decide. Nothing here changes anything. */
+export function SourceNote({ detail }: { detail: InvoiceFullDetail }) {
+  const s = detail.source;
+  if (!s) return null;
+  const i = detail.invoice;
+  const hidden = Math.max(0, s.recurringCount - s.recurring.length);
+  return (
+    <section aria-labelledby="inv-source" className="space-y-2 rounded-2xl border border-line bg-surface p-4">
+      <h2 id="inv-source" className="text-[15px] font-semibold text-ink">Made from a proposal</h2>
+      <p className="text-[13.5px] text-ink-2">
+        The lines the customer pays once were copied from{" "}
+        {s.proposalNumber ? <Link href={`/proposals/${s.proposalId}`} className="inline-flex min-h-11 items-center font-medium text-ink underline-offset-2 hover:underline sm:min-h-0">proposal {s.proposalNumber}</Link> : "an accepted proposal"}
+        , version {s.proposalVersion}, as that version was accepted. Nothing else was copied, and nothing was issued or sent.
+        {i.status === "draft" || i.status === "pending_approval" ? " You can change this draft before it is issued." : ""}
+      </p>
+      {s.recurringCount > 0 && (
+        <div className="rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+          <p className="font-medium">{s.recurringCount === 1 ? "One line is" : `${s.recurringCount} lines are`} not on this invoice.</p>
+          <p className="mt-0.5">The customer pays {s.recurringCount === 1 ? "it" : "them"} every month or every year, and whether and when to invoice {s.recurringCount === 1 ? "it" : "them"} is yours to decide.</p>
+          {s.recurring.length > 0 && (
+            <ul className="mt-1.5 list-disc space-y-0.5 pl-5" aria-label="Lines that were not copied">
+              {s.recurring.map((r, n) => <li key={n} className="break-words">{r.name}, {BILLING_WORDS[r.billing]}, {moneyCode(r.totalMinor, i.currency)} each time</li>)}
+              {hidden > 0 && <li>and {hidden} more</li>}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
   );
 }

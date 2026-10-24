@@ -12,6 +12,9 @@ class Done extends Error {}
 const down = readFileSync("supabase/rollbacks/0091_proposals.down.sql", "utf8");
 // 0092's tables hang off proposals, so a real rollback takes 0092 out first.
 const downEsign = readFileSync("supabase/rollbacks/0092_esign.down.sql", "utf8");
+// So do 0093's invoices (an invoice made from a proposal points at it), and they come out first, newest first like every other rollback.
+const downInvoices = readFileSync("supabase/rollbacks/0093_customer_invoices_payments.down.sql", "utf8");
+const INVOICE_TABLES = ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
 
 /** Splits a script into statements, keeping `$$ ... $$` bodies whole (the test driver runs one statement per call). */
 function statements(sql: string): string[] {
@@ -33,6 +36,7 @@ function statements(sql: string): string[] {
 
 type Db = { query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> };
 const runDown = async (db: Db) => {
+  for (const stmt of statements(downInvoices)) await db.query(stmt);
   for (const stmt of statements(downEsign)) await db.query(stmt);
   for (const stmt of statements(down)) await db.query(stmt);
 };
@@ -42,6 +46,11 @@ const runDown = async (db: Db) => {
  * by design, so clearing them means switching their triggers off, deliberately, for this one transaction.
  */
 const clearAll = async (db: Db) => {
+  // The invoices first (they point at proposals); their history and payments are append-only and go only under the purge declaration an operator's clear-out makes.
+  await db.query("select set_config('iaq.purge', 'on', true)");
+  for (const t of INVOICE_TABLES) await db.query(`delete from ${t}`);
+  await db.query("delete from conversation_messages where scope = 'billing'");
+  await db.query("delete from notifications where kind like 'invoice\\_%' or kind in ('payment_connection_attention', 'payment_review_needed')");
   await db.query("alter table signature_events disable trigger signature_events_immutable");
   await db.query("delete from signature_requests");
   await db.query("alter table signature_events enable trigger signature_events_immutable");
@@ -401,10 +410,33 @@ describe("the rollback", () => {
         throw new Done();
       }),
     ).rejects.toBeInstanceOf(Done);
+    // (0093's rollback runs first and takes "billing" out; "delivery" is 0091's, so it is the proposals rollback that takes that one out.)
     expect(before).toContain("delivery");
     expect(after).not.toContain("delivery");
-    expect(after).toEqual(before.filter((s) => s !== "delivery"));
-    expect(after).toEqual(expect.arrayContaining(["reply", "followup", "human", "reminder", "retention", "billing"]));
+    expect(after).toEqual(before.filter((s) => s !== "delivery" && s !== "billing"));
+    expect(after).toEqual(expect.arrayContaining(["reply", "followup", "human", "reminder", "retention"]));
+  });
+
+  it("refuses to run before 0093's rollback, because an invoice made from a proposal points at it, and changes nothing", async () => {
+    let tablesBefore = 0;
+    let tablesAfter = 0;
+    await expect(
+      withSystem(async (db) => {
+        await clearAll(db);
+        for (const stmt of statements(downEsign)) await db.query(stmt);
+        tablesBefore = (await db.query("select 1 from pg_class where relnamespace = 'public'::regnamespace and relname = any($1::text[])", [TABLES])).rows.length;
+        await db.query("savepoint probe");
+        try {
+          for (const stmt of statements(down)) await db.query(stmt);
+        } catch (e) {
+          await db.query("rollback to savepoint probe");
+          tablesAfter = (await db.query("select 1 from pg_class where relnamespace = 'public'::regnamespace and relname = any($1::text[])", [TABLES])).rows.length;
+          throw e;
+        }
+      }),
+    ).rejects.toThrow(/Rollback refused: customer invoices \(0093\) point at proposals\. Roll 0093_customer_invoices_payments back first\./);
+    expect(tablesAfter).toBe(tablesBefore);
+    expect(tablesBefore).toBe(TABLES.length);
   });
 
   it("runs once a client has exported and cleared its proposals, the append-only history included", async () => {

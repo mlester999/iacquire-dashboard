@@ -31,6 +31,17 @@ export const moneyCode = (minor: number, currency: CurrencyCode) => formatMinor(
 /** For a form field: 1500 PHP -> "1500.00" (no symbol, no grouping), the way parseAmount reads it back. */
 export const amountText = (minor: number, currency: CurrencyCode) => toDecimalString(minor, currency);
 
+/** The badge for a draft a person did not type, or null for one they did. Anything this does not know is said as "something else", never as a deal. */
+export function madeByText(via: string): string | null {
+  switch (via) {
+    case "manual": return null;
+    case "workflow": return "Made by an automation";
+    case "deal": return "Made by a deal";
+    case "proposal": return "Made from a proposal";
+    default: return "Made by something else";
+  }
+}
+
 type Detail = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 

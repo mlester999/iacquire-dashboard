@@ -83,12 +83,13 @@ export const MODULES: readonly ModuleInfo[] = [
   {
     key: "invoices",
     label: "Customer invoices and payments",
-    unlocks: "Invoices the business sends its own customers: drafts, an approval, numbering, the customer's private pay page, payments and refunds recorded by hand, reminders, and verified revenue in the Lead Sources report. Under Settings > Customer payments the owner can connect the business's own payment account.",
-    whenOff: "Invoices leave their menu and no new invoice work can be done. The customer's pay page still opens but no longer offers Pay online, reminders and the overdue check stop for this workspace, and the Lead Sources report stops showing verified revenue. A payment a provider reports for an invoice already issued is still recorded, because that money has arrived.",
+    unlocks: "Invoices the business sends its own customers: drafts, an approval, numbering, the customer's private pay page, payments and refunds recorded by hand, sending an issued invoice's link to the customer after the team has read the message, reminders, a draft invoice made from an accepted proposal, and verified revenue in the Lead Sources report. Under Settings > Customer payments the owner can connect the business's own payment account.",
+    whenOff: "Invoices leave their menu and no new invoice work can be done. The customer's pay page still opens but no longer offers Pay online, reminders and the overdue check stop for this workspace, a message with an invoice's link that has not gone out yet is not sent, and the Lead Sources report stops showing verified revenue. A payment a provider reports for an invoice already issued is still recorded, because that money has arrived.",
     needs: [
       { kind: "owner", text: "The owner fills in the invoice settings (business name, number prefix, payment instructions, what happens to a deal when an invoice is paid)." },
       { kind: "connection", text: "To take payments online the owner connects the business's own PayMongo or PayPal account in test mode, sees a test payment succeed on a test invoice (a test invoice is never owed, reminded or counted as revenue), and only then confirms going live. iAcquire never holds the money." },
       { kind: "approval", text: "Reminders to customers stay off until the owner authorizes the exact wording, days and channels." },
+      { kind: "owner", text: "Sending an issued invoice to the customer is a person's confirmed step on the invoice page: they read the exact message first. It goes through the consent-gated send chain, so it needs the customer's consent on the channel, the existing message dispatcher job (messagesDispatched) and the provider's write switch, and a test invoice is never sent. Making a draft invoice from an accepted proposal needs Proposals on too; it issues, sends and charges nothing." },
       { kind: "scheduler", text: "customerPaymentReconcile, invoiceOverdueSweep and invoiceReminders; they run only when the scheduler does, and the first and last are not to be named in a staged start until the founder approves that stage." },
     ],
     env: [

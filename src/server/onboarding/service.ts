@@ -616,7 +616,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       db,
       ctx,
       derived
-        ? fieldsToWrite(derived, null)
+        ? fieldsToWrite(derived, baseline)
         : { name: b.companyName, industry: b.industry, website, region: b.operatingArea, description: b.description, services: b.services, idealCustomers: b.idealCustomers },
     );
     await db.query(

@@ -93,7 +93,13 @@ requests only, and a quote already waiting can still be answered. Nothing here p
   quote that is silent. The support period runs from the day of handover in the workspace's calendar. A finished project shows the date and links to report an issue with it or share feedback.
 * **Retries and notices.** A project request and a project message carry a retry key; sending twice makes one. Project notices carry dedupe keys and go only to team members who hold
   `projects.view`. `projectReviewOverdue` (every 15 minutes, dormant until the scheduler runs) announces a review task that went past its time once; the first look is due in two days unless a
-  Super Admin set a review target in hours (shown to clients only if they choose).
+  Super Admin set a review target in hours (shown to clients only if they choose). A new project request and a new change request each open a first-look task for the team
+  (`initial_review`, `review_change`); a change's task is finished when the team starts its review, classifies it, asks a question, quotes, declines or makes it, when the client takes it
+  back, or when the project is cancelled, so a change nobody has looked at is announced once and one that was looked at never is. A client's message about a change also leaves a
+  reply task (`respond_to_client`, due in a day, one open at a time), which the team's question on a change or any reply in the project's conversation settles.
+* **Dates are the workspace's own.** A quote's valid-until day (when it is sent and when the owner answers), a project request's preferred deadline, a change quote's valid-until day and the
+  support period all use the day in the workspace's time zone, never the server's UTC day.
+* **Team notes on a change** are saved against the version the person read: if a colleague saved in between, nothing is overwritten and the screen shows their version beside a banner.
 
 Not verified in a browser: the new panels (`/projects/[id]` Change requests and Before we start, the admin project page panels) were exercised in jsdom and static rendering only.
 

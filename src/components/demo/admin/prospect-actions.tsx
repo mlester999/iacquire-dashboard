@@ -40,8 +40,6 @@ const WORDS: Record<"expire" | "block" | "decline" | "erase", { title: string; d
   erase: { title: "Erase this prospect's details", description: "Removes their name, email address, business name, conversation, links and the copies of their emails, and the words your team wrote about them. The record that a demo was asked for stays, without any of it. This cannot be undone.", confirm: "Erase their details", danger: true },
 };
 
-const DANGER = "!bg-[#c6363c] hover:!bg-[#a92f34]";
-
 export function ProspectActions({
   id,
   actions,
@@ -280,7 +278,7 @@ export function ProspectActions({
               <Button variant="ghost" onClick={close}>
                 Cancel
               </Button>
-              <Button className={WORDS[kind].danger ? DANGER : undefined} loading={busy} disabled={reasonShort} onClick={() => submitReason(kind)}>
+              <Button variant={WORDS[kind].danger ? "danger" : "primary"} loading={busy} disabled={reasonShort} onClick={() => submitReason(kind)}>
                 {WORDS[kind].confirm}
               </Button>
             </>

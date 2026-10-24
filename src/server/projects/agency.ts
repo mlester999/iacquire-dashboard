@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem, type Queryable } from "@/server/db";
+import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
@@ -395,7 +395,7 @@ export async function sendQuote(user: SessionUser, requestId: string, quoteId: s
     if (!q.payment_terms) missing.push("payment terms");
     if (!q.warranty_terms) missing.push("support or warranty period");
     if (missing.length) throw new AppError("invalid_input", `Complete the quote before sending: ${missing.join(", ")}.`);
-    if (q.valid_until && q.valid_until < new Date().toISOString().slice(0, 10)) throw new AppError("invalid_input", "The quote's valid-until date is in the past.");
+    if (q.valid_until && q.valid_until < (await orgToday(db, r.org_id))) throw new AppError("invalid_input", "The quote's valid-until date is in the past.");
     const hash = quoteContentHash(toQuoteView(q));
     await db.query("update project_quotes set status = 'superseded' where request_id = $1 and status = 'sent'", [requestId]);
     await db.query("update project_quotes set status = 'sent', sent_at = now(), sent_by = $2, content_hash = $3 where id = $1", [quoteId, user.id, hash]);

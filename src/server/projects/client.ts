@@ -12,11 +12,11 @@ import type { OrgContext } from "@/server/tenancy/context";
 import { firstName } from "@/lib/utils";
 import { BUDGET_BANDS, QUOTE_ACKNOWLEDGEMENT, suggestServices, type ProjectStatus, type ServiceView } from "@/lib/projects";
 import { todayIn } from "@/lib/invoices/state";
+import { firstLookHours, orgToday } from "@/server/projects/access";
 import {
   REQUEST_COLUMNS, iso, quoteContentHash, toQuoteView, toRequestView,
   type DeliveryView, type FileView, type MessageView, type MilestoneView, type PrerequisiteView, type ProjectDetail, type QuoteRow, type RequestRow, type RequestView, type UpdateView,
 } from "@/server/projects/shared";
-import { loadSupportSettings } from "@/server/support/settings";
 import { loadChangeOrders } from "@/server/projects/change-orders";
 import { seedDefaultPrerequisites } from "@/server/projects/prerequisites";
 
@@ -211,7 +211,8 @@ async function suggestionsFor(db: Queryable, text: string, tools: string[]): Pro
 export async function createProjectRequest(ctx: OrgContext, input: ProjectRequestInput): Promise<{ id: string; ref: string; existing?: boolean }> {
   if (!ctx.can("projects.request")) throw new AppError("forbidden", "Your role can't request projects. Ask a workspace owner or admin.");
   const d = projectRequestSchema.parse(input);
-  if (d.preferredDeadline && d.preferredDeadline < new Date().toISOString().slice(0, 10)) throw new AppError("invalid_input", "Choose a deadline that is today or later.");
+  // A deadline is a day in the workspace's own calendar: "today" is not the server's UTC day.
+  if (d.preferredDeadline && d.preferredDeadline < (await withSystem((db) => orgToday(db, ctx.org.orgId)))) throw new AppError("invalid_input", "Choose a deadline that is today or later.");
   // A retry of the same submission returns the request that already exists, before it counts against the rate limit or announces anything again.
   if (d.idempotencyKey) {
     const found = (await withSystem((db) => db.query<{ id: string; ref: string }>("select id, ref from client_project_requests where org_id = $1 and created_by = $2 and idempotency_key = $3", [ctx.org.orgId, ctx.user.id, d.idempotencyKey]))).rows[0];
@@ -256,8 +257,7 @@ export async function createProjectRequest(ctx: OrgContext, input: ProjectReques
       await db.query("insert into project_requirements (request_id, org_id, key, label, answer, sort_order) values ($1,$2,$3,$4,$5,$6)", [r.id, ctx.org.orgId, key, label, answer, i]);
     }
     // Two days unless the Super Admin set a review target: the team is told when this passes (projectReviewOverdue), and a client hears of it only if that was chosen.
-    const reviewHours = (await loadSupportSettings(db)).projectReviewTargetHours ?? 48;
-    await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'initial_review',$3, now() + make_interval(hours => $4::int))", [r.id, ctx.org.orgId, `Review ${r.ref}: ${d.title}`.slice(0, 200), reviewHours]);
+    await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'initial_review',$3, now() + make_interval(hours => $4::int))", [r.id, ctx.org.orgId, `Review ${r.ref}: ${d.title}`.slice(0, 200), await firstLookHours(db)]);
     await db.query("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'system','Request submitted. The iAcquire team will review it and reply here.')", [r.id, ctx.org.orgId, ctx.user.id]);
     await notifyAgency(db, ctx.org.orgId, { kind: "project_submitted", title: `${r.ref}: ${d.title}`, body: `${ctx.org.name} · ${serviceName ?? "Custom project"}`, link: `/admin/projects/${r.id}`, dedupeKey: `project:${r.id}:submitted` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.request_submitted", targetType: "project_request", targetId: r.id, result: "success", metadata: { ref: r.ref, service: d.serviceSlug ?? null } }, db);
@@ -444,7 +444,8 @@ export async function decideQuote(ctx: OrgContext, quoteId: string, decision: Qu
     }
     const view = toQuoteView(q);
     if (!q.content_hash || quoteContentHash(view) !== q.content_hash) throw new AppError("conflict", "This quote changed after it was sent. Ask iAcquire to resend it.");
-    if (decision === "accepted" && q.valid_until && q.valid_until < new Date().toISOString().slice(0, 10)) throw new AppError("conflict", "This quote has expired. Ask iAcquire for an updated quote.");
+    // Good through its valid-until day in the workspace's own calendar, expired from the next.
+    if (decision === "accepted" && q.valid_until && q.valid_until < (await orgToday(db, ctx.org.orgId))) throw new AppError("conflict", "This quote has expired. Ask iAcquire for an updated quote.");
 
     const ack = decision === "accepted" ? QUOTE_ACKNOWLEDGEMENT : decision === "declined" ? "I decline this quote." : "I'm requesting changes to this quote.";
     await db.query("insert into quote_approvals (quote_id, request_id, org_id, decision, note, decided_by, content_hash, acknowledgement, ip_hash) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [quoteId, q.request_id, ctx.org.orgId, decision, clean || null, ctx.user.id, q.content_hash, ack, ipHash]);

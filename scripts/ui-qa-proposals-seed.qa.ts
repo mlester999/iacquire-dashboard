@@ -17,7 +17,7 @@ import { env } from "../src/server/env";
 import { memberActor } from "../src/server/crm/actor";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
 import type { Membership, OrgContext } from "../src/server/tenancy/context";
-import { seedDeliveryWorld, seedProposalWorld, seedSigningWorld } from "./proposals-qa-world";
+import { seedDeliveryWorld, seedInvoicingStories, seedProposalWorld, seedSigningWorld } from "./proposals-qa-world";
 
 const ORG_NAME = "Harbor Home Services (Inbox QA)";
 const SUMMARY_FILE = path.resolve(".data/crm-qa/proposals-seed-summary.json");
@@ -54,11 +54,25 @@ async function seed() {
     const out = await seedDeliveryWorld(await actors());
     console.log(`Delivery QA data is ready. Consent to email is on record for ${out.ready.join(", ")}; ${out.refused.join(", ")} has none, so the preview says it cannot be sent.`);
   };
+  // Opt in with PROPOSALS_QA_INVOICING=1: customer invoices are switched on for the workspace and three accepted proposals are added, to try "Make a draft invoice" on a proposal's
+  // Invoice tab. Nothing is issued, sent or charged. Once only: it adds nothing when its first story is already there.
+  const invoicing = async () => {
+    if (process.env.PROPOSALS_QA_INVOICING !== "1") return;
+    if ((await q("select 1 from proposals where org_id = $1 and title = $2", [org.id, "Boiler service for the Soto household"])).length) {
+      console.log("The invoicing QA proposals already exist; nothing added.");
+      return;
+    }
+    const owner = ctxFor(await user("owner.harbor@example.test"), org, "owner");
+    const stories = await seedInvoicingStories(await actors(), owner);
+    console.log("Invoicing QA proposals are ready (customer invoices are switched on for this workspace). Open each on its Invoice tab:");
+    for (const s of stories) console.log(`  ${s.number}  ${s.title}: ${s.state}\n      team: ${s.proposalPath}${s.invoicePath ? `\n      draft invoice: ${s.invoicePath}` : ""}`);
+  };
   if ((await q("select 1 from proposals where org_id = $1", [org.id])).length) {
     // The workspace was seeded before electronic signing existed: add only the three signing stories, once.
     if ((await q("select 1 from esign_connections where org_id = $1", [org.id])).length) {
       console.log("The proposals QA data already exists; nothing added.");
       await delivery();
+      await invoicing();
       return;
     }
     const added = await seedSigningWorld(await actors());
@@ -72,6 +86,7 @@ async function seed() {
   console.log(`Proposals QA data is ready (${rows.length} proposals). Customer addresses:`);
   for (const r of rows) console.log(`  ${r.number}  ${r.state}\n      ${r.url ?? "(no customer link)"}${r.email ? `\n      code email to ${r.email}` : ""}`);
   await delivery();
+  await invoicing();
 }
 
 it.skipIf(!qaDataDir().startsWith(".data/crm-qa/"))("seeds fictional proposals into the isolated QA database", async () => {

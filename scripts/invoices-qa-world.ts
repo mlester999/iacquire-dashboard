@@ -15,7 +15,8 @@
  */
 import { withSystem } from "../src/server/db/index";
 import type { CrmActor } from "../src/server/crm/actor";
-import { createContact } from "../src/server/crm/contacts";
+import { createContact, setContactConsent } from "../src/server/crm/contacts";
+import { connectQaEmail } from "./qa-delivery-channel";
 import { createOpportunity } from "../src/server/crm/opportunities";
 import { addCost } from "../src/server/attribution/costs";
 import { recordTouch } from "../src/server/attribution/touches";
@@ -206,4 +207,29 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
   const i16 = await issue(d16.invoice.id, d16.invoice.version, ago(1));
   await record("Testing the payment account: open", "a TEST invoice a customer can open and pay at the testing checkout", i16.invoice.id, i16.invoice.number, true);
   return rows;
+}
+
+/**
+ * Makes some of the world's issued invoices sendable to their customers from the invoice page, for browser QA of "Send it to the customer". It contacts NO ONE (see
+ * scripts/qa-delivery-channel.ts: the workspace's email goes through a native Resend channel with a made-up credential, and the QA environment keeps RESEND_WRITES_ENABLED off, so a
+ * confirmed message is queued and then blocked by the dispatcher instead of leaving). The workspace is given credits and a published email rate, and these customers have the service
+ * consent for email that a business would have recorded:
+ *
+ *   - Annual boiler service (Mara Villanueva), Water heater inspection (Noel Tan, overdue) and Kitchen repipe (Ines Ocampo, part paid): consent on record, so the preview is ready and a
+ *     confirmed message is queued;
+ *   - Remote monitoring set-up (Tomas Reyes): no consent on record, so the preview says the send chain would refuse it;
+ *   - the two TEST invoices, the paid and written-off ones, the void one and the drafts: never offered. A test invoice is never sent, and the page says so.
+ *
+ * It replaces the workspace's email channel with the native one (one email channel per workspace), so it is separate from seedInvoiceWorld and runs only when asked for.
+ */
+export async function seedInvoiceDeliveryWorld(a: Pick<InvoiceWorldPeople, "owner" | "ownerActor">): Promise<{ ready: string[]; refused: string[] }> {
+  const orgId = a.owner.org.orgId;
+  await connectQaEmail(orgId, a.owner.user.id);
+  const contactOf = async (email: string) => (await withSystem((db) => db.query<{ id: string }>("select id from contacts where org_id = $1 and email = $2 and deleted_at is null", [orgId, email]))).rows[0]?.id;
+  for (const email of ["mara.villanueva@customer.example.test", "noel.tan@customer.example.test", "ines.ocampo@customer.example.test"]) {
+    const id = await contactOf(email);
+    if (!id) throw new Error(`The QA customer ${email} does not exist: seed the invoices world first.`);
+    await setContactConsent(a.ownerActor, id, { channel: "email", purpose: "service", status: "granted", evidence: "Agreed to messages about their work on the intake form (QA data)" });
+  }
+  return { ready: ["Annual boiler service", "Water heater inspection", "Kitchen repipe"], refused: ["Remote monitoring set-up"] };
 }

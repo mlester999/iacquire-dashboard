@@ -1,5 +1,5 @@
 // The demo funnel's settings: their defaults, their ranges and the check a Super Admin's change goes through. Pure. The ranges are the ones migration 0100 enforces as check
-// constraints, and tests/demo-settings.test.ts keeps the two in step.
+// constraints, and tests/demo-migration.test.ts keeps the two in step.
 //
 // Every number below is a PROPOSAL pending the founder's confirmation (docs/demo-funnel.md lists them). The demo itself is off until a Super Admin switches it on AND the
 // environment switch DEMO_ENABLED agrees; the AI chat is a second switch, off by default, and the scripted tour is what ships working.

@@ -50,15 +50,15 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 
 ## Phase 5: sales closing and customer retention
 
-Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally at `2e192a1`; Waves 2 and 3 are not built (a partial, ungated Wave 2 work-in-progress commit, `cca6605`, is on the branch and is counted nowhere in this file). "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
+Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally at `2e192a1`. **Wave 2 stages A to G are now implemented in the worktree** (staff Messages 0096, staff workload 0097 including its screens, Requests completion 0098, payment controls 0099, demo funnel 0100, onboarding snapshot 0102, consent-aware invoice delivery and invoice-from-proposal); stage H (purchase intents, 0101) is **Not Started**. Wave 3 is not built. The workload screens are browser-QA'd at 1280/375 px, light and dark; the other Wave 2 screens are not yet. The final full suite is green. See `wave-2-checkpoint.md`. "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
 
 | Subphase | Overall state |
 | --- | --- |
-| 5A Proposals (0091) | Verified Locally; Browser-QA'd except the editor interactions and the AI draft button. Sending by email or text: Not built in Wave 1 |
+| 5A Proposals (0091) | Verified Locally; Wave 1 screens Browser-QA'd except the editor interactions and the AI draft button. Wave 2 M1 sending by email/text: Implemented, Verified Locally; **no real email provider, not browser-QA'd** |
 | 5B E-signature (0092) | Verified Locally and Browser-QA'd against the in-process stand-in. The PandaDoc adapter: Blocked-external. Withdraw call, certificate, master account: Not built |
-| 5C Customer invoices (0093) | Verified Locally; Browser-QA'd except the issue, record-payment, refund and void dialogs and the print layout. Credit notes, sending an invoice through the consent chain, invoice from an accepted proposal: Not built |
+| 5C Customer invoices (0093) | Verified Locally; Wave 1 screens Browser-QA'd except the issue, record-payment, refund and void dialogs and the print layout. Wave 2 M2: consent-aware invoice sending and invoice-from-proposal **Implemented, Verified Locally**; not browser-QA'd and no real email provider. Credit notes remain Not built |
 | 5D Customer payments and verified revenue | Verified Locally; Browser-QA'd against the simulated provider (Lead Sources revenue not driven). PayMongo and PayPal adapters: Blocked-external |
-| 5E Setup payment gate and clearance | Not Started in Wave 1 (Wave 2 stage P1 is partial and ungated) |
+| 5E Setup payment gate and clearance | **Implemented, Verified Locally** in Wave 2 (P1, migration 0099 and the billing lifecycle tests); not browser-QA'd; no live provider |
 | 5F Reputation (0094, 0095) | Verified Locally; Browser-QA'd except the survey page, the request dialog and batch approval. Google and Facebook adapters: Blocked-external |
 | 5G Retention | Verified Locally. Birthdays, anniversaries and customer-facing renewal notices: Not built |
 | Cross-cutting (cost meter, kill switches, consent rule, module rollout page, jobs, documents) | Verified Locally; the rollout page Browser-QA'd; hosted rollout Needs Founder Approval |
@@ -165,11 +165,14 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 
 | Id | Task | State |
 | --- | --- | --- |
-| 6.x | Audit of the requests center; internal staff messages (missing); workload; collaboration | Not Started (audited and designed; Wave 1 delivered nothing here. Partial, ungated Wave 2 work on staff messages (0096) and request fixes sits in the commit `cca6605` and is not counted) |
+| 6.1 | Requests Center completion: change orders and decisions, prerequisites, scope amendments, mentions, surveys, AI triage, satisfaction and closure (0098) | **Implemented, Verified Locally** (targeted tests); not browser-QA'd |
+| 6.2 | Staff Messages: direct, group and channel screens, threads, search, attachments, reactions, read state, notices, settings and permissions (0096) | **Implemented, Verified Locally** (142 targeted screen/route/service tests plus the migration and isolation suites); not browser-QA'd |
+| 6.3 | Staff workload: engine, labels, permissions, snapshot/alerts job, overview, board with skill-aware suggestions, calendar, project health, person and manage screens (0097) | **Implemented, Verified Locally, Browser-QA'd** at 1280/375 px light/dark (six pages, axe 0 on overview/board; assignment, capacity save and time-off add/remove driven); every rule number is still a proposal |
+| 6.4 | Requests + Messages + workload + projects + support working as one system | **Not yet verified**; the Wave 2 cross-module scenarios are pending |
 
 ## Phase 7: system-wide integration and launch readiness
 
-Wave 1 delivered four pieces that the plan placed in the Phase 7 hardening wave. They are listed here with their state; the rest of Phase 7 is Not Started. Partial, ungated Wave 2 work on payment clearance (0099) and the demo funnel (0100) sits in the commit `cca6605` and is not counted.
+Wave 1 delivered four pieces that the plan placed in the Phase 7 hardening wave. Wave 2 also landed payment clearance (0099), onboarding (0102) and the demo funnel (0100) before Phase 7. The Phase 7 integration audit itself is **Not Started**; its entry below still describes work that has not been done.
 
 | Id | Task | State |
 | --- | --- | --- |

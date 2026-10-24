@@ -220,6 +220,7 @@ describe("the registered jobs", () => {
     projectReviewOverdue: 15,
     fairUseChecks: 60,
     inactivityReview: 360,
+    maintenanceRenewalSweep: 360,
     offboardingReminders: 360,
     crmWorkflowRecovery: 5,
     inboxAttention: 5,
@@ -243,6 +244,7 @@ describe("the registered jobs", () => {
     invoiceOverdueSweep: 60,
     invoiceReminders: 15,
     staffMessagesMaintenance: 60,
+    staffWorkloadSnapshots: 15,
   };
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {

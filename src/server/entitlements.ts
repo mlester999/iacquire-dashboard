@@ -34,7 +34,7 @@ export async function readCurrentPlan(db: Queryable, orgId: string): Promise<Pla
 }
 
 /** The agency's own calendar day: the day a plan is paid through is the day the agency recorded, in the agency's time zone. */
-async function agencyToday(db: Queryable, now: Date): Promise<string> {
+export async function agencyToday(db: Queryable, now: Date = new Date()): Promise<string> {
   const tz = (await db.query<{ timezone: string }>("select timezone from organizations where kind = 'agency' limit 1")).rows[0]?.timezone ?? "UTC";
   return todayIn(now, tz);
 }

@@ -9,7 +9,6 @@ import { resetRateLimits } from "./support/support-world";
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
 let staff: ReturnType<typeof agencyUser>;
-let subscriptionId: string;
 const ctx = () => ctxFor(owner, org, "owner");
 
 beforeAll(async () => {
@@ -22,10 +21,10 @@ beforeAll(async () => {
     await db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [org.id, s.id]);
     await db.query("insert into client_setup_instances (org_id, state, activated_at) values ($1, 'activated', now())", [org.id]);
     // An active plan with a small allowance of its own (the allowance always comes from the plan's row, never from a constant in the code).
-    subscriptionId = (await db.query<{ id: string }>(
+    await db.query(
       `insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_by, activated_at, billing_start_on, paid_through_on)
-       values ($1, 'active', 29900, 2, 'test', $2, $2, now(), current_date, current_date + 30) returning id`, [org.id, owner.id],
-    )).rows[0].id;
+       values ($1, 'active', 29900, 2, 'test', $2, $2, now(), current_date, current_date + 30)`, [org.id, owner.id],
+    );
   });
 });
 beforeEach(resetRateLimits);

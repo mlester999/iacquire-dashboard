@@ -64,6 +64,8 @@ import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
 import { runStaffMessagesMaintenance } from "@/server/staff-messages/maintenance";
 import { MAINTENANCE_BUDGET_MS as STAFF_MESSAGES_BUDGET_MS } from "@/lib/staff-messages/limits";
+import { runStaffWorkloadSnapshots } from "@/server/staff-workload/job";
+import { SNAPSHOT_BUDGET_MS as STAFF_WORKLOAD_BUDGET_MS } from "@/lib/staff-workload/alerts";
 import { DEMO_EXPIRY_BUDGET_MS, DEMO_RETENTION_BUDGET_MS, runDemoExpiry, runDemoRetention } from "@/server/demo/jobs";
 
 export interface ScheduledJob {
@@ -269,6 +271,12 @@ export const JOBS: ScheduledJob[] = [
   // are deleted ONLY if a Super Admin chose a period (none by default). It sends nothing to anyone and calls no provider. It spends at most STAFF_MESSAGES_BUDGET_MS (the tick is
   // cut off at 120 seconds and the jobs after it wait). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
   { name: "staffMessagesMaintenance", everyMinutes: 60, run: () => runStaffMessagesMaintenance({ budgetMs: STAFF_MESSAGES_BUDGET_MS }) },
+  // Staff workload. Every 15 minutes, and nothing at all while a Super Admin has the module switched off: for each active agency person it writes a row of history when their
+  // label or points changed (and one a day), opens and ends an alert when they are Overloaded or Critical, tells the people who may see everyone's load once for each person,
+  // label and day, tells a person once a day about items past their due time, tidies up after people who left, and removes history older than 400 days. The notices are in-app
+  // only: it sends nothing outside the portal and calls no provider. It spends at most STAFF_WORKLOAD_BUDGET_MS (the tick is cut off at 120 seconds and the jobs after it wait).
+  // Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "staffWorkloadSnapshots", everyMinutes: 15, run: () => runStaffWorkloadSnapshots({ budgetMs: STAFF_WORKLOAD_BUDGET_MS }) },
 ];
 
 /**

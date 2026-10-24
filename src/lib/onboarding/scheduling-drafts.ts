@@ -86,7 +86,8 @@ export function planSchedulingDrafts(a: Answers): SchedulingDraftPlan {
     const name = String(row?.name ?? "").trim();
     if (!name) continue;
     const minutes = Number(row.minutes);
-    if (name.length > NAME_MAX) skipped.push({ name, why: `A name is up to ${NAME_MAX} characters.` });
+    // The left-out name is echoed to the owner, so a name too long to store is shown cut short.
+    if (name.length > NAME_MAX) skipped.push({ name: `${name.slice(0, NAME_MAX)}…`, why: `A name is up to ${NAME_MAX} characters.` });
     else if (seen.has(name.toLowerCase())) skipped.push({ name, why: "Already listed with the same name." });
     else if (!Number.isInteger(minutes) || minutes < MINUTES_MIN || minutes > MINUTES_MAX) skipped.push({ name, why: "A length is 5 minutes to 12 hours." });
     else if (types.length >= MAX_TYPES) skipped.push({ name, why: `A calendar drafts up to ${MAX_TYPES} types.` });

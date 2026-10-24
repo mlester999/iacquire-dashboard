@@ -3,7 +3,7 @@ import { requestMeta } from "@/server/auth/session";
 import { peekVerification } from "@/server/demo/public";
 import { looksLikeDemoToken } from "@/server/demo/tokens";
 import { VerifyPanel } from "@/components/demo/verify-panel";
-import { verifyNotice } from "@/lib/demo/outcomes";
+import { linkStillGood, verifyNotice } from "@/lib/demo/outcomes";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Open your demo", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -18,8 +18,8 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
   const q = await searchParams;
   const token = one(q.token);
   const notice = verifyNotice(one(q.e));
-  if (!looksLikeDemoToken(token)) return <VerifyPanel token="" peek={null} notice={notice ?? { tone: "error", text: "That link is not valid. Ask for a new one from the demo page." }} />;
+  if (!looksLikeDemoToken(token)) return <VerifyPanel token="" peek={null} notice={notice ?? { tone: "error", text: "That link is not valid. Ask for a new one from the demo page." }} linkUnused={linkStillGood(one(q.e))} />;
   const meta = await requestMeta();
   const peek = await peekVerification(token, { ip: meta.ip, userAgent: meta.userAgent });
-  return <VerifyPanel token={token} peek={peek} notice={null} />;
+  return <VerifyPanel token={token} peek={peek} notice={null} linkUnused={false} />;
 }

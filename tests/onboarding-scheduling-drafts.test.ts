@@ -3,6 +3,7 @@ import { withSystem } from "@/server/db";
 import { proposeSchedulingDrafts } from "@/server/onboarding/scheduling-drafts";
 import { verifyCalendarInTx } from "@/server/calendars/activation";
 import { loadBookingContext } from "@/server/calendars/availability";
+import { getBlueprintChecklistForOrg } from "@/server/crm/blueprints/checklist";
 import type { Answers } from "@/lib/onboarding/types";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
@@ -226,6 +227,27 @@ describe("drafting during a submission", () => {
       await run((db) => db.query("drop trigger zz_fail_types on crm_appointment_types"));
       await run((db) => db.query("drop function zz_fail_types()"));
     }
+  });
+});
+
+describe("the CRM setup guide", () => {
+  it("asks for hosts and for the activation checks of the drafted calendar, and says it takes no bookings", async () => {
+    const { org } = await submitRealOnboardingWithBooking("Guide Co");
+    const guide = await getBlueprintChecklistForOrg(org.id);
+    const hosts = guide.items.find((i) => i.key === "calendar_hosts");
+    const verify = guide.items.find((i) => i.key === "calendar_verification");
+    expect(hosts).toMatchObject({ status: "pending", detail: expect.stringContaining("Appointments") });
+    expect(verify).toMatchObject({ status: "pending", detail: expect.stringMatching(/still drafts and take no bookings/) });
+    expect(verify!.detail).toMatch(/hosts|team member|host/i);
+  });
+
+  it("stops asking for hosts once the calendar has one, and keeps asking for the activation checks until they pass", async () => {
+    const { org, owner } = await submitRealOnboardingWithBooking("Guide Done Co");
+    const [cal] = await calendars(org.id);
+    await run((db) => db.query("insert into crm_calendar_members (org_id, calendar_id, user_id) values ($1, $2, $3)", [org.id, cal.id, owner.id]));
+    const before = await getBlueprintChecklistForOrg(org.id);
+    expect(before.items.find((i) => i.key === "calendar_hosts")?.status).toBe("done");
+    expect(before.items.find((i) => i.key === "calendar_verification")?.status).toBe("pending");
   });
 });
 

@@ -8,7 +8,7 @@ import { notifyAgency, notifyOrgRoles, type NotificationInput } from "@/server/n
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { assertRequestChangesEnabled } from "@/server/support/change-feature";
-import { CLIENT_ROLES, addUpdate, authorizeRequest, isStaff, orgToday, type LockedProject } from "@/server/projects/access";
+import { CLIENT_ROLES, addUpdate, authorizeRequest, closeTasks, finishChangeReviewTask, firstLookHours, isStaff, orgToday, type LockedProject } from "@/server/projects/access";
 import { changeQuoteHash, iso, type ChangeDecisionView, type ChangeOrderView, type ScopeAmendmentView } from "@/server/projects/shared";
 import { freeTextProblem } from "@/lib/invoices/guards";
 import { formatMinor, isCurrency } from "@/lib/money";
@@ -161,6 +161,11 @@ export async function createChangeOrderTx(
     return { id: again.id, ref: again.ref, existing: true };
   }
   const c = inserted.rows[0];
+  // Nobody has looked at it yet: the team's first-look task, due by the same review target as a new project request's, so the overdue-review job notices if it sits.
+  await db.query(
+    "insert into project_review_tasks (request_id, org_id, kind, title, due_at, change_order_id) values ($1,$2,'review_change',$3, now() + make_interval(hours => $4::int), $5)",
+    [requestId, actor.orgId, `Review ${c.ref}: ${input.title}`.slice(0, 200), await firstLookHours(db), c.id],
+  );
   await addUpdate(db, project, actor.userId, "system", `Change ${c.ref} requested: ${input.title}`);
   await tellTeam(db, actor.orgId, { title: `${project.ref}: change ${c.ref} requested by ${actor.orgName}`, link: `/admin/projects/${requestId}`, dedupeKey: key(requestId, c.id, "submitted") });
   await recordAudit({ orgId: actor.orgId, actorUserId: actor.userId, actorKind: "user", action: "project.change_submitted", targetType: "project_change_order", targetId: c.id, result: "success", metadata: { ref: c.ref, project: project.ref, fromRequest: Boolean(input.ticketId) } }, db);
@@ -201,6 +206,8 @@ export async function withdrawChangeOrder(ctx: OrgContext, changeId: string): Pr
     if (!isOpenChange(change.status)) throw new AppError("conflict", "This change is no longer open, so it can't be withdrawn.");
     await db.query("update project_change_orders set status = 'withdrawn', decided_at = now() where id = $1", [change.id]);
     await db.query("delete from project_prerequisites where change_order_id = $1 and status = 'pending'", [change.id]);
+    // Nobody on the team looked at it: the client took it back.
+    await finishChangeReviewTask(db, change.id, null);
     await addUpdate(db, project, ctx.user.id, "system", `Change ${change.ref} was withdrawn.`);
     await tellTeam(db, project.org_id, { severity: "warning", title: `${project.ref}: ${ctx.org.name} withdrew change ${change.ref}`, link: `/admin/projects/${project.id}`, dedupeKey: key(project.id, change.id, "withdrawn") });
     await recordAudit({ orgId: project.org_id, actorUserId: ctx.user.id, actorKind: "user", action: "project.change_withdrawn", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref, from: change.status } }, db);
@@ -232,6 +239,13 @@ export async function postChangeMessage(ctx: OrgContext, changeId: string, body:
     // Answering the team's question hands the change back to the team.
     if (answering) await db.query("update project_change_orders set status = 'under_review' where id = $1", [change.id]);
     await db.query("update client_project_requests set last_activity_at = now() where id = $1", [project.id]);
+    // A reply is owed, as for any message on the project: one open reply task at a time, settled by the team's next reply (a question on a change, or a message in the conversation).
+    await db.query(
+      `insert into project_review_tasks (request_id, org_id, kind, title, due_at)
+       select $1::uuid, $2::uuid, 'respond_to_client', $3::text, now() + interval '1 day'
+       where not exists (select 1 from project_review_tasks where request_id = $1::uuid and kind = 'respond_to_client' and status = 'open')`,
+      [project.id, project.org_id, `Reply to ${ctx.org.name} on ${project.ref} (${change.ref})`.slice(0, 200)],
+    );
     await tellTeam(db, project.org_id, { title: `${project.ref}: ${ctx.org.name} ${answering ? "answered a question about" : "wrote about"} change ${change.ref}`, link: `/admin/projects/${project.id}`, dedupeKey: key(project.id, change.id, "message", messageId) });
     await recordAudit({ orgId: project.org_id, actorUserId: ctx.user.id, actorKind: "user", action: "project.change_message", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref, answeringQuestion: answering } }, db);
     return { id: messageId, existing: false };
@@ -321,6 +335,7 @@ export async function startChangeReview(user: SessionUser, changeId: string): Pr
     if (change.status === "under_review") return;
     move(change, "under_review");
     await db.query("update project_change_orders set status = 'under_review' where id = $1", [change.id]);
+    await finishChangeReviewTask(db, change.id, user.id);
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_review_started", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref } }, db);
   });
 }
@@ -338,13 +353,22 @@ export async function classifyChangeOrder(user: SessionUser, changeId: string, i
     if (change.quote_version > 0) throw new AppError("conflict", "A quote was already sent for this change, so how it is classified can't change. Pull the quote back and decline it, or send a new quote.");
     if (change.status === "submitted") await db.query("update project_change_orders set status = 'under_review' where id = $1", [change.id]);
     await db.query("update project_change_orders set classification = $2, internal_notes = case when $3::boolean then $4 else internal_notes end where id = $1", [change.id, input.classification, notes !== undefined, notes ?? null]);
+    await finishChangeReviewTask(db, change.id, user.id);
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_classified", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref, classification: input.classification } }, db);
   });
 }
 
-export async function saveChangeInternalNotes(user: SessionUser, changeId: string, notes: string): Promise<void> {
+/**
+ * Saves the team's notes on one change. `expected` is the notes as the person read them: when it is given and the notes have changed since (a colleague saved in between),
+ * nothing is written and the person is told, so one person's edit never silently replaces another's. Left out, the notes are written as they are.
+ */
+export async function saveChangeInternalNotes(user: SessionUser, changeId: string, notes: string, expected?: string | null): Promise<void> {
   await withSystem(async (db) => {
     const { change, project } = await lockAgencyChange(db, user, changeId, "projects.manage");
+    if (expected !== undefined) {
+      const current = (await db.query<{ internal_notes: string | null }>("select internal_notes from project_change_orders where id = $1", [change.id])).rows[0]?.internal_notes ?? "";
+      if (current !== (expected ?? "")) throw new AppError("conflict", "Someone else changed these notes while you were editing. Nothing was saved. Their version is shown above your text.");
+    }
     await db.query("update project_change_orders set internal_notes = $2 where id = $1", [change.id, notes.trim().slice(0, 4000) || null]);
     // The audit entry records that notes changed, never their contents.
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_notes_saved", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref } }, db);
@@ -367,6 +391,9 @@ export async function requestChangeInfo(user: SessionUser, changeId: string, bod
       [project.id, project.org_id, user.id, text, change.id],
     )).rows[0];
     await db.query("update project_change_orders set status = 'needs_info' where id = $1", [change.id]);
+    await finishChangeReviewTask(db, change.id, user.id);
+    // Asking the client a question is a reply to whatever they last wrote.
+    await closeTasks(db, project.id, ["respond_to_client"], user.id);
     await db.query("update client_project_requests set last_activity_at = now(), assigned_to = coalesce(assigned_to, $2) where id = $1", [project.id, user.id]);
     await tellClient(db, project.org_id, { title: `${project.ref}: iAcquire has a question about change ${change.ref}`, link: `/projects/${project.id}`, dedupeKey: key(project.id, change.id, "needs_info", message.id) });
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_info_requested", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref } }, db);
@@ -388,6 +415,7 @@ export async function applyInScopeRevision(user: SessionUser, changeId: string, 
     }
     await db.query("update client_projects set revisions_used = revisions_used + 1 where request_id = $1", [project.id]);
     await db.query("update project_change_orders set status = 'applied', applied_by = $2, applied_at = now(), decided_at = now() where id = $1", [change.id, user.id]);
+    await finishChangeReviewTask(db, change.id, user.id);
     const used = cp.revisions_used + 1;
     await addUpdate(db, project, user.id, "system", `Change ${change.ref} was made as one of the included revisions${cp.revisions_included !== null ? ` (${used} of ${cp.revisions_included} used)` : ""}.${text ? ` ${text}` : ""}`);
     await tellClient(db, project.org_id, { severity: "success", title: `${project.ref}: change ${change.ref} was made`, link: `/projects/${project.id}`, dedupeKey: key(project.id, change.id, "applied") });
@@ -424,6 +452,7 @@ export async function sendChangeQuote(user: SessionUser, changeId: string, input
          additional_weeks_max = $7, terms_text = $8, valid_until = $9, content_hash = $10 where id = $1`,
       [change.id, version, user.id, q.additionalMinor, q.currency, q.weeksMin, q.weeksMax, q.termsText, q.validUntil, hash],
     );
+    await finishChangeReviewTask(db, change.id, user.id);
     // A person confirms this before the change counts as agreed work. It is kept pending (and hidden from the client) until the change is accepted, and removed if it is not.
     await db.query("delete from project_prerequisites where change_order_id = $1 and status = 'pending'", [change.id]);
     if (q.prerequisiteLabel) {
@@ -467,6 +496,7 @@ export async function declineChangeOrder(user: SessionUser, changeId: string, re
     move(change, "declined");
     await db.query("update project_change_orders set status = 'declined', decided_at = now() where id = $1", [change.id]);
     await db.query("delete from project_prerequisites where change_order_id = $1 and status = 'pending'", [change.id]);
+    await finishChangeReviewTask(db, change.id, user.id);
     await addUpdate(db, project, user.id, "system", `Change ${change.ref} will not be made: ${text}`);
     await tellClient(db, project.org_id, { title: `${project.ref}: change ${change.ref} will not be made`, link: `/projects/${project.id}`, dedupeKey: key(project.id, change.id, "declined") });
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_declined", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref } }, db);
@@ -481,6 +511,7 @@ export async function markChangeApplied(user: SessionUser, changeId: string, not
     // Only a change the client accepted is made this way; one that is being reviewed is a revision, which has its own count.
     if (change.status !== "accepted") throw new AppError("conflict", "Only a change the client accepted can be marked as made.");
     await db.query("update project_change_orders set status = 'applied', applied_by = $2, applied_at = now() where id = $1", [change.id, user.id]);
+    await finishChangeReviewTask(db, change.id, user.id);
     await addUpdate(db, project, user.id, "system", `Change ${change.ref} was made.${text ? ` ${text}` : ""}`);
     await tellClient(db, project.org_id, { severity: "success", title: `${project.ref}: change ${change.ref} was made`, link: `/projects/${project.id}`, dedupeKey: key(project.id, change.id, "applied") });
     await recordAudit({ orgId: project.org_id, actorUserId: user.id, actorKind: "agency", action: "project.change_applied", targetType: "project_change_order", targetId: change.id, result: "success", metadata: { ref: change.ref, kind: "accepted_change" } }, db);
@@ -497,6 +528,7 @@ export async function withdrawOpenChangeOrders(db: Queryable, project: { id: str
   );
   if (!closed.rows.length) return 0;
   await db.query("delete from project_prerequisites where change_order_id = any($1::uuid[]) and status = 'pending'", [closed.rows.map((r) => r.id)]);
+  await db.query("update project_review_tasks set status = 'done', completed_at = now(), completed_by = $2 where change_order_id = any($1::uuid[]) and status = 'open'", [closed.rows.map((r) => r.id), userId]);
   await recordAudit({ orgId: project.org_id, actorUserId: userId, actorKind: "agency", action: "project.changes_closed_with_project", targetType: "project_request", targetId: project.id, result: "success", metadata: { ref: project.ref, closed: closed.rows.length } }, db);
   return closed.rows.length;
 }

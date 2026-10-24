@@ -6,7 +6,7 @@ import { recordAudit } from "@/server/audit";
 import { createInvitation, normalizeEmail } from "@/server/auth/service";
 import { createConfigVersion, currentSettings } from "@/server/workforce/service";
 import { sanitizeClientText } from "@/server/workforce/compiler";
-import { syncProfileToAnswers } from "@/server/onboarding/profile-sync";
+import { lockOnboardingRow, syncProfileToAnswers } from "@/server/onboarding/profile-sync";
 import { onRoleChanged } from "@/server/staff/service";
 import { aiPreferencesSchema } from "@/lib/agent-settings";
 import { PROFILE_KEYS, PROFILE_LIMITS, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
@@ -71,6 +71,8 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
   if (!isValidTimeZone(d.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
   // One writer for the business profile (also used by onboarding), then the questionnaire's answers follow in the same transaction so nobody is asked the same thing twice.
   const written = await withUser(ctx.user.id, async (db) => {
+    // The questionnaire's row first, as a submission takes it, so the two can never each hold what the other is waiting for.
+    await lockOnboardingRow(db, ctx.org.orgId);
     const res = await writeBusinessProfile(db, ctx, {
       name: d.name, industry: d.industry, website: d.website, region: d.region, timezone: d.timezone,
       description: d.description, services: d.services, idealCustomers: d.idealCustomers, brandColor: d.brandColor,

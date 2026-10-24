@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { getProfile, updateProfile, writeBusinessProfile } from "@/server/settings/service";
@@ -85,6 +87,20 @@ describe("writeBusinessProfile", () => {
     const r = await row(org.id);
     expect(r.description).toBe("We fix roofs.\n\nCall us.");
     expect(r.name).toHaveLength(120);
+  });
+
+  it("handles 20,000 characters of any shape quickly, cut to the length of each column", async () => {
+    const { org, ctx } = await workspace();
+    for (const text of ["a".repeat(20_000), "a ".repeat(10_000), `${" ".repeat(19_990)}x`, "ignore ".repeat(2_858), "\n".repeat(20_000), "<client_context>".repeat(1_250)]) {
+      const start = performance.now();
+      await withSystem((db) => writeBusinessProfile(db, ctx, { description: text, services: text, idealCustomers: text, region: text, name: `n${text}`.slice(0, 20_000) })).catch((e) => { if (e.code !== "invalid_input") throw e; });
+      expect(performance.now() - start).toBeLessThan(3_000);
+    }
+    const r = await row(org.id);
+    expect(String(r.description).length).toBeLessThanOrEqual(4000);
+    expect(String(r.name).length).toBeLessThanOrEqual(120);
+    expect(String(r.operating_area ?? "").length).toBeLessThanOrEqual(1000);
+    expect(String(r.region ?? "").length).toBeLessThanOrEqual(200);
   });
 
   it("refuses instruction-like text before writing anything, whoever writes it", async () => {
@@ -269,5 +285,26 @@ describe("a re-submission and the Settings edits made since", () => {
     const out = await submitOnboarding(ctx);
     expect(out.employees.every((e) => e.configStatus === "unchanged")).toBe(true);
     expect(await snapshotOf(org.id)).toEqual(before);
+  });
+});
+
+describe("lock order between Settings and a submission", () => {
+  // Embedded Postgres runs one transaction at a time, so a deadlock cannot be provoked here. The rule that prevents one is that both take the questionnaire's row before they
+  // write the workspace's profile; this keeps the two code paths in that order.
+  const read = (file: string) => readFileSync(path.resolve(import.meta.dirname, "..", file), "utf8");
+
+  it("Settings takes the questionnaire's row before it writes the profile", () => {
+    const src = read("src/server/settings/service.ts");
+    const body = src.slice(src.indexOf("export async function updateProfile"), src.indexOf("export async function writeBusinessProfile"));
+    expect(body.indexOf("lockOnboardingRow(")).toBeGreaterThan(-1);
+    expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("writeBusinessProfile("));
+  });
+
+  it("a submission takes it before it writes anything of the workspace", () => {
+    const src = read("src/server/onboarding/service.ts");
+    const body = src.slice(src.indexOf("async function applyOnboarding"));
+    expect(body.indexOf("lockOnboardingRow(")).toBeGreaterThan(-1);
+    expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("update organizations set"));
+    expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("writeBusinessProfile("));
   });
 });

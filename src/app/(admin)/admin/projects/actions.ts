@@ -113,9 +113,9 @@ export async function classifyChangeOrderAction(id: string, changeId: string, in
     refresh(id);
   });
 }
-export async function saveChangeNotesAction(id: string, changeId: string, notes: string) {
+export async function saveChangeNotesAction(id: string, changeId: string, notes: string, expected?: string | null) {
   return guard(async () => {
-    await saveChangeInternalNotes(await requireAgencyOrThrow(), changeId, notes);
+    await saveChangeInternalNotes(await requireAgencyOrThrow(), changeId, notes, expected);
     refresh(id);
   });
 }

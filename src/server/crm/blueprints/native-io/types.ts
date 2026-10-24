@@ -27,7 +27,7 @@ export interface EntryMeta {
   whatsappTemplateId?: string | null;
   /** Forms and workflows: the published version, if any. */
   publishedVersionId?: string | null;
-  /** Calendars: manual | blueprint | ghl_import. */
+  /** Calendars: manual | blueprint | ghl_import | onboarding. */
   origin?: string;
   verifiedAt?: string | null;
   /** Workflows: whether the record came from its live (published) version rather than its working copy (capture only). */

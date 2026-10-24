@@ -14,7 +14,9 @@ import { getShareUrl } from "@/server/proposals/share";
 import { saveProposalSettings } from "@/server/proposals/settings";
 import { clearFeatureCache } from "@/server/proposals/features";
 import type { LineInput } from "@/server/proposals/doc-build";
-import { crmOrg, type CrmOrg } from "./crm";
+import { CRM_ROLES, crmOrg, type CrmOrg, type CrmWho } from "./crm";
+import { setInvoicesEnabled } from "@/server/invoices/feature";
+import type { OrgContext } from "@/server/tenancy/context";
 import { addMember, agencyUser, createUser, ctxFor } from "./fixtures";
 import { FIXTURE_RATES } from "./messaging";
 
@@ -68,9 +70,10 @@ export async function draftBy(p: ProposalOrg, who: "owner" | "manager" | "sales"
 }
 
 /** A proposal written by sales and approved by the manager. */
-export async function approvedProposal(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date } = {}) {
-  const draft = await draftBy(p, "member", over);
-  const pending = await submitForApproval(p.member, draft.id, deps);
+export async function approvedProposal(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date; /** Who writes it: a team member by default; the owner when a discount is wanted (a member may not give one). */ author?: "member" | "owner" } = {}) {
+  const author = deps.author ?? "member";
+  const draft = await draftBy(p, author, over);
+  const pending = await submitForApproval(author === "owner" ? p.actor("owner") : p.member, draft.id, { now: deps.now });
   return decideProposal(p.actor("manager"), pending.id, { decision: "approve", version: pending.version }, deps);
 }
 
@@ -85,10 +88,10 @@ export const NOW = new Date("2026-10-23T12:00:00Z");
 export const minutesAfter = (m: number, from: Date = NOW) => new Date(from.getTime() + m * 60_000);
 
 /** A proposal that was written by a team member, approved by the manager and sent by sales, with the customer's link in hand. */
-export async function sentWithLink(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date } = {}) {
+export async function sentWithLink(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date; author?: "member" | "owner" } = {}) {
   const now = deps.now ?? NOW;
   const email = over.clientEmail === undefined ? `maria-${Math.random().toString(36).slice(2, 10)}@example.test` : over.clientEmail;
-  const approved = await approvedProposal(p, { clientEmail: email, ...over }, { now });
+  const approved = await approvedProposal(p, { clientEmail: email, ...over }, { now, author: deps.author });
   const sent = await sendProposal(p.actor("sales"), approved.id, {}, { now });
   const { url } = await getShareUrl(p.actor("sales"), sent.id, { now });
   return { proposal: sent, token: url.split("/proposal/")[1], url, linkId: (sent.share as { id: string }).id, /** Empty when the proposal was written without an address for the customer. */ email: email ?? "" };
@@ -284,4 +287,44 @@ export async function customerFor(p: ProposalOrg, opts: { firstName?: string; co
 /** A proposal for this customer (the address on the proposal is theirs), written, approved and sent, with the customer's link in hand. */
 export async function sentTo(p: ProposalOrg, c: Customer, over: CreateInput = {}, deps: { now?: Date } = {}) {
   return sentWithLink(p, { contactId: c.contactId, clientEmail: c.email, clientName: "Maria Santos", ...over }, deps);
+}
+
+// ---------------------------------------------------------------------------
+// Invoicing for a proposals workspace: a draft invoice made from an accepted proposal (src/server/invoices/from-proposal.ts).
+// ---------------------------------------------------------------------------
+
+export interface Invoicing {
+  /** A context for the person in each client role: the invoice services take one. */
+  ctx: (who: CrmWho) => OrgContext;
+}
+
+/** Switches invoicing on for a proposals workspace, the way a Super Admin would, and gives back a context for each client role. */
+export async function withInvoicing(p: ProposalOrg, opts: { timezone?: string } = {}): Promise<Invoicing> {
+  const superUser = await createUser({ platformRole: "agency_super_admin", name: "Invoicing Admin" });
+  await setInvoicesEnabled(agencyUser(superUser, "agency_super_admin"), p.org.id, true);
+  return {
+    ctx: (who) => {
+      const ctx = ctxFor(p.people[who], p.org, CRM_ROLES[who]);
+      ctx.org.timezone = opts.timezone ?? "UTC";
+      return ctx;
+    },
+  };
+}
+
+/**
+ * A proposal that the customer accepted online (a verified emailed code and the acknowledgement) or that a person recorded as accepted outside the product, ready to be invoiced.
+ * Written by a team member, approved by the manager and sent by sales, as every proposal here is.
+ */
+export async function acceptedProposal(p: ProposalOrg, over: CreateInput = {}, how: "online" | "recorded" = "recorded", deps: { now?: Date; author?: "member" | "owner" } = {}) {
+  const now = deps.now ?? NOW;
+  const sent = await sentWithLink(p, over, { now, author: deps.author });
+  if (how === "recorded") {
+    const { recordOfflineDecision } = await import("@/server/proposals/proposals");
+    await recordOfflineDecision(p.actor("owner"), sent.proposal.id, { decision: "accepted", version: 1 }, { now });
+  } else {
+    const { decideOnProposal } = await import("@/server/proposals/public");
+    const outcome = await decideOnProposal(sent.token, { decision: "accept", acknowledged: "1" }, { ip: freshIp(), now, sessionToken: await verifiedSession(sent.token, sent.email, { now }) });
+    if (outcome.outcome !== "accepted") throw new Error(`not accepted: ${JSON.stringify(outcome)}`);
+  }
+  return sent;
 }

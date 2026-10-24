@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DRAFT_CALENDAR_NAME, NOTICE_MINUTES, planSchedulingDrafts, schedulingDraftMessage, weeklyRulesFromHours } from "@/lib/onboarding/scheduling-drafts";
+import { describeAction } from "@/lib/activity";
 import type { Answers } from "@/lib/onboarding/types";
 
 // The pure rules that turn the booking answers of the questionnaire into a plan for a DRAFT calendar. Nothing here is live: the plan only describes rows that take no bookings.
@@ -83,7 +84,8 @@ describe("what the plan takes from the booking answers", () => {
     }));
     expect(plan.types.map((t) => t.name)).toEqual(["Site visit", "Video tour"]);
     expect(plan.types[1].locationKind).toBe("video");
-    expect(plan.skipped.map((s) => s.name)).toEqual(["Quick look", "site visit", "x".repeat(81)]);
+    // The over-long name is shown cut to the length that fits, so a left-out name can never flood a message.
+    expect(plan.skipped.map((s) => s.name)).toEqual(["Quick look", "site visit", `${"x".repeat(80)}…`]);
     expect(plan.skipped[1].why).toMatch(/already listed/i);
   });
 
@@ -116,5 +118,39 @@ describe("the sentence shown after a submission", () => {
 
   it("names the types it left out so the owner can add them by hand", () => {
     expect(schedulingDraftMessage({ state: "created", calendarId: "c", typesAdded: 1, skipped: [{ name: "Marathon", why: "x" }] })).toMatch(/left out Marathon/);
+  });
+});
+
+describe("very long input stays cheap", () => {
+  const timed = <T>(fn: () => T): { value: T; ms: number } => {
+    const start = performance.now();
+    const value = fn();
+    return { value, ms: performance.now() - start };
+  };
+
+  it("a 20,000-character appointment name is left out, not scanned again and again", () => {
+    // (A name that is only spaces around one letter is a short name once trimmed, so it is not one of the shapes here.)
+    for (const name of ["a".repeat(20_000), "a ".repeat(10_000), `${" ".repeat(9_990)}x${" ".repeat(9_990)}x`]) {
+      const { value, ms } = timed(() => planSchedulingDrafts(base({ "d.appt_types": [{ name, minutes: "30", mode: "video" }, { name: "Visit", minutes: "30", mode: "video" }] })));
+      expect(value.types.map((t) => t.name)).toEqual(["Visit"]);
+      expect(value.skipped).toHaveLength(1);
+      expect(value.skipped[0].name.length).toBeLessThanOrEqual(81);
+      expect(ms).toBeLessThan(500);
+    }
+  });
+
+  it("thousands of rows and thousands of hour ranges are capped without a quadratic wait", () => {
+    const rows = Array.from({ length: 20_000 }, (_, i) => ({ name: `Type ${i}`, minutes: "30", mode: "phone" }));
+    const ranges = Array.from({ length: 20_000 }, (_, i) => [`${String(Math.floor(i / 60) % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`, `${String(Math.floor(i / 60) % 24).padStart(2, "0")}:${String((i % 60) + 1 === 60 ? 59 : (i % 60) + 1).padStart(2, "0")}`]);
+    const { value, ms } = timed(() => planSchedulingDrafts(base({ "d.appt_types": rows, "d.appt_availability": { mon: ranges, tue: ranges } })));
+    expect(value.types).toHaveLength(10);
+    expect(value.hoursTemplate.length).toBeLessThanOrEqual(50);
+    expect(ms).toBeLessThan(1500);
+  });
+});
+
+describe("the activity feed", () => {
+  it("describes the drafting in plain words and says it is not live", () => {
+    expect(describeAction("onboarding.scheduling_drafted")).toBe("drafted a booking calendar from the setup answers (not live)");
   });
 });

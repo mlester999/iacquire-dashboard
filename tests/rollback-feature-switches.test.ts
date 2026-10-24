@@ -65,17 +65,20 @@ describe("the rollbacks take their module's workspace switch with them", () => {
     expect(leftOther).toEqual(left);
   });
 
-  it("0091 removes the 'proposals' switch and nothing else (after 0092, whose tables hang off proposals)", async () => {
+  it("0091 removes the 'proposals' switch and nothing else (after the migrations newer than it, whose tables hang off proposals)", async () => {
     const w = await world();
     let left: string[] = [];
     await expect(withSystem(async (db) => {
       await switchEverythingOn(db, w);
-      for (const stmt of statements(script("0092_esign"))) await db.query(stmt);
+      // Newest first: 0093's invoices point at proposals, so it must go before 0091 can drop them.
+      for (const name of ["0093_customer_invoices_payments", "0092_esign"]) {
+        for (const stmt of statements(script(name))) await db.query(stmt);
+      }
       for (const stmt of statements(script("0091_proposals"))) await db.query(stmt);
       left = await switches(db, w.org.id);
       throw new Done();
     })).rejects.toBeInstanceOf(Done);
-    expect(left).toEqual(FEATURES.filter((f) => f !== "esign" && f !== "proposals").sort());
+    expect(left).toEqual(FEATURES.filter((f) => f !== "esign" && f !== "proposals" && f !== "invoices").sort());
   });
 
   it("0094 removes the 'reputation_surveys' and 'reputation_batches' switches and leaves 'reputation_reviews' (0095's) and the rest", async () => {

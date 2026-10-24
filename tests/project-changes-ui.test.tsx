@@ -350,6 +350,73 @@ describe("the team's change panel", () => {
   });
 });
 
+describe("saving the team's notes", () => {
+  const open = (internalNotes: string | null) => {
+    const view = render(<AdminChangePanel project={agency({ changes: [change({ internalNotes })] })} />);
+    fireEvent.click(screen.getByText("Team notes"));
+    return view;
+  };
+
+  it("sends the notes as they were read along with the new text, so a colleague's edit is noticed", async () => {
+    open("Read this version");
+    const area = screen.getByLabelText("Team notes for CHG-1001") as HTMLTextAreaElement;
+    const save = screen.getByRole("button", { name: "Save notes" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(area, { target: { value: "Read this version, plus mine" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.notes).toHaveBeenCalledWith(PROJECT, CHANGE, "Read this version, plus mine", "Read this version"));
+    await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("Notes saved"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("sends an empty copy when there were no notes before", async () => {
+    open(null);
+    fireEvent.change(screen.getByLabelText("Team notes for CHG-1001"), { target: { value: "First note" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    await waitFor(() => expect(mocks.notes).toHaveBeenCalledWith(PROJECT, CHANGE, "First note", null));
+  });
+
+  it("shows a banner with the colleague's version when the notes changed, keeps the person's text and reloads the page's data", async () => {
+    mocks.notes.mockResolvedValue({ ok: false, code: "conflict", error: "Someone else changed these notes while you were editing. Nothing was saved. Their version is shown above your text." });
+    const view = open("Read this version");
+    fireEvent.change(screen.getByLabelText("Team notes for CHG-1001"), { target: { value: "My edit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toMatch(/Someone else changed these notes/);
+    expect(mocks.refresh).toHaveBeenCalled();
+    expect((screen.getByLabelText("Team notes for CHG-1001") as HTMLTextAreaElement).value).toBe("My edit");
+    expect(mocks.error).not.toHaveBeenCalled();
+    // The page's data arrives with their version: it is shown, and can be taken instead of the person's own text.
+    view.rerender(<AdminChangePanel project={agency({ changes: [change({ internalNotes: "Their newer version" })] })} />);
+    const shown = await screen.findByRole("alert");
+    expect(within(shown).getByText("Their newer version")).toBeTruthy();
+    fireEvent.click(within(shown).getByRole("button", { name: "Use their version" }));
+    expect((screen.getByLabelText("Team notes for CHG-1001") as HTMLTextAreaElement).value).toBe("Their newer version");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the banner until the notes are saved from the new copy, and then compares against that copy", async () => {
+    mocks.notes.mockResolvedValueOnce({ ok: false, code: "conflict", error: "Someone else changed these notes while you were editing. Nothing was saved. Their version is shown above your text." });
+    const view = open("Read this version");
+    fireEvent.change(screen.getByLabelText("Team notes for CHG-1001"), { target: { value: "My edit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    await screen.findByRole("alert");
+    view.rerender(<AdminChangePanel project={agency({ changes: [change({ internalNotes: "Their newer version" })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    await waitFor(() => expect(mocks.notes).toHaveBeenLastCalledWith(PROJECT, CHANGE, "My edit", "Their newer version"));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("toasts any other failure instead of showing the banner", async () => {
+    mocks.notes.mockResolvedValue({ ok: false, code: "forbidden", error: "Your role does not allow this project action." });
+    open("Read this version");
+    fireEvent.change(screen.getByLabelText("Team notes for CHG-1001"), { target: { value: "My edit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("Your role does not allow this project action."));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("the team's list of what is confirmed first", () => {
   const item = (over: Partial<PrerequisiteView> = {}): PrerequisiteView => ({ id: "p1", kind: "agreement", label: "Written agreement confirmed", required: true, blocks: "start", status: "pending", satisfiedAt: null, waivedAt: null, changeOrderId: null, changeStatus: null, ...over });
 

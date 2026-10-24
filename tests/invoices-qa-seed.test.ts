@@ -1,8 +1,9 @@
 // The invoices browser-QA world (scripts/invoices-qa-world.ts) proves itself on a synthetic workspace: every story ends in the state it says it does, nothing leaves the machine, and
 // the customer addresses it prints open the pages it describes. If this passes, the QA seed's logic works; only its wrapper (the isolated QA database) is not exercised here.
 import { describe, expect, it } from "vitest";
-import { seedInvoiceWorld } from "../scripts/invoices-qa-world";
+import { seedInvoiceDeliveryWorld, seedInvoiceWorld } from "../scripts/invoices-qa-world";
 import { attributionReport } from "@/server/attribution/report";
+import { previewInvoiceDelivery } from "@/server/invoices/delivery";
 import { getInvoiceDetail, receivablesSummary } from "@/server/invoices/invoices";
 import { loadPublicInvoice } from "@/server/invoices/public";
 import { freshIp, invoiceOrg, rows } from "./support/invoices";
@@ -98,5 +99,31 @@ describe("the invoices QA world", () => {
     expect((await rows<{ n: string }>("select count(*)::text as n from customer_payments where org_id = $1 and provider = 'paymongo'", [io.orgId]))[0].n).toBe("0");
     const report = await attributionReport(io.c.actor("owner"), { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 86_400_000) });
     expect(report.rows.every((r) => r.verifiedRevenue.length === 0)).toBe(true);
+  }, 120_000);
+
+  it("makes the issued invoices of customers who agreed to email sendable from the page, refuses the one who did not, never offers a test invoice, and still sends nothing", async () => {
+    const io = await invoiceOrg();
+    const emailsBefore = (await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n;
+    const out = await world(io);
+    // (The test must not depend on the time of day it runs at: quiet hours would make a preview "waiting" instead of "ready".)
+    await rows("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'");
+    const delivery = await seedInvoiceDeliveryWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner") });
+    expect(delivery).toEqual({ ready: ["Annual boiler service", "Water heater inspection", "Kitchen repipe"], refused: ["Remote monitoring set-up"] });
+    const idOf = (title: string) => out.find((r) => r.title === title)!.invoiceId;
+    const preview = (title: string) => previewInvoiceDelivery(io.ctx("owner"), idOf(title), "email");
+    for (const title of delivery.ready) expect(await preview(title), title).toMatchObject({ available: true, verdict: { kind: "ready" } });
+    expect(await preview("Remote monitoring set-up")).toMatchObject({ available: true, verdict: { kind: "refused", reason: "no_consent" } });
+    // What is never offered, and why: a test invoice, a paid one, a written-off one, a void one and a draft.
+    expect(await preview("Testing the payment account: open")).toMatchObject({ available: false, reason: "test_invoice" });
+    expect(await preview("Drain clearing")).toMatchObject({ available: false, reason: "paid" });
+    expect(await preview("Seasonal tune-up")).toMatchObject({ available: false, reason: "written_off" });
+    expect(await preview("Gas line check")).toMatchObject({ available: false, reason: "not_issued" });
+    expect(await preview("Bathroom faucet replacement")).toMatchObject({ available: false, reason: "not_issued" });
+    // Nothing was sent: no message exists and no email left the outbox's capture.
+    expect(await rows("select 1 from conversation_messages where org_id = $1", [io.orgId])).toHaveLength(0);
+    expect((await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n).toBe(emailsBefore);
+    // Run again, it changes nothing that matters.
+    await seedInvoiceDeliveryWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner") });
+    expect(await rows("select 1 from messaging_channels where org_id = $1 and channel = 'email' and provider = 'resend'", [io.orgId])).toHaveLength(1);
   }, 120_000);
 });

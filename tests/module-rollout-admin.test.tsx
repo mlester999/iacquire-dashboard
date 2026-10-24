@@ -319,7 +319,7 @@ describe("what it shows", () => {
 describe("it is built on the existing services", () => {
   const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
-  it("never writes org_features itself: the five services are the only writers", () => {
+  it("never writes org_features itself: the module services are the only writers", () => {
     const service = read("src/server/admin/module-rollout.ts");
     expect(service).not.toMatch(/(insert\s+into|update|delete\s+from)\s+org_features/i);
     for (const call of ["setOrgFeature(", "setInvoicesEnabled(", "setSurveysEnabled(", "setBatchesEnabled(", "setExternalReviewsEnabled(", "setRequestChangesEnabled("]) expect(service, call).toContain(call);
@@ -332,7 +332,13 @@ describe("it is built on the existing services", () => {
       }
     };
     walk("src");
-    expect(files.sort()).toEqual(["src/server/invoices/feature.ts", "src/server/proposals/features.ts", "src/server/reputation/entitlement.ts"]);
+    expect(files.sort()).toEqual([
+      "src/server/invoices/feature.ts",
+      "src/server/proposals/features.ts",
+      "src/server/reputation/entitlement.ts",
+      "src/server/staff-messages/settings.ts",
+      "src/server/staff-workload/settings.ts",
+    ]);
   });
 
   it("uses the same keys the modules gate on", () => {

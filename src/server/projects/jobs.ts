@@ -15,6 +15,7 @@ const WHAT: Record<string, string> = {
   respond_to_client: "a reply to the client",
   prepare_quote: "the quote",
   review_decision: "confirming the accepted quote",
+  review_change: "the first look at a change request",
 };
 
 interface Overdue {

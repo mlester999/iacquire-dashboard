@@ -4,12 +4,14 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { setTenantStatus } from "@/server/admin/tenants";
-import { requestMaintenanceCancellation, resolveMaintenanceSubscription } from "@/server/maintenance/service";
+import { listAgencyMaintenance, requestMaintenanceCancellation, resolveMaintenanceSubscription } from "@/server/maintenance/service";
 import { expireSubscription } from "@/server/automation-studio/lifecycle";
 import { STUDIO_LAPSE_POLICY } from "@/lib/automation-studio/plan";
+import { daysUntil } from "@/lib/billing-renewal";
+import { todayIn } from "@/lib/invoices/state";
 import { agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { crmOrg } from "./support/crm";
-import { auditOf, coreWorkflowFor, inDays, noticesOf, planRow, planStatus, studioWorkflowFor, workflowRow } from "./support/billing-plan";
+import { auditOf, coreWorkflowFor, inDays, noticesOf, planRow, planStatus, setAgencyTimezone, studioWorkflowFor, workflowRow } from "./support/billing-plan";
 
 let superAdmin: ReturnType<typeof agencyUser>;
 beforeAll(async () => {
@@ -140,5 +142,41 @@ describe("reactivating a suspended workspace restores its activation status", ()
     await setTenantStatus(superAdmin, org.id, "suspended", "Suspended for the test");
     await setTenantStatus(superAdmin, org.id, "active");
     expect((await auditOf(org.id, "tenant.reactivated")).length).toBe(1);
+  });
+});
+
+describe("the agency's plan list says when a paid period ended", () => {
+  const lifecycleOf = async (orgId: string) => (await listAgencyMaintenance(superAdmin)).subscriptions.find((s) => s.orgId === orgId)?.lifecycle;
+
+  it("counts the days in the agency's own time zone, and only for a plan that is running with nobody having recorded a payment since", async () => {
+    await setAgencyTimezone("UTC");
+    const cases: Array<[string, Parameters<typeof planRow>[1], number | null]> = [
+      ["an active plan paid through three days ago", { status: "active", paidThroughOn: inDays(new Date(), -3) }, 3],
+      ["an active plan paid through yesterday", { status: "active", paidThroughOn: inDays(new Date(), -1) }, 1],
+      ["an active plan paid through today", { status: "active", paidThroughOn: inDays(new Date(), 0) }, null],
+      ["an active plan paid through next week", { status: "active", paidThroughOn: inDays(new Date(), 7) }, null],
+      ["an active plan with no paid-through day", { status: "active", paidThroughOn: null }, null],
+      ["a plan waiting for its cancellation to be confirmed", { status: "cancel_requested", paidThroughOn: inDays(new Date(), -2) }, 2],
+      ["a past-due plan, which is already being handled", { status: "past_due", paidThroughOn: inDays(new Date(), -5) }, null],
+      ["an expired plan", { status: "expired", paidThroughOn: inDays(new Date(), -40) }, null],
+    ];
+    for (const [name, plan, expected] of cases) {
+      const o = await crmOrg();
+      await planRow(o, plan);
+      expect((await lifecycleOf(o.org.id))?.periodEndedDaysAgo, name).toBe(expected);
+    }
+  });
+
+  it("follows the agency's day, not UTC's", async () => {
+    const o = await crmOrg();
+    const through = inDays(new Date(), -1);
+    await planRow(o, { status: "active", paidThroughOn: through });
+    // The count is the number of calendar days between the paid-through day and today's date where the agency is, for a zone far behind UTC and one far ahead of it.
+    for (const zone of ["Pacific/Pago_Pago", "UTC", "Pacific/Kiritimati"]) {
+      await setAgencyTimezone(zone);
+      const expected = -(daysUntil(through, todayIn(new Date(), zone)) ?? 0);
+      expect((await lifecycleOf(o.org.id))?.periodEndedDaysAgo, zone).toBe(expected > 0 ? expected : null);
+    }
+    await setAgencyTimezone("UTC");
   });
 });

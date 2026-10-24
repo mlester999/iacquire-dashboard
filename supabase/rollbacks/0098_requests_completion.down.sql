@@ -59,6 +59,9 @@ drop table project_change_order_decisions;
 drop function app.project_change_order_decisions_guard();
 
 -- Columns that pointed at change orders, then the change orders themselves --------------------------------------------------------------------
+-- A change-review task exists only for a change request, and the guard above has already refused if one exists; the column takes its key, check and index with it.
+delete from project_review_tasks where kind = 'review_change';
+alter table project_review_tasks drop column change_order_id;
 alter table project_files drop column change_order_id;
 alter table project_messages drop column change_order_id, drop column client_message_id;
 drop table project_change_orders;
@@ -109,7 +112,8 @@ begin
       ('support_tickets', 'support_tickets_category_check', 'category', array['change_ai_employee', 'change_website', 'change_automation', 'change_integration', 'change_project', 'change_other'], 15),
       ('support_ticket_events', 'support_ticket_events_kind_check', 'kind', array['mentioned', 'change_classified', 'survey_answered', 'ai_triage_applied'], 10),
       ('support_notification_rules', 'support_notification_rules_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8),
-      ('support_notification_log', 'support_notification_log_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8)
+      ('support_notification_log', 'support_notification_log_event_kind_check', 'event_kind', array['staff_mention', 'survey_requested'], 8),
+      ('project_review_tasks', 'project_review_tasks_kind_check', 'kind', array['review_change'], 4)
     ) as s(tbl, con, col, extra, minimum)
   loop
     select pg_get_constraintdef(c.oid) into def from pg_constraint c where c.conname = spec.con and c.conrelid = spec.tbl::regclass;

@@ -20,6 +20,8 @@ export interface PlanLifecycleInfo {
   lastPaymentVerifiedBy: string | null;
   studioWorkflows: number;
   studioPaused: number;
+  /** Days since the paid-through day, while the plan is still running with no payment recorded since; null otherwise. Absent on sample pages that predate it. */
+  periodEndedDaysAgo?: number | null;
 }
 
 type Dlg = "failed" | "verified" | "expire" | null;
@@ -69,6 +71,12 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
         <div className="flex gap-2"><dt className="text-muted">Studio workflows</dt><dd className="font-medium text-ink">{info.studioWorkflows}{info.studioPaused ? `, ${info.studioPaused} paused for the plan` : ""}</dd></div>
       </dl>
 
+      {(status === "active" || status === "cancel_requested") && info.periodEndedDaysAgo != null && info.periodEndedDaysAgo > 0 && (
+        <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink" role="status">
+          <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>The paid period ended {info.periodEndedDaysAgo} day{info.periodEndedDaysAgo === 1 ? "" : "s"} ago and no payment has been recorded since. The plan is still active. Record the payment, or record a failed payment to start the grace period.</span>
+        </p>
+      )}
       {status === "past_due" && info.graceEndsAt && (
         <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink" role="status">
           <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />

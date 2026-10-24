@@ -236,13 +236,13 @@ async function viewOne(db: Queryable, viewerId: string, id: string): Promise<Mes
 
 interface Located {
   c: ConversationRow;
-  message: { id: string; author_id: string | null; deleted: boolean; body: string; mentions: string[]; thread_root_id: string | null };
+  message: { id: string; author_id: string | null; deleted: boolean; body: string; mentions: string[]; thread_root_id: string | null; edited_at: string | null };
 }
 
 async function locate(db: Queryable, actor: StaffActor, messageId: unknown, opts: { lock?: boolean } = {}): Promise<Located> {
   if (!isId(messageId)) throw new AppError("not_found", "That message was not found.");
-  const row = (await db.query<{ id: string; conversation_id: string; author_id: string | null; deleted_at: Date | null; body: string; mentions: string[]; thread_root_id: string | null }>(
-    "select id, conversation_id, author_id, deleted_at, body, mentions, thread_root_id from staff_messages where id = $1",
+  const row = (await db.query<{ id: string; conversation_id: string; author_id: string | null; deleted_at: Date | null; body: string; mentions: string[]; thread_root_id: string | null; edited_at: Date | string | null }>(
+    "select id, conversation_id, author_id, deleted_at, body, mentions, thread_root_id, edited_at from staff_messages where id = $1",
     [messageId],
   )).rows[0];
   if (!row) throw new AppError("not_found", "That message was not found.");
@@ -251,20 +251,29 @@ async function locate(db: Queryable, actor: StaffActor, messageId: unknown, opts
     if (error instanceof AppError && error.code === "not_found") throw new AppError("not_found", "That message was not found.");
     throw error;
   });
-  return { c, message: { id: row.id, author_id: row.author_id, deleted: row.deleted_at !== null, body: row.body, mentions: row.mentions, thread_root_id: row.thread_root_id } };
+  return { c, message: { id: row.id, author_id: row.author_id, deleted: row.deleted_at !== null, body: row.body, mentions: row.mentions, thread_root_id: row.thread_root_id, edited_at: row.edited_at ? new Date(row.edited_at).toISOString() : null } };
 }
 
-/** Changes the text of the person's own message. The edit is marked on the message; a mention that is new is announced. */
-export async function editMessage(user: StaffUser, input: { messageId: unknown; body: unknown }): Promise<MessageView> {
+export const EDIT_CONFLICT_MESSAGE = "This message was changed somewhere else (another tab or window) after you opened it. Your edit was not saved. Close the editor and open it again to see the latest text.";
+
+/**
+ * Changes the text of the person's own message. The edit is marked on the message; a mention that is new is announced. `expectedEditedAt` is the edit stamp the editor started
+ * from (null for a message never edited): when it is given and the message has been edited since, nothing is saved and the person is told, instead of the later edit being
+ * silently overwritten.
+ */
+export async function editMessage(user: StaffUser, input: { messageId: unknown; body: unknown; expectedEditedAt?: unknown }): Promise<MessageView> {
   const actor = await loadStaffActor(user);
   const body = normaliseBody(input.body);
   if (!body.ok) throw new AppError("invalid_input", body.message);
+  const expected = input.expectedEditedAt;
+  if (expected !== undefined && expected !== null && (typeof expected !== "string" || Number.isNaN(new Date(expected).getTime()))) throw new AppError("invalid_input", "That edit stamp is not valid. Reload the page and try again.");
   await limitSend(actor.userId);
   return withSystem(async (db) => {
     const { c, message } = await locate(db, actor, input.messageId, { lock: true });
     if (!canEditMessage(factsOf(c), standingOf(actor, c), actor.userId, { authorId: message.author_id, deleted: message.deleted })) {
       throw new AppError(message.author_id === actor.userId ? "conflict" : "forbidden", message.author_id === actor.userId ? "This message can't be edited any more." : "You can only edit your own messages.");
     }
+    if (expected !== undefined && (expected === null ? null : new Date(expected as string).toISOString()) !== message.edited_at) throw new AppError("conflict", EDIT_CONFLICT_MESSAGE);
     // The same text again is not an edit: nothing is checked, stamped or announced.
     if (body.body === message.body) return (await viewOne(db, actor.userId, message.id)) as MessageView;
     const members = (await db.query<Member>("select user_id, notify, muted, last_read_seq::text as last_read_seq from staff_conversation_members where conversation_id = $1 and left_at is null", [c.id])).rows;

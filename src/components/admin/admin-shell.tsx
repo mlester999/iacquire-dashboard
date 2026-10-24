@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { adminCrumbs, isNavActive } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, BarChart3, Blocks, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, Handshake, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, BarChart3, Blocks, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, Handshake, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MessagesSquare, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
@@ -14,6 +14,8 @@ import { LogoutTrigger } from "@/components/auth/logout-confirmation";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { useTheme } from "@/components/providers";
 import { aqiNavTarget } from "@/lib/aqi/targets";
+import { useMessagesBadge } from "@/components/staff-messages/use-messages-badge";
+import { navBadge, navLabel, showMessagesNav, type MessagesNavState } from "@/lib/staff-messages/nav";
 import { cn, currentTime, initials } from "@/lib/utils";
 
 const NAV = [
@@ -30,6 +32,10 @@ const NAV = [
   { href: "/admin/crm-blueprints", label: "CRM Blueprints", icon: Layers, group: "Operations" },
   { href: "/admin/employees", label: "AI Employees", icon: Sparkles, group: "Operations" },
   { href: "/admin/support", label: "Requests", icon: Inbox, group: "Operations" },
+  // The agency team's own chat (agency.messages.use, and the module switched on by a Super Admin, who always sees the entry so the switch can be reached). It carries the unread badge.
+  { href: "/admin/messages", label: "Messages", icon: MessagesSquare, messages: true, group: "Operations" },
+  // The agency team's own load, from the work recorded in iAcquire. Visible to everyone on the agency team; the page itself shows only what the server allows.
+  { href: "/admin/workload", label: "Staff workload", icon: Gauge, group: "Operations" },
   // Agency managers and Super Admins: the people who asked for a demo, before they are clients (agency.prospects.view; every page and action checks it again on the server).
   { href: "/admin/prospects", label: "Demo prospects", icon: Handshake, managerUp: true, group: "Operations" },
   { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
@@ -51,20 +57,20 @@ const NAV = [
 ];
 const GROUPS = ["Operations", "Client experience", "Platform"];
 
-function Nav({ superAdmin, manager, compact, onNavigate }: { superAdmin: boolean; manager: boolean; compact: boolean; onNavigate?: () => void }) {
+function Nav({ superAdmin, manager, messages, compact, onNavigate }: { superAdmin: boolean; manager: boolean; messages: { shown: boolean; badge: string | null; unread: number }; compact: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState<string[]>([]);
   return <nav aria-label="Agency navigation" className="space-y-4">{GROUPS.map((group) => {
-    const items = NAV.filter((n) => n.group === group && (!n.superOnly || superAdmin) && (!n.managerUp || manager));
+    const items = NAV.filter((n) => n.group === group && (!n.superOnly || superAdmin) && (!n.managerUp || manager) && (!n.messages || messages.shown));
     const closed = !compact && collapsed.includes(group);
     if (!items.length) return null;
     return <div key={group}>
       {!compact && <button type="button" aria-expanded={!closed} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3" onClick={() => setCollapsed((s) => s.includes(group) ? s.filter((g) => g !== group) : [...s, group])}>{group}<ChevronDown className={cn("size-3 transition-transform", closed && "-rotate-90")} /></button>}
       {!closed && <ul className="space-y-1">{items.map((n) => {
         const active = isNavActive(pathname, n.href, n.exact);
-        const link = <Link href={n.href} onClick={onNavigate} data-aqi-target={aqiNavTarget(n.href, "agency")} aria-current={active ? "page" : undefined} aria-label={compact ? n.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+        const link = <Link href={n.href} onClick={onNavigate} data-aqi-target={aqiNavTarget(n.href, "agency")} aria-current={active ? "page" : undefined} aria-label={compact ? (n.messages ? navLabel(messages.unread) : n.label) : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
           {active && <motion.span layoutId="admin-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
-          <span className="nav-icon-box relative"><n.icon className="size-[17px]" /></span>{!compact && <span className="relative flex-1">{n.label}</span>}{active && !compact && <span className="relative size-1.5 rounded-full bg-[#91b1ff]" aria-hidden />}
+          <span className="nav-icon-box relative"><n.icon className="size-[17px]" /></span>{!compact && <span className="relative flex-1">{n.label}{n.messages && messages.unread > 0 && <span className="sr-only">, {messages.unread} unread</span>}</span>}{n.messages && messages.badge && <span data-testid="messages-badge" aria-hidden className={cn("relative min-w-5 rounded-full bg-[#305ecb] px-1.5 text-center text-[10px] font-semibold leading-5 text-white", compact && "absolute right-0.5 top-0.5 min-w-4 px-1 leading-4")}>{messages.badge}</span>}{active && !compact && <span className="relative size-1.5 rounded-full bg-[#91b1ff]" aria-hidden />}
         </Link>;
         return <li key={n.href}>{compact ? <Tooltip content={n.label}>{link}</Tooltip> : link}</li>;
       })}</ul>}
@@ -72,7 +78,7 @@ function Nav({ superAdmin, manager, compact, onNavigate }: { superAdmin: boolean
   })}</nav>;
 }
 
-export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo = false }: { user: { name: string; email: string; platformRole: string }; hasWorkspace: boolean; notifications: { unread: number; timeZone: string }; children: React.ReactNode; qaDemo?: boolean }) {
+export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo = false, messages: messagesInitial }: { user: { name: string; email: string; platformRole: string }; hasWorkspace: boolean; notifications: { unread: number; timeZone: string }; children: React.ReactNode; qaDemo?: boolean; messages?: MessagesNavState }) {
   const [open, setOpen] = React.useState(false);
   const [compact, setCompact] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
@@ -83,7 +89,10 @@ export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo
   const router = useRouter();
   const crumbs = adminCrumbs(pathname);
   const manager = superAdmin || user.platformRole === "agency_manager";
-  const visibleNav = NAV.filter((n) => (!n.superOnly || superAdmin) && (!n.managerUp || manager) && n.label.toLowerCase().includes(query.toLowerCase()));
+  // On the Messages pages the page itself says what is unread; elsewhere the badge asks for just the number every so often.
+  const messagesNav = useMessagesBadge(messagesInitial, { paused: pathname.startsWith("/admin/messages") });
+  const messages = { shown: showMessagesNav(messagesNav.state, user.platformRole), badge: navBadge(messagesNav.state, messagesNav.unread), unread: messagesNav.unread };
+  const visibleNav = NAV.filter((n) => (!n.superOnly || superAdmin) && (!n.managerUp || manager) && (!n.messages || messages.shown) && n.label.toLowerCase().includes(query.toLowerCase()));
   React.useEffect(() => {
     const shortcut = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCommandOpen((s) => !s); } };
     document.addEventListener("keydown", shortcut);
@@ -92,7 +101,7 @@ export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo
   const sidebar = (small = false) => <div className="workspace-nav flex h-full flex-col text-white">
     <div className={cn("flex h-[76px] shrink-0 items-center px-5", small && "justify-center px-2")}>{small ? <Link href="/admin" aria-label="iAcquire dashboard"><Image src="/brand/icon.svg" alt="" width={36} height={36} /></Link> : <Link href="/admin" className="workspace-nav-brand -ml-1.5 inline-flex p-1.5" aria-label="iAcquire agency dashboard"><Logo /></Link>}</div>
     {!small && <div className="mx-4 mb-4 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><p className="flex items-center gap-2 text-[12px] font-semibold"><ShieldCheck className="size-3.5 text-[#9ebcff]" />Agency workspace</p><p className="mt-1 text-[11px] text-[#a6b3cd]">{superAdmin ? "Super admin access" : "Assigned client access"}</p></div>}
-    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav superAdmin={superAdmin} manager={manager} compact={small} onNavigate={() => setOpen(false)} /></div>
+    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav superAdmin={superAdmin} manager={manager} messages={messages} compact={small} onNavigate={() => setOpen(false)} /></div>
     <div className="mt-3 space-y-2 border-t border-white/10 p-3">
       {hasWorkspace && <Link href="/overview" aria-label={small ? "Open client portal" : undefined} className={cn("workspace-nav-link flex min-h-10 items-center gap-3 rounded-xl px-3 text-[12px]", small && "justify-center px-1")}><ArrowLeftRight className="size-4 shrink-0" />{!small && "Client portal"}</Link>}
       <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : "Agency Staff"}</p></div>}<LogoutTrigger className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></LogoutTrigger></div>

@@ -69,6 +69,16 @@ describe("helping a client write a request", () => {
     expect(sent.user).not.toMatch(/IAQ-|Support Co/);
   });
 
+  it("names each kind of request in its own words, a change request included, and still promises nothing", async () => {
+    for (const [type, words] of [["support", "support request"], ["issue", "problem report"], ["feedback", "piece of feedback"], ["change", "request for a change"]] as const) {
+      await resetRateLimits();
+      await improveRequestDraft(w.ctx.member, { type, subject: "A subject", text: "A reasonably long draft of the request." });
+      const sent = prompt();
+      expect(sent.system, type).toContain(words);
+      expect(sent.system, type).toMatch(/Never promise refunds/);
+    }
+  });
+
   it("counts against the workspace's monthly help allowance and stops when it is used up", async () => {
     const before = await countRows("select 1 from usage_events where org_id = $1 and kind = 'help_request'", [w.org.id]);
     await improveRequestDraft(w.ctx.member, { type: "support", subject: "A subject", text: "A reasonably long draft of the request." });

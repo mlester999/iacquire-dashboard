@@ -151,6 +151,8 @@ not offer it (`ASSISTANT_REQUEST_TYPES`): a change needs a target and, for a pro
 * A client with an active maintenance plan sees the plan's own monthly allowance on the form and a pointer to Maintenance for small changes it covers. A client without a plan is told
   nothing about an allowance and no figure is invented. Whether classifying a change as covered by the plan should create the maintenance request itself is open (see the Phase 6 report).
 * A starting priority comes from the Super Admin's defaults (`normal` until they set one for changes).
+* AQi knows the page (`src/lib/aqi/routes.ts`) and may point a client at it in a workspace where it is off; the page then says plainly that it isn't switched on and offers Get Support.
+  AQi's routes have no per-workspace switch yet, so this is the one place the dormant module can be reached by name.
 
 ## 10. AI help (advisory only)
 

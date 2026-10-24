@@ -813,6 +813,39 @@ describe("the settings switches", () => {
   });
 });
 
+describe("change-review tasks", () => {
+  it("name a change of their own project, and only a change-review task names one", async () => {
+    const { id: project } = await approvedProject(w, "Task key project");
+    const { id: other } = await approvedProject(w, "Task key other project");
+    await expect(withSystem(async (db) => {
+      const change = await newOrder(db, project, "Task key change");
+      const insert = "insert into project_review_tasks (request_id, org_id, kind, title, change_order_id) values ($1, $2, $3, 'Probe', $4)";
+      expect(await refused(db, insert, [project, w.org.id, "review_change", change])).toBeNull();
+      expect(await refused(db, insert, [project, w.org.id, "review_change", null])).toMatch(/project_review_tasks_change_kind_check/);
+      expect(await refused(db, insert, [project, w.org.id, "initial_review", change])).toMatch(/project_review_tasks_change_kind_check/);
+      expect(await refused(db, insert, [other, w.org.id, "review_change", change])).toMatch(/project_review_tasks_change_fkey/);
+      // The four kinds that were there before still work, and an unknown kind is still refused.
+      for (const kind of ["initial_review", "respond_to_client", "prepare_quote", "review_decision"]) expect(await refused(db, insert, [project, w.org.id, kind, null]), kind).toBeNull();
+      expect(await refused(db, insert, [project, w.org.id, "gossip", null])).toMatch(/project_review_tasks_kind_check/);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+
+  it("are removed with the change they were made for, and the project's other tasks stay", async () => {
+    const { id: project } = await approvedProject(w, "Task cascade project");
+    await expect(withSystem(async (db) => {
+      const change = await newOrder(db, project, "Task cascade change");
+      await db.query("insert into project_review_tasks (request_id, org_id, kind, title, change_order_id) values ($1, $2, 'review_change', 'Probe', $3)", [project, w.org.id, change]);
+      const before = (await db.query<{ n: number }>("select count(*)::int as n from project_review_tasks where request_id = $1", [project])).rows[0].n;
+      await db.query("select set_config('iaq.purge', 'on', true)");
+      await db.query("delete from project_change_orders where id = $1", [change]);
+      const after = (await db.query<{ n: number }>("select count(*)::int as n from project_review_tasks where request_id = $1", [project])).rows[0].n;
+      expect(after).toBe(before - 1);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+});
+
 describe("the overdue-review index", () => {
   it("is a partial index on open tasks with a time, and the resolved-request index only on resolved ones", async () => {
     await withSystem(async (db) => {
@@ -849,6 +882,7 @@ describe("the rollback", () => {
     ],
     support_notification_rules_event_kind_check: ["request_submitted", "assigned", "agency_reply", "client_reply", "status_changed", "priority_escalated", "response_approaching", "response_overdue", "resolved", "reopened", "closed"],
     support_notification_log_event_kind_check: ["request_submitted", "assigned", "agency_reply", "client_reply", "status_changed", "priority_escalated", "response_approaching", "response_overdue", "resolved", "reopened", "closed"],
+    project_review_tasks_kind_check: ["initial_review", "respond_to_client", "prepare_quote", "review_decision"],
   };
   const listOf = async (db: Db, name: string) => {
     const def = (await db.query<{ d: string }>("select pg_get_constraintdef(oid) as d from pg_constraint where conname = $1", [name])).rows[0].d;
@@ -872,7 +906,7 @@ describe("the rollback", () => {
         lists: after,
         kinds: NEW_KINDS.filter((k) => def.includes(`'${k}'`)),
         oldKinds: ["support_reply", "invoice_paid", "proposal_accepted", "social_post_failed"].filter((k) => def.includes(`'${k}'`)),
-        columns: (await q("select table_name, column_name from information_schema.columns where table_schema = 'public' and ((table_name = 'client_projects' and column_name in ('warranty_days', 'warranty_ends_on', 'revisions_included', 'revisions_used')) or (table_name = 'client_project_requests' and column_name = 'idempotency_key') or (table_name = 'project_messages' and column_name in ('client_message_id', 'change_order_id')) or (table_name = 'project_files' and column_name = 'change_order_id') or (table_name = 'support_settings' and column_name in ('surveys_enabled', 'survey_delay_hours', 'ai_triage_enabled', 'project_review_target_hours', 'show_project_targets_to_clients', 'project_prerequisites_enabled')))")).length,
+        columns: (await q("select table_name, column_name from information_schema.columns where table_schema = 'public' and ((table_name = 'client_projects' and column_name in ('warranty_days', 'warranty_ends_on', 'revisions_included', 'revisions_used')) or (table_name = 'client_project_requests' and column_name = 'idempotency_key') or (table_name = 'project_messages' and column_name in ('client_message_id', 'change_order_id')) or (table_name = 'project_files' and column_name = 'change_order_id') or (table_name = 'project_review_tasks' and column_name in ('change_order_id', 'overdue_notified_at')) or (table_name = 'support_settings' and column_name in ('surveys_enabled', 'survey_delay_hours', 'ai_triage_enabled', 'project_review_target_hours', 'show_project_targets_to_clients', 'project_prerequisites_enabled')))")).length,
         functions: (await q("select p.proname from pg_proc p where p.pronamespace = 'app'::regnamespace and p.proname in ('support_ticket_change_guard', 'project_change_order_guard', 'project_change_order_decisions_guard', 'project_scope_amendments_guard', 'project_prerequisites_guard', 'support_message_mention_guard', 'support_surveys_guard')")).length,
         sequence: (await q("select 1 from pg_class where relname = 'project_change_order_ref_seq'")).length,
         projectKey: (await q("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'support_tickets_project_id_fkey'"))[0]?.d,

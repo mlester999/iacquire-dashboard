@@ -35,8 +35,13 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
     if (state.status === "sent" || state.status === "error") statusRef.current?.focus();
   }, [state]);
 
+  // Pressing Enter in a field while a request is on its way would send a second one (each sends an email), so the form is held in a ref, not in state that may be a render behind.
+  const inFlight = React.useRef(false);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     const fd = new FormData(event.currentTarget);
     const text = (k: string) => (typeof fd.get(k) === "string" ? (fd.get(k) as string) : "");
     setState({ status: "sending" });
@@ -62,6 +67,8 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
       setState({ status: "error", message: body?.fields && Object.keys(body.fields).length ? null : (body?.error?.message ?? "The request could not be sent. Please try again.") });
     } catch {
       setState({ status: "error", message: "The request could not be sent. Check your connection and try again." });
+    } finally {
+      inFlight.current = false;
     }
   }
 
