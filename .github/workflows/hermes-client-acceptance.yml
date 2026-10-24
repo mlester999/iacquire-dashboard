@@ -121,7 +121,7 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/repository/services/hermes-provisioner,readonly" \
             --workdir /repository/services/hermes-provisioner --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
-            test_worker test_deployment test_acceptance_harness >"$test_log" 2>&1; then
+            test_worker test_deployment test_acceptance_harness test_portal_security_boundary >"$test_log" 2>&1; then
             summary="$(grep -E '^Ran [0-9]+ tests? ' "$test_log" | tail -n1 | sed -E 's/ in .*//')"
             [[ -n "$summary" ]]
             echo "CANDIDATE_COMPATIBILITY_PASS: $summary"
@@ -726,48 +726,12 @@ jobs:
           portal_id="$(compose ps -q portal-acceptance)"
           client_id="$(compose ps -q hermes-client)"
           worker_id="$(compose ps -q hermes-provisioner)"
-          PORTAL_ID="$portal_id" CLIENT_ID="$client_id" WORKER_ID="$worker_id" \
-            TEMP_DIR="$HERMES_ACCEPTANCE_DIR" REPO_DIR="$GITHUB_WORKSPACE" python3 - <<'PY'
-          import json, os, pathlib, subprocess
-          def inspect(name):
-              return json.loads(subprocess.check_output(["docker", "inspect", os.environ[name]], text=True))[0]
-          portal, client, worker = (inspect(name) for name in ("PORTAL_ID", "CLIENT_ID", "WORKER_ID"))
-          for item in (portal, client, worker):
-              assert item["HostConfig"]["Privileged"] is False
-              assert all("docker.sock" not in mount["Source"] for mount in item["Mounts"])
-              assert all("/docker/hermes-agent-wpwm" not in mount["Source"] for mount in item["Mounts"])
-              ports = item["NetworkSettings"].get("Ports") or {}
-              assert not any(ports.values())
-          assert portal["Config"]["User"] == "10000:10000"
-          assert portal["HostConfig"]["ReadonlyRootfs"] is True
-          assert "ALL" in portal["HostConfig"]["CapDrop"]
-          assert worker["Config"]["User"] == "10000:10000"
-          assert worker["HostConfig"]["ReadonlyRootfs"] is True
-          assert "ALL" in worker["HostConfig"]["CapDrop"]
-          portal_env = "\n".join(portal["Config"]["Env"])
-          for name in ("DATABASE_URL=", "SUPABASE_SECRET_KEY=", "OPENAI_API_KEY=", "HERMES_PROVISIONER_TOKEN="):
-              assert name not in portal_env
-          assert "DATABASE_DRIVER=pglite-memory" in portal_env
-          assert "NODE_ENV=test" in portal_env
-          for filename in ("hermes-api-key", "provisioner-token", "portal-admin-token"):
-              secret = (pathlib.Path(os.environ["TEMP_DIR"]) / filename).read_text(encoding="ascii").strip()
-              assert secret not in portal_env
-          model = json.loads((pathlib.Path(os.environ["TEMP_DIR"]) / "profile-model-env.json").read_text(encoding="ascii"))["value"]
-          assert model not in portal_env
-          portal_network_mode = portal["HostConfig"]["NetworkMode"]
-          assert portal_network_mode.startswith("container:")
-          assert portal_network_mode == worker["HostConfig"]["NetworkMode"]
-          client_networks = client["NetworkSettings"].get("Networks") or {}
-          assert client_networks
-          for network_name in client_networks:
-              network = json.loads(subprocess.check_output(["docker", "network", "inspect", network_name], text=True))[0]
-              assert network["Internal"] is True
-          mounts = portal["Mounts"]
-          allowed_roots = {os.path.realpath(os.environ["TEMP_DIR"]), os.path.realpath(os.environ["REPO_DIR"])}
-          assert all(os.path.realpath(mount["Source"]) in allowed_roots for mount in mounts)
-          assert all(mount["RW"] is False for mount in mounts)
-          print("PORTAL_SECURITY_BOUNDARY_PASS: isolated test database, non-root/read-only app, internal networks, read-only synthetic inputs, no published ports or production mounts")
-          PY
+          # Acceptance secrets are mode 0400 and owned by the container UID 10000.
+          # Run this read-only Docker/file audit as root so it can inspect those inputs
+          # without loosening their permissions or changing ownership.
+          sudo python3 services/hermes-provisioner/verify_portal_security_boundary.py \
+            "$portal_id" "$client_id" "$worker_id" \
+            "$HERMES_ACCEPTANCE_DIR" "$GITHUB_WORKSPACE"
           portal_failure_phase=portal_acceptance_complete
 
       - name: Remove all synthetic containers, networks, volumes, and credentials
