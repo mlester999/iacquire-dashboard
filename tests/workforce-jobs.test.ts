@@ -386,6 +386,66 @@ describe("Lead Hunter durable research", () => {
     expect(rows[0].status).toBe("queued");
   }, 30000);
 
+  it("recovers running jobs with no lease owner or expiry while preserving a live lease", async () => {
+    const [ownerless, expiryless, live] = await Promise.all([
+      withSystem((db) => createWorkJob(db, {
+        orgId: org.id,
+        agentId: hunterId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: "Ownerless running job",
+        idempotencyKey: `ownerless-recovery-${crypto.randomUUID()}`,
+        input: {},
+      })),
+      withSystem((db) => createWorkJob(db, {
+        orgId: org.id,
+        agentId: hunterId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: "Expiryless running job",
+        idempotencyKey: `expiryless-recovery-${crypto.randomUUID()}`,
+        input: {},
+      })),
+      withSystem((db) => createWorkJob(db, {
+        orgId: org.id,
+        agentId: hunterId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: "Live lease must remain running",
+        idempotencyKey: `live-lease-preserved-${crypto.randomUUID()}`,
+        input: {},
+      })),
+    ]);
+    await withSystem(async (db) => {
+      await db.query(
+        `update ai_work_jobs set status='running', attempts=1, lease_owner=null, lease_expires_at=now() + interval '10 minutes' where id=$1`,
+        [ownerless.id],
+      );
+      await db.query(
+        `update ai_work_jobs set status='running', attempts=1, lease_owner='orphaned-worker', lease_expires_at=null where id=$1`,
+        [expiryless.id],
+      );
+      await db.query(
+        `update ai_work_jobs set status='running', attempts=1, lease_owner='live-worker', lease_expires_at=now() + interval '10 minutes' where id=$1`,
+        [live.id],
+      );
+    });
+
+    const recovered = await recoverExpiredWorkJobs();
+    const { rows } = await withSystem((db) => db.query<{ id: string; status: string }>(
+      "select id, status from ai_work_jobs where id = any($1::uuid[])",
+      [[ownerless.id, expiryless.id, live.id]],
+    ));
+    const status = Object.fromEntries(rows.map((row) => [row.id, row.status]));
+
+    expect(recovered.retried).toBeGreaterThanOrEqual(2);
+    expect(status).toMatchObject({
+      [ownerless.id]: "queued",
+      [expiryless.id]: "queued",
+      [live.id]: "running",
+    });
+  }, 30000);
+
   it("marks a running job without an active lease as recovery pending in its authorized view", async () => {
     const created = await withSystem((db) =>
       createWorkJob(db, {

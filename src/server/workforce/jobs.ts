@@ -397,8 +397,10 @@ export async function recoverExpiredWorkJobs(): Promise<{ retried: number; faile
     }>(
       `select id, org_id, attempts, max_attempts, cancel_requested_at, stage, capability
          from ai_work_jobs
-        where status = 'running' and lease_expires_at is not null and lease_expires_at < now()
-        order by lease_expires_at asc
+        where status = 'running'
+          and (lease_owner is null or lease_expires_at is null or lease_expires_at <= now())
+        order by case when lease_owner is null or lease_expires_at is null then 0 else 1 end,
+                 lease_expires_at asc nulls first
         for update skip locked
         limit 20`,
     );
