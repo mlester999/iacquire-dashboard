@@ -7,7 +7,7 @@ It supersedes the dated 2026-10-19 checkpoint and older Hermes inventory observa
 
 | Gate | Current result |
 | --- | --- |
-| Hosted migration ledger | Applied through `0086_lead_scoring`; workforce RLS hardening and expected schema are present; no local migration through 0086 was pending. |
+| Hosted migration ledger | Application ledger records `0080`, `0081`, `0082`, `0083`, `0085` and `0086`; `0084_restricted_hermes_provisioner` is absent. The Supabase CLI ledger table is absent. Local PGlite verifies 0084 can be applied after 0086; hosted application remains an explicitly approved production change. |
 | Internal company profile | 4/4 required business facts saved. |
 | Application readiness | Zeng and Lead Hunter are 6/6. Appointment Setter, Sales Assistant, CRM Manager and Performance Analyst have no applied configuration and remain 0/6/unavailable. |
 | Live Hermes profiles | All six existing internal identities authenticate and match; complete six-tool inventory verified across five reviewed toolsets, with no restricted tools enabled. |
@@ -16,10 +16,11 @@ It supersedes the dated 2026-10-19 checkpoint and older Hermes inventory observa
 | Production application SHA | Unverified; no deployment record or runtime SHA was available in the preflight. |
 | Proactive operator switches | Schedules, triggers, briefings and worker all false; no autonomous workforce processing enabled. |
 | Prior Lead Hunter research | Targeted read-only query confirmed the supplied work job and Hermes run remain completed, with 10 saved leads. The eight historical web tool calls were not re-read from a separate event source. |
+| Client provisioner sandbox | GitHub Actions run [40059587299](https://github.com/mlester999/iacquire-dashboard/actions/runs/40059587299) passed at commit `85481852c5098044909ad96e87b273c59a720e65`, including isolated synthetic tenants, actual portal routes, provisioner runtime and cleanup. This is sandbox evidence, not production provisioning. |
 | Changes during preflight | No employee configuration, profile, acknowledgement, readiness row, schedule, worker or business record was changed. Resolving Hermes credentials appended the normal `credential.resolved` audit rows. |
-| Current local code | Branch `codex/iacquire-workforce-completion`, based on `36bf78c`, with verified implementation commit `9a8505a`; not pushed or deployed. |
+| Current local code | Branch `codex/iacquire-workforce-completion`, based on `36bf78c`, now includes the guarded appointment handoff, first-config drafts for the four unconfigured internal roles, restricted client provisioner and local-time schedule recurrence. The merge is local and has not been pushed or deployed. |
 
-Local release checks on this branch: 13 focused test files, 158 tests passed; app and script TypeScript checks passed; ESLint passed on changed files; Next.js 16.4.2 Webpack production build completed. The default Turbopack build did not resolve the shared `node_modules` link from the isolated worktree.
+Local release acceptance on the isolated branch: **322 test files passed, 5,011 tests passed and 8 skipped**; `npm run typecheck` passed; ESLint reported **0 errors** and 2 existing warnings in `src/server/calendars/agent-booking.ts` and `src/server/calendars/native-availability.ts`; Next.js 16.4.2 Webpack production build passed. The restricted provisioner Python suite passed 58 tests with 5 container-only skips. Focused recurrence and migration checks passed 17 tests. These are local results, not production acceptance. No hosted migration, deployment, employee configuration, profile change or worker activation was performed.
 
 ## Historical application and CRM checkpoint (2026-10-19)
 

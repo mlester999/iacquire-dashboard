@@ -9,6 +9,11 @@ import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
 import { parseResearchAssignment } from "@/lib/research-intent";
 import { isWithinBusinessHours, nextSendWindow, validateBusinessHours, type BusinessHours } from "@/lib/messaging";
+import {
+  nextWorkforceScheduleOccurrence,
+  validateWorkforceScheduleRule,
+  type WorkforceScheduleRule,
+} from "@/lib/workforce-schedule-recurrence";
 import type { OrgContext } from "@/server/tenancy/context";
 
 /**
@@ -39,6 +44,8 @@ export interface ScheduleView {
   employeeName: string;
   cadence: ScheduleCadence;
   intervalMinutes: number;
+  recurrenceRule: WorkforceScheduleRule | null;
+  recurrenceInvalid: boolean;
   timezone: string;
   /** Empty means any time. Windows are evaluated in the schedule's own time zone. */
   businessHours: BusinessHours;
@@ -89,10 +96,11 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; capability: string; cadence: ScheduleCadence; interval_minutes: number; timezone: string; business_hours: unknown; payload: unknown; enabled: boolean;
+      recurrence_rule: unknown;
       next_run_at: Date; last_run_at: Date | null; last_job_id: string | null; last_skipped_reason: string | null; last_skipped_at: Date | null;
       employee_role: AgentRoleKey; employee_name: string;
     }>(
-      `select s.id, s.capability, s.cadence, s.interval_minutes, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,
+      `select s.id, s.capability, s.cadence, s.interval_minutes, s.recurrence_rule, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,
               s.last_skipped_reason, s.last_skipped_at,
               a.role_key as employee_role, a.display_name as employee_name
          from ai_work_schedules s
@@ -101,7 +109,9 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
         order by s.created_at asc`,
       [ctx.org.orgId],
     );
-    return rows.map((row) => ({
+    return rows.map((row) => {
+      const recurrenceRule = validateWorkforceScheduleRule(row.recurrence_rule);
+      return {
       id: row.id,
       capability: row.capability,
       capabilityLabel: capabilityDefinition(row.capability)?.label ?? row.capability.replaceAll("_", " "),
@@ -109,6 +119,8 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
       employeeName: row.employee_name,
       cadence: row.cadence,
       intervalMinutes: row.interval_minutes,
+      recurrenceRule,
+      recurrenceInvalid: row.recurrence_rule !== null && row.recurrence_rule !== undefined && !recurrenceRule,
       timezone: row.timezone,
       businessHours: validateBusinessHours(row.business_hours) ?? {},
       payload: typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
@@ -126,13 +138,14 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
       lastSkippedReason: row.last_skipped_reason,
       lastSkippedAt: iso(row.last_skipped_at),
       operatorEnabled: schedulesOperatorEnabled(),
-    }));
+      };
+    });
   });
 }
 
 export async function saveSchedule(
   ctx: OrgContext,
-  input: { capability: string; cadence: string; enabled: boolean; businessHours?: unknown; payload?: unknown },
+  input: { capability: string; cadence: string; enabled: boolean; businessHours?: unknown; payload?: unknown; recurrenceRule?: unknown },
 ): Promise<{ id: string; enabled: boolean }> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't start AI work.");
@@ -140,6 +153,15 @@ export async function saveSchedule(
   if (!SCHEDULE_CADENCES.includes(input.cadence as ScheduleCadence)) throw new AppError("invalid_input", "Choose hourly, daily or weekly.");
   if (!ctx.can(definition.requiredPermission)) throw new AppError("forbidden", "Your role can't run this work.");
   const cadence = input.cadence as ScheduleCadence;
+  const recurrenceRule = input.recurrenceRule === undefined || input.recurrenceRule === null
+    ? null
+    : validateWorkforceScheduleRule(input.recurrenceRule);
+  if (input.recurrenceRule !== undefined && input.recurrenceRule !== null && !recurrenceRule) {
+    throw new AppError("invalid_input", "Choose a valid daily or weekday schedule time.");
+  }
+  if (recurrenceRule && ((recurrenceRule.kind === "daily" && cadence !== "daily") || (recurrenceRule.kind === "weekly" && cadence !== "weekly"))) {
+    throw new AppError("invalid_input", "The recurrence rule must match the selected daily or weekly cadence.");
+  }
   const role = definition.allowedRoles[0];
   if (!role) throw new AppError("invalid_input", "That capability has no eligible employee role.");
   let payload: Record<string, unknown> = {};
@@ -164,26 +186,36 @@ export async function saveSchedule(
   if (input.businessHours !== undefined && businessHours === null) {
     throw new AppError("invalid_input", "Check the business-hour windows. Each day needs a valid start and a later end time.");
   }
+  let nextRunAt: Date | null = null;
+  if (recurrenceRule && input.enabled) {
+    try {
+      nextRunAt = nextWorkforceScheduleOccurrence(recurrenceRule, ctx.org.timezone, new Date());
+    } catch {
+      throw new AppError("invalid_input", "Check the workspace timezone and schedule time.");
+    }
+  }
 
   const saved = await withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; enabled: boolean }>(
-      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, enabled, next_run_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, case when $10 then now() + make_interval(mins => $6) else now() end)
+      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, case when $11 then coalesce($12::timestamptz, now() + make_interval(mins => $6)) else now() end)
        on conflict (agent_instance_id, capability) do update set
          cadence = excluded.cadence,
          interval_minutes = excluded.interval_minutes,
          timezone = excluded.timezone,
          business_hours = excluded.business_hours,
          payload = excluded.payload,
+         recurrence_rule = excluded.recurrence_rule,
          enabled = excluded.enabled,
-         next_run_at = case when excluded.enabled then now() + make_interval(mins => excluded.interval_minutes) else now() end,
+         next_run_at = case when excluded.enabled then coalesce($12::timestamptz, now() + make_interval(mins => excluded.interval_minutes)) else now() end,
          last_skipped_reason = null,
          last_skipped_at = null,
          updated_at = now()
        returning id, enabled`,
       [
         ctx.org.orgId, agent.id, ctx.user.id, definition.key, cadence, intervalMinutes, ctx.org.timezone,
-        JSON.stringify(businessHours ?? {}), JSON.stringify(payload), Boolean(input.enabled),
+        JSON.stringify(businessHours ?? {}), JSON.stringify(payload), recurrenceRule ? JSON.stringify(recurrenceRule) : null,
+        Boolean(input.enabled), nextRunAt?.toISOString() ?? null,
       ],
     );
     await recordAudit({
@@ -197,6 +229,7 @@ export async function saveSchedule(
       metadata: {
         capability: definition.key,
         cadence,
+        recurrenceRule,
         enabled: Boolean(input.enabled),
         businessHours: businessHours ?? {},
         hasAssignment: Boolean(payload.prompt),
@@ -211,13 +244,32 @@ export async function saveSchedule(
 export async function setScheduleEnabled(ctx: OrgContext, scheduleId: string, enabled: boolean): Promise<void> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
   await withSystem(async (db) => {
-    const { rowCount } = await db.query(
-      `update ai_work_schedules
-          set enabled = $3, next_run_at = case when $3 then now() + make_interval(mins => interval_minutes) else now() end
-        where id = $1 and org_id = $2`,
-      [scheduleId, ctx.org.orgId, enabled],
+    const { rows } = await db.query<{ cadence: string; interval_minutes: number; timezone: string; recurrence_rule: unknown }>(
+      "select cadence, interval_minutes, timezone, recurrence_rule from ai_work_schedules where id = $1 and org_id = $2 for update",
+      [scheduleId, ctx.org.orgId],
     );
-    if (!rowCount) throw new AppError("not_found", "Schedule not found.");
+    const schedule = rows[0];
+    if (!schedule) throw new AppError("not_found", "Schedule not found.");
+    let nextRunAt = new Date();
+    if (enabled) {
+      const rule = validateWorkforceScheduleRule(schedule.recurrence_rule);
+      if (schedule.recurrence_rule !== null && schedule.recurrence_rule !== undefined && !rule) {
+        throw new AppError("invalid_input", "This saved recurrence needs correction before it can be enabled.");
+      }
+      try {
+        nextRunAt = rule
+          ? nextWorkforceScheduleOccurrence(rule, schedule.timezone, new Date())
+          : new Date(Date.now() + schedule.interval_minutes * 60_000);
+      } catch {
+        throw new AppError("invalid_input", "Check the saved schedule time and timezone before enabling it.");
+      }
+    }
+    await db.query(
+      `update ai_work_schedules
+          set enabled = $3, next_run_at = $4::timestamptz, last_skipped_reason = null, last_skipped_at = null
+        where id = $1 and org_id = $2`,
+      [scheduleId, ctx.org.orgId, enabled, nextRunAt.toISOString()],
+    );
     await recordAudit({
       orgId: ctx.org.orgId,
       actorUserId: ctx.user.id,
@@ -266,9 +318,9 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
   const result = await withSystem(async (db) => {
     const { rows: due } = await db.query<{
       id: string; org_id: string; agent_instance_id: string; created_by: string | null; capability: string; interval_minutes: number;
-      timezone: string; business_hours: unknown; payload: unknown; last_job_id: string | null;
+      timezone: string; business_hours: unknown; payload: unknown; recurrence_rule: unknown; next_run_at: Date; last_job_id: string | null;
     }>(
-      `select id, org_id, agent_instance_id, created_by, capability, interval_minutes, timezone, business_hours, payload, last_job_id
+      `select id, org_id, agent_instance_id, created_by, capability, interval_minutes, timezone, business_hours, payload, recurrence_rule, next_run_at, last_job_id
          from ai_work_schedules
         where enabled and next_run_at <= $1
         order by next_run_at asc
@@ -280,16 +332,47 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
     const jobIds: string[] = [];
     let skipped = 0;
     for (const schedule of due) {
+      const recurrenceRule = validateWorkforceScheduleRule(schedule.recurrence_rule);
+      if (schedule.recurrence_rule !== null && schedule.recurrence_rule !== undefined && !recurrenceRule) {
+        await db.query(
+          `update ai_work_schedules
+              set enabled = false, last_skipped_reason = 'invalid_recurrence_rule', last_skipped_at = $2::timestamptz
+            where id = $1`,
+          [schedule.id, now.toISOString()],
+        );
+        skipped += 1;
+        continue;
+      }
+      let nextRunAt: Date;
+      try {
+        nextRunAt = recurrenceRule
+          ? nextWorkforceScheduleOccurrence(recurrenceRule, schedule.timezone, now)
+          : new Date(now.getTime() + schedule.interval_minutes * 60_000);
+      } catch {
+        await db.query(
+          `update ai_work_schedules
+              set enabled = false, last_skipped_reason = 'invalid_schedule_timezone', last_skipped_at = $2::timestamptz
+            where id = $1`,
+          [schedule.id, now.toISOString()],
+        );
+        skipped += 1;
+        continue;
+      }
+      const scheduledAt = new Date(schedule.next_run_at);
       const businessHours = validateBusinessHours(schedule.business_hours) ?? {};
       if (!isWithinBusinessHours(businessHours, now, schedule.timezone)) {
-        const nextWindow = nextSendWindow({
-          from: now,
-          timeZone: schedule.timezone,
-          quietStart: "00:00",
-          quietEnd: "00:00",
-          businessHours,
-          businessHoursOnly: true,
-        });
+        // Local-time rules skip a missed occurrence rather than silently shifting it to a
+        // different wall-clock time. Legacy interval rows retain their existing postponement.
+        const nextWindow = recurrenceRule
+          ? nextRunAt
+          : nextSendWindow({
+              from: now,
+              timeZone: schedule.timezone,
+              quietStart: "00:00",
+              quietEnd: "00:00",
+              businessHours,
+              businessHoursOnly: true,
+            });
         await db.query(
           `update ai_work_schedules
               set next_run_at = $2::timestamptz, last_skipped_reason = 'outside_business_hours', last_skipped_at = $3::timestamptz
@@ -321,11 +404,14 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         && canChat(row.status),
       );
       if (!runnable || previousActive) {
-        await db.query("update ai_work_schedules set next_run_at = $2::timestamptz + make_interval(mins => interval_minutes) where id = $1", [schedule.id, now]);
+        await db.query(
+          "update ai_work_schedules set next_run_at = $2::timestamptz, last_skipped_reason = $3, last_skipped_at = $4::timestamptz where id = $1",
+          [schedule.id, nextRunAt.toISOString(), previousActive ? "previous_job_active" : "employee_unavailable", now.toISOString()],
+        );
         skipped += 1;
         continue;
       }
-      const stamp = now.toISOString().slice(0, 16);
+      const stamp = scheduledAt.toISOString().slice(0, 16);
       if (schedule.capability === "lead_research") {
         const scheduled = await createScheduledResearchJob(db, {
           orgId: schedule.org_id,
@@ -340,20 +426,20 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         if ("skipped" in scheduled) {
           await db.query(
             `update ai_work_schedules
-                set next_run_at = $2::timestamptz + make_interval(mins => interval_minutes),
-                    last_skipped_reason = $3, last_skipped_at = $2::timestamptz
+                set next_run_at = $2::timestamptz,
+                    last_skipped_reason = $3, last_skipped_at = $4::timestamptz
               where id = $1`,
-            [schedule.id, now, scheduled.skipped],
+            [schedule.id, nextRunAt.toISOString(), scheduled.skipped, now.toISOString()],
           );
           skipped += 1;
           continue;
         }
         await db.query(
           `update ai_work_schedules
-              set last_run_at = $2::timestamptz, last_job_id = $3, next_run_at = $2::timestamptz + make_interval(mins => interval_minutes),
+              set last_run_at = $2::timestamptz, last_job_id = $3, next_run_at = $4::timestamptz,
                   last_skipped_reason = null, last_skipped_at = null
             where id = $1`,
-          [schedule.id, now, scheduled.jobId],
+          [schedule.id, now.toISOString(), scheduled.jobId, nextRunAt.toISOString()],
         );
         jobIds.push(scheduled.jobId);
         continue;
@@ -365,21 +451,21 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         capability: schedule.capability,
         title: `${definition!.label} (scheduled)`,
         idempotencyKey: `schedule:${schedule.id}:${stamp}`,
-        input: { scheduleId: schedule.id, scheduled: true },
+        input: { scheduleId: schedule.id, scheduled: true, scheduledAt: scheduledAt.toISOString() },
       });
       await db.query(
         `update ai_work_schedules
-            set last_run_at = $2::timestamptz, last_job_id = $3, next_run_at = $2::timestamptz + make_interval(mins => interval_minutes),
+            set last_run_at = $2::timestamptz, last_job_id = $3, next_run_at = $4::timestamptz,
                 last_skipped_reason = null, last_skipped_at = null
           where id = $1`,
-        [schedule.id, now, job.id],
+        [schedule.id, now.toISOString(), job.id, nextRunAt.toISOString()],
       );
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: schedule.org_id,
         kind: "notice",
         message: "Created by an enabled AI workforce schedule.",
-        data: { scheduleId: schedule.id },
+        data: { scheduleId: schedule.id, scheduledAt: scheduledAt.toISOString() },
       });
       jobIds.push(job.id);
     }

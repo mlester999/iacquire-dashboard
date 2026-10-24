@@ -1,6 +1,6 @@
 # Proactive AI employees
 
-Status (2026-10-24): **implemented and verified locally; the read-only production preflight confirmed migrations through `0086_lead_scoring`, including workforce RLS hardening. The schedules, triggers, briefings and worker operator switches were false, so autonomous monitoring and work were not running. Two employees are at 6/6 readiness; the four employees without applied configurations remain unavailable.** See the [current internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md). This page covers the proactive layer added on top of the existing AI employee execution foundation in
+Status (2026-10-24): **implemented and verified locally; the read-only production ledger check found 0080, 0081, 0082, 0083, 0085 and 0086 applied, with 0084 missing. The schedules, triggers, briefings and worker operator switches were false, so autonomous monitoring and work were not running. Two employees are at 6/6 readiness; the four employees without applied configurations remain unavailable.** See the [current internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md). This page covers the proactive layer added on top of the existing AI employee execution foundation in
 [AI employee execution foundation](ai-employee-execution-foundation.md).
 
 ## 1. What changed
@@ -156,7 +156,7 @@ migration or scheduler activation was performed.
 
 Before any proactive monitoring is described as production-live, all of the following need explicit authorization:
 
-1. The 2026-10-24 preflight confirmed the hosted schema through `0086_lead_scoring`; no local migrations through 0086 were pending. The exact running application SHA is still unverified.
+1. The 2026-10-24 preflight found `0080`, `0081`, `0082`, `0083`, `0085` and `0086` in the hosted application ledger; `0084_restricted_hermes_provisioner` is absent. The exact running application SHA is still unverified.
 2. Production has **4/4 company facts** and Lead Hunter is configured at 6/6 readiness. The remaining four internal employees have no applied configurations and remain unavailable; this is the active employee blocker.
 3. Enable a single schedule or event trigger in a supervised window. Keep `WORKFORCE_SCHEDULES_ENABLED`,
    `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until each activation is approved.

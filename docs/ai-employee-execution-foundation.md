@@ -1,6 +1,6 @@
 # AI employee execution foundation and Lead Hunter activation
 
-Status: the workforce foundation and client-provisioning work are implemented and locally verified. Hosted migrations through `0086_lead_scoring` were confirmed applied in the 2026-10-24 read-only preflight. Production activation remains incomplete: Zeng and Lead Hunter are 6/6; the four remaining internal employees have no applied configuration and remain unavailable. The current, authoritative snapshot is [Internal AI Workforce production preflight (2026-10-24)](internal-workforce-production-preflight-2026-10-24.md). The Hermes API still cannot attest to effective deployed SOUL instructions. No production configuration, profile, acknowledgement, worker or schedule was changed by that preflight.
+Status: the workforce foundation and client-provisioning work are implemented locally. The 2026-10-24 read-only production ledger query found `0080`, `0081`, `0082`, `0083`, `0085` and `0086`; `0084_restricted_hermes_provisioner` is absent. Production activation remains incomplete: Zeng and Lead Hunter are 6/6; the four remaining internal employees have no applied configuration and remain unavailable. The current, authoritative snapshot is [Internal AI Workforce production preflight (2026-10-24)](internal-workforce-production-preflight-2026-10-24.md). The Hermes API still cannot attest to effective deployed SOUL instructions. No production configuration, profile, acknowledgement, worker, schedule or migration was changed by the preflight.
 
 ## 1. Lead Hunter configuration
 
@@ -10,6 +10,9 @@ Status: the workforce foundation and client-provisioning work are implemented an
 - The Configure screen shows a **Role setup check** with every role field and the company facts that are still
   needed, plus **Fill blank fields**. The action only fills blank role fields and still saves through the existing
   server-side review/apply path. It never overwrites a saved answer and never fills company facts.
+- For a first-time internal setup, **Prepare first config** creates an unsaved role-specific draft, using the
+  same safe role defaults. Unknown company details stay blank, existing configured drafts are preserved, and
+  saving still goes through the guarded version/review flow.
 - `src/server/workforce/policy.ts` adds a server-owned Lead Hunter operating standard (research procedure,
   evidence rule, qualification, public decision-maker limits, duplicates, prohibited actions, approvals,
   escalation, error recovery, collaboration and honest reporting). It is compiled after the client's
@@ -120,7 +123,7 @@ The 2026-10-21 audit is superseded by the current 2026-10-24 all-six employee an
 
 The production activation sequence is still guarded: apply each reviewed configuration through the existing versioned path; run profile-specific health and inventory checks; verify current profile identity; record the authorized Super Admin acknowledgement; and obtain host-side evidence for effective SOUL instructions. The existing profile IDs must be retained. Do not write readiness flags directly, start the worker, activate schedules or triggers, or run research as part of configuration setup.
 
-The hosted ledger now includes the RLS hardening migration `0081_ai_work_job_rls_hardening` and continues through `0086_lead_scoring`. No workforce schema migration in this range is pending. A production deployment SHA and effective SOUL attestation remain unverified, so the current application release and profile configuration cannot yet be called production-ready.
+The hosted application ledger includes `0081_ai_work_job_rls_hardening`, `0082_client_employee_provisioning`, `0083_unified_inbox`, `0085_missed_call_recovery` and `0086_lead_scoring`; `0084_restricted_hermes_provisioner` is absent. Local PGlite confirms 0084 applies after 0086, but it has not been applied to production. A production deployment SHA and effective SOUL attestation remain unverified, so the current application release and profile configuration cannot yet be called production-ready.
 
 ## 8. AI Work Board and on-demand proactivity
 
@@ -196,6 +199,14 @@ read-only capability per employee, a cadence (hourly/daily/weekly), a next-run t
 and last job. The Work Board can save a schedule (always paused first), enable or pause it, and
 delete it; every change is audited.
 
+Migration `0087_workforce_local_recurrence.sql` adds an optional local-time recurrence rule. New
+daily and selected-weekday rules use the workspace's IANA timezone and keep their wall-clock time
+across daylight-saving changes; a repeated fall-back time uses its earlier instant, while a
+nonexistent spring-forward time moves to the first valid local minute. Existing hourly/daily/weekly
+interval rows keep their prior behavior. New schedules still save paused, and the migration has
+not been applied to hosted production. The production ledger currently lacks `0084`, so hosted
+migrations remain a separately reviewed release step.
+
 A schedule can only create work when **both** switches are on:
 
 1. the schedule row is `enabled`;
@@ -209,6 +220,9 @@ The operator switch is absent/false in production, so **no schedule is active**.
 `tests/workforce-schedules.test.ts` covers: disabled by default, no run without the operator
 switch, a real due job created only when both switches are on, no duplicate while a prior job is
 active, member refusal, non-review capability refusal, enable/pause/delete and audit evidence.
+`tests/workforce-schedule-recurrence.test.ts` covers weekday and daily recurrence, invalid rules,
+and daylight-saving gaps and overlaps. The Kanban Work Board and Schedules & Calendar are design
+proposals awaiting review; their frontend implementation remains behind that review gate.
 
 ## 10. Event-driven triggers (implemented, not activated)
 

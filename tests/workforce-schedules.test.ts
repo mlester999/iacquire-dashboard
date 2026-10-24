@@ -60,6 +60,35 @@ describe("tenant AI workforce schedules", () => {
     expect(run).toMatchObject({ operatorEnabled: false, created: 0 });
   });
 
+  it("persists a paused weekday rule and creates only the next local-time occurrence", async () => {
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
+    const recurrenceRule = { kind: "weekly", localTime: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] };
+    const saved = await saveSchedule(ctxFor(owner, org, "owner"), {
+      capability: "proactive_review",
+      cadence: "weekly",
+      enabled: false,
+      recurrenceRule,
+    });
+    expect(saved.enabled).toBe(false);
+    await setScheduleEnabled(ctxFor(owner, org, "owner"), saved.id, true);
+
+    await withSystem((db) => db.query("update ai_work_schedules set next_run_at = now() - interval '1 minute' where id = $1", [saved.id]));
+    const run = await runDueSchedules({ now: new Date() });
+    expect(run.created).toBe(1);
+    await waitForJob(run.jobIds[0]);
+
+    const schedule = (await listSchedules(ctxFor(owner, org, "owner"))).find((row) => row.id === saved.id);
+    expect(schedule?.recurrenceRule).toEqual(recurrenceRule);
+    const local = new Intl.DateTimeFormat("en-US", {
+      timeZone: schedule!.timezone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(schedule!.nextRunAt));
+    expect(local).toMatch(/^(Mon|Tue|Wed|Thu|Fri) 09:00$/);
+  }, 30000);
+
   it("creates a real durable job for a due enabled schedule only when the operator switch is on", async () => {
     process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
     const saved = await saveSchedule(ctxFor(owner, org, "owner"), { capability: "proactive_review", cadence: "daily", enabled: true });

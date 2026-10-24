@@ -11,6 +11,13 @@ const RENAMED = [
   "0081_ai_work_job_rls_hardening",
 ];
 
+const PROVISIONER_DEPENDENTS = [
+  "0082_client_employee_provisioning",
+  "0083_unified_inbox",
+  "0085_missed_call_recovery",
+  "0086_lead_scoring",
+];
+
 function baseVersions(): string[] {
   return fs
     .readdirSync(path.resolve(process.cwd(), "supabase", "migrations"))
@@ -57,6 +64,17 @@ describe("AI workforce migration renumbering", () => {
       const versions = ledger.rows.map((row) => row.version);
       expect(versions).toEqual(expect.arrayContaining(["0072_automation_connections", ...RENAMED]));
       expect(versions).not.toContain("0072_ai_work_jobs");
+
+      // Production can have 0085/0086 recorded while 0084 is absent. Prove the
+      // missing, independent provisioner extension can be applied afterward.
+      expect(await runMigrations(driver as never, PROVISIONER_DEPENDENTS)).toEqual(PROVISIONER_DEPENDENTS);
+      expect(await runMigrations(driver as never, ["0084_restricted_hermes_provisioner"])).toEqual([
+        "0084_restricted_hermes_provisioner",
+      ]);
+      const provisionerColumns = await driver.query<{ table_name: string; column_name: string }>(
+        "select table_name, column_name from information_schema.columns where table_schema = 'public' and ((table_name = 'hermes_gateways' and column_name = 'provisioner_isolation_verified_at') or (table_name = 'agent_instances' and column_name = 'hermes_profile_config_version_id') or (table_name = 'agent_provisioning_jobs' and column_name in ('config_version_id','source_job_id','manifest_soul_sha256','manifest_policy_config_sha256','manifest_challenge_sha256'))) order by table_name, column_name",
+      );
+      expect(provisionerColumns.rows).toHaveLength(7);
     } finally {
       await db.close();
     }

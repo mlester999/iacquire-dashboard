@@ -4,7 +4,7 @@ Checked: 2026-10-24 (Asia/Singapore). This is a read-only snapshot, not a produc
 
 ## What the checks established
 
-- The hosted migration ledger has migrations through `0086_lead_scoring`; the workforce tables and RLS hardening migrations `0077`–`0081` are applied, with their expected tables, columns and policies present. No local migrations through `0086` were pending in the read-only preflight.
+- The application migration ledger records `0080`, `0081`, `0082`, `0083`, `0085` and `0086`; `0084_restricted_hermes_provisioner` is absent even though `0085` and `0086` are present. The Supabase CLI ledger table is absent. The focused query was read-only. Migration `0084` is now integrated locally and a PGlite regression test confirms it applies after `0086`; production still needs an approved migration review and application.
 - The production company profile has all four required facts: business description, products/services, ideal customers and operating area. The readiness audit printed only completeness counts, not the company text.
 - One existing multiplexed Hermes gateway is connected. Its six mapped internal profiles authenticate and match their intended identity. The read-only Hermes audit verified the complete six-tool inventory (`memory`, `session_search`, `todo_list`, `vision_analyze`, `web_extract`, `web_search`) across the five reviewed toolsets, with no restricted tools currently enabled. It did not start a model run or change a profile.
 - Gateway capabilities advertise runs, events, status, stop and approval. The API reports `admin_config_rw: false` and no memory write API, so it cannot verify or update the effective deployed SOUL instructions.
@@ -21,7 +21,7 @@ Checked: 2026-10-24 (Asia/Singapore). This is a read-only snapshot, not a produc
 | CRM Manager | None; safe preview 7/7 | 0/6 | Live Hermes identity/inventory pass; saved app check is stale and marked restricted | Unavailable |
 | Performance Analyst | None; safe preview 7/7 | 0/6 | Live Hermes identity/inventory pass; app has no saved inventory digest and the saved check is stale/restricted | Unavailable |
 
-The configuration previews used the existing role defaults and saved company facts. They did not save or apply any configuration. The live Hermes audit is a separate current read from the portal's saved check rows; its successful inventory result has not been written back as employee readiness evidence.
+The configuration previews used the existing role defaults and saved company facts. They did not save or apply any configuration. The local Configure screen now offers a first-config draft for each unconfigured internal role; it fills known role defaults and keeps unknown company details blank. The draft remains unsaved until the normal guarded review/save path. The live Hermes audit is a separate current read from the portal's saved check rows; its successful inventory result has not been written back as employee readiness evidence.
 
 ## Activation blockers
 
@@ -40,6 +40,6 @@ re-read from a separate Hermes event source.
 
 ## Release / approval boundary
 
-The local code branch is based on `36bf78c` and contains a new read-only all-six readiness audit at `scripts/internal-workforce-readiness-audit.ts`. Completed appointment availability now links to the existing guarded booking flow. Local acceptance: 13 files, 158 tests passed; app and script TypeScript checks passed; ESLint passed on all changed code; and Next.js 16.4.2's Webpack production build completed. The default Turbopack build could not resolve dependencies through the isolated worktree's external `node_modules` link. These are local results, not production acceptance.
+The local branch is based on `36bf78c` and contains the read-only all-six readiness audit, guarded appointment booking handoff, safe first-config drafts for the four unconfigured roles, and the restricted client provisioner integration. The merge remains local and is not deployed. The full local regression and release-gate results are recorded in [verification-status.md](verification-status.md). The linked GitHub sandbox run is synthetic evidence only; it does not establish production client provisioning or internal employee activation.
 
 A production request must bundle the exact deploy SHA and reviewed configuration versions with the authorized profile health/identity checks, Super Admin acknowledgement, host-side SOUL attestation, backup/rollback references and a bounded acceptance plan. Until that package is explicitly approved and completed, the four employees remain unavailable in the application. Keep all schedule, trigger, briefing and worker switches off.

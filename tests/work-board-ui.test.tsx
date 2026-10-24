@@ -184,6 +184,8 @@ describe("AI Work Board", () => {
       employeeName: "Operations Manager",
       cadence: "daily",
       intervalMinutes: 1440,
+      recurrenceRule: null,
+      recurrenceInvalid: false,
       timezone: "UTC",
       businessHours: {},
       payload: {},
