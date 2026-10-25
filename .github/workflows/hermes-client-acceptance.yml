@@ -314,18 +314,26 @@ jobs:
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
             -f services/hermes-provisioner/compose.acceptance.yaml \
-            --profile provisioner --profile acceptance ps -q hermes-client)"
+            --profile provisioner --profile acceptance ps --all -q hermes-client | head -n 1)"
           harness_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
             -f services/hermes-provisioner/compose.acceptance.yaml \
-            --profile provisioner --profile acceptance ps -q acceptance-harness)"
+            --profile provisioner --profile acceptance ps --all -q acceptance-harness | head -n 1)"
           worker_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
             -f services/hermes-provisioner/compose.acceptance.yaml \
-            --profile provisioner --profile acceptance ps -q hermes-provisioner)"
-          [[ -n "$client_id" && -n "$harness_id" && -n "$worker_id" ]]
+            --profile provisioner --profile acceptance ps --all -q hermes-provisioner | head -n 1)"
+          if [[ -z "$client_id" || -z "$harness_id" || -z "$worker_id" ]]; then
+            [[ -n "$client_id" ]] || echo "SANDBOX_CONTAINER_ID_MISSING=hermes-client"
+            [[ -n "$harness_id" ]] || echo "SANDBOX_CONTAINER_ID_MISSING=acceptance-harness"
+            [[ -n "$worker_id" ]] || echo "SANDBOX_CONTAINER_ID_MISSING=hermes-provisioner"
+            for id in "$client_id" "$harness_id" "$worker_id"; do
+              [[ -n "$id" ]] && docker inspect -f 'SANDBOX_CONTAINER_STATE={{.Name}} STATUS={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}}' "$id"
+            done
+            exit 1
+          fi
 
           sudo python3 - "$client_id" "$harness_id" "$worker_id" "$HERMES_ACCEPTANCE_DIR" <<'PY'
           import json, pathlib, subprocess, sys
