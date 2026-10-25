@@ -19,14 +19,11 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { hashIp } from "@/server/security/crypto";
 import { notifyAgency } from "@/server/notifications";
 import { logSafeServerDiagnostic } from "@/server/diagnostics";
+import { safeNextPath } from "@/lib/safe-next";
 
 export type FormState = { error?: string; success?: string; fieldErrors?: Record<string, string> } | undefined;
 
-function safeNext(value: FormDataEntryValue | null): string {
-  const v = typeof value === "string" ? value : "";
-  // Only same-site relative paths; never protocol-relative or absolute URLs.
-  return /^\/(?!\/)[A-Za-z0-9/_?=&%.-]*$/.test(v) ? v : "/";
-}
+const safeNext = (value: FormDataEntryValue | null): string => safeNextPath(value);
 
 function minutes(seconds?: number) {
   const m = Math.max(1, Math.ceil((seconds ?? 60) / 60));

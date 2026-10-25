@@ -297,7 +297,7 @@ export function leadsToCsv(rows: LeadRow[]): string {
     const s = v === null || v === undefined ? "" : String(v);
     // Neutralise spreadsheet formula injection.
     const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-    return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+    return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
   const header = ["Business", "Website", "Industry", "Location", "Score", "Review status", "Duplicate status", "CRM sync", "Sources", "Researched at"];
   const lines = rows.map((r) =>

@@ -5,6 +5,7 @@ import { usingSupabaseAuth } from "@/server/auth/provider";
 import { supabaseConfigStatus } from "@/server/supabase/config";
 import { AuthHeading, LoginForm } from "@/components/auth/forms";
 import { SupabaseNotConnected } from "@/components/auth/config-notice";
+import { safeNextPath } from "@/lib/safe-next";
 
 export const metadata = { title: "Sign in" };
 
@@ -14,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     const status = supabaseConfigStatus();
     if (!status.configured) return <SupabaseNotConnected problems={status.problems} />;
   }
-  if (await getCurrentUser()) redirect(params.next && /^\/(?!\/)/.test(params.next) ? params.next : "/");
+  if (await getCurrentUser()) redirect(safeNextPath(params.next));
   const notice = params.reset
     ? "Your password was updated. Sign in with your new password."
     : params.signed_out
