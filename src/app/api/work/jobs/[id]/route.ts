@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/server/auth/session";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { cancelWorkJob, getWorkJobView, retryWorkJobForUser } from "@/server/workforce/jobs";
 import { toPublicError } from "@/server/errors";
 
@@ -13,7 +13,7 @@ const actionSchema = z.object({ action: z.enum(["cancel", "retry"]) });
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const ctx = await requireOrgContextOrThrow();
+    const ctx = await requireWorkforceContextOrThrow();
     const { id } = await params;
     if (!uuid.test(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
     const after = new URL(req.url).searchParams.get("after");
@@ -29,7 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await assertSameOrigin();
-    const ctx = await requireOrgContextOrThrow();
+    const ctx = await requireWorkforceContextOrThrow();
     const { id } = await params;
     if (!uuid.test(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
     const parsed = actionSchema.safeParse(await req.json().catch(() => null));
