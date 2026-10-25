@@ -5,6 +5,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits } from "@/server/usage";
+import { assertJobAllowed, jobGate } from "@/server/automation/job-gate";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
@@ -72,7 +73,14 @@ export async function createResearchRequest(
   if (!limit.allowed) throw new AppError("rate_limited", "Too many research requests this hour.");
   const targeting = await getTargeting(ctx);
   const agent = await withSystem((db) => leadHunter(db, ctx.org.orgId));
-  const ready = Boolean(agent?.enabled && canChat(agent.status));
+  const connected = Boolean(agent?.enabled && canChat(agent.status));
+  const gate = connected && agent
+    ? await withSystem((db) => jobGate(db, { orgId: ctx.org.orgId, agentId: agent.id }))
+    : null;
+  const ready = connected && gate?.allowed === true;
+  const waitingReason = gate && !gate.allowed
+    ? gate.detail
+    : "The Lead Hunter isn't connected yet, so no research has run.";
   if (ready) await assertWithinLimits(ctx.org.orgId, "lead_research");
 
   const created = await withSystem(async (db) => {
@@ -82,7 +90,7 @@ export async function createResearchRequest(
       [
         ctx.org.orgId, ctx.user.id, prompt, input.campaignType, JSON.stringify(targeting),
         ready ? "queued" : "waiting_for_agent",
-        ready ? null : "The Lead Hunter isn't connected yet, so no research has run.",
+        ready ? null : waitingReason,
       ],
     );
     const requestId = rows[0].id;
@@ -113,6 +121,7 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can run lead research.");
   const agent = await withSystem((db) => leadHunter(db, ctx.org.orgId));
   if (!agent?.enabled || !canChat(agent.status)) throw new AppError("agent_unavailable", "The Lead Hunter isn't connected yet.");
+  await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
   await assertWithinLimits(ctx.org.orgId, "lead_research");
   const jobId = await withSystem(async (db) => {
     const { rows } = await db.query<{ status: string; work_job_id: string | null; prompt: string; campaign_type: "business" | "influencer"; criteria: unknown }>(

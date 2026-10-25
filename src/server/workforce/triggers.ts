@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { TRIGGER_EVENT_CAPABILITIES } from "@/lib/workforce-triggers";
+import { jobGate } from "@/server/automation/job-gate";
 import { appendWorkEvent, createWorkJob } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -207,7 +208,8 @@ export async function runDueTriggers(options: { limit?: number } = {}): Promise<
         && row.status
         && canChat(row.status as AgentStatus),
       );
-      if (!runnable) {
+      const gate = runnable ? await jobGate(db, { orgId: trigger.org_id, agentId: trigger.agent_instance_id }) : null;
+      if (!runnable || (gate && !gate.allowed)) {
         await db.query("update ai_work_triggers set last_event_id = $2 where id = $1", [trigger.id, trigger.event_id]);
         skipped += 1;
         continue;

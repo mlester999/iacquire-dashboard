@@ -6,6 +6,7 @@ import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { OrgContext } from "@/server/tenancy/context";
+import { assertJobAllowed } from "@/server/automation/job-gate";
 import { createWorkJob } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 
@@ -63,6 +64,7 @@ export async function dispatchCapabilityJob(
 
   const idempotencyKey = input.idempotencyKey ?? `${input.capability}:${input.agentRole}:${crypto.randomUUID()}`;
   const job = await withSystem(async (db) => {
+    await assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id });
     const created = await createWorkJob(db, {
       orgId: ctx.org.orgId,
       agentId: agent.id,

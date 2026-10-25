@@ -3,6 +3,7 @@ import { runMissedCallReviewJob } from "@/server/workforce/missed-call-review";
 import { runLeadPriorityReviewJob } from "@/server/workforce/lead-priority-review";
 import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
+import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import {
   appendWorkEvent,
   claimWorkJob,
@@ -84,6 +85,36 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
   registerWorkJobController(claimed.id, controller);
   const runHandler = HANDLERS[claimed.capability];
   try {
+    // A pause or readiness change after enqueue must stop the worker before it invokes a handler.
+    const gate = await withSystem((db) => jobGate(db, { orgId: claimed.org_id, agentId: claimed.agent_instance_id }));
+    if (!gate.allowed) {
+      await withSystem(async (db) => {
+        const finished = await finishWorkJob(db, {
+          jobId: claimed.id,
+          orgId: claimed.org_id,
+          workerId: id,
+          status: "blocked",
+          stage: "blocked",
+          failureCode: jobBlockCode(gate.reason),
+          failureMessage: gate.detail,
+          event: {
+            kind: "notice",
+            stage: "blocked",
+            message: `${gate.detail} Nothing was executed.`,
+            data: { reason: gate.reason },
+          },
+        });
+        if (finished && claimed.capability === "lead_research") {
+          await db.query(
+            `update lead_research_requests
+                set status = 'waiting_for_agent', failure_reason = $3
+              where org_id = $1 and work_job_id = $2 and status = 'queued'`,
+            [claimed.org_id, claimed.id, gate.detail.slice(0, 500)],
+          );
+        }
+      });
+      return true;
+    }
     if (!runHandler) {
       await withSystem(async (db) => {
         await finishWorkJob(db, {

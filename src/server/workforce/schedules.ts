@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
@@ -444,6 +445,19 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         && row.status
         && canChat(row.status),
       );
+      const gate = runnable && !previousActive
+        ? await jobGate(db, { orgId: schedule.org_id, agentId: schedule.agent_instance_id })
+        : null;
+      if (gate && !gate.allowed) {
+        await db.query(
+          `update ai_work_schedules
+              set next_run_at = $2::timestamptz, last_skipped_reason = $3, last_skipped_at = $4::timestamptz
+            where id = $1`,
+          [schedule.id, nextRunAt.toISOString(), jobBlockCode(gate.reason), now.toISOString()],
+        );
+        skipped += 1;
+        continue;
+      }
       if (!runnable || previousActive) {
         await db.query(
           "update ai_work_schedules set next_run_at = $2::timestamptz, last_skipped_reason = $3, last_skipped_at = $4::timestamptz where id = $1",
