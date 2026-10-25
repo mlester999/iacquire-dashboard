@@ -91,6 +91,17 @@ describe("role playbooks", () => {
     expect(audit.items.find((item) => item.key === "responsibilities")?.state).toBe("missing");
     expect(audit.items.find((item) => item.key === "escalateWhen")?.state).toBe("missing");
   });
+
+  it("accepts a short employee name such as Zeng while still rejecting a placeholder", () => {
+    const settings = { ...recommendedSettings("operations_manager"), displayName: "Zeng" };
+    const audit = auditRoleConfiguration("operations_manager", settings, company);
+    expect(audit.items.find((item) => item.key === "displayName")?.state).toBe("complete");
+    expect(audit.ready).toBe(true);
+
+    const placeholder = auditRoleConfiguration("operations_manager", { ...settings, displayName: "TBD" }, company);
+    expect(placeholder.items.find((item) => item.key === "displayName")?.state).toBe("missing");
+    expect(placeholder.ready).toBe(false);
+  });
 });
 
 describe("compiled Lead Hunter operating standard", () => {

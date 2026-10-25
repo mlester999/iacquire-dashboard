@@ -190,6 +190,11 @@ function hasMeaningfulText(value: string | undefined | null): boolean {
   return text.length >= 8 && !PLACEHOLDER.test(text);
 }
 
+function hasMeaningfulEmployeeName(value: string | undefined | null): boolean {
+  const name = (value ?? "").trim();
+  return name.length > 0 && !PLACEHOLDER.test(name);
+}
+
 export interface RoleConfigAuditItem {
   key: string;
   label: string;
@@ -228,7 +233,13 @@ export function auditRoleConfiguration(
     items.push({ key, label, scope: "company", state: hasMeaningfulText(value) ? "complete" : "missing", detail });
   };
 
-  employee("displayName", "Employee name", settings.displayName, "A clear, role-appropriate display name.");
+  items.push({
+    key: "displayName",
+    label: "Employee name",
+    scope: "employee",
+    state: hasMeaningfulEmployeeName(settings.displayName) ? "complete" : "missing",
+    detail: "A clear, role-appropriate display name.",
+  });
   if (role === "lead_hunter") {
     employee("responsibilities", "Main responsibilities", settings.responsibilities, "What the Lead Hunter owns, including research, evidence and review preparation.");
     employee("goals", "Goals", settings.goals, "The outcome the Lead Hunter is working toward.");
