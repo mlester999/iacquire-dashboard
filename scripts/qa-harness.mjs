@@ -33,7 +33,7 @@ function credentials(key) {
 export function watch(page, report, label, { allowOrigins = [] } = {}) {
   // allowOrigins: other loopback origins a scenario is meant to visit (the simulated PayMongo's page, http://127.0.0.1:3281). Anything else that is not the QA origin is still reported.
   const here = (u) => { try { const o = new URL(u).origin; return o === new URL(BASE).origin || allowOrigins.includes(o); } catch { return false; } };
-  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource: the server responded with a status of (401|403|404)/.test(m.text())) report.consoleErrors.push(`${label}: ${m.text().slice(0, 300)}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource: the server responded with a status of (401|403|404)/.test(m.text())) report.consoleErrors.push(`${label}: ${m.text().slice(0, /state update|same key|hydrat/i.test(m.text()) ? 1600 : 300)}`); });
   page.on("pageerror", (e) => report.pageErrors.push(`${label}: ${e.message.slice(0, 300)}`));
   page.on("response", (r) => { if (r.status() >= 500 && here(r.url())) report.serverErrors.push(`${label}: ${r.status()} ${r.url().slice(0, 160)}`); });
   page.on("request", (r) => { const u = r.url(); if (!here(u) && !/^(data|blob|about):/.test(u)) report.external.push(`${label}: ${u.slice(0, 160)}`); });

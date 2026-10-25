@@ -170,3 +170,12 @@ Listed in the checkpoint (section 13): low private feedback raises an urgent esc
 | Uploads behind a session read the whole body before checking its size (assets, knowledge, support, project, social media, AQi attachments) | A complete body ceiling | Decision: they already require a session and a per-file limit; whether a streaming parser is worth adding | Public and webhook routes are covered (D68) |
 | The dev server logs "text/plain" chunk and connection-reset errors while it recompiles | Nothing in production | None | Not counted as defects; production uses a built bundle |
 | Stage 5 items from the employee audit still not built: one shared readiness definition with role prerequisites, a scheduled Hermes health probe, a per-role tool allowlist, storage entitlement and external storage, a feature-rollout registry | Calling the six employees production-ready | Founder approval of the Hermes tool allowlist; a live Hermes profile to verify against | Honest labels (the AI Employee Tools screen, the checklist) instead of the missing mechanism; `docs/ai-employee-readiness-matrix.md` |
+
+Review notes (a `/code-review high` of `c4cc12a9~1..HEAD`; three findings fixed, the rest recorded here, none judged release-blocking):
+
+* A maintenance checkout that is resumed ("Pay" pressed again for the same months) is reused without asking whether the provider's own session has expired; the owner may land on an expired provider page until the renewal sweep closes it. Needs the provider's session lifetime (a sandbox run) before a number is coded.
+* Reduced-motion users now see width, height and path animations (MotionConfig `reducedMotion="user"` only removes transforms and layout motion); they previously saw none in 20 places. Cheap to restore per property if the founder wants it.
+* `th .sr-only { position: relative }` leaves a 1px in-flow box in header cells that carry hidden text.
+* The bounded body reader still buffers up to the ceiling per request (2 MB for the voice webhooks) before the signature is checked.
+* The Blueprint checklist's "ready" now needs a passed health check but not a current credential or tool inventory (the shared readiness definition is not built); it has no test of its own.
+* Four server-rendered callers still slice the UTC date for "today" (`pipeline-board`, `project-workspace`, `priority-ui`, `sources-report`) and the codebase has four `todayIn` helpers; consolidating them is cleanup, not a defect found by users.
