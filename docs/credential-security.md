@@ -47,6 +47,18 @@ node --env-file-if-exists=.env.local --conditions=react-server --import tsx scri
 
 The apply operation creates managed references, rebinds agent/location/connection records and revokes old portal references in one transaction. It retains old ciphertext and requires fresh provider checks. Any unsupported provider or decryption failure aborts the transaction. The script makes no Hermes, CRM or n8n calls. Do not remove the original key until migration and rollback recovery have been tested. Cross-project Vault restores require special key handling described by Supabase; copying encrypted rows is not sufficient.
 
+## Rotating `APP_ENCRYPTION_KEY` (app-sealed secrets)
+
+Besides Vault references, the application currently seals calendar OAuth tokens and CalDAV passwords, outbound CRM webhook secrets, Automation Studio connection secrets, and retained legacy credentials with AES-256-GCM under `APP_ENCRYPTION_KEY`. Until 2026-10-25 `decryptSecret` ignored `APP_ENCRYPTION_KEY_PREVIOUS`, so changing the key made them unreadable at once. Now a retired key still opens what it sealed, and a re-seal moves every durable value to the new key:
+
+1. Take a verified backup. Put the **old** key in `APP_ENCRYPTION_KEY_PREVIOUS` (comma separated for more than one) and the **new** key in `APP_ENCRYPTION_KEY`; deploy. Every sealed secret still opens, and new ones are sealed with the new key. (Signed links already honoured the retired keys.)
+2. Dry run, which prints counts and row ids only, never a secret: `npm run secrets:reseal`. Then `npm run secrets:reseal -- --apply`. A value no listed key opens is counted as **unreadable** and left exactly as it is (exit code 2); the likely cause is a key that was rotated earlier without being listed.
+3. Run the dry run again. When nothing is on a retired key and nothing is unreadable, remove `APP_ENCRYPTION_KEY_PREVIOUS`.
+
+The list of sealed columns is `SEALED_COLUMNS` in `src/server/security/sealed-secrets.ts`. `tests/sealed-secret-rotation.test.ts` fails when a text column that looks sealed (`credentials`, `secret_ciphertext`, `ciphertext`, `code_verifier`, `pending`, anything named `sealed`) is neither listed nor excluded with a reason, and when a new file starts calling `encryptSecret`. Short-lived calendar OAuth sign-in rows are not re-sealed: they expire within minutes and still open through the retired key meanwhile. IP hashes in the audit log use the current key, so a rotation changes the correlation of old and new hashes; that is the only thing it changes silently.
+
+Not verified: the procedure has run only against the embedded database in tests; it has never been run on a hosted database, and the founder has not approved a rotation.
+
 ## Rollback and verification
 
 Prefer rolling back application code while retaining additive metadata. Restoring pre-migration code alone does not understand new reference-only rows. A full rollback requires your verified database backup, original key and corresponding old application version in a development environment. Do not drop credential/reference tables or delete Vault secrets casually.
