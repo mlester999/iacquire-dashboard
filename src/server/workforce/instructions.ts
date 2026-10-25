@@ -4,7 +4,7 @@ import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { buildSoul } from "@/server/workforce/provisioning";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
-import { POLICY_VERSION } from "@/server/workforce/policy";
+import { policyVersionFor, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 
 export interface InstructionLayer {
   key: string;
@@ -68,18 +68,21 @@ export async function getEmployeeInstructionOverview(input: {
   return withSystem(async (db) => {
     const meta = AGENT_BY_KEY[input.role];
     const { rows } = await db.query<{
+      org_kind: WorkforceOrganizationKind;
       compiled_instructions: string | null;
       settings: AgentSettings | null;
       summary: string | null;
       version: number | null;
       applied_at: Date | null;
     }>(
-      `select v.compiled_instructions, v.settings, v.summary, v.version, v.applied_at
-       from agent_instances a left join agent_config_versions v on v.id = a.active_config_version_id
+      `select o.kind as org_kind, v.compiled_instructions, v.settings, v.summary, v.version, v.applied_at
+       from agent_instances a join organizations o on o.id = a.org_id
+       left join agent_config_versions v on v.id = a.active_config_version_id
        where a.id = $1 and a.org_id = $2`,
       [input.agentId, input.orgId],
     );
     const active = rows[0];
+    const orgKind = active?.org_kind ?? "client";
     const settings = active?.settings ? agentSettingsSchema.safeParse(active.settings) : null;
     const knowledge = await employeeKnowledgeContext(db, input.orgId, input.agentId);
     const { rows: companyKnowledge } = await db.query<{ n: number }>(
@@ -182,8 +185,8 @@ export async function getEmployeeInstructionOverview(input: {
     return {
       role: input.role,
       roleName: meta.shortName,
-      soul: buildSoul(input.role, input.companyName),
-      policyVersion: POLICY_VERSION,
+      soul: buildSoul(input.role, input.companyName, orgKind),
+      policyVersion: policyVersionFor(orgKind),
       active: {
         version: active?.version ?? null,
         summary: active?.summary ?? null,

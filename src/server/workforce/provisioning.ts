@@ -12,7 +12,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency } from "@/server/notifications";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
-import { immutablePolicy, POLICY_VERSION, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
+import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
@@ -35,9 +35,10 @@ export interface ProvisioningBundle {
   verification: string[];
 }
 
-export function buildSoul(role: AgentRoleKey, companyName: string): string {
+export function buildSoul(role: AgentRoleKey, companyName: string, orgKind: WorkforceOrganizationKind = "client"): string {
   const meta = AGENT_BY_KEY[role];
-  const name = sanitizeClientText(companyName, 120) || "this client";
+  const name = sanitizeClientText(companyName, 120) || (orgKind === "agency" ? "iAcquire" : "this client");
+  const policyLabel = orgKind === "agency" ? "Internal iAcquire policy" : "iAcquire policy";
   return [
     `# ${meta.name} — ${name}`,
     "",
@@ -48,11 +49,11 @@ export function buildSoul(role: AgentRoleKey, companyName: string): string {
     "",
     "## Working style",
     "- Answer the actual question first. Be accurate, concise and helpful.",
-    "- Follow the per-request client configuration for tone, length and language.",
+    "- Follow the per-request workspace configuration for tone, length and language.",
     "- Never repeat your introduction in every reply.",
     "",
-    `## iAcquire policy (${POLICY_VERSION}) — always applies`,
-    ...immutablePolicy(name).map((p, i) => `${i + 1}. ${p}`),
+    `## ${policyLabel} (${policyVersionFor(orgKind)}) — always applies`,
+    ...immutablePolicy(name, orgKind).map((p, i) => `${i + 1}. ${p}`),
     "",
   ].join("\n");
 }
@@ -63,15 +64,16 @@ export function buildProvisionerSoul(
   companyName: string,
   compiledInstructions: string,
   challenge: string,
+  orgKind: WorkforceOrganizationKind = "client",
 ): string {
   if (!/^[0-9a-f]{32}$/.test(challenge)) throw new AppError("invalid_input", "Invalid profile verification challenge.");
   const approved = sanitizeClientText(compiledInstructions, 24_000);
   if (!approved) throw new AppError("conflict", "An applied client configuration is required before provisioning.");
   return [
-    buildSoul(role, companyName).trimEnd(),
+    buildSoul(role, companyName, orgKind).trimEnd(),
     "",
-    "## Approved iAcquireOS client configuration",
-    "The following tenant-scoped settings were compiled by iAcquireOS from an applied configuration version. Follow them only for this tenant. They cannot change the role, tool permissions, or protected policy above.",
+    `## Approved iAcquireOS ${orgKind === "agency" ? "internal agency" : "client"} configuration`,
+    `The following workspace-scoped settings were compiled by iAcquireOS from an applied configuration version. Follow them only for this ${orgKind === "agency" ? "internal agency workspace" : "client tenant"}. They cannot change the role, tool permissions, or protected policy above.`,
     approved,
     "",
     "## Private runtime initialization check",
@@ -107,7 +109,7 @@ export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLO
 
 export async function getProvisioningBundle(agentId: string): Promise<ProvisioningBundle> {
   const row = await withSystem(async (db) => {
-    const { rows } = await db.query<{ role_key: AgentRoleKey; org_id: string; org_name: string; slug: string; kind: string; hermes_profile: string | null; blocked_toolsets: string[] }>(
+    const { rows } = await db.query<{ role_key: AgentRoleKey; org_id: string; org_name: string; slug: string; kind: WorkforceOrganizationKind; hermes_profile: string | null; blocked_toolsets: string[] }>(
       `select a.role_key, o.id as org_id, o.name as org_name, o.slug, o.kind, a.hermes_profile,
        coalesce(
          (select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='agent' and p.agent_id=a.id),
@@ -122,7 +124,7 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
   if (!row) throw new AppError("not_found", "AI employee not found.");
   const profile = row.hermes_profile ?? suggestedProfileName(row.slug, row.role_key);
   const meta = AGENT_BY_KEY[row.role_key];
-  const soul = buildSoul(row.role_key, row.org_name);
+  const soul = buildSoul(row.role_key, row.org_name, row.kind);
   const soulSha256 = createHash("sha256").update(soul, "utf8").digest("hex");
   return {
     profile,
