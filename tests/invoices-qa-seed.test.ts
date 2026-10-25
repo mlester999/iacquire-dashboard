@@ -1,7 +1,7 @@
 // The invoices browser-QA world (scripts/invoices-qa-world.ts) proves itself on a synthetic workspace: every story ends in the state it says it does, nothing leaves the machine, and
 // the customer addresses it prints open the pages it describes. If this passes, the QA seed's logic works; only its wrapper (the isolated QA database) is not exercised here.
 import { describe, expect, it } from "vitest";
-import { seedInvoiceDeliveryWorld, seedInvoiceWorld } from "../scripts/invoices-qa-world";
+import { seedInvoiceDeliveryWorld, seedInvoiceSentWorld, seedInvoiceWorld } from "../scripts/invoices-qa-world";
 import { attributionReport } from "@/server/attribution/report";
 import { previewInvoiceDelivery } from "@/server/invoices/delivery";
 import { getInvoiceDetail, receivablesSummary } from "@/server/invoices/invoices";
@@ -125,5 +125,24 @@ describe("the invoices QA world", () => {
     // Run again, it changes nothing that matters.
     await seedInvoiceDeliveryWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner") });
     expect(await rows("select 1 from messaging_channels where org_id = $1 and channel = 'email' and provider = 'resend'", [io.orgId])).toHaveLength(1);
+  }, 120_000);
+
+  it("sends two of the delivery world's invoices for real with a controlled provider: one accepted and one refused, and leaves the third for the browser", async () => {
+    const io = await invoiceOrg();
+    const out = await world(io);
+    await rows("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'");
+    await seedInvoiceDeliveryWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner") });
+    const sent = await seedInvoiceSentWorld({ owner: io.ctx("owner") });
+    const idOf = (title: string) => out.find((r) => r.title === title)!.invoiceId;
+    expect(sent).toEqual({ accepted: idOf("Annual boiler service"), refused: idOf("Water heater inspection") });
+    const status = async (invoiceId: string) => (await rows<{ status: string }>(
+      "select m.status from customer_invoice_deliveries d join conversation_messages m on m.id = d.message_id where d.invoice_id = $1", [invoiceId],
+    )).map((r) => r.status);
+    expect(await status(sent.accepted)).toEqual(["sent"]);
+    expect(await status(sent.refused)).toEqual(["failed"]);
+    expect(await status(idOf("Kitchen repipe"))).toEqual([]);
+    // The page still offers a message for the untouched invoice, and no second one for the invoice whose message the provider took.
+    expect(await previewInvoiceDelivery(io.ctx("owner"), idOf("Kitchen repipe"), "email")).toMatchObject({ available: true, verdict: { kind: "ready" } });
+    expect(await previewInvoiceDelivery(io.ctx("owner"), sent.accepted, "email")).toMatchObject({ available: true, standing: { state: "sent" } });
   }, 120_000);
 });

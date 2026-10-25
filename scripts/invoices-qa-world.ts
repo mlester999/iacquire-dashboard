@@ -17,6 +17,9 @@ import { withSystem } from "../src/server/db/index";
 import type { CrmActor } from "../src/server/crm/actor";
 import { createContact, setContactConsent } from "../src/server/crm/contacts";
 import { connectQaEmail } from "./qa-delivery-channel";
+import type { ChannelTransport } from "../src/server/messaging/transports/types";
+import { dispatchMessage } from "../src/server/messaging/send";
+import { invoiceDeliveriesFor, previewInvoiceDelivery, sendInvoiceDelivery } from "../src/server/invoices/delivery";
 import { createOpportunity } from "../src/server/crm/opportunities";
 import { addCost } from "../src/server/attribution/costs";
 import { recordTouch } from "../src/server/attribution/touches";
@@ -232,4 +235,33 @@ export async function seedInvoiceDeliveryWorld(a: Pick<InvoiceWorldPeople, "owne
     await setContactConsent(a.ownerActor, id, { channel: "email", purpose: "service", status: "granted", evidence: "Agreed to messages about their work on the intake form (QA data)" });
   }
   return { ready: ["Annual boiler service", "Water heater inspection", "Kitchen repipe"], refused: ["Remote monitoring set-up"] };
+}
+
+/**
+ * Sends two of the delivery world's invoices for real, through sendInvoiceDelivery (the page's own service) and the dispatcher, with a CONTROLLED in-process provider in place of Resend so
+ * that the invoice page can show the two ends of a send that no QA server can produce (it has no credential vault and its write switches are off): Mara Villanueva's message is taken by
+ * the provider ("accepted"), Noel Tan's is refused by it ("failed"). Nothing leaves the process and no address is contacted. Kitchen repipe (Ines Ocampo) is left unsent so the browser can
+ * confirm a send of its own, which the QA server then queues and its dispatcher blocks ("not switched on"). Run after seedInvoiceDeliveryWorld.
+ */
+export async function seedInvoiceSentWorld(a: Pick<InvoiceWorldPeople, "owner">): Promise<{ accepted: string; refused: string }> {
+  const orgId = a.owner.org.orgId;
+  const invoiceOf = async (email: string, title: string) => (await withSystem((db) => db.query<{ id: string }>(
+    `select i.id from customer_invoices i join contacts c on c.id = i.contact_id join customer_invoice_lines l on l.invoice_id = i.id
+     where i.org_id = $1 and c.email = $2 and l.description = $3 and i.status = 'issued' and not i.is_test limit 1`, [orgId, email, title],
+  ))).rows[0]?.id;
+  const accept: ChannelTransport = { name: "resend", channels: ["email"], requiresContactRef: false, async send() { return { ok: true, providerMessageId: `qa_accepted_${Date.now()}`, providerThreadRef: null, quantity: 1 }; } };
+  const refuse: ChannelTransport = { name: "resend", channels: ["email"], requiresContactRef: false, async send() { return { ok: false, retryable: false, error: "The email provider refused this message (QA stand-in)." }; } };
+  const one = async (email: string, title: string, transport: ChannelTransport): Promise<string> => {
+    const id = await invoiceOf(email, title);
+    if (!id) throw new Error(`No issued invoice "${title}" for ${email}: seed the invoices world first.`);
+    const pre = await previewInvoiceDelivery(a.owner, id, "email");
+    if (!pre.available) throw new Error(`Not offered: ${pre.text}`);
+    const sent = await sendInvoiceDelivery(a.owner, id, { channel: "email", linkVersion: pre.linkVersion, wordingHash: pre.wordingHash });
+    if (sent.status !== "queued") throw new Error(`Not queued: ${JSON.stringify(sent)}`);
+    const delivery = await withSystem((db) => invoiceDeliveriesFor(db, orgId, id));
+    const messageId = (await withSystem((db) => db.query<{ message_id: string }>("select message_id from customer_invoice_deliveries where id = $1", [delivery[0].id]))).rows[0].message_id;
+    await dispatchMessage(messageId, { transport });
+    return id;
+  };
+  return { accepted: await one("mara.villanueva@customer.example.test", "Annual boiler service", accept), refused: await one("noel.tan@customer.example.test", "Water heater inspection", refuse) };
 }

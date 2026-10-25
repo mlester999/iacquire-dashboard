@@ -20,7 +20,7 @@ import { env } from "../src/server/env";
 import { memberActor } from "../src/server/crm/actor";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
 import type { Membership, OrgContext } from "../src/server/tenancy/context";
-import { seedInvoiceDeliveryWorld, seedInvoiceWorld } from "./invoices-qa-world";
+import { seedInvoiceDeliveryWorld, seedInvoiceSentWorld, seedInvoiceWorld } from "./invoices-qa-world";
 
 const ORG_NAME = "Harbor Home Services (Inbox QA)";
 const SUMMARY_FILE = path.resolve(".data/crm-qa/invoices-seed-summary.json");
@@ -56,6 +56,8 @@ async function seed() {
     if (process.env.INVOICES_QA_DELIVERY !== "1") return;
     const out = await seedInvoiceDeliveryWorld({ owner, ownerActor: memberActor(owner) });
     console.log(`Delivery QA data is ready. Consent to email is on record for the customers of: ${out.ready.join(", ")}. ${out.refused.join(", ")} has none, so the preview says it cannot be sent. A test invoice is never offered.`);
+    await seedInvoiceSentWorld({ owner });
+    console.log("Two sends were made through the real service with a controlled in-process provider: Annual boiler service was accepted, Water heater inspection was refused. Kitchen repipe is left for a send of its own.");
   };
   if ((await q("select 1 from customer_invoices where org_id = $1", [org.id])).length) {
     console.log("The invoices QA data already exists; nothing added.");
