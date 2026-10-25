@@ -8,6 +8,8 @@ This checkpoint updates the existing implementation branch after the Work Board/
 
 **Focused employee execution rerun (2026-10-25 07:19 UTC):** on clean product-code SHA `14e04ce998145e2c3a92cdd5a942f074dffe4f14`, `tests/workforce-jobs.test.ts`, `tests/workforce-chat-e2e.test.ts`, and `tests/workforce-review-capabilities.test.ts` passed **46/46**. This covers all six synthetic role handlers, durable job progress/results, the deferred Next `after()` worker kick, and the Performance Analyst period comparison. The tests use PGlite and mocked Hermes; no production profile or model run was started.
 
+**Guarded configuration/activation rerun (2026-10-25 07:21 UTC):** on the same clean product-code SHA, `tests/config-review-hardening.test.ts`, `tests/workforce-config.test.ts`, `tests/hermes-run-gate.test.ts`, and `tests/hermes-activation-sequence.test.ts` passed **55/55**. This verifies local configuration review, identity/readiness checks, acknowledgement binding and run gates with isolated data and mocked Hermes; it does not apply production configs or create production acknowledgements.
+
 **Concurrent-work reconciliation:** the primary `master` checkout remains untouched and still contains its user-owned edits and untracked artifacts. The Performance Analyst period implementation and `work-kick.ts` are byte-for-byte present in this candidate; its role assignment and task routing are more complete than the corresponding primary-checkout drafts. The separate Hermes/tunnel cutover bundle and system-guide artifacts remain only in the primary checkout and are excluded from this candidate. This does not complete final review of the full candidate diff.
 
 | Gate | Current result |
