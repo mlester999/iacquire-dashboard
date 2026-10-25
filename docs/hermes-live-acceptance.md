@@ -1,6 +1,6 @@
 # Hermes live acceptance procedure and current blocker
 
-Status (2026-10-25): **read-only GET checks verified gateway authentication, identity, reviewed tool exposure and the live inventory contract for all six existing internal profiles. The portal preflight still reports only Zeng and Lead Hunter available at 6/6; the four target employees have no applied configuration and remain blocked. Effective loaded SOUL instructions are not verified.**
+Status (2026-10-25): **the 06:27:47 UTC read-only GET audit verified gateway authentication, exact identity, reviewed tool exposure and stable live inventory for all six existing internal profiles. The 06:26:37 UTC portal preflight still reports only Zeng and Lead Hunter available at 6/6; the four target employees have no applied configuration and remain blocked. At 06:22 UTC, the deployed prompt loader returned six non-empty, distinct per-profile SOUL identity blocks for new sessions; the assembled system prompt and a model response remain unverified.**
 
 This page records what was actually observed against the configured gateway and the exact work required
 before a model run can be accepted. It deliberately contains no API keys, profile keys, Cloudflare
@@ -154,15 +154,15 @@ A successful mock-gateway run is **not** evidence for this checklist.
 
 | Capability | Classification |
 | --- | --- |
-| Gateway authentication and internal profile identity | COMPLETE — verified live for all six on 2026-10-24 |
+| Gateway authentication and internal profile identity | COMPLETE — verified live for all six on 2026-10-25 06:27:47 UTC |
 | Complete inventory and restricted-tool check | COMPLETE — six reviewed tools across five toolsets; zero restricted tools observed |
 | Gateway capabilities | Advertised live; no new run was started to exercise events, stop or approvals |
-| Internal app readiness | 2/6 complete (Zeng and Lead Hunter); four employees remain at 0/6 pending configuration and current saved checks |
+| Internal app readiness | 2/6 complete (Zeng and Lead Hunter) at 2026-10-25 06:26:37 UTC; four employees remain at 0/6 pending configuration and current saved checks |
 | Real model response | A historical Lead Hunter production research job exists; this preflight started no new model run |
-| Effective SOUL instructions | UNVERIFIED — current API does not expose loaded instructions; host-side check remains required |
+| Effective SOUL instructions | PARTIALLY VERIFIED — deployed loader returned six distinct identity blocks for new sessions at 06:22 UTC; no assembled prompt or model response was inspected |
 | Running application SHA | UNVERIFIED — no deployment record or runtime SHA was available to this audit |
 | Client live profile | NOT VERIFIED by this internal-profile audit; sandbox results are documented separately |
 | PDF/DOCX extraction | LOCALLY VERIFIED — synthetic real files, no paid OCR |
 | SOUL.md read/write via current API | UNAVAILABLE — `admin_config_rw: false`; use an authorized host-side evidence path |
 | Memory read/edit | UNAVAILABLE — `memory_write_api: false` |
-| Hosted application migrations | 0086 is the latest applied migration in the 2026-10-24 read-only preflight |
+| Hosted application migrations | 0086 is the latest applied migration in the 2026-10-25 read-only preflight |

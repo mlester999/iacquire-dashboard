@@ -123,6 +123,7 @@ async function main() {
     operatingArea: data.company?.operating_area ?? "",
     industry: data.company?.industry ?? "",
   };
+  const evaluatedAt = new Date();
   const byRole = new Map(data.agents.map((agent) => [agent.role_key, agent]));
   const employees = AGENT_ROLE_KEYS.map((role) => {
     const agent = byRole.get(role);
@@ -197,6 +198,7 @@ async function main() {
         acknowledgementCurrent,
         isAgencyEmployee: true,
         taskExecuting: agent.active_run,
+        evaluatedAt,
       });
       const parsedSettings = agentSettingsSchema.safeParse(agent.settings ?? {});
       const activeConfigAudit = parsedSettings.success
@@ -225,12 +227,38 @@ async function main() {
         connection: {
           savedCredentialCurrent: agent.credential_ready,
           lastHealthOk: agent.last_health_ok,
-          hasRecordedInventory: Boolean(agent.tool_inventory_digest),
-          inventoryToolCount: agent.tool_inventory_tool_count,
-          profileIdentityCheckCurrent: identityCurrent,
-          latestProfileCheckStatus: evidence?.profile_check_status ?? null,
-          latestToolPermissionStatus: evidence?.tool_permissions_status ?? null,
-          fullCapabilitiesAcknowledgementCurrent: acknowledgementCurrent,
+          lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
+          inventory: {
+            recorded: readiness.steps.find((step) => step.key === "inventory")?.state === "done",
+            contract: agent.tool_inventory_contract,
+            toolCount: agent.tool_inventory_tool_count,
+            verifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+            expiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
+            currentAtAudit: readiness.inventoryAttestationCurrent,
+          },
+          profileIdentity: {
+            expectedProfile,
+            savedProfile: agent.hermes_profile,
+            checkedProfile: evidence?.profile_check_profile_id ?? null,
+            profileMatches: agent.hermes_profile === expectedProfile
+              && evidence?.profile_check_profile_id === expectedProfile,
+            status: evidence?.profile_check_status ?? null,
+            identityVerified: evidence?.identity_verified ?? null,
+            apiContractVerified: evidence?.api_contract_verified ?? null,
+            toolPermissionsStatus: evidence?.tool_permissions_status ?? null,
+            checkedAt: evidence?.checked_at?.toISOString() ?? null,
+            currentForAppliedConfig: identityCurrent,
+          },
+          acknowledgement: {
+            current: acknowledgementCurrent,
+            acknowledgedAt: evidence?.acknowledged_at?.toISOString() ?? null,
+            profileMatches: evidence?.acknowledged_profile === expectedProfile,
+            configVersionMatches: Boolean(agent.active_config_version_id)
+              && evidence?.acknowledged_config_version_id === agent.active_config_version_id,
+            inventoryMatches: Boolean(agent.tool_inventory_digest)
+              && evidence?.acknowledged_inventory_digest === agent.tool_inventory_digest,
+            hasAgentPolicyOverride: Boolean(evidence?.agent_policy_override_id),
+          },
         },
         readiness: {
           completed: readiness.completed,
@@ -248,6 +276,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     readOnly: true,
+    evaluatedAt: evaluatedAt.toISOString(),
     employeeCount: resolved.length,
     employeesWithReadinessComplete: readinessComplete,
     companyFactsComplete: [companyFacts.description, companyFacts.services, companyFacts.idealCustomers, companyFacts.operatingArea].filter((value) => value.trim()).length,
@@ -256,7 +285,8 @@ async function main() {
     notes: [
       "A readiness score is derived from saved configuration, connection, inventory, identity and acknowledgement evidence; no flags were changed.",
       "The configuration preview uses recommended role defaults and saved iAcquire company facts; it was not applied.",
-      "Hermes effective SOUL instructions are not verifiable through the current API contract; the separate host attestation gate remains required.",
+      "Inventory can remain recorded after its short attestation expires; inspect inventory.currentAtAudit and expiresAt before activation.",
+      "Effective SOUL loading is verified separately on the Hermes host; this audit does not inspect assembled prompts or model responses.",
     ],
   }, null, 2));
   await closeDb();
