@@ -3,6 +3,7 @@ import { sameSiteRequest } from "@/server/security/same-site";
 import { looksLikeInvoiceToken } from "@/lib/invoices/token";
 import { looksLikeReference, REFERENCE_HEADER, TOKEN_HEADER, type PayFailure } from "@/lib/invoices/public-http";
 import { completeApprovedCheckout, paymentStatusByReference, paymentStatusByToken, startPublicPayment, type PublicContext } from "@/server/invoices/public";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 // The thin HTTP layer of the customer's invoice page: it reads the request, calls the service in public.ts and answers. It is kept apart from the route files so it can be
 // tested with plain Request objects. Nothing here decides anything. Every answer is never cached, never indexed and never passes an address on, and the link travels in a
@@ -63,8 +64,8 @@ export async function handleStatus(req: Request, now?: Date): Promise<Response> 
 async function smallJson(req: Request): Promise<Record<string, unknown> | null> {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return null;
   try {
-    const text = await req.text();
-    if (text.length > MAX_BODY_BYTES) return null;
+    const text = await readBoundedText(req, MAX_BODY_BYTES);
+    if (text === null) return null;
     const v = JSON.parse(text) as unknown;
     return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
   } catch {

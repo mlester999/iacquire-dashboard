@@ -1,4 +1,5 @@
 import { looksLikeUnsubscribeToken, performUnsubscribe, unsubscribePagePath, type UnsubscribeOutcome } from "@/server/messaging/unsubscribe";
+import { readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,11 +33,12 @@ export async function POST(req: Request) {
   let fields = new URLSearchParams();
   try {
     if (contentType.startsWith("multipart/form-data")) {
-      const form = await req.formData();
+      const form = await readBoundedFormData(req, MAX_BODY_BYTES);
+      if (!form) return new Response(null, { status: 413, headers: NO_STORE });
       for (const [k, v] of form.entries()) if (typeof v === "string") fields.append(k, v.slice(0, 200));
     } else {
-      const text = await req.text();
-      if (text.length > MAX_BODY_BYTES) return new Response(null, { status: 413, headers: NO_STORE });
+      const text = await readBoundedText(req, MAX_BODY_BYTES);
+      if (text === null) return new Response(null, { status: 413, headers: NO_STORE });
       fields = new URLSearchParams(text);
     }
   } catch {

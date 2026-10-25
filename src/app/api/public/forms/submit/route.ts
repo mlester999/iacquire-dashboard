@@ -1,5 +1,6 @@
 import { collectFields } from "@/lib/crm/forms/logic";
 import { handleHostedSubmit, requestMetaFrom } from "@/server/crm/forms/public";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,7 +29,8 @@ export async function POST(req: Request) {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return reply(413, { ok: false, code: "invalid", message: "That's more than this form can take. Please shorten your answers." });
   let entries: Array<[string, string]>;
   try {
-    const form = await req.formData();
+    const form = await readBoundedFormData(req, MAX_BODY);
+    if (!form) return reply(413, { ok: false, code: "invalid", message: "That's more than this form can take. Please shorten your answers." });
     entries = [...form].filter((e): e is [string, string] => typeof e[1] === "string");
   } catch {
     return reply(400, { ok: false, code: "invalid", message: "Your answers couldn't be read. Reload the page and try again." });

@@ -1,5 +1,6 @@
 import { hashIp } from "@/server/security/crypto";
 import { INBOUND_MAX_BODY_BYTES, handleInboundWebhook } from "@/server/crm/workflows/inbound";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,8 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!(req.headers.get("content-type") ?? "").toLowerCase().includes("json")) return Response.json({ status: "error", detail: "Send JSON (Content-Type: application/json)." }, { status: 415, headers: HEADERS });
   let body: unknown;
   try {
-    const text = await req.text();
-    if (text.length > INBOUND_MAX_BODY_BYTES) return Response.json({ status: "error", detail: "The body is too large (32 KB at most)." }, { status: 413, headers: HEADERS });
+    const text = await readBoundedText(req, INBOUND_MAX_BODY_BYTES);
+    if (text === null) return Response.json({ status: "error", detail: "The body is too large (32 KB at most)." }, { status: 413, headers: HEADERS });
     body = JSON.parse(text);
   } catch {
     return Response.json({ status: "error", detail: "The body isn't valid JSON." }, { status: 400, headers: HEADERS });

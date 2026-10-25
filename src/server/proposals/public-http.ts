@@ -4,6 +4,7 @@ import { sameSiteRequest } from "@/server/security/same-site";
 import { SESSION_MAX_HOURS, type PublicState } from "@/lib/proposals/share";
 import { decideOnProposal, loadPublicPdf, recordProposalView, requestEmailCode, verifyEmailCode, type PublicContext } from "@/server/proposals/public";
 import { looksLikeProposalToken, sessionCookieName } from "@/server/proposals/link-token";
+import { readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
 
 // The thin HTTP layer of the customer's proposal page: reads the request, calls the service in public.ts, answers. Kept apart from the route files so it can be tested with plain
 // Request objects. Nothing here decides anything. Every answer carries no-store, no-referrer and noindex: the address in the bar is the customer's credential.
@@ -42,11 +43,13 @@ async function formFields(req: Request): Promise<URLSearchParams | null> {
   try {
     if (type.startsWith("multipart/form-data")) {
       const out = new URLSearchParams();
-      for (const [k, v] of (await req.formData()).entries()) if (typeof v === "string") out.append(k, v.slice(0, 4000));
+      const form = await readBoundedFormData(req, MAX_BODY_BYTES);
+      if (!form) return null;
+      for (const [k, v] of form.entries()) if (typeof v === "string") out.append(k, v.slice(0, 4000));
       return out;
     }
-    const text = await req.text();
-    return text.length > MAX_BODY_BYTES ? null : new URLSearchParams(text);
+    const text = await readBoundedText(req, MAX_BODY_BYTES);
+    return text === null ? null : new URLSearchParams(text);
   } catch {
     return new URLSearchParams();
   }

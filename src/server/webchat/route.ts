@@ -1,6 +1,7 @@
 import "server-only";
 import { handleWebChat, type ChatResponse, type ChatSurface } from "@/server/webchat/http";
 import { UNAVAILABLE_MESSAGE, webchatPublicDisabled } from "@/server/webchat/switch";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 // The Request/Response edge of the website chat: reads the body (bounded), the bearer token and the visitor's address, calls the adapter, and writes
 // the answer with the headers a public JSON endpoint needs. Used by the external-site route and by the Website Studio site route.
@@ -57,8 +58,8 @@ export async function chatRoute(req: Request, surface: ChatSurface, action: stri
   if (method === "POST") {
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return Response.json({ ok: false, error: { code: "invalid", message: "That is too long." } }, { status: 413, headers: baseHeaders });
     try {
-      const text = await req.text();
-      if (text.length > MAX_BODY) return Response.json({ ok: false, error: { code: "invalid", message: "That is too long." } }, { status: 413, headers: baseHeaders });
+      const text = await readBoundedText(req, MAX_BODY);
+      if (text === null) return Response.json({ ok: false, error: { code: "invalid", message: "That is too long." } }, { status: 413, headers: baseHeaders });
       body = text ? JSON.parse(text) : {};
     } catch {
       return Response.json({ ok: false, error: { code: "invalid", message: "That could not be read." } }, { status: 400, headers: baseHeaders });

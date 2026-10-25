@@ -1,29 +1,10 @@
 import { handleCustomerPaymentWebhook, MAX_BODY_BYTES } from "@/server/customer-payments/webhooks";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
-
-/** The body as text, read as it arrives and abandoned the moment it passes the limit (a request that lies about, or leaves out, its length cannot make us hold it all). */
-async function readLimited(req: Request): Promise<string | null> {
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return null;
-  if (!req.body) return "";
-  const reader = req.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
-      await reader.cancel().catch(() => undefined);
-      return null;
-    }
-    chunks.push(value);
-  }
-  return new TextDecoder("utf-8").decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
-}
 
 /**
  * A business's payment provider delivers an event for one of its connections. No session: the delivery is trusted only by its signature, over the raw body, checked
@@ -33,7 +14,7 @@ async function readLimited(req: Request): Promise<string | null> {
  */
 export async function POST(req: Request, { params }: { params: Promise<{ provider: string; key: string }> }) {
   const { provider, key } = await params;
-  const rawBody = await readLimited(req);
+  const rawBody = await readBoundedText(req, MAX_BODY_BYTES);
   if (rawBody === null) return Response.json({ received: false }, { status: 413, headers: HEADERS });
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null;
   try {

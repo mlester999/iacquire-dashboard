@@ -1,4 +1,5 @@
 import { handleVoiceWebhook } from "@/server/integrations/voice/handler";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,10 +14,8 @@ const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-
  * the webhook badge). Retell waits 10 seconds for a 2xx and retries up to 3 times, so the work here is short and idempotent.
  */
 export async function POST(req: Request) {
-  const declared = Number(req.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return new Response(JSON.stringify({ received: false }), { status: 413, headers: JSON_HEADERS });
-  const rawBody = await req.text();
-  if (rawBody.length > MAX_BODY_BYTES) return new Response(JSON.stringify({ received: false }), { status: 413, headers: JSON_HEADERS });
+  const rawBody = await readBoundedText(req, MAX_BODY_BYTES);
+  if (rawBody === null) return new Response(JSON.stringify({ received: false }), { status: 413, headers: JSON_HEADERS });
   try {
     const result = await handleVoiceWebhook("retell", rawBody, req.headers);
     const headers = result.retryAfterSeconds ? { ...JSON_HEADERS, "Retry-After": String(result.retryAfterSeconds) } : JSON_HEADERS;

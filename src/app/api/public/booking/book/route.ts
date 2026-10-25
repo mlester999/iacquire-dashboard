@@ -1,4 +1,5 @@
 import { handleBook, requestMetaFrom } from "@/server/calendars/public-booking";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,8 +13,8 @@ export async function POST(req: Request) {
   if (!/^application\/json\b/i.test(req.headers.get("content-type") ?? "")) return Response.json({ ok: false, code: "invalid", error: "Send the booking as JSON." }, { status: 415, headers });
   let body: unknown;
   try {
-    const text = await req.text();
-    if (text.length > MAX_BODY) return Response.json({ ok: false, code: "invalid", error: "That booking is too large to send." }, { status: 413, headers });
+    const text = await readBoundedText(req, MAX_BODY);
+    if (text === null) return Response.json({ ok: false, code: "invalid", error: "That booking is too large to send." }, { status: 413, headers });
     body = JSON.parse(text);
   } catch {
     return Response.json({ ok: false, code: "invalid", error: "That booking couldn't be read. Reload the page and try again." }, { status: 400, headers });

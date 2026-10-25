@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { errorPage, handleEnquiry } from "@/server/sites/enquiry";
 import { normalizeHost } from "@/server/sites/runtime";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ host: s
   let fields: Record<string, string> = {};
   let entries: Array<[string, string]> = [];
   try {
-    const form = await req.formData();
+    const form = await readBoundedFormData(req, 64_000);
+    if (!form) return html(413, errorPage("That message is too long."));
     entries = [...form].filter((entry): entry is [string, string] => typeof entry[1] === "string").slice(0, 400);
     fields = Object.fromEntries(entries.slice(0, 24));
   } catch {

@@ -1,6 +1,6 @@
 // The ceiling on a public request body is enforced while the body arrives, not after it has all been read.
 import { describe, expect, it } from "vitest";
-import { readBoundedText } from "@/server/security/bounded-body";
+import { readBoundedBytes, readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}, init: Record<string, unknown> = {}) =>
   new Request("http://127.0.0.1/api/x", { method: "POST", body, headers, ...init } as RequestInit);
@@ -75,5 +75,39 @@ describe("readBoundedText", () => {
 
   it("treats a malformed content-length as absent and still enforces the limit on the stream", async () => {
     expect(await readBoundedText(post("a".repeat(500), { "content-length": "not-a-number" }), 100)).toBeNull();
+  });
+});
+
+describe("readBoundedBytes", () => {
+  it("returns the bytes, an empty array for no body, and null past the limit", async () => {
+    expect(Array.from((await readBoundedBytes(post(new Uint8Array([1, 2, 3])), 10)) ?? [])).toEqual([1, 2, 3]);
+    expect((await readBoundedBytes(new Request("http://127.0.0.1/x", { method: "POST" }), 10))?.byteLength).toBe(0);
+    expect(await readBoundedBytes(post(new Uint8Array(11)), 10)).toBeNull();
+  });
+});
+
+describe("readBoundedFormData", () => {
+  it("parses a urlencoded body", async () => {
+    const form = await readBoundedFormData(post("a=1&b=two%20words", { "content-type": "application/x-www-form-urlencoded" }), 1000);
+    expect(form?.get("a")).toBe("1");
+    expect(form?.get("b")).toBe("two words");
+  });
+
+  it("parses a multipart body", async () => {
+    const sent = new FormData();
+    sent.set("name", "Mara");
+    sent.set("note", "héllo");
+    const raw = new Request("http://127.0.0.1/x", { method: "POST", body: sent });
+    const type = raw.headers.get("content-type") ?? "";
+    const bytes = new Uint8Array(await raw.arrayBuffer());
+    const form = await readBoundedFormData(post(bytes, { "content-type": type }), 10_000);
+    expect(form?.get("name")).toBe("Mara");
+    expect(form?.get("note")).toBe("héllo");
+  });
+
+  it("returns null past the limit and an empty form for a body that is not form data", async () => {
+    expect(await readBoundedFormData(post("a=" + "x".repeat(100), { "content-type": "application/x-www-form-urlencoded" }), 50)).toBeNull();
+    const broken = await readBoundedFormData(post("--nope", { "content-type": "multipart/form-data; boundary=zzz" }), 1000);
+    expect([...(broken?.keys() ?? [])]).toEqual([]);
   });
 });
