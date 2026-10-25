@@ -85,6 +85,8 @@ Any later activation of schedules, the client-only provisioner, or Hermes profil
 
 **Automation Studio handoff acceptance (2026-10-25; product SHA `642c57d2737f66bb5832ec8262d13890bb99992d`):** employee Chat checks workflow view and edit permission plus current client Studio entitlement before describing the handoff. It gives entitled owners the builder link, non-entitled owners the actual plan/access page, view-only roles an accurate read-only message, and no client-only builder link to internal agency workspaces. It creates no workflow, work job or Hermes run and keeps employee scheduling outside Studio entitlement. The isolated 33/33 Chat/capability tests, full typecheck and targeted ESLint passed. No production state changed.
 
+**Candidate production build (2026-10-25 13:24 UTC; product SHA `642c57d2737f66bb5832ec8262d13890bb99992d`):** the patched Chat service was built in the dependency-complete isolated checkout with the rest of the candidate application source unchanged; Next.js 16.4.2 Webpack production compilation, its TypeScript pass and all 14 static pages succeeded. No deployment occurred.
+
 **Fresh Chat permission-boundary check (2026-10-25; product SHA `03e8031e68156bea367d4de69039f7715f6eef19`):** Chat assignment routing now checks the full capability permission set before dispatch. When the caller has sales-view access but lacks inbox-reply access for follow-up drafts, Chat persists a clear refusal and creates no job; the dispatcher retains its independent permission check. The isolated 33-test workforce Chat/capability suite, full typecheck, and targeted ESLint passed. No production state changed.
 
 ## Required preconditions before deployment approval
