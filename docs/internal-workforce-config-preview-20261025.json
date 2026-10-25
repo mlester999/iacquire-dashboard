@@ -22,12 +22,17 @@
     "acknowledgementReason": "A valid acknowledgement requires a saved active config followed by fresh live identity, health, credential and inventory checks; it binds to the resulting config version and inventory digest."
   },
   "lastSuccessfulProductionPreviewEvidence": {
-    "asOfUtc": "2026-10-25T06:06:00Z",
+    "asOfUtc": "2026-10-25T08:18:00Z",
+    "verifiedProductSha": "0e4311e90565f0828b05bd25d8454b6387884394",
+    "preparedPayloadSourceSha": "14e04ce998145e2c3a92cdd5a942f074dffe4f14",
+    "settingsFactoryUnchangedSincePrepared": true,
     "employeeFieldsCompletePerRole": 7,
     "employeeFieldsTotalPerRole": 7,
     "companyFactsCompletePerRole": 2,
     "companyFactsTotalPerRole": 2,
-    "note": "Evidence counts only. Company fact values are deliberately not copied into this artifact. Re-read the organization record and review the generated instructions at apply time."
+    "apply": false,
+    "acknowledgementPrepared": false,
+    "note": "The latest SELECT-only production preview at 08:18 reported all four targets complete for these fields. recommendedSettings(role) is unchanged between the prepared payload source and verified product SHA; only the role-quality name audit changed. Company fact values are deliberately not copied into this artifact. Re-read the organization record and review the generated instructions at apply time."
   },
   "employees": [
     {
