@@ -83,3 +83,28 @@ export function renewalWhen(daysLeft: number): string {
   if (daysLeft === 1) return "tomorrow";
   return `in ${daysLeft} days`;
 }
+
+/** A YYYY-MM-DD day plus whole calendar months, keeping the day of the month and clamping to the last day of a shorter month (31 January plus one month is 28 or 29 February). */
+export function addMonths(day: string, n: number): string | null {
+  if (!isDay(day) || !Number.isInteger(n)) return null;
+  const [y, m, d] = day.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  const year = Math.floor(total / 12);
+  const month = total % 12;
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/**
+ * The last day a payment covering `months` months runs through. A plan that is paid through a day that has not passed yet continues from the next day, so paying early never
+ * loses the days already paid for; a plan that is requested, past due, expired or whose paid period ended starts the new period today. The period is the months from its first day to
+ * the day before the same day-of-month that many months later. Null for months outside 1 to 12 or a date that is not a date.
+ */
+export function nextPaidThrough(input: { status: string; paidThroughOn: string | null; today: string; months: number }): string | null {
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 12 || !isDay(input.today)) return null;
+  const continuing = (input.status === "active" || input.status === "cancel_requested") && input.paidThroughOn !== null && isDay(input.paidThroughOn) && input.paidThroughOn >= input.today;
+  const start = continuing ? addDays(input.paidThroughOn as string, 1) : input.today;
+  if (!start) return null;
+  const next = addMonths(start, input.months);
+  return next ? addDays(next, -1) : null;
+}

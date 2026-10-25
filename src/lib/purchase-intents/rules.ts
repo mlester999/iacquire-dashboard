@@ -33,7 +33,78 @@ export const PURCHASE_EVENT_TEXT: Record<string, string> = {
   provisioned: "Setup payment recorded and provisioning opened",
   cancelled: "Purchase cancelled",
   expired: "Link expired",
+  checkout_started: "Online checkout opened",
+  checkout_failed: "Online checkout could not be opened",
+  checkout_expired: "An unpaid online checkout was closed",
+  payment_received: "Payment confirmed by the payment provider's signed notice",
+  payment_mismatch: "A payment did not match its checkout",
+  payment_held: "The provider reported a refund or dispute: provisioning is on hold",
+  provision_failed: "Creating the workspace did not finish",
+  provision_retried: "Creating the workspace was tried again",
 };
+
+/** An online checkout, as the buyer's page and the Super Admin's page tell it. "paid" is only ever set by the provider's signed notice, never by the buyer's return to the site. */
+export const CHECKOUT_STATUSES = ["creating", "pending", "paid", "failed", "cancelled", "expired", "mismatch", "refunded", "disputed"] as const;
+export type CheckoutStatus = (typeof CHECKOUT_STATUSES)[number];
+
+export const CHECKOUT_STATUS_TEXT: Record<CheckoutStatus, string> = {
+  creating: "Opening checkout",
+  pending: "Waiting for the payment",
+  paid: "Paid",
+  failed: "Could not be opened",
+  cancelled: "Closed",
+  expired: "Closed unpaid",
+  mismatch: "Paid amount did not match",
+  refunded: "Refunded",
+  disputed: "Disputed",
+};
+
+/** A checkout nobody finished is closed after this long. A payment that arrives for it later is still recorded: the money is real whenever it comes. */
+export const CHECKOUT_STALE_HOURS = 48;
+/** A checkout row that never got a provider session (a crash between the two steps) is given up on after this long. */
+export const CHECKOUT_CREATING_GRACE_MINUTES = 5;
+/** The most checkouts one intent may ever open (retries after a failed or abandoned one), so a loop cannot fill the table. */
+export const MAX_CHECKOUTS_PER_INTENT = 8;
+
+export interface CheckoutGateInput {
+  status: PurchaseStatus;
+  expiresAt: string;
+  /** The provider said a refund or dispute happened, or an amount did not match. */
+  hold: "refunded" | "disputed" | "mismatch" | null;
+  /** A checkout of this intent was already paid (the signed notice arrived). */
+  hasPaidCheckout: boolean;
+  checkoutsSoFar: number;
+}
+
+/** The buyer may open (or reopen) an online checkout only after confirming, only while the link is open, and never once a payment already counts. */
+export function canStartCheckout(input: CheckoutGateInput, now: Date): PurchaseTransition {
+  const status = effectiveStatus({ status: input.status, expiresAt: input.expiresAt }, now);
+  if (input.hasPaidCheckout || status === "payment_verified" || status === "provisioned") return no("This purchase is already paid.");
+  if (input.hold) return no("This purchase is on hold. iAcquire will contact you.");
+  if (status === "invited") return no("Confirm the purchase first.");
+  if (status === "expired") return no("This purchase link has expired. Ask iAcquire for a new one.");
+  if (status === "cancelled") return no("This purchase was cancelled.");
+  if (input.checkoutsSoFar >= MAX_CHECKOUTS_PER_INTENT) return no("Too many checkouts were opened for this purchase. Ask iAcquire to help.");
+  return yes();
+}
+
+/** Why a verified payment must not turn into a workspace yet, in words a Super Admin can act on. Null when nothing holds it. */
+export function provisionHoldText(hold: "refunded" | "disputed" | "mismatch" | null): string | null {
+  if (hold === "refunded") return "The payment provider reported a refund for this payment. Check it with the provider, then decide whether to create the workspace.";
+  if (hold === "disputed") return "The payment provider reported a dispute on this payment. Nothing is created until it is resolved.";
+  if (hold === "mismatch") return "A payment arrived that did not match what was asked for. Check it with the provider before creating the workspace.";
+  return null;
+}
+
+/** What the buyer reads after coming back from the provider's page: the site never says "paid" on the strength of a redirect. */
+export function checkoutReturnText(status: CheckoutStatus | null, purchase: PurchaseStatus | null): { tone: "neutral" | "success" | "warning" | "danger"; title: string; body: string } {
+  // A refund, dispute or mismatch comes first: the money is not simply "confirmed" while a person is looking at it.
+  if (status === "refunded" || status === "disputed" || status === "mismatch") return { tone: "warning", title: "Your payment needs a person to look at it", body: "iAcquire will contact you at the email address on your purchase. Nothing more is charged." };
+  if (purchase === "provisioned") return { tone: "success", title: "Your workspace is ready", body: "iAcquire sent an invitation to the email address on your purchase. Open it to set a password and start." };
+  if (purchase === "payment_verified" || status === "paid") return { tone: "success", title: "Payment confirmed", body: "The payment provider confirmed your payment. iAcquire is creating your workspace now and will email your invitation." };
+  if (status === "failed" || status === "cancelled" || status === "expired") return { tone: "danger", title: "The payment did not go through", body: "Nothing was charged. You can try again from your purchase link." };
+  return { tone: "neutral", title: "Waiting for the payment provider", body: "This page does not decide whether you have paid: only the payment provider's confirmation does. Refresh in a minute; if you completed the payment, iAcquire will email you." };
+}
 
 /** The whole commercial offer as one frozen row: a later price change cannot rewrite what a buyer was shown. */
 export interface PriceSnapshot {
@@ -104,10 +175,10 @@ export function canVerifyPayment(state: PurchaseState, now: Date): PurchaseTrans
 }
 
 /** Provisioning requires verified payment evidence and no workspace yet. Repeating it returns the existing workspace instead. */
-export function canProvision(state: PurchaseState, clientOrgId: string | null, now: Date): PurchaseTransition {
+export function canProvision(state: PurchaseState, clientOrgId: string | null, now: Date, hold: "refunded" | "disputed" | "mismatch" | null = null): PurchaseTransition {
   const status = effectiveStatus(state, now);
   if (clientOrgId || status === "provisioned") return yes();
-  if (status === "payment_verified") return yes();
+  if (status === "payment_verified") return hold ? no(provisionHoldText(hold) as string) : yes();
   if (status === "started") return no("Record the verified payment before creating the workspace.");
   if (status === "expired") return no("The link expired before the purchase was completed.");
   if (status === "cancelled") return no("This purchase was cancelled.");

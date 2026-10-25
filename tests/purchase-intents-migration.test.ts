@@ -11,8 +11,11 @@ import { createPurchaseIntent } from "@/server/purchase-intents/service";
 
 class Done extends Error {}
 const down = readFileSync("supabase/rollbacks/0101_purchase_intents.down.sql", "utf8");
+// Migration 0103 hangs its checkout table and columns off these tables, so its rollback runs first (the rollbacks are undone newest first).
+const downCheckouts = readFileSync("supabase/rollbacks/0103_purchase_checkouts.down.sql", "utf8");
 type Db = { query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount: number }> };
 const runDown = async (db: Db) => {
+  for (const stmt of splitStatements(downCheckouts)) await db.query(stmt);
   for (const stmt of splitStatements(down)) await db.query(stmt);
 };
 const rolledBack = (fn: (db: Db) => Promise<void>) =>

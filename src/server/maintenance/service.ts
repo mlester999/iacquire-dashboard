@@ -19,6 +19,8 @@ import { MAINTENANCE_PAYMENT_NOTE } from "@/lib/billing-clearance";
 import { daysUntil, paidPeriodEnded } from "@/lib/billing-renewal";
 import { agencyToday } from "@/server/entitlements";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
+import { createPaymentCheckout } from "@/server/billing/payments";
+import type { FetchLike } from "@/server/billing/paymongo";
 import { noticeCancelled, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import { iso } from "@/server/projects/shared";
 
@@ -186,6 +188,31 @@ export async function requestMaintenanceEnrollment(ctx: OrgContext, input: { acc
     await notifyAgency(db, ctx.org.orgId, { kind: "maintenance_update", title: `${ctx.org.name} requested managed maintenance`, body: "Review and activate to start the plan.", link: "/admin/maintenance" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "maintenance.enrollment_requested", targetType: "maintenance_subscription", result: "success", metadata: { priceCents, allowance, terms: MAINTENANCE_TERMS_VERSION } }, db);
   });
+}
+
+/**
+ * The owner pays the plan online for one or more months. Nothing is charged here and nothing about the plan changes here: this opens a hosted checkout for the plan's own
+ * price (the amount comes from the plan row, not from the caller), and the plan's paid-through day moves only when the payment provider's signed notice confirms the payment
+ * (src/server/billing/payments.ts, applyMaintenancePeriod), through the same transition as a payment recorded by hand. Returns the provider's page to send the person to.
+ */
+export async function startMaintenancePayment(ctx: OrgContext, months: number, deps: { fetch?: FetchLike } = {}) {
+  if (!ctx.can("maintenance.manage_plan")) throw new AppError("forbidden", "Only a workspace owner can pay for the maintenance plan.");
+  if (!Number.isInteger(months) || months < 1 || months > 12) throw new AppError("invalid_input", "Choose from 1 to 12 months.");
+  const plan = (await withSystem((db) => db.query<{ id: string; status: string; monthly_price_cents: number; currency: string }>(
+    "select id, status, monthly_price_cents, currency from maintenance_subscriptions where org_id = $1 and status in ('requested', 'active', 'past_due', 'expired', 'cancel_requested') order by created_at desc limit 1", [ctx.org.orgId],
+  ))).rows[0];
+  if (!plan) throw new AppError("not_found", "There's no maintenance plan to pay for. Request the plan first.");
+  if (plan.currency !== "USD") throw new AppError("conflict", "This plan is not priced in US dollars.");
+  const checkout = await createPaymentCheckout({
+    orgId: ctx.org.orgId,
+    kind: "maintenance",
+    usdMicros: plan.monthly_price_cents * 10_000 * months,
+    description: `Managed Maintenance + Automation Studio (${months} ${months === 1 ? "month" : "months"})`,
+    requestedBy: ctx.user.id,
+    maintenance: { subscriptionId: plan.id, months },
+  }, deps);
+  await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "maintenance.payment_started", targetType: "maintenance_subscription", targetId: plan.id, result: "success", metadata: { months, reference: checkout.referenceNumber } });
+  return checkout;
 }
 
 export async function requestMaintenanceCancellation(ctx: OrgContext, note?: string) {

@@ -12,6 +12,9 @@ import { createCheckoutSession, paymongoStatus, type FetchLike } from "@/server/
 import { markSetupFeePaid } from "@/server/billing/clearance";
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { paymongoAdapter } from "@/server/billing/providers/paymongo";
+import { applyVerifiedPayment } from "@/server/maintenance/payment";
+import { nextPaidThrough } from "@/lib/billing-renewal";
+import { todayIn } from "@/lib/invoices/state";
 import type { NormalizedPaymentEvent, PaymentProviderAdapter } from "@/server/billing/providers/types";
 
 export type PaymentKind = "setup_fee" | "credit_topup" | "maintenance" | "custom_project" | "domain" | "other";
@@ -32,6 +35,8 @@ interface PaymentRow {
   provider_payment_id: string | null;
   credits_micros: string | null;
   refunded_micros: string;
+  maintenance_subscription_id: string | null;
+  covers_months: number | null;
 }
 
 function newReference() {
@@ -50,6 +55,8 @@ export interface CheckoutInput {
   usdMicros: number;
   description: string;
   requestedBy: string | null;
+  /** A maintenance payment names the plan and how many months it pays for. The amount is checked against the plan's own price, never taken on trust. */
+  maintenance?: { subscriptionId: string; months: number };
 }
 
 /**
@@ -84,14 +91,38 @@ export async function createPaymentCheckout(input: CheckoutInput, deps: { fetch?
       const open = await db.query("select 1 from payments where org_id = $1 and kind = 'setup_fee' and status = 'pending'", [input.orgId]);
       if (open.rows[0]) throw new AppError("conflict", "A setup fee checkout is already open for this workspace. Finish it, or ask iAcquire to cancel it, before starting another.");
     }
+    let plan: { id: string } | null = null;
+    if (input.kind === "maintenance") {
+      const m = input.maintenance;
+      if (!m || !Number.isInteger(m.months) || m.months < 1 || m.months > 12) throw new AppError("invalid_input", "Choose how many months to pay for (1 to 12).");
+      // The plan is locked so its status and price cannot change between the checks and the checkout row.
+      const row = (await db.query<{ id: string; status: string; monthly_price_cents: number; currency: string }>(
+        "select id, status, monthly_price_cents, currency from maintenance_subscriptions where id = $1 and org_id = $2 for update", [m.subscriptionId, input.orgId],
+      )).rows[0];
+      if (!row) throw new AppError("not_found", "That maintenance plan was not found.");
+      if (!["requested", "active", "past_due", "expired", "cancel_requested"].includes(row.status)) throw new AppError("conflict", "This plan cannot take a payment in its current state.");
+      if (row.currency !== "USD") throw new AppError("conflict", "This plan is not priced in US dollars.");
+      if (row.monthly_price_cents * 10_000 * m.months !== input.usdMicros) throw new AppError("invalid_input", "The amount does not match the plan's price for those months.");
+      if (row.status === "requested") {
+        // A requested plan starts when a payment is verified. It can only start once the core system is activated and the setup fee cleared, so a payment is not taken that could not be applied.
+        const st = (await db.query<{ state: string | null; cleared: boolean }>(
+          "select (select i.state from client_setup_instances i where i.org_id = $1) as state, app.setup_payment_cleared($1) as cleared", [input.orgId],
+        )).rows[0];
+        if (st?.state !== "activated" || st.cleared !== true) throw new AppError("conflict", "The plan can start once the core system is activated and the setup fee is confirmed. Nothing was charged.");
+      }
+      const open = await db.query("select 1 from payments where maintenance_subscription_id = $1 and kind = 'maintenance' and status = 'pending'", [row.id]);
+      if (open.rows[0]) throw new AppError("conflict", "A payment for this plan is already open. Finish it, or wait for it to close, before starting another.");
+      plan = { id: row.id };
+    }
     const rate = Number(s.usd_php_rate);
     const minor = usdToChargeMinor(input.usdMicros, rate);
     const reference = newReference();
     const { rows } = await db.query<{ id: string }>(
       `insert into payments (org_id, kind, description, usd_amount_micros, charged_currency, charged_amount_minor, fx_rate, fx_source, fx_at, livemode,
-         reference_number, credits_micros, requested_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-      [input.orgId, input.kind, input.description.slice(0, 200), input.usdMicros, CHARGE_CURRENCY, minor, rate, s.fx_source, s.fx_updated_at, livemode, reference, input.kind === "credit_topup" ? input.usdMicros : null, input.requestedBy],
+         reference_number, credits_micros, requested_by, maintenance_subscription_id, covers_months)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning id`,
+      [input.orgId, input.kind, input.description.slice(0, 200), input.usdMicros, CHARGE_CURRENCY, minor, rate, s.fx_source, s.fx_updated_at, livemode, reference, input.kind === "credit_topup" ? input.usdMicros : null, input.requestedBy,
+        plan?.id ?? null, plan ? (input.maintenance as { months: number }).months : null],
     );
     await recordPaymentInitiated(db, { orgId: input.orgId, paymentId: rows[0].id, memo: `${input.kind} checkout started`, createdBy: input.requestedBy });
     return { id: rows[0].id, reference, minor };
@@ -107,8 +138,8 @@ export async function createPaymentCheckout(input: CheckoutInput, deps: { fetch?
         // Our reference travels in the description so a failed-payment event can be linked back to this record.
         description: `${input.description} [${payment.reference}]`,
         referenceNumber: payment.reference,
-        successUrl: `${appUrl}/settings/billing?payment=${payment.reference}&return=success`,
-        cancelUrl: `${appUrl}/settings/billing?payment=${payment.reference}&return=cancelled`,
+        successUrl: `${appUrl}${input.kind === "maintenance" ? "/maintenance" : "/settings/billing"}?payment=${payment.reference}&return=success`,
+        cancelUrl: `${appUrl}${input.kind === "maintenance" ? "/maintenance" : "/settings/billing"}?payment=${payment.reference}&return=cancelled`,
       },
       deps,
     );
@@ -128,7 +159,7 @@ export interface WebhookOutcome {
   detail?: string;
 }
 
-type ApplyResult = { outcome: "processed" | "ignored" | "rejected"; detail?: string; paymentId?: string };
+type ApplyResult = { outcome: "processed" | "ignored" | "rejected"; detail?: string; paymentId?: string; purchaseCheckoutId?: string; followUp?: { intentId: string } };
 
 /**
  * Handles one provider webhook delivery through that provider's adapter, which only verifies the delivery and translates its payload (src/server/billing/providers).
@@ -145,7 +176,10 @@ export async function handleProviderWebhook(adapter: PaymentProviderAdapter, inp
   // The signature's mode and the payload's mode must agree, or the event is not trusted.
   if (event.livemode !== sig.livemode) return { httpStatus: 400, outcome: "rejected", detail: "Event mode does not match its signature." };
 
-  return withSystem(async (db) => {
+  // A purchase intent's paid notice may ask for its workspace to be created. That runs after the notice is committed, in its own transactions, so a failure there can never undo
+  // the record that the money arrived (it is retried by a person or the recovery sweep).
+  let followUp: { intentId: string } | undefined;
+  const outcome = await withSystem(async (db) => {
     const receipt = await db.query<{ id: string; outcome: string }>(
       `insert into payment_webhook_events (provider, provider_event_id, event_type, livemode) values ($1, $2, $3, $4)
        on conflict (provider, provider_event_id) do update set provider_event_id = excluded.provider_event_id returning id, outcome`,
@@ -164,9 +198,20 @@ export async function handleProviderWebhook(adapter: PaymentProviderAdapter, inp
     else if (event.kind === "payment_refunded" || event.kind === "payment_disputed") result = await applyReported(db, event);
     else result = await applyFailed(db, event);
 
-    await db.query("update payment_webhook_events set outcome = $2, detail = $3, payment_id = $4, processed_at = now() where id = $1", [receiptId, result.outcome, result.detail?.slice(0, 300) ?? null, result.paymentId ?? null]);
+    await db.query("update payment_webhook_events set outcome = $2, detail = $3, payment_id = $4, purchase_checkout_id = $5, processed_at = now() where id = $1", [receiptId, result.outcome, result.detail?.slice(0, 300) ?? null, result.paymentId ?? null, result.purchaseCheckoutId ?? null]);
+    followUp = result.followUp;
     return { httpStatus: 200, outcome: result.outcome === "processed" ? ("processed" as const) : result.outcome === "rejected" ? ("rejected" as const) : ("ignored" as const), detail: result.detail };
   });
+  if (followUp) {
+    try {
+      const { provisionPaidIntent } = await import("@/server/purchase-intents/checkout");
+      await provisionPaidIntent(followUp.intentId);
+    } catch (error) {
+      // The payment is recorded and the purchase is waiting; provisionPaidIntent already writes its own failures. Anything that escapes it is logged, never returned to the provider.
+      console.error("purchase provisioning follow-up failed", error instanceof Error ? error.message : "unknown");
+    }
+  }
+  return outcome;
 }
 
 /** The PayMongo endpoint's entry point (src/app/api/webhooks/paymongo/route.ts). */
@@ -178,7 +223,13 @@ async function applyPaid(db: Queryable, event: NormalizedPaymentEvent): Promise<
   if (!event.checkoutId) return { outcome: "ignored", detail: "No matching checkout session." };
   const { rows } = await db.query<PaymentRow>("select * from payments where provider = $1 and provider_checkout_id = $2 for update", [event.provider, event.checkoutId]);
   const payment = rows[0];
-  if (!payment) return { outcome: "ignored", detail: "No matching checkout session." };
+  if (!payment) {
+    // Not a workspace payment: it may be the checkout of a purchase intent, which exists before any workspace does.
+    const { applyCheckoutPaid } = await import("@/server/purchase-intents/checkout");
+    const purchase = await applyCheckoutPaid(db, event);
+    if (purchase) return { outcome: purchase.outcome, detail: purchase.detail, purchaseCheckoutId: purchase.checkoutId, followUp: purchase.followUp };
+    return { outcome: "ignored", detail: "No matching checkout session." };
+  }
   // Both the id we stored at creation and the reference we sent must agree, so a crafted event cannot borrow someone else's session.
   if (event.reference !== payment.reference_number) return { outcome: "rejected", detail: "Reference does not match the checkout.", paymentId: payment.id };
   if (payment.livemode !== event.livemode) return { outcome: "rejected", detail: "Payment mode mismatch.", paymentId: payment.id };
@@ -196,6 +247,9 @@ async function applyPaid(db: Queryable, event: NormalizedPaymentEvent): Promise<
   let clearedSetup = false;
   if (payment.kind === "credit_topup" && payment.credits_micros) {
     await grantCredits(db, { orgId: payment.org_id, amountMicros: Number(payment.credits_micros), paymentId: payment.id, memo: `Top-up ${payment.reference_number}` });
+  } else if (payment.kind === "maintenance" && payment.maintenance_subscription_id && payment.covers_months) {
+    clearedSetup = false;
+    await applyMaintenancePeriod(db, payment);
   } else if (payment.kind === "setup_fee") {
     // The status becomes "paid" only against this verified payment (the database refuses it otherwise), and clearing opens the AI employees' provisioning requests.
     const marked = await markSetupFeePaid(db, { orgId: payment.org_id, paymentId: payment.id, updatedBy: null });
@@ -228,12 +282,55 @@ async function applyPaid(db: Queryable, event: NormalizedPaymentEvent): Promise<
   return { outcome: "processed", paymentId: payment.id };
 }
 
+/**
+ * A provider-verified maintenance payment: moves the plan's paid-through day forward by the months the checkout covered, through the SAME transition a payment recorded by hand
+ * uses (activate a requested plan, renew an active one, bring a past-due or expired one back). The checkout named the plan and the months when it was opened and the amount was
+ * checked against it, so the notice chooses nothing. If the plan cannot take the payment (it was cancelled, or its core system is not activated yet) the money stays recorded
+ * on the payment and a person is told: a payment is never silently dropped and a plan is never changed against its own rules.
+ */
+async function applyMaintenancePeriod(db: Queryable, payment: PaymentRow): Promise<void> {
+  const plan = (await db.query<{ id: string; org_id: string; status: string; paid_through_on: string | null }>(
+    "select id, org_id, status, to_char(paid_through_on, 'YYYY-MM-DD') as paid_through_on from maintenance_subscriptions where id = $1 and org_id = $2 for update", [payment.maintenance_subscription_id, payment.org_id],
+  )).rows[0];
+  const tz = (await db.query<{ timezone: string }>("select timezone from organizations where kind = 'agency' limit 1")).rows[0]?.timezone ?? "UTC";
+  const today = todayIn(new Date(), tz);
+  const unresolved = async (why: string) => {
+    await notifyAgency(db, payment.org_id, {
+      kind: "billing_reconciliation", severity: "warning", title: "A maintenance payment could not be applied to the plan",
+      body: `Reference ${payment.reference_number}. The money is recorded, but ${why} Record the period by hand or refund the payment.`,
+      link: `/admin/clients/${payment.org_id}?tab=billing`, dedupeKey: `maintenance-unapplied:${payment.id}`,
+    });
+  };
+  if (!plan) return unresolved("the plan it was meant for no longer exists.");
+  try {
+    const through = nextPaidThrough({ status: plan.status, paidThroughOn: plan.paid_through_on, today, months: payment.covers_months as number });
+    if (!through) return await unresolved("the new paid-through day could not be worked out.");
+    await applyVerifiedPayment(db, {
+      subscription: plan,
+      mode: plan.status === "requested" ? "activate" : "renew",
+      actor: { kind: "system", userId: null },
+      paidThroughOn: through,
+      paymentId: payment.id,
+      billingStartOn: today,
+    });
+  } catch (error) {
+    if (!(error instanceof AppError)) throw error;
+    await unresolved(`the plan refused it (${error.message.replace(/\.$/, "")}).`);
+  }
+}
+
 async function applyFailed(db: Queryable, event: NormalizedPaymentEvent): Promise<ApplyResult> {
   const reference = /\[(IAQ-[A-Z0-9]{8,})\]/.exec(event.description ?? "")?.[1];
   if (!reference) return { outcome: "ignored", detail: "Failed payment could not be linked to a checkout; no credit was granted." };
   const { rows } = await db.query<PaymentRow>("select * from payments where reference_number = $1 for update", [reference]);
   const payment = rows[0];
-  if (!payment || payment.status !== "pending" || payment.livemode !== event.livemode) return { outcome: "ignored", detail: "No pending checkout for this reference." };
+  if (!payment) {
+    const { applyCheckoutFailed } = await import("@/server/purchase-intents/checkout");
+    const purchase = await applyCheckoutFailed(db, event);
+    if (purchase) return { outcome: purchase.outcome, detail: purchase.detail, purchaseCheckoutId: purchase.checkoutId };
+    return { outcome: "ignored", detail: "No pending checkout for this reference." };
+  }
+  if (payment.status !== "pending" || payment.livemode !== event.livemode) return { outcome: "ignored", detail: "No pending checkout for this reference." };
   // A customer can retry on the same checkout, so a failed attempt is recorded and the checkout stays open to a later success.
   await notifyOrgRoles(db, payment.org_id, ["owner", "admin"], {
     kind: "billing_payment_failed",
@@ -275,6 +372,10 @@ async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Prom
     ? (await db.query<PaymentRow>("select * from payments where provider = $1 and provider_payment_id = $2 for update", [event.provider, providerPaymentId])).rows[0]
     : undefined;
   if (!payment) {
+    // A purchase intent's checkout has no workspace payment until the workspace is made: the notice is held on the purchase.
+    const { applyCheckoutReported } = await import("@/server/purchase-intents/checkout");
+    const purchase = await applyCheckoutReported(db, event);
+    if (purchase) return { outcome: purchase.outcome, detail: purchase.detail, purchaseCheckoutId: purchase.checkoutId };
     await notifyAgency(db, null, {
       kind: "billing_reconciliation",
       severity: "warning",

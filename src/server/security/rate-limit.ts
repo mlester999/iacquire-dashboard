@@ -188,4 +188,8 @@ export const RATE_LIMITS = {
   // actions are already behind the agency session and the service's permission check.
   purchaseIntentViewByIp: { name: "purchase:view:ip", limit: 120, windowSeconds: 900 },
   purchaseIntentStartByIp: { name: "purchase:start:ip", limit: 10, windowSeconds: 3600 },
+  // Opening an online checkout from a purchase link: a payment page per address and per purchase an hour is generous for a person and a wall for a loop.
+  purchaseCheckoutByIp: { name: "purchase:checkout:ip", limit: 12, windowSeconds: 3600 },
+  purchaseCheckoutByIntent: { name: "purchase:checkout:intent", limit: 8, windowSeconds: 3600 },
+  purchaseReturnByIp: { name: "purchase:return:ip", limit: 120, windowSeconds: 900 },
 } satisfies Record<string, RateLimitRule>;
