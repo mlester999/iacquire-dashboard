@@ -287,11 +287,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
+          compose_base=(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
             -f services/hermes-provisioner/compose.acceptance.yaml \
-            --profile provisioner --profile acceptance up --no-build -d
+            --profile provisioner --profile acceptance)
+          if ! "${compose_base[@]}" up --no-build -d; then
+            echo "CLIENT_RUNTIME_START_FAILURE: Compose could not start the candidate gateway."
+            "${compose_base[@]}" ps --all || true
+            client_id="$("${compose_base[@]}" ps --all -q hermes-client | head -n 1)"
+            if [[ -n "$client_id" ]]; then
+              docker inspect -f 'CLIENT_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTS={{.RestartCount}} HEALTH={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} HEALTH_FAILURES={{if .State.Health}}{{.State.Health.FailingStreak}}{{else}}0{{end}}' "$client_id"
+              health_codes="$(docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "$client_id" 2>/dev/null \
+                | grep -Eo 'ConnectionRefusedError|TimeoutError|PermissionError|FileNotFoundError|ModuleNotFoundError|ImportError|Connection refused|Read-only file system|Permission denied|No such file or directory|Address already in use|HTTP Error [0-9]{3}' \
+                | sort -u | paste -sd, - || true)"
+              echo "CLIENT_HEALTH_FAILURE_CODES=${health_codes:-unclassified}"
+              runtime_codes="$(docker logs "$client_id" 2>&1 \
+                | grep -Eo 'Hermes client runtime stopped: [a-z0-9_]+' \
+                | sort -u | paste -sd, - || true)"
+              echo "CLIENT_RUNTIME_FAILURE_CODES=${runtime_codes:-none}"
+            fi
+            exit 1
+          fi
 
           client_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
