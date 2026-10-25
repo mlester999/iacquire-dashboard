@@ -216,17 +216,23 @@ export async function finishSchedulerTick(ok: boolean, error: string | null = nu
   ).catch(() => undefined);
 }
 
+/** The longest scheduler allowlist a tick accepts. This limit is checked here so a bad value stops the tick, not application startup. */
+export const SCHEDULER_JOBS_ONLY_MAX_LENGTH = 2000;
+
 /**
- * The jobs a tick runs: all of them, unless SCHEDULER_JOBS_ONLY names some (comma separated, exact names, any order; the registry's order is kept). This is what
- * lets the scheduler be switched on in stages instead of all at once. Whatever is not named does not run and leaves no heartbeat. A name that does not exist, or a
- * value that names nothing, throws, so a typo can never silently run something other than what was approved.
+ * The jobs a tick runs: all of them when SCHEDULER_JOBS_ONLY is unset, otherwise exactly the jobs it names (comma separated, exact names, any order; the registry's order is
+ * kept). This is what lets the scheduler be switched on in stages instead of all at once. It fails closed: an empty list, an overlong value, or any unknown name throws before
+ * any scheduled job runs. A mistyped or whitespace-only allowlist can never silently select every job.
  */
 export function activeJobs(all: readonly ScheduledJob[] = JOBS, only: string | undefined = env().SCHEDULER_JOBS_ONLY): readonly ScheduledJob[] {
   if (only === undefined) return all;
+  if (only.length > SCHEDULER_JOBS_ONLY_MAX_LENGTH) {
+    throw new Error(`SCHEDULER_JOBS_ONLY is longer than ${SCHEDULER_JOBS_ONLY_MAX_LENGTH} characters.`);
+  }
   const names = only.split(",").map((s) => s.trim()).filter(Boolean);
   if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it to run every job.");
   const known = new Set(all.map((j) => j.name));
-  const unknown = names.filter((n) => !known.has(n));
+  const unknown = [...new Set(names.filter((n) => !known.has(n)))];
   if (unknown.length) throw new Error(`SCHEDULER_JOBS_ONLY names a job that does not exist: ${unknown.join(", ")}.`);
   const wanted = new Set(names);
   return all.filter((j) => wanted.has(j.name));

@@ -6,7 +6,7 @@ process.env.SCHEDULER_ENABLED = "true";
 
 import { resetEnvCache } from "@/server/env";
 import { POST as tick } from "@/app/api/internal/tick/route";
-import { activeJobs, JOBS, runScheduledJobs, type ScheduledJob } from "@/server/ops/tick";
+import { activeJobs, JOBS, runScheduledJobs, SCHEDULER_JOBS_ONLY_MAX_LENGTH, type ScheduledJob } from "@/server/ops/tick";
 import { withSystem } from "@/server/db";
 import { queueOutbound } from "@/server/messaging/send";
 import { inbound, messagingOrg } from "./support/messaging";
@@ -34,8 +34,10 @@ describe("which jobs a tick may run", () => {
     expect(activeJobs(REGISTRY, undefined)).toEqual(REGISTRY);
     setOnly(undefined);
     expect(activeJobs()).toEqual(JOBS);
+    setOnly("");
+    expect(activeJobs()).toEqual(JOBS); // an empty env value is unset
     setOnly("   ");
-    expect(activeJobs()).toEqual(JOBS); // a blank value is the same as unset
+    expect(() => activeJobs()).toThrow(/names no job/); // whitespace must not expand to every job
   });
 
   it("runs exactly the jobs named, in the registry's order, whatever order and spacing they were written in", () => {
@@ -47,6 +49,8 @@ describe("which jobs a tick may run", () => {
     expect(() => activeJobs(REGISTRY, "a,nope")).toThrow(/does not exist: nope/);
     expect(() => activeJobs(REGISTRY, "inboxattention")).toThrow(/does not exist/); // exact names only
     expect(() => activeJobs(REGISTRY, " , ")).toThrow(/names no job/);
+    expect(() => activeJobs(REGISTRY, "__proto__")).toThrow(/does not exist/);
+    expect(() => activeJobs(REGISTRY, "a".repeat(SCHEDULER_JOBS_ONLY_MAX_LENGTH + 1))).toThrow(/longer than 2000 characters/);
   });
 
   it("names only real jobs in the documented first steps of the activation plan", () => {
@@ -84,6 +88,15 @@ describe("through the real tick endpoint", () => {
     const res = await runTick();
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain("notAJob"); // the response never carries details; the heartbeat does
+    const after = await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from worker_job_runs where job_name <> 'scheduler_tick'"));
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
+
+  it("fails the tick closed for a whitespace-only environment allowlist without running other jobs", async () => {
+    const before = await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from worker_job_runs where job_name <> 'scheduler_tick'"));
+    setOnly("   ");
+    const res = await runTick();
+    expect(res.status).toBe(500);
     const after = await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from worker_job_runs where job_name <> 'scheduler_tick'"));
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
