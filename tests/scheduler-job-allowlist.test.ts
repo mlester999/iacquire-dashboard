@@ -101,6 +101,15 @@ describe("through the real tick endpoint", () => {
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
 
+  it("keeps an oversized allowlist out of application config parsing and fails the tick before other jobs run", async () => {
+    const before = await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from worker_job_runs where job_name <> 'scheduler_tick'"));
+    setOnly("x".repeat(SCHEDULER_JOBS_ONLY_MAX_LENGTH + 1));
+    const res = await runTick();
+    expect(res.status).toBe(500);
+    const after = await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from worker_job_runs where job_name <> 'scheduler_tick'"));
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
+
   it("is what runScheduledJobs does by default, and a controlled job list still overrides it", async () => {
     setOnly("aiWorkRecovery");
     expect(Object.keys(await runScheduledJobs(new Date(Date.now() + 3_600_000)))).toEqual(["aiWorkRecovery"]);
