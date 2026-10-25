@@ -5,7 +5,7 @@
 ## Candidate and target
 
 - **Product code SHA:** `14e04ce998145e2c3a92cdd5a942f074dffe4f14` (includes the internal workforce, onboarding, Work Board/Calendar work, dependency and audit corrections, six-personality fallback fix, hardened client-only Hermes Compose runtime, and the internal employee Super Admin boundary).
-- **Branch:** `codex/iacquire-workforce-completion`, based on production `master` at `36bf78c40f73148fe1d25787a9eba5eb9709c64d`, confirmed against the remote ref on 2026-10-25. The product-code SHA is 126 commits ahead of deployed `origin/master` and changes 182 files (33,127 insertions, 1,019 deletions); later commits on this branch are documentation-only checkpoint updates. Review the full candidate diff as a whole.
+- **Branch:** `codex/iacquire-workforce-completion`, based on production `master` at `36bf78c40f73148fe1d25787a9eba5eb9709c64d`, confirmed against the remote ref on 2026-10-25. The product-code SHA is 126 commits ahead of deployed `origin/master` and changes 182 files (33,127 insertions, 1,019 deletions). Later commits add the four-role no-apply configuration manifest, read-only readiness-audit fields and evidence updates; they do not change application runtime paths. Review the full candidate diff as a whole.
 - **Target:** production iAcquireOS portal at `www.iacquire.online` and its hosted application database.
 - **Current deployed SHA:** `36bf78c40f73148fe1d25787a9eba5eb9709c64d`.
 - **Scope size:** the candidate contains the master implementation work, including the approved Work Board/Calendar milestone and workforce, onboarding, CRM, and related application changes. Review the candidate's full diff before promotion.
