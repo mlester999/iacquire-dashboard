@@ -306,12 +306,7 @@ jobs:
                 | grep -Eo 'Hermes client runtime stopped: [a-z0-9_]+' \
                 | sort -u | paste -sd, - || true)"
               echo "CLIENT_RUNTIME_FAILURE_CODES=${runtime_codes:-none}"
-              exception_types="$(docker logs "$client_id" 2>&1 | python3 -c '
-              import re, sys
-              pattern = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Exit|Failure))(?=\s*(?::|$))")
-              types = sorted({match.group(1) for line in sys.stdin for match in pattern.finditer(line)})
-              print(",".join(types[:8]))
-              ')"
+              exception_types="$(docker logs "$client_id" 2>&1 | python3 -c 'import re, sys; pattern = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Exit|Failure))(?=\s*(?::|$))"); types = sorted({match.group(1) for line in sys.stdin for match in pattern.finditer(line)}); print(",".join(types[:8]))')"
               echo "CLIENT_EXCEPTION_TYPES=${exception_types:-none}"
             fi
             exit 1
