@@ -263,6 +263,91 @@ try {
     check(report, "10: no horizontal overflow at 375", !pm.overflow, JSON.stringify(pm));
     await shot(owner, report, "req-change-client-375");
   }
+
+  if (stages.includes(11)) {
+    // ---- 11. Issue reports, feedback, attachments, reopening and notifications.
+    const owner = await as("harbor:owner");
+    const admin = await as("agency:super");
+    const note = "Staff-only: customer account looks risky " + stamp;
+    // An issue report with an urgency, steps and a file.
+    await open(owner, "/support/report-issue");
+    state.issueSubject = `QA ${stamp}: contacts page never finishes loading`;
+    await owner.getByPlaceholder("For example: The contacts page never finishes loading").fill(state.issueSubject);
+    await owner.getByPlaceholder("Tell us what happened…").fill("The contacts page spins forever since this morning. QA data.");
+    await owner.getByPlaceholder("For example: I expected to see my list of contacts.").fill("A list of contacts.");
+    await owner.getByPlaceholder(/Open Contacts/).fill("1. Open Contacts\n2. Wait");
+    await owner.getByRole("radio", { name: /Needs attention soon/ }).click();
+    const file = path.join(OUT, "qa-attachment.txt");
+    fs.writeFileSync(file, `Attachment for the issue report ${stamp}\n`);
+    await owner.locator("input[type=file]").setInputFiles(file);
+    await owner.waitForTimeout(2500);
+    await shot(owner, report, "req-issue-form");
+    await owner.getByRole("button", { name: /^Send (report|issue)|Send report/i }).first().click().catch(async () => { await owner.locator("form button[type=submit]").last().click(); });
+    await owner.getByText(/has been sent|Your report|received/i).first().waitFor({ timeout: 60_000 });
+    const sent = squash(await main(owner));
+    check(report, "11: the issue report is sent with a reference", /[A-Z]{2,4}-\d{3,}/.test(sent), sent.slice(0, 300));
+    await owner.getByRole("link", { name: /View your (request|report)/i }).first().click();
+    await owner.waitForURL(/\/support\/[0-9a-f-]{36}/, { timeout: 60_000 });
+    state.issueId = /\/support\/([0-9a-f-]{36})/.exec(owner.url())[1];
+    await owner.waitForFunction(() => /qa-attachment/.test(document.body.innerText), null, { timeout: 30_000 }).catch(() => {});
+    const issueText = squash(await main(owner));
+    check(report, "11: the client sees the report as an issue report with its file attached", /Issue report/.test(issueText) && /qa-attachment\.txt/.test(issueText), issueText.slice(0, 400));
+    save();
+    // Feedback.
+    await open(owner, "/support/feedback");
+    state.feedbackSubject = `QA ${stamp}: tag messages in the inbox`;
+    await owner.getByPlaceholder("For example: Let me tag messages in the inbox").fill(state.feedbackSubject);
+    await owner.getByPlaceholder("Share your idea or thoughts…").fill("It would help to tag messages. QA data.");
+    await owner.getByRole("button", { name: "Send feedback" }).click();
+    await owner.getByText(/Thank you|has been sent|received/i).first().waitFor({ timeout: 60_000 });
+    check(report, "11: feedback is sent and thanked", true);
+    // The list tells the three kinds apart and filters by type.
+    await open(owner, "/support/requests");
+    const list = squash(await main(owner));
+    check(report, "11: the list shows the issue report and the feedback among the requests", list.includes(state.issueSubject) && list.includes(state.feedbackSubject), list.slice(0, 300));
+    await owner.locator("select").filter({ hasText: "All types" }).first().selectOption({ label: "Issue reports" });
+    await owner.waitForTimeout(1200);
+    const filtered = squash(await main(owner));
+    check(report, "11: filtering by Issue reports leaves the report and hides the feedback", filtered.includes(state.issueSubject) && !filtered.includes(state.feedbackSubject), filtered.slice(0, 300));
+    // The team sees the file and can open it; another workspace cannot.
+    await open(admin, `/admin/support/${state.issueId}`);
+    const staffIssue = squash(await main(admin));
+    check(report, "11: the team sees the report with the file and the urgency", /qa-attachment\.txt/.test(staffIssue) && /soon|urgent|High/i.test(staffIssue), staffIssue.slice(0, 400));
+    const href = await admin.locator("main a[href*='/api/files/'], main a[href*='/api/support/']").first().getAttribute("href").catch(() => null);
+    report.notes.push("attachment link: " + href);
+    if (href) {
+      // The download answers with a redirect to the file; in the dev server that address names "localhost" rather than 127.0.0.1, so a cookie jar would not follow it. Follow it by path.
+      const hop = await admin.request.get(href.startsWith("http") ? href : `${BASE}${href}`, { maxRedirects: 0 });
+      const filePath = new URL(hop.headers()["location"] ?? "/", BASE).pathname;
+      check(report, "11: the download hands over a file address in the same app, not a link to somewhere else", hop.status() === 307 && filePath.startsWith("/api/files/"), `${hop.status()} ${hop.headers()["location"]}`);
+      const got = await admin.request.get(`${BASE}${filePath}`);
+      check(report, "11: the team can open the attached file, and it is the file that was sent", got.status() === 200 && (await got.text()).includes(`Attachment for the issue report ${stamp}`), `status ${got.status()}`);
+      const other = await as("other:owner");
+      const denied = await other.request.get(href.startsWith("http") ? href : `${BASE}${href}`);
+      check(report, "11: another workspace cannot open that file", denied.status() === 401 || denied.status() === 403 || denied.status() === 404, `status ${denied.status()}`);
+      const viewer = await as("harbor:viewer");
+      const viewerGot = await viewer.request.get(href.startsWith("http") ? href : `${BASE}${href}`);
+      report.notes.push(`viewer opening the file: ${viewerGot.status()}`);
+    }
+    // Reopening: the client writes again on a resolved request; it is open again and the team sees it was reopened.
+    await open(owner, `/support/${state.ticketId}`);
+    const reply = owner.locator("#request-reply");
+    state.reopenText = `Actually it broke again ${stamp}`;
+    await reply.fill(state.reopenText);
+    await owner.getByRole("button", { name: /Reopen and send/ }).click();
+    await owner.waitForTimeout(3000);
+    await open(admin, `/admin/support/${state.ticketId}`);
+    const reopened = squash(await main(admin));
+    check(report, "11: replying to a resolved request reopens it and the team sees what was said", reopened.includes(state.reopenText) && !/Priority\s+Resolved/.test(reopened.slice(0, 120)) && !/^Requests IAQ-\d+ \w+ priority Resolved/.test(reopened), reopened.slice(0, 200));
+    // Notifications: the bell tells the client about the team's replies and never carries private words.
+    await open(owner, "/overview");
+    await owner.getByRole("button", { name: /Notifications/i }).first().click().catch(() => {});
+    await owner.waitForTimeout(1500);
+    const bell = squash(await owner.evaluate(() => document.body.innerText));
+    check(report, "11: the client's notifications never carry the team's private note", !bell.includes(state.note ?? "RUBYFLINT") && !/Customer sounded confused/.test(bell));
+    await shot(owner, report, "req-notifications");
+    save();
+  }
 } catch (e) {
   check(report, "scenario ran to the end", false, String(e).slice(0, 500));
 } finally {
