@@ -34,7 +34,8 @@ create table purchase_intent_checkouts (
   livemode boolean not null,
   provider_checkout_id text,
   provider_payment_id text,
-  checkout_url text check (checkout_url ~ '^https://'),
+  -- https only, except the address of the simulated provider on this very machine (the application refuses to use that address anywhere but development and test, see env.ts).
+  checkout_url text check (checkout_url ~ '^https://' or checkout_url ~ '^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/'),
   fee_minor bigint check (fee_minor >= 0),
   failure_reason text check (char_length(failure_reason) <= 300),
   paid_at timestamptz,
@@ -120,6 +121,9 @@ alter table payment_webhook_events add column purchase_checkout_id uuid referenc
 alter table payments
   add column maintenance_subscription_id uuid,
   add column covers_months smallint check (covers_months between 1 and 12);
+-- The same address rule as the purchase checkouts: https, or the simulated provider on this machine.
+alter table payments drop constraint payments_checkout_url_check;
+alter table payments add constraint payments_checkout_url_check check (checkout_url ~ '^https://' or checkout_url ~ '^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/');
 alter table payments add constraint payments_maintenance_plan_fk foreign key (maintenance_subscription_id, org_id) references maintenance_subscriptions (id, org_id);
 alter table payments add constraint payments_maintenance_period_check check ((maintenance_subscription_id is null) = (covers_months is null));
 -- A plan cannot have two online period checkouts open at once.

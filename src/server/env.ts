@@ -65,6 +65,9 @@ const schema = z.object({
   PAYMONGO_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().min(8).optional()),
   // Comma-separated payment_method_types enabled on the merchant account. Cards only until the approved list is confirmed.
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
+  // QA ONLY: the address of a simulated PayMongo on THIS machine (scripts/paymongo-sim.mjs), so a browser run can take a purchase from the buyer's Pay button to a signed confirmation
+  // without any real provider. It is refused everywhere that is not development or test, for any address that is not this machine's, and for a key that is not a test key.
+  PAYMONGO_API_BASE: z.preprocess(blankToUndefined, z.string().url().optional()),
   // Customer payments: the business's OWN PayMongo (or PayPal) account, used to collect on invoices it sends to its customers. Nothing here touches iAcquire's own billing above.
   // CUSTOMER_PAYMENTS_WRITES_ENABLED is the master switch for any call to a real payment provider (checking a pasted key, starting a checkout, reading a payment back); off,
   // only the simulated provider works, and a received PayMongo webhook is still recorded because money that arrived is recorded whatever a switch says. A PayPal delivery can
@@ -199,6 +202,13 @@ export function env(): Env {
   const leaks = checkSupabaseConfig(process.env, false).filter((p) => p.code === "secret_in_public_var");
   if (leaks.length) throw new Error(leaks.map((p) => p.message).join(" "));
   if (value.SECRET_STORE === "test-memory" && value.NODE_ENV !== "test") throw new Error("SECRET_STORE=test-memory is allowed only in tests.");
+  if (value.PAYMONGO_API_BASE) {
+    let host = "";
+    try { host = new URL(value.PAYMONGO_API_BASE).hostname; } catch { host = ""; }
+    if (value.NODE_ENV === "production") throw new Error("PAYMONGO_API_BASE (a simulated PayMongo) is refused in production.");
+    if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) throw new Error("PAYMONGO_API_BASE may only name this machine (127.0.0.1, localhost or ::1).");
+    if (value.PAYMONGO_SECRET_KEY && !value.PAYMONGO_SECRET_KEY.startsWith("sk_test_")) throw new Error("A simulated PayMongo (PAYMONGO_API_BASE) is only used with a test key.");
+  }
   // Development must never reach a hosted database by accident. The sample `.env` historically pointed `npm run dev` and the
   // maintenance scripts at the production Supabase project; one manual test could then change real client data. Local PGlite is
   // the safe default (see .env.development). Remote development is still possible, but only as an explicit, visible opt-in.

@@ -102,6 +102,8 @@ describe("opening the checkout", () => {
       expect(url).toContain(`/purchase/return/${o.reference}`);
       expect(url).not.toContain(c.token);
     }
+    expect(attrs.cancel_url).toMatch(/\?result=cancelled$/);
+    expect(attrs.success_url).not.toContain("?");
     const row = await checkoutRow(o.reference);
     expect(row).toMatchObject({ status: "pending", usd_amount_cents: 149900, charged_currency: "PHP", provider_checkout_id: "cs_exact_1", livemode: false });
     expect(Number(row.charged_amount_minor)).toBe(FULL_PHP);
@@ -155,12 +157,17 @@ describe("a payment the provider confirms", () => {
     const o = await open(c.token, "cs_paid_1");
     // The buyer coming back to the site decides nothing.
     expect((await getCheckoutReturn(o.reference)).title).toBe("Waiting for the payment provider");
+    // Backing out of the provider's page only changes the wording while nothing is confirmed; it never marks anything cancelled or paid.
+    expect(await getCheckoutReturn(o.reference, { leftThePaymentPage: true })).toMatchObject({ title: "You left the payment page", tone: "neutral", checkoutStatus: "pending" });
     expect((await intentRow(c.id)).status).toBe("started");
+    expect((await checkoutRow(o.reference)).status).toBe("pending");
     const res = await deliver(paid({ checkoutId: o.checkoutId, reference: o.reference, paymentId: "pay_one" }));
     expect(res).toMatchObject({ httpStatus: 200, outcome: "processed" });
     expect(await intentRow(c.id)).toMatchObject({ status: "payment_verified", payment_source: "provider", payment_method: "paymongo", payment_reference: "pay_one", payment_amount_cents: 149900, client_org_id: null });
     expect(await checkoutRow(o.reference)).toMatchObject({ status: "paid", provider_payment_id: "pay_one" });
     expect((await getCheckoutReturn(o.reference)).title).toBe("Payment confirmed");
+    // A "cancelled" hint added to the address of a payment that really was confirmed changes nothing.
+    expect((await getCheckoutReturn(o.reference, { leftThePaymentPage: true })).title).toBe("Payment confirmed");
     expect(await rows("select 1 from organizations where name = (select company from purchase_intents where id = $1) and kind = 'client'", [c.id])).toHaveLength(0);
     const kinds = (await listPurchaseIntentEvents(w.superSession, c.id)).map((e) => e.kind);
     expect(kinds).toEqual(expect.arrayContaining(["created", "started", "checkout_started", "payment_received"]));

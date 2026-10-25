@@ -42,7 +42,7 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
         <div className="text-center">
           <Badge tone="outline" className="mb-3 h-7 px-3">Purchase · {purchase.reference}</Badge>
           <h1 className="text-[28px] font-semibold tracking-[-0.045em] text-ink">Welcome, {purchase.buyerName.split(" ")[0]}</h1>
-          <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-muted">This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; no payment is taken on this page.</p>
+          <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-muted">This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; your card is never entered on this page.</p>
         </div>
         <Card>
           <CardHeader className="pb-2">
@@ -65,13 +65,13 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> CRM setup, integrations and AI employee provisioning follow verification and onboarding.</li>
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> {purchase.maintenanceSelected ? "The optional maintenance plan is recorded with your purchase." : "The maintenance plan is optional and was not selected."}</li>
             </ul>
-            <ConfirmPurchase token={token} canConfirm={purchase.canConfirm} problem={purchase.problem} />
+            <ConfirmPurchase token={token} canConfirm={purchase.canConfirm} problem={purchase.problem} setupFeeCents={purchase.setupFeeCents} checkout={purchase.checkout} />
           </CardContent>
         </Card>
         <div className="grid gap-2 text-[11.5px] leading-relaxed text-muted sm:grid-cols-3">
           <p className="flex gap-1.5"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> The price and product version are frozen when the invitation is created.</p>
           <p className="flex gap-1.5"><LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> Only a hash of this link is stored; it expires on {new Date(purchase.expiresAt).toLocaleDateString()}.</p>
-          <p className="flex gap-1.5"><BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> A workspace is created only after a Super Admin verifies the payment.</p>
+          <p className="flex gap-1.5"><BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> A workspace is created only after the payment is verified: by the payment provider&apos;s confirmation, or by iAcquire.</p>
         </div>
       </div>
     </Shell>

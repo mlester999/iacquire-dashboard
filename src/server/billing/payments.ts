@@ -13,7 +13,7 @@ import { markSetupFeePaid } from "@/server/billing/clearance";
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { paymongoAdapter } from "@/server/billing/providers/paymongo";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
-import { nextPaidThrough } from "@/lib/billing-renewal";
+import { nextPaidThrough, STALE_CHECKOUT_HOURS } from "@/lib/billing-renewal";
 import { todayIn } from "@/lib/invoices/state";
 import type { NormalizedPaymentEvent, PaymentProviderAdapter } from "@/server/billing/providers/types";
 
@@ -110,8 +110,20 @@ export async function createPaymentCheckout(input: CheckoutInput, deps: { fetch?
         )).rows[0];
         if (st?.state !== "activated" || st.cleared !== true) throw new AppError("conflict", "The plan can start once the core system is activated and the setup fee is confirmed. Nothing was charged.");
       }
-      const open = await db.query("select 1 from payments where maintenance_subscription_id = $1 and kind = 'maintenance' and status = 'pending'", [row.id]);
-      if (open.rows[0]) throw new AppError("conflict", "A payment for this plan is already open. Finish it, or wait for it to close, before starting another.");
+      const open = (await db.query<{ id: string; covers_months: number | null; checkout_url: string | null; reference_number: string; livemode: boolean }>(
+        "select id, covers_months, checkout_url, reference_number, livemode from payments where maintenance_subscription_id = $1 and kind = 'maintenance' and status = 'pending'", [row.id],
+      )).rows[0];
+      if (open) {
+        // Backing out of the provider's page leaves its checkout open until the renewal sweep closes it. Pressing "pay" again for the same months opens that same checkout, so the owner is
+        // never stuck and never charged twice; a different number of months cannot reuse it (the provider's session has its amount), and is told how to continue.
+        if (open.covers_months === input.maintenance?.months && open.checkout_url && open.livemode === livemode) {
+          return { kind: "resume" as const, paymentId: open.id, checkoutUrl: open.checkout_url, referenceNumber: open.reference_number };
+        }
+        const n = open.covers_months;
+        throw new AppError("conflict", n
+          ? `A payment for ${n} ${n === 1 ? "month" : "months"} is already open. Choose ${n} ${n === 1 ? "month" : "months"} to continue it, or wait for it to close by itself (within ${STALE_CHECKOUT_HOURS / 24} days).`
+          : "A payment for this plan is already open. Finish it, or wait for it to close, before starting another.");
+      }
       plan = { id: row.id };
     }
     const rate = Number(s.usd_php_rate);
@@ -125,8 +137,9 @@ export async function createPaymentCheckout(input: CheckoutInput, deps: { fetch?
         plan?.id ?? null, plan ? (input.maintenance as { months: number }).months : null],
     );
     await recordPaymentInitiated(db, { orgId: input.orgId, paymentId: rows[0].id, memo: `${input.kind} checkout started`, createdBy: input.requestedBy });
-    return { id: rows[0].id, reference, minor };
+    return { kind: "new" as const, id: rows[0].id, reference, minor };
   });
+  if (payment.kind === "resume") return { paymentId: payment.paymentId, checkoutUrl: payment.checkoutUrl, referenceNumber: payment.referenceNumber };
 
   const appUrl = env().APP_URL.replace(/\/$/, "");
   try {

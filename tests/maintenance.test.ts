@@ -85,6 +85,8 @@ describe("optional managed maintenance", () => {
     const o = await getMaintenanceOverview(ctx());
     expect(o.subscription!.status).toBe("active");
     expect(o.subscription!.billingStartOn).toBe("2026-11-01");
+    // The client's page shows the day the plan is paid through, although the client's own database role cannot read that column (0071 keeps it away on purpose).
+    expect(o.subscription!.paidThroughOn).toBe(paidThroughOn);
     expect(o.subscription!.renewalOn).toBeTruthy();
     expect(o.allowance).toEqual(expect.objectContaining({ total: 4, used: 0, remaining: 4 }));
     // The verified payment is on the plan, with who recorded it, and in the audit trail.

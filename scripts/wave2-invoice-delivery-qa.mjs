@@ -4,7 +4,7 @@
 // in-process provider (scripts/invoices-qa-world.ts, seedInvoiceSentWorld): Annual boiler service was accepted, Water heater inspection was refused.
 //
 //   node scripts/wave2-invoice-delivery-qa.mjs
-import { BASE, axe, check, finish, launch, metrics, newReport, open, shot, signedIn, watch } from "./qa-harness.mjs";
+import { axe, check, finish, launch, metrics, newReport, open, shot, signedIn, watch } from "./qa-harness.mjs";
 
 const report = newReport();
 const browser = await launch();
@@ -23,9 +23,6 @@ async function invoicePathWith(title) {
   throw new Error(`No invoice with a line "${title}"`);
 }
 const mainText = () => page.evaluate(() => document.querySelector("main").innerText);
-/** The "Send it to the customer" card: its nearest section ancestor. */
-const sendCard = () => page.locator("section, div").filter({ has: page.getByRole("heading", { name: "Send it to the customer" }) }).last();
-const sendText = () => page.evaluate(() => { const h = Array.from(document.querySelectorAll("h2,h3")).find((e) => e.textContent.trim() === "Send it to the customer"); return h ? h.closest("section, div.rounded-2xl, div").parentElement.innerText : ""; });
 
 try {
   // 1. A message the provider took.

@@ -30,8 +30,9 @@ function credentials(key) {
 }
 
 /** Collects everything a person would call broken: console errors, page errors, 5xx answers, requests that left the QA origin. */
-export function watch(page, report, label) {
-  const here = (u) => { try { return new URL(u).origin === new URL(BASE).origin; } catch { return false; } };
+export function watch(page, report, label, { allowOrigins = [] } = {}) {
+  // allowOrigins: other loopback origins a scenario is meant to visit (the simulated PayMongo's page, http://127.0.0.1:3281). Anything else that is not the QA origin is still reported.
+  const here = (u) => { try { const o = new URL(u).origin; return o === new URL(BASE).origin || allowOrigins.includes(o); } catch { return false; } };
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource: the server responded with a status of (401|403|404)/.test(m.text())) report.consoleErrors.push(`${label}: ${m.text().slice(0, 300)}`); });
   page.on("pageerror", (e) => report.pageErrors.push(`${label}: ${e.message.slice(0, 300)}`));
   page.on("response", (r) => { if (r.status() >= 500 && here(r.url())) report.serverErrors.push(`${label}: ${r.status()} ${r.url().slice(0, 160)}`); });
@@ -111,14 +112,29 @@ export async function open(page, route) {
 }
 
 export async function metrics(page) {
-  return page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, overflow: document.documentElement.scrollWidth > innerWidth + 1, title: document.title }));
+  // `overflow` is true when the document scrolls sideways OR when something inside <main> sits past the right edge of the window without being in a scroller meant for it. The second case is
+  // the one a document-width check cannot see: the app shell clips sideways overflow, so a card that runs off a phone's edge still reports a document exactly as wide as the window.
+  return page.evaluate(() => {
+    const docOverflow = document.documentElement.scrollWidth > innerWidth + 1;
+    const clipped = [];
+    for (const el of document.querySelectorAll("main *")) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2 || r.right <= innerWidth + 1 || r.left >= innerWidth) continue;
+      let intended = false;
+      for (let p = el; p && p !== document.body; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.position === "fixed" || /(auto|scroll)/.test(cs.overflowX) || p.getAttribute("aria-hidden") === "true" || cs.visibility === "hidden") { intended = true; break; }
+      }
+      if (!intended) clipped.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}.${String(el.className).split(/\s+/).slice(0, 2).join(".")} right=${Math.round(r.right)} "${(el.textContent ?? "").trim().slice(0, 24)}"`);
+    }
+    return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, overflow: docOverflow || clipped.length > 0, docOverflow, clipped: clipped.slice(0, 4), clippedCount: clipped.length, title: document.title };
+  });
 }
 
 /** axe-core serious/critical violations on the current page (WCAG 2 A/AA). */
 export async function axe(page) {
   await page.addScriptTag({ path: AXE_PATH }).catch(() => {});
   const result = await page.evaluate(async () => {
-    // eslint-disable-next-line no-undef
     const r = await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } });
     return r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, target: v.nodes[0]?.target?.join(" ").slice(0, 120) }));
   }).catch((e) => [{ id: "axe-failed", impact: "n/a", nodes: 0, target: String(e).slice(0, 100) }]);

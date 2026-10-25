@@ -140,7 +140,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
 
       {showPayment && (
         <form onSubmit={verify} className="space-y-3 rounded-xl border border-line bg-surface-2 p-3">
-          <p className="text-[12.5px] leading-relaxed text-ink-2">Record the setup payment you checked in the bank, PayPal or PayMongo account. The amount must equal the frozen fee; the note is private to the team.</p>
+          <p className="text-[12.5px] leading-relaxed text-ink-2">Record the setup payment you checked in the bank, PayPal or PayMongo account. If the buyer has an online checkout open, recording this closes it so they cannot pay twice. The amount must equal the frozen fee; the note is private to the team.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="pi-amount">Amount (USD)</Label>

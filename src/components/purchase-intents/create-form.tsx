@@ -19,6 +19,7 @@ export function CreatePurchaseIntentForm() {
   const [website, setWebsite] = React.useState("");
   const [timezone, setTimezone] = React.useState("America/Chicago");
   const [maintenanceSelected, setMaintenanceSelected] = React.useState(false);
+  const [autoProvision, setAutoProvision] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [created, setCreated] = React.useState<{ id: string; reference: string; path: string; expiresAt: string } | null>(null);
@@ -27,7 +28,7 @@ export function CreatePurchaseIntentForm() {
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const result = await createPurchaseIntentAction({ buyerName, buyerEmail, company, industry, website, timezone, maintenanceSelected });
+    const result = await createPurchaseIntentAction({ buyerName, buyerEmail, company, industry, website, timezone, maintenanceSelected, autoProvision });
     setSaving(false);
     if (!result.ok) {
       setError(result.error);
@@ -107,6 +108,12 @@ export function CreatePurchaseIntentForm() {
         <input type="checkbox" checked={maintenanceSelected} onChange={(e) => setMaintenanceSelected(e.target.checked)} className="mt-0.5" />
         <span>
           Include the optional Managed Maintenance + Automation Studio plan at <strong>US$299/month</strong>. This records the buyer&apos;s choice in the price snapshot; it does not charge the plan on this page.
+        </span>
+      </label>
+      <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2">
+        <input type="checkbox" checked={autoProvision} onChange={(e) => setAutoProvision(e.target.checked)} className="mt-0.5" />
+        <span>
+          Create the workspace by itself once the payment provider confirms the payment online. <span className="text-muted">It runs with your permissions, checked again at that moment, and only after PayMongo&apos;s signed confirmation of the exact fee; a refund, dispute or mismatch always waits for a person. Leave this off to create the workspace yourself.</span>
         </span>
       </label>
       <Button type="submit" loading={saving}>

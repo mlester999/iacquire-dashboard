@@ -121,7 +121,7 @@ export async function startPurchaseCheckout(token: unknown, ctx: { ip: string | 
         referenceNumber: prepared.reference,
         // The buyer comes back by the checkout's own reference, never by the bearer token: the token is not given to the provider.
         successUrl: `${appUrl}/purchase/return/${prepared.reference}`,
-        cancelUrl: `${appUrl}/purchase/return/${prepared.reference}`,
+        cancelUrl: `${appUrl}/purchase/return/${prepared.reference}?result=cancelled`,
       },
       { fetch: deps.fetch },
     );
@@ -148,14 +148,14 @@ export interface CheckoutReturn {
 }
 
 /** What the page the buyer comes back to says. Found by the checkout's reference alone; it reads stored status and decides nothing, and an unknown reference looks like a waiting one. */
-export async function getCheckoutReturn(reference: unknown): Promise<CheckoutReturn> {
+export async function getCheckoutReturn(reference: unknown, options: { leftThePaymentPage?: boolean } = {}): Promise<CheckoutReturn> {
   const ref = typeof reference === "string" && /^IAQ-[A-Z0-9]{8,40}$/.test(reference) ? reference : null;
   const row = ref
     ? (await withSystem((db) => db.query<{ status: CheckoutStatus; purchase_status: PurchaseStatus }>(
         "select c.status, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
       ))).rows[0]
     : undefined;
-  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null);
+  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true);
   return { checkoutStatus: row?.status ?? null, purchaseStatus: row?.purchase_status ?? null, ...text };
 }
 

@@ -10,11 +10,13 @@ import { InfoChip, RelativeTime, StatusPill } from "@/components/ui/status";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { useRunner } from "@/components/projects/common";
-import { cancelMaintenanceAction, createMaintenanceRequestAction, enrollMaintenanceAction } from "@/app/actions/projects";
+import { cancelMaintenanceAction, createMaintenanceRequestAction, enrollMaintenanceAction, startMaintenancePaymentAction } from "@/app/actions/projects";
 import { createTicketAction } from "@/app/actions/support";
 import { MAINTENANCE_LANES, MAINTENANCE_STATUS_LABEL, formatPrice } from "@/lib/projects";
 import type { MaintenanceOverview } from "@/server/maintenance/service";
 import { cn, formatDate, sentenceCase } from "@/lib/utils";
+
+const formatMoney = (amount: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 
 export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequest }: { overview: MaintenanceOverview; timeZone: string; canManagePlan: boolean; canRequest: boolean }) {
   const router = useRouter();
@@ -28,6 +30,10 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
   const [note, setNote] = React.useState("");
   const [req, setReq] = React.useState<null | "core_defect" | "managed_change">(null);
   const [change, setChange] = React.useState(false);
+  const [payOpen, setPayOpen] = React.useState(false);
+  const [months, setMonths] = React.useState(1);
+  const [paying, setPaying] = React.useState(false);
+  const [payError, setPayError] = React.useState<string | null>(null);
   const [changeText, setChangeText] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [desc, setDesc] = React.useState("");
@@ -40,6 +46,23 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
       setAccept(false);
       setNote("");
       router.refresh();
+    }
+  }
+  async function doPay() {
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await startMaintenancePaymentAction(months);
+      if (!res.ok) {
+        setPayError(res.error);
+        setPaying(false);
+        return;
+      }
+      // Leave for the payment provider's page. Nothing about the plan changes here: it changes when the provider's confirmation arrives. The button stays busy while the browser navigates.
+      window.location.assign(res.data.checkoutUrl);
+    } catch {
+      setPayError("Something went wrong. Nothing was charged. Please try again.");
+      setPaying(false);
     }
   }
   async function doCancel() {
@@ -108,7 +131,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
           {active && sub && (
             <div className="grid gap-4 sm:grid-cols-3">
               <Stat label="Billing started" value={sub.billingStartOn ? formatDate(sub.billingStartOn, timeZone) : "—"} />
-              <Stat label={sub.status === "cancel_requested" ? "Cancellation requested" : "Next renewal"} value={sub.status === "cancel_requested" && sub.cancelRequestedAt ? formatDate(sub.cancelRequestedAt, timeZone) : sub.renewalOn ? formatDate(sub.renewalOn, timeZone) : "—"} />
+              {sub.paidThroughOn ? <Stat label="Paid through" value={formatDate(sub.paidThroughOn, timeZone)} /> : <Stat label={sub.status === "cancel_requested" ? "Cancellation requested" : "Next renewal"} value={sub.status === "cancel_requested" && sub.cancelRequestedAt ? formatDate(sub.cancelRequestedAt, timeZone) : sub.renewalOn ? formatDate(sub.renewalOn, timeZone) : "—"} />}
               {o.allowance && (
                 <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
                   <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">Requests this month</p>
@@ -157,6 +180,11 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
               </Button>
             )}
             {!open && o.eligible && !canManagePlan && <InfoChip icon={<Lock />}>A workspace owner can enroll in this plan</InfoChip>}
+            {o.payOnline?.offered && canManagePlan && (
+              <Button variant="brand" onClick={() => setPayOpen(true)}>
+                {sub?.status === "requested" ? "Pay and start the plan" : sub?.status === "active" || sub?.status === "cancel_requested" ? "Pay for more months" : "Pay online to restore the plan"}
+              </Button>
+            )}
             {active && canManagePlan && (
               <Button variant="secondary" onClick={() => setChange(true)}>
                 Ask about changing your plan
@@ -246,6 +274,36 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={payOpen}
+        onOpenChange={(v) => { setPayOpen(v); if (!v) setPayError(null); }}
+        title="Pay for managed maintenance"
+        description="You pay on PayMongo's own page. Your plan changes only when PayMongo confirms the payment; nothing is charged here."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setPayOpen(false); setPayError(null); }} disabled={paying}>
+              Cancel
+            </Button>
+            <Button variant="brand" loading={paying} disabled={paying} onClick={() => void doPay()}>
+              Continue to PayMongo
+            </Button>
+          </>
+        }
+      >
+        <Field label="How many months?" htmlFor="pay-months">
+          <select id="pay-months" value={months} onChange={(e) => setMonths(Number(e.target.value))} className="h-11 w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px]">
+            {[1, 3, 6, 12].map((n) => (
+              <option key={n} value={n}>{n} {n === 1 ? "month" : "months"} · {formatMoney(((sub?.monthlyPriceCents ?? 29900) * n) / 100, sub?.currency ?? "USD")}</option>
+            ))}
+          </select>
+        </Field>
+        {payError && <p role="alert" className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] leading-relaxed text-danger-ink">{payError}</p>}
+        <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+          The price comes from your plan. PayMongo charges in Philippine pesos, so the dollar amount is converted at iAcquire&apos;s published rate and the exact peso amount is shown on PayMongo&apos;s page before you pay.
+          Months you pay for are added after the day your plan is already paid through, so paying early loses nothing.
+        </p>
+      </Dialog>
 
       <Dialog
         open={enroll}

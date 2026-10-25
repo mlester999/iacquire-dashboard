@@ -20,6 +20,9 @@ end $$;
 
 alter table agency_billing_settings drop column purchase_checkout_enabled;
 
+alter table payments drop constraint payments_checkout_url_check;
+alter table payments add constraint payments_checkout_url_check check (checkout_url ~ '^https://');
+
 drop index payments_one_open_maintenance_idx;
 alter table payments drop constraint payments_maintenance_period_check;
 alter table payments drop constraint payments_maintenance_plan_fk;

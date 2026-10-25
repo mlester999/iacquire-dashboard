@@ -537,6 +537,39 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
   return { intent: toView(finalized, now), clientOrgId, paymentId: payment.paymentId, inviteLink, emailDelivery, duplicate: payment.duplicate };
 }
 
+export interface CheckoutSwitchView {
+  /** The Super Admin's own switch. */
+  enabled: boolean;
+  /** Whether a buyer could be sent to a checkout right now: the switch plus the provider connection, the rate and the live review. */
+  available: boolean;
+  /** Why not, in words for the team. */
+  reason: string | null;
+  livemode: boolean | null;
+}
+
+/** Whether online checkout is open for buyers, and why not when it is not. Readable by anyone who may see purchases. */
+export async function getCheckoutSwitch(user: SessionUser): Promise<CheckoutSwitchView> {
+  return withSystem(async (db) => {
+    requireView(await actorFor(db, user));
+    const a = await checkoutAvailability(db);
+    return { enabled: a.settings.enabled, available: a.available, reason: a.reason, livemode: a.livemode };
+  });
+}
+
+/** The Super Admin opens or closes online checkout for purchases. Closing it never touches a checkout that is already open (a payment on it is still recorded). Audited with who. */
+export async function setPurchaseCheckoutEnabled(user: SessionUser, enabled: boolean): Promise<CheckoutSwitchView> {
+  return withSystem(async (db) => {
+    const actor = await actorFor(db, user);
+    const agency = requireProvision(actor);
+    const changed = await db.query("update agency_billing_settings set purchase_checkout_enabled = $1 where purchase_checkout_enabled is distinct from $1", [enabled]);
+    if (changed.rowCount) {
+      await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: enabled ? "purchase_checkout.enabled" : "purchase_checkout.disabled", targetType: "agency_billing_settings", result: "success", metadata: { enabled } }, db);
+    }
+    const a = await checkoutAvailability(db);
+    return { enabled: a.settings.enabled, available: a.available, reason: a.reason, livemode: a.livemode };
+  });
+}
+
 /** Withdraws an unpaid invitation. A verified payment must go through the refund path instead, never a quiet cancel. */
 export async function cancelPurchaseIntent(user: SessionUser, id: unknown, reason: string, opts: { now?: Date } = {}): Promise<PurchaseIntentView> {
   if (!isId(id)) throw new AppError("not_found", "That purchase was not found.");

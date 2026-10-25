@@ -268,7 +268,6 @@ try {
     // ---- 11. Issue reports, feedback, attachments, reopening and notifications.
     const owner = await as("harbor:owner");
     const admin = await as("agency:super");
-    const note = "Staff-only: customer account looks risky " + stamp;
     // An issue report with an urgency, steps and a file.
     await open(owner, "/support/report-issue");
     state.issueSubject = `QA ${stamp}: contacts page never finishes loading`;

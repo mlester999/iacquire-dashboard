@@ -30,7 +30,11 @@ export interface CheckoutAvailability {
   settings: CheckoutSettings;
 }
 
-export async function checkoutAvailability(db: Queryable): Promise<CheckoutAvailability> {
+/**
+ * Whether the payment provider can take and CONFIRM a payment right now (keys, webhook secret, an exchange rate, and the live review for a live key), independent of any one product's
+ * switch. The maintenance plan's online payment uses this directly; a purchase checkout adds its own switch on top (checkoutAvailability).
+ */
+export async function providerReadiness(db: Queryable): Promise<CheckoutAvailability> {
   const row = (await db.query<{ purchase_checkout_enabled: boolean; usd_php_rate: string | null; fx_source: string | null; fx_updated_at: Date | null; live_payments_review_at: Date | null }>(
     "select purchase_checkout_enabled, usd_php_rate, fx_source, fx_updated_at, live_payments_review_at from agency_billing_settings limit 1",
   )).rows[0];
@@ -44,10 +48,16 @@ export async function checkoutAvailability(db: Queryable): Promise<CheckoutAvail
   const status = paymongoStatus();
   const livemode = status.livemode;
   const no = (reason: string): CheckoutAvailability => ({ available: false, reason, livemode, settings });
-  if (!settings.enabled) return no("Online checkout for purchases is switched off in the billing settings.");
   if (!status.configured) return no("PayMongo is not connected yet (secret key or payment methods missing).");
   if (!status.webhookConfigured) return no("The PayMongo webhook secret is not set, so a payment could not be confirmed.");
   if (!settings.usdPhpRate || !(settings.usdPhpRate > 0)) return no("No exchange rate is set, so the price cannot be converted for PayMongo.");
   if (livemode === true && !settings.liveReviewedAt) return no("Live payments are switched off until iAcquire confirms the payment and tax review.");
   return { available: true, reason: null, livemode, settings };
+}
+
+/** A buyer may be sent to a purchase checkout only when the Super Admin switched purchase checkouts on AND the provider is ready. */
+export async function checkoutAvailability(db: Queryable): Promise<CheckoutAvailability> {
+  const readiness = await providerReadiness(db);
+  if (!readiness.settings.enabled) return { ...readiness, available: false, reason: "Online checkout for purchases is switched off in the billing settings." };
+  return readiness;
 }

@@ -97,12 +97,15 @@ export function provisionHoldText(hold: "refunded" | "disputed" | "mismatch" | n
 }
 
 /** What the buyer reads after coming back from the provider's page: the site never says "paid" on the strength of a redirect. */
-export function checkoutReturnText(status: CheckoutStatus | null, purchase: PurchaseStatus | null): { tone: "neutral" | "success" | "warning" | "danger"; title: string; body: string } {
+export function checkoutReturnText(status: CheckoutStatus | null, purchase: PurchaseStatus | null, leftThePaymentPage = false): { tone: "neutral" | "success" | "warning" | "danger"; title: string; body: string } {
   // A refund, dispute or mismatch comes first: the money is not simply "confirmed" while a person is looking at it.
   if (status === "refunded" || status === "disputed" || status === "mismatch") return { tone: "warning", title: "Your payment needs a person to look at it", body: "iAcquire will contact you at the email address on your purchase. Nothing more is charged." };
   if (purchase === "provisioned") return { tone: "success", title: "Your workspace is ready", body: "iAcquire sent an invitation to the email address on your purchase. Open it to set a password and start." };
   if (purchase === "payment_verified" || status === "paid") return { tone: "success", title: "Payment confirmed", body: "The payment provider confirmed your payment. iAcquire is creating your workspace now and will email your invitation." };
   if (status === "failed" || status === "cancelled" || status === "expired") return { tone: "danger", title: "The payment did not go through", body: "Nothing was charged. You can try again from your purchase link." };
+  // The provider's cancel link adds a hint. It never says anything was paid or cancelled (only the provider's signed notice does that); it only stops this page waiting for a payment
+  // the buyer walked away from, and tells them how to come back.
+  if (leftThePaymentPage && (status === "pending" || status === "creating")) return { tone: "neutral", title: "You left the payment page", body: "If you did not finish paying, nothing was charged. Open the purchase link from your email to try again. If you did pay, this page changes once the payment provider confirms it." };
   return { tone: "neutral", title: "Waiting for the payment provider", body: "This page does not decide whether you have paid: only the payment provider's confirmation does. Refresh in a minute; if you completed the payment, iAcquire will email you." };
 }
 

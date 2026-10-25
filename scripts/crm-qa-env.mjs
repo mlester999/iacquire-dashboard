@@ -29,6 +29,10 @@ export const CRM_QA_URL = `http://127.0.0.1:${CRM_QA_PORT}`;
 /** Everything the harness writes: the embedded database, uploads, credentials, screenshots and reports. Inside .data, which git ignores. */
 export const CRM_QA_DATA_DIR = ".data/crm-qa";
 
+/** The simulated PayMongo's made-up credentials and loopback address (scripts/paymongo-sim.mjs). They exist only for a QA run that sets CRM_QA_PAYMONGO_SIM=1. */
+export const SIM_PAYMONGO = { key: "sk_test_qasimulatedprovider", webhookSecret: "whsec_qa_simulated_provider_secret", base: "http://127.0.0.1:3281" };
+const PAYMONGO_SIM = process.env.CRM_QA_PAYMONGO_SIM === "1";
+
 export const CRM_QA_ENV = {
   // Runtime and build
   NODE_ENV: "development",
@@ -105,9 +109,12 @@ export const CRM_QA_ENV = {
   HERMES_RUN_TIMEOUT_MS: "180000",
 
   // Payments: none.
-  PAYMONGO_SECRET_KEY: "",
-  PAYMONGO_WEBHOOK_SECRET: "",
+  // Blank unless the run asks for the simulated PayMongo (CRM_QA_PAYMONGO_SIM=1, scripts/paymongo-sim.mjs on this machine): then the keys are the simulator's made-up ones and the
+  // address is its loopback one. A real key, or any other address, fails assertIsolated.
+  PAYMONGO_SECRET_KEY: PAYMONGO_SIM ? SIM_PAYMONGO.key : "",
+  PAYMONGO_WEBHOOK_SECRET: PAYMONGO_SIM ? SIM_PAYMONGO.webhookSecret : "",
   PAYMONGO_PAYMENT_METHODS: "card",
+  PAYMONGO_API_BASE: PAYMONGO_SIM ? SIM_PAYMONGO.base : "",
 
   // Connected calendars: no OAuth apps, and background sync and write-back stopped.
   GOOGLE_CALENDAR_CLIENT_ID: "",
@@ -173,7 +180,6 @@ export const MUST_BE_BLANK = [
   "APP_ENCRYPTION_KEY_PREVIOUS", "INTEGRATION_ALLOWED_HOSTS",
   "RESEND_API_KEY", "RESEND_WEBHOOK_SECRET", "TWILIO_WEBHOOK_BASE_URL", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "GHL_WEBHOOK_PUBLIC_KEY",
   "LLM_BASE_URL", "LLM_API_KEY", "N8N_BASE_URL", "N8N_API_KEY", "SLACK_SUPPORT_WEBHOOK_URL",
-  "PAYMONGO_SECRET_KEY", "PAYMONGO_WEBHOOK_SECRET",
   "GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET", "MICROSOFT_CALENDAR_CLIENT_ID", "MICROSOFT_CALENDAR_CLIENT_SECRET",
   "META_SOCIAL_APP_ID", "META_SOCIAL_APP_SECRET", "GOOGLE_BUSINESS_CLIENT_ID", "GOOGLE_BUSINESS_CLIENT_SECRET",
   "SITES_CNAME_TARGET", "SITES_PROBE_ORIGIN",
@@ -238,6 +244,13 @@ export function assertIsolated({ root = path.resolve(import.meta.dirname, ".."),
   if (!insideData(env.UPLOAD_DIR)) problems.push("UPLOAD_DIR must be inside " + CRM_QA_DATA_DIR);
   if (env.IAQ_DIST_DIR !== ".next-crm-qa") problems.push('IAQ_DIST_DIR must be the isolated ".next-crm-qa" directory');
   if (env.GHL_API_BASE !== "http://127.0.0.1:9") problems.push("GHL_API_BASE must point at the closed local port used by CRM QA");
+  // PayMongo: blank, or exactly the simulator's made-up credentials with its loopback address (nothing else: no real key, no other address).
+  const simulated = env.PAYMONGO_API_BASE !== "";
+  if (simulated) {
+    if (env.PAYMONGO_API_BASE !== SIM_PAYMONGO.base || env.PAYMONGO_SECRET_KEY !== SIM_PAYMONGO.key || env.PAYMONGO_WEBHOOK_SECRET !== SIM_PAYMONGO.webhookSecret) problems.push("PayMongo may only be the simulator on 127.0.0.1:3281 with its made-up keys");
+  } else if (env.PAYMONGO_SECRET_KEY !== "" || env.PAYMONGO_WEBHOOK_SECRET !== "") {
+    problems.push("PAYMONGO_SECRET_KEY and PAYMONGO_WEBHOOK_SECRET must be empty (or the simulator's, with its address)");
+  }
   const notBlank = MUST_BE_BLANK.filter((k) => env[k] !== "");
   if (notBlank.length) problems.push(`must be empty: ${notBlank.join(", ")}`);
   const notOff = MUST_BE_FALSE.filter((k) => env[k] !== "false");

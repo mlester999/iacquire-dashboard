@@ -8,9 +8,10 @@ import { AppError } from "@/server/errors";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import {
-  cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, rotatePurchaseLink, startPurchase, verifyPurchasePayment,
+  cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
   createPurchaseIntentSchema, purchasePaymentSchema,
 } from "@/server/purchase-intents/service";
+import { startPurchaseCheckout } from "@/server/purchase-intents/checkout";
 
 // Server actions for purchase intents. The admin ones start from a signed-in agency account and the service re-reads the permission from the database. The public one is
 // the buyer confirming a link: it takes only the token, is rate-limited by address, and creates no account and no payment. A token never appears in a log or an audit row.
@@ -87,6 +88,28 @@ export async function startPurchaseAction(rawToken: string) {
     const view = await startPurchase(value);
     // Refresh the public page after the buyer's confirmation so its status and next step are not the pre-confirmation render.
     revalidatePath(`/purchase/${value}`, "page");
+    return view;
+  });
+}
+
+/**
+ * The buyer presses Pay: opens (or resumes) the one hosted checkout for the frozen fee and hands back the provider's page. Only the token is taken from the browser: the amount, the
+ * currency and the buyer are all the purchase's own. Nothing is charged here.
+ */
+export async function startPurchaseCheckoutAction(rawToken: string) {
+  return guard(async () => {
+    const value = token.parse(rawToken);
+    const started = await startPurchaseCheckout(value, { ip: await clientIp() });
+    revalidatePath(`/purchase/${value}`, "page");
+    return { checkoutUrl: started.checkoutUrl, reference: started.reference, resumed: started.resumed };
+  });
+}
+
+/** A Super Admin opens or closes online checkout for purchases (the billing settings carry the switch; it is off until someone turns it on). */
+export async function setPurchaseCheckoutEnabledAction(enabled: boolean) {
+  return act(async (session) => {
+    const view = await setPurchaseCheckoutEnabled(session, z.boolean().parse(enabled));
+    revalidatePath("/admin/purchase-intents");
     return view;
   });
 }

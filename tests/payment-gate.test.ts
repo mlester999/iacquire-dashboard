@@ -348,6 +348,7 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/server/billing/manual.ts",
       "src/server/billing/payments-view.ts",
       "src/server/billing/payments.ts",
+      "src/server/billing/provider-setup-payment.ts",
       "src/server/billing/service.ts",
       "src/server/entitlements.ts",
       "src/server/maintenance/payment.ts",

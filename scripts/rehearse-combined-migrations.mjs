@@ -1200,6 +1200,45 @@ CLEAN["0100_demo_funnel"] = {
   },
 };
 
+// Purchase intents. One invited buyer who confirmed the offer, with a timeline row, belonging to the ONE agency workspace that 0096's seed made (its manager is the creator). The
+// timeline is append-only, so the clean-up (what an operator exports first) switches that guard off for the length of the removal; the intent takes its timeline with it.
+SEEDS["0101_purchase_intents"] = async (db, ctx) => {
+  const made = ctx.staffMessages;
+  if (!made) throw new Error("0101's seed needs the agency workspace and the agency people that 0096's seed makes");
+  const [manager] = made.people;
+  const intent = (await one(db, `insert into purchase_intents (agency_org_id, token_hash, reference, buyer_name, buyer_email, company, product_version, status, expires_at, started_at, setup_fee_cents, maintenance_monthly_cents, created_by)
+    values ($1, repeat('a', 64), 'PUR-SEED0101', 'Seed Buyer', 'seed.buyer@example.test', 'Seed Buyer Co', 'launch-seed', 'started', now() + interval '10 days', now(), 149900, 29900, $2) returning id`, [made.agency, manager])).id;
+  await db.query("insert into purchase_intent_events (intent_id, agency_org_id, kind, actor_kind) values ($1, $2, 'created', 'user')", [intent, made.agency]);
+};
+const purgePurchaseIntents = async (db, where) => {
+  await db.query("alter table purchase_intent_events disable trigger purchase_intent_events_immutable");
+  try {
+    await db.query(`delete from purchase_intents where ${where}`);
+  } finally {
+    await db.query("alter table purchase_intent_events enable trigger purchase_intent_events_immutable");
+  }
+};
+CLEAN["0101_purchase_intents"] = { guard: async (db) => purgePurchaseIntents(db, "true") };
+
+// Online purchase checkout. A SECOND intent (so 0101's row is untouched by this migration's clean-up) that the inviting Super Admin allowed to provision itself, with one open
+// checkout for the frozen fee and a timeline row of the new kinds. The clean-up removes that intent with its checkout and timeline; the columns and the table go with the rollback.
+SEEDS["0103_purchase_checkouts"] = async (db, ctx) => {
+  const made = ctx.staffMessages;
+  if (!made) throw new Error("0103's seed needs the agency workspace and the agency people that 0096's seed makes");
+  const [manager] = made.people;
+  const intent = (await one(db, `insert into purchase_intents (agency_org_id, token_hash, reference, buyer_name, buyer_email, company, product_version, status, expires_at, started_at, setup_fee_cents, maintenance_monthly_cents, created_by, auto_provision)
+    values ($1, repeat('b', 64), 'PUR-SEED0103', 'Seed Online Buyer', 'seed.online@example.test', 'Seed Online Co', 'launch-seed', 'started', now() + interval '10 days', now(), 149900, 29900, $2, true) returning id`, [made.agency, manager])).id;
+  await db.query(`insert into purchase_intent_checkouts (intent_id, agency_org_id, reference_number, usd_amount_cents, charged_currency, charged_amount_minor, livemode, expires_at)
+    values ($1, $2, 'IAQ-SEED0103CHK', 149900, 'PHP', 8694200, false, now() + interval '2 days')`, [intent, made.agency]);
+  await db.query("insert into purchase_intent_events (intent_id, agency_org_id, kind, actor_kind) values ($1, $2, 'checkout_started', 'system')", [intent, made.agency]);
+};
+CLEAN["0103_purchase_checkouts"] = {
+  guard: async (db) => {
+    await db.query("delete from purchase_intent_checkouts where reference_number = 'IAQ-SEED0103CHK'");
+    await purgePurchaseIntents(db, "reference = 'PUR-SEED0103'");
+  },
+};
+
 // Onboarding completion. Every workspace has a submitted questionnaire with its snapshot, and workspace a also a calendar drafted from the answers with one appointment type
 // (a draft: no booking page, never the default, no host). The baseline has no onboarding_responses, so the clean-up may remove every row that holds a snapshot; the drafted
 // calendar takes its appointment type with it. The rollback also removes the media storage step from the default checklist, and there is no checklist instance here to refuse on.

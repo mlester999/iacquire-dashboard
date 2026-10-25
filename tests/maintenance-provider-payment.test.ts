@@ -65,8 +65,18 @@ describe("paying the plan online", () => {
     expect(k.checkoutUrl).toMatch(/^https:\/\/checkout\.paymongo\.com\//);
     const before = await planFacts(c.plan);
     expect(before.paid_through_on).toBe(addDays(await today(), 10));
-    // The same plan cannot have two open payments.
-    await expect(startMaintenancePayment(c.ctx, 1, { fetch: mockCheckoutFetch("cs_second").impl as never })).rejects.toMatchObject({ code: "conflict" });
+    // The same plan cannot have two open payments. Pressing again for the same months (after backing out of the provider's page) reopens the checkout that is already open: no second
+    // provider session, no second row, no second charge.
+    const again = mockCheckoutFetch("cs_second");
+    const resumed = await startMaintenancePayment(c.ctx, 1, { fetch: again.impl as never });
+    expect(resumed).toMatchObject({ paymentId: k.paymentId, checkoutUrl: k.checkoutUrl, referenceNumber: k.referenceNumber });
+    expect(again.calls).toHaveLength(0);
+    expect(await rows("select 1 from payments where maintenance_subscription_id = $1 and kind = 'maintenance'", [c.plan])).toHaveLength(1);
+    // A different number of months cannot reuse it (the provider's session holds its amount), and the person is told how to carry on.
+    const other = mockCheckoutFetch("cs_third");
+    await expect(startMaintenancePayment(c.ctx, 3, { fetch: other.impl as never })).rejects.toThrow(/payment for 1 month is already open.*Choose 1 month to continue it/);
+    expect(other.calls).toHaveLength(0);
+    expect(await rows("select 1 from payments where maintenance_subscription_id = $1 and kind = 'maintenance'", [c.plan])).toHaveLength(1);
   });
 
   it("takes the amount from the plan whatever the months are, refuses a person who may not pay, and a plan that cannot take a payment", async () => {

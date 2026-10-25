@@ -4,6 +4,9 @@
 
 do $$
 begin
+  if to_regclass('public.purchase_intent_checkouts') is not null then
+    raise exception 'Rollback refused: 0103_purchase_checkouts depends on purchase_intents. Roll back 0103 first (highest number first).';
+  end if;
   if exists (select 1 from purchase_intents) or exists (select 1 from purchase_intent_events) then
     raise exception 'Rollback refused: purchase intents or their timeline exist. Export them deliberately first.';
   end if;

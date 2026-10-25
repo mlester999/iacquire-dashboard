@@ -50,6 +50,7 @@ import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
 import { runMaintenanceRenewalSweep } from "@/server/maintenance/renewal";
+import { runPurchaseCheckoutSweep } from "@/server/purchase-intents/checkout";
 import { RENEWAL_SWEEP_BUDGET_MS } from "@/lib/billing-renewal";
 import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
@@ -212,7 +213,13 @@ export const JOBS: ScheduledJob[] = [
   // paid period ended two or more days ago is marked past due, as the system, with the usual disclosed grace period. Checkouts nobody completed for 48 hours are closed. It
   // sends nothing outside the portal, calls no payment provider, and never pauses, expires or revokes anything. It spends at most RENEWAL_SWEEP_BUDGET_MS of the tick (cut off
   // at 120 seconds). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
-  { name: "maintenanceRenewalSweep", everyMinutes: 360, run: async () => { const r = await runMaintenanceRenewalSweep({ budgetMs: RENEWAL_SWEEP_BUDGET_MS }); return r.noticed + r.overdue + r.pastDue + r.checkoutsExpired; } },
+  { name: "maintenanceRenewalSweep", everyMinutes: 360, run: async () => {
+    const r = await runMaintenanceRenewalSweep({ budgetMs: RENEWAL_SWEEP_BUDGET_MS });
+    // The same billing sweep also closes purchase checkouts nobody finished and finishes a workspace whose payment was verified but whose creation did not (it runs only for a
+    // purchase the inviting Super Admin allowed to create its own workspace). It is in this job so the registry, the staged start and the documents keep one billing sweep.
+    const p = await runPurchaseCheckoutSweep();
+    return r.noticed + r.overdue + r.pastDue + r.checkoutsExpired + p.closedUnpaid + p.givenUp + p.recovered;
+  } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", everyMinutes: 180, run: async () => (await syncAllWhatsappTemplates()).synced },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the

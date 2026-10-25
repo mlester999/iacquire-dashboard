@@ -20,6 +20,7 @@ import { daysUntil, paidPeriodEnded } from "@/lib/billing-renewal";
 import { agencyToday } from "@/server/entitlements";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import { createPaymentCheckout } from "@/server/billing/payments";
+import { providerReadiness } from "@/server/purchase-intents/availability";
 import type { FetchLike } from "@/server/billing/paymongo";
 import { noticeCancelled, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import { iso } from "@/server/projects/shared";
@@ -35,6 +36,8 @@ export interface MaintenanceSubscriptionView {
   activatedAt: string | null;
   billingStartOn: string | null;
   renewalOn: string | null;
+  /** The last day the money received covers (a verified payment moved it here), or null before the first one. */
+  paidThroughOn?: string | null;
   cancelRequestedAt: string | null;
 }
 
@@ -60,6 +63,8 @@ export interface MaintenanceOverview {
   subscription: MaintenanceSubscriptionView | null;
   allowance: { total: number; used: number; remaining: number; month: string } | null;
   requests: MaintenanceRequestView[];
+  /** Whether the owner can pay the plan online right now: the provider can take and confirm a payment and the plan is in a state that can take one. */
+  payOnline?: { offered: boolean };
 }
 
 type SubRow = {
@@ -73,11 +78,21 @@ type SubRow = {
   activated_at: Date | null;
   billing_start_on: string | null;
   renewal_on: string | null;
+  paid_through_on?: string | null;
   cancel_requested_at: Date | null;
 };
 
 const SUB_COLUMNS = `id, status, monthly_price_cents, currency, monthly_request_allowance, terms_version, accepted_at, activated_at,
   billing_start_on::text as billing_start_on, renewal_on::text as renewal_on, cancel_requested_at`;
+
+/**
+ * The day a plan is paid through. A signed-in person's database role cannot read that column: migration 0071 keeps the lifecycle columns away from it on purpose, and widening the
+ * grant would change who can see them. So trusted code reads it here, only for a plan the person's own permission-checked read already returned.
+ */
+async function paidThroughFor(subscriptionId: string, orgId: string): Promise<string | null> {
+  const { rows } = await withSystem((db) => db.query<{ d: string | null }>("select paid_through_on::text as d from maintenance_subscriptions where id = $1 and org_id = $2", [subscriptionId, orgId]));
+  return rows[0]?.d ?? null;
+}
 
 /** Next monthly anniversary of the billing start date (display only; nothing is billed by this portal). */
 export function nextRenewal(billingStartOn: string | null, today = new Date()): string | null {
@@ -101,6 +116,7 @@ const toSub = (r: SubRow): MaintenanceSubscriptionView => ({
   activatedAt: iso(r.activated_at),
   billingStartOn: r.billing_start_on,
   renewalOn: r.renewal_on ?? nextRenewal(r.billing_start_on),
+  paidThroughOn: r.paid_through_on ?? null,
   cancelRequestedAt: iso(r.cancel_requested_at),
 });
 
@@ -138,9 +154,14 @@ export async function getMaintenanceOverview(ctx: OrgContext): Promise<Maintenan
       return { sub, reqs, used };
     }),
   ]);
-  const sub = data.sub ? toSub(data.sub) : null;
+  const sub = data.sub ? toSub({ ...data.sub, paid_through_on: await paidThroughFor(data.sub.id, ctx.org.orgId) }) : null;
   const active = sub && ["active", "past_due", "cancel_requested"].includes(sub.status);
+  // A button is offered only when a payment could really be taken AND confirmed (never "pay" followed by a refusal), and only for a plan in a state that can take one: a plan that has
+  // not started needs its core system activated and its setup fee confirmed, which eligibility already says.
+  const ready = (await withSystem((db) => providerReadiness(db))).available;
+  const payableState = sub ? (sub.status === "requested" ? elig.eligible : ["active", "past_due", "cancel_requested", "expired"].includes(sub.status)) : false;
   return {
+    payOnline: { offered: ready && payableState },
     eligible: elig.eligible,
     eligibilityNote: elig.note,
     plan,

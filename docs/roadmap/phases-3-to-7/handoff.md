@@ -1,6 +1,18 @@
 # Handoff
 
-Last updated: 2026-10-24, after resuming Wave 2 and adding purchase intents. The Wave 2 checkpoint is `b05c69e`; purchase intents are `1c48410`; the ledger update follows.
+Last updated: 2026-10-25, after the final-completion directive's stages 1 to 3 (state recovery, browser closure of Wave 2, secure purchase checkout). Earlier text below is kept as the history of how it got here.
+
+## 2026-10-25 update (read this first)
+
+* **Branch and tree:** `feat/phases-3-7`, worktree `.data/wt-phases-3-7`. Everything is local; **nothing is pushed, deployed, applied to a hosted database or sent to a real provider**. The commit of the checkout work (migration **0103**) follows this ledger entry; `git log -1` is the exact head. Next free migration number: **0104**.
+* **Done since the Wave 2 notes below:** the support survey; browser QA of invoice delivery (an accepted and a refused send), invoice from proposal, the Requests change, survey, issue-report, feedback, attachment and reopen paths, the full 47-question onboarding, the demo funnel; the online purchase checkout (signed-notice-only verification, resume, hold on refund/dispute/mismatch, automatic provisioning under the inviter's re-read permissions, sweeps); the online maintenance period payment. Evidence and defects are in `verification-evidence.md` (last section); decisions D60 to D62.
+* **How to run the payment browser QA again** (nothing real is contacted): stop any QA server, `node scripts/run-checkout-qa-seed.mjs` (Harbor gets an activated core system, a waived setup fee and an active plan), then `$env:CRM_QA_PAYMONGO_SIM = "1"; $env:CRM_QA_DEMO = "1"; node scripts/inbox-qa.mjs`, `node scripts/paymongo-sim.mjs`, then `node scripts/wave2-purchase-checkout-qa.mjs` and `node scripts/wave2-maintenance-payment-qa.mjs`. A QA database that applied an older 0103 lacks later constraints; the migration files are edited in place while unreleased (D55), so remove `.data/crm-qa/database` and re-seed (the recipe below) when in doubt.
+* **Known open items:** a held purchase has no release/close action (`blockers.md`); the combined migration rehearsal has not been re-run since 0103 was edited; the dark theme, tablet and the client portal at large are not design-reviewed; the six-employee audit's P0 trust fixes (`audit/7bfg-employees-storage-superadmin.md`: pause enforcement for AI jobs, shutdown completeness, sealed-secret key rotation, customer-reply usage, health probe, role readiness) are **not built**; PayPal and card-on-file recurring billing are not built.
+* **Do not merge this branch into a dirty checkout.** The main checkout carries parallel uncommitted AI Workforce work that touches `capability-dispatch.ts`, `jobs.ts`, `work-runner.ts`, `schedules.ts`, `triggers.ts` and others; integrate by a reviewed merge in a clean worktree.
+
+## Earlier: 2026-10-24, after resuming Wave 2 and adding purchase intents
+
+The Wave 2 checkpoint is `b05c69e`; purchase intents are `1c48410`; the ledger update follows.
 
 ## Wave 2 resume (read this first)
 
