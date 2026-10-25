@@ -136,4 +136,3 @@ export function calendarTimestampLabel(instant: string, timeZone: string, locale
 export function calendarTimeLabel(instant: string, timeZone: string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(instant));
 }
-

@@ -21,4 +21,3 @@ export default async function WorkforceCalendarPage() {
 
   return <WorkforceCalendar initialData={initialData} initialDateKey={initialDateKey} referenceTime={now.toISOString()} canManageSchedules={ctx.can("agents.configure")} employeeNames={employeeNames} />;
 }
-

@@ -352,4 +352,3 @@ export function WorkBoardKanban({
     </section>
   );
 }
-

@@ -267,4 +267,3 @@ main().catch(async (err) => {
   await closeDb().catch(() => undefined);
   process.exitCode = 1;
 });
-

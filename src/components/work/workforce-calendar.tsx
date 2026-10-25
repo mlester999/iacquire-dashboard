@@ -443,4 +443,3 @@ export function WorkforceCalendar({
     </div>
   );
 }
-

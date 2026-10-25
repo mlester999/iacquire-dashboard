@@ -65,4 +65,3 @@ describe("workforce calendar view dates", () => {
     expect(shiftCalendarMonth("2026-03-31", -1)).toBe("2026-02-28");
   });
 });
-
