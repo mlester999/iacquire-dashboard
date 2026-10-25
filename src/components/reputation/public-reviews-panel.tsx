@@ -142,7 +142,7 @@ export function PublicReviewsPanel({ scope, data, enabled, contactsLinked, hrefF
       )}
       {data.summaries.length > 0 && <Weekly weekly={data.weekly} />}
 
-      <nav aria-label="Filter public reviews" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <nav aria-label="Filter public reviews" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {REVIEW_FILTERS.map((f) => (
           <Link
             key={f}

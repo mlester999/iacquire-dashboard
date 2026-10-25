@@ -77,7 +77,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
       </div>
 
       {/* Mobile and tablet: one scrollable row of every section. */}
-      <nav aria-label="CRM sections" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
+      <nav aria-label="CRM sections" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
         {flat.map((item) => {
           const Icon = ICONS[item.icon] ?? LayoutDashboard;
           const active = isActive(item);

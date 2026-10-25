@@ -19,7 +19,7 @@ export function WebsiteSubnav({ hasSite, canEdit }: { hasSite: boolean; canEdit:
   const items = ITEMS.filter((i) => i.needs === "any" || (hasSite && (i.needs !== "edit" || canEdit)));
   if (items.length < 2) return null;
   return (
-    <nav aria-label="Website sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Website sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {items.map((i) => {
         const active = "exact" in i && i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(`${i.href}/`);
         return (

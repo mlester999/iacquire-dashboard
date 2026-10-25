@@ -11,7 +11,7 @@ const ITEMS = STUDIO_SECTIONS;
 export function StudioNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Website Studio sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Website Studio sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {ITEMS.map((i) => {
         const active = "exact" in i && i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(`${i.href}/`);
         return (

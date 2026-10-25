@@ -110,7 +110,7 @@ function Stat({ icon: Icon, label, value, detail }: { icon: typeof Send; label: 
 
 function Chips<V extends string>({ label, value, options, hrefFor }: { label: string; value: V; options: Record<V, string>; hrefFor: (v: V) => string }) {
   return (
-    <nav aria-label={label} className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+    <nav aria-label={label} className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
       {(Object.keys(options) as V[]).map((k) => (
         <Link
           key={k}

@@ -372,7 +372,7 @@ function Trend({ points, title, description }: { points: Array<{ label: string; 
     <Card className="mt-3">
       <CardHeader><div><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></div></CardHeader>
       <CardContent>
-        <div className="flex h-32 items-end gap-1 overflow-x-auto pb-1" role="img" aria-label={`${title}. Highest ${max}. ${points.length} days.`}>
+        <div className="relative flex h-32 items-end gap-1 overflow-x-auto pb-1" role="img" aria-label={`${title}. Highest ${max}. ${points.length} days.`}>
           {points.map((point) => (
             <div key={point.label} className="group flex min-w-[6px] flex-1 flex-col items-center justify-end" title={`${point.label}: ${point.value}`}>
               <span className="w-full rounded-t bg-primary/70 transition group-hover:bg-primary" style={{ height: `${Math.max(2, (point.value / max) * 112)}px` }} />
@@ -391,7 +391,7 @@ function StackedTrend({ points, title }: { points: Array<{ label: string; good: 
   return (
     <div>
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</p>
-      <div className="flex h-16 items-end gap-1 overflow-x-auto" role="img" aria-label={`${title}: helpful and not helpful feedback per day.`}>
+      <div className="relative flex h-16 items-end gap-1 overflow-x-auto" role="img" aria-label={`${title}: helpful and not helpful feedback per day.`}>
         {points.map((point) => (
           <div key={point.label} className="flex min-w-[8px] flex-1 flex-col justify-end" title={`${point.label}: ${point.good} helpful, ${point.bad} not helpful`}>
             <span className="w-full rounded-t bg-danger/60" style={{ height: `${Math.max(1, (point.bad / max) * 56)}px` }} />

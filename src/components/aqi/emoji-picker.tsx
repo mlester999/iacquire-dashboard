@@ -82,7 +82,7 @@ export function EmojiPicker({ onPick, onClose }: { onPick: (emoji: string) => vo
         <button type="button" onClick={onClose} aria-label="Close emoji picker" className="grid size-7 place-items-center rounded-lg text-muted hover:bg-surface-2"><X className="size-3.5" /></button>
       </div>
       {!query && (
-        <div className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1.5" role="tablist" aria-label="Emoji categories">
+        <div className="relative flex gap-1 overflow-x-auto border-b border-line px-2 py-1.5" role="tablist" aria-label="Emoji categories">
           {GROUPS.map((item) => <button key={item.label} type="button" role="tab" aria-selected={group === item.label} onClick={() => setGroup(item.label)} className={`shrink-0 rounded-lg px-2 py-1 text-[10.5px] font-medium ${group === item.label ? "bg-primary-soft text-primary" : "text-muted hover:bg-surface-2"}`}>{item.label}</button>)}
         </div>
       )}

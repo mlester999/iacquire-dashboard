@@ -338,7 +338,7 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
   const shown = list.slice(0, limit);
   return (
     <div className="space-y-3">
-      <div role="group" aria-label="Show items by status" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <div role="group" aria-label="Show items by status" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         <StatusChip active={status === "all"} onClick={() => { setStatus("all"); setLimit(PAGE); }} label="All" count={report.items.length} />
         {COMPAT_STATUSES.map((s) => (
           <StatusChip key={s} active={status === s} onClick={() => { setStatus(s); setLimit(PAGE); }} label={COMPAT_LABELS[s]} count={counts[s] ?? 0} disabled={!counts[s]} />

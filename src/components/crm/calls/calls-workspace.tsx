@@ -169,7 +169,7 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, recove
       ) : (
         <section aria-label="Calls" className="space-y-4">
           <div className="space-y-2">
-            <nav aria-label="Filter by outcome" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+            <nav aria-label="Filter by outcome" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
               {STATUS_FILTERS.map(([k, label]) => (
                 <Pill key={k} href={href({ status: k, page: 1 })} active={filters.status === k}>
                   {label}<span className="tabular-nums text-muted">{calls.counts[k]}</span>

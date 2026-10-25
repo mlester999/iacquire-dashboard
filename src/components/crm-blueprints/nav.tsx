@@ -10,7 +10,7 @@ export function BlueprintNav({ pathname: forced }: { pathname?: string }) {
   const current = usePathname();
   const active = blueprintSectionFor(forced ?? current ?? "");
   return (
-    <nav aria-label="CRM Blueprints sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="CRM Blueprints sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {BLUEPRINT_SECTIONS.map((s) => {
         const on = active === s.href;
         return (

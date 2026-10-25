@@ -46,7 +46,7 @@ export function RunsList({ base, runs, filter, timezone, nextBefore, paged, work
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Filter runs" className="scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5">
+        <div role="group" aria-label="Filter runs" className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5">
           {RUN_FILTERS.map((f) => (
             <button
               key={f.value}

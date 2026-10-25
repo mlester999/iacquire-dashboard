@@ -33,7 +33,7 @@ export function PanelTabs({ label, items, value, onChange, panels, idPrefix = "t
   };
   return (
     <div>
-      <div role="tablist" aria-label={label} className="scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
+      <div role="tablist" aria-label={label} className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
         {items.map((t, i) => {
           const selected = t.id === value;
           return (

@@ -17,7 +17,7 @@ const ITEMS = [
 export function SocialSubnav({ waiting }: { waiting: number }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Social media sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Social media sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {ITEMS.map((i) => {
         const active = "exact" in i && i.exact ? pathname === i.href || pathname.startsWith("/social/posts") : pathname === i.href || pathname.startsWith(`${i.href}/`);
         return (

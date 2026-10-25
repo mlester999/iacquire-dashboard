@@ -79,7 +79,7 @@ export function TasksWorkspace({
         {canManage && <Button data-aqi-target="crm.tasks.new" onClick={() => setNewOpen(true)}><Plus className="size-4" />New task</Button>}
       </div>
 
-      <nav aria-label="Task views" data-aqi-target="crm.tasks.views" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Task views" data-aqi-target="crm.tasks.views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
         {VIEWS.map((v) => {
           const active = state.view === v.value;
           const n = v.value in counts ? counts[v.value as keyof typeof counts] : null;

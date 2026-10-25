@@ -16,7 +16,7 @@ const ITEMS = [
 export function ProposalsSubnav({ waiting }: { waiting: number }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Proposal sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Proposal sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {ITEMS.map((i) => {
         const active = "exact" in i && i.exact
           ? pathname === i.href || pathname === "/proposals/new" || /^\/proposals\/[0-9a-f-]{36}$/i.test(pathname)

@@ -40,7 +40,7 @@ export function SettingsNav({ permissions, features = [] }: { permissions: Permi
   }, [pathname]);
 
   return (
-    <nav aria-label="Settings" className="scrollbar-thin -mx-4 min-w-0 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
+    <nav aria-label="Settings" className="relative scrollbar-thin -mx-4 min-w-0 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
       <ul ref={scroller} className="relative flex gap-1 rounded-2xl border border-line bg-surface p-2 shadow-soft lg:flex-col lg:gap-0.5 lg:p-2.5">
         {groups.map((group, gi) => (
           <React.Fragment key={group}>

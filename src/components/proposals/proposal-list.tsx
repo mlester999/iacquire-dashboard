@@ -18,7 +18,7 @@ export interface ListViewerCan {
 export function ProposalFilters({ active, search }: { active: ListFilterKey; search: string }) {
   return (
     <div className="space-y-3">
-      <nav aria-label="Filter proposals" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Filter proposals" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
         {LIST_FILTERS.map((f) => (
           <Link
             key={f.key} href={{ pathname: "/proposals", query: { ...(f.key === "open" ? {} : { filter: f.key }), ...(search ? { q: search } : {}) } }} aria-current={active === f.key ? "page" : undefined}

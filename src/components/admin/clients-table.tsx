@@ -129,7 +129,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line bg-surface-2/40 px-3 py-3 sm:px-4">
-          <div role="group" aria-label="Filter by state" className="scrollbar-thin -mx-1 flex max-w-full shrink-0 items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:pb-0">
+          <div role="group" aria-label="Filter by state" className="relative scrollbar-thin -mx-1 flex max-w-full shrink-0 items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:pb-0">
             {(["all", ...STATE_ORDER] as const)
               .filter((k) => k === "all" || counts[k] > 0 || state === k)
               .map((k) => {

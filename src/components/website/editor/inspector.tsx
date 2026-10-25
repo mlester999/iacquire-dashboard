@@ -403,7 +403,7 @@ function PageInspector({ page, doc, actions }: { page: Page; doc: SiteContent; a
 function Crumbs({ doc, selection, actions }: { doc: SiteContent; selection: string; actions: CanvasActions }) {
   const chain = ancestors(doc, selection).filter((n) => n.kind !== "page");
   return (
-    <nav aria-label="Where this sits" className="scrollbar-thin flex items-center gap-0.5 overflow-x-auto border-b border-line px-3 py-2 text-[11.5px]">
+    <nav aria-label="Where this sits" className="relative scrollbar-thin flex items-center gap-0.5 overflow-x-auto border-b border-line px-3 py-2 text-[11.5px]">
       <button type="button" onClick={() => actions.select(null)} className="shrink-0 rounded px-1.5 py-0.5 text-muted hover:bg-surface-3 hover:text-ink">Page</button>
       {chain.map((n, i) => (
         <React.Fragment key={n.id}>

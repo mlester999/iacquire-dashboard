@@ -113,7 +113,7 @@ export function RecoveryWorkspace({ scope, stats, cases, group, policy, readines
       </div>
 
       <div className="space-y-3">
-        <nav aria-label="Filter missed calls" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Filter missed calls" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
           {GROUPS.map(([k, label]) => (
             <Link key={k} href={hrefFor({ group: k, page: 1, case: null })} aria-current={group === k ? "page" : undefined}
               className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9", group === k ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>

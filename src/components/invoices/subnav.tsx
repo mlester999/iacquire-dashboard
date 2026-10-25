@@ -13,7 +13,7 @@ const ITEMS = [
 export function InvoicesSubnav({ waiting, canConnect }: { waiting: number; canConnect: boolean }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Invoice sections" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Invoice sections" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
       {ITEMS.map((i) => {
         const active = "exact" in i && i.exact ? pathname === i.href || pathname === "/invoices/new" || /^\/invoices\/[0-9a-f-]{36}/i.test(pathname) : pathname === i.href || pathname.startsWith(`${i.href}/`);
         return (

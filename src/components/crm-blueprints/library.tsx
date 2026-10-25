@@ -171,7 +171,7 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label="Collection" className="scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+          <div role="group" aria-label="Collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
             {COLLECTIONS.map((c) => {
               const n = scope.filter(c.match).length;
               const on = collection === c.id;

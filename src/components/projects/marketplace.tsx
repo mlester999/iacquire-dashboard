@@ -103,7 +103,7 @@ export function Marketplace({
 
       {/* Filters */}
       <div className="flex min-w-0 flex-col gap-3">
-        <div role="tablist" aria-label="Service categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+        <div role="tablist" aria-label="Service categories" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
           {MARKETPLACE_FILTERS.map((f, index) => {
             const active = filter === f.id;
             return (

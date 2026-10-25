@@ -162,7 +162,7 @@ export function DeliveryLog({ scope, campaign, page, filter }: { scope: CrmScope
           <p className="text-[12.5px] text-muted">{canContacts ? "Each person's outcome, newest change first." : "Outcomes only: your access doesn't include contact details."}</p>
         </div>
       </div>
-      <nav aria-label="Filter the delivery log" className="scrollbar-thin -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <nav aria-label="Filter the delivery log" className="relative scrollbar-thin -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {LOG_FILTERS.map((f) => (
           <Link key={f.value} href={href(f.value)} aria-current={filter === f.value ? "page" : undefined} scroll={false}
             className={cn("inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[12.5px] font-medium sm:min-h-8", filter === f.value ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>

@@ -38,6 +38,15 @@ export function watch(page, report, label) {
   page.on("request", (r) => { const u = r.url(); if (!here(u) && !/^(data|blob|about):/.test(u)) report.external.push(`${label}: ${u.slice(0, 160)}`); });
 }
 
+/** A context for someone who is not signed in (a customer on a public page), with the same patient timeouts. */
+export async function publicPage(browser, viewport = { width: 1280, height: 900 }) {
+  const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  page.setDefaultTimeout(60_000);
+  page.setDefaultNavigationTimeout(150_000);
+  return { context, page };
+}
+
 export const newReport = () => ({ checks: [], consoleErrors: [], pageErrors: [], serverErrors: [], external: [], notes: [], screenshots: [] });
 
 export function check(report, label, ok, detail = "") {
@@ -46,21 +55,48 @@ export function check(report, label, ok, detail = "") {
   return Boolean(ok);
 }
 
-/** Opens a context for one QA person, signs in, and returns { context, page }. Saves nothing to disk. */
+/**
+ * Opens a context for one QA person and returns { context, page }. A session saved earlier (in the git-ignored .data/wave2-qa/auth, cookies of the throwaway QA app only) is reused so a
+ * run does not sign in again: the app rate-limits sign-ins, and many runs in a row would be refused. It signs in through the form only when there is no usable saved session.
+ */
 export async function signedIn(browser, key, { viewport = { width: 1280, height: 900 }, theme = "light", reducedMotion = "reduce" } = {}) {
   const user = credentials(key);
-  const context = await browser.newContext({ viewport, reducedMotion, colorScheme: theme });
-  await context.addInitScript((t) => { try { localStorage.setItem("iaq-theme", t); localStorage.setItem("iaq-tour-v1", "done"); } catch { /* blocked */ } }, theme);
-  const page = await context.newPage();
-  page.setDefaultTimeout(60_000);
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => { const el = document.querySelector("#email"); return Boolean(el) && Object.keys(el).some((k) => k.startsWith("__reactProps$")); }, null, { timeout: 120_000 });
+  const authDir = path.join(OUT, "auth");
+  fs.mkdirSync(authDir, { recursive: true });
+  const stateFile = path.join(authDir, `${key.replace(/\W+/g, "-")}.json`);
+  const make = async (storageState) => {
+    const context = await browser.newContext({ viewport, reducedMotion, colorScheme: theme, ...(storageState ? { storageState } : {}) });
+    await context.addInitScript((t) => { try { localStorage.setItem("iaq-theme", t); localStorage.setItem("iaq-tour-v1", "done"); } catch { /* blocked */ } }, theme);
+    const page = await context.newPage();
+    page.setDefaultTimeout(60_000);
+    // The first visit to a route compiles it in the dev server, which can take well over thirty seconds after a restart.
+    page.setDefaultNavigationTimeout(150_000);
+    return { context, page };
+  };
+  if (fs.existsSync(stateFile)) {
+    const saved = await make(stateFile);
+    await saved.page.goto(`${BASE}/overview`, { waitUntil: "domcontentloaded" }).catch(() => {});
+    if (!new URL(saved.page.url()).pathname.startsWith("/login")) return { ...saved, user: { email: user.email, name: user.name } };
+    await saved.context.close();
+  }
+  const { context, page } = await make(null);
+  // The dev server sometimes serves a login page whose scripts never attach (a chunk rebuilt under it): reload and look again before giving up.
+  for (let attempt = 1; ; attempt++) {
+    await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+    const hydrated = await page.waitForFunction(() => { const el = document.querySelector("#email"); return Boolean(el) && Object.keys(el).some((k) => k.startsWith("__reactProps$")); }, null, { timeout: attempt < 3 ? 25_000 : 120_000 }).then(() => true, () => false);
+    if (hydrated) break;
+    if (attempt >= 3) throw new Error("The sign-in page never hydrated after three loads.");
+  }
   await page.locator("#email").fill(user.email);
   await page.locator("#password").fill(user.password);
   const submit = page.locator("form button[type=submit]").first();
   for (let i = 0; i < 20 && (await submit.isDisabled()); i++) await page.waitForTimeout(250);
   await submit.click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 120_000 });
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 120_000 }).catch(async () => {
+    const msg = (await page.locator("[role=alert]").first().textContent().catch(() => "")) || "still on the sign-in page";
+    throw new Error(`Sign-in failed for ${key}: ${msg.trim().slice(0, 160)}`);
+  });
+  await context.storageState({ path: stateFile });
   return { context, page, user: { email: user.email, name: user.name } };
 }
 

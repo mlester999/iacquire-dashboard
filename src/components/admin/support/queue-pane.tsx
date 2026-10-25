@@ -73,7 +73,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
   return (
     <Card className={cn("flex min-h-0 flex-col overflow-hidden", className)}>
       <div className="space-y-3 border-b border-line p-3.5">
-        <nav aria-label="Saved views" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Saved views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
           {VIEWS.map((v) => {
             const active = query.view === v.value;
             const n = v.count ? counts[v.count] : undefined;

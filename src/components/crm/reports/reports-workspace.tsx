@@ -136,7 +136,7 @@ export function ReportsWorkspace({ scope, report, options, saved, active, reques
           <div aria-live="polite" className="sr-only">{pending ? "Updating the report…" : ""}</div>
           <div aria-busy={pending || undefined} className={cn("space-y-5 transition-opacity", pending && "opacity-60")}>
             {report.sections.length > 1 && (
-              <nav aria-label="Report sections" className="scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5">
+              <nav aria-label="Report sections" className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5">
                 {report.sections.map((s) => (
                   <a key={s.section} href={`#report-${s.section}`} className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 sm:min-h-8">
                     {SECTION_INFO[s.section].label}

@@ -53,7 +53,7 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
   const shown = projects.filter((p) => filter === "All" || p.categories.includes(filter));
   return (
     <div className="space-y-6">
-      <div role="tablist" aria-label="Project categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+      <div role="tablist" aria-label="Project categories" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
         {["All", ...categories].map((c, index) => {
           const active = filter === c;
           return (

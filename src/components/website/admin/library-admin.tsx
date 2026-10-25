@@ -78,7 +78,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
     <div className="space-y-5">
       <GalleryFilters cards={templates} value={filters} onChange={setFilters} actions={<Button variant="brand" className="h-11" onClick={() => setCreating(true)}><Plus className="size-4" /> New template</Button>} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Template collection" className="scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+        <div role="group" aria-label="Template collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {TABS.map((t) => {
             const n = scope.filter(t.match).length;
             return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;

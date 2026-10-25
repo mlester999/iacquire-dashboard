@@ -215,7 +215,7 @@ export function Notice({ tone = "neutral", icon, title, children, className, rol
 /** Pill tabs with counts, in the style of the Clients toolbar. */
 export function FilterTabs<V extends string>({ value, onChange, options, label, className }: { value: V; onChange: (v: V) => void; options: Array<{ value: V; label: string; count?: number }>; label: string; className?: string }) {
   return (
-    <div role="group" aria-label={label} className={cn("scrollbar-thin -mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:pb-0", className)}>
+    <div role="group" aria-label={label} className={cn("scrollbar-thin relative -mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:pb-0", className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (

@@ -40,7 +40,7 @@ export function InvoiceFilters({ active, search }: { active: ListFilter; search:
   const href = (f: ListFilter) => `/invoices?filter=${f}${search ? `&q=${encodeURIComponent(search)}` : ""}`;
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <nav aria-label="Filter invoices" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Filter invoices" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
         {LIST_FILTERS.map((f) => (
           <Link key={f} href={href(f)} aria-current={active === f ? "page" : undefined} className={cn("inline-flex h-11 shrink-0 items-center rounded-xl px-3 text-[13px] font-medium sm:h-9", active === f ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>
             {LIST_FILTER_LABELS[f]}

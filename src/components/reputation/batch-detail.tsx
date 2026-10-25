@@ -240,7 +240,7 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
       {peoplePage && c.total > 0 && (
         <section aria-label="People in this batch" className="space-y-3">
           <h3 className="text-[15px] font-semibold text-ink">People</h3>
-          <nav aria-label="Filter people" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          <nav aria-label="Filter people" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
             {PERSON_FILTERS.map((f) => (
               <Link
                 key={f}
