@@ -223,3 +223,24 @@ Everything below used the isolated QA app (embedded Postgres, port 3270), the si
 | Migration rehearsal with 0104 | `scripts/rehearse-combined-migrations.mjs` | **All sections A to F passed** (189 s) on 98 files; 0104 refuses on populated data, then returns the database to exactly the earlier schema (22,918 facts) with all 8,033 earlier rows unchanged. |
 | Typechecks, ESLint | both configs, the changed areas | Pass. |
 | What these do not show | | A real hosted rotation or re-seal; Google's grant revocation; a pause reaching code outside the AI jobs (publishing, calendar write-back are separately gated; the Automation Studio engine already stops on the agency pause); the reply cap with a real model; the role-fence and health-probe items of the audit (not built). |
+
+## Final gates, UI and hardening pass (2026-10-26)
+
+All run at the **gated head `dafd3373`** on a clean tree (the commit after it changes documents only), through `scripts/run-locked.mjs`:
+
+| Gate | Result |
+| --- | --- |
+| `tsc -p tsconfig.clean.json --noEmit`, `tsc -p tsconfig.scripts.json --noEmit` | exit 0, exit 0 |
+| `eslint .` | exit 0 |
+| `vitest run` (whole suite) | 634 files, **10,424 passed, 1 skipped, 0 failed**, 848 s |
+| `node scripts/build-clean.mjs` (default `next build`, Turbopack) | exit 0: compiled in 45 s, TypeScript 65 s, all routes generated; client JavaScript 12.4 MB raw in 331 files (largest chunk 448 KB), CSS 417 KB |
+| `node scripts/build-clean.mjs --webpack` | **fails: JavaScript heap out of memory** at 3, 4 and 6 to 7 GB, also at `3cba2376` and at `afa33306` (which the ledger recorded as passing); `--debug-build-paths` runs did not select any routes, so the cause was not isolated; not the deployment path (`npm run build` is `next build`) |
+| `node scripts/rehearse-combined-migrations.mjs` | all sections passed, 190 s; 98 files, final schema equals the fresh chain (22,920 facts) |
+
+An earlier full run at `cd8919a3` had one failure, a test that asserted the duplicate React key on `/invoices/settings`; it was corrected with the fix (`8233e73e`).
+
+**Browser (isolated app, simulated providers):** purchase checkout 72/72 and maintenance payment 20/20 on a rebuilt database after the UI changes, 0 console errors, 0 page errors, 0 5xx, 0 external requests. Page sweeps (`scripts/wave2-page-sweep.mjs`): about 1,000 page views across 150 portal and admin routes and 11 public pages at 1280, 768, 375 (light) and 1280, 375 (dark), plus 96 views at 1440 and 390; every defect found was fixed and the affected pages re-swept (the table in `docs/design-audit.md`). A code review (`/code-review high`, `c4cc12a9~1..HEAD`) gave 10 findings: 3 fixed (`93bd2745`), 1 judged not a defect, 6 recorded in `blockers.md`.
+
+**Environment found along the way:** the QA app started while `node_modules` was still a junction kept loading the main checkout's packages (every page then answered 5xx); the disk was full during a sweep (`ENOSPC` on the dev build cache, now cleared between batches); three parallel browsers starved a 23 GB machine. Recorded in the memory notes and `handoff.md`.
+
+**Not run:** any real provider, hosted database, scheduler tick, staging deploy, human screen-reader pass, load test.

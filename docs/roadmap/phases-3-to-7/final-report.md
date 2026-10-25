@@ -13,9 +13,9 @@ Written 2026-10-26 on branch `feat/phases-3-7` (worktree `.data/wt-phases-3-7`).
 | Item | Value |
 | --- | --- |
 | Branch / worktree | `feat/phases-3-7`, `C:\Users\ZEPHY\Documents\Marky Files\Programming Projects\iAcquire-dashboard\.data\wt-phases-3-7` |
-| Head | `{{FINAL_HEAD}}` (`git rev-parse HEAD`) |
+| Head | `the head of `feat/phases-3-7`: a documents-only commit on top of the **gated head `dafd3373`** (every gate in section 5 ran there on a clean tree; `git log dafd3373..HEAD` shows only files under `docs/`)` (`git rev-parse HEAD`) |
 | Base | `origin/master` `36bf78c` (the released Phase 2); the branch is a descendant of it |
-| Local commits since the base | {{COMMITS}} (`git rev-list --count 36bf78c..HEAD`), diff {{DIFFSTAT}} |
+| Local commits since the base | 74 at the gated head (`git rev-list --count 36bf78c..HEAD`), diff 1,688 files changed, 191,705 insertions, 5,405 deletions (includes the ledger and generated seeds) |
 | Pushed / deployed / hosted migration applied | **None.** No push, no deploy, no migration on a hosted database, no scheduler tick, no module switched on, no real provider call, no real customer message, no payment charged, no post published |
 | Working tree | Clean at the head above (generated QA data is git-ignored) |
 | Migrations in this branch | 0087 to 0104 (18), each with a rollback in `supabase/rollbacks/`; next free number **0105** |
@@ -51,26 +51,26 @@ Classes are never merged: built, locally tested (embedded Postgres), integration
 
 | Gate | Result | Where |
 | --- | --- | --- |
-| Full test suite | {{SUITE}} | `verification-evidence.md` |
-| TypeScript, both configs (`tsconfig.clean.json`, `tsconfig.scripts.json`) | {{TSC}} | |
-| ESLint, whole tree | {{ESLINT}} | |
-| Production build (`next build`, the default Turbopack bundler, which a deployment uses) | Passes: compiled in 39 s, TypeScript 65 s, every route generated | `verification-evidence.md` |
+| Full test suite | **634 files, 10,424 tests passed, 1 skipped, 0 failed** (848 s) | `verification-evidence.md` |
+| TypeScript, both configs (`tsconfig.clean.json`, `tsconfig.scripts.json`) | Clean (exit 0 for each) | |
+| ESLint, whole tree | Clean (exit 0) | |
+| Production build (`next build`, the default Turbopack bundler, which a deployment uses) | Passes at the gated head: compiled in 45 s, TypeScript 65 s, every route generated | `verification-evidence.md` |
 | Production build with webpack (`next build --webpack`) | **Fails: out of memory** at 3, 4 and 7 GB, also at older commits that had passed (see section 16) | |
-| Combined migration rehearsal (98 files, up, down, up, exact-schema comparison, section F checks) | All sections passed, 188 s | `scripts/rehearse-combined-migrations.mjs` |
+| Combined migration rehearsal (98 files, up, down, up, exact-schema comparison, section F checks) | All sections passed (98 files, 22,920 schema facts equal the fresh chain), 190 s | `scripts/rehearse-combined-migrations.mjs` |
 
 ## 6. Test counts
 
-{{TESTCOUNTS}}
+634 test files; 10,424 passed, 1 skipped, 0 failed at the gated head. New in this directive: purchase checkout (27) and its migration, rules and actions tests, maintenance provider payment (11), job gate (8), sealed-secret rotation (8), customer-reply usage (8), offboarding connections, six-employee conformance (20), type-scale floor (4), table scroller focus, bounded body (13) and its route guard, safe next path (4), local day (3), list statement counts (2). Per journey: purchase 473 tests in 37 files, lead acquisition 288, missed-call recovery 108, Automation Studio 460, social 458, sales closing 1,983, support and client operations 985, subscription lifecycle 104 (`node scripts/journey-evidence.mjs`; counts by file name, not proof of quality).
 
 ## 7. Browser journeys (isolated app, simulated providers, real Chromium)
 
-Purchase to workspace (the buyer's link, confirmation, payment on the simulated provider's page, return, held refund and dispute, release and close, automatic provisioning, replay and walk-away): 71 checks. Maintenance period payment (resume, replay, refund report, the dialog at 375 px): 20 checks. Invoice sending (an accepted and a refused send), invoice from a proposal, the Requests support, change, survey, issue-report, feedback, attachment and reopen paths, the 47-question onboarding, the demo funnel: each driven end to end earlier in this initiative and recorded in `verification-evidence.md`. {{BROWSERRERUN}}
+Purchase to workspace (the buyer's link, confirmation, payment on the simulated provider's page, return, held refund and dispute, release and close, automatic provisioning, replay and walk-away): 71 checks. Maintenance period payment (resume, replay, refund report, the dialog at 375 px): 20 checks. Invoice sending (an accepted and a refused send), invoice from a proposal, the Requests support, change, survey, issue-report, feedback, attachment and reopen paths, the 47-question onboarding, the demo funnel: each driven end to end earlier in this initiative and recorded in `verification-evidence.md`. Both payment runs were repeated at the end on a freshly rebuilt QA database after the UI changes: **purchase checkout 72/72, maintenance payment 20/20, console errors 0, page errors 0, 5xx 0, external requests 0.** (One earlier run showed a single React dev warning, "state update on a component that hasn't mounted yet"; two later runs on a fresh database did not repeat it and it was not reproduced by opening the same pages.)
 
 ## 8. Visual and layout review
 
 About 1,000 page views were swept: roughly 100 portal routes and 50 admin routes at 1280, 768 and 375 px in light and 1280 and 375 px in dark, 11 public pages at the same widths, and a representative set again at 1440 and 390 px. Per view: console and page errors, requests that left the QA origin, overflow of the document, of content the shell clips and of the element that widens the page, cut-off tab strips, text clipped mid-word, axe-core serious and critical violations, and the smallest text. I read about 40 full-page screenshots. Details and the table of defects found and fixed: `docs/design-audit.md` (second pass).
 
-Results after the fixes: no axe serious or critical violation on any swept view, no document that scrolls sideways, no text under 12px, no cut-off tab strip at desktop widths; the remaining console messages were the dev server's own recompile noise (`text/plain` chunk answers, connection resets). {{SWEEP1440}}
+Results after the fixes: no axe serious or critical violation on any swept view, no document that scrolls sideways, no text under 12px, no cut-off tab strip at desktop widths; the remaining console messages were the dev server's own recompile noise (`text/plain` chunk answers, connection resets). At 1440 and 390 px (12 portal routes, 8 admin routes, 4 public pages, light and dark; 96 views) there were no flags and no console, page or server errors.
 
 ## 9. Accessibility
 
