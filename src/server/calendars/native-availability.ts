@@ -1,6 +1,5 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { AppError } from "@/server/errors";
 import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext } from "@/server/calendars/availability";
 import type { AvailabilityOptions, AvailabilityResult } from "@/server/appointments/availability";
 
