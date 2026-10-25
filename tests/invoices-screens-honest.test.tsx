@@ -200,8 +200,10 @@ describe("invoice settings", () => {
     walk(tree);
     const panel = found.find((e) => e.type === InvoiceSettingsPanel)!;
     const reminders = found.find((e) => e.type === RemindersPanel)!;
-    expect(panel.key).toBe(String(page.settings.version));
-    expect(reminders.key).toBe(String(page.settings.version));
+    // Each follows the saved version, and the two are different strings: siblings that share a key make React drop or duplicate one of them.
+    expect(panel.key).toBe(`settings-${page.settings.version}`);
+    expect(reminders.key).toBe(`reminders-${page.settings.version}`);
+    expect(panel.key).not.toBe(reminders.key);
   });
 
   it("does not send the next number with a save unless the person changed it", async () => {
