@@ -6,6 +6,7 @@ import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { OrgContext } from "@/server/tenancy/context";
+import { assertJobAllowed } from "@/server/automation/job-gate";
 import { createWorkJob } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 
@@ -58,6 +59,8 @@ export async function dispatchCapabilityJob(
     throw new AppError("agent_unavailable", "This AI employee is not available for authorized work yet.");
   }
   if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
+  // A paused employee, an agency pause or a suspended workspace: no new work, and the person is told why.
+  await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
 
   const idempotencyKey = input.idempotencyKey ?? `${input.capability}:${input.agentRole}:${crypto.randomUUID()}`;
   const job = await withSystem(async (db) => {

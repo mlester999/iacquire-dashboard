@@ -53,14 +53,25 @@ export function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function encryptionKey(): Buffer {
-  const configured = env().APP_ENCRYPTION_KEY;
-  if (configured) return crypto.createHash("sha256").update(configured).digest();
+const keyFrom = (material: string): Buffer => crypto.createHash("sha256").update(material).digest();
+
+/**
+ * The key a secret is sealed with now, then the retired keys in APP_ENCRYPTION_KEY_PREVIOUS (comma separated, decrypt-only). A rotation is: put the old key in PREVIOUS and the new one
+ * in APP_ENCRYPTION_KEY (every sealed secret still opens), run the re-seal (src/server/security/sealed-secrets.ts, `npm run secrets:reseal`), then drop PREVIOUS.
+ */
+function encryptionKeys(): Buffer[] {
+  const e = env();
   // Development only: env() refuses to start production without APP_ENCRYPTION_KEY.
-  return crypto.createHash("sha256").update("iacquire-local-development-only-key").digest();
+  const current = keyFrom(e.APP_ENCRYPTION_KEY || "iacquire-local-development-only-key");
+  const previous = (e.APP_ENCRYPTION_KEY_PREVIOUS ?? "").split(",").map((k) => k.trim()).filter(Boolean).map(keyFrom);
+  return [current, ...previous];
 }
 
-/** AES-256-GCM. Output: v1.<iv>.<tag>.<ciphertext> (base64url). */
+function encryptionKey(): Buffer {
+  return encryptionKeys()[0];
+}
+
+/** AES-256-GCM. Output: v1.<iv>.<tag>.<ciphertext> (base64url). Always sealed with the current key. */
 export function encryptSecret(plaintext: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
@@ -69,12 +80,40 @@ export function encryptSecret(plaintext: string): string {
   return ["v1", iv.toString("base64url"), tag.toString("base64url"), ct.toString("base64url")].join(".");
 }
 
-export function decryptSecret(payload: string): string {
+function openWith(key: Buffer, payload: string): string {
   const [version, ivB64, tagB64, ctB64] = payload.split(".");
   if (version !== "v1" || !ivB64 || !tagB64 || !ctB64) throw new Error("Unsupported secret format");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(ivB64, "base64url"));
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64url"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64url")), decipher.final()]).toString("utf8");
+}
+
+/** Opens a sealed secret with the current key, or with a retired one while it is still listed. A value no listed key opens fails with the current key's error. */
+export function decryptSecret(payload: string): string {
+  let first: unknown;
+  for (const key of encryptionKeys()) {
+    try {
+      return openWith(key, payload);
+    } catch (error) {
+      first ??= error;
+    }
+  }
+  throw first;
+}
+
+/** Whether the current key (not a retired one) opens this value: false means it still needs the re-seal after a rotation. */
+export function sealedWithCurrentKey(payload: string): boolean {
+  try {
+    openWith(encryptionKey(), payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The same secret sealed again with the current key. Throws when no listed key opens it, so an unreadable value is never replaced by anything. */
+export function resealSecret(payload: string): string {
+  return encryptSecret(decryptSecret(payload));
 }
 
 /** Non-reversible fingerprint for showing which secret is stored, e.g. "…a1b2". */

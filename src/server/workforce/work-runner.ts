@@ -5,7 +5,8 @@ import { runSocialPerformanceReviewJob } from "@/server/workforce/social-review"
 import { runReceivablesReviewJob } from "@/server/workforce/receivables-review";
 import { runReputationReviewJob } from "@/server/workforce/reputation-review";
 import crypto from "node:crypto";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
+import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import {
   appendWorkEvent,
   claimWorkJob,
@@ -50,6 +51,19 @@ const HANDLERS: Record<string, Handler> = {
   performance_snapshot: runPerformanceSnapshotJob,
 };
 
+/**
+ * What a capability's own record says when its job was blocked by a pause before it ran. A lead research request that stayed "queued" for a job that will not run would look busy for
+ * ever, so it goes back to "waiting for the agent" with the reason, which is the state the person can retry from.
+ */
+const BLOCKED_HOOKS: Record<string, (db: Queryable, job: WorkJobRow, detail: string) => Promise<void>> = {
+  lead_research: async (db, job, detail) => {
+    await db.query(
+      "update lead_research_requests set status = 'waiting_for_agent', failure_reason = $3 where org_id = $1 and work_job_id = $2 and status = 'queued'",
+      [job.org_id, job.id, detail.slice(0, 500)],
+    );
+  },
+};
+
 function workerId() {
   return `worker-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -87,6 +101,17 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
   registerWorkJobController(claimed.id, controller);
   const runHandler = HANDLERS[claimed.capability];
   try {
+    // Work that was queued before a pause must not run after it: the gate is read again here, at the moment of execution, from the database. A blocked job is finished as
+    // "blocked" with the reason, nothing is executed, and a person can run it again once work resumes (the same "Try again" a failed job has).
+    const gate = await withSystem((db) => jobGate(db, { orgId: claimed.org_id, agentId: claimed.agent_instance_id }));
+    if (!gate.allowed) {
+      await withSystem(async (db) => {
+        await finishWorkJob(db, { jobId: claimed.id, orgId: claimed.org_id, status: "blocked", stage: "blocked", failureCode: jobBlockCode(gate.reason), failureMessage: gate.detail });
+        await appendWorkEvent(db, { jobId: claimed.id, orgId: claimed.org_id, kind: "notice", stage: "blocked", message: `${gate.detail} Nothing was executed.`, data: { reason: gate.reason } });
+        await BLOCKED_HOOKS[claimed.capability]?.(db, claimed, gate.detail);
+      });
+      return true;
+    }
     if (!runHandler) {
       await withSystem(async (db) => {
         await finishWorkJob(db, { jobId: claimed.id, orgId: claimed.org_id, status: "blocked", stage: "blocked", failureCode: "capability_unavailable", failureMessage: "No reviewed handler is registered for this capability." });

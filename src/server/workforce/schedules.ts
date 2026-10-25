@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
@@ -320,6 +321,18 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         && row.status
         && canChat(row.status),
       );
+      // A pause the agency, the employee or a suspended workspace put on automation skips the run and says so on the schedule (the next interval tries again).
+      const gate = runnable && !previousActive ? await jobGate(db, { orgId: schedule.org_id, agentId: schedule.agent_instance_id }) : null;
+      if (gate && !gate.allowed) {
+        await db.query(
+          `update ai_work_schedules
+              set next_run_at = $2::timestamptz + make_interval(mins => interval_minutes), last_skipped_reason = $3, last_skipped_at = $2::timestamptz
+            where id = $1`,
+          [schedule.id, now, jobBlockCode(gate.reason)],
+        );
+        skipped += 1;
+        continue;
+      }
       if (!runnable || previousActive) {
         await db.query("update ai_work_schedules set next_run_at = $2::timestamptz + make_interval(mins => interval_minutes) where id = $1", [schedule.id, now]);
         skipped += 1;

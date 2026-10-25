@@ -19,6 +19,7 @@
     "db:seed:local": "node --env-file-if-exists=.env --env-file-if-exists=.env.development --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/seed.ts",
     "portfolio:import": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/import-portfolio.ts",
     "admin:invite": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/invite-admin.ts",
+    "secrets:reseal": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/reseal-secrets.ts",
     "auth:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/migrate-accounts.ts",
     "mock:hermes": "node --import tsx scripts/mock-hermes.ts",
     "assets:mascots": "node scripts/process-mascots.mjs",

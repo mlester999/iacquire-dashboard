@@ -8,9 +8,9 @@ import { decryptSecret, encryptSecret } from "@/server/security/crypto";
 // This file is the seam. Everything that stores or reads a connection's keys goes through `credentialVault`, so moving them to Supabase Vault (what the audit
 // recommends, and what migration 0010's rule says for new credentials) changes this file and the sealed column, nothing else.
 //
-// KNOWN LIMIT, a founder decision pending: a sealed value is tied to APP_ENCRYPTION_KEY and decryptSecret does not try APP_ENCRYPTION_KEY_PREVIOUS, so rotating that key
-// makes every stored payment key unreadable (each connection then needs its keys pasted again). That is honest, not silent: opening fails, the connection is marked as
-// needing attention, and no payment is started with a key that cannot be read.
+// Key rotation: decryptSecret also tries the retired keys listed in APP_ENCRYPTION_KEY_PREVIOUS, and `npm run secrets:reseal` moves this column (and every other sealed one) to the
+// new key (src/server/security/sealed-secrets.ts). A key that is dropped BEFORE that re-seal still fails honestly: opening fails, the connection is marked as needing attention, and
+// no payment is started with a key that cannot be read.
 
 export interface ProviderCredentials {
   /** The provider's secret key (PayMongo: sk_test_… or sk_live_…) or, for PayPal, the app's client ID. */
