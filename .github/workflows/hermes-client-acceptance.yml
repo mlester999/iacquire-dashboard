@@ -287,6 +287,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          failure_stage=compose_start
+          trap 'status=$?; echo "SANDBOX_GATEWAY_STEP_ERROR: stage=${failure_stage} exit=${status}"' ERR
           compose_base=(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
@@ -310,6 +312,7 @@ jobs:
             exit 1
           fi
 
+          failure_stage=container_discovery
           client_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
@@ -335,6 +338,7 @@ jobs:
             exit 1
           fi
 
+          failure_stage=container_security
           sudo python3 - "$client_id" "$harness_id" "$worker_id" "$HERMES_ACCEPTANCE_DIR" <<'PY'
           import json, pathlib, subprocess, sys
           client_id, harness_id, worker_id, temp_dir = sys.argv[1:]
@@ -381,6 +385,7 @@ jobs:
           print("SECURITY_BOUNDARY_PASS: read-only Hermes gateway image, four gateway capabilities, isolated s6 writable paths, non-root worker, read-only filesystems, internal-only acceptance networks, no Docker socket, no host Hermes data bind, no published ports, no inline credentials")
           PY
 
+          failure_stage=await_runtime_result
           deadline=$((SECONDS + 2100))
           while [[ ! -f "$HERMES_ACCEPTANCE_DIR/results/status.json" ]]; do
             harness_state="$(docker inspect -f '{{.State.Status}}' "$harness_id")"
@@ -404,6 +409,7 @@ jobs:
             exit 1
           fi
 
+          failure_stage=read_runtime_result
           python3 - "$HERMES_ACCEPTANCE_DIR/results/status.json" <<'PY'
           import json, re, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
