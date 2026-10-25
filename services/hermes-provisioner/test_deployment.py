@@ -19,12 +19,12 @@ CATALOG_OVERLAY_V0215_SHA256 = {
     "tools/mcp_tool_registration.py": "a5111f846cb1a84233d653973eba274ea6c2e73d7f52a61db0eb6a9c8e8edb3d",
     "tools/mcp_tool.py": "144bed331c2e4f9577e8b82564a714b8bfdc9beb172e477568e8925b4c9a9c0a",
 }
-CATALOG_OVERLAY_V0223_SHA256 = {
+CATALOG_OVERLAY_V0225_SHA256 = {
     "gateway/platforms/api_server.py": "e20f4fdbb8099354934ab23e0ba6daea9c90f6488195509e3f52090d33f8e482",
     "model_tools.py": "311867fa4fe1689e12a6097b729e05d4bc5e5bd39a19f8e502605c46a5082153",
     "gateway/platforms/api_server_tool_catalog.py": "53682d305a91b802055bf00dfeee615045f3668a17a57b2c6e5cffdc13798327",
 }
-CATALOG_OVERLAY_V0223_UPSTREAM_SHA256 = {
+CATALOG_OVERLAY_V0225_UPSTREAM_SHA256 = {
     "gateway/platforms/api_server.py": "71ac56c28683aa6b935a432b58e5bfe3753492363ef2cf9f8853b121d0e8214f",
     "model_tools.py": "da5b7db1b05de615658e56c4172426ed82099a093c5b586e48e65ef930b778c8",
 }
@@ -107,14 +107,14 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
 
     def test_isolated_build_candidate_uses_the_verified_immutable_release_digest(self):
         env_example = (ROOT / "client.env.example").read_text(encoding="utf-8")
-        expected = "2f305c9bdc81731f48664586d23cb6a6f838a15ad7be1bfabe0c3c269d8e09b9"
+        expected = "9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d"
         self.assertRegex(
             env_example,
             rf"(?m)^HERMES_BASE_IMAGE=docker\.io/nousresearch/hermes-agent@sha256:{expected}$",
         )
         self.assertIn("still needs isolated runtime acceptance", env_example)
 
-    def test_legacy_overlay_matches_reviewed_hermes_0215_backport_hashes(self):
+    def test_legacy_and_candidate_overlays_match_reviewed_hashes(self):
         overlay = ROOT / "catalog-overlay"
         manifest = {
             path: checksum
@@ -131,17 +131,17 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
 
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn('["/opt/hermes/bin/hermes","--version"]', dockerfile)
-        self.assertIn('v?0\\.22\\.3', dockerfile)
-        self.assertIn("catalog-overlay-v0223", dockerfile)
-        self.assertIn("verify_overlay.py", dockerfile)
+        self.assertIn('v?0\\.22\\.5', dockerfile)
+        self.assertIn('v26.12.1', dockerfile)
+        self.assertIn("catalog-overlay-v0225", dockerfile)
         self.assertIn("verify_overlay.py", dockerfile)
         self.assertIn("_handle_tools", dockerfile)
         self.assertIn("update_last_resolved", dockerfile)
         self.assertIn("test -x /opt/hermes/bin/hermes", dockerfile)
         self.assertIn("test -x /opt/hermes/docker/entrypoint-dispatch.sh", dockerfile)
 
-    def test_v0223_overlay_and_upstream_checksums_match_reviewed_sources(self):
-        overlay = ROOT / "catalog-overlay-v0223"
+    def test_v0225_overlay_and_upstream_checksums_match_reviewed_sources(self):
+        overlay = ROOT / "catalog-overlay-v0225"
         overlay_manifest = {
             path: checksum
             for checksum, path in (
@@ -150,8 +150,8 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
                 if line.strip()
             )
         }
-        self.assertEqual(overlay_manifest, CATALOG_OVERLAY_V0223_SHA256)
-        for path, expected in CATALOG_OVERLAY_V0223_SHA256.items():
+        self.assertEqual(overlay_manifest, CATALOG_OVERLAY_V0225_SHA256)
+        for path, expected in CATALOG_OVERLAY_V0225_SHA256.items():
             self.assertEqual(hashlib.sha256((overlay / path).read_bytes()).hexdigest(), expected, path)
 
         upstream_manifest = {
@@ -162,7 +162,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
                 if line.strip()
             )
         }
-        self.assertEqual(upstream_manifest, CATALOG_OVERLAY_V0223_UPSTREAM_SHA256)
+        self.assertEqual(upstream_manifest, CATALOG_OVERLAY_V0225_UPSTREAM_SHA256)
 
 
     def test_dockerfile_copy_sources_resolve_from_repository_root_context(self):
@@ -172,7 +172,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             "services/hermes-provisioner/hermes-client-entrypoint.sh",
             "services/hermes-provisioner/worker.py",
             "services/hermes-provisioner/requirements.txt",
-            "services/hermes-provisioner/catalog-overlay-v0223",
+            "services/hermes-provisioner/catalog-overlay-v0225",
         )
         for source in copied_sources:
             path = repository_root / source

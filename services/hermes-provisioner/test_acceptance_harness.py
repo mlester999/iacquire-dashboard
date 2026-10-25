@@ -373,7 +373,7 @@ class AcceptanceFixtureTests(unittest.TestCase):
             "effectiveSoulVerified": True,
             "toolInventoryComplete": True,
             "toolInventoryDigest": "f" * 64,
-            "hermesVersion": "hermes v0.22.3 acceptance",
+            "hermesVersion": "hermes v0.22.5 acceptance",
         }
         if job["kind"] == "provision":
             result["apiKey"] = key

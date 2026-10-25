@@ -371,7 +371,7 @@ class AcceptanceState:
                 or result.get("soulChallengeSha256") != sha256(job["soulChallenge"].encode("ascii"))
                 or result.get("policyConfigSha256") != job["policyConfigSha256"]
                 or not re.fullmatch(r"[0-9a-f]{64}", str(result.get("toolInventoryDigest", "")))
-                or "0.22.3" not in str(result.get("hermesVersion", ""))
+                or "0.22.5" not in str(result.get("hermesVersion", ""))
             ):
                 self._fail("success_attestation_mismatch")
                 raise ValueError("success_attestation_mismatch")

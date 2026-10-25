@@ -89,7 +89,7 @@ jobs:
       - name: Build the pinned client Hermes images with Buildx
         shell: bash
         env:
-          HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:2f305c9bdc81731f48664586d23cb6a6f838a15ad7be1bfabe0c3c269d8e09b9
+          HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
           IACQUIRE_HERMES_IMAGE: iacquire/hermes-client:acceptance
           IACQUIRE_PROVISIONER_IMAGE: iacquire/hermes-provisioner:acceptance
         run: |
@@ -174,7 +174,7 @@ jobs:
       - name: Create one-run synthetic credentials and local TLS
         shell: bash
         env:
-          HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:2f305c9bdc81731f48664586d23cb6a6f838a15ad7be1bfabe0c3c269d8e09b9
+          HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
           IACQUIRE_HERMES_IMAGE: iacquire/hermes-client:acceptance
           IACQUIRE_PROVISIONER_IMAGE: iacquire/hermes-provisioner:acceptance
         run: |

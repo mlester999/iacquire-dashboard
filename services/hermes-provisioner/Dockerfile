@@ -1,13 +1,13 @@
-ARG HERMES_BASE_IMAGE=docker.io/nousresearch/hermes-agent@sha256:2f305c9bdc81731f48664586d23cb6a6f838a15ad7be1bfabe0c3c269d8e09b9
+ARG HERMES_BASE_IMAGE=docker.io/nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
 FROM ${HERMES_BASE_IMAGE} AS hermes-client
 
 ARG HERMES_BASE_IMAGE
 RUN /opt/hermes/.venv/bin/python -c 'import re,sys; sys.exit(0 if re.fullmatch(r"(?:docker\.io/)?nousresearch/hermes-agent@sha256:[0-9a-f]{64}", sys.argv[1]) else 1)' "$HERMES_BASE_IMAGE"
-ARG HERMES_SOURCE_COMMIT=5b147ab036d6d19131bff8d20701b5001eab844a
-ARG HERMES_CATALOG_REVISION=v0223-catalog-v1
-RUN /opt/hermes/.venv/bin/python -c 'import re,subprocess,sys; p=subprocess.run(["/opt/hermes/bin/hermes","--version"],check=True,capture_output=True,text=True); output=p.stdout+p.stderr; sys.exit(0 if re.search(r"(?<![0-9.])v?0\.22\.3(?![0-9.])",output) else f"Expected Hermes CLI v0.22.3, got {output.strip()}")'
+ARG HERMES_SOURCE_COMMIT=bf0203a794a07aac3ff764972ab9087baa4e4f4e
+ARG HERMES_CATALOG_REVISION=v0225-catalog-v1
+RUN /opt/hermes/.venv/bin/python -c 'import re,subprocess,sys; h=subprocess.run(["/opt/hermes/bin/hermes","--version"],check=True,capture_output=True,text=True); hv=h.stdout+h.stderr; n=subprocess.run(["/usr/local/bin/node","--version"],check=True,capture_output=True,text=True).stdout.strip(); ok=re.search(r"(?<![0-9.])v?0\.22\.5(?![0-9.])",hv) and n=="v26.12.1"; sys.exit(0 if ok else f"Expected Hermes v0.22.5 with Node v26.12.1, got Hermes {hv.strip()} and Node {n}")'
 USER root
-COPY --chown=0:0 services/hermes-provisioner/catalog-overlay-v0223/ /opt/iacquire-hermes/catalog-overlay/
+COPY --chown=0:0 services/hermes-provisioner/catalog-overlay-v0225/ /opt/iacquire-hermes/catalog-overlay/
 RUN /opt/hermes/.venv/bin/python /opt/iacquire-hermes/catalog-overlay/verify_overlay.py /opt/hermes /opt/iacquire-hermes/catalog-overlay
 RUN test -x /opt/hermes/bin/hermes && test -x /opt/hermes/docker/entrypoint-dispatch.sh
 RUN set -eu; \
@@ -21,7 +21,7 @@ COPY --chown=0:0 services/hermes-provisioner/hermes-client-entrypoint.sh /opt/ia
 RUN chmod 0555 /opt/iacquire-hermes/hermes-client-entrypoint.sh
 ENTRYPOINT ["/opt/iacquire-hermes/hermes-client-entrypoint.sh"]
 CMD ["gateway", "run"]
-LABEL org.opencontainers.image.version="0.22.3-iacquire-catalog.v0223-catalog-v1"
+LABEL org.opencontainers.image.version="0.22.5-iacquire-catalog.v0225-catalog-v1"
 LABEL com.iacquire.hermes.base-source="${HERMES_SOURCE_COMMIT}"
 LABEL com.iacquire.hermes.catalog-revision="${HERMES_CATALOG_REVISION}"
 

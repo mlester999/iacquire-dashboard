@@ -1,4 +1,4 @@
-"""Verify the exact Hermes v0.22.3 sources and iAcquire catalog overlay before image build."""
+"""Verify the exact Hermes v0.22.5 sources and iAcquire catalog overlay before image build."""
 
 from __future__ import annotations
 

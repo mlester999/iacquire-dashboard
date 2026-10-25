@@ -170,7 +170,7 @@ describe("the deployed live catalog shape", () => {
     }
   });
 
-  it("accepts Hermes v0.22.3's exact object-form tools endpoint descriptor", async () => {
+  it("accepts Hermes v0.22.5's exact object-form tools endpoint descriptor", async () => {
     toolsEndpoint = { method: "GET", path: "/v1/tools" };
     try {
       const snapshot = await verifyToolInventory(conn(), { stabilityReads: 2 });

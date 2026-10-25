@@ -615,7 +615,7 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertEqual(len(set(self.api.catalog_query_challenges)), 2)
         self.assertTrue(all("no-store" in value for value in self.api.catalog_cache_controls))
 
-    def test_runtime_preflight_accepts_v0223_object_endpoint_descriptor(self):
+    def test_runtime_preflight_accepts_v0225_object_endpoint_descriptor(self):
         self.api.tools_endpoint = {"method": "GET", "path": "/v1/tools"}
         catalog_digest = verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
         self.assertEqual(len(catalog_digest), 64)

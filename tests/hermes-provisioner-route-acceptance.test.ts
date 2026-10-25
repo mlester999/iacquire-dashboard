@@ -126,7 +126,7 @@ function successfulResult(job: ClaimedJob, apiKey?: string) {
     effectiveSoulVerified: true,
     toolInventoryComplete: true,
     toolInventoryDigest: sha256(job.profile + "\ncomplete-runtime-catalog"),
-    hermesVersion: "hermes v0.22.3 synthetic route acceptance",
+    hermesVersion: "hermes v0.22.5 synthetic route acceptance",
     ...(apiKey ? { apiKey } : {}),
   };
 }
