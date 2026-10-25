@@ -48,11 +48,11 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
 
   return (
     <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); if (canEdit && !problem) void save(); }} aria-label="Invoice settings">
-      {!canEdit && <p role="note" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">Only the business owner changes these settings. You can read them.</p>}
+      {!canEdit && <p role="note" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Only the business owner changes these settings. You can read them.</p>}
       <fieldset disabled={!canEdit} className="space-y-6 disabled:opacity-90">
         <section aria-labelledby="set-doc" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
           <h2 id="set-doc" className="text-[15px] font-semibold text-ink">What the invoice says about your business</h2>
-          <p className="text-[12.5px] text-muted">Printed on every invoice you issue and frozen when it is issued. Type only what is true: nothing here claims a tax registration, and the document is called an Invoice.</p>
+          <p className="text-[13px] text-muted">Printed on every invoice you issue and frozen when it is issued. Type only what is true: nothing here claims a tax registration, and the document is called an Invoice.</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Business name on invoices" htmlFor="set-name" optional hint="Left empty, your workspace name is used."><Input id="set-name" className={input16} maxLength={160} value={s.legalName} onChange={(e) => set("legalName", e.target.value)} /></Field>
             <Field label="Reply-to email" htmlFor="set-email" optional><Input id="set-email" type="email" className={input16} maxLength={200} value={s.replyToEmail} onChange={(e) => set("replyToEmail", e.target.value)} /></Field>
@@ -79,7 +79,7 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
           </div>
           <Field label="How customers can pay (printed on every invoice)" htmlFor="set-pay" optional hint="Bank details or a wallet number. Never type a card number."><Textarea id="set-pay" rows={3} className={input16} maxLength={1000} value={s.defaultPaymentInstructions} onChange={(e) => set("defaultPaymentInstructions", e.target.value)} /></Field>
           <Field label="Footer note" htmlFor="set-footer" optional><Textarea id="set-footer" rows={2} className={input16} maxLength={600} value={s.footerNote} onChange={(e) => set("footerNote", e.target.value)} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.approvalRequiredForCreators} onChange={(e) => set("approvalRequiredForCreators", e.target.checked)} /><span>People who write invoices need the owner or a manager to approve them before they are issued. <span className="text-muted">Turn it off only if you trust them to issue their own.</span></span></label>
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.approvalRequiredForCreators} onChange={(e) => set("approvalRequiredForCreators", e.target.checked)} /><span>People who write invoices need the owner or a manager to approve them before they are issued. <span className="text-muted">Turn it off only if you trust them to issue their own.</span></span></label>
         </section>
 
         <section aria-labelledby="set-paid" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
@@ -87,20 +87,20 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
           <fieldset className="space-y-2">
             <legend className="sr-only">What happens to the linked deal</legend>
             {CLOSE_RULES.map((r) => (
-              <label key={r} className="flex min-h-11 items-start gap-3 rounded-xl border border-line px-3 py-2 text-[13.5px] has-[:checked]:border-primary has-[:checked]:bg-primary-soft/40">
+              <label key={r} className="flex min-h-11 items-start gap-3 rounded-xl border border-line px-3 py-2 text-[14px] has-[:checked]:border-primary has-[:checked]:bg-primary-soft/40">
                 <input type="radio" name="close-rule" className="mt-0.5 size-5 shrink-0" checked={s.closeRule === r} onChange={() => set("closeRule", r)} />
-                <span><span className="font-medium text-ink">{CLOSE_RULE_LABELS[r]}</span><span className="block text-[12.5px] text-muted">{CLOSE_RULE_WORDS[r]}</span></span>
+                <span><span className="font-medium text-ink">{CLOSE_RULE_LABELS[r]}</span><span className="block text-[13px] text-muted">{CLOSE_RULE_WORDS[r]}</span></span>
               </label>
             ))}
           </fieldset>
-          <p className="text-[12.5px] text-muted">A part-payment, a deposit or a refund never changes a deal, and a refund after a deal was marked won only creates a task.</p>
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.countManualAsVerified} onChange={(e) => set("countManualAsVerified", e.target.checked)} /><span>Count payments I record by hand as verified revenue in the Lead Sources report. <span className="text-muted">Off by default: a payment you record is your word, not the payment provider&apos;s. When off, they are shown on their own line and never added to revenue. Turning it on is your choice and is shown on the report.</span></span></label>
+          <p className="text-[13px] text-muted">A part-payment, a deposit or a refund never changes a deal, and a refund after a deal was marked won only creates a task.</p>
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.countManualAsVerified} onChange={(e) => set("countManualAsVerified", e.target.checked)} /><span>Count payments I record by hand as verified revenue in the Lead Sources report. <span className="text-muted">Off by default: a payment you record is your word, not the payment provider&apos;s. When off, they are shown on their own line and never added to revenue. Turning it on is your choice and is shown on the report.</span></span></label>
         </section>
       </fieldset>
       {canEdit && (
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="brand" loading={busy("save")} disabled={Boolean(problem)}>Save settings</Button>
-          {problem && <p role="alert" className="text-[12.5px] text-danger-ink">{problem}</p>}
+          {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
         </div>
       )}
     </form>
@@ -134,12 +134,12 @@ export function RemindersPanel({ settings, overview, canEdit, canSwitchOff, tz }
         <h2 id="rem-title" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><BellRing className="size-4 text-muted" aria-hidden />Payment reminders</h2>
         <Badge tone={overview.active ? "success" : overview.enabled ? "warning" : "neutral"}>{overview.active ? "On" : overview.enabled ? "On hold" : "Off"}</Badge>
       </div>
-      <p className="text-[13.5px] text-ink-2">Reminders ask a customer to pay an invoice that is still owed. They are off until you have read the exact messages below and authorized them. They go only to a customer who has agreed to receive service messages, through the same checks as every other message, and each one is shown on its invoice with what became of it. They stop when the invoice is paid, voided, written off or disputed.</p>
+      <p className="text-[14px] text-ink-2">Reminders ask a customer to pay an invoice that is still owed. They are off until you have read the exact messages below and authorized them. They go only to a customer who has agreed to receive service messages, through the same checks as every other message, and each one is shown on its invoice with what became of it. They stop when the invoice is paid, voided, written off or disputed.</p>
       {overview.active && (
-        <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-[13px] text-success-ink">Authorized by {overview.authorizedByName ?? "the owner"}{overview.authorizedAt ? ` on ${formatInstant(overview.authorizedAt, tz)}` : ""}. The authorization ends{overview.expiresAt ? ` on ${formatInstant(overview.expiresAt, tz)}` : " after 90 days"}, or earlier if the days, channels or wording change.</p>
+        <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-[14px] text-success-ink">Authorized by {overview.authorizedByName ?? "the owner"}{overview.authorizedAt ? ` on ${formatInstant(overview.authorizedAt, tz)}` : ""}. The authorization ends{overview.expiresAt ? ` on ${formatInstant(overview.expiresAt, tz)}` : " after 90 days"}, or earlier if the days, channels or wording change.</p>
       )}
-      {overview.enabled && !overview.active && overview.problemText && <p role="alert" className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{overview.problemText}</p>}
-      <p className="text-[12.5px] text-muted">Reminders are planned and sent only while the scheduler runs, so they are checked on a schedule, not live.</p>
+      {overview.enabled && !overview.active && overview.problemText && <p role="alert" className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{overview.problemText}</p>}
+      <p className="text-[13px] text-muted">Reminders are planned and sent only while the scheduler runs, so they are checked on a schedule, not live.</p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Reminder days" htmlFor="rem-days" hint={parsed.ok ? describeOffsets(parsed.offsets) : undefined} error={parsed.ok ? null : parsed.error}>
@@ -148,29 +148,29 @@ export function RemindersPanel({ settings, overview, canEdit, canSwitchOff, tz }
         <Field label="Most reminders for one invoice" htmlFor="rem-max"><Input id="rem-max" inputMode="numeric" className={input16} value={max} disabled={!canEdit} onChange={(e) => setMax(e.target.value)} /></Field>
       </div>
       <fieldset className="space-y-1" disabled={!canEdit}>
-        <legend className="text-[13px] font-medium text-ink-2">Send reminders by</legend>
+        <legend className="text-[14px] font-medium text-ink-2">Send reminders by</legend>
         {REMINDER_CHANNELS.map((c) => (
-          <label key={c} className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={channels.includes(c)} onChange={() => toggle(c)} /><span><span className="font-medium text-ink">{REMINDER_CHANNEL_LABELS[c]}</span> <span className="text-muted">{CHANNEL_NOTE[c]}</span></span></label>
+          <label key={c} className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={channels.includes(c)} onChange={() => toggle(c)} /><span><span className="font-medium text-ink">{REMINDER_CHANNEL_LABELS[c]}</span> <span className="text-muted">{CHANNEL_NOTE[c]}</span></span></label>
         ))}
       </fieldset>
       {canEdit && (
         <div className="space-y-2">
           <Button variant="secondary" loading={busy("setup")} disabled={Boolean(problem) || !changed} onClick={saveSetup}>Save reminder days and channels</Button>
-          {overview.enabled && changed && !problem && <p className="text-[12.5px] text-warning-ink">Saving different days, a different maximum or different channels switches your authorization off. You will need to authorize again.</p>}
-          {problem && <p role="alert" className="text-[12.5px] text-danger-ink">{problem}</p>}
+          {overview.enabled && changed && !problem && <p className="text-[13px] text-warning-ink">Saving different days, a different maximum or different channels switches your authorization off. You will need to authorize again.</p>}
+          {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
         </div>
       )}
 
       <div className="space-y-2 border-t border-line pt-4">
         <h3 className="text-[14px] font-semibold text-ink">The messages, as a customer would read them</h3>
-        {overview.wordingIsDraft && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">This wording is proposed. It has not been reviewed by a lawyer or an accountant. It mentions no fees, interest or consequences. Read it as your own, and change nothing here without asking one if you are unsure.</p>}
-        <p className="text-[12.5px] text-muted">These are examples on a made-up invoice for {overview.previews.length ? "each reminder day you chose" : "your chosen days"}. The customer&apos;s own link is put where it says so when a message is sent, and is never saved in the message.</p>
+        {overview.wordingIsDraft && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">This wording is proposed. It has not been reviewed by a lawyer or an accountant. It mentions no fees, interest or consequences. Read it as your own, and change nothing here without asking one if you are unsure.</p>}
+        <p className="text-[13px] text-muted">These are examples on a made-up invoice for {overview.previews.length ? "each reminder day you chose" : "your chosen days"}. The customer&apos;s own link is put where it says so when a message is sent, and is never saved in the message.</p>
         <ul className="space-y-3" aria-label="Reminder messages">
           {overview.previews.map((p) => (
             <li key={p.stepKey} className="rounded-xl border border-line bg-surface-2/50 p-3">
               <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">{p.label}</p>
-              <p className="mt-1 text-[12.5px] text-muted">Subject (email): {p.subject}</p>
-              <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] text-ink">{p.body}</p>
+              <p className="mt-1 text-[13px] text-muted">Subject (email): {p.subject}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-[14px] text-ink">{p.body}</p>
             </li>
           ))}
         </ul>
@@ -178,14 +178,14 @@ export function RemindersPanel({ settings, overview, canEdit, canSwitchOff, tz }
 
       {canEdit && (
         <div className="space-y-3 border-t border-line pt-4">
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2">
             <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={read} onChange={(e) => setRead(e.target.checked)} />
             <span>I have read these messages. I authorize iAcquire to send exactly these reminders, on {parsed.ok ? describeOffsets(parsed.offsets).toLowerCase().replace(/\.$/, "") : "the days above"}, by {channels.map((c) => REMINDER_CHANNEL_LABELS[c].toLowerCase()).join(" and ")}, to customers who have agreed to receive service messages, for up to 90 days. <span className="text-muted">The authorization is recorded with your name and the exact wording.</span></span>
           </label>
           <div className="flex flex-wrap gap-2">
             <Button variant="brand" loading={busy("authorize")} disabled={!read || changed || Boolean(problem) || overview.active} onClick={() => run("authorize", () => authorizeRemindersAction({ wordingHash: overview.wordingHash, settingsVersion: settings.version }), "Reminders are on.")}>{overview.enabled && !overview.active ? "Authorize again" : "Authorize reminders"}</Button>
           </div>
-          {changed && <p className="text-[12.5px] text-muted">Save your changes to the days or channels first, then authorize what you saved.</p>}
+          {changed && <p className="text-[13px] text-muted">Save your changes to the days or channels first, then authorize what you saved.</p>}
         </div>
       )}
       {canSwitchOff && overview.enabled && <Button variant="outline" loading={busy("off")} onClick={() => run("off", () => switchOffRemindersAction(), "Reminders are off. Scheduled ones were withdrawn.")}>Switch reminders off</Button>}

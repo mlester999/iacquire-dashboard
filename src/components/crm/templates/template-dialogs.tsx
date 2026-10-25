@@ -50,7 +50,7 @@ export function ApproveDialog({ scope, template, whatsapp, open, onOpenChange }:
         </>
       }
     >
-      <dl className="grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-[140px_minmax(0,1fr)]">
+      <dl className="grid gap-x-4 gap-y-2 text-[14px] sm:grid-cols-[140px_minmax(0,1fr)]">
         <dt className="text-muted">Channel</dt>
         <dd><ChannelLabel channel={template.channel} /></dd>
         <dt className="text-muted">Purpose</dt>
@@ -78,11 +78,11 @@ export function ApproveDialog({ scope, template, whatsapp, open, onOpenChange }:
           </>
         )}
       </dl>
-      <div className="mt-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[13.5px] leading-relaxed">
+      <div className="mt-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[14px] leading-relaxed">
         <TokenHighlight text={template.body} />
       </div>
       {empty.length > 0 && (
-        <p role="status" className="mt-3 flex gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink">
+        <p role="status" className="mt-3 flex gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
             {empty.map((d) => `“${d.label}”`).join(", ")} {empty.length === 1 ? "is a required configuration value and is empty" : "are required configuration values and are empty"}, so every message
@@ -91,7 +91,7 @@ export function ApproveDialog({ scope, template, whatsapp, open, onOpenChange }:
           </span>
         </p>
       )}
-      <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+      <p className="mt-3 text-[13px] leading-relaxed text-muted">
         {marketing
           ? "Marketing messages only go to people who agreed to marketing on this channel, and a send to anyone else is refused."
           : "Service messages go to people who contacted you or agreed to messages on this channel. Opt-outs are always respected."}{" "}
@@ -154,7 +154,7 @@ export function TestSendDialog({
     >
       <div className="space-y-4">
         {notReady && (
-          <p role="status" className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-[12.5px] leading-relaxed text-warning-ink">
+          <p role="status" className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-[13px] leading-relaxed text-warning-ink">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>{notReady} A test can&apos;t be delivered until that changes; sending now only confirms the reason.</span>
           </p>
@@ -166,14 +166,14 @@ export function TestSendDialog({
             </Select>
           </Field>
         ) : (
-          <p className="rounded-xl border border-dashed border-line-strong p-3 text-[13px] leading-relaxed text-muted">
+          <p className="rounded-xl border border-dashed border-line-strong p-3 text-[14px] leading-relaxed text-muted">
             No {label} test destinations are approved yet. Tests only ever go to your own addresses, never to customers.{" "}
             {canConfigure ? <Link href={`${scope.base}/settings/communications`} className="font-medium text-primary hover:underline">Approve one in Communication Settings</Link> : "Ask an owner or manager to approve one in Communication Settings."}
           </p>
         )}
         {scope.can["contacts.view"] && (
           <div className="space-y-2">
-            <p className="text-[13px] font-medium text-ink-2">Fill the tokens with</p>
+            <p className="text-[14px] font-medium text-ink-2">Fill the tokens with</p>
             <Segmented id="ts-src" size="sm" ariaLabel="Fill the tokens with" value={source} onChange={setSource} options={[{ value: "sample", label: "Sample values" }, { value: "contact", label: "A contact's details" }]} />
             {source === "contact" && (
               <RecordPicker id="ts-contact" label="Contact whose details to use" placeholder="Search your contacts" search={search} render={(c) => c.name} onPick={setContact} value={contact?.name} onClear={() => setContact(null)} />
@@ -182,7 +182,7 @@ export function TestSendDialog({
           </div>
         )}
         {outcome && (
-          <div role="status" className={cn("flex items-start gap-2 rounded-xl p-3 text-[13px] leading-relaxed", outcome.ok && (outcome.status === "sent" || outcome.status === "delivered" || outcome.status === "read" || outcome.status === "queued") ? "bg-success-soft text-success-ink" : "bg-danger-soft text-danger-ink")}>
+          <div role="status" className={cn("flex items-start gap-2 rounded-xl p-3 text-[14px] leading-relaxed", outcome.ok && (outcome.status === "sent" || outcome.status === "delivered" || outcome.status === "read" || outcome.status === "queued") ? "bg-success-soft text-success-ink" : "bg-danger-soft text-danger-ink")}>
             {outcome.ok && outcome.status !== "failed" && outcome.status !== "blocked" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />}
             <span>{outcome.ok ? <><strong>{outcome.statusLabel}.</strong> {outcome.detail}</> : outcome.detail}</span>
           </div>

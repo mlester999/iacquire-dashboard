@@ -36,7 +36,7 @@ export function NewWebsite({ cards, preferIndustry }: { cards: GalleryCard[]; pr
         description="We'll write a private first draft from your business details, with this design. Nothing goes live until you publish, and you can change every part of it."
         footer={<><Button variant="ghost" onClick={() => setConfirm(null)} disabled={busy}>Not yet</Button><Button variant="brand" loading={busy} onClick={() => void create()}>Create my website</Button></>}
       >
-        <ul className="list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed text-ink-2">
+        <ul className="list-disc space-y-1.5 pl-5 text-[14px] leading-relaxed text-ink-2">
           <li>Your business name, services, contact details and colours are filled in for you.</li>
           <li>Pictures start as built-in artwork. You&apos;ll swap in your own before you publish.</li>
           <li>You can rearrange, add or remove anything, and even start again from another design later.</li>

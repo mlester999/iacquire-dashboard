@@ -134,13 +134,13 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
           { label: "Stopped, last 30 days", value: data.stats.stopped30d, icon: CircleSlash },
         ].map((s) => (
           <Card key={s.label} className="p-4">
-            <dt className="flex items-center gap-1.5 text-[12.5px] text-muted"><s.icon className="size-3.5" aria-hidden />{s.label}</dt>
+            <dt className="flex items-center gap-1.5 text-[13px] text-muted"><s.icon className="size-3.5" aria-hidden />{s.label}</dt>
             <dd className="mt-1 text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-ink">{s.value.toLocaleString("en-US")}</dd>
           </Card>
         ))}
       </dl>
       {(data.stats.stopReasons.length > 0 || data.stats.notStarted30d > 0 || data.stats.awaitingApproval > 0) && (
-        <p className="-mt-5 text-[12.5px] leading-relaxed text-muted">
+        <p className="-mt-5 text-[13px] leading-relaxed text-muted">
           {data.stats.stopReasons.length > 0 && <>Why sequences stopped: {data.stats.stopReasons.map((r) => `${reasonLabel(r.reason)} (${r.count})`).join(", ")}. </>}
           {data.stats.notStarted30d > 0 && <>{data.stats.notStarted30d} {data.stats.notStarted30d === 1 ? "person was" : "people were"} not followed up because they had already received the 30-day maximum. </>}
           {data.stats.awaitingApproval > 0 && <>{data.stats.awaitingApproval} follow-up {data.stats.awaitingApproval === 1 ? "message is" : "messages are"} waiting for approval in the Approval Center.</>}
@@ -177,7 +177,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                       {s.value === "balanced" && <Badge tone="neutral">Default</Badge>}
                       {data.preset === s.value && <Badge tone="success">Current</Badge>}
                     </span>
-                    <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{s.description}</span>
+                    <span className="mt-1 block text-[13px] leading-relaxed text-muted">{s.description}</span>
                     {s.value !== "off" && (s.value !== "custom" || data.custom) && <span className="mt-1.5 block text-[12px] text-faint">With iAcquire&apos;s limits: {daysText(days)}</span>}
                   </button>
                 );
@@ -186,7 +186,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
 
             {draft.preset === "custom" && (
               <fieldset disabled={!canConfigure} className="space-y-4 rounded-2xl border border-line p-4">
-                <legend className="px-1 text-[13px] font-semibold text-ink">Your sequence</legend>
+                <legend className="px-1 text-[14px] font-semibold text-ink">Your sequence</legend>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Number of follow-ups" htmlFor={`${ids}-attempts`} hint={`1 to ${maxAttempts}, iAcquire's limit.`}>
                     <Input id={`${ids}-attempts`} inputMode="numeric" value={draft.attempts} onChange={(e) => setAttempts(e.target.value)} />
@@ -198,11 +198,11 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                   </Field>
                 </div>
                 <div>
-                  <p className="text-[13px] font-medium text-ink-2">Days to wait before each follow-up</p>
-                  <p className="text-[12.5px] text-muted">Counted from the previous message. Whole days from {minGap} to {MAX_GAP_DAYS}.</p>
+                  <p className="text-[14px] font-medium text-ink-2">Days to wait before each follow-up</p>
+                  <p className="text-[13px] text-muted">Counted from the previous message. Whole days from {minGap} to {MAX_GAP_DAYS}.</p>
                   <ol className="mt-2 grid gap-2 sm:grid-cols-2">
                     {draft.gaps.slice(0, Math.max(1, Math.min(10, Number(draft.attempts) || 1))).map((g, i) => (
-                      <li key={i} className="flex items-center gap-2 text-[13px]">
+                      <li key={i} className="flex items-center gap-2 text-[14px]">
                         <label htmlFor={`${ids}-gap-${i}`} className="w-28 shrink-0 text-muted">Follow-up {i + 1}</label>
                         <Input
                           id={`${ids}-gap-${i}`}
@@ -219,21 +219,21 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                     ))}
                   </ol>
                 </div>
-                <label className="flex items-start justify-between gap-3 rounded-xl border border-line p-3 text-[13px]">
+                <label className="flex items-start justify-between gap-3 rounded-xl border border-line p-3 text-[14px]">
                   <span>
                     <span className="block font-medium text-ink">Only during business hours</span>
-                    <span className="block text-[12.5px] text-muted">Off: any time outside quiet hours ({limits.quietHoursStart}–{limits.quietHoursEnd}).</span>
+                    <span className="block text-[13px] text-muted">Off: any time outside quiet hours ({limits.quietHoursStart}–{limits.quietHoursEnd}).</span>
                   </span>
                   <Switch checked={draft.businessHoursOnly} onCheckedChange={(v) => setDraft((d) => ({ ...d, businessHoursOnly: v }))} aria-label="Only during business hours" />
                 </label>
                 {draft.channel === "whatsapp" && (
-                  <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] text-warning-ink">
+                  <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] text-warning-ink">
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                     WhatsApp only allows free-form messages within {limits.whatsappWindowHours} hours of the customer&apos;s last message, so later follow-ups on WhatsApp are blocked and recorded as such.
                   </p>
                 )}
                 {issues.length > 0 && (
-                  <ul role="alert" className="list-disc space-y-0.5 rounded-xl bg-danger-soft py-2.5 pl-7 pr-3 text-[12.5px] text-danger-ink">
+                  <ul role="alert" className="list-disc space-y-0.5 rounded-xl bg-danger-soft py-2.5 pl-7 pr-3 text-[13px] text-danger-ink">
                     {issues.map((i) => <li key={i}>{i}</li>)}
                   </ul>
                 )}
@@ -265,17 +265,17 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
             </CardHeader>
             <CardContent>
               {draft.preset === "off" ? (
-                <p className="text-[13px] text-muted">No follow-ups are sent.</p>
+                <p className="text-[14px] text-muted">No follow-ups are sent.</p>
               ) : !preview ? (
-                <p className="text-[13px] text-muted">Fix the sequence to see its schedule.</p>
+                <p className="text-[14px] text-muted">Fix the sequence to see its schedule.</p>
               ) : !preview.steps.length ? (
-                <p className="text-[13px] text-muted">iAcquire&apos;s limits don&apos;t allow any follow-ups at the moment.</p>
+                <p className="text-[14px] text-muted">iAcquire&apos;s limits don&apos;t allow any follow-ups at the moment.</p>
               ) : (
                 <ol className="space-y-2.5">
                   {preview.steps.map((s) => (
                     <li key={s.step} className="flex items-start gap-3">
                       <span aria-hidden className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{s.step}</span>
-                      <span className="min-w-0 text-[13px]">
+                      <span className="min-w-0 text-[14px]">
                         <span className="block font-medium text-ink">Day {s.day}: {formatDateTime(s.sendAt, data.timezone)}</span>
                         {s.held && <span className="block text-[12px] text-muted">Due {formatDateTime(s.dueAt, data.timezone)}, held for {preview.businessHoursOnly ? "quiet or business hours" : "quiet hours"}</span>}
                       </span>
@@ -307,7 +307,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                   const all = estimateSequenceMicros(c.clientMicrosPerUnit, c.channel, data.businessName, stepCount);
                   const chosen = draft.preset === "custom" && draft.channel === c.channel;
                   return (
-                    <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[13px]">
+                    <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
                       <span className="flex min-w-0 items-center gap-2">
                         <Icon className="size-4 text-muted" aria-hidden />
                         <span className="font-medium text-ink">{CHANNEL_LABELS[c.channel]}</span>
@@ -316,7 +316,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                         {chosen && <Badge tone="primary">Chosen</Badge>}
                       </span>
                       {one === null ? (
-                        <span className="text-[12.5px] text-muted">Rate not published</span>
+                        <span className="text-[13px] text-muted">Rate not published</span>
                       ) : (
                         <span className="text-right tabular-nums">
                           <span className="block text-ink">{formatUsd(one, { precise: true })} each</span>
@@ -331,7 +331,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
             </CardContent>
           </Card>
 
-          <div className="rounded-2xl bg-surface-2 p-4 text-[12.5px] leading-relaxed text-muted">
+          <div className="rounded-2xl bg-surface-2 p-4 text-[13px] leading-relaxed text-muted">
             <p className="flex items-center gap-1.5 font-medium text-ink"><ShieldCheck className="size-3.5" aria-hidden />iAcquire&apos;s safety limits always apply</p>
             <p className="mt-1">
               At most {limits.maxAttempts} follow-ups per sequence and {limits.maxPer30Days} per person in 30 days across all channels, at least {limits.minHoursBetween} hours apart, never during quiet hours ({limits.quietHoursStart}–{limits.quietHoursEnd}), never without consent, and never after a reply, an opt-out, a booking or a person taking over.
@@ -343,7 +343,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
       <section aria-labelledby={`${ids}-upcoming`} className="space-y-3">
         <div>
           <h3 id={`${ids}-upcoming`} className="text-[15px] font-semibold text-ink">Coming up</h3>
-          <p className="text-[12.5px] text-muted">Who gets a follow-up next. Each one is checked again against every rule at the moment it is due.</p>
+          <p className="text-[13px] text-muted">Who gets a follow-up next. Each one is checked again against every rule at the moment it is due.</p>
         </div>
         {!data.canSeePeople ? (
           <ReadOnlyNotice>Who is in a sequence is visible to people who can see every conversation.</ReadOnlyNotice>
@@ -357,15 +357,15 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
               return (
                 <li key={next.contactId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <Link href={`${scope.base}/contacts/${next.contactId}`} className="text-[13.5px] font-medium text-ink hover:text-primary">{next.contactName}</Link>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
+                    <Link href={`${scope.base}/contacts/${next.contactId}`} className="text-[14px] font-medium text-ink hover:text-primary">{next.contactName}</Link>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
                       <span className="inline-flex items-center gap-1"><Icon className="size-3.5" aria-hidden />{CHANNEL_LABELS[next.channel]}</span>
                       <span>Follow-up {next.stepNumber} of {next.maxAttempts}</span>
                       <span>{next.status === "scheduled" ? `due ${formatDateTime(next.dueAt, scope.timezone)}` : waitingApproval ? "waiting for approval" : `queued${next.sendAfter ? ` for ${formatDateTime(next.sendAfter, scope.timezone)}` : ""}`}</span>
                       {remaining > 1 && <span>· {remaining - 1} more after this</span>}
                     </p>
                   </div>
-                  {inboxLinks && <Link href={`/inbox?conversation=${next.conversationId}`} className="text-[12.5px] font-medium text-muted underline-offset-2 hover:text-ink hover:underline">Conversation</Link>}
+                  {inboxLinks && <Link href={`/inbox?conversation=${next.conversationId}`} className="text-[13px] font-medium text-muted underline-offset-2 hover:text-ink hover:underline">Conversation</Link>}
                   {canConfigure && (
                     <Button variant="secondary" size="sm" onClick={() => setStopping(next)}><StopCircle className="size-3.5" aria-hidden />Stop follow-ups</Button>
                   )}
@@ -380,7 +380,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
         <section aria-labelledby={`${ids}-history`} className="space-y-3">
           <div>
             <h3 id={`${ids}-history`} className="text-[15px] font-semibold text-ink">Delivery history</h3>
-            <p className="text-[12.5px] text-muted">Follow-ups from the last 30 days: what was sent and delivered, and what was held back and why.</p>
+            <p className="text-[13px] text-muted">Follow-ups from the last 30 days: what was sent and delivered, and what was held back and why.</p>
           </div>
           {!data.history.length ? (
             <Card><EmptyState compact icon={<Send className="size-5" />} title="No follow-ups in the last 30 days" /></Card>
@@ -393,14 +393,14 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                   <li key={h.stepId} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`${scope.base}/contacts/${h.contactId}`} className="text-[13.5px] font-medium text-ink hover:text-primary">{h.contactName}</Link>
+                        <Link href={`${scope.base}/contacts/${h.contactId}`} className="text-[14px] font-medium text-ink hover:text-primary">{h.contactName}</Link>
                         {status ? (
                           <Badge tone={status === "failed" ? "danger" : status === "delivered" || status === "read" ? "success" : "primary"}>{MESSAGE_STATUS_LABELS[status] ?? status}</Badge>
                         ) : (
                           <Badge tone={h.stepStatus === "blocked" ? "warning" : "neutral"}>{h.stepStatus === "blocked" ? "Not sent" : h.stepStatus === "cancelled" ? "Cancelled" : "Skipped"}</Badge>
                         )}
                       </div>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
                         <span className="inline-flex items-center gap-1"><Icon className="size-3.5" aria-hidden />{CHANNEL_LABELS[h.channel]}</span>
                         <span>Follow-up {h.stepNumber}</span>
                         {h.stepStatus !== "sent" && h.reason && <span>· {reasonLabel(h.reason)}</span>}
@@ -417,7 +417,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
         </section>
       )}
 
-      <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+      <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
         <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         Follow-ups go out under the AI employee that answered, through the same checks as every message: its mode (a draft for approval when it asks first), consent, opt-outs, quiet hours, credits and pauses.
       </p>

@@ -83,9 +83,9 @@ export function ProposalEditor({ detail, catalog, taxRates, canDiscount, editabl
 
   return (
     <form className="space-y-6" aria-label="Edit proposal" onSubmit={(e) => { e.preventDefault(); if (sync !== "conflict") void save(); }}>
-      {lockedReason && <p role="status" className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />{lockedReason}</p>}
+      {lockedReason && <p role="status" className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />{lockedReason}</p>}
       {sync === "conflict" && (
-        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
           <p className="font-medium">Someone changed this proposal while you were editing it.</p>
           <p className="mt-0.5">Your edits are kept below, but they cannot be saved over the newer version. Copy anything you want to keep, then load the latest version.</p>
           <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(detail)}>Load the latest version</Button>
@@ -96,13 +96,13 @@ export function ProposalEditor({ detail, catalog, taxRates, canDiscount, editabl
         <section aria-label="Checks for this proposal" className="space-y-1.5">
           <ul className="space-y-1.5">
             {[...blocking, ...warnings].map((p) => (
-              <li key={p.code + p.message} className={`flex items-start gap-2 rounded-xl px-3 py-2 text-[13px] ${p.level === "blocking" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink"}`}>
+              <li key={p.code + p.message} className={`flex items-start gap-2 rounded-xl px-3 py-2 text-[14px] ${p.level === "blocking" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink"}`}>
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span><span className="font-semibold">{p.level === "blocking" ? (p.stopsAt === "send" ? "Fix before sending: " : "Fix before approval: ") : "Note: "}</span>{p.message}</span>
               </li>
             ))}
           </ul>
-          {dirty && <p className="text-[12.5px] text-muted">These checks are for the last saved version. Save to check your changes.</p>}
+          {dirty && <p className="text-[13px] text-muted">These checks are for the last saved version. Save to check your changes.</p>}
         </section>
       )}
 
@@ -135,7 +135,7 @@ export function ProposalEditor({ detail, catalog, taxRates, canDiscount, editabl
           <input id="pe-sign" type="checkbox" checked={s.requiresSignature} onChange={(e) => patch({ requiresSignature: e.target.checked })} className="mt-0.5 size-5 shrink-0 rounded border-line-strong accent-[var(--color-primary,#2563eb)]" />
           <div className="min-w-0">
             <label htmlFor="pe-sign" className="text-[14px] font-medium text-ink after:absolute after:inset-0 after:content-['']">This proposal needs a signature</label>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">The customer then cannot accept it with an emailed code. It needs a connected signing service, or you record the signing as done offline. Nothing is described as signed unless a signing service says so or a person records it.</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted">The customer then cannot accept it with an emailed code. It needs a connected signing service, or you record the signing as done offline. Nothing is described as signed unless a signing service says so or a person records it.</p>
           </div>
         </div>
       </fieldset>
@@ -174,7 +174,7 @@ export function ProposalEditor({ detail, catalog, taxRates, canDiscount, editabl
       {editable && (
         <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-soft backdrop-blur">
           <Button type="submit" variant="brand" loading={busy("save")} disabled={!dirty || sync === "conflict"}>Save changes</Button>
-          <div className="min-w-0 flex-1 text-[12.5px]" role="status">
+          <div className="min-w-0 flex-1 text-[13px]" role="status">
             {touched && issues.length > 0 && dirty && <span className="text-danger-ink">{issues.length === 1 ? "One thing needs fixing" : `${issues.length} things need fixing`} before this can be saved.</span>}
             {!(touched && issues.length > 0 && dirty) && dirty && <span className="text-muted">You have unsaved changes.{voids ? " Saving sends this back to a draft, because the approval was of the earlier text." : ""}</span>}
             {!dirty && <span className="text-muted">All changes saved.</span>}
@@ -192,8 +192,8 @@ function TotalsSummary({ totals, currency }: { totals: ReturnType<typeof liveTot
   return (
     <div className="rounded-2xl border border-line bg-surface-2 p-4" aria-live="polite">
       <h3 className="text-[14px] font-semibold text-ink">Totals</h3>
-      {used.length === 0 ? <p className="mt-1 text-[13px] text-muted">Nothing to add up yet.</p> : (
-        <dl className="mt-2 space-y-3 text-[13.5px]">
+      {used.length === 0 ? <p className="mt-1 text-[14px] text-muted">Nothing to add up yet.</p> : (
+        <dl className="mt-2 space-y-3 text-[14px]">
           {used.map((b) => {
             const g = totals.groups[b];
             return (
@@ -210,8 +210,8 @@ function TotalsSummary({ totals, currency }: { totals: ReturnType<typeof liveTot
           })}
         </dl>
       )}
-      {used.length > 1 && <p className="mt-3 text-[12.5px] text-muted">{groupTotalsText(grand, currency)}. One-time, monthly and yearly amounts are never added together.</p>}
-      {totals.incomplete && <p className="mt-2 text-[12.5px] text-warning-ink">A line is not complete yet, so it is left out of these totals.</p>}
+      {used.length > 1 && <p className="mt-3 text-[13px] text-muted">{groupTotalsText(grand, currency)}. One-time, monthly and yearly amounts are never added together.</p>}
+      {totals.incomplete && <p className="mt-2 text-[13px] text-warning-ink">A line is not complete yet, so it is left out of these totals.</p>}
     </div>
   );
 }

@@ -73,7 +73,7 @@ export function Panel({
         {icon && <IconTile icon={icon} tone={tone} />}
         <div className="min-w-0 flex-1 basis-52">
           <h2 className="text-[15px] font-semibold leading-snug tracking-tight text-ink">{title}</h2>
-          {description && <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>}
+          {description && <p className="mt-1 text-[14px] leading-relaxed text-muted">{description}</p>}
         </div>
         {aside && <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div>}
       </header>
@@ -130,7 +130,7 @@ export function SettingRow({
       {icon && <IconTile icon={icon} tone={tone} size="sm" />}
       <span className="min-w-[9.5rem] flex-1 basis-40">
         <span className="block text-[14px] font-medium leading-snug text-ink">{title}</span>
-        {description && <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{description}</span>}
+        {description && <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{description}</span>}
       </span>
       {children && <span className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2.5">{children}</span>}
     </Tag>
@@ -176,7 +176,7 @@ export function OptionCard({
           {title}
           {meta}
         </span>
-        {description && <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{description}</span>}
+        {description && <span className="mt-1 block text-[13px] leading-relaxed text-muted">{description}</span>}
       </span>
       <span aria-hidden className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border transition", selected ? "border-primary bg-primary text-white" : "border-line-strong bg-surface")}>
         {selected && <Check className="size-3" strokeWidth={3} />}
@@ -204,8 +204,8 @@ export function Notice({ tone = "neutral", icon, title, children, className, rol
   return (
     <div role={role} className={cn("flex items-start gap-3 rounded-2xl p-3.5 ring-1 ring-inset", NOTICE[tone], className)}>
       <IconTile icon={icon} tone={tone} size="sm" />
-      <div className="min-w-0 flex-1 self-center text-[13px] leading-relaxed text-ink-2">
-        {title && <p className="text-[13.5px] font-semibold leading-snug text-ink">{title}</p>}
+      <div className="min-w-0 flex-1 self-center text-[14px] leading-relaxed text-ink-2">
+        {title && <p className="text-[14px] font-semibold leading-snug text-ink">{title}</p>}
         <div className={cn(title && "mt-0.5")}>{children}</div>
       </div>
     </div>
@@ -224,7 +224,7 @@ export function FilterTabs<V extends string>({ value, onChange, options, label, 
             type="button"
             aria-pressed={active}
             onClick={() => onChange(o.value)}
-            className={cn("inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-200 sm:h-9", active ? "bg-ink text-surface shadow-soft" : "text-ink-2 hover:bg-surface-3/70")}
+            className={cn("inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-colors duration-200 sm:h-9", active ? "bg-ink text-surface shadow-soft" : "text-ink-2 hover:bg-surface-3/70")}
           >
             {o.label}
             {o.count !== undefined && <span className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[12px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface text-muted ring-1 ring-inset ring-line")}>{o.count}</span>}

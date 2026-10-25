@@ -56,7 +56,7 @@ export function MonthGrid({
                   type="button"
                   onClick={() => onOpenDay(d)}
                   aria-label={`${dayLabel}. Open this day.`}
-                  className={cn("hidden size-7 items-center justify-center rounded-full text-[12.5px] font-semibold tabular-nums hover:bg-surface-2 sm:inline-flex", isToday ? "bg-primary text-primary-on hover:bg-primary" : inMonth ? "text-ink" : "text-faint")}
+                  className={cn("hidden size-7 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums hover:bg-surface-2 sm:inline-flex", isToday ? "bg-primary text-primary-on hover:bg-primary" : inMonth ? "text-ink" : "text-faint")}
                 >
                   {formatDay(d, { day: "numeric" })}
                 </button>

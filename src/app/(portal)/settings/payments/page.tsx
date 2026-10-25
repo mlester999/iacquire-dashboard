@@ -21,7 +21,7 @@ export default async function CustomerPaymentsSettingsPage() {
     <div className="space-y-5">
       <header>
         <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink"><CreditCard className="size-5 text-muted" aria-hidden />Customer payments</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">Where your customers&apos; invoice payments go. This is your own payment provider account, not iAcquire&apos;s: iAcquire&apos;s own billing is under Billing &amp; credits.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Where your customers&apos; invoice payments go. This is your own payment provider account, not iAcquire&apos;s: iAcquire&apos;s own billing is under Billing &amp; credits.</p>
       </header>
       <ConnectionsPanel connections={connections} providers={providers} callsEnabled={sw.writesEnabled} liveEnabled={sw.liveEnabled} tz={ctx.org.timezone || "UTC"} />
     </div>

@@ -173,7 +173,7 @@ function FormBuilder({ form }: { form: FormAsset }) {
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented id={`form-tab-${form.id}`} ariaLabel="Form builder" value={tab} onChange={setTab} options={[{ value: "questions", label: `Questions (${draft.questions.length})` }, { value: "after", label: "Consent & actions" }]} />
-        {issues.length > 0 && <span className="text-[12.5px] text-muted" role="status">{errors ? `${errors} to fix before a client can publish it` : "Worth checking"}</span>}
+        {issues.length > 0 && <span className="text-[13px] text-muted" role="status">{errors ? `${errors} to fix before a client can publish it` : "Worth checking"}</span>}
       </div>
       {issues.length > 0 && <Card className="p-2"><IssueList issues={issues} onPick={(i) => { if (i.area === "questions") { setTab("questions"); if (i.question) setSelected(i.question); } else setTab("after"); }} /></Card>}
       {tab === "questions" ? (
@@ -186,7 +186,7 @@ function FormBuilder({ form }: { form: FormAsset }) {
             {draft.questions.length ? (
               <QuestionList questions={draft.questions} selected={selected} onSelect={setSelected} onMove={moveQuestion} issues={issues} readOnly={readOnly} fields={options.contactFields} />
             ) : (
-              <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[12.5px] text-muted">No questions yet. Add the first one.</p>
+              <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[13px] text-muted">No questions yet. Add the first one.</p>
             )}
           </div>
           <div className="min-w-0 rounded-2xl border border-line p-4">

@@ -197,7 +197,7 @@ export function NotificationList({
                 aria-label="Filter by notification type"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                className="h-10 rounded-xl text-[13px]"
+                className="h-10 rounded-xl text-[14px]"
               >
                 <option value="all">All types</option>
                 {categories.map((entry) => (
@@ -214,7 +214,6 @@ export function NotificationList({
             loading={markingAll}
             disabled={unread === 0}
             onClick={() => void markAll()}
-            aria-label="Mark all notifications as read"
           >
             Mark all read
           </Button>

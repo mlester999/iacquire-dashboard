@@ -155,21 +155,21 @@ export function LegacyInboxWorkspace(props: Props) {
         </form>
         <div role="group" aria-label="Filter by channel" className="flex flex-wrap gap-1.5">
           {[["", "All"], ["sms", "SMS"], ["whatsapp", "WhatsApp"], ["email", "Email"]].map(([value, label]) => (
-            <button key={value} aria-pressed={filters.channel === value} onClick={() => go({ channel: value || null })} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.channel === value ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink")}>
+            <button key={value} aria-pressed={filters.channel === value} onClick={() => go({ channel: value || null })} className={cn("min-h-9 rounded-xl px-3 text-[13px] font-medium transition", filters.channel === value ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink")}>
               {label}
             </button>
           ))}
         </div>
         <div role="group" aria-label="Filter by owner" className="flex flex-wrap gap-1.5">
           {[["", "Everyone"], ["mine", "Mine"], ["ai", "AI"], ["unassigned", "Unassigned"]].map(([value, label]) => (
-            <button key={value} aria-pressed={filters.owner === value && !needsOnly} onClick={() => { setNeedsOnly(false); go({ owner: value || null }); }} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.owner === value && !needsOnly ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
+            <button key={value} aria-pressed={filters.owner === value && !needsOnly} onClick={() => { setNeedsOnly(false); go({ owner: value || null }); }} className={cn("min-h-9 rounded-xl px-3 text-[13px] font-medium transition", filters.owner === value && !needsOnly ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
               {label}
             </button>
           ))}
-          <button aria-pressed={needsOnly} onClick={() => setNeedsOnly((v) => !v)} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", needsOnly ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-muted hover:text-ink")}>
+          <button aria-pressed={needsOnly} onClick={() => setNeedsOnly((v) => !v)} className={cn("min-h-9 rounded-xl px-3 text-[13px] font-medium transition", needsOnly ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-muted hover:text-ink")}>
             Needs a person{waiting.length ? ` (${waiting.length})` : ""}
           </button>
-          <button aria-pressed={filters.unread} onClick={() => go({ unread: filters.unread ? null : "1" })} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.unread ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
+          <button aria-pressed={filters.unread} onClick={() => go({ unread: filters.unread ? null : "1" })} className={cn("min-h-9 rounded-xl px-3 text-[13px] font-medium transition", filters.unread ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
             Unread
           </button>
         </div>
@@ -190,7 +190,7 @@ export function LegacyInboxWorkspace(props: Props) {
                     <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
                     <span className="shrink-0 text-[12px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
                   </span>
-                  <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
+                  <span className="mt-0.5 block truncate text-[13px] text-muted">{c.preview ?? "No messages yet"}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
                     <ChannelBadge channel={c.channel} provider={props.channelProviders?.[c.channel]} />
                     <OwnerPill kind={c.ownerKind} name={c.ownerName} />
@@ -207,10 +207,10 @@ export function LegacyInboxWorkspace(props: Props) {
           <div className="rounded-2xl border border-dashed border-line-strong p-8 text-center">
             <Inbox className="mx-auto size-6 text-muted" aria-hidden />
             <h2 className="mt-3 text-[15px] font-semibold">{list.length ? "Nothing matches these filters" : "No conversations yet"}</h2>
-            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">
+            <p className="mx-auto mt-1 max-w-xs text-[14px] leading-relaxed text-muted">
               {list.length ? "Try a different channel or owner." : "Customer messages from SMS, WhatsApp and email appear here once a channel is verified and connected. Nothing is sent until you switch it on."}
             </p>
-            {!list.length && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
+            {!list.length && <Link href="/settings/messaging" className="mt-3 inline-block text-[14px] font-medium text-primary">Check channel setup</Link>}
           </div>
         )}
       </section>
@@ -220,7 +220,7 @@ export function LegacyInboxWorkspace(props: Props) {
           <>
             <Thread key={detail.conversation.id} {...props} detail={detail} onBack={() => go({ conversation: null })} />
             <details className="mt-4 rounded-2xl border border-line bg-surface p-3 xl:hidden">
-              <summary className="min-h-10 cursor-pointer text-[13px] font-semibold">Customer details, consent and activity</summary>
+              <summary className="min-h-10 cursor-pointer text-[14px] font-semibold">Customer details, consent and activity</summary>
               <div className="mt-3">
                 <ContactPanel key={`m-${detail.conversation.id}`} {...props} detail={detail} inline />
               </div>
@@ -247,7 +247,7 @@ function EmptyThread({ hasList }: { hasList: boolean }) {
     <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong p-10 text-center">
       <Inbox className="size-7 text-muted" aria-hidden />
       <h2 className="mt-3 text-[16px] font-semibold">{hasList ? "Choose a conversation" : "Your inbox is empty"}</h2>
-      <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
+      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
     </div>
   );
 }
@@ -267,10 +267,10 @@ function EscalationQueue({ items, me, canRespond, onOpen }: { items: EscalationC
   }
   return (
     <section aria-label="Needs a person" className="space-y-2 rounded-2xl border border-warning/30 bg-warning-soft/50 p-3">
-      <h2 className="flex items-center gap-2 text-[13px] font-semibold text-warning-ink"><ShieldAlert className="size-4" aria-hidden />Needs a person ({items.length})</h2>
+      <h2 className="flex items-center gap-2 text-[14px] font-semibold text-warning-ink"><ShieldAlert className="size-4" aria-hidden />Needs a person ({items.length})</h2>
       <ul className="space-y-2">
         {items.slice(0, 5).map((e) => (
-          <li key={e.id} className="rounded-xl bg-surface p-3 text-[12.5px]">
+          <li key={e.id} className="rounded-xl bg-surface p-3 text-[13px]">
             <div className="flex items-start justify-between gap-2">
               <button onClick={() => onOpen(e.conversation_id)} className="min-w-0 text-left">
                 <span className="block font-medium">{e.urgency === "urgent" ? "Urgent · " : ""}{ESCALATION_LABELS[e.category]}</span>
@@ -700,7 +700,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
   function renderMessage(m: InboxMessage) {
     if (m.direction === "internal") {
       return (
-        <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[13px]">
+        <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[14px]">
           <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
           <p className="whitespace-pre-wrap">{m.body}</p>
         </div>
@@ -783,9 +783,9 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
       <p role="status" className="sr-only">{olderNote}</p>
 
       <footer className="border-t border-line p-3 sm:p-4">
-        {optedOut && <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-danger-soft p-2.5 text-[12.5px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden />This customer opted out of messages on this channel. Nothing can be sent to them here.</p>}
+        {optedOut && <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-danger-soft p-2.5 text-[13px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden />This customer opted out of messages on this channel. Nothing can be sent to them here.</p>}
         {windowClosed && !optedOut && (
-          <div role="status" className="mb-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] text-warning-ink">
+          <div role="status" className="mb-2 rounded-xl bg-warning-soft p-2.5 text-[13px] text-warning-ink">
             <p className="flex items-start gap-2"><Clock className="mt-0.5 size-4 shrink-0" aria-hidden />WhatsApp&apos;s reply window has closed. Only an approved template can be sent.</p>
             {templates.length ? (
               <>
@@ -808,8 +808,8 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
         {otherOwner && !perms.assign && <p className="mb-2 text-[12px] text-muted">{c.ownerName ?? "A teammate"} is handling this conversation.</p>}
         <div className="mb-2 flex flex-wrap items-center gap-1">
           <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Composer mode">
-            <button role="tab" aria-selected={mode === "reply"} onClick={() => setMode("reply")} className={cn("min-h-9 rounded-lg px-3 text-[12.5px] font-medium", mode === "reply" ? "bg-ink text-bg" : "text-muted hover:bg-surface-2")}><Send className="mr-1 inline size-3.5" aria-hidden />Reply</button>
-            {perms.notes && <button role="tab" aria-selected={mode === "note"} onClick={() => setMode("note")} className={cn("min-h-9 rounded-lg px-3 text-[12.5px] font-medium", mode === "note" ? "bg-warning-soft text-warning-ink" : "text-muted hover:bg-surface-2")}><StickyNote className="mr-1 inline size-3.5" aria-hidden />Internal note</button>}
+            <button role="tab" aria-selected={mode === "reply"} onClick={() => setMode("reply")} className={cn("min-h-9 rounded-lg px-3 text-[13px] font-medium", mode === "reply" ? "bg-ink text-bg" : "text-muted hover:bg-surface-2")}><Send className="mr-1 inline size-3.5" aria-hidden />Reply</button>
+            {perms.notes && <button role="tab" aria-selected={mode === "note"} onClick={() => setMode("note")} className={cn("min-h-9 rounded-lg px-3 text-[13px] font-medium", mode === "note" ? "bg-warning-soft text-warning-ink" : "text-muted hover:bg-surface-2")}><StickyNote className="mr-1 inline size-3.5" aria-hidden />Internal note</button>}
           </div>
           {/* Outside the tablist: a tablist may only own tabs. */}
           {mode === "reply" && canReply && replies.length > 0 && <CannedReplyPicker replies={replies} onPick={insertCanned} />}
@@ -874,7 +874,7 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
       <PopoverTrigger asChild>
-        <button type="button" className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink" aria-haspopup="dialog">
+        <button type="button" className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink" aria-haspopup="dialog">
           <MessageSquareQuote className="size-3.5" aria-hidden />Canned replies
         </button>
       </PopoverTrigger>
@@ -889,12 +889,12 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
           {shown.map((r) => (
             <li key={r.id}>
               <button type="button" onClick={() => { focus.markPicked(); onPick(r.body); setOpen(false); setQ(""); }} className="w-full rounded-xl px-3 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
-                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
+                <span className="flex items-center justify-between gap-2"><span className="truncate text-[14px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
                 <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted">{r.body}</span>
               </button>
             </li>
           ))}
-          {!shown.length && <li className="px-3 py-3 text-center text-[12.5px] text-muted">No canned replies match.</li>}
+          {!shown.length && <li className="px-3 py-3 text-center text-[13px] text-muted">No canned replies match.</li>}
         </ul>
         <p className="mt-2 px-1 text-[12px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
       </PopoverContent>
@@ -913,7 +913,7 @@ function OwnershipBar({ detail, me, perms, busy, run }: { detail: InboxDetail; m
   const c = detail.conversation;
   const mine = c.ownerKind === "human" && c.ownerUserId === me.id;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-2/60 px-3 py-2 text-[12.5px] sm:px-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-2/60 px-3 py-2 text-[13px] sm:px-4">
       <span className="flex items-center gap-2">
         {c.ownerKind === "ai" ? <><Bot className="size-4 text-violet-ink" aria-hidden /><span><strong>AI is handling this.</strong> It follows your rules and hands off when a person is needed.</span></> : c.ownerKind === "human" ? <><UserRound className="size-4 text-primary" aria-hidden /><span><strong>{mine ? "You are" : `${c.ownerName ?? "A teammate"} is`} handling this.</strong> The AI will not reply.</span></> : <><Hand className="size-4 text-muted" aria-hidden /><span><strong>Nobody owns this yet.</strong> The AI will not reply.</span></>}
       </span>
@@ -929,7 +929,7 @@ function EscalationBanner({ detail, me, perms, busy, run }: { detail: InboxDetai
   const e = detail.escalation!;
   const [resolution, setResolution] = React.useState("");
   return (
-    <div role="status" className={cn("border-b px-3 py-2.5 text-[12.5px] sm:px-4", e.urgency === "urgent" ? "border-danger/30 bg-danger-soft/60" : "border-warning/30 bg-warning-soft/60")}>
+    <div role="status" className={cn("border-b px-3 py-2.5 text-[13px] sm:px-4", e.urgency === "urgent" ? "border-danger/30 bg-danger-soft/60" : "border-warning/30 bg-warning-soft/60")}>
       <p className="flex flex-wrap items-center gap-x-2 font-medium"><ShieldAlert className="size-4" aria-hidden />{e.urgency === "urgent" ? "Urgent · " : ""}{ESCALATION_LABELS[e.category as EscalationCategory] ?? sentenceCase(e.category)}
         {e.status === "awaiting_owner" && e.ownerDeadlineAt && <span className="flex items-center gap-1 font-normal"><Clock className="size-3" aria-hidden />Owner first priority <Countdown until={e.ownerDeadlineAt} /></span>}
         {e.status === "open" && <span className="font-normal">Open to teammates</span>}
@@ -975,15 +975,15 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
   return (
     <aside aria-label={inline ? "Customer details (compact)" : "Customer details"} className={cn("min-w-0 space-y-4", inline ? "block" : "hidden xl:block")}>
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Customer</h2>
-        <dl className="mt-3 space-y-2 text-[12.5px]">
+        <h2 className="text-[14px] font-semibold">Customer</h2>
+        <dl className="mt-3 space-y-2 text-[13px]">
           <div className="flex justify-between gap-2"><dt className="text-muted">Stage</dt><dd>{sentenceCase(detail.contact.lifecycleStage)}</dd></div>
           {detail.contact.temperature && <div className="flex justify-between gap-2"><dt className="text-muted">Temperature</dt><dd>{sentenceCase(detail.contact.temperature)}</dd></div>}
           <div className="flex justify-between gap-2"><dt className="text-muted">Source</dt><dd>{sentenceCase(detail.contact.source)}</dd></div>
         </dl>
         <IdentityList identities={detail.contact.identities} canConfirm={perms.editContacts} idPrefix={idp} onConfirm={(identityId, how) => run("identity", () => confirmIdentityAction(identityId, how), "Confirmed as theirs.")} />
         <h3 className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-muted">Consent</h3>
-        <ul className="mt-1.5 space-y-1 text-[12.5px]">
+        <ul className="mt-1.5 space-y-1 text-[13px]">
           {detail.contact.consent.length ? detail.contact.consent.map((x) => (
             <li key={`${x.channel}-${x.purpose}`} className="flex justify-between gap-2"><span>{CONVERSATION_CHANNEL_LABELS[x.channel as ConversationChannel] ?? x.channel} · {x.purpose}</span><span className={x.status === "revoked" ? "font-medium text-danger-ink" : "text-success-ink"}>{sentenceCase(x.status)}</span></li>
           )) : <li className="text-muted">No consent recorded.</li>}
@@ -991,15 +991,15 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Follow-up</h2>
-        <p className="mt-1.5 text-[12.5px] text-muted">
+        <h2 className="text-[14px] font-semibold">Follow-up</h2>
+        <p className="mt-1.5 text-[13px] text-muted">
           {detail.followUp ? `${detail.followUp.remaining} follow-up${detail.followUp.remaining === 1 ? "" : "s"} remaining${detail.followUp.nextDueAt ? `, next ${formatDateTime(detail.followUp.nextDueAt, timeZone)}` : ""}. It stops if the customer replies, books, opts out or a person takes over.` : "No follow-ups scheduled."}
         </p>
       </section>
 
       {perms.assign && (
         <section className="rounded-2xl border border-line bg-surface p-4">
-          <h2 className="text-[13px] font-semibold">Assignment</h2>
+          <h2 className="text-[14px] font-semibold">Assignment</h2>
           <label className="sr-only" htmlFor={`${idp}assign`}>Assign to</label>
           <Select id={`${idp}assign`} value={c.assignedUserId ?? ""} onChange={(e) => run("assign", () => assignConversationAction(c.id, e.target.value || null), "Assignment updated.")} className="mt-2" disabled={busy === "assign"}>
             <option value="">Unassigned</option>
@@ -1013,15 +1013,15 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
       )}
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">What we know</h2>
+        <h2 className="text-[14px] font-semibold">What we know</h2>
         <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
-        <ul className="mt-1 space-y-1.5 text-[12.5px]">
+        <ul className="mt-1 space-y-1.5 text-[13px]">
           {confirmed.length ? confirmed.map((m) => (
             <li key={m.id} className="flex items-start justify-between gap-2"><span>{m.content}</span>{perms.editContacts && <button aria-label="Delete this note" onClick={() => run(`m${m.id}`, () => deleteMemoryAction(m.id), "Removed.")} className="text-muted hover:text-danger-ink"><XCircle className="size-3.5" /></button>}</li>
           )) : <li className="text-muted">Nothing confirmed yet.</li>}
         </ul>
         <h3 className="mt-3 text-[12px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
-        <ul className="mt-1 space-y-1.5 text-[12.5px]">
+        <ul className="mt-1 space-y-1.5 text-[13px]">
           {summaries.length ? summaries.map((m) => <li key={m.id} className="text-ink-2">{m.content}</li>) : <li className="text-muted">None.</li>}
         </ul>
         {perms.editContacts && (
@@ -1034,8 +1034,8 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Activity</h2>
-        <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[12.5px]">
+        <h2 className="text-[14px] font-semibold">Activity</h2>
+        <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[13px]">
           {detail.timeline.length ? detail.timeline.slice(-8).map((t, i) => (
             <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[12px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
           )) : <li className="text-muted">No activity recorded yet.</li>}

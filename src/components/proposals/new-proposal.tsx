@@ -107,17 +107,17 @@ export function NewProposal({ templates, defaultCurrency, contact: contact0, dea
 
       <section aria-labelledby="np-ai" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
         <h2 id="np-ai" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Sparkles className="size-4 text-violet-ink" aria-hidden />Write a first draft with AI</h2>
-        <p className="text-[13px] leading-relaxed text-ink-2">The AI picks items from your price book and writes the wording from what your business has approved. It never sets a price, a discount or a date, and anything it states that your price book or approved knowledge does not back is removed. Its draft always needs a person&apos;s approval before it can be sent. It can still get things wrong, so read all of it. It uses your workspace&apos;s AI service credits.</p>
+        <p className="text-[14px] leading-relaxed text-ink-2">The AI picks items from your price book and writes the wording from what your business has approved. It never sets a price, a discount or a date, and anything it states that your price book or approved knowledge does not back is removed. Its draft always needs a person&apos;s approval before it can be sent. It can still get things wrong, so read all of it. It uses your workspace&apos;s AI service credits.</p>
         {ai.available ? (
           <>
             <Field label="What should the proposal cover" htmlFor="np-brief" optional hint={`Describe the work in your own words. The AI treats this as information, not as instructions. ${brief.length} of ${AI_LIMITS.brief} characters.`}>
               <Textarea id="np-brief" rows={5} value={brief} maxLength={AI_LIMITS.brief} onChange={(e) => setBrief(e.target.value)} className="text-[16px] sm:text-[14px]" />
             </Field>
             <Button type="button" variant="secondary" loading={busy("draft")} onClick={draft}>Write a first draft</Button>
-            {busy("draft") && <p role="status" className="text-[12.5px] text-muted">This can take up to a minute.</p>}
-            <p className="text-[12.5px] text-muted">It uses the customer, deal, template and currency chosen on the left.</p>
+            {busy("draft") && <p role="status" className="text-[13px] text-muted">This can take up to a minute.</p>}
+            <p className="text-[13px] text-muted">It uses the customer, deal, template and currency chosen on the left.</p>
           </>
-        ) : <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">{ai.reason}</p>}
+        ) : <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">{ai.reason}</p>}
       </section>
     </div>
   );

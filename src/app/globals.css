@@ -101,7 +101,7 @@
 }
 .onboarding-stage-number { font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: .08em; font-variant-numeric: tabular-nums; color: var(--stage-muted); }
 .onboarding-stage[data-state="current"] .onboarding-stage-number { color: var(--stage-accent); }
-.onboarding-stage-label { font-size: 13px; font-weight: 600; line-height: 1.25; letter-spacing: -.005em; white-space: nowrap; }
+.onboarding-stage-label { font-size: 14px; font-weight: 600; line-height: 1.25; letter-spacing: -.005em; white-space: nowrap; }
 .onboarding-stage-status { font-size: 12px; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--stage-muted); }
 .onboarding-stage[data-state="current"] .onboarding-stage-status { color: var(--stage-ink-2); }
 .onboarding-stage-mark { display: grid; width: 16px; height: 16px; place-items: center; border-radius: 999px; }

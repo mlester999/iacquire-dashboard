@@ -114,14 +114,14 @@ export function CalendarWorkspace({
         description="Every appointment booked in iAcquire: from booking pages, your team and your AI employees."
         actions={
           <>
-            <Link href={`${scope.base}/appointments`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><ListChecks className="size-4" aria-hidden />All appointments</Link>
+            <Link href={`${scope.base}/appointments`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><ListChecks className="size-4" aria-hidden />All appointments</Link>
             {canBook && hasTypes && <Button data-aqi-target="crm.calendar.new-appointment" onClick={() => setNewOpen(true)}><Plus className="size-4" />New appointment</Button>}
           </>
         }
       />
 
       {!filters.calendars.length && (
-        <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] text-ink-2">
+        <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-line bg-surface-2/60 px-4 py-3 text-[14px] text-ink-2">
           <CalendarPlus className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
           <p className="min-w-0 flex-1">No calendars yet. {scope.can["calendars.manage"] && !scope.readOnly ? "Create one with its appointment types, then set working hours, and bookings will appear here." : scope.readOnly ? "Bookings will appear here once the workspace has calendars." : permissionNeeded("Creating calendars and appointment types", "calendars.manage")}</p>
           {scope.can["calendars.manage"] && !scope.readOnly && <Link href={`${scope.base}/calendars`} className="font-medium text-primary hover:underline">Set up calendars</Link>}
@@ -157,12 +157,12 @@ export function CalendarWorkspace({
           </Select>
           {/* Long names would otherwise widen a select past the card on a phone; the label wraps above its select when space runs out. */}
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
-            <label htmlFor="cal-tz" className="whitespace-nowrap text-[12.5px] text-muted">Show times in</label>
+            <label htmlFor="cal-tz" className="whitespace-nowrap text-[13px] text-muted">Show times in</label>
             <Select id="cal-tz" className="w-auto max-w-full" value={tz} onChange={(e) => go({ timeZone: e.target.value })}>
               {zones.map((z) => <option key={z} value={z}>{zoneLabel(z)}</option>)}
             </Select>
           </div>
-          <label className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 text-[12.5px] text-ink-2 sm:min-h-8">
+          <label className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 text-[13px] text-ink-2 sm:min-h-8">
             <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={state.showCancelled} onChange={(e) => go({ showCancelled: e.target.checked })} />
             Show cancelled
           </label>
@@ -206,7 +206,7 @@ export function CalendarWorkspace({
       </Card>
 
       {(truncated || (isTimeView && overlayNote) || (isTimeView && overlay && !overlay.accepting)) && (
-        <p className="flex items-start gap-2 text-[12.5px] text-muted" role="status">
+        <p className="flex items-start gap-2 text-[13px] text-muted" role="status">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
             {truncated ? "Only the first 2,000 appointments in this range are shown. Choose a calendar or a person to see the rest. " : ""}

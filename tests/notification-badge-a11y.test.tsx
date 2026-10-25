@@ -53,7 +53,7 @@ describe("notification bell badge: colour contrast", () => {
 
   it("meets 4.5:1 for the 12px badge text in both themes, with the classes the component uses", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "src/components/notifications/notification-center.tsx"), "utf8");
-    const badge = /className="(absolute right-1\.5 top-1\.5[^"]+)"/.exec(source)?.[1] ?? "";
+    const badge = /className="(absolute -right-1 -top-1[^"]+)"/.exec(source)?.[1] ?? "";
     // One background and white text in both themes, so there is one pair to check: no theme variant may change either colour.
     const background = /\bbg-\[(#[0-9a-fA-F]{6})\]/.exec(badge)?.[1];
     expect(background, badge).toBeDefined();

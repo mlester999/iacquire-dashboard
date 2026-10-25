@@ -36,7 +36,7 @@ export function VersionsPanel({ scope, formId, versions, canManage, draftRevisio
           <li key={v.id}>
             <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-medium text-ink">Version {v.version}{v.current && <Badge tone="success">Live</Badge>}</p>
+                <p className="flex flex-wrap items-center gap-1.5 text-[14px] font-medium text-ink">Version {v.version}{v.current && <Badge tone="success">Live</Badge>}</p>
                 <p className="mt-0.5 text-[12px] text-muted">Published {formatDateTime(v.publishedAt, scope.timezone)}{v.publishedByName ? ` by ${v.publishedByName}` : ""} · {v.questionCount} {v.questionCount === 1 ? "question" : "questions"}</p>
               </div>
               <div className="flex flex-wrap gap-1.5">

@@ -26,7 +26,7 @@ export function PreparationWorkspace({ orgId, jobs }: { orgId: string; jobs: Job
       <aside className="space-y-4 xl:sticky xl:top-24">
         <Card>
           <CardHeader><div className="min-w-0"><CardTitle>How preparation works</CardTitle><CardDescription>The workflow structure below explains the review boundaries. It is not a live progress indicator.</CardDescription></div></CardHeader>
-          <CardContent><ol className="relative space-y-4">{STEPS.map((step, index) => <li key={step.title} className="flex gap-3"><IconTile icon={<step.icon />} tone={step.tone} size="sm" /><div className="min-w-0"><p className="text-[13px] font-semibold text-ink"><span className="mr-2 font-mono text-[12px] font-medium tabular-nums text-muted">{String(index + 1).padStart(2, "0")}</span>{step.title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted">{step.text}</p></div></li>)}</ol></CardContent>
+          <CardContent><ol className="relative space-y-4">{STEPS.map((step, index) => <li key={step.title} className="flex gap-3"><IconTile icon={<step.icon />} tone={step.tone} size="sm" /><div className="min-w-0"><p className="text-[14px] font-semibold text-ink"><span className="mr-2 font-mono text-[12px] font-medium tabular-nums text-muted">{String(index + 1).padStart(2, "0")}</span>{step.title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted">{step.text}</p></div></li>)}</ol></CardContent>
         </Card>
         <Card>
           <CardHeader><div className="min-w-0"><CardTitle>Keep the evidence together</CardTitle><CardDescription>Task history and verified connection status remain available in the Setup Manager.</CardDescription></div></CardHeader>

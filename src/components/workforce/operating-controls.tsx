@@ -102,7 +102,7 @@ export function OperatingModeCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {agencyPaused && (
-          <p role="status" className="flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-[13px] text-danger-ink">
+          <p role="status" className="flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-[14px] text-danger-ink">
             <ShieldAlert className="mt-0.5 size-4 shrink-0" />
             iAcquire has paused automation for your workspace. Customer messages and new autonomous work are on hold regardless of the setting below.
           </p>
@@ -136,7 +136,7 @@ export function OperatingModeCard({
                     </StatusPill>
                   )}
                 </span>
-                <span className="mt-2.5 text-[13px] leading-relaxed text-ink-2">{option.summary}</span>
+                <span className="mt-2.5 text-[14px] leading-relaxed text-ink-2">{option.summary}</span>
                 {blocked && !selected ? (
                   <span className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] leading-relaxed text-warning-ink">
                     <Lock className="mt-0.5 size-3 shrink-0" aria-hidden />
@@ -150,7 +150,7 @@ export function OperatingModeCard({
           })}
         </div>
         {!canPause && (
-          <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted ring-1 ring-inset ring-line">
+          <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted ring-1 ring-inset ring-line">
             <Lock className="size-3.5 shrink-0" aria-hidden /> Only owners and managers can change how an employee works.
           </p>
         )}
@@ -173,7 +173,7 @@ export function OperatingModeCard({
         }
       >
         <div className="space-y-4">
-          <label className="flex items-start gap-3 text-[13px] leading-relaxed">
+          <label className="flex items-start gap-3 text-[14px] leading-relaxed">
             <input type="checkbox" className="mt-1 size-4" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
             <span>I understand {displayName} may contact customers and update records without asking each time, always inside my messaging rules, consent requirements and spending limits.</span>
           </label>
@@ -229,7 +229,7 @@ export function EmergencyControls({
           </IconTile>
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight">{agencyPaused ? "Automation is on hold" : anyPaused ? "Some automation is paused" : "Emergency controls"}</h2>
-            <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
+            <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-muted">
               {agencyPaused
                 ? "iAcquire has paused automation for your workspace. Our team will be in touch. Private chat with your employees still works."
                 : "Stop messages instantly if something looks wrong. These apply on our servers, so queued messages are blocked too."}
@@ -247,7 +247,7 @@ export function EmergencyControls({
 
 function ControlSwitch({ id, label, checked, disabled, onChange }: { id: string; label: string; checked: boolean; disabled: boolean; onChange: (next: boolean) => void }) {
   return (
-    <label htmlFor={id} className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-[13px]">
+    <label htmlFor={id} className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-[14px]">
       <span className="font-medium">{label}</span>
       <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label={label} />
     </label>

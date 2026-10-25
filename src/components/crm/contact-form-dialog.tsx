@@ -83,7 +83,7 @@ export function ContactFormDialog({
     >
       <form id="contact-form" onSubmit={submit} className="space-y-4" noValidate data-aqi-target="crm.contact.form">
         {error && (
-          <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">
+          <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink">
             {error.message}{" "}
             {error.existing && (
               <Link className="font-semibold underline" href={`${scope.base}/contacts?q=${encodeURIComponent(form.email || form.phone)}`}>Find that contact</Link>
@@ -150,7 +150,7 @@ export function ContactFormDialog({
         )}
         {optional.length > 0 && (
           <div className="rounded-2xl border border-line">
-            <button type="button" aria-expanded={more} onClick={() => setMore((m) => !m)} className="flex min-h-11 w-full items-center justify-between px-4 text-[13px] font-medium text-ink-2">
+            <button type="button" aria-expanded={more} onClick={() => setMore((m) => !m)} className="flex min-h-11 w-full items-center justify-between px-4 text-[14px] font-medium text-ink-2">
               More details ({optional.length})
               <ChevronDown className={`size-4 transition-transform ${more ? "rotate-180" : ""}`} />
             </button>

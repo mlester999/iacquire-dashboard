@@ -39,7 +39,7 @@ export function CannedReplies({ scope, replies, folders, canManage, q, showArchi
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-[13px] leading-relaxed text-muted">Saved answers for the inbox. Insert one while replying, adjust it, then send it yourself. Tokens such as {tokenText("contact.first_name")} are filled from the conversation&apos;s contact.</p>
+        <p className="max-w-2xl text-[14px] leading-relaxed text-muted">Saved answers for the inbox. Insert one while replying, adjust it, then send it yourself. Tokens such as {tokenText("contact.first_name")} are filled from the conversation&apos;s contact.</p>
         {canManage && <Button onClick={() => setEditing("new")}><Plus className="size-4" aria-hidden />New canned reply</Button>}
       </div>
       {!shown.length ? (
@@ -64,7 +64,7 @@ export function CannedReplies({ scope, replies, folders, canManage, q, showArchi
                       <ChannelLabel channel={r.channel} />
                       {r.status === "archived" && <Badge>Archived</Badge>}
                     </span>
-                    <span className="mt-1 line-clamp-2 block text-[12.5px] leading-relaxed text-muted"><TokenHighlight text={r.body} /></span>
+                    <span className="mt-1 line-clamp-2 block text-[13px] leading-relaxed text-muted"><TokenHighlight text={r.body} /></span>
                     <span className="mt-1 block text-[12px] text-faint" suppressHydrationWarning>v{r.currentVersion} · updated {relativeTime(r.updatedAt)}</span>
                   </button>
                   {canManage && (
@@ -161,13 +161,13 @@ function CannedReplyDialog({ scope, reply, folders, canManage, onClose }: { scop
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <label htmlFor="cr-body" className="text-[13px] font-medium text-ink-2">Reply</label>
+              <label htmlFor="cr-body" className="text-[14px] font-medium text-ink-2">Reply</label>
               <TokenPicker disabled={!editable} onPick={(k: AnyTokenKey) => insertAtCaret(bodyRef.current, body, tokenText(k), setBody)} />
             </div>
             <Textarea id="cr-body" ref={bodyRef} rows={7} value={body} onChange={(e) => setBody(e.target.value)} maxLength={TEMPLATE_LIMITS.body} disabled={!editable} aria-describedby="cr-checks" />
           </div>
           <div id="cr-checks" className="rounded-2xl border border-line p-3.5"><ValidationList check={check} onFix={editable ? fix : undefined} /></div>
-          {error && <p role="alert" className="text-[12.5px] text-danger-ink">{error}</p>}
+          {error && <p role="alert" className="text-[13px] text-danger-ink">{error}</p>}
         </div>
         <PreviewPanel scope={scope} channel={channel || null} subject={null} body={body} idPrefix="cr" />
       </div>

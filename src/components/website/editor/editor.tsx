@@ -85,7 +85,7 @@ export function SiteEditor(props: SiteEditorProps) {
   const api = React.useMemo(() => props.api ?? (orgId ? createServerStudioApi(orgId) : serverStudioApi), [props.api, orgId]);
   // The portal shell animates its page with a transform. Rendering the fixed
   // studio below that ancestor confines it to the page instead of the viewport.
-  if (!mounted) return <p role="status" className="p-6 text-[13px] text-muted">Opening website editor…</p>;
+  if (!mounted) return <p role="status" className="p-6 text-[14px] text-muted">Opening website editor…</p>;
   return createPortal(
     <StudioApiProvider value={api}>
       <DragProvider onAnnounce={(m) => toast(m)}>
@@ -597,9 +597,9 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
         {notice && <p className="border-b border-warning/20 bg-warning-soft px-4 py-1.5 text-center text-[12px] font-medium text-warning-ink">{notice}</p>}
         {/* Toolbar */}
         <header className="studio-editor-toolbar flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-3 py-1.5">
-          <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
+          <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
           <div className="min-w-0">
-            <p className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight">{site.name}</p>
+            <p className="max-w-[14rem] truncate text-[14px] font-semibold leading-tight">{site.name}</p>
             <p className="max-w-[14rem] truncate text-[12px] leading-tight text-muted">{site.clientName ? `${site.clientName} · ` : ""}{lifecycle.label} · {liveLabel}</p>
           </div>
           <div className="studio-editor-page w-44 shrink-0"><SelectControl<string> label="Page" value={page.id} onChange={setPage} options={ed.doc.pages.map((p) => ({ value: p.id, label: p.title }))} /></div>
@@ -622,19 +622,19 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={readOnly || !canRedo(ed)}><Redo2 className="size-4" /></IconButton>
           <IconButton label="Save draft (Ctrl+S)" onClick={() => void saveNow()} disabled={readOnly || saverState.status === "saving"}><Save className="size-4" /></IconButton>
           <SaveStatus state={saverState} onRetry={() => void saver.flush()} />
-          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
+          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[13px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
           <IconButton label="Version history" onClick={() => setVersions(true)}><History className="size-4" /></IconButton>
           <IconButton label="Keyboard shortcuts" className="studio-editor-extra" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
-          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
+          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[13px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
           {canPublish ? (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[13px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
           ) : (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("approval")} disabled={readOnly}><Send className="size-3.5" /> {mode === "template" ? "Send for review" : "Send for approval"}</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[13px]" onClick={() => setPublishMode("approval")} disabled={readOnly}><Send className="size-3.5" /> {mode === "template" ? "Send for review" : "Send for approval"}</Button>
           )}
         </header>
 
         {readOnly && (
-          <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink">
+          <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[13px] text-warning-ink">
             <span><strong className="font-semibold">{lock.by}</strong> is editing this website right now. You can look around, but changes are switched off so nothing is overwritten.</span>
             <button type="button" onClick={() => void takeLock(true)} className="font-semibold underline">Take over editing</button>
           </div>

@@ -59,7 +59,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         <div className="min-w-0">
           <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Agency client care</p>
           <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.04em] text-ink">Requests</h1>
-          <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">Support requests, issue reports, feedback and change requests from your clients. Prioritise, assign, reply and resolve, with every client&apos;s conversation kept together.</p>
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Support requests, issue reports, feedback and change requests from your clients. Prioritise, assign, reply and resolve, with every client&apos;s conversation kept together.</p>
         </div>
         <ul className="flex flex-wrap gap-2" aria-label="Queue at a glance">
           {tiles.map((t) => (

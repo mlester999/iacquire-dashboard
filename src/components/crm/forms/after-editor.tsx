@@ -78,7 +78,7 @@ export function AfterEditor({
           <Textarea id="fa-consent" rows={3} value={draft.consent.text} maxLength={FORM_LIMITS.consentText} onChange={(e) => setConsent({ text: e.target.value })} />
         </Field>
         <div className="space-y-3 rounded-xl border border-line p-3.5">
-          <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+          <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
             <Switch checked={draft.consent.marketing.enabled} onCheckedChange={(v) => setConsent({ marketing: { ...draft.consent.marketing, enabled: v } })} aria-label="Offer a marketing opt-in" />
             <span>
               <span className="block font-medium text-ink">Offer a marketing opt-in</span>
@@ -119,7 +119,7 @@ export function AfterEditor({
           </Field>
 
           <div className="space-y-3 rounded-xl border border-line p-3.5">
-            <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+            <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
               <Switch
                 checked={Boolean(a.opportunity)}
                 disabled={!identity || !options.pipelines.length}
@@ -195,12 +195,12 @@ export function AfterEditor({
       <Section title="Tell the team" description="An in-app notification for each submission, only to people who can see contacts.">
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {NOTIFY_ROLES.map((r) => (
-            <label key={r} className="inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-9">
+            <label key={r} className="inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-9">
               <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={a.notify.roles.includes(r)} onChange={(e) => setActions({ notify: { ...a.notify, roles: e.target.checked ? [...a.notify.roles, r] : a.notify.roles.filter((x) => x !== r) } })} />
               {ROLE_LABELS[r]}
             </label>
           ))}
-          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-9">
+          <label className="inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-9">
             <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={a.notify.contactOwner} onChange={(e) => setActions({ notify: { ...a.notify, contactOwner: e.target.checked } })} />
             The contact&apos;s owner
           </label>

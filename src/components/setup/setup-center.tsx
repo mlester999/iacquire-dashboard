@@ -59,7 +59,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
         <div className="relative flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:gap-8 sm:text-left">
           <ProgressRing percent={p.percent} caption={p.percent === null ? "Not started" : "Setup tasks"} />
           <div className="min-w-0 flex-1">
-            <p className="text-[12.5px] font-semibold uppercase tracking-wider text-primary">Setup center<span className="text-muted"> · </span><span className="break-words normal-case tracking-normal text-ink-2">{data.orgName}</span></p>
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-primary">Setup center<span className="text-muted"> · </span><span className="break-words normal-case tracking-normal text-ink-2">{data.orgName}</span></p>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[30px]">
               {data.state === "activated" ? `${firstName}, your system is approved` : "Your AI workforce is taking shape."}
             </h1>
@@ -71,7 +71,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
                   ? "Your checklist will appear here as soon as the iAcquire team sets it up."
                   : "We're preparing your AI employees, CRM, automations, and business integrations. Track your progress and complete the few steps that need your attention."}
             </p>
-            <p className="mt-2 text-[12.5px] text-muted">{p.total > 0 && `${p.completed} of ${p.total} required setup steps complete. `}Technical steps are completed after verification. Final activation needs a separate agency review.</p>
+            <p className="mt-2 text-[13px] text-muted">{p.total > 0 && `${p.completed} of ${p.total} required setup steps complete. `}Technical steps are completed after verification. Final activation needs a separate agency review.</p>
 
             <dl className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               <Chip label="Completed" value={p.counts.completed} tone="success" />
@@ -171,7 +171,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
           </span>
           <div>
             <h3 className="text-[15px] font-semibold text-ink">Questions about your setup?</h3>
-            <p className="mt-0.5 text-[13.5px] text-muted">Ask the iAcquire Assistant, or message the team and a real person will reply here.</p>
+            <p className="mt-0.5 text-[14px] text-muted">Ask the iAcquire Assistant, or message the team and a real person will reply here.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -203,7 +203,7 @@ function Chip({ label, value, tone }: { label: string; value: number; tone: "suc
     <div className="flex items-center gap-2 rounded-xl border border-line bg-surface/70 px-3 py-2 backdrop-blur">
       <span className={cn("size-2 shrink-0 rounded-full", dot)} aria-hidden />
       <dd className="text-[15px] font-semibold tabular-nums text-ink">{value}</dd>
-      <dt className="text-[12.5px] leading-tight text-muted">{label}</dt>
+      <dt className="text-[13px] leading-tight text-muted">{label}</dt>
     </div>
   );
 }
@@ -225,7 +225,7 @@ function Banner({ tone, icon, children, action }: { tone: "warning" | "primary" 
       transition={{ duration: reduce ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
       className="overflow-hidden"
     >
-      <div className={cn("flex flex-col gap-3 rounded-2xl border px-4 py-3 text-[13.5px] leading-relaxed sm:flex-row sm:items-center", styles)}>
+      <div className={cn("flex flex-col gap-3 rounded-2xl border px-4 py-3 text-[14px] leading-relaxed sm:flex-row sm:items-center", styles)}>
         <span className="flex flex-1 items-start gap-2.5">
           <span className="mt-0.5 shrink-0">{icon}</span>
           <span>{children}</span>
@@ -261,10 +261,10 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
             <StatusBadge status={t.status} audience="client" />
             {!t.required && <InfoChip className="h-5 text-[12px]">Optional</InfoChip>}
           </div>
-          {t.description && <p className="mt-1 text-[13.5px] leading-relaxed text-muted">{t.description}</p>}
+          {t.description && <p className="mt-1 text-[14px] leading-relaxed text-muted">{t.description}</p>}
 
           {t.status === "completed" && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[13px] text-success-ink">
+            <div className="mt-3 flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[14px] text-success-ink">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
               <div>
                 <p className="font-medium">Completed {t.completedAt ? formatDate(t.completedAt, timeZone) : ""}</p>
@@ -274,14 +274,14 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
           )}
 
           {t.status === "blocked" && (
-            <div className="mt-3 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] leading-relaxed text-danger-ink">
+            <div className="mt-3 rounded-xl bg-danger-soft px-3 py-2.5 text-[14px] leading-relaxed text-danger-ink">
               <p className="font-medium">Why this is on hold</p>
               <p className="mt-0.5">{t.blockedReason}</p>
             </div>
           )}
 
           {t.status === "waiting_for_client" && (
-            <div className="mt-3 rounded-xl border border-warning/25 bg-warning-soft/60 px-3 py-3 text-[13px] leading-relaxed text-ink-2">
+            <div className="mt-3 rounded-xl border border-warning/25 bg-warning-soft/60 px-3 py-3 text-[14px] leading-relaxed text-ink-2">
               {t.action && <p className="font-medium text-ink">{t.action.label}</p>}
               <p className={cn(t.action && "mt-0.5")}>{t.clientNote || t.action?.instructions}</p>
               {t.action && (
@@ -290,19 +290,19 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
                     {t.action.type === "review_and_approve" ? "Review" : t.action.type === "approve" ? "Review & approve" : t.action.type === "provide_info" ? "Reply" : "Mark as done"}
                     <ArrowRight className="size-3.5" />
                   </Button>
-                  {t.action.unavailableReason && <span className="text-[12.5px] text-muted">{t.action.unavailableReason}</span>}
+                  {t.action.unavailableReason && <span className="text-[13px] text-muted">{t.action.unavailableReason}</span>}
                 </div>
               )}
             </div>
           )}
 
           {t.status === "ready_for_review" && (
-            <p className="mt-3 text-[13px] leading-relaxed text-muted">
+            <p className="mt-3 text-[14px] leading-relaxed text-muted">
               {t.responded ? `Thank you. We received your response ${relativeTime(t.responded.at)} and our team is reviewing it.` : "This is ready and our team is giving it a final check."}
             </p>
           )}
 
-          {t.status === "in_progress" && t.clientNote && <p className="mt-3 text-[13px] leading-relaxed text-muted">{t.clientNote}</p>}
+          {t.status === "in_progress" && t.clientNote && <p className="mt-3 text-[14px] leading-relaxed text-muted">{t.clientNote}</p>}
 
           {t.status === "pending" && t.waitingOn.length > 0 && <div className="mt-3"><InfoChip icon={<Hourglass />}>Starts after {t.waitingOn.slice(0, 2).join(", ")}{t.waitingOn.length > 2 ? ` and ${t.waitingOn.length - 2} more` : ""}</InfoChip></div>}
 
@@ -310,7 +310,7 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
             <ul className="mt-3 flex flex-wrap gap-2">
               {t.attachments.map((a) => (
                 <li key={a.id}>
-                  <a href={a.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] font-medium text-ink-2 transition hover:border-primary/30 hover:text-primary">
+                  <a href={a.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-[13px] font-medium text-ink-2 transition hover:border-primary/30 hover:text-primary">
                     {a.label} <ExternalLink className="size-3" />
                   </a>
                 </li>
@@ -405,13 +405,13 @@ function ResponseDialog({ task, onClose, onSent, preview }: { task: ClientTaskVi
               {action.previewLinks.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {action.previewLinks.map((l) => (
-                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] font-medium text-primary transition hover:border-primary/30">
+                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[14px] font-medium text-primary transition hover:border-primary/30">
                       {l.label} <ExternalLink className="size-3.5" />
                     </a>
                   ))}
                 </div>
               ) : (
-                <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-muted">The preview link will appear here when the team shares it. Message the team if you can&apos;t find it.</p>
+                <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-muted">The preview link will appear here when the team shares it. Message the team if you can&apos;t find it.</p>
               )}
               <Segmented
                 id="setup-review-choice"
@@ -435,11 +435,11 @@ function ResponseDialog({ task, onClose, onSent, preview }: { task: ClientTaskVi
             </Field>
           )}
           {error && (
-            <p role="alert" className="text-[13px] text-danger-ink">
+            <p role="alert" className="text-[14px] text-danger-ink">
               {error}
             </p>
           )}
-          <p className="text-[12.5px] leading-relaxed text-muted">Your response goes to the iAcquire team, who review it before anything is marked complete.</p>
+          <p className="text-[13px] leading-relaxed text-muted">Your response goes to the iAcquire team, who review it before anything is marked complete.</p>
         </div>
       )}
     </Dialog>

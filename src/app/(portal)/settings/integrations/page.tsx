@@ -175,7 +175,7 @@ export default async function IntegrationsPage() {
                 </div>
               </div>
               <div className="flex flex-1 flex-col gap-3 px-5 pb-5 pt-4">
-                <p className="flex-1 text-[13px] leading-relaxed text-muted">{r.body}</p>
+                <p className="flex-1 text-[14px] leading-relaxed text-muted">{r.body}</p>
                 {(r.fact || r.status?.last_checked_at) && (
                   <div className="flex flex-wrap gap-1.5">
                     {r.fact && <InfoChip icon={<MapPin aria-hidden />}>{r.key.startsWith("ghl") ? `Location: ${r.fact}` : r.fact}</InfoChip>}

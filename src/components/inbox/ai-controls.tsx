@@ -59,7 +59,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
     );
 
   return (
-    <div className="space-y-1.5 border-b border-line bg-surface-2/60 px-3 py-2 text-[12.5px] sm:px-4">
+    <div className="space-y-1.5 border-b border-line bg-surface-2/60 px-3 py-2 text-[13px] sm:px-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex min-w-0 items-start gap-2">{status}</span>
         <span className="flex max-w-full gap-2 overflow-x-auto pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0 [&>*]:shrink-0">
@@ -72,7 +72,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
                 <Button size="sm" variant="secondary"><PauseCircle className="size-3.5" aria-hidden />Pause AI</Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[min(320px,calc(100vw-32px))] p-3">
-                <p className="text-[12.5px] text-muted">The AI stops replying here, but stays on the conversation. Drafts waiting for approval are kept.</p>
+                <p className="text-[13px] text-muted">The AI stops replying here, but stays on the conversation. Drafts waiting for approval are kept.</p>
                 <label className="sr-only" htmlFor="pause-reason">Why (optional)</label>
                 <Input id="pause-reason" className="mt-2" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="Why? (optional, visible to your team)" />
                 <div className="mt-2 flex justify-end gap-2">
@@ -94,7 +94,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
                 <Button size="sm" variant="ghost"><Send className="size-3.5" aria-hidden />Hand to…</Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[min(320px,calc(100vw-32px))] p-3">
-                <p className="text-[12.5px] text-muted">They become the owner and are told. The AI stops replying while they own it.</p>
+                <p className="text-[13px] text-muted">They become the owner and are told. The AI stops replying while they own it.</p>
                 <label className="sr-only" htmlFor="hand-to">Hand to</label>
                 <Select id="hand-to" className="mt-2" value={handTo} onChange={(e) => setHandTo(e.target.value)}>
                   <option value="">Choose a teammate…</option>
@@ -113,7 +113,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
         <div className="hidden items-center gap-2 sm:flex">
           <label htmlFor="ai-employee" className="shrink-0 text-muted">AI employee</label>
           <div className="w-full max-w-[260px]">
-            <Select id="ai-employee" className="h-9 sm:h-8 text-[13px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }}>
+            <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
               {aiEmployees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>

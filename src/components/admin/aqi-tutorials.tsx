@@ -222,7 +222,7 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
               className={cn("w-full rounded-xl border p-2.5 text-left transition", selectedId === row.id ? "border-primary/30 bg-primary-soft/60" : "border-line hover:bg-surface-2")}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="truncate text-[12.5px] font-semibold text-ink">{row.title}</span>
+                <span className="truncate text-[13px] font-semibold text-ink">{row.title}</span>
                 <StatusPill size="sm" tone={row.status === "published" ? "success" : row.status === "draft" ? "warning" : "neutral"}>{row.status}</StatusPill>
               </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">

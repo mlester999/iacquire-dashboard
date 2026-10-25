@@ -11,12 +11,12 @@ import { STAFF_MESSAGES_NOTICE_LINES, STAFF_MESSAGES_NOTICE_STATUS, STAFF_MESSAG
 export function NoticeBanner({ className }: { className?: string }) {
   return (
     <details className={className} data-testid="messages-notice">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink-2 hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
         <Info className="size-4 shrink-0 text-primary" aria-hidden />
         <span className="min-w-0 flex-1">How these messages are kept and who can read them</span>
         <Badge tone="warning">Draft</Badge>
       </summary>
-      <div className="mt-2 rounded-xl border border-line bg-surface p-4 text-[13px] leading-relaxed text-ink-2">
+      <div className="mt-2 rounded-xl border border-line bg-surface p-4 text-[14px] leading-relaxed text-ink-2">
         <p className="font-medium text-warning-ink">{STAFF_MESSAGES_NOTICE_STATUS}</p>
         <ul className="mt-3 list-disc space-y-2 pl-5">
           {STAFF_MESSAGES_NOTICE_LINES.map((line) => (

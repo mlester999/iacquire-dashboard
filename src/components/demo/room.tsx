@@ -42,7 +42,7 @@ export function DemoRoom({
             {room.industryLabel ? `, ${room.industryLabel}` : ""}
           </p>
         )}
-        <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[14px] leading-relaxed text-warning-ink">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>{ROOM_COPY.sampleBanner}</span>
         </p>
@@ -87,7 +87,7 @@ export function DemoRoom({
             <MessageSquareText className="size-5 text-primary" aria-hidden />
             {room.chat.aiEnabled ? ROOM_COPY.chatHeading : ROOM_COPY.chatOffHeading}
           </h2>
-          {room.chat.aiEnabled && <p className="mt-1 text-[13.5px] leading-relaxed text-muted">{ROOM_COPY.chatIntro}</p>}
+          {room.chat.aiEnabled && <p className="mt-1 text-[14px] leading-relaxed text-muted">{ROOM_COPY.chatIntro}</p>}
         </div>
         {showChat ? (
           <DemoChat
@@ -109,7 +109,7 @@ export function DemoRoom({
       <PricingPanel pricing={room.pricing} />
       <DemoActions consultationRequested={room.consultationRequested} purchaseStarted={room.purchaseStarted} consultationUrl={room.consultationUrl} notice={ctaNotice} />
 
-      <footer className="space-y-3 border-t border-line pt-4 text-[13px] leading-relaxed text-muted">
+      <footer className="space-y-3 border-t border-line pt-4 text-[14px] leading-relaxed text-muted">
         <form method="post" action="/api/public/demo/leave">
           <Button type="submit" variant="ghost" size="sm">
             {ROOM_COPY.leaveButton}

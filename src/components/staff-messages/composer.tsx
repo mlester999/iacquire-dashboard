@@ -141,7 +141,7 @@ export function Composer({ conversationId, threadRootId, label, placeholder, mem
 
   if (blocked) {
     return (
-      <p className="border-t border-line bg-surface-2 px-4 py-3 text-[13px] text-muted" role="status">
+      <p className="border-t border-line bg-surface-2 px-4 py-3 text-[14px] text-muted" role="status">
         {blocked}
       </p>
     );
@@ -152,7 +152,7 @@ export function Composer({ conversationId, threadRootId, label, placeholder, mem
       {staged.length > 0 && (
         <ul className="mb-2 flex flex-wrap gap-2" aria-label="Files to send">
           {staged.map((file) => (
-            <li key={file.id} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface-2 pl-3 text-[13px] text-ink-2">
+            <li key={file.id} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface-2 pl-3 text-[14px] text-ink-2">
               <FileText className="size-4 shrink-0 text-primary" aria-hidden />
               <span className="min-w-0 truncate">{attachmentLabel(file)}</span>
               <button type="button" onClick={() => takeBack(file)} aria-label={`Remove ${file.filename}`} className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-surface-3 hover:text-ink">
@@ -163,7 +163,7 @@ export function Composer({ conversationId, threadRootId, label, placeholder, mem
         </ul>
       )}
       {uploading > 0 && (
-        <p className="mb-2 flex items-center gap-2 text-[12.5px] text-muted" role="status">
+        <p className="mb-2 flex items-center gap-2 text-[13px] text-muted" role="status">
           <Loader2 className="size-3.5 animate-spin" aria-hidden /> Saving {uploading === 1 ? "a file" : `${uploading} files`}…
         </p>
       )}
@@ -255,7 +255,7 @@ export function Composer({ conversationId, threadRootId, label, placeholder, mem
       </div>
       <div className="mt-1.5 flex min-h-5 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         {problem ? (
-          <p id={`${id}-problem`} role="alert" className="text-[12.5px] text-danger-ink">
+          <p id={`${id}-problem`} role="alert" className="text-[13px] text-danger-ink">
             {problem}
           </p>
         ) : (

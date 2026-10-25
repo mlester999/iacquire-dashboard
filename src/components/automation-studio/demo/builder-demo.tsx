@@ -211,7 +211,7 @@ export function BuilderDemo() {
         <div className="flex items-center gap-3 border-b border-line px-4 py-2 @2xl:px-5 @2xl:py-3">
           <span aria-hidden className="hidden size-8 shrink-0 items-center justify-center rounded-xl brand-gradient text-white @2xl:inline-flex"><Sparkles className="size-4" /></span>
           <div className="hidden min-w-0 @2xl:block">
-            <p className="text-[13.5px] font-semibold leading-tight text-ink">AI Automation Builder</p>
+            <p className="text-[14px] font-semibold leading-tight text-ink">AI Automation Builder</p>
             <p className="truncate text-[12px] leading-tight text-muted">Welcome new leads · example draft</p>
           </div>
           <p className="text-[12px] font-medium leading-snug text-ink-2 @2xl:ml-auto @2xl:rounded-full @2xl:border @2xl:border-line @2xl:bg-surface-2 @2xl:px-3 @2xl:py-1">
@@ -257,13 +257,13 @@ export function BuilderDemo() {
                                   <span className="inline-flex size-4 items-center justify-center rounded-md brand-gradient text-white"><Sparkles className="size-2.5" /></span>AI Automation Builder
                                 </span>
                               )}
-                              <p className={cn("text-pretty rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-normal", mine ? "rounded-br-md bg-primary text-primary-on" : "rounded-bl-md border border-line bg-surface-2 text-ink")}>
+                              <p className={cn("text-pretty rounded-2xl px-3.5 py-2.5 text-[14px] leading-normal", mine ? "rounded-br-md bg-primary text-primary-on" : "rounded-bl-md border border-line bg-surface-2 text-ink")}>
                                 <span className="sr-only">{mine ? "You: " : "Builder: "}</span>{m.text}
                               </p>
                               {!mine && <p className="mt-1 pl-1 text-[12px] font-medium text-success-ink">Updated the canvas</p>}
                             </div>
                             {working(i) && (
-                              <p role="status" className="demo-rise absolute left-0 top-0 inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] text-muted @max-4xl:static">
+                              <p role="status" className="demo-rise absolute left-0 top-0 inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted @max-4xl:static">
                                 <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />{beat.status}
                               </p>
                             )}
@@ -282,7 +282,7 @@ export function BuilderDemo() {
                         return (
                           <li key={s.key} className="flex gap-2.5">
                             <span aria-hidden className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-ink"><Icon className="size-3.5" /></span>
-                            <p className="text-[12.5px] leading-snug text-muted"><span className="font-semibold text-ink">{s.title}.</span> {s.text}</p>
+                            <p className="text-[13px] leading-snug text-muted"><span className="font-semibold text-ink">{s.title}.</span> {s.text}</p>
                           </li>
                         );
                       })}
@@ -291,10 +291,10 @@ export function BuilderDemo() {
                 </li>
               </ul>
             </div>
-            <p aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-[38%] px-6 text-center text-[13px] text-faint transition-opacity duration-300", beat.messages || beat.status ? "opacity-0" : "opacity-100")}>
+            <p aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-[38%] px-6 text-center text-[14px] text-faint transition-opacity duration-300", beat.messages || beat.status ? "opacity-0" : "opacity-100")}>
               The conversation appears here
             </p>
-            <div aria-hidden className="mx-4 mb-4 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-faint sm:mx-5 sm:mb-5">
+            <div aria-hidden className="mx-4 mb-4 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-faint sm:mx-5 sm:mb-5">
               <Lock className="size-3.5 shrink-0" /><span className="min-w-0 truncate">Ask for a change…</span><span className="ml-auto shrink-0 text-[12px]">Needs the plan</span>
             </div>
           </div>
@@ -316,7 +316,7 @@ export function BuilderDemo() {
         {/* What this beat shows (right under the stage on a phone, under the controls from a tablet up), then the controls: play or pause, one
             beat back or forward, on a phone which half shows, and the four chapters to jump between. */}
         <div className="flex shrink-0 flex-col border-t border-line">
-          <p data-caption className="order-first min-h-[calc(2lh+0.625rem)] text-pretty px-4 pt-2.5 text-center text-[13px] leading-snug text-ink-2 @2xl:order-last @2xl:min-h-0 @2xl:border-t @2xl:border-line @2xl:bg-surface-2/60 @2xl:px-5 @2xl:py-2.5 @2xl:text-left">
+          <p data-caption className="order-first min-h-[calc(2lh+0.625rem)] text-pretty px-4 pt-2.5 text-center text-[14px] leading-snug text-ink-2 @2xl:order-last @2xl:min-h-0 @2xl:border-t @2xl:border-line @2xl:bg-surface-2/60 @2xl:px-5 @2xl:py-2.5 @2xl:text-left">
             {beat.caption}
           </p>
           <div className="flex flex-wrap items-center gap-1 px-3 pb-2.5 pt-1.5 @2xl:flex-nowrap @2xl:gap-5 @2xl:px-4 @2xl:py-3">
@@ -325,7 +325,7 @@ export function BuilderDemo() {
                 type="button"
                 onClick={() => dispatch({ type: "toggle", shown })}
                 aria-label={`${label} the example`}
-                className="inline-flex size-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-ink text-surface shadow-soft transition active:scale-[0.97] hover:bg-ink/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary @2xl:h-8 @2xl:w-auto @2xl:min-w-[104px] @2xl:rounded-xl @2xl:border @2xl:border-line @2xl:bg-surface @2xl:px-3 @2xl:text-[13px] @2xl:font-medium @2xl:text-ink @2xl:hover:bg-surface-2 @2xl:pointer-coarse:h-11"
+                className="inline-flex size-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-ink text-surface shadow-soft transition active:scale-[0.97] hover:bg-ink/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary @2xl:h-8 @2xl:w-auto @2xl:min-w-[104px] @2xl:rounded-xl @2xl:border @2xl:border-line @2xl:bg-surface @2xl:px-3 @2xl:text-[14px] @2xl:font-medium @2xl:text-ink @2xl:hover:bg-surface-2 @2xl:pointer-coarse:h-11"
               >
                 <ToggleIcon className="size-4 @2xl:size-3.5" aria-hidden /><span className="hidden @2xl:inline">{label}</span>
               </button>
@@ -351,7 +351,7 @@ export function BuilderDemo() {
                   aria-pressed={view === v}
                   aria-label={`Show the ${v} of the example`}
                   onClick={() => dispatch({ type: "view", view: v, shown })}
-                  className="relative inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-2.5 text-[12.5px] font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-soft"
+                  className="relative inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-soft"
                 >
                   <Icon className="size-3.5" aria-hidden />{text}
                   {view !== v && unseen[v] && <span aria-hidden data-unseen className="absolute right-1 top-1.5 size-1.5 rounded-full bg-primary" />}

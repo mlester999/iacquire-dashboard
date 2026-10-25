@@ -81,7 +81,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
         <div role="group" aria-label="Template collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {TABS.map((t) => {
             const n = scope.filter(t.match).length;
-            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
+            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
           })}
         </div>
         <p role="status" className="text-[12px] text-muted">{list.length} template{list.length === 1 ? "" : "s"} <span className="text-faint">· counts match your filters</span></p>
@@ -108,7 +108,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                     <div className="min-w-0"><p className="truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted" title={t.familyName}>{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight" title={t.name}>{t.name}</h2></div>
                     <StatusPill tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</StatusPill>
                   </div>
-                  <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted" title={t.description || undefined}>{t.description || "No description yet."}</p>
+                  <p className="line-clamp-2 text-[13px] leading-relaxed text-muted" title={t.description || undefined}>{t.description || "No description yet."}</p>
                   {t.unpublishedChanges && <div><StatusPill tone="warning" size="sm">Changes awaiting publication</StatusPill></div>}
                   {(t.industries.length > 0 || t.tags.length > 0) && (
                     <ul className="flex flex-wrap gap-1.5" aria-label="Industries and tags">
@@ -118,7 +118,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                   )}
                   <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-4">
                     <Button size="sm" variant="secondary" className="max-sm:h-10" onClick={() => setPreview(t)}><Eye className="size-3.5" /> Preview</Button>
-                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Customize</Link>}
+                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[14px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Customize</Link>}
                     {t.kind === "builtin" && <Button size="sm" variant="soft" className="max-sm:h-10" loading={busy === `dup-${t.key}`} onClick={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Created an editable copy.")}><Copy className="size-3.5" /> Customize</Button>}
                     <Menu>
                       <MenuTrigger asChild><Button size="sm" variant="ghost" className="ml-auto max-sm:h-10" aria-label={`More for ${t.name}`}><MoreHorizontal className="size-4" /> More</Button></MenuTrigger>
@@ -239,11 +239,11 @@ function HistoryDialog({ t, onClose, onRestored }: { t: TemplateView; onClose: (
   }, [t.id]);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Versions of ${t.name}`} description="Each publication is kept. Restoring one puts it into the working copy; it isn't offered to clients until it is published again.">
-      {!list ? <p className="py-6 text-center text-[13px] text-muted" role="status">Loading versions…</p> : list.length === 0 ? <EmptyState compact icon={<History className="size-5" />} title="Not published yet" description="There are no versions until this template is published." /> : (
+      {!list ? <p className="py-6 text-center text-[14px] text-muted" role="status">Loading versions…</p> : list.length === 0 ? <EmptyState compact icon={<History className="size-5" />} title="Not published yet" description="There are no versions until this template is published." /> : (
         <ul className="divide-y divide-line">
           {list.map((v) => (
             <li key={v.version} className="flex items-center justify-between gap-3 py-3">
-              <div><p className="text-[14px] font-semibold">Version {v.version}</p><div className="mt-1 flex flex-wrap gap-1.5"><InfoChip><RelativeTime value={v.createdAt} /></InfoChip>{v.createdByName && <InfoChip>{v.createdByName}</InfoChip>}</div>{v.note && <p className="mt-1.5 text-[12.5px] italic text-ink-2">“{v.note}”</p>}</div>
+              <div><p className="text-[14px] font-semibold">Version {v.version}</p><div className="mt-1 flex flex-wrap gap-1.5"><InfoChip><RelativeTime value={v.createdAt} /></InfoChip>{v.createdByName && <InfoChip>{v.createdByName}</InfoChip>}</div>{v.note && <p className="mt-1.5 text-[13px] italic text-ink-2">“{v.note}”</p>}</div>
               <Button size="sm" variant="secondary" loading={busy === v.version} onClick={async () => { setBusy(v.version); const r = await restoreTemplateVersionAction(t.id!, v.version); setBusy(null); if (!r.ok) return void toast.error(r.error); toast.success(`Version ${v.version} is back in the working copy.`); onRestored(); }}>Restore to working copy</Button>
             </li>
           ))}

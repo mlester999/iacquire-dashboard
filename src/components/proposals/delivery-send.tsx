@@ -91,16 +91,16 @@ export function SendToCustomer({ detail, tz, active = true }: { detail: Proposal
     <section aria-label="Send it to the customer" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Send it to the customer</h2>
-        <p className="mt-1 text-[13px] text-muted">
+        <p className="mt-1 text-[14px] text-muted">
           iAcquire can send the customer their link. It goes through the same checks as every other message to a customer: their consent on that channel, opt-outs, quiet hours and any hold your team put on them. You read the exact message first, and nothing is sent until you confirm.
         </p>
       </div>
 
       <fieldset className="space-y-1">
-        <legend className="text-[13px] font-medium text-ink-2">Send by</legend>
+        <legend className="text-[14px] font-medium text-ink-2">Send by</legend>
         <div className="flex flex-wrap gap-2">
           {DELIVERY_CHANNELS.map((c) => (
-            <label key={c} className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3.5 text-[13.5px] sm:min-h-9 ${channel === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2"}`}>
+            <label key={c} className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3.5 text-[14px] sm:min-h-9 ${channel === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2"}`}>
               <input type="radio" name={`delivery-channel-${detail.id}`} value={c} checked={channel === c} onChange={() => { setChannel(c); setOutcome(null); }} className="size-4" />
               {DELIVERY_CHANNEL_LABELS[c]}
             </label>
@@ -109,38 +109,38 @@ export function SendToCustomer({ detail, tz, active = true }: { detail: Proposal
       </fieldset>
 
       <div aria-live="polite" aria-busy={preview.kind === "loading"} className="space-y-3">
-        {preview.kind === "loading" && <p className="text-[13px] text-muted">Reading the message and checking it against your sending rules...</p>}
-        {preview.kind === "error" && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{preview.text}</p>}
-        {preview.kind === "ready" && !preview.data.available && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{preview.data.text}</p>}
+        {preview.kind === "loading" && <p className="text-[14px] text-muted">Reading the message and checking it against your sending rules...</p>}
+        {preview.kind === "error" && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{preview.text}</p>}
+        {preview.kind === "ready" && !preview.data.available && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{preview.data.text}</p>}
         {ready && (
           <>
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[14px]">
               <dt className="text-muted">Goes to</dt>
               <dd className="min-w-0 break-words text-ink-2">{ready.addressMask ?? `No ${channel === "email" ? "email address" : "phone number"} on the customer's record`}</dd>
               {ready.subject && (<><dt className="text-muted">Subject</dt><dd className="min-w-0 break-words text-ink-2">{ready.subject}</dd></>)}
             </dl>
             <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
               <p className="mb-1 text-[12px] font-medium text-muted">The message the customer will read</p>
-              <p className="whitespace-pre-wrap break-words text-[13.5px] text-ink">{ready.body}</p>
+              <p className="whitespace-pre-wrap break-words text-[14px] text-ink">{ready.body}</p>
             </div>
-            <p className="text-[12.5px] text-muted">
+            <p className="text-[13px] text-muted">
               The customer&apos;s own link goes where the words in brackets are. It is added when the message is sent and is not kept in the message, the history or any export.
               {ready.wordingIsDraft ? " This wording is a draft that nobody has approved yet." : ""}
               {ready.usesCredits ? " A text or WhatsApp message uses your prepaid service credits." : ""}
             </p>
-            {ready.notes.map((n) => <p key={n} className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{n}</p>)}
-            <p role="status" className={`rounded-xl px-3 py-2 text-[13px] ${ready.verdict.kind === "refused" ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-ink-2"}`}>
+            {ready.notes.map((n) => <p key={n} className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{n}</p>)}
+            <p role="status" className={`rounded-xl px-3 py-2 text-[14px] ${ready.verdict.kind === "refused" ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-ink-2"}`}>
               {ready.verdict.text}
               {ready.verdict.waitingUntil ? ` Next window: ${whenIn(ready.verdict.waitingUntil, tz)}.` : ""}
             </p>
-            {offer && !offer.canSend && offer.why && ready.verdict.kind !== "refused" && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{offer.why}</p>}
+            {offer && !offer.canSend && offer.why && ready.verdict.kind !== "refused" && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{offer.why}</p>}
             <Button type="button" disabled={!offer?.canSend} onClick={() => setConfirm(true)}><Send className="size-4" aria-hidden />{confirmLabelFor(ready.verdict.kind)}</Button>
           </>
         )}
       </div>
 
       <div ref={statusRef} tabIndex={-1} role={said?.tone === "error" ? "alert" : "status"} className="outline-none">
-        {said && <p className={`rounded-xl px-3 py-2 text-[13px] ${said.tone === "error" ? "bg-danger-soft text-danger-ink" : said.tone === "info" ? "bg-surface-2 text-ink-2" : "bg-success-soft text-success-ink"}`}>{said.text}</p>}
+        {said && <p className={`rounded-xl px-3 py-2 text-[14px] ${said.tone === "error" ? "bg-danger-soft text-danger-ink" : said.tone === "info" ? "bg-surface-2 text-ink-2" : "bg-success-soft text-success-ink"}`}>{said.text}</p>}
       </div>
 
       <ConfirmDialog
@@ -158,18 +158,18 @@ export function DeliveryList({ deliveries, tz }: { deliveries: DeliveryView[]; t
     <section aria-label="Messages to the customer" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
       <h2 className="text-[15px] font-semibold text-ink">Messages sent from here</h2>
       {deliveries.length === 0 ? (
-        <p className="text-[13.5px] text-ink-2">No message has been sent from here. If you gave the customer the link yourself, iAcquire has no record of that.</p>
+        <p className="text-[14px] text-ink-2">No message has been sent from here. If you gave the customer the link yourself, iAcquire has no record of that.</p>
       ) : (
         <ul className="space-y-3">
           {deliveries.map((d) => (
-            <li key={d.id} className="rounded-xl border border-line px-3 py-2.5 text-[13.5px]">
+            <li key={d.id} className="rounded-xl border border-line px-3 py-2.5 text-[14px]">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={DELIVERY_BADGE_TONE[d.tone]}>{d.label}</Badge>
                 <span className="font-medium text-ink">{d.channelLabel}</span>
-                <span className="text-[12.5px] text-muted">version {d.version} · {whenIn(d.requestedAt, tz)}{d.requestedByName ? ` · ${d.requestedByName}` : ""}</span>
+                <span className="text-[13px] text-muted">version {d.version} · {whenIn(d.requestedAt, tz)}{d.requestedByName ? ` · ${d.requestedByName}` : ""}</span>
               </div>
               <p className="mt-1 break-words text-ink-2">{d.explain}</p>
-              {d.sendAfter && <p className="mt-0.5 text-[12.5px] text-muted">Due {whenIn(d.sendAfter, tz)}.</p>}
+              {d.sendAfter && <p className="mt-0.5 text-[13px] text-muted">Due {whenIn(d.sendAfter, tz)}.</p>}
             </li>
           ))}
         </ul>

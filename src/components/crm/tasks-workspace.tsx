@@ -74,18 +74,18 @@ export function TasksWorkspace({
       <div data-aqi-target="crm.tasks.header" className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Tasks</h2>
-          <p className="mt-1 text-[13px] text-muted">{"Follow-ups and to-dos for your team, linked to the contacts and deals they're about."}</p>
+          <p className="mt-1 text-[14px] text-muted">{"Follow-ups and to-dos for your team, linked to the contacts and deals they're about."}</p>
         </div>
         {canManage && <Button data-aqi-target="crm.tasks.new" onClick={() => setNewOpen(true)}><Plus className="size-4" />New task</Button>}
       </div>
 
-      <nav aria-label="Task views" data-aqi-target="crm.tasks.views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Task views" data-aqi-target="crm.tasks.views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
         {VIEWS.map((v) => {
           const active = state.view === v.value;
           const n = v.value in counts ? counts[v.value as keyof typeof counts] : null;
           return (
             <Link key={v.value} href={hrefWith({ view: v.value === "mine" ? null : v.value })} aria-current={active ? "page" : undefined}
-              className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium sm:min-h-9", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:text-ink")}>
+              className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium sm:min-h-9", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:text-ink")}>
               {v.label}
               {n !== null && <span className={cn("rounded-full px-1.5 py-0.5 text-[12px] font-semibold", v.value === "overdue" && n > 0 ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
             </Link>
@@ -110,7 +110,7 @@ export function TasksWorkspace({
         <div className="ml-auto inline-flex rounded-xl border border-line bg-surface-2 p-0.5" role="group" aria-label="Layout">
           {(["list", "board"] as const).map((l) => (
             <Link key={l} href={hrefWith({ layout: l === "list" ? null : l })} aria-current={state.layout === l ? "true" : undefined}
-              className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium sm:min-h-8", state.layout === l ? "bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}>
+              className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[14px] font-medium sm:min-h-8", state.layout === l ? "bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}>
               {l === "list" ? <LayoutList className="size-4" aria-hidden /> : <SquareKanban className="size-4" aria-hidden />}
               {l === "list" ? "List" : "Board"}
             </Link>
@@ -130,11 +130,11 @@ export function TasksWorkspace({
             const items = tasks.filter((t) => t.status === status);
             return (
               <section key={status} className="rounded-2xl border border-line bg-surface-2/60" aria-label={STATUS_LABEL[status]}>
-                <h3 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-[13px] font-semibold text-ink">{STATUS_LABEL[status]}<span className="rounded-full bg-surface px-1.5 text-[12px] font-medium text-muted ring-1 ring-line">{items.length}</span></h3>
+                <h3 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-[14px] font-semibold text-ink">{STATUS_LABEL[status]}<span className="rounded-full bg-surface px-1.5 text-[12px] font-medium text-muted ring-1 ring-line">{items.length}</span></h3>
                 <ul className="space-y-2 p-2">
                   {items.map((t) => (
                     <li key={t.id} className="rounded-xl border border-line bg-surface p-3 shadow-soft">
-                      <button type="button" onClick={() => setOpen(t)} className="text-left text-[13.5px] font-medium text-ink hover:text-primary">{t.title}</button>
+                      <button type="button" onClick={() => setOpen(t)} className="text-left text-[14px] font-medium text-ink hover:text-primary">{t.title}</button>
                       <p className="mt-1 text-[12px] text-muted">
                         {t.dueAt ? <span className={cn(t.overdue && "font-semibold text-danger-ink")}>{new Date(t.dueAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone })}</span> : "No due date"}
                         {t.assignee ? ` · ${t.assignee.name}` : ""}
@@ -148,7 +148,7 @@ export function TasksWorkspace({
                       )}
                     </li>
                   ))}
-                  {!items.length && <li className="px-2 py-4 text-center text-[12.5px] text-faint">Nothing here</li>}
+                  {!items.length && <li className="px-2 py-4 text-center text-[13px] text-faint">Nothing here</li>}
                 </ul>
               </section>
             );
@@ -246,7 +246,7 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
         </form>
 
         {(task.contact || task.opportunity || task.company) && (
-          <div className="space-y-1 rounded-2xl border border-line p-3 text-[13px]">
+          <div className="space-y-1 rounded-2xl border border-line p-3 text-[14px]">
             <p className="text-[12px] font-medium text-muted">Linked to</p>
             {task.contact && <Link href={`${scope.base}/contacts/${task.contact.id}`} className="block font-medium text-primary hover:underline">{task.contact.name}</Link>}
             {task.opportunity && <Link href={`${scope.base}/opportunities/${task.opportunity.id}`} className="block font-medium text-primary hover:underline">{task.opportunity.name}</Link>}
@@ -255,16 +255,16 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
         )}
 
         <section>
-          <h3 className="text-[13px] font-semibold text-ink">Comments</h3>
+          <h3 className="text-[14px] font-semibold text-ink">Comments</h3>
           <ul className="mt-2 space-y-2">
-            {comments === null && <li className="text-[13px] text-muted">Loading…</li>}
+            {comments === null && <li className="text-[14px] text-muted">Loading…</li>}
             {comments?.map((c) => (
-              <li key={c.id} className={cn("rounded-xl px-3 py-2 text-[13px]", c.mine ? "bg-primary-soft/50" : "bg-surface-2")}>
+              <li key={c.id} className={cn("rounded-xl px-3 py-2 text-[14px]", c.mine ? "bg-primary-soft/50" : "bg-surface-2")}>
                 <p className="whitespace-pre-wrap text-ink">{c.body}</p>
                 <p className="mt-1 text-[12px] text-muted">{c.author ?? "Teammate"} · <RelativeTime iso={c.createdAt} timezone={scope.timezone} /></p>
               </li>
             ))}
-            {comments?.length === 0 && <li className="text-[13px] text-muted">No comments yet.</li>}
+            {comments?.length === 0 && <li className="text-[14px] text-muted">No comments yet.</li>}
           </ul>
           {canManage && (
             <form className="mt-2 flex gap-2" onSubmit={async (e) => {

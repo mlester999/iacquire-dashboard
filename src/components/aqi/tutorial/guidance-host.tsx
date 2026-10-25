@@ -78,7 +78,7 @@ function StartingCard() {
       icon={<Loader2 className="size-[18px] animate-spin" aria-hidden />}
     >
       <p className="text-[14px] font-semibold leading-snug tracking-tight text-ink">Starting your walkthrough…</p>
-      {state.startingTitle || state.tutorial?.title ? <p className="mt-0.5 truncate text-[12.5px] text-muted">{state.startingTitle ?? state.tutorial?.title}</p> : null}
+      {state.startingTitle || state.tutorial?.title ? <p className="mt-0.5 truncate text-[13px] text-muted">{state.startingTitle ?? state.tutorial?.title}</p> : null}
     </GuidanceCard>
   );
 }

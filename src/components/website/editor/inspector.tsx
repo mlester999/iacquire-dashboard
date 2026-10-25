@@ -456,7 +456,7 @@ export function Inspector({ doc, selection, pageId, device, actions, advanced }:
     <div className="flex min-h-0 flex-1 flex-col">
       <Crumbs doc={doc} selection={selection} actions={actions} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {body ?? <p className="p-4 text-[12.5px] text-muted">That item is no longer on the page.</p>}
+        {body ?? <p className="p-4 text-[13px] text-muted">That item is no longer on the page.</p>}
         {advanced && body && (node.kind === "section" || node.kind === "element") && (
           <AdvancedGroup key={selection} doc={doc} id={selection} onReplaceSection={(s) => actions.commit(updateSection(doc, selection, (old) => ({ ...s, id: old.id })))} />
         )}

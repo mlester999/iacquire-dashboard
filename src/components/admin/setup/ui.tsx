@@ -61,7 +61,7 @@ export function StatTile({ icon, label, value, detail, tone = "primary", classNa
 export function Callout({ tone = "neutral", icon, title, children, className }: { tone?: StatusTone; icon?: React.ReactNode; title?: React.ReactNode; children?: React.ReactNode; className?: string }) {
   const c = CALLOUT[tone];
   return (
-    <div className={cn("flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[13px] leading-relaxed ring-1 ring-inset", c.box, className)}>
+    <div className={cn("flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[14px] leading-relaxed ring-1 ring-inset", c.box, className)}>
       {icon && (
         <span aria-hidden className={cn("mt-0.5 shrink-0 [&>svg]:size-4", c.ink)}>
           {icon}
@@ -82,7 +82,7 @@ export function DetailList({ children, className }: { children: React.ReactNode;
 
 export function DetailRow({ label, children, mono, className }: { label: React.ReactNode; children: React.ReactNode; mono?: boolean; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 px-3 py-2 text-[12.5px]", className)}>
+    <div className={cn("flex items-center justify-between gap-3 px-3 py-2 text-[13px]", className)}>
       <dt className="shrink-0 text-muted">{label}</dt>
       <dd className={cn("flex min-w-0 items-center justify-end gap-1.5 text-right text-ink", mono && "font-mono text-[12px]")}>{children}</dd>
     </div>

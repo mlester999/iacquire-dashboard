@@ -57,10 +57,10 @@ export interface PeoplePickerProps {
 export function PeoplePicker({ people, error, exclude, mode, selected, onSelect, label }: PeoplePickerProps) {
   const [query, setQuery] = React.useState("");
   const shown = people ? filterPeople(people, query, { exclude }) : [];
-  if (error) return <p role="alert" className="text-[13px] text-danger-ink">{error}</p>;
+  if (error) return <p role="alert" className="text-[14px] text-danger-ink">{error}</p>;
   if (!people) {
     return (
-      <p role="status" className="flex items-center gap-2 py-6 text-[13px] text-muted">
+      <p role="status" className="flex items-center gap-2 py-6 text-[14px] text-muted">
         <Loader2 className="size-4 animate-spin" aria-hidden /> Loading the team…
       </p>
     );
@@ -101,7 +101,7 @@ export function PeoplePicker({ people, error, exclude, mode, selected, onSelect,
           );
         })}
       </ul>
-      {shown.length === 0 && <p className="py-4 text-center text-[13px] text-muted" role="status">{people.length === 0 ? "There is no one else on the team who can use Messages yet." : "No one matches that."}</p>}
+      {shown.length === 0 && <p className="py-4 text-center text-[14px] text-muted" role="status">{people.length === 0 ? "There is no one else on the team who can use Messages yet." : "No one matches that."}</p>}
     </div>
   );
 }
@@ -155,8 +155,8 @@ export function NewConversationDialog({ kind, open, onOpenChange }: { kind: NewK
       {kind === "direct" ? (
         <div className="space-y-3">
           <PeoplePicker people={people} error={error} mode="single" selected={[]} onSelect={startDirect} label="Team members" />
-          {busy("direct") && <p role="status" className="text-[13px] text-muted">Opening…</p>}
-          {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
+          {busy("direct") && <p role="status" className="text-[14px] text-muted">Opening…</p>}
+          {problem && <p role="alert" className="text-[14px] text-danger-ink">{problem}</p>}
         </div>
       ) : (
         <form onSubmit={create} className="space-y-4">
@@ -169,13 +169,13 @@ export function NewConversationDialog({ kind, open, onOpenChange }: { kind: NewK
                 <Input id="new-conversation-topic" value={topic} maxLength={MAX_TOPIC_CHARS} onChange={(e) => setTopic(e.target.value)} autoComplete="off" />
               </Field>
               <fieldset className="space-y-1">
-                <legend className="text-[13px] font-medium text-ink-2">Who can join</legend>
+                <legend className="text-[14px] font-medium text-ink-2">Who can join</legend>
                 {([["staff", "Open to the team", "Anyone who may use Messages can find it and join."], ["private", "Private", "Only the people you add can see it."]] as const).map(([value, label, hint]) => (
                   <label key={value} className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-surface-2">
                     <input type="radio" name="channel-visibility" className="mt-0.5 size-5 shrink-0 accent-[var(--color-primary,#305ecb)]" checked={visibility === value} onChange={() => setVisibility(value)} />
                     <span>
                       <span className="block text-[14px] font-medium text-ink">{label}</span>
-                      <span className="block text-[12.5px] text-muted">{hint}</span>
+                      <span className="block text-[13px] text-muted">{hint}</span>
                     </span>
                   </label>
                 ))}
@@ -183,11 +183,11 @@ export function NewConversationDialog({ kind, open, onOpenChange }: { kind: NewK
             </>
           )}
           <div>
-            <p className="mb-2 text-[13px] font-medium text-ink-2">{kind === "group" ? "People" : "Add people (optional)"}</p>
+            <p className="mb-2 text-[14px] font-medium text-ink-2">{kind === "group" ? "People" : "Add people (optional)"}</p>
             <PeoplePicker people={people} error={error} mode="multi" selected={picked} onSelect={setPicked} label="Team members" />
-            <p className="mt-2 text-[12.5px] text-muted" role="status">{pluralize(picked.length, "person", "people")} chosen, plus you.</p>
+            <p className="mt-2 text-[13px] text-muted" role="status">{pluralize(picked.length, "person", "people")} chosen, plus you.</p>
           </div>
-          {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
+          {problem && <p role="alert" className="text-[14px] text-danger-ink">{problem}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" loading={busy("create")} disabled={!name.trim() || (kind === "group" && picked.length === 0)}>{kind === "group" ? "Create group" : "Create channel"}</Button>
@@ -220,7 +220,7 @@ export function AddPeopleDialog({ conversationId, memberIds, open, onOpenChange,
     <Dialog open={open} onOpenChange={onOpenChange} title="Add people" size="md" description="They can read the earlier messages in this conversation. They start with nothing unread.">
       <form onSubmit={add} className="space-y-4">
         <PeoplePicker people={people} error={error} exclude={memberIds} mode="multi" selected={picked} onSelect={setPicked} label="Team members to add" />
-        {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
+        {problem && <p role="alert" className="text-[14px] text-danger-ink">{problem}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="submit" loading={busy("add")} disabled={picked.length === 0}>Add {picked.length > 0 ? picked.length : ""}</Button>
@@ -265,15 +265,15 @@ export function ChannelDirectoryDialog({ open, onOpenChange, canCreate, onCreate
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="Channels" size="md" description="Channels open to the whole team. Private channels are not listed.">
-      {error && <p role="alert" className="mb-3 text-[13px] text-danger-ink">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-[14px] text-danger-ink">{error}</p>}
       {!channels && !error && (
-        <p role="status" className="flex items-center gap-2 py-6 text-[13px] text-muted">
+        <p role="status" className="flex items-center gap-2 py-6 text-[14px] text-muted">
           <Loader2 className="size-4 animate-spin" aria-hidden /> Loading channels…
         </p>
       )}
       {channels && channels.length === 0 && (
         <div className="space-y-3 py-4 text-center">
-          <p className="text-[13px] text-muted" role="status">No channel is open to the team yet.</p>
+          <p className="text-[14px] text-muted" role="status">No channel is open to the team yet.</p>
           {canCreate && <Button variant="soft" onClick={() => { onOpenChange(false); onCreate(); }}>Create a channel</Button>}
         </div>
       )}
@@ -289,7 +289,7 @@ export function ChannelDirectoryDialog({ open, onOpenChange, canCreate, onCreate
               {channel.joined ? (
                 <>
                   <Badge tone="success">Joined</Badge>
-                  <Link href={conversationHref(channel.id)} prefetch={false} onClick={() => onOpenChange(false)} className="inline-flex h-11 items-center rounded-xl px-3 text-[13px] font-medium text-primary-ink hover:bg-primary-soft sm:h-8">Open</Link>
+                  <Link href={conversationHref(channel.id)} prefetch={false} onClick={() => onOpenChange(false)} className="inline-flex h-11 items-center rounded-xl px-3 text-[14px] font-medium text-primary-ink hover:bg-primary-soft sm:h-8">Open</Link>
                 </>
               ) : (
                 <Button size="sm" variant="soft" loading={busy(`join:${channel.id}`)} onClick={() => join(channel)} aria-label={`Join #${channel.name}`}>Join</Button>

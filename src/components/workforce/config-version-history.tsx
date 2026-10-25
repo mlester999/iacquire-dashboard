@@ -292,7 +292,7 @@ export function ConfigVersionHistory({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <h3 className="text-[13.5px] font-semibold tracking-tight text-ink">Configuration version {version.version}</h3>
+                            <h3 className="text-[14px] font-semibold tracking-tight text-ink">Configuration version {version.version}</h3>
                             <StatusPill tone={status.tone} size="sm">
                               {statusLabel(version.status, isInternalWorkspace)}
                             </StatusPill>
@@ -330,7 +330,7 @@ export function ConfigVersionHistory({
                         </p>
 
                         {version.change_request && (
-                          <p className="mt-2.5 line-clamp-2 rounded-lg border-l-2 border-primary/30 bg-primary-soft/25 px-2.5 py-1.5 text-[12.5px] leading-relaxed text-ink-2">
+                          <p className="mt-2.5 line-clamp-2 rounded-lg border-l-2 border-primary/30 bg-primary-soft/25 px-2.5 py-1.5 text-[13px] leading-relaxed text-ink-2">
                             <span className="font-medium text-ink">Requested change:</span> “{version.change_request}”
                           </p>
                         )}
@@ -341,12 +341,12 @@ export function ConfigVersionHistory({
                             {comparison && <span className="text-[12px] text-faint">{comparison}</span>}
                           </div>
                           {isInitial ? (
-                            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">Initial configuration for this employee.</p>
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">Initial configuration for this employee.</p>
                           ) : diffs.length > 0 ? (
                             <>
                               <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
                                 {diffs.slice(0, 4).map((change) => (
-                                  <li key={change.key} className="flex min-w-0 items-start gap-2 text-[12.5px]">
+                                  <li key={change.key} className="flex min-w-0 items-start gap-2 text-[13px]">
                                     <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-primary" />
                                     <span className="truncate font-medium text-ink-2">{change.label}</span>
                                   </li>
@@ -359,9 +359,9 @@ export function ConfigVersionHistory({
                               )}
                             </>
                           ) : hasSnapshot && previousVersion?.settings ? (
-                            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">No stored setting values changed from the previous version.</p>
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">No stored setting values changed from the previous version.</p>
                           ) : (
-                            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
                               {hasSnapshot
                                 ? "A field-level comparison isn't available for this version because the earlier snapshot is outside the retained history."
                                 : "This version has no readable settings snapshot. Its recorded summary is shown in the details."}
@@ -419,7 +419,7 @@ export function ConfigVersionHistory({
                           id={panelId}
                           role="region"
                           aria-label={`Version ${version.version} details`}
-                          initial={reduced ? false : { height: 0, opacity: 0 }}
+                          initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
                           transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
@@ -504,7 +504,7 @@ export function ConfigVersionHistory({
                                   {startingSettings(version.settings).map(([label, value]) => (
                                     <div key={label}>
                                       <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
-                                      <dd className="mt-0.5 text-[12.5px] text-ink-2">{value}</dd>
+                                      <dd className="mt-0.5 text-[13px] text-ink-2">{value}</dd>
                                     </div>
                                   ))}
                                 </dl>
@@ -520,7 +520,7 @@ export function ConfigVersionHistory({
                                 <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
                                   {diffs.map((change) => (
                                     <li key={change.key} className="grid gap-2.5 p-3.5 sm:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)]">
-                                      <p className="text-[12.5px] font-semibold text-ink">{change.label}</p>
+                                      <p className="text-[13px] font-semibold text-ink">{change.label}</p>
                                       <div className="grid gap-2 sm:grid-cols-2">
                                         <div className="rounded-lg border border-line/70 bg-surface-2/40 p-2">
                                           <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-faint">Before</p>
@@ -544,7 +544,7 @@ export function ConfigVersionHistory({
                             {version.change_request && (
                               <div>
                                 <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Requested change</p>
-                                <blockquote className="scrollbar-thin mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink-2">
+                                <blockquote className="scrollbar-thin mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[13px] leading-relaxed text-ink-2">
                                   {version.change_request}
                                 </blockquote>
                               </div>
@@ -552,7 +552,7 @@ export function ConfigVersionHistory({
 
                             <div>
                               <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Recorded summary</p>
-                              <p className="scrollbar-thin mt-1.5 max-h-56 overflow-y-auto whitespace-pre-line break-words rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink-2">
+                              <p className="scrollbar-thin mt-1.5 max-h-56 overflow-y-auto whitespace-pre-line break-words rounded-xl border border-line bg-surface p-3 text-[13px] leading-relaxed text-ink-2">
                                 {version.summary || "No summary was recorded with this version."}
                               </p>
                             </div>
@@ -609,7 +609,7 @@ function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
-      <dd className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">{value}</dd>
+      <dd className="mt-0.5 text-[13px] leading-relaxed text-ink-2">{value}</dd>
     </div>
   );
 }

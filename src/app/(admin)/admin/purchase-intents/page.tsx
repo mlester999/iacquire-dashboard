@@ -50,7 +50,7 @@ export default async function PurchaseIntentsPage() {
                     <Link href={`/admin/purchase-intents/${intent.id}`} className="group flex items-start justify-between gap-3">
                       <span className="min-w-0">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-[13.5px] font-medium text-ink group-hover:text-primary">{intent.company}</span>
+                          <span className="text-[14px] font-medium text-ink group-hover:text-primary">{intent.company}</span>
                           <Badge tone={PURCHASE_STATUS_TONE[intent.status]}>{intent.statusText}</Badge>
                         </span>
                         <span className="mt-0.5 block truncate text-[12px] text-muted">{intent.buyerName} · {intent.buyerEmail}</span>
@@ -67,7 +67,7 @@ export default async function PurchaseIntentsPage() {
                 ))}
               </ul>
             ) : (
-              <p className="py-4 text-[13px] leading-relaxed text-muted">No invitations yet. Create one on the left; it will appear here with its status and the next action.</p>
+              <p className="py-4 text-[14px] leading-relaxed text-muted">No invitations yet. Create one on the left; it will appear here with its status and the next action.</p>
             )}
           </CardContent>
         </Card>

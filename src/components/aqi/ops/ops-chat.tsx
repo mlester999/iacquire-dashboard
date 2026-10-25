@@ -26,7 +26,7 @@ function RunLine({ run }: { run: OpsToolRun }) {
           : <CircleAlert className="size-3.5 text-danger" aria-hidden />;
   const word = run.status === "running" ? "Checking" : run.status === "ok" ? "Checked" : run.status === "partial" ? "Partly checked" : run.status === "denied" ? "Not permitted" : run.status === "timeout" ? "Timed out" : "Could not check";
   return (
-    <li className="flex items-start gap-2 text-[12.5px] text-muted">
+    <li className="flex items-start gap-2 text-[13px] text-muted">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span><span className="font-medium text-ink-2">{word}:</span> {run.title}{run.durationMs !== undefined && run.status !== "running" ? <span className="tabular-nums"> · {run.durationMs} ms</span> : null}{run.note && run.status !== "ok" ? <span> · {run.note}</span> : null}</span>
     </li>
@@ -50,7 +50,7 @@ function Evidence({ message }: { message: OpsMessage }) {
   const evidence = message.ops?.evidence ?? [];
   if (!evidence.length) return null;
   return (
-    <details className="rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[12.5px] text-muted">
+    <details className="rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[13px] text-muted">
       <summary className="cursor-pointer select-none font-medium text-ink-2">Evidence and sources ({evidence.length})</summary>
       <ol className="mt-2 space-y-1.5">
         {evidence.map((e) => (
@@ -85,7 +85,7 @@ function MessageView({ message, onRetry, onAsk, onPick, onRefresh, onOutcome, la
     <article className="space-y-3" aria-label="AQi Operations answer" aria-busy={message.streaming || undefined}>
       {message.streaming && (
         <div role="status" aria-live="polite" className="rounded-xl border border-line bg-surface-2/50 px-3 py-2.5">
-          {runs.length ? <ul className="space-y-1.5">{runs.map((r) => <RunLine key={r.id + r.status} run={r} />)}</ul> : <p className="flex items-center gap-2 text-[12.5px] text-muted"><Loader2 className="size-3.5 animate-spin" aria-hidden />Working on it…</p>}
+          {runs.length ? <ul className="space-y-1.5">{runs.map((r) => <RunLine key={r.id + r.status} run={r} />)}</ul> : <p className="flex items-center gap-2 text-[13px] text-muted"><Loader2 className="size-3.5 animate-spin" aria-hidden />Working on it…</p>}
         </div>
       )}
       {(message.ops?.cards ?? []).map((card) => (
@@ -96,7 +96,7 @@ function MessageView({ message, onRetry, onAsk, onPick, onRefresh, onOutcome, la
         <ul className="space-y-1.5 rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2">{failed.map((r) => <RunLine key={r.id} run={r} />)}</ul>
       )}
       {message.error && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2.5 text-[13px] text-danger-ink" role="alert">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2.5 text-[14px] text-danger-ink" role="alert">
           <CircleAlert className="size-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1">{message.error}</span>
           {last && message.status !== "cancelled" && <Button variant="secondary" size="sm" onClick={onRetry}><RotateCcw className="size-3.5" aria-hidden />Try again</Button>}
         </div>
@@ -104,7 +104,7 @@ function MessageView({ message, onRetry, onAsk, onPick, onRefresh, onOutcome, la
       {!message.streaming && <Evidence message={message} />}
       {!message.streaming && last && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
         <div className="flex flex-wrap gap-2" aria-label="Suggested follow-up questions" role="group">
-          {message.suggestedQuestions.map((q) => <button key={q} type="button" onClick={() => onAsk(q)} className="min-h-9 rounded-full border border-line bg-surface px-3 text-left text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">{q}</button>)}
+          {message.suggestedQuestions.map((q) => <button key={q} type="button" onClick={() => onAsk(q)} className="min-h-9 rounded-full border border-line bg-surface px-3 text-left text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">{q}</button>)}
         </div>
       )}
     </article>
@@ -174,13 +174,13 @@ function HistorySheet({ open, onOpenChange, currentId, onOpen, onDeleted }: { op
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title" className="pl-9" aria-label="Search investigations" />
           </div>
           {status === "loading" && <div className="space-y-2" aria-busy="true">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>}
-          {status === "error" && <p className="text-[13px] text-danger-ink" role="alert">History could not be loaded. Close and reopen to try again.</p>}
-          {status === "ready" && !items.length && <p className="text-[13px] text-muted">{q ? "No investigation matches that title." : "No saved investigations yet. Every question you ask is saved here."}</p>}
+          {status === "error" && <p className="text-[14px] text-danger-ink" role="alert">History could not be loaded. Close and reopen to try again.</p>}
+          {status === "ready" && !items.length && <p className="text-[14px] text-muted">{q ? "No investigation matches that title." : "No saved investigations yet. Every question you ask is saved here."}</p>}
           <ul className="space-y-1.5">
             {items.map((c) => (
               <li key={c.id} className={cn("group flex items-center gap-1 rounded-xl border px-3 py-2", c.id === currentId ? "border-primary/40 bg-primary-soft/50" : "border-line bg-surface")}>
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { onOpen(c.id); onOpenChange(false); }}>
-                  <span className="line-clamp-2 text-[13px] font-medium text-ink">{c.title}</span>
+                  <span className="line-clamp-2 text-[14px] font-medium text-ink">{c.title}</span>
                   <span className="block text-[12px] text-muted">{relativeTime(c.lastMessageAt)}</span>
                 </button>
                 <button type="button" onClick={() => { setDeleteError(null); setTarget(c); }} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-danger-ink sm:size-8" aria-label={`Delete ${c.title}`}><Trash2 className="size-4" aria-hidden /></button>
@@ -198,8 +198,8 @@ function HistorySheet({ open, onOpenChange, currentId, onOpen, onDeleted }: { op
         size="sm"
         footer={<><Button variant="ghost" onClick={() => setTarget(null)} disabled={deleting}>Keep it</Button><Button variant="danger" onClick={() => void confirmDelete()} loading={deleting}>{deleting ? "Deleting…" : "Delete"}</Button></>}
       >
-        <p className="text-[13.5px] text-ink-2">{target?.title}</p>
-        {deleteError && <p className="mt-2 text-[12.5px] text-danger-ink" role="alert">{deleteError}</p>}
+        <p className="text-[14px] text-ink-2">{target?.title}</p>
+        {deleteError && <p className="mt-2 text-[13px] text-danger-ink" role="alert">{deleteError}</p>}
       </Dialog>
     </>
   );
@@ -295,18 +295,18 @@ export function OpsChat({ chat, scope, onScopeChange, variant, pickerSignal, dra
 
       <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4" role="log" aria-label="AQi Operations conversation" aria-relevant="additions">
         {loading && <div className="space-y-3" aria-busy="true"><Skeleton className="h-10 w-2/3" /><Skeleton className="h-40" /></div>}
-        {loadError && <p className="rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[13px] text-danger-ink" role="alert">{loadError}</p>}
+        {loadError && <p className="rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[14px] text-danger-ink" role="alert">{loadError}</p>}
         {!loading && hasMore && <div className="mb-3 text-center"><Button variant="secondary" size="sm" onClick={() => void loadOlder()}>Load earlier messages</Button></div>}
         {!loading && !messages.length && !loadError && (
           <div className="mx-auto flex max-w-xl flex-col items-center py-6 text-center">
             <span className="flex size-12 items-center justify-center rounded-2xl border border-line bg-surface text-primary shadow-card"><Sparkles className="size-5" aria-hidden /></span>
             <h3 className="mt-4 text-[17px] font-semibold tracking-[-0.025em] text-ink">What should we investigate?</h3>
-            <p className="mt-2 text-[13px] leading-relaxed text-muted">
+            <p className="mt-2 text-[14px] leading-relaxed text-muted">
               {scope.type === "platform" ? "Ask about platform health, a client, AI Employees, support, security, costs or integrations." : <>Investigating <strong className="text-ink-2">{scope.label}</strong>. Evidence stays inside this context.</>}
               {" "}I show what I checked, when, and what cannot be determined. Changes are previewed and need your confirmation.
             </p>
             <div className="mt-5 grid w-full gap-2 sm:grid-cols-2" role="group" aria-label="Suggested questions">
-              {suggestions.map((q) => <button key={q} type="button" onClick={() => void ask(q)} disabled={sending} className="min-h-11 rounded-xl border border-line bg-surface px-3 py-2 text-left text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-60">{q}</button>)}
+              {suggestions.map((q) => <button key={q} type="button" onClick={() => void ask(q)} disabled={sending} className="min-h-11 rounded-xl border border-line bg-surface px-3 py-2 text-left text-[14px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-60">{q}</button>)}
             </div>
           </div>
         )}

@@ -44,12 +44,12 @@ export function ApplicationsTable({ applications, canApply, canPreview = false, 
   caption: string;
 }) {
   const previewOnly = !canApply && canPreview;
-  if (!applications.length) return <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[13px] text-muted">No applications yet.</p>;
+  if (!applications.length) return <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[14px] text-muted">No applications yet.</p>;
   return (
     <>
       <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
-          <table className="workspace-table w-full min-w-[860px] text-left text-[13px]">
+          <table className="workspace-table w-full min-w-[860px] text-left text-[14px]">
             <caption className="sr-only">{caption}</caption>
             <thead>
               <tr>
@@ -72,8 +72,8 @@ export function ApplicationsTable({ applications, canApply, canPreview = false, 
                     {updateAvailable(a) && <Badge tone="primary" className="ml-2">{updateLabel(a)}</Badge>}
                   </td>
                   <td className="px-4 py-3"><ApplicationStatusBadge status={a.status} /><p className="mt-1 text-[12px] text-muted">{MODE_LABEL[a.mode]} · {STRATEGY_LABEL[a.strategy]}</p></td>
-                  <td className="px-4 py-3 text-[12.5px] text-ink-2">{countsLine(a.counts)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={a.createdAt} /><p className="text-[12px]">{a.requestedBy ?? "Agency"}{a.requestedVia === "onboarding" ? " · onboarding" : ""}</p></td>
+                  <td className="px-4 py-3 text-[13px] text-ink-2">{countsLine(a.counts)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-[13px] text-muted"><When iso={a.createdAt} /><p className="text-[12px]">{a.requestedBy ?? "Agency"}{a.requestedVia === "onboarding" ? " · onboarding" : ""}</p></td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">
                       {canApply && updateAvailable(a) && <ButtonLink href={bpHref.apply(a.blueprintId, a.orgId)} size="sm" variant="soft" aria-label={`Review the update of ${a.blueprintName} for ${a.orgName}`}>Review update</ButtonLink>}
@@ -94,11 +94,11 @@ export function ApplicationsTable({ applications, canApply, canPreview = false, 
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   {show.client && <p className="truncate text-[14px] font-semibold text-ink">{a.orgName}</p>}
-                  {show.blueprint && <p className={cn("truncate", show.client ? "text-[12.5px] text-muted" : "text-[14px] font-semibold text-ink")}>{a.blueprintName}</p>}
+                  {show.blueprint && <p className={cn("truncate", show.client ? "text-[13px] text-muted" : "text-[14px] font-semibold text-ink")}>{a.blueprintName}</p>}
                 </div>
                 <ApplicationStatusBadge status={a.status} />
               </div>
-              <p className="mt-2 text-[12.5px] text-ink-2">Version {a.version}{updateAvailable(a) ? ` · ${updateLabel(a)}` : ""} · {MODE_LABEL[a.mode]}</p>
+              <p className="mt-2 text-[13px] text-ink-2">Version {a.version}{updateAvailable(a) ? ` · ${updateLabel(a)}` : ""} · {MODE_LABEL[a.mode]}</p>
               <p className="mt-1 text-[12px] text-muted">{countsLine(a.counts)}</p>
               <p className="mt-1 text-[12px] text-muted"><When iso={a.createdAt} />{a.requestedBy ? ` · ${a.requestedBy}` : ""}</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -121,7 +121,7 @@ export function UpdateCandidates({ blueprintId, candidates, canApply, canPreview
       <SectionLabel title="Clients on an earlier version" count={candidates.length}
         description="A newer version is never pushed. Review each client's update to see exactly what changes, what conflicts with their own edits, and choose which parts to take." />
       {candidates.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">Every client that uses this Blueprint is on the latest version.</p>
+        <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">Every client that uses this Blueprint is on the latest version.</p>
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2">
           {candidates.map((c) => (
@@ -245,12 +245,12 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
           {canApply && a.canRollBack && !result && <Button variant="danger" onClick={() => setConfirming(true)}><Undo2 className="size-4" /> Roll back</Button>}
         </>} />
 
-      {a.error && <p role="alert" className="flex gap-2 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{a.error}</p>}
-      {a.rolledBackAt && !result && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Rolled back {formatDateTime(a.rolledBackAt, timeZone)}. Records the client had changed or used since were kept.</p>}
+      {a.error && <p role="alert" className="flex gap-2 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{a.error}</p>}
+      {a.rolledBackAt && !result && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Rolled back {formatDateTime(a.rolledBackAt, timeZone)}. Records the client had changed or used since were kept.</p>}
       {/* canRollBack is only worked out for someone who may roll back (the same permission as applying). For anyone else it is false
           without a newer application having been looked for, so they are told who can roll back instead. */}
       {!a.canRollBack && !a.rolledBackAt && (a.status === "applied" || a.status === "partially_applied") && (
-        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[12.5px] text-muted">
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-muted">
           {canApply
             ? "Only the newest live application of a Blueprint in a workspace can be rolled back. A later application of this Blueprint exists for this client."
             : "Only an agency super admin can roll back an application."}
@@ -260,12 +260,12 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
       {result && (
         <Card className="p-5" aria-live="polite">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><RotateCcw className="size-4 text-primary" aria-hidden /> Rollback result</h2>
-          <p className="mt-1 text-[13px] text-ink-2">{result.rolledBack} {result.rolledBack === 1 ? "change was" : "changes were"} undone. Status: {APPLICATION_STATUS_LABEL[result.status]}.</p>
+          <p className="mt-1 text-[14px] text-ink-2">{result.rolledBack} {result.rolledBack === 1 ? "change was" : "changes were"} undone. Status: {APPLICATION_STATUS_LABEL[result.status]}.</p>
           {result.kept.length > 0 && (
             <>
-              <p className="mt-3 text-[13px] font-semibold text-ink">Kept, with the reason</p>
+              <p className="mt-3 text-[14px] font-semibold text-ink">Kept, with the reason</p>
               <ul className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl border border-line">
-                {result.kept.map((k) => <li key={k.assetId} className="px-4 py-2.5"><p className="text-[13px] font-medium text-ink">{k.name}</p><p className="text-[12px] text-muted">{k.reason}</p></li>)}
+                {result.kept.map((k) => <li key={k.assetId} className="px-4 py-2.5"><p className="text-[14px] font-medium text-ink">{k.name}</p><p className="text-[12px] text-muted">{k.reason}</p></li>)}
               </ul>
             </>
           )}
@@ -277,7 +277,7 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="bp-app-items" className="text-[17px] font-semibold tracking-[-0.025em] text-ink">What happened</h2>
-              <p className="mt-1 text-[12.5px] text-muted">{created} created · {updated} updated · {a.items.length} items in all</p>
+              <p className="mt-1 text-[13px] text-muted">{created} created · {updated} updated · {a.items.length} items in all</p>
             </div>
             {sections.length > 1 && (
               <Select aria-label="Section" value={section} onChange={(e) => setSection(e.target.value)} className="w-56">
@@ -286,14 +286,14 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
               </Select>
             )}
           </div>
-          {items.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">No items.</p> : (
+          {items.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">No items.</p> : (
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
               {items.map((i) => (
                 <li key={i.assetId} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="break-words text-[13.5px] font-medium text-ink">{i.name}</p>
+                    <p className="break-words text-[14px] font-medium text-ink">{i.name}</p>
                     <p className="text-[12px] text-muted">{sectionLabel(i.section)} · <code className="font-mono">{i.assetId}</code></p>
-                    {i.message && <p className="mt-1 text-[12.5px] text-ink-2">{i.message}</p>}
+                    {i.message && <p className="mt-1 text-[13px] text-ink-2">{i.message}</p>}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-1.5"><PlanActionBadge action={i.action} /><Badge tone={OUTCOME_TONE[i.outcome]}>{OUTCOME_LABEL[i.outcome]}</Badge></div>
                 </li>
@@ -303,14 +303,14 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
         </section>
         <aside aria-labelledby="bp-app-reqs" className="space-y-3">
           <h2 id="bp-app-reqs" className="text-[15px] font-semibold text-ink">Setup still open in this workspace</h2>
-          <p className="text-[12.5px] leading-relaxed text-muted">Applying never completes these. The client&apos;s setup checklist marks each one done only on evidence in their workspace (a verified calendar, a connected sender, approved wording).</p>
+          <p className="text-[13px] leading-relaxed text-muted">Applying never completes these. The client&apos;s setup checklist marks each one done only on evidence in their workspace (a verified calendar, a connected sender, approved wording).</p>
           <RequirementList keys={a.requirements} compact />
         </aside>
       </div>
 
       <ConfirmDialog open={confirming} onOpenChange={setConfirming} title={`Roll back ${a.blueprintName} for ${a.orgName}?`} confirmLabel="Roll back" danger loading={busy("rollback")} onConfirm={() => void rollback()}
         description="This undoes what this application did, only where nothing was changed or used since.">
-        <ul className="space-y-2 text-[12.5px] leading-relaxed text-ink-2">
+        <ul className="space-y-2 text-[13px] leading-relaxed text-ink-2">
           <li><strong className="font-semibold text-ink">Removed:</strong> records this application created that are unchanged and unused.</li>
           <li><strong className="font-semibold text-ink">Restored:</strong> records it updated, back to how they were, if nobody changed them since.</li>
           <li><strong className="font-semibold text-ink">Kept, with a reason:</strong> anything the client edited, tags on contacts, fields with values, pipelines or stages with deals, calendars with appointments, and folders that hold items.</li>

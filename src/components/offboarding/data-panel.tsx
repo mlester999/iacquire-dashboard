@@ -93,7 +93,7 @@ export function DataPanel({ orgName, view, canRequest, canExport }: { orgName: s
                 {WHAT_HAPPENS.map((w) => (
                   <li key={w.text} className="flex items-start gap-3.5 px-4 py-3.5">
                     <IconTile icon={w.icon} tone="neutral" size="sm" />
-                    <p className="min-w-0 flex-1 self-center text-[13px] leading-relaxed text-ink-2">{w.text}</p>
+                    <p className="min-w-0 flex-1 self-center text-[14px] leading-relaxed text-ink-2">{w.text}</p>
                   </li>
                 ))}
               </ul>
@@ -118,7 +118,7 @@ export function DataPanel({ orgName, view, canRequest, canExport }: { orgName: s
               {view.steps.length > 0 && (
                 <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line" aria-label="What was done">
                   {view.steps.map((s) => (
-                    <li key={s.key} className="flex items-start gap-3 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
+                    <li key={s.key} className="flex items-start gap-3 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
                       <CheckCircle2 className={`mt-0.5 size-4 shrink-0 ${s.ok ? "text-success-ink" : "text-warning-ink"}`} aria-hidden />
                       <span className="min-w-0 flex-1">{s.text}</span>
                       <StatusPill tone={s.ok ? "success" : "warning"} size="sm">{s.ok ? "Done" : "Needs attention"}</StatusPill>
@@ -133,7 +133,7 @@ export function DataPanel({ orgName, view, canRequest, canExport }: { orgName: s
                   <StatusPill tone="warning" icon={<Download className="size-3" aria-hidden />}>Data not downloaded yet</StatusPill>
                 )}
               </div>
-              <p className="text-[12.5px] text-muted">Want to come back? Contact iAcquire support and we&apos;ll restore your workspace.</p>
+              <p className="text-[13px] text-muted">Want to come back? Contact iAcquire support and we&apos;ll restore your workspace.</p>
             </div>
           )}
 
@@ -144,7 +144,7 @@ export function DataPanel({ orgName, view, canRequest, canExport }: { orgName: s
           )}
 
           {view && view.timeline.length > 0 && (
-            <details className="group rounded-2xl border border-line bg-surface-2/40 px-4 py-3 text-[13px]">
+            <details className="group rounded-2xl border border-line bg-surface-2/40 px-4 py-3 text-[14px]">
               <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center gap-2"><Clock className="size-4 text-muted" aria-hidden /> History <InfoChip>{view.timeline.length}</InfoChip></span>
                 <span aria-hidden className="text-muted transition-transform group-open:rotate-180">⌄</span>

@@ -100,7 +100,7 @@ export function BlueprintDetailView({ blueprint: b, applications, updateCandidat
           )}
         </>}
         aside={
-          <div className="space-y-2.5 rounded-2xl border border-line bg-surface/80 p-4 text-[12.5px] shadow-soft">
+          <div className="space-y-2.5 rounded-2xl border border-line bg-surface/80 p-4 text-[13px] shadow-soft">
             <div className="flex flex-wrap items-center gap-2"><StatusBadge status={b.status} /><Badge tone="outline">{b.currentVersion ? `Version ${b.currentVersion}` : "Never published"}</Badge></div>
             <CompatibilityBadge value={b.compatibility} notes={b.compatibilityNotes} />
             <p className="text-muted">{live.length ? `Live in ${live.length} client ${live.length === 1 ? "workspace" : "workspaces"}` : "Not applied to any client yet"}</p>
@@ -109,7 +109,7 @@ export function BlueprintDetailView({ blueprint: b, applications, updateCandidat
           </div>
         } />
 
-      {archived && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Archived. It can&apos;t be applied to another client. Clients that already applied it keep their own copies.</p>}
+      {archived && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Archived. It can&apos;t be applied to another client. Clients that already applied it keep their own copies.</p>}
 
       <Tabs id="bp-detail" value={tab} onValueChange={(v) => setUrl({ tab: v })} items={[
         { value: "overview", label: "Overview" },
@@ -124,7 +124,7 @@ export function BlueprintDetailView({ blueprint: b, applications, updateCandidat
         {tab === "applications" && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-2xl text-[13px] leading-relaxed text-muted">Each client got an independent copy. Changes a client makes stay theirs; a newer version reaches a client only when you review it for them.</p>
+              <p className="max-w-2xl text-[14px] leading-relaxed text-muted">Each client got an independent copy. Changes a client makes stay theirs; a newer version reaches a client only when you review it for them.</p>
               {can.apply && b.status === "published" && <ButtonLink href={bpHref.apply(b.id)} variant="soft" size="sm"><Send className="size-3.5" /> Apply to another client</ButtonLink>}
               {previewOnly && <ButtonLink href={bpHref.apply(b.id)} variant="soft" size="sm"><Eye className="size-3.5" /> Preview applying</ButtonLink>}
             </div>
@@ -165,7 +165,7 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
                   </li>
                 ))}
               </ul>
-            ) : <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">No CRM assets yet. Add them in the editor.</p>}
+            ) : <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">No CRM assets yet. Add them in the editor.</p>}
           </section>
           <section aria-label="Setup each client completes">
             <SectionLabel title="Setup each client completes" count={b.requirementDetails.length}
@@ -175,9 +175,9 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
         </div>
         <aside className="space-y-4" aria-label="Provenance and draft health">
           <Card className="p-4">
-            <h3 className="text-[13.5px] font-semibold text-ink">Where it came from</h3>
+            <h3 className="text-[14px] font-semibold text-ink">Where it came from</h3>
             <div className="mt-2"><SourceBadge source={b.source} /></div>
-            <ul className="mt-3 space-y-1.5 text-[12.5px] text-ink-2">
+            <ul className="mt-3 space-y-1.5 text-[13px] text-ink-2">
               {b.sourceLabel && <li>{b.sourceLabel}</li>}
               {b.provenance.sourceOrgName && <li>Captured from <span className="font-medium text-ink">{b.provenance.sourceOrgName}</span> (configuration only)</li>}
               {b.provenance.starterKey && <li>iAcquire starter <code className="font-mono text-[12px]">{b.provenance.starterKey}</code></li>}
@@ -186,21 +186,21 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
             </ul>
           </Card>
           <Card className="p-4">
-            <h3 className="text-[13.5px] font-semibold text-ink">Working draft</h3>
+            <h3 className="text-[14px] font-semibold text-ink">Working draft</h3>
             {b.draftErrors.length === 0 && b.draftWarnings.length === 0 ? (
-              <p className="mt-2 text-[12.5px] text-muted">Valid, with no warnings.</p>
+              <p className="mt-2 text-[13px] text-muted">Valid, with no warnings.</p>
             ) : (
-              <div className="mt-2 space-y-2 text-[12.5px]">
+              <div className="mt-2 space-y-2 text-[13px]">
                 {b.draftErrors.length > 0 && <div className="flex gap-2 text-danger-ink"><CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /><div><p className="font-medium">{b.draftErrors.length} {b.draftErrors.length === 1 ? "problem" : "problems"} to fix before publishing</p><ul className="mt-0.5 text-[12px]">{issueLines(b.draftErrors).map((l) => <li key={l}>{l}</li>)}</ul></div></div>}
                 {b.draftWarnings.length > 0 && <div className="flex gap-2 text-warning-ink"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /><div><p className="font-medium">{b.draftWarnings.length} {b.draftWarnings.length === 1 ? "warning" : "warnings"}</p><ul className="mt-0.5 list-disc pl-4 text-[12px]">{b.draftWarnings.slice(0, 3).map((w, i) => <li key={`${w.path}-${i}`}>{w.message}</li>)}</ul></div></div>}
               </div>
             )}
           </Card>
           <Card className="p-4">
-            <h3 className="text-[13.5px] font-semibold text-ink">Compatibility</h3>
+            <h3 className="text-[14px] font-semibold text-ink">Compatibility</h3>
             <div className="mt-2"><CompatibilityBadge value={b.compatibility} notes={b.compatibilityNotes} /></div>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{compatibilityHint(b.compatibility)}</p>
-            {b.compatibilityNotes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12.5px] text-ink-2">{b.compatibilityNotes.map((n) => <li key={n}>{n}</li>)}</ul>}
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">{compatibilityHint(b.compatibility)}</p>
+            {b.compatibilityNotes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[13px] text-ink-2">{b.compatibilityNotes.map((n) => <li key={n}>{n}</li>)}</ul>}
           </Card>
         </aside>
       </div>
@@ -230,8 +230,8 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
 function NoteList({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 px-4 py-3">
-      <p className="text-[13px] font-semibold text-ink">{title}</p>
-      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[12.5px] leading-relaxed text-ink-2">{items.map((x) => <li key={x}>{x}</li>)}</ul>
+      <p className="text-[14px] font-semibold text-ink">{title}</p>
+      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-ink-2">{items.map((x) => <li key={x}>{x}</li>)}</ul>
     </div>
   );
 }

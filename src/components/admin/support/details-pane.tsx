@@ -30,8 +30,8 @@ const DUE_FORMAT: Intl.DateTimeFormatOptions = { dateStyle: undefined, timeStyle
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-      <dt className="shrink-0 text-[12.5px] text-muted">{label}</dt>
-      <dd className="min-w-0 text-right text-[13px] font-medium text-ink">{children}</dd>
+      <dt className="shrink-0 text-[13px] text-muted">{label}</dt>
+      <dd className="min-w-0 text-right text-[14px] font-medium text-ink">{children}</dd>
     </div>
   );
 }
@@ -79,7 +79,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
           <StatusPill status={t.priority}>{sentenceCase(t.priority)} priority</StatusPill>
           {t.escalated && <StatusPill tone="danger" icon={<Flame className="size-3" aria-hidden />}>Escalated</StatusPill>}
         </div>
-        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{clientProgressSentence({ status: t.status, type: t.requestType, stage: t.feedbackStage as FeedbackStage | null, assigned: Boolean(t.assignedToId), hasAgencyReply: Boolean(t.firstRespondedAt) })} <span className="text-faint">(what the client reads)</span></p>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">{clientProgressSentence({ status: t.status, type: t.requestType, stage: t.feedbackStage as FeedbackStage | null, assigned: Boolean(t.assignedToId), hasAgencyReply: Boolean(t.firstRespondedAt) })} <span className="text-faint">(what the client reads)</span></p>
 
         <div className="mt-4 grid gap-3">
           {t.requestType === "feedback" ? (
@@ -126,7 +126,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
         </div>
 
         {t.escalation && (
-          <div className="mt-4 rounded-xl border border-danger/25 bg-danger-soft/60 p-3 text-[12.5px] leading-relaxed text-danger-ink" role="status">
+          <div className="mt-4 rounded-xl border border-danger/25 bg-danger-soft/60 p-3 text-[13px] leading-relaxed text-danger-ink" role="status">
             <p className="flex items-center gap-1.5 font-semibold"><Flame className="size-3.5" aria-hidden /> Escalated {formatDateTime(t.escalation.at, timeZone)}{t.escalation.byName ? ` by ${t.escalation.byName}` : " automatically"}</p>
             {t.escalation.reason && <p className="mt-1">{t.escalation.reason}</p>}
             {caps["agency.support.priority"] && <Button size="sm" variant="ghost" className="mt-2" loading={busy === "clear"} onClick={() => void act("clear", () => clearEscalationAction(t.id), "Escalation cleared")}>Clear escalation</Button>}
@@ -135,10 +135,10 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       </Card>
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><CalendarClock className="size-4 text-muted" aria-hidden /> Response target</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><CalendarClock className="size-4 text-muted" aria-hidden /> Response target</h3>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <StatusPill tone={SLA_TONE[t.sla.state]}>{SLA_STATE_LABELS[t.sla.state]}</StatusPill>
-          {t.sla.dueAt && <span className="text-[12.5px] text-ink-2">{t.sla.kind === "first" ? "First reply" : "Reply"} due <time dateTime={t.sla.dueAt} className="font-medium text-ink">{formatDateTime(t.sla.dueAt, timeZone, DUE_FORMAT)}</time></span>}
+          {t.sla.dueAt && <span className="text-[13px] text-ink-2">{t.sla.kind === "first" ? "First reply" : "Reply"} due <time dateTime={t.sla.dueAt} className="font-medium text-ink">{formatDateTime(t.sla.dueAt, timeZone, DUE_FORMAT)}</time></span>}
         </div>
         <p className="mt-2 text-[12px] leading-relaxed text-muted">
           {t.sla.state === "none" ? "No response target applies. Targets are configured by a Super Admin in Support settings." : t.sla.state === "waiting_on_client" ? "The clock is paused while the client's answer is awaited." : t.sla.state === "resolved" ? "No clock is running." : "Counted in support hours only. A public reply from the team stops this clock; an automatic acknowledgement never does."}
@@ -146,7 +146,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       </Card>
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><Building2 className="size-4 text-muted" aria-hidden /> Client</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Building2 className="size-4 text-muted" aria-hidden /> Client</h3>
         <dl className="mt-3 divide-y divide-line">
           <Row label="Workspace"><Link href={`/admin/clients/${detail.org.id}`} className="inline-flex items-center gap-1 text-primary-ink hover:underline">{detail.org.name}<ArrowUpRight className="size-3" aria-hidden /></Link></Row>
           <Row label="Opened by">{t.createdByName ?? "Client"}</Row>
@@ -158,7 +158,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       </Card>
 
       <Card className="p-4">
-        <h3 className="text-[13.5px] font-semibold text-ink">About this request</h3>
+        <h3 className="text-[14px] font-semibold text-ink">About this request</h3>
         <dl className="mt-3 divide-y divide-line">
           <Row label="Type">{REQUEST_TYPE_LABELS[t.requestType].label}</Row>
           <Row label="Topic">{categoryLabel(t.category)}</Row>
@@ -176,7 +176,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
 
       {detail.change && (
         <Card className="p-4">
-          <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><PencilRuler className="size-4 text-muted" aria-hidden /> Change request</h3>
+          <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><PencilRuler className="size-4 text-muted" aria-hidden /> Change request</h3>
           <p className="mt-1.5 text-[12px] leading-relaxed text-muted">Only the team sees this. It is a working label: it prices nothing, promises no date and the client never reads it.</p>
           <dl className="mt-3 divide-y divide-line">
             <Row label="About">{CHANGE_TARGET_LABELS[detail.change.targetKind]}</Row>
@@ -204,16 +204,16 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
 
       {t.diagnostics && (
         <Card className="p-4">
-          <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden /> Technical details shared by the client</h3>
+          <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden /> Technical details shared by the client</h3>
           <dl className="mt-3 divide-y divide-line">{describeDiagnostics(t.diagnostics).map((r) => <Row key={r.label} label={r.label}><span className="break-words">{r.value}</span></Row>)}</dl>
         </Card>
       )}
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><Link2 className="size-4 text-muted" aria-hidden /> Related requests</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Link2 className="size-4 text-muted" aria-hidden /> Related requests</h3>
         {detail.links.length > 0 && (
           <ul className="mt-3 space-y-1.5">{detail.links.map((l) => (
-            <li key={`${l.id}-${l.kind}`} className="flex flex-wrap items-center gap-2 text-[13px]">
+            <li key={`${l.id}-${l.kind}`} className="flex flex-wrap items-center gap-2 text-[14px]">
               <Link href={`/admin/support?ticket=${l.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{l.ref}</Link>
               <span className="min-w-0 flex-1 truncate text-ink-2" title={l.subject}>{l.subject}</span>
               <InfoChip>{l.kind === "merged_into" ? (l.direction === "from" ? "merged into" : "merged here") : l.kind === "duplicate_of" ? "duplicate" : "related"}</InfoChip>
@@ -221,19 +221,19 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
           </ul>
         )}
         {detail.recent.length > 0 && (
-          <details className="mt-3 group"><summary className="cursor-pointer text-[12.5px] font-medium text-ink-2 hover:text-ink">Recent from this client ({detail.recent.length})</summary>
+          <details className="mt-3 group"><summary className="cursor-pointer text-[13px] font-medium text-ink-2 hover:text-ink">Recent from this client ({detail.recent.length})</summary>
             <ul className="mt-2 space-y-1.5">{detail.recent.map((r) => (
-              <li key={r.id} className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${r.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{r.ref}</Link><span className="min-w-0 flex-1 truncate text-ink-2">{r.subject}</span><StatusPill status={r.status} size="sm" /></li>))}
+              <li key={r.id} className="flex items-center gap-2 text-[13px]"><Link href={`/admin/support?ticket=${r.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{r.ref}</Link><span className="min-w-0 flex-1 truncate text-ink-2">{r.subject}</span><StatusPill status={r.status} size="sm" /></li>))}
             </ul>
           </details>
         )}
         <div className="mt-3">
           <Button size="sm" variant="secondary" loading={busy === "similar"} onClick={async () => { setBusy("similar"); const res = await similarAction(t.id); setBusy(null); setSimilar(!res.ok ? { reason: res.error } : res.data); }}>Find possible duplicates</Button>
         </div>
-        {similar && ("reason" in similar ? <p className="mt-2 text-[12.5px] text-danger-ink">{similar.reason}</p> : similar.length === 0 ? <p className="mt-2 text-[12.5px] text-muted">No similar requests from this client.</p> : (
+        {similar && ("reason" in similar ? <p className="mt-2 text-[13px] text-danger-ink">{similar.reason}</p> : similar.length === 0 ? <p className="mt-2 text-[13px] text-muted">No similar requests from this client.</p> : (
           <ul className="mt-3 space-y-2.5" aria-label="Possible duplicates">{similar.map((s) => (
             <li key={s.id} className="rounded-xl border border-line bg-surface-2/60 p-2.5">
-              <p className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${s.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{s.ref}</Link><span className="min-w-0 flex-1 truncate font-medium text-ink" title={s.subject}>{s.subject}</span><span className="text-[12px] text-muted">{Math.round(s.score * 100)}% alike</span></p>
+              <p className="flex items-center gap-2 text-[13px]"><Link href={`/admin/support?ticket=${s.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{s.ref}</Link><span className="min-w-0 flex-1 truncate font-medium text-ink" title={s.subject}>{s.subject}</span><span className="text-[12px] text-muted">{Math.round(s.score * 100)}% alike</span></p>
               {canWrite && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Button size="sm" variant="ghost" onClick={() => void act(`link-${s.id}`, () => linkAction(t.id, s.id, "related"), "Linked").then(() => setSimilar((list) => (Array.isArray(list) ? list.filter((x) => x.id !== s.id) : list)))}>Link as related</Button>
@@ -246,19 +246,19 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       </Card>
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><Sparkles className="size-4 text-muted" aria-hidden /> AI help &amp; advice</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Sparkles className="size-4 text-muted" aria-hidden /> AI help &amp; advice</h3>
         <p className="mt-1.5 text-[12px] leading-relaxed text-muted">Suggestions only. Nothing here changes the request or contacts the client.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" loading={busy === "sum"} disabled={!canWrite} onClick={async () => { setBusy("sum"); const res = await summarizeAction(t.id); setBusy(null); if (!res.ok) setSummary({ reason: res.error }); else if (!res.data.ok) setSummary({ reason: res.data.reason }); else setSummary(res.data.data); }}>Summarize conversation</Button>
           <Button size="sm" variant="secondary" loading={busy === "adv"} disabled={!canWrite} onClick={async () => { setBusy("adv"); const res = await adviseAction(t.id); setBusy(null); if (res.ok) setAdvice(res.data); else toast.error(res.error); }}>Priority &amp; escalation advice</Button>
         </div>
-        {summary && ("reason" in summary ? <p className="mt-3 text-[12.5px] text-ink-2">{summary.reason}</p> : (
-          <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-3"><p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Summary · {formatDateTime(summary.at, timeZone)}</p><p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{summary.text}</p></div>
+        {summary && ("reason" in summary ? <p className="mt-3 text-[13px] text-ink-2">{summary.reason}</p> : (
+          <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-3"><p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Summary · {formatDateTime(summary.at, timeZone)}</p><p className="mt-1 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">{summary.text}</p></div>
         ))}
         {advice && (
           <div className="mt-3 rounded-xl border border-line bg-surface-2/60 p-3" role="status">
-            <p className="text-[12.5px] font-semibold text-ink">{advice.recommend ? "Worth a closer look" : "Nothing alarming"} · consider <strong>{advice.suggestedPriority}</strong> priority</p>
-            {advice.reasons.length > 0 ? <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[12.5px] text-ink-2">{advice.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <p className="mt-1 text-[12.5px] text-muted">No signals found in this request.</p>}
+            <p className="text-[13px] font-semibold text-ink">{advice.recommend ? "Worth a closer look" : "Nothing alarming"} · consider <strong>{advice.suggestedPriority}</strong> priority</p>
+            {advice.reasons.length > 0 ? <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] text-ink-2">{advice.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <p className="mt-1 text-[13px] text-muted">No signals found in this request.</p>}
             <p className="mt-2 text-[12px] text-muted">This is a prompt for your judgement; it doesn&apos;t change anything.</p>
           </div>
         )}
@@ -266,14 +266,14 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
 
       {detail.looseAttachments.length > 0 && (
         <Card className="p-4">
-          <h3 className="text-[13.5px] font-semibold text-ink">Files added to the request</h3>
-          <ul className="mt-2 space-y-1.5">{detail.looseAttachments.map((a) => <li key={a.id}><a className="text-[13px] font-medium text-primary-ink hover:underline" href={`/api/support/attachments/${a.id}`}>{a.filename}</a>{a.visibility === "internal" && <span className="ml-2 text-[12px] text-warning-ink">team only</span>}</li>)}</ul>
+          <h3 className="text-[14px] font-semibold text-ink">Files added to the request</h3>
+          <ul className="mt-2 space-y-1.5">{detail.looseAttachments.map((a) => <li key={a.id}><a className="text-[14px] font-medium text-primary-ink hover:underline" href={`/api/support/attachments/${a.id}`}>{a.filename}</a>{a.visibility === "internal" && <span className="ml-2 text-[12px] text-warning-ink">team only</span>}</li>)}</ul>
         </Card>
       )}
 
       <Card className="p-4">
         <details className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-[13.5px] font-semibold text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"><History className="size-4 text-muted" aria-hidden /> History <span className="ml-auto text-[12px] font-normal text-muted group-open:hidden">Show</span><span className="ml-auto hidden text-[12px] font-normal text-muted group-open:inline">Hide</span></summary>
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-[14px] font-semibold text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"><History className="size-4 text-muted" aria-hidden /> History <span className="ml-auto text-[12px] font-normal text-muted group-open:hidden">Show</span><span className="ml-auto hidden text-[12px] font-normal text-muted group-open:inline">Hide</span></summary>
           <div className="mt-4"><Timeline entries={detail.timeline} viewer="agency" timeZone={timeZone} /></div>
         </details>
       </Card>
@@ -287,7 +287,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       <Dialog open={Boolean(mergeTarget)} onOpenChange={(o) => !o && setMergeTarget(null)} title={`Merge ${mergeTarget?.ref ?? ""} into this request?`} icon={<GitMerge />} size="sm"
         description="The other request is closed and its client is told it was merged into this one. Nothing is deleted and both histories stay."
         footer={<><Button variant="secondary" onClick={() => setMergeTarget(null)}>Cancel</Button><Button variant="brand" loading={busy === "merge"} onClick={async () => { if (mergeTarget && await act("merge", () => mergeAction(mergeTarget.id, t.id), "Merged")) { setMergeTarget(null); setSimilar(null); } }}>Merge</Button></>}>
-        <p className="text-[13px] text-ink-2"><strong className="font-medium">{mergeTarget?.ref}</strong> · {mergeTarget?.subject}</p>
+        <p className="text-[14px] text-ink-2"><strong className="font-medium">{mergeTarget?.ref}</strong> · {mergeTarget?.subject}</p>
       </Dialog>
       {busy && <span className="sr-only" role="status"><Loader2 className="size-3 animate-spin" aria-hidden /> Working…</span>}
     </div>

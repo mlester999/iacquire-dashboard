@@ -141,7 +141,7 @@ function LogCallForm({ scope, open, onOpenChange, contact: fixed, members, canFo
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <p className="text-[13px] font-medium text-ink-2" id={`${ids}-dir`}>Direction</p>
+            <p className="text-[14px] font-medium text-ink-2" id={`${ids}-dir`}>Direction</p>
             <Segmented id={`${ids}-direction`} ariaLabel="Direction" value={direction} onChange={setDirection} options={[{ value: "outbound", label: "I called them" }, { value: "inbound", label: "They called" }]} />
           </div>
           <Field label="How it ended" htmlFor={`${ids}-status`}>
@@ -158,9 +158,9 @@ function LogCallForm({ scope, open, onOpenChange, contact: fixed, members, canFo
             <Field label="Duration" htmlFor={`${ids}-min`} optional error={errors.duration}>
               <div className="flex items-center gap-2">
                 <Input id={`${ids}-min`} inputMode="numeric" aria-label="Minutes" placeholder="0" value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/[^0-9]/g, ""))} className="w-24" />
-                <span className="text-[13px] text-muted">min</span>
+                <span className="text-[14px] text-muted">min</span>
                 <Input inputMode="numeric" aria-label="Seconds" placeholder="0" value={seconds} onChange={(e) => setSeconds(e.target.value.replace(/[^0-9]/g, ""))} className="w-24" />
-                <span className="text-[13px] text-muted">s</span>
+                <span className="text-[14px] text-muted">s</span>
               </div>
             </Field>
           )}
@@ -193,7 +193,7 @@ function LogCallForm({ scope, open, onOpenChange, contact: fixed, members, canFo
         </div>
         {canFollowUp && (
           <div className="space-y-3 rounded-2xl border border-line p-3">
-            <label className="flex cursor-pointer items-center gap-2 text-[13.5px] font-medium text-ink">
+            <label className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-ink">
               <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />
               Create a follow-up task
             </label>

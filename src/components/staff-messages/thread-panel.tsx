@@ -43,13 +43,13 @@ export function ThreadPanel({ rootId, onClose, thread, view, pending, names, men
       <div className="flex min-h-full flex-col">
         <div className="flex-1 px-2 py-3">
           {thread === undefined && (
-            <p role="status" className="flex items-center gap-2 px-3 py-6 text-[13px] text-muted">
+            <p role="status" className="flex items-center gap-2 px-3 py-6 text-[14px] text-muted">
               <Loader2 className="size-4 animate-spin" aria-hidden /> Loading the thread…
             </p>
           )}
           {thread === null && (
             <div className="space-y-3 px-3 py-6" role="status">
-              <p className="text-[13.5px] text-muted">This thread isn&apos;t available any more. The message may have been removed.</p>
+              <p className="text-[14px] text-muted">This thread isn&apos;t available any more. The message may have been removed.</p>
               <Button size="sm" variant="secondary" onClick={onReload}>
                 <RefreshCw className="size-3.5" aria-hidden /> Check again
               </Button>
@@ -79,12 +79,12 @@ export function ThreadPanel({ rootId, onClose, thread, view, pending, names, men
                 <li key={p.clientId} data-pending={p.clientId} className="px-3 py-1">
                   <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink-2 [overflow-wrap:anywhere]">{plainMentions(p.body, (id) => names.get(id) ?? null)}</p>
                   {p.status === "sending" ? (
-                    <p className="flex items-center gap-1.5 text-[12.5px] text-muted" role="status">
+                    <p className="flex items-center gap-1.5 text-[13px] text-muted" role="status">
                       <Loader2 className="size-3 animate-spin" aria-hidden /> Sending…
                     </p>
                   ) : (
                     <div role="alert" className="mt-1 space-y-1">
-                      <p className="text-[12.5px] text-danger-ink">{failureText(p.error, p.errorCode)}</p>
+                      <p className="text-[13px] text-danger-ink">{failureText(p.error, p.errorCode)}</p>
                       <div className="flex flex-wrap gap-2">
                         {canRetry(p.errorCode) && <Button size="sm" variant="secondary" onClick={() => actions.onRetry(p.clientId)}>Try again</Button>}
                         <Button size="sm" variant="ghost" onClick={() => actions.onDiscardPending(p.clientId)}>Discard</Button>

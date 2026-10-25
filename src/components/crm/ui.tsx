@@ -51,7 +51,7 @@ export function useCrmAction() {
 const AVATAR_TONES = ["bg-[#e8eefe] text-[#2541b2]", "bg-[#e7f7ee] text-[#0b7a3b]", "bg-[#fff1e5] text-[#a1440c]", "bg-[#f1edff] text-[#5a3ee0]", "bg-[#fdecf3] text-[#a3245e]", "bg-[#e6f6f8] text-[#0b6672]"];
 export function Avatar({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
   const tone = AVATAR_TONES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % AVATAR_TONES.length];
-  const dims = { sm: "size-7 text-[12px]", md: "size-9 text-[12.5px]", lg: "size-14 text-[18px]" }[size];
+  const dims = { sm: "size-7 text-[12px]", md: "size-9 text-[13px]", lg: "size-14 text-[18px]" }[size];
   return <span aria-hidden className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold", dims, tone, className)}>{initialsOf(name || "?")}</span>;
 }
 
@@ -166,8 +166,8 @@ export function RecordPicker<T extends { id: string }>({
       />
       {open && (
         <ul id={listId} role="listbox" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-float">
-          {loading && <li className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted"><Loader2 className="size-3.5 animate-spin" />Searching…</li>}
-          {!loading && !items.length && <li className="px-3 py-2 text-[13px] text-muted">No matches</li>}
+          {loading && <li className="flex items-center gap-2 px-3 py-2 text-[14px] text-muted"><Loader2 className="size-3.5 animate-spin" />Searching…</li>}
+          {!loading && !items.length && <li className="px-3 py-2 text-[14px] text-muted">No matches</li>}
           {!loading &&
             items.map((item, i) => (
               <li
@@ -179,7 +179,7 @@ export function RecordPicker<T extends { id: string }>({
                   onPick(item);
                   setOpen(false);
                 }}
-                className={cn("cursor-pointer rounded-lg px-3 py-2 text-[13px]", i === active ? "bg-surface-2" : "hover:bg-surface-2")}
+                className={cn("cursor-pointer rounded-lg px-3 py-2 text-[14px]", i === active ? "bg-surface-2" : "hover:bg-surface-2")}
               >
                 {render(item)}
               </li>
@@ -234,12 +234,12 @@ export function ConfirmDialog({
 
 export function Pagination({ page, pageSize, total, hrefFor }: { page: number; pageSize: number; total: number; hrefFor: (page: number) => string }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (pages <= 1) return <p className="text-[12.5px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "record" : "records"}</p>;
+  if (pages <= 1) return <p className="text-[13px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "record" : "records"}</p>;
   const from = (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
   return (
     <nav aria-label="Pages" className="flex items-center justify-between gap-3">
-      <p className="text-[12.5px] text-muted">
+      <p className="text-[13px] text-muted">
         {from.toLocaleString("en-US")}–{to.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
       </p>
       <div className="flex items-center gap-1">
@@ -248,7 +248,7 @@ export function Pagination({ page, pageSize, total, hrefFor }: { page: number; p
         ) : (
           <span className="inline-flex size-11 items-center justify-center rounded-xl border border-line text-faint opacity-50 sm:size-9" aria-hidden><ChevronLeft className="size-4" /></span>
         )}
-        <span className="px-2 text-[12.5px] tabular-nums text-muted">Page {page} of {pages}</span>
+        <span className="px-2 text-[13px] tabular-nums text-muted">Page {page} of {pages}</span>
         {page < pages ? (
           <Link href={hrefFor(page + 1)} className="inline-flex size-11 items-center justify-center rounded-xl border border-line bg-surface hover:bg-surface-2 sm:size-9" aria-label="Next page"><ChevronRight className="size-4" /></Link>
         ) : (
@@ -260,7 +260,7 @@ export function Pagination({ page, pageSize, total, hrefFor }: { page: number; p
 }
 
 export function ReadOnlyNotice({ children }: { children?: React.ReactNode }) {
-  return <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-muted">{children ?? "You can view this, but your access doesn't include changing it."}</p>;
+  return <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-muted">{children ?? "You can view this, but your access doesn't include changing it."}</p>;
 }
 
 export function PageTitle({ title, description, actions }: { title: string; description?: React.ReactNode; actions?: React.ReactNode }) {
@@ -268,7 +268,7 @@ export function PageTitle({ title, description, actions }: { title: string; desc
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">{title}</h2>
-        {description && <div className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">{description}</div>}
+        {description && <div className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">{description}</div>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

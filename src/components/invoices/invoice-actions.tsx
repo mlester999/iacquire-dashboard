@@ -91,7 +91,7 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
   return (
     <section aria-label="Actions" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
-        {has("edit") && <Link href={`/invoices/${invoiceId}/edit`} className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-[13.5px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:min-h-10">Edit draft</Link>}
+        {has("edit") && <Link href={`/invoices/${invoiceId}/edit`} className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-[14px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:min-h-10">Edit draft</Link>}
         {has("submit") && <Button variant="secondary" loading={busy("submit")} disabled={!hasCustomer} onClick={() => run("submit", () => submitInvoiceAction(invoiceId, version), "Sent for approval.")}>Send for approval</Button>}
         {(has("issue") || has("approve_issue")) && <Button variant="brand" disabled={!hasCustomer} onClick={() => setDialog("issue")}>{issueLabel}</Button>}
         {has("request_changes") && <Button variant="secondary" onClick={() => setDialog("changes")}>Ask for changes</Button>}
@@ -104,18 +104,18 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
         {has("delete_test") && <Button variant="ghost" onClick={() => setDialog("delete_test")}>Delete test invoice</Button>}
         {has("discard") && <Button variant="ghost" onClick={() => setDialog("discard")}>Discard draft</Button>}
       </div>
-      {!hasCustomer && (has("submit") || has("issue") || has("approve_issue")) && <p className="text-[12.5px] text-warning-ink">Choose the customer on the draft before it can be sent for approval or issued.</p>}
-      {notes.map((n) => <p key={n} className="text-[12.5px] text-muted">{n}</p>)}
-      {closeRuleNote && <p className="text-[12.5px] text-muted">{closeRuleNote}</p>}
+      {!hasCustomer && (has("submit") || has("issue") || has("approve_issue")) && <p className="text-[13px] text-warning-ink">Choose the customer on the draft before it can be sent for approval or issued.</p>}
+      {notes.map((n) => <p key={n} className="text-[13px] text-muted">{n}</p>)}
+      {closeRuleNote && <p className="text-[13px] text-muted">{closeRuleNote}</p>}
 
       {link && (
         <div className="space-y-2 rounded-xl border border-line bg-surface-2/60 p-3" role="group" aria-label="The customer's link">
-          <p className="text-[13px] font-medium text-ink">The customer&apos;s link</p>
+          <p className="text-[14px] font-medium text-ink">The customer&apos;s link</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input readOnly value={link} aria-label="The customer's link" className={input16} onFocus={(e) => e.currentTarget.select()} />
             <Button variant="secondary" onClick={copy}><Copy className="size-4" aria-hidden />Copy</Button>
           </div>
-          <p className="text-[12.5px] text-muted">Anyone who has this link can see this invoice and start a payment. Give it only to your customer, in a message you send yourself. Showing it is recorded in the invoice&apos;s history. Nothing was sent to anyone.</p>
+          <p className="text-[13px] text-muted">Anyone who has this link can see this invoice and start a payment. Give it only to your customer, in a message you send yourself. Showing it is recorded in the invoice&apos;s history. Nothing was sent to anyone.</p>
           <Button variant="ghost" size="sm" onClick={() => setDialog("rotate")}>Replace the link</Button>
         </div>
       )}
@@ -177,13 +177,13 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
           <Field label="Received on" htmlFor="pay-date"><Input id="pay-date" type="date" className={input16} value={pay.receivedOn} max={todayIn(new Date(), tz)} onChange={(e) => setPay({ ...pay, receivedOn: e.target.value })} /></Field>
           <Field label="How was it paid?" htmlFor="pay-method"><Select id="pay-method" className={input16} value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</Select></Field>
           <Field label="How do you know? (kept with the payment)" htmlFor="pay-evidence" hint="A transfer reference, a receipt number, who handed over the cash. Never a card number."><Textarea id="pay-evidence" rows={2} className={input16} maxLength={600} value={pay.evidence} onChange={(e) => setPay({ ...pay, evidence: e.target.value })} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.overpayment} onChange={(e) => setPay({ ...pay, overpayment: e.target.checked })} />The customer paid more than the invoice is for</label>
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.overpayment} onChange={(e) => setPay({ ...pay, overpayment: e.target.checked })} />The customer paid more than the invoice is for</label>
           <details className="rounded-xl border border-line px-3 py-2">
-            <summary className="min-h-11 cursor-pointer text-[13px] text-ink-2 sm:min-h-8">If the customer may also be paying online</summary>
-            <p className="mt-2 text-[12.5px] text-muted">A payment page may be open for this invoice. Recording a payment while one is open is refused, because it could be the same money twice. If this is a different payment, tick below.</p>
-            <label className="mt-2 flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.override} onChange={(e) => setPay({ ...pay, override: e.target.checked })} />This is a different payment from the one the customer may be making online. Record it anyway.</label>
+            <summary className="min-h-11 cursor-pointer text-[14px] text-ink-2 sm:min-h-8">If the customer may also be paying online</summary>
+            <p className="mt-2 text-[13px] text-muted">A payment page may be open for this invoice. Recording a payment while one is open is refused, because it could be the same money twice. If this is a different payment, tick below.</p>
+            <label className="mt-2 flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.override} onChange={(e) => setPay({ ...pay, override: e.target.checked })} />This is a different payment from the one the customer may be making online. Record it anyway.</label>
           </details>
-          <p className="flex items-start gap-2 text-[12.5px] text-muted"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />Recorded by hand, this payment is shown apart and does not count as verified revenue unless the owner chose that in the invoice settings.</p>
+          <p className="flex items-start gap-2 text-[13px] text-muted"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />Recorded by hand, this payment is shown apart and does not count as verified revenue unless the owner chose that in the invoice settings.</p>
         </div>
       </ConfirmDialog>
     </section>

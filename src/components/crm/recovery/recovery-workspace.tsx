@@ -75,13 +75,13 @@ export function RecoveryWorkspace({ scope, stats, cases, group, policy, readines
   return (
     <section aria-label="Missed-call recovery" className="space-y-5">
       {!policy.enabled ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13px]" role="note">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px]" role="note">
           <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden />
           <p className="min-w-0 flex-1 text-ink-2"><span className="font-medium text-ink">Recovery is off.</span> Missed calls are listed here, but nobody is told and nothing is followed up until you switch it on.</p>
           <Link href={hrefFor({ tab: "recovery-settings" })} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 font-medium text-ink hover:bg-surface-3 sm:min-h-9"><Settings2 className="size-4" aria-hidden />{canConfigure ? "Set it up" : "See settings"}</Link>
         </div>
       ) : attention.length > 0 ? (
-        <ul className="space-y-1.5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[12.5px] text-warning-ink" aria-label="Things to know">
+        <ul className="space-y-1.5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink" aria-label="Things to know">
           {/* The checklist labels are written as the good state ("... is on"); beside a failing detail they are prefixed so the line never contradicts itself. */}
           {attention.slice(0, 3).map((i) => <li key={i.key}><span className="font-medium">Not yet: {i.label.charAt(0).toLowerCase()}{i.label.slice(1)}.</span> {i.detail}</li>)}
           <li><Link href={hrefFor({ tab: "recovery-settings" })} className="inline-flex min-h-11 items-center font-medium underline sm:min-h-0">Open recovery settings</Link></li>
@@ -94,7 +94,7 @@ export function RecoveryWorkspace({ scope, stats, cases, group, policy, readines
           <nav aria-label="Period" className="flex gap-1">
             {[7, 30, 90].map((d) => (
               <Link key={d} href={`${scope.base}/calls?tab=recovery&days=${d}${group !== "needs_you" ? `&group=${group}` : ""}`} aria-current={stats.periodDays === d ? "page" : undefined}
-                className={cn("inline-flex min-h-11 items-center rounded-xl border px-3 text-[12.5px] font-medium sm:min-h-8", stats.periodDays === d ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>{d} days</Link>
+                className={cn("inline-flex min-h-11 items-center rounded-xl border px-3 text-[13px] font-medium sm:min-h-8", stats.periodDays === d ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>{d} days</Link>
             ))}
           </nav>
         </div>
@@ -113,10 +113,10 @@ export function RecoveryWorkspace({ scope, stats, cases, group, policy, readines
       </div>
 
       <div className="space-y-3">
-        <nav aria-label="Filter missed calls" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Filter missed calls" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
           {GROUPS.map(([k, label]) => (
             <Link key={k} href={hrefFor({ group: k, page: 1, case: null })} aria-current={group === k ? "page" : undefined}
-              className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9", group === k ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
+              className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9", group === k ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
               {label}<span className="tabular-nums text-muted">{cases.counts[k]}</span>
             </Link>
           ))}
@@ -130,11 +130,11 @@ export function RecoveryWorkspace({ scope, stats, cases, group, policy, readines
                   <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><PhoneMissed className="size-4" aria-hidden /></span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-[13.5px] font-medium text-ink">{c.contact?.name ?? (c.callerNumber ? formatPhone(c.callerNumber) : "Number withheld")}</span>
+                      <span className="truncate text-[14px] font-medium text-ink">{c.contact?.name ?? (c.callerNumber ? formatPhone(c.callerNumber) : "Number withheld")}</span>
                       <CaseStatusBadge c={c} />
                       {c.afterHours && <Badge tone="outline">After hours</Badge>}
                     </span>
-                    <span className="mt-0.5 block text-[12.5px] text-muted">
+                    <span className="mt-0.5 block text-[13px] text-muted">
                       {c.classificationLabel}{c.callCount > 1 ? ` · ${c.callCount} calls` : ""}{c.attempts ? ` · ${c.attempts} text${c.attempts === 1 ? "" : "s"}` : ""}
                       {c.owner.name ? ` · ${c.owner.name}` : c.owner.kind === "unassigned" ? " · Nobody has it" : ""}
                     </span>
@@ -189,18 +189,18 @@ export function CaseDetailContent({ scope, detail, members, canWork }: { scope: 
           <CaseStatusBadge c={detail} />
           {detail.attempts > 0 && <Badge tone="outline">{detail.attempts} text{detail.attempts === 1 ? "" : "s"} tried</Badge>}
         </div>
-        <p className="text-[12.5px] text-muted">{CALL_CLASS_HELP[detail.classification]}</p>
-        {detail.nextActionAt && !finished && <p className="text-[12.5px] text-muted">Next look: {formatDateTime(detail.nextActionAt, scope.timezone)}</p>}
-        {detail.stateReason && detail.state === "suppressed" && <p className="text-[12.5px] text-ink-2">{blockReasonText(detail.stateReason.replace(/^message_/, ""))}</p>}
+        <p className="text-[13px] text-muted">{CALL_CLASS_HELP[detail.classification]}</p>
+        {detail.nextActionAt && !finished && <p className="text-[13px] text-muted">Next look: {formatDateTime(detail.nextActionAt, scope.timezone)}</p>}
+        {detail.stateReason && detail.state === "suppressed" && <p className="text-[13px] text-ink-2">{blockReasonText(detail.stateReason.replace(/^message_/, ""))}</p>}
 
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[14px]">
           {detail.contact && <Link href={`${scope.base}/contacts/${detail.contact.id}`} className="inline-flex min-h-11 items-center font-medium text-primary-ink hover:underline sm:min-h-0">Open contact</Link>}
           {detail.conversationId && scope.can["inbox.view"] && <Link href={`/inbox?conversation=${detail.conversationId}`} className="inline-flex min-h-11 items-center font-medium text-primary-ink hover:underline sm:min-h-0">Open conversation</Link>}
         </div>
 
         <section aria-label="Calls">
-          <h3 className="mb-2 text-[13px] font-semibold text-ink">Calls</h3>
-          <ul className="space-y-1.5 text-[13px]">
+          <h3 className="mb-2 text-[14px] font-semibold text-ink">Calls</h3>
+          <ul className="space-y-1.5 text-[14px]">
             {detail.calls.map((c) => (
               <li key={c.id} className={cn("flex items-center justify-between gap-2", !c.counted && "text-faint line-through")}>
                 <span>{formatDateTime(c.calledAt, scope.timezone)}{c.afterHours ? " · after hours" : ""}</span>
@@ -211,17 +211,17 @@ export function CaseDetailContent({ scope, detail, members, canWork }: { scope: 
         </section>
 
         <section aria-label="Follow-up">
-          <h3 className="mb-2 text-[13px] font-semibold text-ink">What was done</h3>
+          <h3 className="mb-2 text-[14px] font-semibold text-ink">What was done</h3>
           {detail.actions.length ? (
             <ul className="space-y-3">
               {detail.actions.map((a) => (
-                <li key={a.id} className="rounded-xl border border-line p-3 text-[13px]">
+                <li key={a.id} className="rounded-xl border border-line p-3 text-[14px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-ink">{ACTION_KIND_LABELS[a.kind]}{a.channel ? ` (${a.channel === "sms" ? "text" : "email"})` : ""}</span>
                     <Badge tone={ACTION_TONE[a.status]}>{ACTION_STATUS_LABELS[a.status]}</Badge>
                   </div>
-                  {a.reason && <p className="mt-1 text-[12.5px] text-muted">{blockReasonText(a.reason) !== "A rule held this back." ? blockReasonText(a.reason) : a.reason.replace(/_/g, " ")}</p>}
-                  {a.kind === "ai_callback" && <p className="mt-1 text-[12.5px] text-muted">An AI call-back needs an outbound-calling connection that has been verified. None exists, so nothing was called.</p>}
+                  {a.reason && <p className="mt-1 text-[13px] text-muted">{blockReasonText(a.reason) !== "A rule held this back." ? blockReasonText(a.reason) : a.reason.replace(/_/g, " ")}</p>}
+                  {a.kind === "ai_callback" && <p className="mt-1 text-[13px] text-muted">An AI call-back needs an outbound-calling connection that has been verified. None exists, so nothing was called.</p>}
                   {a.status === "awaiting_approval" && a.draftBody && (
                     <div className="mt-2 space-y-2">
                       <Textarea aria-label="Text to send" rows={3} maxLength={480} value={drafts[a.id] ?? a.draftBody} disabled={!canWork} onChange={(e) => setDrafts({ ...drafts, [a.id]: e.target.value })} />
@@ -233,17 +233,17 @@ export function CaseDetailContent({ scope, detail, members, canWork }: { scope: 
                       )}
                     </div>
                   )}
-                  {a.taskId && <Link href={`${scope.base}/tasks`} className="mt-1 inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary-ink hover:underline sm:min-h-0"><ClipboardCheck className="mr-1 inline size-3.5" aria-hidden />View task</Link>}
+                  {a.taskId && <Link href={`${scope.base}/tasks`} className="mt-1 inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink hover:underline sm:min-h-0"><ClipboardCheck className="mr-1 inline size-3.5" aria-hidden />View task</Link>}
                 </li>
               ))}
             </ul>
-          ) : <p className="text-[13px] text-muted">Nothing yet.</p>}
+          ) : <p className="text-[14px] text-muted">Nothing yet.</p>}
         </section>
 
         {canWork && !finished && (
           <section aria-label="Work this missed call" className="space-y-3 rounded-xl bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-2">
-              <label className="min-w-0 flex-1 text-[12.5px] font-medium text-ink-2">Owner
+              <label className="min-w-0 flex-1 text-[13px] font-medium text-ink-2">Owner
                 <Select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="mt-1">
                   <option value="">Nobody</option>
                   {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -268,8 +268,8 @@ export function CaseDetailContent({ scope, detail, members, canWork }: { scope: 
         )}
 
         <section aria-label="History">
-          <h3 className="mb-2 text-[13px] font-semibold text-ink">History</h3>
-          <ol className="space-y-2 border-l border-line pl-4 text-[12.5px]">
+          <h3 className="mb-2 text-[14px] font-semibold text-ink">History</h3>
+          <ol className="space-y-2 border-l border-line pl-4 text-[13px]">
             {detail.events.map((e) => (
               <li key={e.id} className="relative">
                 <span className="absolute -left-[21px] top-1.5 size-2 rounded-full bg-line-strong" aria-hidden />

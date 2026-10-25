@@ -238,7 +238,7 @@ export function ModuleChips({ modules, max = 6, className }: { modules: Array<{ 
 export function DownloadLink({ href, label, children, variant = "ghost", className }: { href: string; label: string; children: React.ReactNode; variant?: "ghost" | "secondary"; className?: string }) {
   return (
     <a href={href} download aria-label={label}
-      className={cn("inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8",
+      className={cn("inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8",
         variant === "secondary" ? "border border-line bg-surface text-ink shadow-soft hover:bg-surface-2" : "text-ink-2 hover:bg-surface-2 hover:text-ink", className)}>
       {children}
     </a>
@@ -278,7 +278,7 @@ export function RequirementList({ details, keys, assetNames, emptyText = "Nothin
   compact?: boolean;
 }) {
   const items: RequirementDetail[] = details ?? (keys ?? []).map((key) => ({ key, assetIds: [], slots: [], notes: [] }));
-  if (!items.length) return <p className="text-[13px] text-muted">{emptyText}</p>;
+  if (!items.length) return <p className="text-[14px] text-muted">{emptyText}</p>;
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       {items.map((d) => {
@@ -291,11 +291,11 @@ export function RequirementList({ details, keys, assetNames, emptyText = "Nothin
             <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2" aria-hidden><Icon className="size-4" /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <p className="text-[13.5px] font-semibold text-ink">{info.label}</p>
+                <p className="text-[14px] font-semibold text-ink">{info.label}</p>
                 <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-ink-2">{KIND_LABEL[info.kind]}</span>
                 {!compact && <span className="text-[12px] text-muted">{OWNER_LABEL[info.owner]}</span>}
               </div>
-              {!compact && <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{info.description}</p>}
+              {!compact && <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{info.description}</p>}
               {names.length > 0 && <p className="mt-1 text-[12px] text-ink-2"><span className="text-muted">For: </span>{names.slice(0, 6).join(", ")}{names.length > 6 ? ` and ${names.length - 6} more` : ""}</p>}
               {d.slots.length > 0 && <p className="mt-1 text-[12px] text-ink-2"><span className="text-muted">Roles: </span>{d.slots.map(slotLabel).join(", ")}</p>}
               {d.notes.length > 0 && <ul className="mt-1 space-y-0.5 text-[12px] text-muted">{d.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
@@ -346,14 +346,14 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
       </div>
       <p role="status" className="text-[12px] text-muted">{list.length} {list.length === 1 ? "item" : "items"}{status === "all" ? "" : ` marked ${COMPAT_LABELS[status].toLowerCase()}`}</p>
       {shown.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">Nothing here.</p>
+        <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">Nothing here.</p>
       ) : (
         <ul id={`${id}-items`} className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
           {shown.map((item, i) => (
             <li key={`${item.assetId ?? item.name}-${i}`} className="px-4 py-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="break-words text-[13.5px] font-semibold text-ink">{item.name}</p>
+                  <p className="break-words text-[14px] font-semibold text-ink">{item.name}</p>
                   <p className="mt-0.5 text-[12px] text-muted">{sentence(item.sourceKind)}{item.assetType && item.assetId ? <> · <code className="font-mono text-[12px]">{item.assetId}</code></> : null}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
@@ -361,7 +361,7 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
                   <CompatStatusBadge status={item.status} />
                 </div>
               </div>
-              {item.notes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12.5px] leading-relaxed text-ink-2">{item.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+              {item.notes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[13px] leading-relaxed text-ink-2">{item.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
               {(item.requirements.length > 0 || item.missingDependencies.length > 0) && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {item.requirements.map((k) => REQUIREMENT_INFO[k] && <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-ink-2">{REQUIREMENT_INFO[k].label}</span>)}
@@ -373,7 +373,7 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
         </ul>
       )}
       {list.length > shown.length && (
-        <button type="button" onClick={() => setLimit((l) => l + PAGE)} aria-controls={`${id}-items`} className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-[13px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">
+        <button type="button" onClick={() => setLimit((l) => l + PAGE)} aria-controls={`${id}-items`} className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-[14px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">
           Show {Math.min(PAGE, list.length - shown.length)} more of {list.length - shown.length}
         </button>
       )}
@@ -384,7 +384,7 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
 function StatusChip({ active, onClick, label, count, disabled }: { active: boolean; onClick: () => void; label: string; count: number; disabled?: boolean }) {
   return (
     <button type="button" aria-pressed={active} disabled={disabled && !active} onClick={onClick}
-      className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-45 sm:min-h-8",
+      className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-45 sm:min-h-8",
         active ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
       {label}<span className="rounded-full bg-surface-3 px-1.5 text-[12px] tabular-nums text-ink-2">{count}</span>
     </button>
@@ -413,7 +413,7 @@ export function InfoList({ items, className }: { items: Array<{ label: string; v
       {items.map((i) => (
         <div key={i.label} className="grid gap-1 px-4 py-2.5 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4">
           <dt className="text-[12px] font-medium text-muted">{i.label}</dt>
-          <dd className="min-w-0 break-words text-[13px] text-ink">{i.value}</dd>
+          <dd className="min-w-0 break-words text-[14px] text-ink">{i.value}</dd>
         </div>
       ))}
     </dl>

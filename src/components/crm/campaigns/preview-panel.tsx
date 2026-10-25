@@ -27,7 +27,7 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
   if (!preview) {
     return (
       <Card className="p-5">
-        <p className="flex items-center gap-2 text-[13px] text-muted">{loading ? <><Loader2 className="size-4 animate-spin" aria-hidden />Working out who it reaches…</> : error ?? "Choose a Smart List and a message to see who it reaches."}</p>
+        <p className="flex items-center gap-2 text-[14px] text-muted">{loading ? <><Loader2 className="size-4 animate-spin" aria-hidden />Working out who it reaches…</> : error ?? "Choose a Smart List and a message to see who it reaches."}</p>
       </Card>
     );
   }
@@ -37,20 +37,20 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
   return (
     <div className="space-y-3" aria-busy={loading || undefined}>
       <div aria-live="polite" className="sr-only">{loading ? "Updating the preview" : preview.eligible !== null ? `${n(preview.eligible)} people can receive it now` : ""}</div>
-      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink" role="alert">{error}</p>}
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><Users className="size-4 text-muted" aria-hidden />Who it reaches{loading && <Loader2 className="ml-auto size-3.5 animate-spin text-muted" aria-label="Updating" />}</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Users className="size-4 text-muted" aria-hidden />Who it reaches{loading && <Loader2 className="ml-auto size-3.5 animate-spin text-muted" aria-label="Updating" />}</h3>
         {preview.list ? (
           <>
             <p className="mt-2 text-[28px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-ink">{n(preview.eligible ?? 0)}</p>
-            <p className="mt-1 text-[12.5px] text-muted">of {n(total)} {total === 1 ? "person" : "people"} on “{preview.list.name}” can receive it right now.</p>
+            <p className="mt-1 text-[13px] text-muted">of {n(total)} {total === 1 ? "person" : "people"} on “{preview.list.name}” can receive it right now.</p>
             {excludedTotal > 0 && (
               <div className="mt-3">
                 <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Left out ({n(excludedTotal)})</p>
                 <ul className="mt-1.5 space-y-1.5">
                   {preview.exclusions.map((e) => (
-                    <li key={e.reason} className="text-[12.5px]">
+                    <li key={e.reason} className="text-[13px]">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="text-ink-2">{reasonLabel(e.reason, channel)}</span>
                         <span className="tabular-nums text-muted">{n(e.count)}</span>
@@ -66,17 +66,17 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
             </p>
           </>
         ) : (
-          <p className="mt-2 text-[12.5px] text-muted">Choose a Smart List to see who it reaches.</p>
+          <p className="mt-2 text-[13px] text-muted">Choose a Smart List to see who it reaches.</p>
         )}
       </Card>
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><BadgeDollarSign className="size-4 text-muted" aria-hidden />Estimated cost</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><BadgeDollarSign className="size-4 text-muted" aria-hidden />Estimated cost</h3>
         {est ? (
           est.rate ? (
             <>
               <p className="mt-2 text-[22px] font-semibold tabular-nums text-ink">{money(est.costMicros)}</p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+              <p className="mt-1 text-[13px] leading-relaxed text-muted">
                 {n(est.units)} {est.unitLabel.toLowerCase()} at {money(est.rate.clientMicrosPerUnit)} each, the rate iAcquire published for {est.providerLabel} (rate v{est.rate.version}).
                 {est.unit === "sms_segment" && ` About ${est.unitsPerMessage} segment${est.unitsPerMessage === 1 ? "" : "s"} per text with sample details; real names can change it.`}
               </p>
@@ -84,14 +84,14 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
           ) : (
             <>
               <p className="mt-2 text-[15px] font-semibold text-ink">Price not published</p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">iAcquire hasn&apos;t published a rate for {est.unitLabel.toLowerCase()} through {est.providerLabel}, so there is no estimate and nothing can be sent until there is.</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted">iAcquire hasn&apos;t published a rate for {est.unitLabel.toLowerCase()} through {est.providerLabel}, so there is no estimate and nothing can be sent until there is.</p>
             </>
           )
         ) : (
-          <p className="mt-2 text-[12.5px] text-muted">Shown once the list and message are chosen.</p>
+          <p className="mt-2 text-[13px] text-muted">Shown once the list and message are chosen.</p>
         )}
         {preview.credits && preview.credits.status !== "unknown" && (
-          <p className={cn("mt-2 rounded-xl px-3 py-2 text-[12.5px]", preview.credits.status === "enough" ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
+          <p className={cn("mt-2 rounded-xl px-3 py-2 text-[13px]", preview.credits.status === "enough" ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
             {preview.credits.status === "enough"
               ? `Your service credits cover it${preview.credits.availableMicros !== null ? ` (${money(preview.credits.availableMicros)} available)` : ""}.`
               : preview.credits.status === "short"
@@ -102,8 +102,8 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
       </Card>
 
       <Card className="p-4">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><Clock className="size-4 text-muted" aria-hidden />When and how it sends</h3>
-        <ul className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-ink-2">
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Clock className="size-4 text-muted" aria-hidden />When and how it sends</h3>
+        <ul className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-ink-2">
           <li><span className="text-muted">Starts: </span>{preview.schedule.label}</li>
           <li><span className="text-muted">Pace: </span>{paceText(preview.eligible ?? 0, ratePerMinute)}</li>
           <li>
@@ -121,14 +121,14 @@ export function PreviewPanel({ preview, channel, ratePerMinute, loading, error }
 
       {preview.problems.length > 0 && (
         <div className="rounded-2xl border border-danger/25 bg-danger-soft p-3" role="status">
-          <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-danger-ink"><ShieldAlert className="size-4" aria-hidden />Before it can be approved</p>
-          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[12.5px] leading-relaxed text-danger-ink">{preview.problems.map((p) => <li key={p}>{p}</li>)}</ul>
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-danger-ink"><ShieldAlert className="size-4" aria-hidden />Before it can be approved</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-danger-ink">{preview.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
       )}
       {preview.warnings.length > 0 && (
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-3">
-          <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-warning-ink"><AlertTriangle className="size-4" aria-hidden />Worth knowing</p>
-          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[12.5px] leading-relaxed text-warning-ink">{preview.warnings.map((p) => <li key={p}>{p}</li>)}</ul>
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-warning-ink"><AlertTriangle className="size-4" aria-hidden />Worth knowing</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-warning-ink">{preview.warnings.map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
       )}
     </div>

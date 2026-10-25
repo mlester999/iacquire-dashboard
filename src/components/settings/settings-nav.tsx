@@ -57,7 +57,7 @@ export function SettingsNav({ permissions, features = [] }: { permissions: Permi
                       href={i.href}
                       data-aqi-target={i.href === "/settings/team" ? "settings.team.nav" : i.href === "/settings/integrations" ? "settings.integrations.nav" : undefined}
                       aria-current={active ? "page" : undefined}
-                      className={cn("relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-[13px] font-medium transition-colors", active ? "text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}
+                      className={cn("relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-[14px] font-medium transition-colors", active ? "text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}
                     >
                       {active && <motion.span layoutId="settings-active" className="absolute inset-0 rounded-xl border border-primary/15 bg-primary-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
                       <i.icon className={cn("relative size-4", active && "text-primary")} />

@@ -135,7 +135,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
           </div>
           <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mt-1.5 block w-full text-left">
             <span className="block text-[14px] font-semibold leading-snug text-ink">{report.title}</span>
-            <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{report.summary}</span>
+            <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{report.summary}</span>
           </button>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
             <InfoChip icon={<Clock3 />}><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span></InfoChip>
@@ -150,10 +150,10 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                   {report.sections.map((section) => (
                     <div key={section.key} className={section.key === "what_happened" ? "sm:col-span-2" : ""}>
                       <dt className="text-[12px] font-semibold uppercase tracking-[.06em] text-faint">{section.title}</dt>
-                      {section.body && <dd className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{section.body}</dd>}
+                      {section.body && <dd className="mt-1 text-[13px] leading-relaxed text-ink-2">{section.body}</dd>}
                       {section.items && section.items.length > 0 && (
                         <dd className="mt-1">
-                          <ul className="list-disc space-y-0.5 pl-4 text-[12.5px] leading-relaxed text-ink-2">
+                          <ul className="list-disc space-y-0.5 pl-4 text-[13px] leading-relaxed text-ink-2">
                             {section.items.map((item, index) => <li key={`${section.key}-${index}`}>{item}</li>)}
                           </ul>
                         </dd>
@@ -168,7 +168,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                   <p className="text-[12px] font-semibold uppercase tracking-[.06em] text-faint">Measured values</p>
                   <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                     {report.metrics.slice(0, 8).map((metric) => (
-                      <li key={metric.key} className="text-[12.5px]">
+                      <li key={metric.key} className="text-[13px]">
                         <span className="font-semibold text-ink">{metric.label}: {metric.value}{metric.unit ? ` ${metric.unit}` : ""}</span>
                         <span className="block text-[12px] text-muted">{metric.period} · {metric.definition}</span>
                         {typeof metric.change === "number" && metric.trend && (
@@ -192,7 +192,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                         <li key={key} className="rounded-xl border border-line bg-surface-2/30 p-3">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <StatusPill tone={SEVERITY_TONE[finding.severity]} size="sm">{PROACTIVE_SEVERITY_LABELS[finding.severity]}</StatusPill>
-                            <span className="text-[12.5px] font-semibold text-ink">{finding.title}</span>
+                            <span className="text-[13px] font-semibold text-ink">{finding.title}</span>
                           </div>
                           <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{finding.detail}</p>
                           {finding.samples.length > 0 && <p className="mt-1 text-[12px] text-muted">Examples: {finding.samples.join("; ")}</p>}

@@ -27,7 +27,7 @@ export function WorkloadHeader({ active, showTeam, showSettings }: { active: Wor
           <h1 className="mt-1 flex items-center gap-2 text-[26px] font-semibold tracking-[-0.04em] text-ink">
             <Gauge className="size-6 text-primary" aria-hidden /> Staff workload
           </h1>
-          <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
             Who is carrying what, from the work recorded in iAcquire. A label is a prompt to look at how work is shared, never a score of a person.
           </p>
         </div>
@@ -43,7 +43,7 @@ export function WorkloadHeader({ active, showTeam, showSettings }: { active: Wor
               href={t.href}
               aria-current={active === t.key ? "page" : undefined}
               className={cn(
-                "inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition",
+                "inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium transition",
                 active === t.key ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink",
               )}
             >

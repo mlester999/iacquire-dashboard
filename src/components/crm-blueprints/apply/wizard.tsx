@@ -244,12 +244,12 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
   return (
     <div className="space-y-5">
       <div>
-        <Link href={blueprintHref(blueprint.id)} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Back to the Blueprint</Link>
+        <Link href={blueprintHref(blueprint.id)} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Back to the Blueprint</Link>
         <p className="mt-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">Apply to client</p>
         <h1 ref={headingRef} tabIndex={-1} className="break-words text-[22px] font-semibold tracking-[-0.03em] text-ink outline-none">
           {isUpdate && version && state?.appliedVersion !== version ? `Review update to version ${version}` : blueprint.name}
         </h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           {isUpdate && client
             ? `${client.name} has version ${state!.appliedVersion} of ${blueprint.name}. Review what the newer version changes, section by section; nothing is pushed until you confirm.`
             : `Creates independent copies of ${blueprint.name}'s configuration in one client's CRM. ${NEVER_TEXT}`}
@@ -270,7 +270,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
                   onClick={() => (s.id === "preview" ? openPreview() : go(s.id))}
                   aria-current={current ? "step" : undefined}
                   className={cn(
-                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-[13px] font-medium sm:min-h-9",
+                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-[14px] font-medium sm:min-h-9",
                     current ? "border-primary bg-primary-soft text-primary-ink" : done ? "border-line bg-surface text-ink" : "border-line bg-surface text-muted",
                     can && "hover:bg-surface-2",
                   )}
@@ -303,26 +303,26 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
             </Select>
           </Field>
           <fieldset className="space-y-2">
-            <legend className="text-[13px] font-medium text-ink-2">What happens to things the client already has</legend>
+            <legend className="text-[14px] font-medium text-ink-2">What happens to things the client already has</legend>
             {(Object.keys(STRATEGY_TEXT) as ApplyStrategy[]).map((s) => (
               <label key={s} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line p-3.5 has-[:checked]:border-primary/50 has-[:checked]:bg-primary-soft/40">
                 <input type="radio" name="ap-strategy" value={s} checked={strategy === s} onChange={() => setStrategy(s)} className="mt-1 size-4 shrink-0 accent-primary" />
                 <span>
-                  <span className="block text-[13.5px] font-semibold text-ink">{STRATEGY_TEXT[s].label}</span>
-                  <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{STRATEGY_TEXT[s].description}</span>
+                  <span className="block text-[14px] font-semibold text-ink">{STRATEGY_TEXT[s].label}</span>
+                  <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{STRATEGY_TEXT[s].description}</span>
                 </span>
               </label>
             ))}
-            <p className="text-[12.5px] font-medium text-ink-2">{NEVER_TEXT}</p>
+            <p className="text-[13px] font-medium text-ink-2">{NEVER_TEXT}</p>
           </fieldset>
           <fieldset className="space-y-2">
-            <legend className="text-[13px] font-medium text-ink-2">{isUpdate ? "Sections to review" : "Sections to apply"}</legend>
+            <legend className="text-[14px] font-medium text-ink-2">{isUpdate ? "Sections to review" : "Sections to apply"}</legend>
             {isUpdate && changed && (
-              <p className="text-[12.5px] text-muted">
+              <p className="text-[13px] text-muted">
                 {changed.length ? `Version ${version} changes ${changed.map((s) => SECTION_LABELS[s]).join(", ")} compared with the client's version ${state!.appliedVersion}. Those are chosen; others stay as they are unless you add them.` : `Version ${version} changes nothing compared with the client's version ${state!.appliedVersion}.`}
               </p>
             )}
-            {!available.length && <p className="text-[12.5px] text-muted">This version has nothing to apply.</p>}
+            {!available.length && <p className="text-[13px] text-muted">This version has nothing to apply.</p>}
             <div className="grid gap-2 sm:grid-cols-2">
               {available.map((s) => {
                 const count = chosenVersion?.counts[s] ?? 0;
@@ -330,14 +330,14 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
                 return (
                   <label key={s} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2 has-[:checked]:border-primary/40 has-[:checked]:bg-primary-soft/40">
                     <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={on} onChange={(e) => setSections((cur) => (e.target.checked ? [...cur, s] : cur.filter((x) => x !== s)))} />
-                    <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{SECTION_LABELS[s]}</span>
+                    <span className="min-w-0 flex-1 text-[14px] font-medium text-ink">{SECTION_LABELS[s]}</span>
                     {isUpdate && changed?.includes(s) && <Badge tone="primary" className="h-5 px-2 text-[12px]">Changed</Badge>}
                     <span className="text-[12px] tabular-nums text-muted">{count}</span>
                   </label>
                 );
               })}
             </div>
-            {available.length > 0 && !sections.length && <p className="text-[12.5px] text-danger-ink" role="status">Choose at least one section.</p>}
+            {available.length > 0 && !sections.length && <p className="text-[13px] text-danger-ink" role="status">Choose at least one section.</p>}
           </fieldset>
           <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-4">
             <Button variant="secondary" onClick={() => go("client")}><ArrowLeft className="size-4" aria-hidden />Client</Button>
@@ -349,7 +349,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
       {step === "preview" && client && (
         <div className="space-y-4">
           {changedNotice && (
-            <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink" role="status">
+            <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink" role="status">
               <RefreshCw className="mt-0.5 size-4 shrink-0" aria-hidden />{client.name}&apos;s CRM changed after the last preview, so nothing was applied. This is the new preview.
             </p>
           )}
@@ -357,18 +357,18 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="text-[16px] font-semibold text-ink">Dry run for {client.name}</h2>
-                <p className="mt-0.5 text-[12.5px] text-muted">
+                <p className="mt-0.5 text-[13px] text-muted">
                   Version {version} · {STRATEGY_TEXT[strategy].label} · {sections.length} {sections.length === 1 ? "section" : "sections"}. Nothing has been written.
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => void runPreview(options)} loading={loading}><RefreshCw className="size-4" aria-hidden />Preview again</Button>
             </div>
             {preview && !stale ? <ActionCounts counts={preview.plan.counts} /> : loading ? <Skeleton className="h-6 w-64" /> : null}
-            <div role="status" aria-live="polite" className="text-[12.5px] text-muted">{loading ? "Planning…" : previewError ? "" : preview && !stale ? `${preview.plan.items.length} items planned.` : ""}</div>
-            {previewError && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink" role="alert">{previewError}</p>}
+            <div role="status" aria-live="polite" className="text-[13px] text-muted">{loading ? "Planning…" : previewError ? "" : preview && !stale ? `${preview.plan.items.length} items planned.` : ""}</div>
+            {previewError && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink" role="alert">{previewError}</p>}
           </Card>
           {!canApply && (
-            <p className="flex gap-2 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
+            <p className="flex gap-2 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
               <ShieldAlert className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
               You can review this preview, but applying a Blueprint to a client is for agency super admins. Share it with one: they see the same dry run and confirm it.
             </p>
@@ -448,15 +448,15 @@ function ClientStep({ clients, blueprintId, latest, selected, onSelect, onNext }
     <Card className="space-y-4 p-4 sm:p-6">
       <div>
         <h2 className="text-[16px] font-semibold text-ink">Choose a client</h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">Only clients you can work on are listed. A client whose CRM is GoHighLevel can&apos;t take a Blueprint until its CRM moves to iAcquire.</p>
+        <p className="mt-0.5 text-[13px] text-muted">Only clients you can work on are listed. A client whose CRM is GoHighLevel can&apos;t take a Blueprint until its CRM moves to iAcquire.</p>
       </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
         <Input type="search" aria-label="Search clients" placeholder="Search by name or industry" value={q} onChange={(e) => setQ(e.target.value)} className="pl-10" />
       </div>
-      <p className="text-[12.5px] text-muted" role="status" aria-live="polite">{list.length} {list.length === 1 ? "client" : "clients"}{list.length > shown.length ? `, showing the first ${shown.length}` : ""}</p>
+      <p className="text-[13px] text-muted" role="status" aria-live="polite">{list.length} {list.length === 1 ? "client" : "clients"}{list.length > shown.length ? `, showing the first ${shown.length}` : ""}</p>
       {!clients.length ? (
-        <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[13px] text-muted">There are no clients you can apply Blueprints to yet.</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[14px] text-muted">There are no clients you can apply Blueprints to yet.</p>
       ) : (
         // The radios share a name, so they already form one group with arrow-key movement; the fieldset names it and the list stays a list.
         // Each radio's label is the whole card (name, badges, reason), so it needs no separate description.
@@ -474,7 +474,7 @@ function ClientStep({ clients, blueprintId, latest, selected, onSelect, onNext }
                     <input type="radio" name="ap-client" value={c.id} checked={on} disabled={!elig.ok} onChange={() => onSelect(c.id)} className="mt-1 size-4 shrink-0 accent-primary" />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[13.5px] font-semibold text-ink">{c.name}</span>
+                        <span className="text-[14px] font-semibold text-ink">{c.name}</span>
                         <Badge tone={c.crmMode === "native" ? "outline" : c.crmMode === "hybrid" ? "violet" : "neutral"} className="h-5 px-2 text-[12px]">{c.crmMode === "native" ? "iAcquire CRM" : c.crmMode === "hybrid" ? "Hybrid CRM" : "GoHighLevel CRM"}</Badge>
                         {st.updateAvailable && <Badge tone="primary" className="h-5 px-2 text-[12px]">Update available: v{st.appliedVersion} → v{latest}</Badge>}
                         {st.appliedVersion && !st.updateAvailable && <Badge tone="success" className="h-5 px-2 text-[12px]">Has v{st.appliedVersion}</Badge>}
@@ -545,9 +545,9 @@ function ConfirmStep({
     <Card className="space-y-5 p-4 sm:p-6">
       <div>
         <h2 className="text-[16px] font-semibold text-ink">Confirm</h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">This applies exactly the preview you reviewed. If {clientName}&apos;s CRM changed since, nothing is applied and you see a new preview.</p>
+        <p className="mt-0.5 text-[13px] text-muted">This applies exactly the preview you reviewed. If {clientName}&apos;s CRM changed since, nothing is applied and you see a new preview.</p>
       </div>
-      <dl className="grid gap-3 text-[13px] sm:grid-cols-2">
+      <dl className="grid gap-3 text-[14px] sm:grid-cols-2">
         <div><dt className="text-[12px] text-muted">Client</dt><dd className="font-medium text-ink">{clientName}</dd></div>
         <div><dt className="text-[12px] text-muted">Version</dt><dd className="font-medium text-ink">Version {version}{preview.plan.mode === "update" ? " (an update)" : ""}</dd></div>
         <div><dt className="text-[12px] text-muted">Existing items</dt><dd className="font-medium text-ink">{STRATEGY_TEXT[strategy].label}</dd></div>
@@ -555,7 +555,7 @@ function ConfirmStep({
       </dl>
       <ul className="space-y-1.5" aria-label="What confirming does">
         {lines.filter(([, n]) => n > 0).map(([label, n]) => (
-          <li key={label} className="flex items-center gap-2 text-[13.5px] text-ink"><CheckCircle2 className="size-4 text-muted" aria-hidden /><span className="font-semibold tabular-nums">{n}</span> {n === 1 ? "item" : "items"} {label}</li>
+          <li key={label} className="flex items-center gap-2 text-[14px] text-ink"><CheckCircle2 className="size-4 text-muted" aria-hidden /><span className="font-semibold tabular-nums">{n}</span> {n === 1 ? "item" : "items"} {label}</li>
         ))}
       </ul>
       {undecided.length > 0 && <PreviewNote>{undecided.length} {undecided.length === 1 ? "item needs" : "items need"} a decision and will be left exactly as they are: {undecided.slice(0, 4).map((i) => i.name).join(", ")}{undecided.length > 4 ? "…" : ""}. You can apply again later to decide.</PreviewNote>}
@@ -566,14 +566,14 @@ function ConfirmStep({
         </PreviewNote>
       )}
       <p className="text-[12px] text-muted">Preview <code className="font-mono">{shortDigest(preview.plan.digest)}</code>{attemptKey ? <> · confirmation <code className="font-mono">{attemptKey.slice(0, 8)}…</code> (sent again on a retry, so it is applied once)</> : null}</p>
-      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink" role="alert">{error}</p>}
+      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink" role="alert">{error}</p>}
       <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-4">
         <Button variant="secondary" onClick={onBack} disabled={applying}><ArrowLeft className="size-4" aria-hidden />Preview</Button>
         <Button variant="brand" onClick={onConfirm} loading={applying} disabled={stale || loading}>
           {error && attemptKey ? "Try again" : `Apply to ${clientName}`}
         </Button>
       </div>
-      {stale && <p className="text-[12.5px] text-muted" role="status">The preview is being updated; confirm once it has loaded.</p>}
+      {stale && <p className="text-[13px] text-muted" role="status">The preview is being updated; confirm once it has loaded.</p>}
     </Card>
   );
 }

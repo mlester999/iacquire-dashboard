@@ -18,9 +18,9 @@ export function SetupPaymentLine({ cleared, billingHref }: { cleared: boolean | 
       </span>
       <div className="min-w-0 flex-1">
         <h2 id="setup-payment-title" className="text-[14px] font-semibold text-ink">{line.title}</h2>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{line.detail}</p>
+        <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{line.detail}</p>
         {billingHref && (
-          <Link href={billingHref} className="mt-1 inline-flex min-h-11 items-center text-[13px] font-semibold text-primary underline-offset-2 hover:underline">
+          <Link href={billingHref} className="mt-1 inline-flex min-h-11 items-center text-[14px] font-semibold text-primary underline-offset-2 hover:underline">
             View billing
           </Link>
         )}

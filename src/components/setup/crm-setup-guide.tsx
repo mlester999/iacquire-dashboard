@@ -136,7 +136,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
         <div className="min-w-48 flex-1">
           <ProgressBar value={progress.total ? Math.round((progress.done / progress.total) * 100) : 0} tone={progress.done === progress.total ? "success" : "primary"} label={`${progress.done} of ${progress.total} steps done`} />
         </div>
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[13px] text-muted">
           {progress.done} of {progress.total} steps done · {progress.verified} verified
         </p>
       </div>
@@ -161,7 +161,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
                   onClick={() => go(s.key)}
                   aria-current={s.key === current.key ? "step" : undefined}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[13px] transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[14px] transition-colors",
                     s.key === current.key ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2",
                   )}
                 >
@@ -182,13 +182,13 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
                 <h3 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">{current.title}</h3>
                 <StatusBadge status={current.status} />
               </div>
-              <p className="text-[13px] leading-relaxed text-muted">{current.intro}</p>
+              <p className="text-[14px] leading-relaxed text-muted">{current.intro}</p>
             </div>
 
             <div className="rounded-xl border border-line bg-surface-2 px-4 py-3" aria-live="polite">
               <p className="text-[12px] font-medium text-muted">What we found</p>
-              <p className="mt-1 text-[13.5px] leading-relaxed text-ink">{current.summary}</p>
-              {current.next && <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">Next: {current.next}</p>}
+              <p className="mt-1 text-[14px] leading-relaxed text-ink">{current.summary}</p>
+              {current.next && <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">Next: {current.next}</p>}
             </div>
 
             <StepQuestions step={current} data={data} answers={answers} editable={editable} onAnswer={answer} scope={scope} saver={saver} onProviderChosen={() => router.refresh()} />
@@ -205,12 +205,12 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
                     return (
                       <li key={l.path}>
                         {href ? (
-                          <Link href={href} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">
+                          <Link href={href} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">
                             {l.label}
                             <ChevronRight className="size-3.5" aria-hidden />
                           </Link>
                         ) : (
-                          <span className="inline-flex min-h-11 items-center rounded-xl border border-dashed border-line px-3 text-[13px] text-muted sm:min-h-9" title="Your access doesn't include this screen.">{l.label}</span>
+                          <span className="inline-flex min-h-11 items-center rounded-xl border border-dashed border-line px-3 text-[14px] text-muted sm:min-h-9" title="Your access doesn't include this screen.">{l.label}</span>
                         )}
                       </li>
                     );
@@ -251,21 +251,21 @@ function StepDot({ status }: { status: CrmSetupStatus }) {
 
 function SaveIndicator({ state, editable, onRetry }: { state: SaveState; editable: boolean; onRetry: () => void }) {
   if (!editable) return null;
-  if (state === "saving") return <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted" role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden />Saving…</span>;
+  if (state === "saving") return <span className="inline-flex items-center gap-1.5 text-[13px] text-muted" role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden />Saving…</span>;
   if (state === "error") {
     return (
-      <span className="inline-flex items-center gap-2 text-[12.5px] text-danger" role="status">
+      <span className="inline-flex items-center gap-2 text-[13px] text-danger" role="status">
         Couldn&apos;t save
         <Button size="sm" variant="secondary" onClick={onRetry}>Try again</Button>
       </span>
     );
   }
-  return <span className="text-[12.5px] text-muted" role="status">{state === "saved" ? "All changes saved" : "Saves as you go"}</span>;
+  return <span className="text-[13px] text-muted" role="status">{state === "saved" ? "All changes saved" : "Saves as you go"}</span>;
 }
 
 function Choice({ name, checked, onChange, disabled, label, hint, type = "radio" }: { name: string; checked: boolean; onChange: () => void; disabled: boolean; label: string; hint?: string; type?: "radio" | "checkbox" }) {
   return (
-    <label className={cn("flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-[13px]", checked ? "border-primary bg-primary-soft/40" : "border-line bg-surface", disabled && "cursor-default opacity-70")}>
+    <label className={cn("flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-[14px]", checked ? "border-primary bg-primary-soft/40" : "border-line bg-surface", disabled && "cursor-default opacity-70")}>
       <input type={type} name={name} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={checked} onChange={onChange} disabled={disabled} />
       <span className="min-w-0">
         <span className="block font-medium text-ink">{label}</span>
@@ -290,11 +290,11 @@ function StepQuestions({ step, data, answers, editable, onAnswer, scope, saver, 
     <>
       {step.questions.includes("provider") && <ProviderChoice data={data} scope={scope} saver={saver} onChosen={onProviderChosen} />}
       {step.key === "provider" && !data.facts.provider.canChoose && data.facts.provider.lockedReason && (
-        <p className="text-[12.5px] leading-relaxed text-muted">{data.facts.provider.lockedReason}</p>
+        <p className="text-[13px] leading-relaxed text-muted">{data.facts.provider.lockedReason}</p>
       )}
       {step.questions.includes("appointments") && (
         <fieldset className="space-y-2">
-          <legend className="mb-1 text-[13px] font-medium text-ink">Do customers book appointments with you?</legend>
+          <legend className="mb-1 text-[14px] font-medium text-ink">Do customers book appointments with you?</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             <Choice name="appointments" checked={a.appointments === true} onChange={() => onAnswer({ appointments: true })} disabled={!editable} label="Yes, they book appointments" />
             <Choice name="appointments" checked={a.appointments === false} onChange={() => onAnswer({ appointments: false })} disabled={!editable} label="No, we don't take appointments" hint="The calendar and scheduling steps are skipped." />
@@ -304,7 +304,7 @@ function StepQuestions({ step, data, answers, editable, onAnswer, scope, saver, 
       )}
       {step.questions.includes("calendarSource") && (
         <fieldset className="space-y-2">
-          <legend className="mb-1 text-[13px] font-medium text-ink">Which calendar do you use?</legend>
+          <legend className="mb-1 text-[14px] font-medium text-ink">Which calendar do you use?</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {CALENDAR_SOURCES.map((s: CalendarSource) => (
               <Choice key={s} name="calendarSource" checked={a.calendarSource === s} onChange={() => onAnswer({ calendarSource: s })} disabled={!editable} label={CALENDAR_SOURCE_LABEL[s]} />
@@ -314,7 +314,7 @@ function StepQuestions({ step, data, answers, editable, onAnswer, scope, saver, 
       )}
       {step.questions.includes("channels") && (
         <fieldset className="space-y-2">
-          <legend className="mb-1 text-[13px] font-medium text-ink">Which channels will you use with customers?</legend>
+          <legend className="mb-1 text-[14px] font-medium text-ink">Which channels will you use with customers?</legend>
           <div className="grid gap-2 sm:grid-cols-3">
             {GUIDE_CHANNELS.map((c: GuideChannel) => {
               const on = (a.channels ?? []).includes(c);
@@ -354,7 +354,7 @@ function ProviderChoice({ data, scope, saver, onChosen }: { data: CrmSetupGuideD
   };
   return (
     <fieldset className="space-y-2">
-      <legend className="mb-1 text-[13px] font-medium text-ink">Which CRM should hold your records?</legend>
+      <legend className="mb-1 text-[14px] font-medium text-ink">Which CRM should hold your records?</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         <Choice name="provider" checked={picked === "native"} onChange={() => setPicked("native")} disabled={!can} label={`${CRM_MODE_LABELS.native.label} (recommended)`} hint={CRM_MODE_LABELS.native.description} />
         <Choice name="provider" checked={picked === "ghl"} onChange={() => setPicked("ghl")} disabled={!can} label={CRM_MODE_LABELS.ghl.label} hint="Only if you already run your business in GoHighLevel. iAcquire connects your location; nothing is connected until it is verified." />
@@ -410,14 +410,14 @@ function ReviewHandOff({ scope, data, saver, onDone }: { scope: CrmScope; data: 
   };
   return (
     <div className="space-y-2 rounded-xl border border-line px-4 py-3">
-      <p className="text-[13px] leading-relaxed text-ink-2">When you&apos;ve done your part, tell iAcquire. Their team runs the final checks and approves activation; nothing is switched on from here.</p>
+      <p className="text-[14px] leading-relaxed text-ink-2">When you&apos;ve done your part, tell iAcquire. Their team runs the final checks and approves activation; nothing is switched on from here.</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={run} loading={busy}>
           <Send className="size-4" aria-hidden />
           Tell iAcquire we&apos;re ready
         </Button>
         {data.facts.setup.readyRequestedAt && <span className="text-[12px] text-muted">Last told {formatDateTime(data.facts.setup.readyRequestedAt, scope.timezone)}.</span>}
-        <Link href="/setup" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-primary underline-offset-2 hover:underline">
+        <Link href="/setup" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary underline-offset-2 hover:underline">
           Setup Center <ExternalLink className="size-3.5" aria-hidden />
         </Link>
       </div>

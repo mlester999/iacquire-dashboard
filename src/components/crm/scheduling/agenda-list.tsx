@@ -46,7 +46,7 @@ export function AgendaList({
     <div className="divide-y divide-line">
       {groups.map((g) => (
         <section key={g.day} aria-labelledby={`agenda-${g.day}`} className="px-3 py-3 sm:px-4">
-          <h3 id={`agenda-${g.day}`} className={cn("mb-2 text-[12.5px] font-semibold", g.day === today ? "text-primary" : "text-ink-2")}>
+          <h3 id={`agenda-${g.day}`} className={cn("mb-2 text-[13px] font-semibold", g.day === today ? "text-primary" : "text-ink-2")}>
             {g.day === today ? "Today · " : ""}{formatDay(g.day, { weekday: "long", month: "long", day: "numeric" })}
           </h3>
           <ul className="space-y-1.5">
@@ -58,9 +58,9 @@ export function AgendaList({
                   className={cn("flex w-full min-w-0 items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-2", a.status === "cancelled" && "opacity-70")}
                 >
                   <span aria-hidden className="mt-0.5 h-9 w-1 shrink-0 rounded-full" style={{ background: colorFor(a) }} />
-                  <span className="w-[7.5rem] shrink-0 text-[12.5px] font-medium tabular-nums text-ink-2">{timeRangeIn(a.startAt, a.endAt, timeZone)}</span>
+                  <span className="w-[7.5rem] shrink-0 text-[13px] font-medium tabular-nums text-ink-2">{timeRangeIn(a.startAt, a.endAt, timeZone)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-[13.5px] font-medium text-ink", a.status === "cancelled" && "line-through")}>{a.contact?.name ?? a.title}</span>
+                    <span className={cn("block truncate text-[14px] font-medium text-ink", a.status === "cancelled" && "line-through")}>{a.contact?.name ?? a.title}</span>
                     <span className="block truncate text-[12px] text-muted">
                       {a.type?.name ?? "Appointment"}{a.hosts.length ? ` · ${a.hosts.map((h) => h.name).join(", ")}` : ""}
                     </span>

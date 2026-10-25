@@ -61,13 +61,13 @@ export function ImportsHistory({ imports, canImport }: { imports: ImportSummary[
       {list.length === 0 ? (
         <Card className="border-dashed px-6 py-12 text-center">
           <p className="text-[15px] font-semibold text-ink">{imports.length ? "No import with this status" : "No imports yet"}</p>
-          <p className="mx-auto mt-2 max-w-md text-[13px] text-muted">Import from GoHighLevel through its official read-only API, or upload an iAcquire package file.</p>
+          <p className="mx-auto mt-2 max-w-md text-[14px] text-muted">Import from GoHighLevel through its official read-only API, or upload an iAcquire package file.</p>
         </Card>
       ) : (
         <>
           <Card className="hidden overflow-hidden md:block">
             <div className="overflow-x-auto">
-              <table className="workspace-table w-full min-w-[820px] text-left text-[13px]">
+              <table className="workspace-table w-full min-w-[820px] text-left text-[14px]">
                 <caption className="sr-only">Imports</caption>
                 <thead><tr><th scope="col" className="px-4 py-2.5">Source</th><th scope="col" className="px-4 py-2.5">Status</th><th scope="col" className="px-4 py-2.5">Conversion</th><th scope="col" className="px-4 py-2.5">When</th><th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>
@@ -75,8 +75,8 @@ export function ImportsHistory({ imports, canImport }: { imports: ImportSummary[
                     <tr key={i.id} className="border-t border-line align-top">
                       <td className="px-4 py-3"><p className="font-medium text-ink">{i.sourceLabel}</p><p className="text-[12px] text-muted">{IMPORT_KIND_LABEL[i.sourceKind]}</p></td>
                       <td className="px-4 py-3"><ImportStatusBadge status={i.status} /></td>
-                      <td className="px-4 py-3 text-[12.5px] text-ink-2">{countsLine(i.counts)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={i.createdAt} />{i.createdBy ? <p className="text-[12px]">{i.createdBy}</p> : null}</td>
+                      <td className="px-4 py-3 text-[13px] text-ink-2">{countsLine(i.counts)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-muted"><When iso={i.createdAt} />{i.createdBy ? <p className="text-[12px]">{i.createdBy}</p> : null}</td>
                       <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
                         {i.blueprintId && <ButtonLink href={bpHref.detail(i.blueprintId)} size="sm" variant="ghost">Blueprint</ButtonLink>}
                         <ButtonLink href={bpHref.importDetail(i.id)} size="sm" variant={i.status === "previewed" ? "soft" : "ghost"} aria-label={`${i.status === "previewed" ? "Review" : "Open"} the import from ${i.sourceLabel}`}>{i.status === "previewed" ? "Review" : "Report"}</ButtonLink>
@@ -93,7 +93,7 @@ export function ImportsHistory({ imports, canImport }: { imports: ImportSummary[
                 <Card className="p-4">
                   <div className="flex items-start justify-between gap-2"><p className="min-w-0 truncate text-[14px] font-semibold text-ink">{i.sourceLabel}</p><ImportStatusBadge status={i.status} /></div>
                   <p className="mt-0.5 text-[12px] text-muted">{IMPORT_KIND_LABEL[i.sourceKind]} · <When iso={i.createdAt} /></p>
-                  <p className="mt-2 text-[12.5px] text-ink-2">{countsLine(i.counts)}</p>
+                  <p className="mt-2 text-[13px] text-ink-2">{countsLine(i.counts)}</p>
                   <div className="mt-3 flex gap-2">
                     <ButtonLink href={bpHref.importDetail(i.id)} size="sm" variant="secondary">{i.status === "previewed" ? "Review" : "Report"}</ButtonLink>
                     {i.blueprintId && <ButtonLink href={bpHref.detail(i.blueprintId)} size="sm" variant="ghost">Blueprint</ButtonLink>}
@@ -157,7 +157,7 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
         description={<><ImportStatusBadge status={d.status} /> <span className="ml-1">Read {formatDateTime(d.createdAt, timeZone)}{d.createdBy ? ` by ${d.createdBy}` : ""}. {d.sourceKind === "package_file" ? "Nothing in the file was trusted until it was checked." : "Read through the official API with GET requests only; nothing changed in GoHighLevel."}</span></>}
         action={d.blueprintId ? <ButtonLink href={bpHref.detail(d.blueprintId)} variant="brand">Open the Blueprint</ButtonLink> : undefined} />
 
-      {d.error && <p role="alert" className="flex gap-2 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{d.error}</p>}
+      {d.error && <p role="alert" className="flex gap-2 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{d.error}</p>}
 
       {pkg && (
         <ul className="flex flex-wrap gap-2" aria-label="Package checks">
@@ -173,14 +173,14 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
           <div className="grid gap-3 lg:grid-cols-2">
             {d.report.limitations.length > 0 && (
               <div className="rounded-xl border border-line bg-surface-2 px-4 py-3">
-                <p className="text-[13px] font-semibold text-ink">Limitations of the source</p>
-                <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[12.5px] leading-relaxed text-ink-2">{d.report.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
+                <p className="text-[14px] font-semibold text-ink">Limitations of the source</p>
+                <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-ink-2">{d.report.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
               </div>
             )}
             {d.report.unavailable.length > 0 && (
               <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3">
-                <p className="text-[13px] font-semibold text-warning-ink">Couldn&apos;t be read</p>
-                <ul className="mt-1.5 space-y-1 text-[12.5px] leading-relaxed text-warning-ink">{d.report.unavailable.map((u) => <li key={`${u.sourceKind}-${u.reason}`}><span className="font-medium">{sourceKindLabel(u.sourceKind)}:</span> {u.reason}</li>)}</ul>
+                <p className="text-[14px] font-semibold text-warning-ink">Couldn&apos;t be read</p>
+                <ul className="mt-1.5 space-y-1 text-[13px] leading-relaxed text-warning-ink">{d.report.unavailable.map((u) => <li key={`${u.sourceKind}-${u.reason}`}><span className="font-medium">{sourceKindLabel(u.sourceKind)}:</span> {u.reason}</li>)}</ul>
               </div>
             )}
           </div>
@@ -202,15 +202,15 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
       {editable && content && (
         <Card className="p-5">
           <h2 className="text-[16px] font-semibold text-ink">Save as a Blueprint</h2>
-          <p className="mt-1 text-[12.5px] text-muted">It becomes a draft in your library. Nothing reaches a client until you publish a version and apply it.</p>
+          <p className="mt-1 text-[13px] text-muted">It becomes a draft in your library. Nothing reaches a client until you publish a version and apply it.</p>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <Field label="Name" htmlFor="bp-import-name" error={errors.name}><Input id="bp-import-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} aria-invalid={Boolean(errors.name)} /></Field>
             <Field label="Industry" htmlFor="bp-import-industry"><Select id="bp-import-industry" value={industry} onChange={(e) => setIndustry(e.target.value as BlueprintIndustry)}>{INDUSTRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></Field>
             <Field label="Library key" htmlFor="bp-import-key" optional error={errors.key} hint="Leave empty to make one from the name."><Input id="bp-import-key" value={key} maxLength={64} spellCheck={false} autoCapitalize="none" onChange={(e) => setKey(e.target.value.toLowerCase())} aria-invalid={Boolean(errors.key)} /></Field>
           </div>
           <fieldset className="mt-5">
-            <legend className="text-[13px] font-medium text-ink-2">Assets to keep <span className="font-normal text-muted">· {kept} of {top.length}</span></legend>
-            {errors.assets && <p role="alert" className="mt-1 text-[12.5px] text-danger-ink">{errors.assets}</p>}
+            <legend className="text-[14px] font-medium text-ink-2">Assets to keep <span className="font-normal text-muted">· {kept} of {top.length}</span></legend>
+            {errors.assets && <p role="alert" className="mt-1 text-[13px] text-danger-ink">{errors.assets}</p>}
             <div className="mt-2 flex flex-wrap gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(top.map((e) => e.id)))}>Select all</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
@@ -221,7 +221,7 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
                 if (!items.length) return null;
                 return (
                   <div key={section} className="overflow-hidden rounded-xl border border-line">
-                    <p className="border-b border-line bg-surface-2 px-4 py-2 text-[12.5px] font-semibold text-ink">{sectionLabel(section)}</p>
+                    <p className="border-b border-line bg-surface-2 px-4 py-2 text-[13px] font-semibold text-ink">{sectionLabel(section)}</p>
                     <ul className="divide-y divide-line">
                       {items.map((e) => {
                         const auto = effective.has(e.id) && !selected.has(e.id);
@@ -230,7 +230,7 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
                             <label className="flex min-h-11 cursor-pointer items-start gap-3 px-4 py-2">
                               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={effective.has(e.id)} disabled={auto} onChange={(ev) => toggle(e.id, ev.target.checked)} />
                               <span className="min-w-0">
-                                <span className="block break-words text-[13px] text-ink">{e.name}</span>
+                                <span className="block break-words text-[14px] text-ink">{e.name}</span>
                                 {auto && <span className="inline-flex items-center gap-1 text-[12px] text-primary-ink"><Link2 className="size-3" aria-hidden />Kept because a chosen item needs it</span>}
                               </span>
                             </label>
@@ -244,22 +244,22 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
             </div>
             {implied.length > 0 && <p className="mt-2 text-[12px] text-muted">{implied.length} {implied.length === 1 ? "asset is" : "assets are"} kept automatically so nothing chosen is left with a broken reference.</p>}
           </fieldset>
-          {blocked && <p role="alert" className="mt-4 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[12.5px] text-danger-ink">Fix the problems listed above at the source and import again; this import can&apos;t be saved as it is.</p>}
+          {blocked && <p role="alert" className="mt-4 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">Fix the problems listed above at the source and import again; this import can&apos;t be saved as it is.</p>}
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
             <Button variant="brand" loading={busy("save")} disabled={blocked || !kept} onClick={() => void save()}><Save className="size-4" /> Save as Blueprint</Button>
             <Button variant="ghost" onClick={() => setDiscarding(true)}><Trash2 className="size-4" /> Discard</Button>
           </div>
         </Card>
       )}
-      {d.status === "previewed" && !canDesign && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Your agency role can view this import but can&apos;t save it as a Blueprint.</p>}
+      {d.status === "previewed" && !canDesign && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Your agency role can view this import but can&apos;t save it as a Blueprint.</p>}
       {d.status === "previewed" && !content && canDesign && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3">
-          <p className="text-[13px] text-ink-2">Nothing could be converted, so there is nothing to save.</p>
+          <p className="text-[14px] text-ink-2">Nothing could be converted, so there is nothing to save.</p>
           <Button size="sm" variant="ghost" onClick={() => setDiscarding(true)}><Trash2 className="size-3.5" /> Discard</Button>
         </div>
       )}
-      {d.status === "discarded" && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Discarded. The report is kept as history.</p>}
-      {d.status === "saved" && d.blueprintId && <p className="rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-[13px] text-success-ink">Saved as a Blueprint. <Link href={bpHref.detail(d.blueprintId)} className="font-semibold underline">Open it</Link>.</p>}
+      {d.status === "discarded" && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Discarded. The report is kept as history.</p>}
+      {d.status === "saved" && d.blueprintId && <p className="rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-[14px] text-success-ink">Saved as a Blueprint. <Link href={bpHref.detail(d.blueprintId)} className="font-semibold underline">Open it</Link>.</p>}
 
       <ConfirmDialog open={discarding} onOpenChange={setDiscarding} title="Discard this import?" danger confirmLabel="Discard" loading={busy("discard")}
         description="Nothing is saved to the library. The conversion report stays in the import history. Nothing changes at the source."
@@ -283,11 +283,11 @@ function IssueBox({ tone, title, issues }: { tone: "danger" | "warning"; title: 
   const shown = all ? issues : issues.slice(0, 8);
   return (
     <div className={cn("rounded-xl border px-4 py-3", tone === "danger" ? "border-danger/25 bg-danger-soft text-danger-ink" : "border-warning/30 bg-warning-soft text-warning-ink")}>
-      <p className="text-[13px] font-semibold">{title}</p>
-      <ul className="mt-1.5 space-y-1 text-[12.5px] leading-relaxed">
+      <p className="text-[14px] font-semibold">{title}</p>
+      <ul className="mt-1.5 space-y-1 text-[13px] leading-relaxed">
         {shown.map((i, n) => <li key={`${i.path}-${i.code}-${n}`}>{i.message}{i.path ? <code className="ml-1 font-mono text-[12px] opacity-80">{i.path}</code> : null}</li>)}
       </ul>
-      {issues.length > shown.length && <button type="button" onClick={() => setAll(true)} className="mt-2 min-h-11 text-[12.5px] font-semibold underline sm:min-h-0">Show all {issues.length}</button>}
+      {issues.length > shown.length && <button type="button" onClick={() => setAll(true)} className="mt-2 min-h-11 text-[13px] font-semibold underline sm:min-h-0">Show all {issues.length}</button>}
     </div>
   );
 }

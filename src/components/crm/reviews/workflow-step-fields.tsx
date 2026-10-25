@@ -74,7 +74,7 @@ export function RequestReviewFields({ step, options, errorAt, config, replace, b
           placeholder={usable.length ? "Choose a review request template" : "No review request templates yet"}
         />
         {!usable.length && (
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">
             Write a service template with <span className="font-mono text-[12px]">{"{{review.link}}"}</span> and approve it first. <Link href={`${base}/templates`} className="font-medium text-primary hover:underline">Templates</Link>
           </p>
         )}
@@ -85,8 +85,8 @@ export function RequestReviewFields({ step, options, errorAt, config, replace, b
             <Badge tone="success"><ShieldCheck className="size-3" aria-hidden />Approved v{chosen.version}</Badge>
             {CHANNEL_LABELS[chosen.channel]} · Service message
           </p>
-          {chosen.subject && <p className="text-[13px] font-medium text-ink">{chosen.subject}</p>}
-          <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{chosen.body}</p>
+          {chosen.subject && <p className="text-[14px] font-medium text-ink">{chosen.subject}</p>}
+          <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{chosen.body}</p>
           <p className="text-[12px] leading-relaxed text-muted">
             Sent only to contacts who agreed to messages by {CHANNEL_LABELS[chosen.channel]}, who haven&apos;t opted out and weren&apos;t asked in the last 30 days, outside quiet hours, within sending limits and your credits. Everyone asked sees the same public review links.
           </p>

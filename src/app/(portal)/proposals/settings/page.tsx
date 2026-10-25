@@ -31,7 +31,7 @@ export default async function ProposalSettingsPage() {
     <div className="space-y-5">
       <header>
         <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink"><Settings className="size-5 text-muted" aria-hidden />Settings</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">Who has to approve proposals, what the AI may do, and what happens to the deal. Everything starts off or at its safest.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Who has to approve proposals, what the AI may do, and what happens to the deal. Everything starts off or at its safest.</p>
       </header>
       <ProposalSettingsPanel
         settings={settings} currency={workspace.defaultCurrency} canEdit={canEdit}

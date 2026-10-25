@@ -41,7 +41,7 @@ export function PipelineSettingsSheet({ open, onOpenChange, scope, pipeline, pip
           <Field label="Name" htmlFor="ps-name"><Input id="ps-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Field>
           <Field label="Description" htmlFor="ps-desc" optional><Textarea id="ps-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} /></Field>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2.5 text-[13px] text-ink-2">
+            <label className="flex items-center gap-2.5 text-[14px] text-ink-2">
               <Switch checked={pipeline.isDefault} disabled={pipeline.isDefault} onCheckedChange={(v) => v && run("default", () => updatePipelineAction(scope.orgId, pipeline.id, { isDefault: true }), "This is now the default pipeline.")} aria-label="Default pipeline" />
               Default pipeline for new deals
             </label>
@@ -50,8 +50,8 @@ export function PipelineSettingsSheet({ open, onOpenChange, scope, pipeline, pip
         </section>
 
         <section>
-          <h3 className="text-[13px] font-semibold text-ink">Stages</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">Probability is optional. The board only shows a weighted forecast for stages you give one; nothing is estimated for you.</p>
+          <h3 className="text-[14px] font-semibold text-ink">Stages</h3>
+          <p className="mt-0.5 text-[13px] text-muted">Probability is optional. The board only shows a weighted forecast for stages you give one; nothing is estimated for you.</p>
           <ol className="mt-3 space-y-2">
             {stages.map((s, i) => (
               <StageRow key={`${s.id}-${s.name}-${s.probability}-${s.kind}-${s.color}`} scope={scope} stage={s} first={i === 0} last={i === stages.length - 1} busy={busy("reorder")}
@@ -69,8 +69,8 @@ export function PipelineSettingsSheet({ open, onOpenChange, scope, pipeline, pip
         </section>
 
         <section className="rounded-2xl border border-line p-4">
-          <h3 className="text-[13px] font-semibold text-ink">Archive this pipeline</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">Only possible once it has no open deals. Closed deals stay in your reports.</p>
+          <h3 className="text-[14px] font-semibold text-ink">Archive this pipeline</h3>
+          <p className="mt-0.5 text-[13px] text-muted">Only possible once it has no open deals. Closed deals stay in your reports.</p>
           <Button className="mt-3" variant="secondary" size="sm" disabled={pipelineCount <= 1 || pipeline.openCount > 0} onClick={() => setArchiveOpen(true)}>Archive pipeline</Button>
           {pipelineCount <= 1 && <p className="mt-2 text-[12px] text-faint">{"Your only pipeline can't be archived."}</p>}
           {pipelineCount > 1 && pipeline.openCount > 0 && <p className="mt-2 text-[12px] text-faint">{pipeline.openCount} open deals need to move or close first.</p>}

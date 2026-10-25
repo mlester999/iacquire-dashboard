@@ -135,8 +135,8 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
 
         <section className="space-y-3" aria-labelledby={`${formId}-hosts-h`}>
           <div>
-            <h3 id={`${formId}-hosts-h`} className="text-[13px] font-semibold text-ink">Hosts</h3>
-            <p className="mt-0.5 text-[12.5px] text-muted">The people who take these appointments. Each host&apos;s working hours are set in Availability.</p>
+            <h3 id={`${formId}-hosts-h`} className="text-[14px] font-semibold text-ink">Hosts</h3>
+            <p className="mt-0.5 text-[13px] text-muted">The people who take these appointments. Each host&apos;s working hours are set in Availability.</p>
           </div>
           {everyone.length > 8 && (
             <div className="relative">
@@ -154,12 +154,12 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
                     <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={on} disabled={p.role === "former"} onChange={() => toggleMember(p.id)} />
                     <Avatar name={p.name} size="sm" />
                     <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium text-ink">{p.name}{p.id === scope.userId ? " (you)" : ""}</span>
+                      <span className="block truncate text-[14px] font-medium text-ink">{p.name}{p.id === scope.userId ? " (you)" : ""}</span>
                       <span className="block text-[12px] text-muted">{p.role === "former" ? "Left the workspace. Removed from this calendar when you save." : ROLE_LABELS[p.role as EffectiveRole] ?? p.role}</span>
                     </span>
                   </label>
                   {on && form.assignment === "round_robin" && form.roundRobinMode === "priority" && (
-                    <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    <label className="flex items-center gap-2 text-[13px] text-muted">
                       Priority
                       <Input type="number" inputMode="numeric" min={0} max={100} className="w-20" value={member?.priority ?? 50}
                         onChange={(e) => setForm((f) => ({ ...f, members: f.members.map((m) => (m.userId === p.id ? { ...m, priority: Number(e.target.value) || 0 } : m)) }))}
@@ -169,11 +169,11 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
                 </li>
               );
             })}
-            {!shown.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody matches.</li>}
+            {!shown.length && <li className="px-3 py-2 text-[14px] text-muted">Nobody matches.</li>}
           </ul>
-          {tried && errors.members && <p role="alert" className="text-[12.5px] text-danger-ink">{errors.members}</p>}
+          {tried && errors.members && <p role="alert" className="text-[13px] text-danger-ink">{errors.members}</p>}
           {hasTemplate && (
-            <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-ink-2">
+            <label className="flex cursor-pointer items-start gap-2.5 text-[13px] text-ink-2">
               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={form.useHoursTemplate} onChange={(e) => set("useHoursTemplate", e.target.checked)} />
               <span>Give hosts who have no weekly hours yet this calendar&apos;s suggested hours{calendar?.suggestedTimezone ? ` (${calendar.suggestedTimezone})` : ""}. Hosts with hours keep their own.</span>
             </label>
@@ -181,7 +181,7 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
         </section>
 
         <fieldset className="space-y-2">
-          <legend className="text-[13px] font-semibold text-ink">How bookings are assigned</legend>
+          <legend className="text-[14px] font-semibold text-ink">How bookings are assigned</legend>
           <div className="grid gap-2 sm:grid-cols-3">
             {(Object.keys(ASSIGNMENT_INFO) as Assignment[]).map((a) => {
               const disabled = a === "single" && form.members.length > 1;
@@ -189,7 +189,7 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
                 <label key={a} className={cn("flex cursor-pointer flex-col gap-1 rounded-xl border p-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.assignment === a ? "border-primary bg-primary-soft/40" : "border-line hover:bg-surface-2", disabled && "cursor-not-allowed opacity-60")}>
                   <span className="flex items-center gap-2">
                     <input type="radio" name={`${formId}-assign`} value={a} checked={form.assignment === a} disabled={disabled} onChange={() => set("assignment", a)} className="accent-primary" />
-                    <span className="text-[13px] font-medium text-ink">{ASSIGNMENT_INFO[a].label}</span>
+                    <span className="text-[14px] font-medium text-ink">{ASSIGNMENT_INFO[a].label}</span>
                   </span>
                   <span className="text-[12px] leading-relaxed text-muted">{ASSIGNMENT_INFO[a].explain}</span>
                 </label>
@@ -201,13 +201,13 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
 
         {form.assignment === "round_robin" && (
           <fieldset className="space-y-2">
-            <legend className="text-[13px] font-semibold text-ink">Who gets the next booking</legend>
+            <legend className="text-[14px] font-semibold text-ink">Who gets the next booking</legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {(Object.keys(ROUND_ROBIN_INFO) as Array<"balanced" | "priority">).map((m) => (
                 <label key={m} className={cn("flex cursor-pointer flex-col gap-1 rounded-xl border p-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.roundRobinMode === m ? "border-primary bg-primary-soft/40" : "border-line hover:bg-surface-2")}>
                   <span className="flex items-center gap-2">
                     <input type="radio" name={`${formId}-rr`} value={m} checked={form.roundRobinMode === m} onChange={() => set("roundRobinMode", m)} className="accent-primary" />
-                    <span className="text-[13px] font-medium text-ink">{ROUND_ROBIN_INFO[m].label}</span>
+                    <span className="text-[14px] font-medium text-ink">{ROUND_ROBIN_INFO[m].label}</span>
                   </span>
                   <span className="text-[12px] leading-relaxed text-muted">{ROUND_ROBIN_INFO[m].explain}{m === "priority" ? " Set each host's priority above (0 to 100)." : ""}</span>
                 </label>
@@ -217,7 +217,7 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
         )}
 
         <section className="space-y-4 rounded-2xl border border-line p-4">
-          {draft && <p className="text-[12.5px] leading-relaxed text-ink-2">{DRAFT_EXPLAINER}</p>}
+          {draft && <p className="text-[13px] leading-relaxed text-ink-2">{DRAFT_EXPLAINER}</p>}
           <SettingRow
             id={`${formId}-default`}
             label="Default calendar"
@@ -232,7 +232,7 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
               control={<Switch id={`${formId}-public`} checked={form.isPublic} disabled={draft} onCheckedChange={(v) => set("isPublic", v)} aria-describedby={`${formId}-public-hint`} />}
             />
           ) : (
-            <p className="text-[12.5px] leading-relaxed text-muted">The public booking page can be turned on once this calendar has an appointment type.</p>
+            <p className="text-[13px] leading-relaxed text-muted">The public booking page can be turned on once this calendar has an appointment type.</p>
           )}
           <Field label="Booking page intro" htmlFor={`${formId}-intro`} optional hint={`${form.bookingIntro.trim().length}/500. A short welcome shown above the appointment types.`} error={tried ? errors.intro : null}>
             <Textarea id={`${formId}-intro`} rows={3} value={form.bookingIntro} onChange={(e) => set("bookingIntro", e.target.value)} maxLength={500} placeholder="Pick a time that suits you." />

@@ -68,14 +68,14 @@ function RecordPaymentForm({ open, onOpenChange, clients, orgId, timeZone }: { o
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="brand" loading={busy} disabled={!client || !reference.trim() || !amount.trim() || !paidOn || note.trim().length < 5} onClick={submit}>Record payment</Button></>}
     >
       <div className="space-y-4">
-        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger-ink">{error}</p>}
         <Field label="Client" htmlFor="rp-client">
           <Select id="rp-client" value={client} disabled={Boolean(orgId)} onChange={(e) => { setClient(e.target.value); setTypedAmount(null); }}>
             <option value="">Choose a client</option>
             {clients.map((c) => <option key={c.orgId} value={c.orgId}>{c.name}</option>)}
           </Select>
         </Field>
-        {chosen && <p className="text-[12.5px] text-muted">Setup fee for {chosen.name}: {setupStatusCopy(chosen.setupStatus).label}.</p>}
+        {chosen && <p className="text-[13px] text-muted">Setup fee for {chosen.name}: {setupStatusCopy(chosen.setupStatus).label}.</p>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="What it paid for" htmlFor="rp-kind">
             <Select id="rp-kind" value={kind} onChange={(e) => { setKind(e.target.value); setTypedAmount(null); }}>
@@ -141,7 +141,7 @@ function WaiveFeeForm({ open, onOpenChange, orgId, orgName }: { open: boolean; o
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="danger" loading={busy} disabled={reason.trim().length < 10} onClick={submit}>Waive the fee</Button></>}
     >
       <div className="space-y-3">
-        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger-ink">{error}</p>}
         <Field label="Why is the fee waived?" htmlFor="wv-reason" hint="At least 10 characters. Say who agreed to it and where it is written down.">
           <Textarea id="wv-reason" rows={4} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
@@ -184,8 +184,8 @@ function RefundForm({ payment, onClose, timeZone }: { payment: AgencyPaymentView
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" loading={busy} disabled={!amount.trim() || reason.trim().length < 10} onClick={submit}>Record refund</Button></>}
     >
       <div className="space-y-3">
-        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-ink">{error}</p>}
-        {payment.kind === "setup_fee" && <p className="text-[12.5px] leading-relaxed text-muted">A full refund of the payment that cleared the setup fee stops new AI employees from being set up. Anything already running keeps running.</p>}
+        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger-ink">{error}</p>}
+        {payment.kind === "setup_fee" && <p className="text-[13px] leading-relaxed text-muted">A full refund of the payment that cleared the setup fee stops new AI employees from being set up. Anything already running keeps running.</p>}
         <Field label="Amount refunded (US dollars)" htmlFor="rf-amount">
           <Input id="rf-amount" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
@@ -206,7 +206,7 @@ export function PaymentRow({ p, canManage, onRefund, timeZone, showClient = true
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-ink">{showClient ? `${p.orgName}: ` : ""}{KIND_LABEL[p.kind] ?? sentenceCase(p.kind)}</p>
-          <p className="text-[12.5px] text-muted">{paymentWayLabel(p)}{p.paidOn ? ` · arrived ${formatDate(`${p.paidOn}T12:00:00Z`, "UTC")}` : p.paidAt ? ` · ${formatDateTime(p.paidAt, timeZone)}` : ""}</p>
+          <p className="text-[13px] text-muted">{paymentWayLabel(p)}{p.paidOn ? ` · arrived ${formatDate(`${p.paidOn}T12:00:00Z`, "UTC")}` : p.paidAt ? ` · ${formatDateTime(p.paidAt, timeZone)}` : ""}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <strong className="text-[14px] font-semibold tabular-nums text-ink">{formatUsd(p.usdMicros)}</strong>
@@ -214,10 +214,10 @@ export function PaymentRow({ p, canManage, onRefund, timeZone, showClient = true
           {p.clearedSetup && <StatusPill tone="success">Cleared the setup fee</StatusPill>}
         </div>
       </div>
-      {p.refundedMicros > 0 && <p className="text-[12.5px] text-muted">Refunded so far: {formatUsd(p.refundedMicros)}</p>}
+      {p.refundedMicros > 0 && <p className="text-[13px] text-muted">Refunded so far: {formatUsd(p.refundedMicros)}</p>}
       {p.providerNotices.length > 0 && (
         // What PayMongo reported is shown beside what a person recorded, and labelled as a report: the status and amounts above change only when a person records a refund.
-        <ul className="space-y-1 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink" aria-label="Reported by PayMongo">
+        <ul className="space-y-1 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink" aria-label="Reported by PayMongo">
           {p.providerNotices.map((n) => (
             <li key={`${n.type}:${n.receivedAt}`}>
               <strong className="font-semibold">{/dispute|chargeback/i.test(n.type) ? "PayMongo reported a dispute" : "PayMongo reported a refund"}</strong> ({formatDateTime(n.receivedAt, timeZone)}). {/dispute|chargeback/i.test(n.type) ? "The payment still counts as received until you record what happened." : "Record it below if you have not already; nothing was changed automatically."}
@@ -226,7 +226,7 @@ export function PaymentRow({ p, canManage, onRefund, timeZone, showClient = true
         </ul>
       )}
       {p.provider === "manual" && (
-        <p className="break-words text-[12.5px] text-muted">
+        <p className="break-words text-[13px] text-muted">
           Reference {p.externalReference}. Checked by {p.verifiedByName ?? "a former team member"}: {p.verificationNote}
         </p>
       )}
@@ -247,7 +247,7 @@ export function PaymentsWorkspace({ payments, clients, canManage, timeZone }: { 
     <div className="space-y-5">
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
+          <p className="max-w-2xl text-[14px] leading-relaxed text-muted">
             iAcquire&apos;s own setup fees and plan payments. A payment is confirmed either by PayMongo&apos;s signed notice or by a Super Admin who saw the money arrive and recorded the reference. Nothing here is marked paid on a guess.
           </p>
           {canManage && <Button variant="brand" onClick={() => setRecording(true)}><Banknote className="size-4" aria-hidden /> Record a payment</Button>}
@@ -257,7 +257,7 @@ export function PaymentsWorkspace({ payments, clients, canManage, timeZone }: { 
         <Card>
           <CardContent className="space-y-1.5">
             <h3 className="text-[14px] font-semibold text-ink">Setup fee not confirmed ({waiting.length})</h3>
-            <ul className="divide-y divide-line text-[13px]">
+            <ul className="divide-y divide-line text-[14px]">
               {waiting.map((c) => (
                 <li key={c.orgId} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <Link href={`/admin/clients/${c.orgId}?tab=billing`} className="inline-flex min-h-11 items-center font-medium text-ink underline-offset-2 hover:underline sm:min-h-0">{c.name}</Link>

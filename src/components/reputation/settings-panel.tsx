@@ -22,7 +22,7 @@ function Check({ id, checked, onChange, disabled, label, hint }: { id: string; c
       <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-5 shrink-0 rounded border-line-strong accent-[var(--color-primary,#2563eb)]" />
       <div className="min-w-0">
         <label htmlFor={id} className="text-[14px] font-medium text-ink after:absolute after:inset-0 after:content-['']">{label}</label>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{hint}</p>
       </div>
     </div>
   );
@@ -53,12 +53,12 @@ export function ReputationSettingsPanel({ orgId, settings, canEdit, publicReview
     <section aria-label="Reputation settings" className="max-w-2xl space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Low private feedback</h2>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 text-[14px] leading-relaxed text-muted">
           When a customer&apos;s private rating or recommend score is low, or they write a complaint with no score, your team gets a follow-up: a task, a notice, a flag in the inbox, and the customer&apos;s automatic program messages stop.
           It never changes who you ask for a review or which public review links they see. Feedback already received keeps the level it was judged by.
         </p>
       </div>
-      {settings.isDefault && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">Nothing has been changed yet, so these are the standard settings.</p>}
+      {settings.isDefault && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2">Nothing has been changed yet, so these are the standard settings.</p>}
       <Field label="Treat a private rating as low when it is at or below" htmlFor="rs-stars">
         <Select id="rs-stars" value={String(d.stars)} disabled={!canEdit} onChange={(e) => setD((x) => ({ ...x, stars: Number(e.target.value) }))} className="text-[16px] sm:text-[14px]">
           {stars.map((n) => <option key={n} value={n}>{starLabel(n)}{n === 2 ? " (standard)" : ""}</option>)}
@@ -81,7 +81,7 @@ export function ReputationSettingsPanel({ orgId, settings, canEdit, publicReview
         <div className="space-y-4 border-t border-line pt-4">
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Public reviews</h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted">How your team hears about reviews your review sites returned, and the optional help with replies. A reply is never posted by itself: the owner or a manager approves those exact words first.</p>
+            <p className="mt-1 text-[14px] leading-relaxed text-muted">How your team hears about reviews your review sites returned, and the optional help with replies. A reply is never posted by itself: the owner or a manager approves those exact words first.</p>
           </div>
           <Field label="Tell the team when a public review is at or below" htmlFor="rs-alert" hint="The owner and managers get one notice for each new review at or below this many stars, or one that says it doesn't recommend you. The notice names the site, not the reviewer or what they wrote.">
             <Select id="rs-alert" value={String(d.alert)} disabled={!canEdit} onChange={(e) => setD((x) => ({ ...x, alert: Number(e.target.value) }))} className="text-[16px] sm:text-[14px]">
@@ -97,7 +97,7 @@ export function ReputationSettingsPanel({ orgId, settings, canEdit, publicReview
       {canEdit ? (
         <Button variant="brand" loading={busy("save")} disabled={!dirty} onClick={save}>Save settings</Button>
       ) : (
-        <p className="text-[12.5px] text-muted">Only owners and managers in the client&apos;s own workspace can change these.</p>
+        <p className="text-[13px] text-muted">Only owners and managers in the client&apos;s own workspace can change these.</p>
       )}
     </section>
   );

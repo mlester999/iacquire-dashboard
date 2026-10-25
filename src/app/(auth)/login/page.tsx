@@ -26,7 +26,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <>
       <AuthHeading eyebrow="Welcome back" title="Sign in to iAcquire" description="Access your AI workforce and business operations." />
       <LoginForm next={params.next} notice={notice} />
-      <p className="mt-8 text-center text-[13.5px] text-muted">
+      <p className="mt-8 text-center text-[14px] text-muted">
         New to iAcquire?{" "}
         <Link href="/get-started" className="font-medium text-primary hover:underline">
           Get started

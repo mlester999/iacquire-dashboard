@@ -64,7 +64,7 @@ export function CalendarView(props: CalendarProps) {
   };
   // A day in the past cannot be scheduled for, so it is not carried into the composer.
   const newPostHref = (d: string) => (d >= today ? `/social/posts/new?date=${d}` : "/social/posts/new");
-  const pill = (active: boolean) => cn("inline-flex min-h-11 items-center rounded-xl px-3 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", active ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2");
+  const pill = (active: boolean) => cn("inline-flex min-h-11 items-center rounded-xl px-3 text-[14px] font-medium focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", active ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2");
   const arrow = "inline-flex size-11 items-center justify-center rounded-xl border border-line text-ink-2 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary sm:size-9";
   const days = grid.weeks.flat().filter((d) => view !== "list" || grid.inMonth(d));
   const withPosts = days.filter((d) => byDay.get(d)?.length);
@@ -87,16 +87,16 @@ export function CalendarView(props: CalendarProps) {
         <input type="hidden" name="view" value={view} />
         <input type="hidden" name="date" value={anchor} />
         {/* Native selects are as wide as their longest option, so a long Page name must be able to shrink to the phone's width instead of pushing the form out. */}
-        <label className="w-full min-w-0 max-w-full text-[12.5px] text-muted sm:w-auto">
+        <label className="w-full min-w-0 max-w-full text-[13px] text-muted sm:w-auto">
           <span className="mb-1 block">Account</span>
-          <select name="account" defaultValue={accountId ?? ""} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[13px]">
+          <select name="account" defaultValue={accountId ?? ""} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[14px]">
             <option value="">All accounts</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({platformName(a.platform)}){a.status === "disconnected" ? " (disconnected)" : ""}</option>)}
           </select>
         </label>
-        <label className="w-full min-w-0 max-w-full text-[12.5px] text-muted sm:w-auto">
+        <label className="w-full min-w-0 max-w-full text-[13px] text-muted sm:w-auto">
           <span className="mb-1 block">Status</span>
-          <select name="status" defaultValue={statusValue} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[13px]">
+          <select name="status" defaultValue={statusValue} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[14px]">
             <option value="">Any status</option>
             {/* A link can ask for several statuses at once; applying the form again keeps them unless another is chosen. */}
             {statuses.length > 1 && <option value={statusValue}>{statuses.map((s) => STATUS_LABELS[s]).join(", ")}</option>}
@@ -104,7 +104,7 @@ export function CalendarView(props: CalendarProps) {
           </select>
         </label>
         <Button type="submit" variant="secondary" size="sm">Apply</Button>
-        {(accountId || statuses.length > 0) && <Link href={`/social?view=${view}&date=${anchor}`} className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink underline sm:min-h-9">Clear filters</Link>}
+        {(accountId || statuses.length > 0) && <Link href={`/social?view=${view}&date=${anchor}`} className="inline-flex min-h-11 items-center text-[14px] font-medium text-primary-ink underline sm:min-h-9">Clear filters</Link>}
         <p className="ml-auto text-[12px] text-muted">Times are shown in {tz.replace(/_/g, " ")}.</p>
       </form>
 
@@ -112,7 +112,7 @@ export function CalendarView(props: CalendarProps) {
         <EmptyState
           compact title={statuses.length > 0 || accountId ? "No posts match these filters" : "Nothing planned in this period"}
           description="Drafts, scheduled posts, posts waiting for approval, failed posts and published posts all appear here."
-          action={canCreate ? <Link href={newPostHref(anchor)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13px] font-medium text-white sm:min-h-9"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
+          action={canCreate ? <Link href={newPostHref(anchor)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[14px] font-medium text-white sm:min-h-9"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
         />
       )}
 
@@ -157,7 +157,7 @@ export function CalendarView(props: CalendarProps) {
             const list = byDay.get(d) ?? [];
             return (
               <section key={d} aria-label={formatDay(d)} className={cn("rounded-2xl border border-line p-2.5", d === today && "border-primary")}>
-                <h3 className="mb-2 flex items-center justify-between text-[12.5px] font-semibold text-ink">
+                <h3 className="mb-2 flex items-center justify-between text-[13px] font-semibold text-ink">
                   <span>{WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()]} {Number(d.slice(8))}</span>
                   {canCreate && d >= today && <Link href={`/social/posts/new?date=${d}`} className="inline-flex size-7 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink" aria-label={`New post on ${formatDay(d)}`}><Plus className="size-3.5" aria-hidden /></Link>}
                 </h3>
@@ -174,24 +174,24 @@ export function CalendarView(props: CalendarProps) {
 }
 
 function Agenda({ days, byDay, tz, empty, detailed }: { days: string[]; byDay: Map<string, PostView[]>; tz: string; empty: string; detailed?: boolean }) {
-  if (!days.length) return <p className="text-[13px] text-muted">{empty}</p>;
+  if (!days.length) return <p className="text-[14px] text-muted">{empty}</p>;
   return (
     <div className="space-y-5">
       {days.map((d) => (
         <section key={d} aria-label={formatDay(d)}>
-          <h3 className="mb-2 text-[13px] font-semibold text-ink">{formatDay(d)}</h3>
+          <h3 className="mb-2 text-[14px] font-semibold text-ink">{formatDay(d)}</h3>
           <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
             {(byDay.get(d) ?? []).map((p) => (
               <li key={p.id}>
                 <Link href={`/social/posts/${p.id}`} className="flex min-h-14 items-start gap-3 px-3 py-2.5 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary">
                   <PlatformMark platform={p.platform} className="mt-0.5" />
                   <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
+                    <span className="flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
                       <span className="font-medium text-ink">{formatWhen(p.publishedAt ?? p.scheduledAt ?? p.createdAt, tz)}</span>
                       <span>{p.accountName}</span>
                       {p.origin === "ai" && <span className="rounded bg-violet-soft px-1 text-[12px] font-semibold text-violet-ink">AI draft</span>}
                     </span>
-                    <span className={cn("mt-0.5 block text-[13.5px] text-ink-2", detailed ? "line-clamp-2" : "truncate")}>{snippet(p)}</span>
+                    <span className={cn("mt-0.5 block text-[14px] text-ink-2", detailed ? "line-clamp-2" : "truncate")}>{snippet(p)}</span>
                     {p.failureMessage && p.status === "failed" && <span className="mt-0.5 block text-[12px] text-danger-ink">{p.failureMessage}</span>}
                   </span>
                   <StatusBadge status={p.status} providerPostId={p.providerPostId} className="shrink-0" />

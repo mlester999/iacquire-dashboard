@@ -26,7 +26,7 @@ function dueText(item: ItemView): string {
 }
 
 export function OpenWorkList({ items, canAssign, showAssignee = false }: { items: readonly ItemView[]; canAssign: boolean; showAssignee?: boolean }) {
-  if (!items.length) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-5 text-[13px] text-muted">Nothing here right now.</p>;
+  if (!items.length) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-5 text-[14px] text-muted">Nothing here right now.</p>;
   return (
     <ul className="divide-y divide-line">
       {items.map((item) => {
@@ -42,7 +42,7 @@ export function OpenWorkList({ items, canAssign, showAssignee = false }: { items
                 {item.waitingOnClient && <Badge tone="outline">Waiting on client</Badge>}
                 {item.ref && <span className="text-[12px] tabular-nums text-muted">{item.ref}</span>}
               </div>
-              <Link href={href} className="mt-1 block text-[13.5px] font-medium text-ink hover:text-primary hover:underline">
+              <Link href={href} className="mt-1 block text-[14px] font-medium text-ink hover:text-primary hover:underline">
                 {item.title}
               </Link>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
@@ -121,7 +121,7 @@ function Attention({ escalations, now }: { escalations: Escalations; now: number
                 <Link href={e.link} className="group flex items-start gap-2">
                   {e.critical ? <Flame className="mt-0.5 size-4 shrink-0 text-danger-ink" aria-hidden /> : <Timer className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />}
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium text-ink group-hover:text-primary">{e.title}</span>
+                    <span className="block text-[14px] font-medium text-ink group-hover:text-primary">{e.title}</span>
                     <span className="mt-0.5 block text-[12px] text-muted">
                       {e.orgName ? `${e.orgName} · ` : ""}
                       {e.kind.replaceAll("_", " ")} · {relativeTime(e.since, now)}
@@ -132,7 +132,7 @@ function Attention({ escalations, now }: { escalations: Escalations; now: number
             ))}
           </ul>
         ) : (
-          <p className="py-3 text-[13px] leading-relaxed text-muted">Nothing is escalated or past its response target. This is from the same records the Requests page uses, not a separate count.</p>
+          <p className="py-3 text-[14px] leading-relaxed text-muted">Nothing is escalated or past its response target. This is from the same records the Requests page uses, not a separate count.</p>
         )}
         {escalations.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{escalations.hidden} more {escalations.hidden === 1 ? "entry is" : "entries are"} counted but hidden from you.</p>}
         {escalations.supportTargetsOff && <p className="mt-2 text-[12px] leading-relaxed text-muted">Support response targets are switched off, so no support request can show as overdue here.</p>}
@@ -165,7 +165,7 @@ function Distribution({ team }: { team: TeamWorkload }) {
         </div>
         <ul className="space-y-1.5" aria-label="People by label">
           {LABELS.map((label) => (
-            <li key={label} className="flex items-center justify-between gap-2 text-[12.5px]">
+            <li key={label} className="flex items-center justify-between gap-2 text-[13px]">
               <span className="flex items-center gap-2 text-ink-2">
                 <span className={cn("size-2 rounded-full", label === "available" && "bg-success", label === "balanced" && "bg-primary", label === "busy" && "bg-warning", label === "overloaded" && "bg-danger", label === "critical" && "bg-danger")} aria-hidden />
                 {LABEL_TEXT[label]}
@@ -204,7 +204,7 @@ function ProjectHealth({ health }: { health: ProjectsHealth }) {
             {health.projects.slice(0, 6).map((p) => (
               <li key={p.requestId} className="py-2.5 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <Link href={`/admin/projects/${p.requestId}`} className="min-w-0 text-[13px] font-medium text-ink hover:text-primary hover:underline">
+                  <Link href={`/admin/projects/${p.requestId}`} className="min-w-0 text-[14px] font-medium text-ink hover:text-primary hover:underline">
                     {p.title}
                   </Link>
                   <Badge tone={p.health.state === "off_track" ? "danger" : p.health.state === "at_risk" ? "warning" : p.health.state === "on_track" ? "success" : "outline"}>{HEALTH_TEXT[p.health.state]}</Badge>
@@ -220,7 +220,7 @@ function ProjectHealth({ health }: { health: ProjectsHealth }) {
             ))}
           </ul>
         ) : (
-          <p className="py-3 text-[13px] text-muted">No open custom projects are visible to you.</p>
+          <p className="py-3 text-[14px] text-muted">No open custom projects are visible to you.</p>
         )}
         {health.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{health.hidden} more {health.hidden === 1 ? "project is" : "projects are"} counted but hidden from you.</p>}
       </CardContent>
@@ -235,12 +235,12 @@ function TeamHome({ team, projects, escalations }: { team: TeamWorkload; project
     <div className="space-y-5">
       <Summary team={team} />
       {team.frame.ruleProblems.length > 0 && (
-        <p role="alert" className="rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <p role="alert" className="rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           The saved workload rules could not be read ({team.frame.ruleProblems.slice(0, 2).join("; ")}). The defaults in code are in force until a Super Admin saves them again.
         </p>
       )}
       {team.frame.noTeamDefaultCapacity && (
-        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-ink-2">
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
           No team default capacity is set, so people without their own capacity have no label. A manager can set a person&apos;s capacity on their page; a Super Admin can set a team default in the rules.
         </p>
       )}
@@ -257,7 +257,7 @@ function TeamHome({ team, projects, escalations }: { team: TeamWorkload; project
                 <PersonCard key={person.userId} person={person} canTeam />
               ))}
             </ul>
-            {people.length === 0 && <p className="text-[13px] text-muted">No active agency people are visible.</p>}
+            {people.length === 0 && <p className="text-[14px] text-muted">No active agency people are visible.</p>}
           </CardContent>
         </Card>
         <div className="space-y-5">
@@ -338,7 +338,7 @@ export function MyWorkloadView({ mine }: { mine: MyWorkload }) {
               <LabelPill result={me.result} />
             </div>
             <LoadMeter result={me.result} />
-            <ul className="space-y-1.5 text-[12.5px] leading-relaxed text-ink-2">
+            <ul className="space-y-1.5 text-[13px] leading-relaxed text-ink-2">
               {me.result.reasons.map((r) => (
                 <li key={r}>· {r}</li>
               ))}

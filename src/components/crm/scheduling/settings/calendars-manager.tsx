@@ -67,7 +67,7 @@ export function CalendarsManager({ scope, calendars, pages, people }: { scope: C
                         {c.isDefault && <Badge tone="primary"><Star className="size-3" aria-hidden />Default</Badge>}
                         {c.status === "draft" && <DraftBadge />}
                       </div>
-                      <p className="mt-1 text-[12.5px] text-muted">
+                      <p className="mt-1 text-[13px] text-muted">
                         {ASSIGNMENT_INFO[c.assignment].short}
                         {c.assignment === "round_robin" ? ` · ${ROUND_ROBIN_INFO[c.roundRobinMode].label.toLowerCase()}` : ""}
                       </p>
@@ -87,9 +87,9 @@ export function CalendarsManager({ scope, calendars, pages, people }: { scope: C
                     )}
                   </div>
 
-                  {c.description && <p className="mt-3 line-clamp-2 text-[13px] leading-relaxed text-ink-2">{c.description}</p>}
+                  {c.description && <p className="mt-3 line-clamp-2 text-[14px] leading-relaxed text-ink-2">{c.description}</p>}
 
-                  <dl className="mt-4 grid grid-cols-2 gap-3 text-[12.5px]">
+                  <dl className="mt-4 grid grid-cols-2 gap-3 text-[13px]">
                     <div className="min-w-0">
                       <dt className="text-muted">Hosts</dt>
                       <dd className="mt-1 flex min-w-0 items-center gap-1.5">
@@ -109,9 +109,9 @@ export function CalendarsManager({ scope, calendars, pages, people }: { scope: C
 
                   <div className="mt-4 space-y-1.5">
                     <BookingStatusBadge page={page} />
-                    {firstProblem && <p className="text-[12.5px] text-muted">{blockerText(firstProblem, scope.base, c.id).text}</p>}
+                    {firstProblem && <p className="text-[13px] text-muted">{blockerText(firstProblem, scope.base, c.id).text}</p>}
                     {c.status === "draft" && (
-                      <p className="text-[12.5px] text-muted">
+                      <p className="text-[13px] text-muted">
                         Takes no bookings until it is verified and activated.{" "}
                         <Link href={`${scope.base}/calendars/${c.id}#verify`} className="font-medium text-primary hover:underline">Verify and activate</Link>
                       </p>

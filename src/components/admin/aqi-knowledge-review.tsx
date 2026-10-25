@@ -130,7 +130,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
               <div className="rounded-xl border border-line bg-surface-2/50 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <FileText className="size-4 text-primary" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{lastUpload.document.filename}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{lastUpload.document.filename}</span>
                   <StatusPill size="sm" tone={lastUpload.document.extractionStatus === "ready" ? "success" : "warning"}>{lastUpload.document.extractionStatus}</StatusPill>
                 </div>
                 {lastUpload.document.extractionDetail && <p className="mt-1 text-[12px] text-warning-ink">{lastUpload.document.extractionDetail}</p>}
@@ -207,7 +207,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
             <div key={entry.id} className="rounded-xl border border-line p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-ink">
+                  <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
                     <span className="truncate">{entry.title}</span>
                     <StatusPill size="sm" tone={FRESHNESS_TONE[entry.freshness]}>{entry.freshness.replaceAll("_", " ")}</StatusPill>
                     <Badge tone={entry.status === "published" ? "success" : entry.status === "draft" ? "warning" : "neutral"}>{entry.status}</Badge>

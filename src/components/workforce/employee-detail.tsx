@@ -178,7 +178,7 @@ export function EmployeeDetail(props: Props) {
 
   return (
     <div className="space-y-6">
-      <Link href="/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink">
+      <Link href="/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink">
         <ArrowLeft className="size-3.5" /> AI Employees
       </Link>
 
@@ -212,7 +212,7 @@ export function EmployeeDetail(props: Props) {
         { value: "activity", label: <span className="flex items-center gap-1.5"><Activity className="size-3.5" /> Activity</span> },
       ]}>
         <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduced ? undefined : { opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2 }}>
+          <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduced ? undefined : { opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2 }}>
             {tab === "overview" && (
               <OverviewTab {...props} readiness={readiness} onConfigure={goConfigure} />
             )}
@@ -258,7 +258,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
               <p className="mb-2.5 text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{operationsNotice ? "Intended role capabilities" : "Capabilities"}</p>
               <ul className="grid gap-2 sm:grid-cols-2">
                 {capabilities.map((c) => (
-                  <li key={c} className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-2">{operationsNotice ? <Info className="mt-0.5 size-4 shrink-0 text-muted" /> : <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />} {c}</li>
+                  <li key={c} className="flex items-start gap-2 text-[14px] leading-relaxed text-ink-2">{operationsNotice ? <Info className="mt-0.5 size-4 shrink-0 text-muted" /> : <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />} {c}</li>
                 ))}
               </ul>
             </div>
@@ -269,7 +269,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
               </div>
               <ul className="mt-2.5 grid gap-2 sm:grid-cols-2">
                 {agent.defaultTools.map((t) => (
-                  <li key={t} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[12.5px] text-ink-2"><Lock className="size-3.5 shrink-0 text-faint" /> {agentToolLabel(t)}</li>
+                  <li key={t} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[13px] text-ink-2"><Lock className="size-3.5 shrink-0 text-faint" /> {agentToolLabel(t)}</li>
                 ))}
               </ul>
               <p className="mt-2 text-[12px] leading-relaxed text-muted">{operationsNotice ? "These labels do not represent callable services in the current Hermes chat runtime." : "Tools can be switched off in Configure; nobody can add new tools from this screen."}</p>
@@ -281,7 +281,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
           <CardHeader>
             <div><CardTitle>Connection &amp; identity</CardTitle><CardDescription>Latest recorded facts, not inferred availability.</CardDescription></div>
           </CardHeader>
-          <CardContent className="space-y-3 text-[12.5px]">
+          <CardContent className="space-y-3 text-[13px]">
             <div className="flex items-center justify-between gap-3"><span className="text-muted">Lifecycle</span><span className="font-medium text-ink">{sentenceCase(agent.status)}</span></div>
             <div className="flex items-center justify-between gap-3"><span className="text-muted">Provider runtime</span><span className="text-right font-medium text-ink">{agent.providerRuntime}</span></div>
             <div className="flex items-center justify-between gap-3"><span className="text-muted">Approved inventory</span><span className="text-right font-medium text-ink">{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools · ${agent.inventoryDigest.slice(0, 10)}…` : "Not recorded"}</span></div>
@@ -299,7 +299,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
             <CardContent>
               <ul className="divide-y divide-line">
                 {runs.slice(0, 3).map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[12.5px]">
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[13px]">
                     <span className="min-w-0 flex-1 text-ink-2">{formatDateTime(r.started_at, timeZone)}</span>
                     <Badge tone={r.status === "completed" ? "success" : r.status === "running" ? "primary" : r.status === "cancelled" ? "neutral" : "danger"}>{sentenceCase(r.status)}</Badge>
                     <span className="text-muted">{r.total_tokens ?? "—"} tokens</span>
@@ -314,11 +314,11 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
       <div className="space-y-6">
         <Card>
           <CardHeader><div><CardTitle>Safeguards</CardTitle><CardDescription>These boundaries cannot be changed by instructions.</CardDescription></div></CardHeader>
-          <CardContent className="space-y-2.5 text-[13px] text-ink-2">
+          <CardContent className="space-y-2.5 text-[14px] text-ink-2">
             {["Customer-facing actions wait for your approval", "Never invents bookings, prices or results", "Only works with your company's data", "Cannot grant itself new tools or access"].map((s) => (
               <p key={s} className="flex items-start gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /> {s}</p>
             ))}
-            <div className="mt-3 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
+            <div className="mt-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
               Pending approvals: <span className="font-semibold text-ink">{pendingApprovals}</span> · <Link href="/approvals" className="text-primary hover:underline">Approval Center</Link>
               <br /> Knowledge last applied: <span suppressHydrationWarning>{knowledgeAppliedAt ? relativeTime(knowledgeAppliedAt) : "not yet"}</span>
             </div>
@@ -681,7 +681,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                         selected ? "border-primary bg-primary-soft/50 ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong",
                       )}
                     >
-                      <span className="flex items-center justify-between text-[13px] font-semibold text-ink">
+                      <span className="flex items-center justify-between text-[14px] font-semibold text-ink">
                         {TONE_COPY[t].label}
                         {selected && <Check className="size-4 text-primary" aria-hidden />}
                       </span>
@@ -726,7 +726,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                         )}
                       >
                         <span>
-                          <span className="block text-[12.5px] font-medium text-ink">{LENGTH_COPY[v].label}</span>
+                          <span className="block text-[13px] font-medium text-ink">{LENGTH_COPY[v].label}</span>
                           <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">{LENGTH_COPY[v].description}</span>
                         </span>
                         {selected && <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />}
@@ -748,7 +748,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-1.5 text-[13px] font-medium"><Sparkles className="size-3.5 text-primary" aria-hidden /> Role setup check</p>
+                  <p className="flex items-center gap-1.5 text-[14px] font-medium"><Sparkles className="size-3.5 text-primary" aria-hidden /> Role setup check</p>
                   <p className="mt-1 text-[12px] leading-relaxed text-muted">
                     {configAudit.employeeComplete}/{configAudit.employeeTotal} role fields and {configAudit.companyComplete}/{configAudit.companyTotal} company facts are filled.
                     Readiness proves this employee may run; this check shows whether its configuration contains enough specific information to do useful work.
@@ -831,7 +831,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             <div id="cfg-approval" tabIndex={-1} className="scroll-mt-28 rounded-2xl border border-line bg-surface-2/50 p-4 outline-none">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-1.5 text-[13px] font-medium"><Lock className="size-3.5 text-faint" aria-hidden /> Required approval policy</p>
+                  <p className="flex items-center gap-1.5 text-[14px] font-medium"><Lock className="size-3.5 text-faint" aria-hidden /> Required approval policy</p>
                   <p className="mt-1 text-[12px] leading-relaxed text-muted">Fixed by iAcquire policy. Customer-facing actions always need approval, and this setting cannot be changed here.</p>
                 </div>
                 <Badge tone="neutral">Fixed by iAcquire policy</Badge>
@@ -1039,11 +1039,11 @@ function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: ()
           <AnimatePresence>
             {proposal && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3 rounded-2xl border border-line bg-surface-2/60 p-4">
-                {proposal.status === "refused" ? <p className="flex items-start gap-2 text-[13.5px] text-warning-ink"><XCircle className="mt-0.5 size-4 shrink-0" /> {proposal.refusal}</p>
-                  : proposal.status === "no_change" ? <p className="text-[13.5px] text-muted">{proposal.explanations[0]}</p>
+                {proposal.status === "refused" ? <p className="flex items-start gap-2 text-[14px] text-warning-ink"><XCircle className="mt-0.5 size-4 shrink-0" /> {proposal.refusal}</p>
+                  : proposal.status === "no_change" ? <p className="text-[14px] text-muted">{proposal.explanations[0]}</p>
                     : <>
-                        <p className="text-[13px] font-semibold">What will change for {agent.displayName}</p>
-                        <ul className="space-y-1.5">{proposal.explanations.map((e) => <li key={e} className="flex items-start gap-2 text-[13.5px]"><Check className="mt-0.5 size-4 shrink-0 text-success" /> {e}</li>)}</ul>
+                        <p className="text-[14px] font-semibold">What will change for {agent.displayName}</p>
+                        <ul className="space-y-1.5">{proposal.explanations.map((e) => <li key={e} className="flex items-start gap-2 text-[14px]"><Check className="mt-0.5 size-4 shrink-0 text-success" /> {e}</li>)}</ul>
 
                         {check.state === "checking" && <p className="text-[12px] text-muted">Checking this change…</p>}
                         {check.state === "error" && (
@@ -1069,7 +1069,7 @@ function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: ()
                           </ChangeDecisionNotice>
                         )}
 
-                        {applyError && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft/40 p-2.5 text-[12.5px] text-danger-ink">{applyError}</p>}
+                        {applyError && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft/40 p-2.5 text-[13px] text-danger-ink">{applyError}</p>}
                         <div className="flex flex-wrap gap-2">
                           <Button variant="brand" onClick={apply} loading={pending} disabled={blocked}>
                             {blocked ? "Change not allowed" : decision === "review_required" ? "Submit for review" : "Apply change"}
@@ -1084,7 +1084,7 @@ function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: ()
       </Card>
       <Card className="h-fit bg-surface-2/50">
         <CardHeader><div><CardTitle>How this works</CardTitle><CardDescription>Safe, reviewable changes.</CardDescription></div></CardHeader>
-        <CardContent className="space-y-3 text-[12.5px] leading-relaxed text-muted">
+        <CardContent className="space-y-3 text-[13px] leading-relaxed text-muted">
           <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> The request is interpreted against the active configuration.</p>
           <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> You see the exact fields before applying.</p>
           <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> If any part needs review, the whole submission is held so nothing applies partially.</p>
@@ -1129,21 +1129,21 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-xl border border-line bg-surface-2/40 p-3">
-          <p className="text-[12.5px] font-semibold text-ink">{duty.title}</p>
+          <p className="text-[13px] font-semibold text-ink">{duty.title}</p>
           <ul className="mt-1.5 grid gap-1 text-[12px] text-ink-2 sm:grid-cols-2">
             {duty.watches.slice(0, 6).map((item) => <li key={item} className="flex gap-1.5"><span className="text-primary">•</span>{item}</li>)}
           </ul>
           <p className="mt-2 text-[12px] leading-relaxed text-muted">{duty.approvalBoundary}</p>
         </div>
         {reports.length === 0 ? (
-          <p className="text-[12.5px] text-muted">No verified proactive report has been recorded for this employee yet. This view never fabricates one.</p>
+          <p className="text-[13px] text-muted">No verified proactive report has been recorded for this employee yet. This view never fabricates one.</p>
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {reports.map((report) => (
               <li key={report.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                 <Badge tone={report.severity === "critical" ? "danger" : report.severity === "warning" ? "warning" : "primary"}>{PROACTIVE_SEVERITY_LABELS[report.severity]}</Badge>
                 <div className="min-w-0 flex-1">
-                  <Link href={`/work?report=${report.id}`} className="block truncate text-[12.5px] font-semibold text-ink hover:underline">{report.title}</Link>
+                  <Link href={`/work?report=${report.id}`} className="block truncate text-[13px] font-semibold text-ink hover:underline">{report.title}</Link>
                   <span className="text-[12px] text-muted"><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span> · {report.findings.length} finding{report.findings.length === 1 ? "" : "s"}</span>
                 </div>
                 <Link href={`/work?report=${report.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/50">
@@ -1179,7 +1179,7 @@ function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, proactiveRe
       {proactive}
       <Card className="overflow-hidden">
         <div className="scrollbar-thin overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-[13px]">
+          <table className="w-full min-w-[640px] text-left text-[14px]">
             <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><tr><th className="px-5 py-3 font-medium">Started</th><th className="px-3 py-3 font-medium">Type</th><th className="px-3 py-3 font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Tool steps</th><th className="px-5 py-3 text-right font-medium">Tokens</th></tr></thead>
             <tbody className="divide-y divide-line">
               {runs.map((r) => (

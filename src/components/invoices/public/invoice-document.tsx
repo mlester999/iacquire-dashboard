@@ -30,7 +30,7 @@ export function bannerText(kind: InvoiceBannerKind, i: Pick<PublicInvoice, "bala
 
 function Address({ name, lines, extra }: { name?: string | null; lines: string[]; extra?: string[] }) {
   return (
-    <div className="text-[13.5px] leading-relaxed text-ink-2">
+    <div className="text-[14px] leading-relaxed text-ink-2">
       {name && <p className="font-medium text-ink">{name}</p>}
       {lines.map((l, i) => <p key={i}>{l}</p>)}
       {(extra ?? []).map((l, i) => <p key={`x${i}`}>{l}</p>)}
@@ -51,14 +51,14 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
           {/* Printed too: a test invoice must never pass for a real one on paper. */}
           {i.isTest && <p data-test-label className="mt-1 inline-block rounded-md border-2 border-violet-ink px-2 py-0.5 text-[12px] font-bold uppercase tracking-[.14em] text-violet-ink">Test · nothing is owed</p>}
         </div>
-        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-[13px]">
+        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-[14px]">
           <dt className="text-muted">Issued</dt><dd className="font-medium text-ink">{formatDay(i.issueOn)}</dd>
           <dt className="text-muted">Due</dt><dd className="font-medium text-ink">{formatDay(i.dueOn)}</dd>
           <dt className="text-muted">Currency</dt><dd className="font-medium text-ink">{i.currency}</dd>
         </dl>
       </header>
 
-      <p role="status" className={`mt-5 flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[13.5px] print:hidden ${BANNER_STYLE[i.banner.tone]}`}>
+      <p role="status" className={`mt-5 flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[14px] print:hidden ${BANNER_STYLE[i.banner.tone]}`}>
         <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
         <span>{bannerText(i.banner.kind, i)}</span>
       </p>
@@ -70,7 +70,7 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
         </div>
         <div>
           <h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Billed to</h2>
-          {i.billTo.name || i.billTo.company || i.billTo.addressLines.length ? <Address name={i.billTo.name} lines={[...(i.billTo.company ? [i.billTo.company] : []), ...i.billTo.addressLines]} /> : <p className="text-[13.5px] text-muted">Customer details are not shown on this copy.</p>}
+          {i.billTo.name || i.billTo.company || i.billTo.addressLines.length ? <Address name={i.billTo.name} lines={[...(i.billTo.company ? [i.billTo.company] : []), ...i.billTo.addressLines]} /> : <p className="text-[14px] text-muted">Customer details are not shown on this copy.</p>}
         </div>
       </section>
 
@@ -78,7 +78,7 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
           its width. Quantity and price are stacked under the description there and become their own columns from the small breakpoint and on paper. The box still scrolls and is
           reachable by keyboard if something ever does not fit. */}
       <div className="mt-6 overflow-x-auto" role="region" aria-label="Invoice lines" tabIndex={0}>
-        <table className="w-full text-left text-[13.5px]">
+        <table className="w-full text-left text-[14px]">
           <caption className="sr-only">Lines on invoice {i.number}, amounts in {i.currency}</caption>
           <thead className="border-b border-line-strong text-[12px] text-muted">
             <tr>
@@ -106,7 +106,7 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
         </table>
       </div>
 
-      <dl className="ml-auto mt-4 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[13.5px]">
+      <dl className="ml-auto mt-4 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[14px]">
         <dt className="text-muted">Subtotal{i.taxInclusive ? " (before tax)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.subtotalMinor, i.currency)}</dd>
         {i.taxMinor > 0 && <><dt className="text-muted">{i.business.taxLabel ?? "Tax"}{i.taxInclusive ? " (included)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.taxMinor, i.currency)}</dd></>}
         <dt className="border-t border-line-strong pt-1.5 font-semibold text-ink">Total</dt><dd className="border-t border-line-strong pt-1.5 text-right text-[15px] font-semibold tabular-nums text-ink">{money(i.totalMinor, i.currency)}</dd>
@@ -115,11 +115,11 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
       </dl>
 
       {(i.paymentInstructions || i.notes || i.terms || i.footerNote) && (
-        <div className="mt-6 space-y-4 border-t border-line pt-5 text-[13.5px] leading-relaxed text-ink-2">
+        <div className="mt-6 space-y-4 border-t border-line pt-5 text-[14px] leading-relaxed text-ink-2">
           {i.paymentInstructions && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">How to pay</h2><p className="whitespace-pre-wrap break-words">{i.paymentInstructions}</p></section>}
           {i.notes && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Notes</h2><p className="whitespace-pre-wrap break-words">{i.notes}</p></section>}
           {i.terms && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Terms</h2><p className="whitespace-pre-wrap break-words">{i.terms}</p></section>}
-          {i.footerNote && <p className="whitespace-pre-wrap break-words text-[12.5px] text-muted">{i.footerNote}</p>}
+          {i.footerNote && <p className="whitespace-pre-wrap break-words text-[13px] text-muted">{i.footerNote}</p>}
         </div>
       )}
     </article>

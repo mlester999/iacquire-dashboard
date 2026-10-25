@@ -47,7 +47,7 @@ export function PostHistory({ events, tz }: { events: PostEvent[]; tz: string })
       <h2 className="text-[14px] font-semibold text-ink">History</h2>
       <ol className="mt-3 space-y-3">
         {events.map((e) => (
-          <li key={e.id} className="flex gap-3 text-[13px]">
+          <li key={e.id} className="flex gap-3 text-[14px]">
             <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-line-strong" />
             <div className="min-w-0">
               <p className="text-ink">{label(e)}</p>

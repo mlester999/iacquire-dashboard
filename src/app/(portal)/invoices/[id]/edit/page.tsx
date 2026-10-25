@@ -47,9 +47,9 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
   return (
     <div className="space-y-5">
       <div>
-        <Link href={`/invoices/${id}`} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Back to the draft</Link>
+        <Link href={`/invoices/${id}`} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Back to the draft</Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-ink">Edit draft</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">Version {i.version}. Saving a change makes it a new version, so anyone who looked at the earlier one has to look again.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Version {i.version}. Saving a change makes it a new version, so anyone who looked at the earlier one has to look again.</p>
       </div>
       <InvoiceForm mode={{ kind: "edit", id, version: i.version }} initial={initial} termsDays={settings.paymentTermsDays} canMarkTest={canMarkTest} />
     </div>

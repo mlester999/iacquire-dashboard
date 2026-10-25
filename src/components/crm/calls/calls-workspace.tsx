@@ -45,7 +45,7 @@ function Pill({ href, active, children }: { href: string; active: boolean; child
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+        "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
         active ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
       )}
     >
@@ -67,16 +67,16 @@ export function CallRow({ scope, call, onOpen, showContact = true }: { scope: Cr
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[13.5px] font-medium text-ink">{showContact ? who : call.direction === "inbound" ? "Incoming call" : "Outgoing call"}</span>
+            <span className="truncate text-[14px] font-medium text-ink">{showContact ? who : call.direction === "inbound" ? "Incoming call" : "Outgoing call"}</span>
             <Badge tone={CALL_STATUS_TONES[call.status]}>{CALL_STATUS_LABELS[call.status]}</Badge>
             {showContact && !call.contact && <Badge tone="outline">Not linked</Badge>}
           </span>
-          <span className="mt-0.5 block text-[12.5px] text-muted">
+          <span className="mt-0.5 block text-[13px] text-muted">
             {call.direction === "inbound" ? "Incoming" : "Outgoing"} · {CALL_PROVIDER_LABELS[call.provider]}
             {call.durationSeconds ? ` · ${durationLabel(call.durationSeconds)}` : ""}
             {reason ? ` · ${reason}` : ""}
           </span>
-          {call.summary && <span className="mt-1 line-clamp-2 block text-[12.5px] leading-relaxed text-ink-2">{call.summary}</span>}
+          {call.summary && <span className="mt-1 line-clamp-2 block text-[13px] leading-relaxed text-ink-2">{call.summary}</span>}
         </span>
         <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted">
           {call.startedAt || call.createdAt ? <RelativeTime iso={call.startedAt ?? call.createdAt} timezone={scope.timezone} /> : null}
@@ -139,7 +139,7 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, recove
             key={k}
             href={href({ tab: k })}
             aria-current={tab === k ? "page" : undefined}
-            className={cn("-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[13.5px] font-medium transition-colors", tab === k ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink")}
+            className={cn("-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[14px] font-medium transition-colors", tab === k ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink")}
           >
             {label}
           </Link>
@@ -169,14 +169,14 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, recove
       ) : (
         <section aria-label="Calls" className="space-y-4">
           <div className="space-y-2">
-            <nav aria-label="Filter by outcome" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+            <nav aria-label="Filter by outcome" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
               {STATUS_FILTERS.map(([k, label]) => (
                 <Pill key={k} href={href({ status: k, page: 1 })} active={filters.status === k}>
                   {label}<span className="tabular-nums text-muted">{calls.counts[k]}</span>
                 </Pill>
               ))}
             </nav>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 text-[12.5px]">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-[13px]">
               <nav aria-label="Filter by direction" className="flex flex-wrap items-center gap-1.5">
                 <span className="text-muted">Direction</span>
                 {(["all", "inbound", "outbound"] as const).map((d) => <Pill key={d} href={href({ direction: d })} active={filters.direction === d}>{d === "all" ? "Any" : d === "inbound" ? "Incoming" : "Outgoing"}</Pill>)}

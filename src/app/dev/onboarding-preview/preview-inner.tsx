@@ -190,7 +190,7 @@ export default function PreviewInner({ seed }: { seed: "empty" | "full" }) {
 
   return (
     <div className="app-backdrop grain min-h-dvh">
-      <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[12.5px] font-medium text-warning-ink">
+      <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[13px] font-medium text-warning-ink">
         Local preview — sample data and mocked AI. No provider calls. Saved only in this tab.{" "}
         <label className="ml-2 inline-flex items-center gap-1.5">
           <input

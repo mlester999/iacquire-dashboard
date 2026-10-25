@@ -28,7 +28,7 @@ export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boo
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><CreditCard className="size-4 text-primary" aria-hidden /> Online checkout</h2>
-          <p className="mt-1 max-w-xl text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
             Lets a buyer who confirmed their purchase pay the setup fee on PayMongo&apos;s page. A payment counts only when PayMongo&apos;s signed confirmation arrives.
           </p>
         </div>
@@ -37,7 +37,7 @@ export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boo
           <Switch checked={state.enabled} disabled={!canManage || busy} onCheckedChange={(v) => void toggle(v)} aria-label="Allow buyers to pay online" />
         </div>
       </div>
-      {state.reason && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2">{state.reason}</p>}
+      {state.reason && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2">{state.reason}</p>}
       {!canManage && <p className="mt-2 text-[12px] text-muted">Only a Super Admin with the billing and client-creation permissions can change this.</p>}
     </section>
   );

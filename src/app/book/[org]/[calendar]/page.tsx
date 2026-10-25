@@ -38,7 +38,7 @@ export default async function CalendarBookingPage({ params }: { params: Params }
         {(page.calendar.intro || page.calendar.description) && (
           <p className="mt-2 max-w-2xl whitespace-pre-line text-[14.5px] leading-relaxed text-muted">{page.calendar.intro ?? page.calendar.description}</p>
         )}
-        <h2 className="mt-8 text-[13px] font-semibold uppercase tracking-wide text-muted">Choose an appointment</h2>
+        <h2 className="mt-8 text-[14px] font-semibold uppercase tracking-wide text-muted">Choose an appointment</h2>
         <ul className="mt-3 grid gap-3">
           {page.types.map((t) => (
             <li key={t.slug}>
@@ -49,13 +49,13 @@ export default async function CalendarBookingPage({ params }: { params: Params }
                 <span aria-hidden className="h-12 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: t.color && /^#[0-9a-fA-F]{6}$/.test(t.color) ? t.color : page.calendar.color ?? "var(--primary)" }} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[16px] font-semibold tracking-[-0.02em] text-ink">{t.name}</span>
-                  <span className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
+                  <span className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted">
                     <span className="inline-flex items-center gap-1.5"><Clock className="size-3.5" aria-hidden />{durationLabel(t.durationMinutes)}</span>
                     {t.locationLabel && <span className="inline-flex items-center gap-1.5"><LocationIcon kind={t.locationKind} className="size-3.5" />{t.locationLabel}</span>}
                     {t.capacity > 1 && <span className="inline-flex items-center gap-1.5"><Users className="size-3.5" aria-hidden />Group, up to {t.capacity}</span>}
                     {t.requiresConfirmation && <span className="inline-flex items-center gap-1.5"><Hourglass className="size-3.5" aria-hidden />Confirmed by {page.business.name}</span>}
                   </span>
-                  {t.description && <span className="mt-2 line-clamp-2 block text-[13.5px] leading-relaxed text-ink-2">{t.description}</span>}
+                  {t.description && <span className="mt-2 line-clamp-2 block text-[14px] leading-relaxed text-ink-2">{t.description}</span>}
                 </span>
                 <ChevronRight className="size-5 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
               </Link>

@@ -17,7 +17,7 @@ export default function GetStartedPage() {
         }
       />
       <RequestAccessForm />
-      <p className="mt-6 text-center text-[13.5px] text-muted">
+      <p className="mt-6 text-center text-[14px] text-muted">
         Already a client?{" "}
         <Link href="/login" className="font-medium text-primary hover:underline">
           Sign in

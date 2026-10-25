@@ -90,7 +90,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
         ))}
       </div>
       {needsOwner > 0 && scope.can["campaigns.send"] && (
-        <p className="mb-4 flex items-center gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <p className="mb-4 flex items-center gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <ShieldCheck className="size-4 shrink-0" aria-hidden />
           {needsOwner === 1 ? "One campaign is waiting for your approval." : `${needsOwner} campaigns are waiting for your approval.`} Open it to review exactly what it sends.
         </p>
@@ -134,7 +134,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
                 <li key={c.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2/50 md:grid-cols-[minmax(0,1fr)_150px_140px_200px] md:items-center">
                   <div className="min-w-0">
                     <Link href={`${base}/${c.id}`} className="text-[14px] font-medium text-ink hover:underline">{c.name}</Link>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-muted">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
                       <ChannelLabel channel={c.channel} />
                       <span aria-hidden>·</span>
                       <span className="truncate">{c.list ? c.list.name : "No list chosen"}</span>
@@ -143,7 +143,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
                     {c.notice && c.status !== "completed" && c.status !== "cancelled" && <p className="mt-1 text-[12px] font-medium text-warning-ink">{NOTICE_TITLE[c.notice.code]}</p>}
                   </div>
                   <div className="row-start-1 md:row-auto"><CampaignStatusBadge status={c.status} /></div>
-                  <p className="col-span-2 text-[12.5px] text-muted md:col-span-1" suppressHydrationWarning>
+                  <p className="col-span-2 text-[13px] text-muted md:col-span-1" suppressHydrationWarning>
                     {c.completedAt ? <>Finished {relativeTime(c.completedAt)}</> : c.startedAt ? <>Started {relativeTime(c.startedAt)}</> : c.scheduledAt ? <>Starts {formatDateTime(c.scheduledAt, scope.timezone)}</> : c.status === "draft" || c.status === "awaiting_approval" ? <>Updated {relativeTime(c.updatedAt)}</> : CAMPAIGN_STATUS[c.status].label}
                   </p>
                   <div className="col-span-2 md:col-span-1">
@@ -153,7 +153,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
                         <CountChips counts={c.counts} className="mt-1 text-[12px] tabular-nums text-muted" />
                       </>
                     ) : (
-                      <p className="text-[12.5px] text-faint">Not started</p>
+                      <p className="text-[13px] text-faint">Not started</p>
                     )}
                   </div>
                 </li>
@@ -180,9 +180,9 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
             <Input id="campaign-name" value={name} maxLength={120} onChange={(e) => { setName(e.target.value); setNameError(null); }} placeholder="Autumn offer for returning customers" aria-invalid={nameError ? true : undefined} autoFocus />
           </Field>
           <div className="space-y-1.5">
-            <p className="text-[13px] font-medium text-ink-2" id="campaign-channel-label">Channel</p>
+            <p className="text-[14px] font-medium text-ink-2" id="campaign-channel-label">Channel</p>
             <Segmented id="new-campaign-channel" ariaLabel="Channel" value={channel} onChange={setChannel} options={CHANNELS.map((ch) => ({ value: ch, label: CHANNEL_LABELS[ch] }))} />
-            <p className="text-[12.5px] text-muted">It reaches only people who agreed to receive marketing on this channel.</p>
+            <p className="text-[13px] text-muted">It reaches only people who agreed to receive marketing on this channel.</p>
           </div>
         </div>
       </Dialog>

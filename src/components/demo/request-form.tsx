@@ -131,7 +131,7 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
           <span>{notice.consent}</span>
         </label>
         {errors.consent && (
-          <p className="text-[12.5px] text-danger-ink" role="alert">
+          <p className="text-[13px] text-danger-ink" role="alert">
             {errors.consent}
           </p>
         )}
@@ -149,7 +149,7 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
           Sending your request
         </p>
       )}
-      <ul className="space-y-1.5 text-[12.5px] leading-relaxed text-muted">
+      <ul className="space-y-1.5 text-[13px] leading-relaxed text-muted">
         {notice.details.map((d) => (
           <li key={d}>{d}</li>
         ))}

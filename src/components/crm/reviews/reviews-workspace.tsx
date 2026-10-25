@@ -101,7 +101,7 @@ const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%
 function Stat({ icon: Icon, label, value, detail }: { icon: typeof Send; label: string; value: React.ReactNode; detail?: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-2xl border border-line bg-surface p-4">
-      <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><Icon className="size-4 shrink-0" aria-hidden />{label}</p>
+      <p className="flex items-center gap-2 text-[13px] font-medium text-muted"><Icon className="size-4 shrink-0" aria-hidden />{label}</p>
       <p className="mt-2 text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink tabular-nums">{value}</p>
       {detail && <p className="mt-2 text-[12px] leading-relaxed text-muted">{detail}</p>}
     </div>
@@ -110,14 +110,14 @@ function Stat({ icon: Icon, label, value, detail }: { icon: typeof Send; label: 
 
 function Chips<V extends string>({ label, value, options, hrefFor }: { label: string; value: V; options: Record<V, string>; hrefFor: (v: V) => string }) {
   return (
-    <nav aria-label={label} className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+    <nav aria-label={label} className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
       {(Object.keys(options) as V[]).map((k) => (
         <Link
           key={k}
           href={hrefFor(k)}
           aria-current={k === value ? "page" : undefined}
           className={cn(
-            "inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+            "inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
             k === value ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
           )}
         >
@@ -174,7 +174,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
       />
       {!p.canSend && <ReadOnlyNotice>{scope.agency ? "Review requests and review links are the client's own: an iAcquire support session can look, not send or change them." : "Owners and managers send review requests and manage the review links."}</ReadOnlyNotice>}
       {p.canSend && sendBlocked && (
-        <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
             {!activeLinks ? "Requests can't be sent until there is at least one public review link below. " : ""}
@@ -207,7 +207,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
           />
         </div>
         {stats.clicksByPlatform.length > 0 && (
-          <p className="text-[12.5px] text-muted">
+          <p className="text-[13px] text-muted">
             Review sites opened: {stats.clicksByPlatform.map((c) => `${c.label} ${c.clicks}`).join(" · ")}
           </p>
         )}
@@ -222,14 +222,14 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
             <section aria-labelledby="recent-requests" className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <h2 id="recent-requests" className="text-[15px] font-semibold text-ink">Recent requests</h2>
-                {(p.requests?.total ?? 0) > 0 && <Link href={href({ tab: "requests" })} className="text-[13px] font-medium text-primary hover:underline">See all {p.requests?.total}</Link>}
+                {(p.requests?.total ?? 0) > 0 && <Link href={href({ tab: "requests" })} className="text-[14px] font-medium text-primary hover:underline">See all {p.requests?.total}</Link>}
               </div>
               <RequestsList scope={scope} rows={p.requests?.rows ?? []} canCancel={p.canSend && !scope.readOnly} contactsLinked={p.contactsLinked} emptyText="Nobody has been asked for a review yet." />
             </section>
             <section aria-labelledby="open-feedback" className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <h2 id="open-feedback" className="text-[15px] font-semibold text-ink">Feedback that needs a follow-up</h2>
-                {(p.feedback?.total ?? 0) > 0 && <Link href={href({ tab: "feedback" })} className="text-[13px] font-medium text-primary hover:underline">See all {p.feedback?.total}</Link>}
+                {(p.feedback?.total ?? 0) > 0 && <Link href={href({ tab: "feedback" })} className="text-[14px] font-medium text-primary hover:underline">See all {p.feedback?.total}</Link>}
               </div>
               <FeedbackList scope={scope} rows={p.feedback?.rows ?? []} canFollowUp={p.canFollowUp} contactsLinked={p.contactsLinked} emptyText="Nothing waiting. New and escalated feedback appears here." />
             </section>
@@ -237,7 +237,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
           <aside className="min-w-0 space-y-4">
             <Card className="p-4 sm:p-5">
               <h2 className="flex items-center gap-2 text-[14.5px] font-semibold text-ink"><ShieldCheck className="size-4 text-primary" aria-hidden />How requests work</h2>
-              <ul className="mt-3 space-y-2 text-[13px] leading-relaxed text-ink-2">
+              <ul className="mt-3 space-y-2 text-[14px] leading-relaxed text-ink-2">
                 <li>Every customer you ask sees the same public review links, whatever rating they give you privately.</li>
                 <li>Sent only to customers who agreed to messages on that channel, never to anyone who opted out, outside quiet hours and within your message credits.</li>
                 <li>One request per customer every {p.limits.cooldownDays} days. Their link takes feedback for {p.limits.linkDays} days.</li>
@@ -254,14 +254,14 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
               {stats.feedback.rated ? (
                 <ul className="mt-3 space-y-1.5" aria-label="Private ratings by score">
                   {([5, 4, 3, 2, 1] as const).map((n) => (
-                    <li key={n} className="flex items-center justify-between gap-3 text-[13px]">
+                    <li key={n} className="flex items-center justify-between gap-3 text-[14px]">
                       <RatingStars rating={n} />
                       <span className="tabular-nums text-ink-2">{stats.feedback.byRating[n]}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-[13px] text-muted">No private ratings in this period.</p>
+                <p className="mt-2 text-[14px] text-muted">No private ratings in this period.</p>
               )}
             </Card>
           </aside>

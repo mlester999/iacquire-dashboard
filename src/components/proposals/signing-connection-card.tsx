@@ -55,10 +55,10 @@ function Connected({ c, canConnect, tz }: { c: ConnectionView; canConnect: boole
           {c.mode === "sandbox" && <Badge tone="outline">Sandbox</Badge>}
           {c.mode === "simulated" && <Badge tone="violet">Simulated</Badge>}
         </div>
-        {c.accountLabel && <p className="text-[13px] text-ink-2">Account: {c.accountLabel}</p>}
-        {c.statusDetail && c.status !== "connected" && <p role="alert" className="text-[13px] text-warning-ink">{c.statusDetail}</p>}
-        {c.notice && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{c.notice}</p>}
-        <p className="text-[12.5px] text-muted">
+        {c.accountLabel && <p className="text-[14px] text-ink-2">Account: {c.accountLabel}</p>}
+        {c.statusDetail && c.status !== "connected" && <p role="alert" className="text-[14px] text-warning-ink">{c.statusDetail}</p>}
+        {c.notice && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2">{c.notice}</p>}
+        <p className="text-[13px] text-muted">
           {c.lastCheckedAt ? `The key was last checked ${whenIn(c.lastCheckedAt, tz)}.` : "The key has not been checked yet."} Connected {whenIn(c.connectedAt, tz)}. The saved keys cannot be shown again.
         </p>
       </div>
@@ -71,18 +71,18 @@ function Connected({ c, canConnect, tz }: { c: ConnectionView; canConnect: boole
           </div>
           {address && (
             <div className="space-y-2">
-              <label htmlFor="sc-address" className="text-[13px] font-medium text-ink-2">Notice address for {c.providerLabel}</label>
+              <label htmlFor="sc-address" className="text-[14px] font-medium text-ink-2">Notice address for {c.providerLabel}</label>
               <div className="flex flex-wrap gap-2">
-                <Input id="sc-address" readOnly value={address} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 text-[16px] sm:text-[13px]" />
+                <Input id="sc-address" readOnly value={address} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 text-[16px] sm:text-[14px]" />
                 <Button type="button" variant="secondary" onClick={copy}><Copy className="size-4" aria-hidden />Copy</Button>
               </div>
-              <p role="status" className="text-[12.5px] leading-relaxed text-muted">
+              <p role="status" className="text-[13px] leading-relaxed text-muted">
                 {copied ? "Copied." : `Give this to ${c.providerLabel} as the address it sends notices to. Keep it private. A notice is accepted only if it is signed with your shared key, and iAcquire does not mark anything signed from a notice it cannot verify.`}
               </p>
             </div>
           )}
         </div>
-      ) : <p className="text-[12.5px] text-muted">Only the business owner or a manager can change or disconnect it.</p>}
+      ) : <p className="text-[13px] text-muted">Only the business owner or a manager can change or disconnect it.</p>}
       <ConfirmDialog
         open={ask} onOpenChange={setAsk} title="Disconnect the signing service?" confirmLabel="Disconnect" danger loading={busy("disconnect")}
         description="The saved keys are deleted. Signing requests that are out are ended, and a signature that arrives for one afterwards is not applied to the proposal. Proposals themselves are not changed. If a document is still waiting at the signing service, withdraw it there."
@@ -110,7 +110,7 @@ function ConnectForm({ simulatedAvailable }: { simulatedAvailable: boolean }) {
   return (
     <div className="space-y-6">
       <form onSubmit={submit} className="space-y-4" aria-label="Connect PandaDoc" autoComplete="off">
-        <p className="text-[13.5px] leading-relaxed text-ink-2">
+        <p className="text-[14px] leading-relaxed text-ink-2">
           Connect your own PandaDoc account. The customer signs in PandaDoc, which emails them the document, so any cost is on your PandaDoc plan. iAcquire checks the key with PandaDoc first and
           saves it only if PandaDoc accepts it. Connecting sends nothing to anyone.
         </p>
@@ -132,12 +132,12 @@ function ConnectForm({ simulatedAvailable }: { simulatedAvailable: boolean }) {
           </Field>
         </div>
         <Button type="submit" variant="brand" loading={busy("connect")} disabled={apiKey.trim().length < 16 || webhookKey.trim().length < 8}>Connect PandaDoc</Button>
-        <p className="text-[12.5px] text-muted">After connecting, use &ldquo;Show the notice address&rdquo; and give that address to PandaDoc, so it can tell iAcquire when a document is opened or signed.</p>
+        <p className="text-[13px] text-muted">After connecting, use &ldquo;Show the notice address&rdquo; and give that address to PandaDoc, so it can tell iAcquire when a document is opened or signed.</p>
       </form>
       {simulatedAvailable && (
         <div className="space-y-2 rounded-xl border border-dashed border-line p-3">
-          <p className="text-[13px] font-medium text-ink-2">Simulated signing service (testing only)</p>
-          <p className="text-[12.5px] text-muted">A stand-in that lives inside this server. It sends nothing to anyone, signs nothing for anyone and does not exist in production. It lets you click through asking for a signature.</p>
+          <p className="text-[14px] font-medium text-ink-2">Simulated signing service (testing only)</p>
+          <p className="text-[13px] text-muted">A stand-in that lives inside this server. It sends nothing to anyone, signs nothing for anyone and does not exist in production. It lets you click through asking for a signature.</p>
           <Button variant="secondary" size="sm" loading={busy("sim")} onClick={() => run("sim", () => connectSimulatedSigningAction(), "Connected to the simulated service.")}>Connect the simulated service</Button>
         </div>
       )}
@@ -150,16 +150,16 @@ export function SigningConnectionCard({ enabled, connection, canConnect, simulat
     <section aria-label="Signing service" className="space-y-4 rounded-2xl border border-line bg-surface p-5">
       <div>
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink"><FileSignature className="size-4 text-muted" aria-hidden />Electronic signing</h2>
-        <p className="mt-1 max-w-2xl text-[13px] text-muted">For proposals that need a signature. The signing happens at your own signing service; a signature is recorded only when that service reports it.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">For proposals that need a signature. The signing happens at your own signing service; a signature is recorded only when that service reports it.</p>
       </div>
       {!enabled ? (
-        <p className="text-[13.5px] text-ink-2">{ESIGN_NOT_ENABLED_MESSAGE}</p>
+        <p className="text-[14px] text-ink-2">{ESIGN_NOT_ENABLED_MESSAGE}</p>
       ) : connection ? (
         <Connected c={connection} canConnect={canConnect} tz={tz} />
       ) : canConnect ? (
         <ConnectForm simulatedAvailable={simulatedAvailable} />
       ) : (
-        <p className="text-[13.5px] text-ink-2">No signing service is connected. The business owner or a manager can connect one here.</p>
+        <p className="text-[14px] text-ink-2">No signing service is connected. The business owner or a manager can connect one here.</p>
       )}
     </section>
   );

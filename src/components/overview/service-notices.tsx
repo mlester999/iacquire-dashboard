@@ -43,7 +43,7 @@ export function ServiceNotices({ incidents }: { incidents: IncidentRow[] }) {
                   {!resolved && <InfoChip icon={<BellRing />}>iAcquire team notified</InfoChip>}
                 </div>
                 <p className="mt-2.5 text-[14.5px] font-semibold leading-snug text-ink">{i.title}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
+                <p className="mt-1 text-[14px] leading-relaxed text-ink-2">
                   {resolved
                     ? i.resolution === "verified_recovery"
                       ? `A check confirmed this is working again ${i.resolvedAt ? relativeTime(i.resolvedAt) : ""}.`

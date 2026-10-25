@@ -56,7 +56,7 @@ function Cta({ align = "start", tone = "light", ...p }: CtaProps & { align?: "st
       <ButtonLink href="/maintenance" variant={primary ? "brand" : "secondary"} size="lg" className="group w-full sm:w-auto">
         {label}<ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" aria-hidden />
       </ButtonLink>
-      <p className={cn("max-w-md text-pretty text-[12.5px] leading-relaxed", tone === "stage" ? "text-[var(--stage-muted)]" : "text-muted", align === "center" && "mx-auto")}>{note}</p>
+      <p className={cn("max-w-md text-pretty text-[13px] leading-relaxed", tone === "stage" ? "text-[var(--stage-muted)]" : "text-muted", align === "center" && "mx-auto")}>{note}</p>
     </div>
   );
 }
@@ -131,15 +131,15 @@ export function UpgradePage(p: UpgradeProps) {
             <p className="mt-5 max-w-[48ch] text-pretty text-[16px] leading-relaxed text-ink-2 sm:text-[17px]">
               Tell the AI Automation Builder what should happen, in plain English. It drafts a real, editable automation on a visual canvas, and you shape it by chatting or editing. Nothing runs until you publish it.
             </p>
-            {lapsed && <p className="mt-5 max-w-xl rounded-xl bg-warning-soft px-3.5 py-2.5 text-[13.5px] text-warning-ink" role="note">{p.reason}</p>}
-            {p.state === "pending" && <p className="mt-5 max-w-xl rounded-xl bg-primary-soft px-3.5 py-2.5 text-[13.5px] text-primary-ink" role="note">{p.reason}</p>}
+            {lapsed && <p className="mt-5 max-w-xl rounded-xl bg-warning-soft px-3.5 py-2.5 text-[14px] text-warning-ink" role="note">{p.reason}</p>}
+            {p.state === "pending" && <p className="mt-5 max-w-xl rounded-xl bg-primary-soft px-3.5 py-2.5 text-[14px] text-primary-ink" role="note">{p.reason}</p>}
             <div className="mt-8 flex flex-col gap-x-5 gap-y-4 sm:flex-row sm:items-start">
               <Cta state={p.state} canRequest={p.canRequest} requestNote={p.requestNote} />
               <a href="#up-see" className="inline-flex h-12 shrink-0 items-center gap-1.5 self-start rounded-xl px-1 text-[14px] font-medium text-primary-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                 Watch the example<ArrowDown className="size-4" aria-hidden />
               </a>
             </div>
-            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-5 text-[13px] text-ink-2">
+            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-5 text-[14px] text-ink-2">
               {["Everything you have keeps working without it", "Nothing is charged from this page"].map((t) => (
                 <li key={t} className="inline-flex items-center gap-2"><Check className="size-4 text-success" aria-hidden />{t}</li>
               ))}
@@ -157,7 +157,7 @@ export function UpgradePage(p: UpgradeProps) {
           <span aria-hidden className="absolute bottom-3 left-[17px] top-3 w-px bg-[linear-gradient(var(--line-strong),var(--line-strong)_70%,transparent)] @2xl:inset-x-[18px] @2xl:bottom-auto @2xl:top-[17px] @2xl:h-px @2xl:w-auto @2xl:bg-[linear-gradient(90deg,var(--line-strong),var(--line-strong)_80%,transparent)]" />
           {STEPS.map((s, i) => (
             <li key={s.t} className="relative flex gap-4 @2xl:flex-col @2xl:gap-4">
-              <span aria-hidden className={cn("relative inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-[12.5px] font-semibold tabular-nums", i === 1 ? "brand-gradient border-transparent text-white shadow-glow" : "border-line-strong bg-surface text-ink-2")}>{i + 1}</span>
+              <span aria-hidden className={cn("relative inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-[13px] font-semibold tabular-nums", i === 1 ? "brand-gradient border-transparent text-white shadow-glow" : "border-line-strong bg-surface text-ink-2")}>{i + 1}</span>
               <div className="min-w-0 pt-1 @2xl:pt-0">
                 <h3 className="text-[16px] font-semibold text-ink"><span className="sr-only">Step {i + 1}: </span>{s.t}</h3>
                 <p className="mt-1.5 text-pretty text-[14px] leading-relaxed text-muted">{s.d}</p>
@@ -205,7 +205,7 @@ export function UpgradePage(p: UpgradeProps) {
               <span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-primary-ink"><x.icon className="size-[18px]" /></span>
               <div className="min-w-0">
                 <h3 className="text-[14.5px] font-semibold text-ink">{x.t}</h3>
-                <p className="mt-0.5 text-pretty text-[13.5px] leading-relaxed text-muted">{x.d}</p>
+                <p className="mt-0.5 text-pretty text-[14px] leading-relaxed text-muted">{x.d}</p>
               </div>
             </li>
           ))}
@@ -228,7 +228,7 @@ export function UpgradePage(p: UpgradeProps) {
             <div className="mt-7"><Cta tone="stage" state={p.state} canRequest={p.canRequest} requestNote={p.requestNote} /></div>
             <div className="mt-auto pt-8">
               <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--stage-muted)]">What happens when you request</p>
-              <ol className="mt-3 space-y-2.5 text-[13px] leading-snug text-[var(--stage-ink-2)]">
+              <ol className="mt-3 space-y-2.5 text-[14px] leading-snug text-[var(--stage-ink-2)]">
                 {["You review the plan’s scope and price on the Maintenance page.", "The workspace owner sends the request.", "iAcquire reviews it and activates the plan. Billing starts on the date they confirm."].map((t, i) => (
                   <li key={t} className="flex gap-3">
                     <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--stage-line)] text-[12px] font-semibold tabular-nums text-[var(--stage-accent)]">{i + 1}</span>{t}
@@ -274,7 +274,7 @@ export function UpgradePage(p: UpgradeProps) {
         <dl className="gap-x-10 rounded-3xl border border-line bg-surface-2/60 p-5 *:mb-6 *:break-inside-avoid *:last:mb-0 sm:p-7 @2xl:columns-2 @6xl:columns-4">
           <div>
             <dt className="text-[14px] font-semibold text-ink">Billing</dt>
-            <dd className="mt-1.5 text-[13.5px] leading-relaxed text-muted">
+            <dd className="mt-1.5 text-[14px] leading-relaxed text-muted">
               If a payment doesn’t go through, you keep Automation Studio for {PAYMENT_GRACE_DAYS} days while it’s sorted out, and you’re told the date. Work you ask iAcquire to do beyond the plan’s monthly request allowance, and new automations or software you ask them to build, are quoted separately, as they are today.
             </dd>
           </div>
@@ -294,16 +294,16 @@ export function UpgradePage(p: UpgradeProps) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted">Runs, steps and builder messages are per month. You’re warned before you reach a limit. At a limit, new runs aren’t started and the builder pauses until the next month, unless iAcquire raises it; you can still edit by hand. These numbers may be adjusted as we learn what real usage costs.</p>
+              <p className="mt-2.5 text-[13px] leading-relaxed text-muted">Runs, steps and builder messages are per month. You’re warned before you reach a limit. At a limit, new runs aren’t started and the builder pauses until the next month, unless iAcquire raises it; you can still edit by hand. These numbers may be adjusted as we learn what real usage costs.</p>
             </dd>
           </div>
           <div>
             <dt className="text-[14px] font-semibold text-ink">Usage costs stay as they are</dt>
-            <dd className="mt-1.5 text-[13.5px] leading-relaxed text-muted">The AI builder is included, within the allowance. Texts, WhatsApp messages and emails your automations send are charged from your usage credits at today’s rates; the plan doesn’t change them. A workflow can’t send anything until it’s approved.</dd>
+            <dd className="mt-1.5 text-[14px] leading-relaxed text-muted">The AI builder is included, within the allowance. Texts, WhatsApp messages and emails your automations send are charged from your usage credits at today’s rates; the plan doesn’t change them. A workflow can’t send anything until it’s approved.</dd>
           </div>
           <div>
             <dt className="text-[14px] font-semibold text-ink">Without the plan, or if it ends</dt>
-            <dd className="mt-1.5 text-[13.5px] leading-relaxed text-muted">Everything you have keeps working. If the plan ends, automations built in Automation Studio are paused, not deleted. {STUDIO_LAPSE_POLICY.kept} {STUDIO_LAPSE_POLICY.resume}</dd>
+            <dd className="mt-1.5 text-[14px] leading-relaxed text-muted">Everything you have keeps working. If the plan ends, automations built in Automation Studio are paused, not deleted. {STUDIO_LAPSE_POLICY.kept} {STUDIO_LAPSE_POLICY.resume}</dd>
           </div>
         </dl>
       </section>
@@ -317,10 +317,10 @@ export function UpgradePage(p: UpgradeProps) {
           <div className="mt-8 w-full"><Cta align="center" state={p.state} canRequest={p.canRequest} requestNote={p.requestNote} /></div>
           {p.saved.length > 0 && (
             <div className="mt-10 w-full max-w-md border-t border-line pt-6 text-left">
-              <p className="text-[13px] font-semibold text-ink">Your saved automations <span className="font-normal text-muted">(paused)</span></p>
+              <p className="text-[14px] font-semibold text-ink">Your saved automations <span className="font-normal text-muted">(paused)</span></p>
               <ul className="mt-3 space-y-1.5">
                 {p.saved.map((w) => (
-                  <li key={w.id}><Link href={`/automation-studio/${w.id}`} className="inline-flex items-center gap-1 rounded text-[13.5px] font-medium text-primary-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{w.name}<ChevronRight className="size-3.5" aria-hidden /></Link></li>
+                  <li key={w.id}><Link href={`/automation-studio/${w.id}`} className="inline-flex items-center gap-1 rounded text-[14px] font-medium text-primary-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{w.name}<ChevronRight className="size-3.5" aria-hidden /></Link></li>
                 ))}
               </ul>
             </div>

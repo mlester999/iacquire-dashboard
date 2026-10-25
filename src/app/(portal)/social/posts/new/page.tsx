@@ -23,12 +23,12 @@ export default async function NewSocialPostPage({ searchParams }: { searchParams
   return (
     <div className="space-y-5">
       <div>
-        <Link href={day ? `/social?date=${day}` : "/social"} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Calendar</Link>
+        <Link href={day ? `/social?date=${day}` : "/social"} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Calendar</Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-ink">New post</h1>
-        <p className="mt-1 text-[13.5px] text-muted">Write it, check how it will look, then send it for approval. Nothing is published until it has been approved and scheduled.</p>
+        <p className="mt-1 text-[14px] text-muted">Write it, check how it will look, then send it for approval. Nothing is published until it has been approved and scheduled.</p>
       </div>
       {usable.length === 0 ? (
-        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">Connect an account first. <Link href="/social/accounts" className="font-medium text-primary-ink underline">Go to accounts</Link></p>
+        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Connect an account first. <Link href="/social/accounts" className="font-medium text-primary-ink underline">Go to accounts</Link></p>
       ) : (
         <>
           <AiHelper accounts={usable} campaigns={campaigns} enabled={settings.aiDraftsEnabled} defaultAccountId={defaultAccountId} scheduleDay={day} />

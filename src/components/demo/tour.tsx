@@ -25,7 +25,7 @@ export function DemoTour() {
                 <AgentAvatar role={step.meta} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-semibold tracking-[-0.01em] text-ink">{step.meta.name}</span>
-                  <span className="block text-[13px] leading-snug text-muted">{step.meta.tagline}</span>
+                  <span className="block text-[14px] leading-snug text-muted">{step.meta.tagline}</span>
                 </span>
                 <ChevronDown className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
               </summary>
@@ -33,19 +33,19 @@ export function DemoTour() {
                 <p className="text-[14px] leading-relaxed text-ink-2">{step.does}</p>
                 <div className="rounded-xl border border-line bg-surface-2/60 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[13px] font-semibold text-ink">{step.sampleTitle}</p>
+                    <p className="text-[14px] font-semibold text-ink">{step.sampleTitle}</p>
                     <Badge tone="warning">Sample</Badge>
                   </div>
                   <dl className="mt-2 space-y-2">
                     {step.sample.map((line) => (
                       <div key={line.label}>
                         <dt className="text-[12px] font-medium text-muted">{line.label}</dt>
-                        <dd className="text-[13.5px] leading-relaxed text-ink">{line.text}</dd>
+                        <dd className="text-[14px] leading-relaxed text-ink">{line.text}</dd>
                       </div>
                     ))}
                   </dl>
                 </div>
-                <p className="text-[13px] leading-relaxed text-muted">{step.person}</p>
+                <p className="text-[14px] leading-relaxed text-muted">{step.person}</p>
               </div>
             </details>
           </li>

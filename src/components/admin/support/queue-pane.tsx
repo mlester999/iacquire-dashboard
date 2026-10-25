@@ -73,13 +73,13 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
   return (
     <Card className={cn("flex min-h-0 flex-col overflow-hidden", className)}>
       <div className="space-y-3 border-b border-line p-3.5">
-        <nav aria-label="Saved views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Saved views" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
           {VIEWS.map((v) => {
             const active = query.view === v.value;
             const n = v.count ? counts[v.count] : undefined;
             return (
               <Link key={v.value} href={queueHref(query, { view: v.value, page: 1, ticket: "" })} aria-current={active ? "page" : undefined} title={v.hint}
-                className={cn("inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-[12.5px] font-medium transition", active ? "bg-ink text-surface shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}>
+                className={cn("inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-[13px] font-medium transition", active ? "bg-ink text-surface shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                 {v.label}
                 {n !== undefined && n > 0 && <span className={cn("rounded-md px-1.5 py-px text-[12px] font-semibold tabular-nums", active ? "bg-surface/20" : v.value === "overdue" || v.value === "escalated" ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
               </Link>
@@ -91,7 +91,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
           <Input ref={searchRef} aria-label="Search requests" aria-keyshortcuts="/" placeholder="Search subject, client, reference or message…  ( / )" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <details className="group" open={filtersActive || undefined}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg text-[12.5px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg text-[13px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <SlidersHorizontal className="size-3.5" aria-hidden /> Filters {filtersActive && <span className="rounded-full bg-primary px-1.5 text-[12px] text-white">on</span>}
             <span className="ml-auto text-muted group-open:hidden">Show</span><span className="ml-auto hidden text-muted group-open:inline">Hide</span>
           </summary>
@@ -115,7 +115,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
             <Select aria-label="Sort requests" value={query.sort} className="col-span-2" onChange={(e) => router.push(queueHref(query, { sort: e.target.value as QueueQuery["sort"], page: 1, ticket: "" }))}>
               <option value="priority">Sort: priority, then latest</option><option value="latest">Sort: latest activity</option><option value="oldest">Sort: oldest first</option><option value="due">Sort: response due soonest</option>
             </Select>
-            {filtersActive && <Link href={queueHref(query, { status: "", requestType: "", category: "", priority: "", assignee: "", orgId: "", page: 1, ticket: "" })} className="col-span-2 text-center text-[12.5px] font-medium text-primary-ink hover:underline">Clear filters</Link>}
+            {filtersActive && <Link href={queueHref(query, { status: "", requestType: "", category: "", priority: "", assignee: "", orgId: "", page: 1, ticket: "" })} className="col-span-2 text-center text-[13px] font-medium text-primary-ink hover:underline">Clear filters</Link>}
           </div>
         </details>
       </div>
@@ -150,7 +150,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
                   <div className="flex items-start gap-3">
                     <AvatarTile name={t.orgName} size="sm" className="mt-0.5" />
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 break-words text-[13px] font-semibold leading-snug text-ink" title={t.subject}>{t.subject}</p>
+                      <p className="line-clamp-2 break-words text-[14px] font-semibold leading-snug text-ink" title={t.subject}>{t.subject}</p>
                       <p className="mt-0.5 truncate text-xs text-muted" title={t.orgName}>{t.orgName}</p>
                     </div>
                   </div>
@@ -173,9 +173,9 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
 
       {lastPage > 1 && (
         <nav className="flex items-center justify-between gap-2 border-t border-line p-2.5" aria-label="Pagination">
-          <Link href={queueHref(query, { page: Math.max(1, page - 1), ticket: "" })} aria-disabled={page <= 1} tabIndex={page <= 1 ? -1 : undefined} className={cn("inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-[12.5px] font-medium hover:bg-surface-2", page <= 1 && "pointer-events-none opacity-40")}><ChevronLeft className="size-4" aria-hidden /> Previous</Link>
+          <Link href={queueHref(query, { page: Math.max(1, page - 1), ticket: "" })} aria-disabled={page <= 1} tabIndex={page <= 1 ? -1 : undefined} className={cn("inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-[13px] font-medium hover:bg-surface-2", page <= 1 && "pointer-events-none opacity-40")}><ChevronLeft className="size-4" aria-hidden /> Previous</Link>
           <span className="text-[12px] tabular-nums text-muted">Page {page} of {lastPage}</span>
-          <Link href={queueHref(query, { page: Math.min(lastPage, page + 1), ticket: "" })} aria-disabled={page >= lastPage} tabIndex={page >= lastPage ? -1 : undefined} className={cn("inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-[12.5px] font-medium hover:bg-surface-2", page >= lastPage && "pointer-events-none opacity-40")}>Next <ChevronRight className="size-4" aria-hidden /></Link>
+          <Link href={queueHref(query, { page: Math.min(lastPage, page + 1), ticket: "" })} aria-disabled={page >= lastPage} tabIndex={page >= lastPage ? -1 : undefined} className={cn("inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-[13px] font-medium hover:bg-surface-2", page >= lastPage && "pointer-events-none opacity-40")}>Next <ChevronRight className="size-4" aria-hidden /></Link>
         </nav>
       )}
     </Card>

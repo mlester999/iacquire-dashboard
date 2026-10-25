@@ -106,7 +106,7 @@ export function Rail({ entries, activeId, now, canChannels, onNew, onBrowse, onS
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
               className={cn(
-                "inline-flex h-11 items-center rounded-full border px-4 text-[13px] font-medium sm:h-8",
+                "inline-flex h-11 items-center rounded-full border px-4 text-[14px] font-medium sm:h-8",
                 filter === f ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
               )}
             >
@@ -129,7 +129,7 @@ export function Rail({ entries, activeId, now, canChannels, onNew, onBrowse, onS
           </section>
         ))}
         {sections.length === 0 && (
-          <p className="px-3 py-8 text-center text-[13px] leading-relaxed text-muted" role="status">
+          <p className="px-3 py-8 text-center text-[14px] leading-relaxed text-muted" role="status">
             {entries.length === 0
               ? "No conversations yet. Start a direct message, or browse the channels open to the team."
               : filter === "unread" && !query.trim()

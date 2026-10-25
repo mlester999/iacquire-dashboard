@@ -18,7 +18,7 @@ function Check({ id, checked, onChange, disabled, label, hint }: { id: string; c
       <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-5 shrink-0 rounded border-line-strong accent-[var(--color-primary,#2563eb)]" />
       <div className="min-w-0">
         <label htmlFor={id} className="text-[14px] font-medium text-ink after:absolute after:inset-0 after:content-['']">{label}</label>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{hint}</p>
       </div>
     </div>
   );
@@ -57,13 +57,13 @@ export function SettingsPanel({ settings, campaigns, canEdit, canCampaign }: { s
       <section aria-label="Approval and AI" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">Approval and AI</h2>
         {sync === "conflict" && (
-          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
             <p className="font-medium">Someone else changed these settings while you were editing them.</p>
             <p className="mt-0.5">Your changes are kept below, but they cannot be saved over the newer settings. Load the latest settings, then make your changes again.</p>
             <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(settings)}>Load the latest settings</Button>
           </div>
         )}
-        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">A post written by AI always needs a person&apos;s approval before it can be scheduled. A post written by someone who cannot publish does too. There is no setting that changes this.</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">A post written by AI always needs a person&apos;s approval before it can be scheduled. A post written by someone who cannot publish does too. There is no setting that changes this.</p>
         <Check id="ss-appr" checked={d.approvalForPublishers} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, approvalForPublishers: v }))} label="Ask for a second person's approval on every post" hint="Even a post written by an owner or manager is reviewed by someone else before it can be scheduled. Leave this off if you are the only person who manages social media." />
         <Check id="ss-ai" checked={d.aiDraftsEnabled} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, aiDraftsEnabled: v }))} label="Let the AI suggest ideas and write draft captions" hint="It is told to write only from your approved business knowledge and not to invent testimonials, results, prices or offers, and suggestions that make claims the knowledge does not back are dropped. It can still get things wrong, so what it writes is a draft: a person edits it and approves it before anything is posted." />
         <Check id="ss-track" checked={d.trackingLinks} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, trackingLinks: v }))} label="Tag the links in posts so leads can be traced to them" hint="Adds source tags to a post's link. When a visitor arrives from it and leaves their details, the lead is recorded as coming from that post." />
@@ -75,17 +75,17 @@ export function SettingsPanel({ settings, campaigns, canEdit, canCampaign }: { s
         </Field>
         {canEdit ? (
           <Button variant="brand" loading={busy("save")} disabled={!dirty || sync === "conflict"} onClick={save}>Save settings</Button>
-        ) : <p className="text-[12.5px] text-muted">Only the business owner can change these.</p>}
+        ) : <p className="text-[13px] text-muted">Only the business owner can change these.</p>}
       </section>
 
       <section aria-label="Campaigns" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">Campaigns</h2>
-        <p className="text-[12.5px] text-muted">A campaign groups posts and gives their links a campaign name, so lead reports can show which campaign brought a lead.</p>
-        {campaigns.length === 0 ? <p className="text-[13px] text-ink-2">No campaigns yet.</p> : (
+        <p className="text-[13px] text-muted">A campaign groups posts and gives their links a campaign name, so lead reports can show which campaign brought a lead.</p>
+        {campaigns.length === 0 ? <p className="text-[14px] text-ink-2">No campaigns yet.</p> : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {campaigns.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-[13.5px]">
-                <span><span className="font-medium text-ink">{c.name}</span> <span className="text-muted">· tag “{c.utmCampaign}”{c.status === "archived" ? " · archived" : ""}</span>{c.goal && <span className="block text-[12.5px] text-ink-2">{c.goal}</span>}</span>
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-[14px]">
+                <span><span className="font-medium text-ink">{c.name}</span> <span className="text-muted">· tag “{c.utmCampaign}”{c.status === "archived" ? " · archived" : ""}</span>{c.goal && <span className="block text-[13px] text-ink-2">{c.goal}</span>}</span>
                 {canCampaign && c.status === "active" && <Button size="sm" variant="ghost" onClick={() => setArchive(c)}>Archive</Button>}
               </li>
             ))}

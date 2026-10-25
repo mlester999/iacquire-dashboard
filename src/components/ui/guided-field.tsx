@@ -32,12 +32,12 @@ function FieldHelp({ id, label, guidance }: { id: string; label: string; guidanc
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[min(21rem,calc(100vw-2rem))] p-4">
-        <p id={`${id}-help-title`} className="text-[13px] font-semibold text-ink">{label}</p>
-        {guidance.info && <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{guidance.info}</p>}
+        <p id={`${id}-help-title`} className="text-[14px] font-semibold text-ink">{label}</p>
+        {guidance.info && <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{guidance.info}</p>}
         {guidance.example && (
           <div className="mt-3 rounded-xl border border-line bg-surface-2/70 p-2.5">
             <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-faint">Example answer</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{guidance.example}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{guidance.example}</p>
           </div>
         )}
       </PopoverContent>
@@ -161,10 +161,10 @@ export function GuidedField({
   return (
     <div className={cn("space-y-2", className)} data-guided-field={id}>
       <FieldHeader id={id} label={label} required={required} optional={optional} guidance={guidance} />
-      <p id={descriptionId} className="text-[12.5px] leading-relaxed text-muted">{guidance.description}</p>
+      <p id={descriptionId} className="text-[13px] leading-relaxed text-muted">{guidance.description}</p>
       {child}
       {invalid && (
-        <p id={errorId} role="alert" className="text-[12.5px] leading-relaxed text-danger-ink">
+        <p id={errorId} role="alert" className="text-[13px] leading-relaxed text-danger-ink">
           {error}
         </p>
       )}
@@ -205,12 +205,12 @@ export function GuidedChoiceField({
     >
       <legend className="flex w-full flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="flex items-center gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">{label}</span>
+          <span className="text-[14px] font-medium text-ink-2">{label}</span>
           <FieldHelp id={id} label={label} guidance={guidance} />
         </span>
         {optional && <span className="text-[12px] text-faint">Optional</span>}
       </legend>
-      <p id={descriptionId} className="text-[12.5px] leading-relaxed text-muted">{guidance.description}</p>
+      <p id={descriptionId} className="text-[13px] leading-relaxed text-muted">{guidance.description}</p>
       {children}
       <FieldIssues id={id} issues={issues} />
     </fieldset>
@@ -246,7 +246,7 @@ export function GuidedSwitch({
     <div id={id} data-guided-field={id} className={cn("rounded-2xl border border-line bg-surface p-3.5 scroll-mt-28", className)}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p id={labelId} className="text-[13px] font-medium text-ink">{label}</p>
+          <p id={labelId} className="text-[14px] font-medium text-ink">{label}</p>
           <p id={descriptionId} className="mt-1 text-[12px] leading-relaxed text-muted">{description}</p>
           <p className="mt-1.5 text-[12px] font-medium text-faint" aria-hidden>{checked ? onLabel : offLabel}</p>
         </div>
@@ -297,7 +297,7 @@ export function ChangeDecisionNotice({
     <div
       role={tone === "danger" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-3 rounded-2xl border p-3.5 text-[12.5px] leading-relaxed",
+        "flex items-start gap-3 rounded-2xl border p-3.5 text-[13px] leading-relaxed",
         tone === "success" && "border-success/25 bg-success-soft/40 text-success-ink",
         tone === "warning" && "border-warning/30 bg-warning-soft/40 text-warning-ink",
         tone === "danger" && "border-danger/25 bg-danger-soft/40 text-danger-ink",

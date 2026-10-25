@@ -597,7 +597,7 @@ export function ChatWorkspace(props: Props) {
                       <motion.li
                         key={m.id}
                         layout="position"
-                        initial={reduce ? false : { opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                       >
@@ -750,7 +750,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
           </h2>
           <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? meta.tagline : explanation}</p>
         </div>
-        <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
+        <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
           <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
           <AgentAvatar role={meta} size="xl" className="relative" />
         </motion.div>
@@ -763,7 +763,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
               key={p}
               type="button"
               onClick={() => onPick(p)}
-              initial={reduce ? false : { opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + i * 0.06 }}
               whileHover={reduce ? undefined : { y: -2 }}
@@ -783,7 +783,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
             {readiness.steps.map((step) => (
               <li key={step.label} className="flex items-start gap-3 rounded-xl border border-transparent px-2.5 py-2">
                 {step.state === "done" ? <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
-                <div><p className="text-[13px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[12px] leading-relaxed text-muted">{step.description}</p></div>
+                <div><p className="text-[14px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[12px] leading-relaxed text-muted">{step.description}</p></div>
               </li>
             ))}
           </ol>
@@ -807,7 +807,7 @@ function ChatUnavailableDock({ meta, readiness, configured, canConfigure }: { me
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <AgentAvatar role={meta} size="sm" />
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-ink">{title}</p>
+            <p className="text-[14px] font-semibold text-ink">{title}</p>
             <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{detail}</p>
           </div>
         </div>
@@ -888,10 +888,10 @@ function AssistantBubble({
           />
         ) : (
           <div className={cn("rounded-2xl border border-line/80 bg-surface px-4 py-3 text-ink shadow-[0_5px_20px_-17px_rgb(20_30_60/.3)] sm:px-5 sm:py-4", message.status === "failed" && "border-danger/25 bg-danger-soft/30 shadow-none")}>
-            {message.content ? <Markdown>{message.content}</Markdown> : message.status === "cancelled" ? <p className="text-[13.5px] italic text-muted">Stopped before a reply was written.</p> : null}
+            {message.content ? <Markdown>{message.content}</Markdown> : message.status === "cancelled" ? <p className="text-[14px] italic text-muted">Stopped before a reply was written.</p> : null}
             {streaming && message.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-primary align-middle" aria-hidden />}
             {message.status === "failed" && (
-              <div className={cn("flex items-start gap-2 text-[13px] text-danger-ink", message.content && "mt-3 border-t border-line pt-3")}>
+              <div className={cn("flex items-start gap-2 text-[14px] text-danger-ink", message.content && "mt-3 border-t border-line pt-3")}>
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <span>{ERROR_TEXT[message.error_code ?? ""] ?? "Something went wrong."} Review the recorded activity before retrying; a step that had already run may not have completed.</span>
               </div>
@@ -958,7 +958,7 @@ function AssistantLoadingState({ meta, agentName, snapshotReview, phase, activit
         <AgentAvatar role={meta} size="sm" className="relative" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium leading-snug text-ink">{statusLabel}</p>
+        <p className="text-[14px] font-medium leading-snug text-ink">{statusLabel}</p>
         <p className="mt-1 truncate text-[12px] leading-snug text-muted">{detailLabel}</p>
       </div>
       <span className="flex shrink-0 items-center gap-1.5 px-1" aria-hidden>

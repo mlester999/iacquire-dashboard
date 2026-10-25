@@ -46,24 +46,24 @@ function ChannelCard({ c, scope, canRequestSetup, onRequest }: { c: ChannelSetti
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><Icon className="size-5" aria-hidden /></span>
           <div className="min-w-0">
             <h3 className="text-[15px] font-semibold text-ink">{CHANNEL_LABELS[c.channel]}</h3>
-            <p className="text-[12.5px] text-muted">{c.configured ? `Through ${c.providerLabel}` : `GoHighLevel or ${NATIVE_OPTION[c.channel]}`}</p>
+            <p className="text-[13px] text-muted">{c.configured ? `Through ${c.providerLabel}` : `GoHighLevel or ${NATIVE_OPTION[c.channel]}`}</p>
           </div>
         </div>
         <StatusBadge c={c} />
       </div>
 
       {c.whyOff && (
-        <p className="mt-3 flex items-start gap-2 rounded-xl bg-surface-2 p-2.5 text-[12.5px] leading-relaxed text-ink-2">
+        <p className="mt-3 flex items-start gap-2 rounded-xl bg-surface-2 p-2.5 text-[13px] leading-relaxed text-ink-2">
           <CircleDashed className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />{c.whyOff}
         </p>
       )}
       {c.enabled && !c.writesEnabled && (
-        <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+        <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />Sending through {c.providerLabel} is switched off in this environment, so messages are held instead of sent.
         </p>
       )}
 
-      <dl className="mt-4 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[12.5px]">
+      <dl className="mt-4 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
         <dt className="text-muted">Sender</dt>
         <dd className="min-w-0 truncate text-ink">{c.senderIdentity ?? <span className="text-muted">Not set</span>}</dd>
         {c.channel === "email" && c.inboundAddress && (
@@ -97,7 +97,7 @@ function ChannelCard({ c, scope, canRequestSetup, onRequest }: { c: ChannelSetti
           {test.checks.length > 0 && (
             <ul className="mt-2 space-y-1.5">
               {test.checks.map((k, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12.5px] leading-relaxed">
+                <li key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
                   {k.ok ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-label="Passed" /> : <XCircle className="mt-0.5 size-3.5 shrink-0 text-danger-ink" aria-label="Failed" />}
                   <span><span className="font-medium text-ink">{k.label}</span>{k.detail ? <span className="text-muted"> · {k.detail}</span> : null}</span>
                 </li>
@@ -133,7 +133,7 @@ export function CommunicationSettings({ scope, channels, destinations, openReque
       />
 
       {openRequests.length > 0 && (
-        <p role="status" className="flex items-start gap-2 rounded-2xl border border-line bg-surface-2/60 p-3 text-[13px] text-ink-2">
+        <p role="status" className="flex items-start gap-2 rounded-2xl border border-line bg-surface-2/60 p-3 text-[14px] text-ink-2">
           <Clock className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <span>You asked iAcquire for channel setup: {openRequests.map((r) => `${r.ref} (${formatDateTime(r.createdAt, scope.timezone)})`).join(", ")}. The team replies in Support.</span>
         </p>
@@ -151,17 +151,17 @@ export function CommunicationSettings({ scope, channels, destinations, openReque
       <section aria-labelledby="cs-rules" className="grid gap-4 md:grid-cols-2">
         <Card className="p-5">
           <h2 id="cs-rules" className="text-[15px] font-semibold text-ink">Sending rules</h2>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">Quiet hours, business hours, automatic replies and follow-up pacing apply to every channel and provider alike.</p>
+          <p className="mt-1 text-[14px] leading-relaxed text-muted">Quiet hours, business hours, automatic replies and follow-up pacing apply to every channel and provider alike.</p>
           {scope.agency ? (
-            <p className="mt-3 text-[12.5px] text-muted">The client manages these in their portal under Settings, Messaging.</p>
+            <p className="mt-3 text-[13px] text-muted">The client manages these in their portal under Settings, Messaging.</p>
           ) : (
-            <Link href="/settings/messaging" className="mt-3 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary hover:underline sm:min-h-0">Open messaging rules<ArrowUpRight className="size-3.5" aria-hidden /></Link>
+            <Link href="/settings/messaging" className="mt-3 inline-flex min-h-11 items-center gap-1 text-[14px] font-medium text-primary hover:underline sm:min-h-0">Open messaging rules<ArrowUpRight className="size-3.5" aria-hidden /></Link>
           )}
         </Card>
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Templates and canned replies</h2>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">Reusable wording for each channel. Automations only send a version someone in your team approved.</p>
-          <Link href={`${scope.base}/templates`} className="mt-3 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary hover:underline sm:min-h-0">Open templates<ArrowUpRight className="size-3.5" aria-hidden /></Link>
+          <p className="mt-1 text-[14px] leading-relaxed text-muted">Reusable wording for each channel. Automations only send a version someone in your team approved.</p>
+          <Link href={`${scope.base}/templates`} className="mt-3 inline-flex min-h-11 items-center gap-1 text-[14px] font-medium text-primary hover:underline sm:min-h-0">Open templates<ArrowUpRight className="size-3.5" aria-hidden /></Link>
         </Card>
       </section>
 
@@ -169,7 +169,7 @@ export function CommunicationSettings({ scope, channels, destinations, openReque
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="cs-dest" className="text-[15px] font-semibold text-ink">Approved test destinations</h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">Your own phone numbers and inboxes that templates may be test-sent to. Customers are never test recipients.</p>
+            <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your own phone numbers and inboxes that templates may be test-sent to. Customers are never test recipients.</p>
           </div>
           {canConfigure && <Button variant="secondary" onClick={() => setAdding(true)}><Plus className="size-4" aria-hidden />Add destination</Button>}
         </div>
@@ -181,7 +181,7 @@ export function CommunicationSettings({ scope, channels, destinations, openReque
                 <div key={`${d.channel}:${d.address}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <I className="size-4 shrink-0 text-muted" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-medium text-ink">{d.label || d.address}</p>
+                    <p className="truncate text-[14px] font-medium text-ink">{d.label || d.address}</p>
                     <p className="truncate text-[12px] text-muted">{d.label ? `${d.address} · ` : ""}{CHANNEL_LABELS[d.channel]} · approved{d.approvedByName ? ` by ${d.approvedByName}` : ""} {formatDateTime(d.approvedAt, scope.timezone)}</p>
                   </div>
                   {canConfigure && <Button variant="ghost" size="icon-sm" aria-label={`Remove ${d.address}`} onClick={() => setRemoving(d)}><Trash2 className="size-4" /></Button>}
@@ -190,7 +190,7 @@ export function CommunicationSettings({ scope, channels, destinations, openReque
             })}
           </Card>
         ) : (
-          <p className="rounded-2xl border border-dashed border-line-strong p-5 text-center text-[13px] text-muted">
+          <p className="rounded-2xl border border-dashed border-line-strong p-5 text-center text-[14px] text-muted">
             {canConfigure ? "None yet. Add your own number or inbox to try templates before customers see them." : "None yet. Owners and managers can add them."}
           </p>
         )}
@@ -248,7 +248,7 @@ function AddDestinationDialog({ scope, onClose }: { scope: CrmScope; onClose: ()
         <Field label="Label" htmlFor="td-label" optional hint="For example: Maria's phone.">
           <Input id="td-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} />
         </Field>
-        <label className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[13px] leading-relaxed text-ink-2">
+        <label className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[14px] leading-relaxed text-ink-2">
           <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
           <span>This address belongs to me or my business, and I agree to receive test messages on it. It is not a customer&apos;s.</span>
         </label>
@@ -283,7 +283,7 @@ function RequestSetupDialog({ channel, onClose }: { channel: Channel; onClose: (
       }
     >
       {sent ? (
-        <p role="status" className="flex items-start gap-2 text-[13.5px] leading-relaxed text-success-ink"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />Request {sent} sent. You can follow it in Support.</p>
+        <p role="status" className="flex items-start gap-2 text-[14px] leading-relaxed text-success-ink"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />Request {sent} sent. You can follow it in Support.</p>
       ) : (
         <Field label="Anything we should know?" htmlFor="rs-note" optional hint={channel === "email" ? "For example the address you'd like to send from." : channel === "sms" ? "For example the number you'd like customers to text." : "For example the WhatsApp number you'd like to use."}>
           <Textarea id="rs-note" rows={4} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1500} />

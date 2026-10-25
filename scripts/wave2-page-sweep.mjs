@@ -79,12 +79,14 @@ async function sweepRoute(context, width, theme, route) {
     const mm = await metrics(page);
     m.overflow = mm.overflow;
     m.clipped = mm.clipped;
+    m.cut = mm.cut;
+    m.hiddenCut = mm.hiddenCut;
     const violations = await axe(page);
     const bad = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-    const row = { role, route, width, theme, status, path: m.path, overflow: m.overflow, clipped: m.clipped, scrollWidth: m.scrollWidth, axeSeriousOrCritical: bad, axeOther: violations.filter((v) => !bad.includes(v)).map((v) => v.id), smallText: m.smallCounts, smallSamples: m.small,
+    const row = { role, route, width, theme, status, path: m.path, overflow: m.overflow, clipped: m.clipped, cut: m.cut, hiddenCut: m.hiddenCut, scrollWidth: m.scrollWidth, axeSeriousOrCritical: bad, axeOther: violations.filter((v) => !bad.includes(v)).map((v) => v.id), smallText: m.smallCounts, smallSamples: m.small,
       consoleErrors: report.consoleErrors.length - before.c, pageErrors: report.pageErrors.length - before.p, serverErrors: report.serverErrors.length - before.s, external: report.external.length - before.e };
     if (has("shots")) await page.screenshot({ path: path.join(OUT, `${label}-${route.replace(/[^\w]+/g, "_")}-${width}-${theme}.png`), fullPage: true }).catch(() => {});
-    const flags = [m.overflow && `OVERFLOW${m.clipped?.length ? `[${m.clipped[0]}]` : ""}`, bad.length && `AXE(${bad.map((v) => v.id).join(",")})`, row.pageErrors && "PAGEERR", row.serverErrors && "5XX", row.consoleErrors && "CONSOLE", Object.keys(m.smallCounts).length && `SMALL(${Object.entries(m.smallCounts).map(([k, v]) => `${k}px×${v}`).join(" ")})`].filter(Boolean);
+    const flags = [m.overflow && `OVERFLOW${m.clipped?.length ? `[${m.clipped[0]}]` : ""}`, m.cut?.length && `CUT[${m.cut[0]}]`, m.hiddenCut?.length && `TEXTCUT[${m.hiddenCut[0]}]`, bad.length && `AXE(${bad.map((v) => v.id).join(",")})`, row.pageErrors && "PAGEERR", row.serverErrors && "5XX", row.consoleErrors && "CONSOLE", Object.keys(m.smallCounts).length && `SMALL(${Object.entries(m.smallCounts).map(([k, v]) => `${k}px×${v}`).join(" ")})`].filter(Boolean);
     return { row, line: `${flags.length ? "!!" : "ok"}  ${role} ${width}px ${theme}  ${route}${m.path !== route.split("?")[0] ? ` -> ${m.path}` : ""}  ${flags.join(" ")}` };
   } finally {
     await page.close().catch(() => {});
@@ -93,8 +95,17 @@ async function sweepRoute(context, width, theme, route) {
 
 for (const theme of themes) {
   for (const width of widths) {
-    const { context, page: first } = await signedIn(browser, role, { viewport: { width, height: width < 600 ? 812 : 900 }, theme });
-    await first.close().catch(() => {});
+    // `--role none` sweeps pages a visitor sees without signing in (sign-in, the purchase and payment links, the demo).
+    const viewport = { width, height: width < 600 ? 812 : 900 };
+    let context;
+    if (role === "none") {
+      context = await browser.newContext({ viewport, reducedMotion: "reduce", colorScheme: theme });
+      await context.addInitScript((th) => { try { localStorage.setItem("iaq-theme", th); localStorage.setItem("iaq-tour-v1", "done"); } catch { /* blocked */ } }, theme);
+    } else {
+      const signed = await signedIn(browser, role, { viewport, theme });
+      context = signed.context;
+      await signed.page.close().catch(() => {});
+    }
     for (const route of routes) {
       let done = null;
       let lastError = "";

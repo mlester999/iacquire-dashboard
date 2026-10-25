@@ -12,10 +12,10 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
     <div className="space-y-5">
       <div>
         <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-ink">Client CRMs</h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           Counts only. Client records belong to the client: opening one asks for a reason, is time-limited, and shows up in the client&rsquo;s Support Access log.
         </p>
-        <Link href="/admin/crm/reports" className="mt-2 inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline sm:min-h-8">CRM operations report: failures, setup, billing and support across clients</Link>
+        <Link href="/admin/crm/reports" className="mt-2 inline-flex min-h-11 items-center text-[14px] font-medium text-primary hover:underline sm:min-h-8">CRM operations report: failures, setup, billing and support across clients</Link>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -25,7 +25,7 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
           { label: "Overdue tasks", value: totals.overdue, sub: "Across your clients" },
         ].map((s) => (
           <Card key={s.label} className="p-4">
-            <p className="text-[12.5px] font-medium text-muted">{s.label}</p>
+            <p className="text-[13px] font-medium text-muted">{s.label}</p>
             <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-ink tabular-nums">{s.value.toLocaleString("en-US")}</p>
             <p className="text-[12px] text-faint">{s.sub}</p>
           </Card>
@@ -36,7 +36,7 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
       ) : (
         <Card className="overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-[13px]">
+            <table className="w-full min-w-[780px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 text-left font-medium">Client</th>
@@ -63,7 +63,7 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.overdueTasks ? <span className="font-medium text-danger-ink">{r.overdueTasks}</span> : 0}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-muted">{r.lastActivityAt ? <RelativeTime iso={r.lastActivityAt} /> : "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                      <Link href={`/admin/clients/${r.orgId}/crm`} className="inline-flex min-h-9 items-center rounded-lg px-2.5 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
+                      <Link href={`/admin/clients/${r.orgId}/crm`} className="inline-flex min-h-9 items-center rounded-lg px-2.5 text-[13px] font-medium text-primary hover:bg-primary-soft">
                         {r.mySession ? `Continue (${r.mySession.mode === "write" ? "changes" : "view only"})` : "Open CRM"}
                       </Link>
                     </td>

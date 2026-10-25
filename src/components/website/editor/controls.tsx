@@ -59,14 +59,14 @@ export function Row({ label, hint, children, onReset, tag, htmlFor }: { label: s
 // Inputs
 // ---------------------------------------------------------------------------
 
-const input = "h-8 w-full rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30";
+const input = "h-8 w-full rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30";
 
 export const TextControl = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function TextControl({ className, ...p }, ref) {
   return <input ref={ref} {...p} className={cn(input, className)} />;
 });
 
 export const AreaControl = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(function AreaControl({ className, rows = 3, ...p }, ref) {
-  return <textarea ref={ref} rows={rows} {...p} className={cn("w-full resize-y rounded-lg border border-line bg-surface px-2.5 py-2 text-[12.5px] leading-relaxed text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30", className)} />;
+  return <textarea ref={ref} rows={rows} {...p} className={cn("w-full resize-y rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] leading-relaxed text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30", className)} />;
 });
 
 export function SelectControl<T extends string>({ value, options, onChange, id, label, placeholder }: { value: T | undefined; options: Array<{ value: T; label: string }>; onChange: (v: T) => void; id?: string; label?: string; placeholder?: string }) {

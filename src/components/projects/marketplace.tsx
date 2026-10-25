@@ -80,17 +80,17 @@ export function Marketplace({
           <div>
             <StatusPill tone="success">Already yours</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">{CORE_OFFER.name}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Your core system and its standard AI employees are covered by your agreement. Nothing on this page is needed to use them.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">Your core system and its standard AI employees are covered by your agreement. Nothing on this page is needed to use them.</p>
           </div>
           <div>
             <StatusPill tone="primary">Optional</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">Add-ons &amp; custom projects</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Separately scoped work beyond your package. Always quoted in writing first. You are never charged automatically.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">Separately scoped work beyond your package. Always quoted in writing first. You are never charged automatically.</p>
           </div>
           <div>
             <StatusPill tone="violet">Optional</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">Managed maintenance{maintenancePrice ? ` · ${maintenancePrice}` : ""}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">
               Ongoing monitoring and reasonable changes.{" "}
               <Link href="/maintenance" className="font-medium text-primary hover:underline">
                 See what&apos;s included
@@ -120,7 +120,7 @@ export function Marketplace({
                   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
                 }}
                 onClick={() => setFilter(f.id)}
-                className={cn("relative shrink-0 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}
+                className={cn("relative shrink-0 rounded-xl px-3.5 py-2 text-[14px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}
               >
                 {active && <motion.span layoutId="mk-filter" className="absolute inset-0 rounded-xl border border-line bg-surface shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
                 <span className="relative">
@@ -149,7 +149,7 @@ export function Marketplace({
       <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted" aria-live="polite">{visible.length} service{visible.length===1?"":"s"} to explore</p><div className="flex gap-1 rounded-lg border border-line bg-surface p-1"><Button variant={layout==="grid"?"soft":"ghost"} size="icon-sm" aria-pressed={layout==="grid"} aria-label="Grid view" onClick={()=>setLayout("grid")}><LayoutGrid className="size-4"/></Button><Button variant={layout==="list"?"soft":"ghost"} size="icon-sm" aria-pressed={layout==="list"} aria-label="List view" onClick={()=>setLayout("list")}><ListIcon className="size-4"/></Button></div></div>
 
       {!canRequest && (
-        <p className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-3.5 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
+        <p className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-3.5 text-[14px] text-ink-2 ring-1 ring-inset ring-line">
           <Info className="mt-0.5 size-4 shrink-0 text-primary" /> You can browse everything here. A workspace owner or admin submits requests.
         </p>
       )}
@@ -206,14 +206,14 @@ export function Marketplace({
             <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">
               Tell us what you want to build. Our team can design custom AI, automation, integration and software solutions around your business.
             </p>
-            <p className="mt-2 text-[12.5px] text-muted">Free to ask. We review every request and reply with questions or a written quote. You&apos;re never charged automatically.</p>
+            <p className="mt-2 text-[13px] text-muted">Free to ask. We review every request and reply with questions or a written quote. You&apos;re never charged automatically.</p>
           </div>
           {canRequest ? (
             <ButtonLink href={requestHref()} variant="brand" size="lg" className="shrink-0">
               Request a Custom Project <ArrowRight className="size-4" />
             </ButtonLink>
           ) : (
-            <p className="max-w-[220px] text-[12.5px] text-muted">Ask a workspace owner or admin to submit a request.</p>
+            <p className="max-w-[220px] text-[13px] text-muted">Ask a workspace owner or admin to submit a request.</p>
           )}
         </div>
       </Card>
@@ -243,7 +243,7 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
         </div>
       </div>
       <h3 className="mt-4 text-[16px] font-semibold leading-snug tracking-tight">{s.name}</h3>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{s.tagline}</p>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{s.tagline}</p>
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
         <div className="min-w-0">
@@ -260,7 +260,7 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
       {s.accomplishes.length > 0 && (
         <ul className="mt-4 space-y-1.5">
           {s.accomplishes.slice(0, 3).map((a) => (
-            <li key={a} className="flex items-start gap-2 text-[12.5px] leading-snug text-ink-2">
+            <li key={a} className="flex items-start gap-2 text-[13px] leading-snug text-ink-2">
               <Check className="mt-0.5 size-3.5 shrink-0 text-success" /> {a}
             </li>
           ))}
@@ -321,7 +321,7 @@ function List({ title, items, icon }: { title: string; items: string[]; icon?: "
       <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">{title}</h3>
       <ul className="space-y-1.5">
         {items.map((i) => (
-          <li key={i} className="flex items-start gap-2 text-[13.5px] leading-snug text-ink-2">
+          <li key={i} className="flex items-start gap-2 text-[14px] leading-snug text-ink-2">
             {icon === "dot" ? <span className="mt-2 size-1 shrink-0 rounded-full bg-faint" /> : <Check className="mt-0.5 size-4 shrink-0 text-success" />} {i}
           </li>
         ))}
@@ -375,7 +375,7 @@ function ServiceDetail({ service: s, canRequest, onClose }: { service: ServiceVi
           </div>
 
           {s.coreOverlapNote && (
-            <p className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary-soft/50 p-3.5 text-[13px] leading-relaxed text-ink-2">
+            <p className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary-soft/50 p-3.5 text-[14px] leading-relaxed text-ink-2">
               <Layers className="mt-0.5 size-4 shrink-0 text-primary" /> {s.coreOverlapNote}
             </p>
           )}
@@ -415,7 +415,7 @@ function ServiceDetail({ service: s, canRequest, onClose }: { service: ServiceVi
               <ul className="space-y-1.5">
                 {s.portfolio.map((p) => (
                   <li key={p.slug}>
-                    <Link href={`/our-work/${p.slug}`} className="inline-flex items-center gap-2 text-[13.5px] font-medium text-primary hover:underline">
+                    <Link href={`/our-work/${p.slug}`} className="inline-flex items-center gap-2 text-[14px] font-medium text-primary hover:underline">
                       {p.title} <ArrowRight className="size-3.5" />
                     </Link>
                     {p.status !== "built" && <StatusPill tone="warning" className="ml-2">{PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill>}

@@ -233,18 +233,18 @@ export function ProspectActions({
       )}
 
       {problem && !dialog && (
-        <p role="alert" className="text-[13px] text-danger-ink">
+        <p role="alert" className="text-[14px] text-danger-ink">
           {problem}
         </p>
       )}
 
       {transcript && (
         <div className="space-y-2" aria-live="polite">
-          <p role="status" className="text-[12.5px] text-muted">
+          <p role="status" className="text-[13px] text-muted">
             You read this conversation just now. That was recorded on the timeline and in the audit log (who and how many lines, not the words).
           </p>
           {transcript.length === 0 ? (
-            <p className="text-[13.5px] text-muted">They wrote nothing.</p>
+            <p className="text-[14px] text-muted">They wrote nothing.</p>
           ) : (
             <ol className="max-h-[60dvh] space-y-2 overflow-y-auto rounded-xl border border-line bg-surface-2/50 p-3" tabIndex={0} aria-label="Conversation">
               {transcript.map((l) => (
@@ -253,7 +253,7 @@ export function ProspectActions({
                     {l.role === "user" ? "Prospect" : l.role === "assistant" ? "AI assistant" : "System"} · {formatDateTime(l.at, timeZone)}
                     {l.state === "failed" ? " · not counted (no answer came)" : ""}
                   </p>
-                  <p className="mt-0.5 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink">{l.body}</p>
+                  <p className="mt-0.5 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{l.body}</p>
                 </li>
               ))}
             </ol>
@@ -363,12 +363,12 @@ export function ProspectActions({
           (() => {
             const s = deliverySummary(converted.emailStatus, converted.emailError, convert.email);
             return (
-              <div className="space-y-2 text-[13.5px] leading-relaxed" role="status">
+              <div className="space-y-2 text-[14px] leading-relaxed" role="status">
                 <p className="font-semibold text-ink">{s.title}</p>
                 <p className="text-ink-2">{s.body}</p>
                 {converted.inviteLink && (
                   <div className="space-y-1">
-                    <p className="text-[12.5px] text-muted">The invitation link, to send to the owner yourself. It works once.</p>
+                    <p className="text-[13px] text-muted">The invitation link, to send to the owner yourself. It works once.</p>
                     <Input readOnly value={converted.inviteLink} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />
                   </div>
                 )}
@@ -393,7 +393,7 @@ export function ProspectActions({
               </Select>
             </Field>
             {problem && dialog === "convert" && (
-              <p role="alert" className="text-[13px] text-danger-ink">
+              <p role="alert" className="text-[14px] text-danger-ink">
                 {problem}
               </p>
             )}

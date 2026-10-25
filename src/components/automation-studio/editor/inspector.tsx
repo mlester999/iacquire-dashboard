@@ -27,8 +27,8 @@ export function Inspector({ editor, options, selectedKey, onAsk, className }: { 
       <div className={className}>
         <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted">
           <MousePointerClick className="size-6 text-faint" aria-hidden />
-          <p className="text-[13px] font-medium text-ink">Select a step to change its settings</p>
-          <p className="max-w-[240px] text-[12.5px] leading-relaxed">Click a step on the canvas, or the box at the top to change what starts the workflow.</p>
+          <p className="text-[14px] font-medium text-ink">Select a step to change its settings</p>
+          <p className="max-w-[240px] text-[13px] leading-relaxed">Click a step on the canvas, or the box at the top to change what starts the workflow.</p>
         </div>
       </div>
     );
@@ -57,7 +57,7 @@ export function Inspector({ editor, options, selectedKey, onAsk, className }: { 
   if (!step) {
     return (
       <div className={className}>
-        <p className="p-6 text-center text-[13px] text-muted">That step is no longer there.</p>
+        <p className="p-6 text-center text-[14px] text-muted">That step is no longer there.</p>
       </div>
     );
   }

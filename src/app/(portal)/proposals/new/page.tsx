@@ -30,9 +30,9 @@ export default async function NewProposalPage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/proposals" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Proposals</Link>
+        <Link href="/proposals" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Proposals</Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-ink">New proposal</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">A proposal starts as a draft. Nothing reaches the customer until it has been approved where that is needed, and someone at your business sends it.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">A proposal starts as a draft. Nothing reaches the customer until it has been approved where that is needed, and someone at your business sends it.</p>
       </div>
       <NewProposal
         templates={templates.filter((t) => t.status === "approved").map((t) => ({ id: t.id, name: t.name }))}

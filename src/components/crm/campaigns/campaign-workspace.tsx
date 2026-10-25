@@ -69,11 +69,11 @@ export function CampaignWorkspace({ scope, campaign, options, filterOptions, pre
   return (
     <div className="space-y-5">
       <div>
-        <Link href={base} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-0"><ArrowLeft className="size-4" aria-hidden />Campaigns</Link>
+        <Link href={base} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-0"><ArrowLeft className="size-4" aria-hidden />Campaigns</Link>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="break-words text-[20px] font-semibold tracking-[-0.03em] text-ink">{campaign.name}</h2>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted">
               <CampaignStatusBadge status={s} />
               <ChannelLabel channel={campaign.channel} />
               <span aria-hidden>·</span>
@@ -103,7 +103,7 @@ export function CampaignWorkspace({ scope, campaign, options, filterOptions, pre
       {campaign.notice && s !== "completed" && s !== "cancelled" && (
         <div className={cn("flex gap-2.5 rounded-2xl border px-4 py-3", campaign.notice.code === "paused" ? "border-line bg-surface-2" : "border-warning/30 bg-warning-soft")} role="status">
           <AlertTriangle className={cn("mt-0.5 size-4 shrink-0", campaign.notice.code === "paused" ? "text-muted" : "text-warning-ink")} aria-hidden />
-          <div className="min-w-0 text-[13px]">
+          <div className="min-w-0 text-[14px]">
             <p className={cn("font-semibold", campaign.notice.code === "paused" ? "text-ink" : "text-warning-ink")}>{NOTICE_TITLE[campaign.notice.code]}</p>
             <p className={cn("mt-0.5 leading-relaxed", campaign.notice.code === "paused" ? "text-ink-2" : "text-warning-ink")}>{campaign.notice.detail}</p>
             {campaign.notice.code === "credits" && <Link href="/settings/billing" className="mt-1 inline-block font-medium text-primary hover:underline">Add service credits</Link>}
@@ -111,7 +111,7 @@ export function CampaignWorkspace({ scope, campaign, options, filterOptions, pre
           </div>
         </div>
       )}
-      {s === "cancelled" && <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Cancelled{campaign.cancelledByName ? ` by ${campaign.cancelledByName}` : ""}. Nothing more is sent. Duplicate it to prepare it again.</p>}
+      {s === "cancelled" && <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Cancelled{campaign.cancelledByName ? ` by ${campaign.cancelledByName}` : ""}. Nothing more is sent. Duplicate it to prepare it again.</p>}
 
       {showBuilder ? (
         <CampaignBuilder key={campaign.updatedAt} scope={scope} campaign={campaign} options={options} filterOptions={filterOptions} initialPreview={preview} canEdit={canManage} onDone={editing ? () => setEditing(false) : undefined} />
@@ -161,13 +161,13 @@ export function CampaignWorkspace({ scope, campaign, options, filterOptions, pre
               </Select>
             </Field>
             {testResult && (
-              <p role="status" className={cn("rounded-xl px-3 py-2 text-[12.5px]", testResult.ok && testResult.status !== "blocked" && testResult.status !== "failed" ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
+              <p role="status" className={cn("rounded-xl px-3 py-2 text-[13px]", testResult.ok && testResult.status !== "blocked" && testResult.status !== "failed" ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
                 {testResult.ok ? <><strong className="font-semibold">{testResult.statusLabel}.</strong> {testResult.detail}</> : testResult.detail}
               </p>
             )}
           </div>
         ) : (
-          <p className="text-[13px] leading-relaxed text-ink-2">
+          <p className="text-[14px] leading-relaxed text-ink-2">
             Your workspace has no approved {CHANNEL_LABELS[campaign.channel]} test destination yet. Add your own {campaign.channel === "email" ? "email address" : "number"} in{" "}
             <Link href={`${scope.base}/settings/communications`} className="font-medium text-primary hover:underline">Communication Settings</Link>.
           </p>

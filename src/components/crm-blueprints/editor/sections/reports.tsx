@@ -66,14 +66,14 @@ function ReportForm({ report: r }: { report: ReportAsset }) {
       </FieldGrid>
       <Field label="Description" htmlFor="rp-desc" optional><Textarea id="rp-desc" rows={2} maxLength={300} value={r.description ?? ""} disabled={readOnly} onChange={(e) => set({ description: orNull(e.target.value) })} /></Field>
       <fieldset className="space-y-2">
-        <legend className="text-[13px] font-medium text-ink-2">Sections</legend>
-        {!r.config.sections.length && <p className="text-[12.5px] text-danger-ink" role="status">Pick at least one section.</p>}
+        <legend className="text-[14px] font-medium text-ink-2">Sections</legend>
+        {!r.config.sections.length && <p className="text-[13px] text-danger-ink" role="status">Pick at least one section.</p>}
         <div className="grid gap-2 sm:grid-cols-2">
           {REPORT_SECTIONS.map((s) => (
             <label key={s} className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xl border border-line px-3 py-2.5 has-[:checked]:border-primary/40 has-[:checked]:bg-primary-soft/40">
               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={r.config.sections.includes(s)} disabled={readOnly} onChange={(e) => toggleSection(s, e.target.checked)} />
               <span className="min-w-0">
-                <span className="block text-[13px] font-medium text-ink">{SECTION_INFO[s].label}</span>
+                <span className="block text-[14px] font-medium text-ink">{SECTION_INFO[s].label}</span>
                 <span className="block text-[12px] leading-relaxed text-muted">{SECTION_INFO[s].description}</span>
               </span>
             </label>

@@ -73,7 +73,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
           <ProviderMark provider={c.provider} icloud={name === "Apple iCloud"} />
           <div className="min-w-0">
             <h4 className="truncate text-[14.5px] font-semibold text-ink">{c.accountLabel}</h4>
-            <p className="text-[12.5px] text-muted">
+            <p className="text-[13px] text-muted">
               {name} · {c.provider === "ics" ? `read-only, updates about every ${minutes} minutes (not instant)` : `checked about every ${minutes} minutes`}
             </p>
           </div>
@@ -82,9 +82,9 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
       </div>
 
       <div className="space-y-5 px-4 py-4 sm:px-5">
-        <p className={cn("text-[13px] leading-relaxed", status.tone === "danger" ? "text-danger-ink" : "text-ink-2")}>{status.detail}</p>
+        <p className={cn("text-[14px] leading-relaxed", status.tone === "danger" ? "text-danger-ink" : "text-ink-2")}>{status.detail}</p>
         {c.lastError && c.status !== "needs_reauth" && (
-          <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">
+          <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>Last problem{c.lastSyncedAt ? ` (${relativeTime(c.lastSyncedAt, renderedAt)})` : ""}: {c.lastError}</span>
           </p>
@@ -94,8 +94,8 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
           <fieldset className="space-y-3" disabled={!editable} aria-labelledby={`${groupId}-conflicts`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[13.5px] font-medium text-ink" id={`${groupId}-conflicts`}>Check for conflicts</p>
-                <p className="text-[12.5px] text-muted">Busy times on the calendars you tick are kept off your booking pages. Only start and end times are stored.</p>
+                <p className="text-[14px] font-medium text-ink" id={`${groupId}-conflicts`}>Check for conflicts</p>
+                <p className="text-[13px] text-muted">Busy times on the calendars you tick are kept off your booking pages. Only start and end times are stored.</p>
               </div>
               <Switch checked={checkConflicts} onCheckedChange={setCheckConflicts} aria-labelledby={`${groupId}-conflicts`} className="mt-0.5" />
             </div>
@@ -106,7 +106,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
                   const on = conflictIds.includes(cal.id);
                   return (
                     <li key={cal.id}>
-                      <label htmlFor={id} className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px] transition sm:min-h-10", on ? "border-primary/40 bg-primary-soft/50" : "border-line hover:bg-surface-2")}>
+                      <label htmlFor={id} className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-[14px] transition sm:min-h-10", on ? "border-primary/40 bg-primary-soft/50" : "border-line hover:bg-surface-2")}>
                         <input id={id} type="checkbox" className="size-4 accent-primary" checked={on} onChange={(e) => setConflictIds((prev) => (e.target.checked ? [...prev, cal.id] : prev.filter((x) => x !== cal.id)))} />
                         <span className="min-w-0 flex-1 truncate text-ink">{cal.name}</span>
                         {cal.primary && <span className="inline-flex items-center gap-1 text-[12px] text-muted"><Star className="size-3" aria-hidden />Main</span>}
@@ -122,15 +122,15 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
         {live && (
           <div className="space-y-3 border-t border-line pt-4">
             {c.provider === "ics" ? (
-              <p className="text-[12.5px] text-muted">A feed is read-only: iAcquire can&apos;t add appointments to it. Connect the calendar itself (Google, Microsoft, iCloud or CalDAV) if you want bookings to appear there.</p>
+              <p className="text-[13px] text-muted">A feed is read-only: iAcquire can&apos;t add appointments to it. Connect the calendar itself (Google, Microsoft, iCloud or CalDAV) if you want bookings to appear there.</p>
             ) : !c.canWriteEvents ? (
-              <p className="text-[12.5px] text-muted">This connection wasn&apos;t given permission to add events. Reconnect and allow calendar access if you want your appointments added to it.</p>
+              <p className="text-[13px] text-muted">This connection wasn&apos;t given permission to add events. Reconnect and allow calendar access if you want your appointments added to it.</p>
             ) : (
               <fieldset className="space-y-3" disabled={!editable} aria-labelledby={`${groupId}-write`}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-[13.5px] font-medium text-ink" id={`${groupId}-write`}>Add appointments I host to this calendar</p>
-                    <p className="text-[12.5px] text-muted">
+                    <p className="text-[14px] font-medium text-ink" id={`${groupId}-write`}>Add appointments I host to this calendar</p>
+                    <p className="text-[13px] text-muted">
                       New, moved and cancelled bookings are updated within a few minutes. Only the type, the customer&apos;s first name, the time and the location are written, never their answers or contact details.
                       {c.provider === "google" && " Appointment types set to Google Meet get a Meet link from Google."}
                       {c.provider === "microsoft" && " Appointment types set to Microsoft Teams get a Teams link where your Microsoft 365 account allows it."}
@@ -141,14 +141,14 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
                 </div>
                 {writeEvents && (
                   <div className="max-w-sm">
-                    <label htmlFor={`${groupId}-target`} className="text-[12.5px] font-medium text-ink-2">Calendar to add them to</label>
+                    <label htmlFor={`${groupId}-target`} className="text-[13px] font-medium text-ink-2">Calendar to add them to</label>
                     <Select id={`${groupId}-target`} className="mt-1" value={writeCalendarId} onChange={(e) => setWriteCalendarId(e.target.value)}>
                       {!writable.length && <option value="">No calendar here accepts new events</option>}
                       {writable.map((cal) => <option key={cal.id} value={cal.id}>{cal.name}{cal.primary ? " (main)" : ""}</option>)}
                     </Select>
                   </div>
                 )}
-                {c.writeEvents && !writeEvents && <p className="text-[12.5px] text-muted">Turning this off stops all changes to this calendar. Appointments already added stay as they are.</p>}
+                {c.writeEvents && !writeEvents && <p className="text-[13px] text-muted">Turning this off stops all changes to this calendar. Appointments already added stay as they are.</p>}
               </fieldset>
             )}
           </div>
@@ -156,7 +156,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
 
         {editable && live && (dirty || invalid) && (
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {invalid && <p role="alert" className="mr-auto text-[12.5px] text-danger-ink">{invalid}</p>}
+            {invalid && <p role="alert" className="mr-auto text-[13px] text-danger-ink">{invalid}</p>}
             <Button variant="secondary" size="sm" onClick={() => setSeen("")}>Undo changes</Button>
             <Button size="sm" disabled={!dirty || !!invalid} loading={busy(`save-${c.id}`)} onClick={save}>Save changes</Button>
           </div>
@@ -171,7 +171,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
         )}
         {editable && (c.status === "needs_reauth" || c.status === "error") && (
           oauth ? (
-            <a href={`/api/crm/calendar-oauth/${c.provider}/start?return=${encodeURIComponent("/crm/calendar-connections")}`} className="inline-flex h-11 items-center gap-2 rounded-xl bg-ink px-3 text-[13px] font-medium text-surface shadow-soft transition hover:bg-ink/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
+            <a href={`/api/crm/calendar-oauth/${c.provider}/start?return=${encodeURIComponent("/crm/calendar-connections")}`} className="inline-flex h-11 items-center gap-2 rounded-xl bg-ink px-3 text-[14px] font-medium text-surface shadow-soft transition hover:bg-ink/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
               <CalendarCheck2 className="size-3.5" aria-hidden />Reconnect
             </a>
           ) : (
@@ -199,7 +199,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
           if (r) setConfirm(false);
         }}
       >
-        {c.provider === "caldav" && <p className="text-[12.5px] text-muted">The app-specific password is deleted from iAcquire. You can also revoke it in your account settings.</p>}
+        {c.provider === "caldav" && <p className="text-[13px] text-muted">The app-specific password is deleted from iAcquire. You can also revoke it in your account settings.</p>}
       </ConfirmDialog>
     </Card>
   );

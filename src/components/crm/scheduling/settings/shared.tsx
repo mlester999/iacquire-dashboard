@@ -76,7 +76,7 @@ export function BlockerList({ blockers, base, calendarId, skip = [] }: { blocker
       {shown.map((b) => {
         const t = blockerText(b, base, calendarId);
         return (
-          <li key={b.code} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12.5px] text-ink-2">
+          <li key={b.code} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px] text-ink-2">
             <span className="mt-1.5 size-1.5 shrink-0 self-start rounded-full bg-warning" aria-hidden />
             <span className="min-w-0 flex-1">{t.text}</span>
             {t.fix && <Link href={t.fix.href} className="font-medium text-primary hover:underline">{t.fix.label}</Link>}
@@ -91,7 +91,7 @@ export function BlockerList({ blockers, base, calendarId, skip = [] }: { blocker
 export function ColorPicker({ value, onChange, label, name }: { value: string | null; onChange: (c: string | null) => void; label: string; name: string }) {
   return (
     <fieldset>
-      <legend className="text-[13px] font-medium text-ink-2">{label}</legend>
+      <legend className="text-[14px] font-medium text-ink-2">{label}</legend>
       <div className="mt-1.5 flex flex-wrap gap-1">
         {[null, ...TAG_COLORS].map((c) => (
           <label key={c ?? "none"} className="inline-flex size-11 cursor-pointer items-center justify-center rounded-full sm:size-8">
@@ -178,8 +178,8 @@ export function SettingRow({ id, label, hint, control }: { id: string; label: Re
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <label htmlFor={id} className="text-[13px] font-medium text-ink-2">{label}</label>
-        {hint && <div id={`${id}-hint`} className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</div>}
+        <label htmlFor={id} className="text-[14px] font-medium text-ink-2">{label}</label>
+        {hint && <div id={`${id}-hint`} className="mt-0.5 text-[13px] leading-relaxed text-muted">{hint}</div>}
       </div>
       <div className="shrink-0 pt-0.5">{control}</div>
     </div>

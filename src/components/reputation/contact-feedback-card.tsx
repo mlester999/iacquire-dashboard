@@ -16,7 +16,7 @@ import type { ContactFeedbackItem, ContactReputationView } from "@/server/reputa
 const SHOWN = 3;
 
 function Score({ f }: { f: ContactFeedbackItem }) {
-  if (f.scale === "nps10") return <span className="text-[12.5px] font-medium text-ink">{f.npsScore === null ? "No score" : `${f.npsScore} of 10`}</span>;
+  if (f.scale === "nps10") return <span className="text-[13px] font-medium text-ink">{f.npsScore === null ? "No score" : `${f.npsScore} of 10`}</span>;
   return <RatingStars rating={f.rating} />;
 }
 
@@ -25,9 +25,9 @@ export function ContactFeedbackCard({ scope, view }: { scope: CrmScope; view: Co
   const open = view.open;
   return (
     <section aria-labelledby="contact-feedback" className="rounded-2xl border border-line bg-surface p-4">
-      <h2 id="contact-feedback" className="flex items-center gap-1.5 text-[13px] font-semibold"><MessageSquareHeart className="size-4 text-muted" aria-hidden />Private feedback</h2>
+      <h2 id="contact-feedback" className="flex items-center gap-1.5 text-[14px] font-semibold"><MessageSquareHeart className="size-4 text-muted" aria-hidden />Private feedback</h2>
       {open && (
-        <div role="status" className="mt-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+        <div role="status" className="mt-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[13px] leading-relaxed text-warning-ink">
           <p className="font-medium">{open.followUpStatus === "acknowledged" ? "Low feedback was acknowledged and is being followed up" : "Low feedback is waiting for a follow-up"}</p>
           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
             {open.taskId && <Link href={`${scope.base}/tasks?task=${open.taskId}`} className="inline-flex min-h-8 items-center gap-1 font-medium underline underline-offset-2"><ListTodo className="size-3.5" aria-hidden />Follow-up task</Link>}
@@ -36,7 +36,7 @@ export function ContactFeedbackCard({ scope, view }: { scope: CrmScope; view: Co
         </div>
       )}
       {shown.length === 0 ? (
-        <p className="mt-2 text-[13px] text-muted">No private feedback from this person yet.</p>
+        <p className="mt-2 text-[14px] text-muted">No private feedback from this person yet.</p>
       ) : (
         <ul className="mt-2 space-y-2.5" aria-label="Latest private feedback">
           {shown.map((f) => (
@@ -46,7 +46,7 @@ export function ContactFeedbackCard({ scope, view }: { scope: CrmScope; view: Co
                 {f.lowScore && <Badge tone="warning">Low</Badge>}
                 <Badge tone={FOLLOW_UP_TONES[f.followUpStatus]}>{FOLLOW_UP_LABELS[f.followUpStatus]}</Badge>
               </div>
-              {f.comment && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-ink-2">{f.comment}</p>}
+              {f.comment && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{f.comment}</p>}
               <p className="mt-1 text-[12px] text-muted">
                 <RelativeTime iso={f.receivedAt} timezone={scope.timezone} />
                 {f.resolvedAt ? <> · resolved <RelativeTime iso={f.resolvedAt} timezone={scope.timezone} />{f.resolutionNote ? `: ${f.resolutionNote}` : ""}</> : null}

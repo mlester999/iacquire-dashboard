@@ -94,7 +94,7 @@ export function EmployeeKnowledge({
       </div>
 
       {data.retrieval.truncated && (
-        <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12.5px] text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[13px] text-warning-ink">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> The knowledge budget is full. Some sources are shortened or left out of conversations. Remove or shorten lower-value knowledge to make room.
         </p>
       )}
@@ -115,8 +115,8 @@ export function EmployeeKnowledge({
           <CardContent>
             {data.entries.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line-strong p-6 text-center">
-                <p className="text-[13px] font-medium">No employee notes yet</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Add a short, specific note such as approved service areas or how this employee should handle a particular request.</p>
+                <p className="text-[14px] font-medium">No employee notes yet</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">Add a short, specific note such as approved service areas or how this employee should handle a particular request.</p>
               </div>
             ) : (
               <ul className="divide-y divide-line">
@@ -126,8 +126,8 @@ export function EmployeeKnowledge({
                     <li key={entry.id} className="py-3">
                       <div className="flex flex-wrap items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-[13.5px] font-semibold">{entry.title}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-relaxed text-muted">{entry.content}</p>
+                          <p className="text-[14px] font-semibold">{entry.title}</p>
+                          <p className="mt-0.5 line-clamp-2 text-[13px] leading-relaxed text-muted">{entry.content}</p>
                         </div>
                         <Badge tone={entry.status === "approved" ? (included ? "success" : "warning") : "warning"}>
                           {entry.status === "approved" ? (included ? "In next run" : "Not included") : entry.status === "pending_agency_review" ? "In review" : "Not used"}
@@ -164,7 +164,7 @@ export function EmployeeKnowledge({
               <CardDescription>Upload a file for this employee, or use a shared document from the Knowledge Center. Text is extracted before use.</CardDescription>
             </div>
             {canEdit && (
-              <label className={cn("inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2", uploading && "pointer-events-none opacity-60")}>
+              <label className={cn("inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2", uploading && "pointer-events-none opacity-60")}>
                 <UploadCloud className="size-3.5" aria-hidden /> {uploading ? "Uploading…" : "Upload"}
                 <input
                   type="file"
@@ -207,13 +207,13 @@ export function EmployeeKnowledge({
               {KNOWLEDGE_GUIDANCE.upload.description}
             </p>
             {fileError && (
-              <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">
+              <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[13px] text-danger-ink" role="alert">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {fileError}
               </p>
             )}
             <div>
               <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted">For this employee</p>
-              {assigned.length === 0 ? <p className="text-[12.5px] text-muted">No documents assigned only to this employee.</p> : (
+              {assigned.length === 0 ? <p className="text-[13px] text-muted">No documents assigned only to this employee.</p> : (
                 <ul className="divide-y divide-line">
                   {assigned.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} />)}
                 </ul>
@@ -221,7 +221,7 @@ export function EmployeeKnowledge({
             </div>
             <div>
               <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared with every employee</p>
-              {shared.length === 0 ? <p className="text-[12.5px] text-muted">No shared documents yet. <Link href="/knowledge" className="text-primary hover:underline">Open Knowledge Center</Link>.</p> : (
+              {shared.length === 0 ? <p className="text-[13px] text-muted">No shared documents yet. <Link href="/knowledge" className="text-primary hover:underline">Open Knowledge Center</Link>.</p> : (
                 <ul className="divide-y divide-line">
                   {shared.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} shared />)}
                 </ul>
@@ -273,7 +273,7 @@ export function EmployeeKnowledge({
           </>
         }
       >
-        <p className="text-[13px] leading-relaxed text-muted">This does not delete the employee, its conversations or any other knowledge.</p>
+        <p className="text-[14px] leading-relaxed text-muted">This does not delete the employee, its conversations or any other knowledge.</p>
       </Dialog>
     </div>
   );
@@ -302,7 +302,7 @@ function DocumentRow({
     <li className="flex items-start gap-2.5 py-2.5">
       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2"><FileText className="size-4" aria-hidden /></span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12.5px] font-medium">{doc.filename}</p>
+        <p className="truncate text-[13px] font-medium">{doc.filename}</p>
         <p className="text-[12px] text-muted">{size(doc.size_bytes)} · {state.detail}</p>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <Badge tone={state.tone}>{state.label}</Badge>
@@ -404,7 +404,7 @@ function NoteDialog({
       }
     >
         <div className="space-y-3">
-          {error && <p className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+          {error && <p className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[13px] text-danger-ink" role="alert">{error}</p>}
           <GuidedField id="knowledge-title" label="Title" guidance={KNOWLEDGE_GUIDANCE.title} required charLimit={160} valueLength={title.length}>
             <Input maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
           </GuidedField>

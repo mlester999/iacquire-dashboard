@@ -52,10 +52,10 @@ export function Timeline({ scope, target, initial }: { scope: CrmScope; target: 
               <span className="relative z-10 mt-0.5 inline-flex size-[30px] shrink-0 items-center justify-center rounded-full border border-line bg-surface text-muted"><Icon className="size-3.5" /></span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                  <p className="text-[13.5px] font-medium text-ink">{item.link ? <Link href={item.link.startsWith("/crm") ? item.link.replace(/^\/crm/, scope.base) : item.link} className="hover:underline">{item.title}</Link> : item.title}</p>
+                  <p className="text-[14px] font-medium text-ink">{item.link ? <Link href={item.link.startsWith("/crm") ? item.link.replace(/^\/crm/, scope.base) : item.link} className="hover:underline">{item.title}</Link> : item.title}</p>
                   <RelativeTime iso={item.at} timezone={scope.timezone} className="shrink-0 text-[12px] text-muted" />
                 </div>
-                {item.detail && <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{item.detail}</p>}
+                {item.detail && <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-[14px] leading-relaxed text-ink-2">{item.detail}</p>}
                 {item.actor && <p className="mt-0.5 text-[12px] text-faint">{item.actor}</p>}
               </div>
             </li>
@@ -111,7 +111,7 @@ export function NotesPanel({ scope, type, recordId, notes }: { scope: CrmScope; 
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-3">
-                    <p className="whitespace-pre-line text-[13.5px] leading-relaxed text-ink">{n.body}</p>
+                    <p className="whitespace-pre-line text-[14px] leading-relaxed text-ink">{n.body}</p>
                     {(n.mine && canWrite) || canModerate ? (
                       <Menu>
                         <MenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="Note options"><MoreHorizontal className="size-4" /></Button></MenuTrigger>
@@ -139,7 +139,7 @@ export const PRIORITY_TONE = { low: "neutral", normal: "neutral", high: "warning
 export function TaskList({ scope, tasks, showLinks = true, emptyText, onOpen }: { scope: CrmScope; tasks: TaskView[]; showLinks?: boolean; emptyText?: string; onOpen?: (task: TaskView) => void }) {
   const { run } = useCrmAction();
   const canManage = Boolean(scope.can["tasks.manage"]) && !scope.readOnly;
-  if (!tasks.length) return <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">{emptyText ?? "No tasks."}</p>;
+  if (!tasks.length) return <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[14px] text-muted">{emptyText ?? "No tasks."}</p>;
   return (
     <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
       {tasks.map((t) => {
@@ -157,9 +157,9 @@ export function TaskList({ scope, tasks, showLinks = true, emptyText, onOpen }: 
             </button>
             <div className="min-w-0 flex-1">
               {onOpen ? (
-                <button type="button" onClick={() => onOpen(t)} className={cn("text-left text-[13.5px] font-medium hover:text-primary", done ? "text-muted line-through" : "text-ink")}>{t.title}</button>
+                <button type="button" onClick={() => onOpen(t)} className={cn("text-left text-[14px] font-medium hover:text-primary", done ? "text-muted line-through" : "text-ink")}>{t.title}</button>
               ) : (
-                <p className={cn("text-[13.5px] font-medium", done ? "text-muted line-through" : "text-ink")}>{t.title}</p>
+                <p className={cn("text-[14px] font-medium", done ? "text-muted line-through" : "text-ink")}>{t.title}</p>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
                 {t.dueAt && <span className={cn(t.overdue && "font-semibold text-danger-ink")}>{t.overdue ? "Overdue · " : "Due "}{new Date(t.dueAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone })}</span>}
@@ -284,7 +284,7 @@ export function SectionCard({ title, action, children, className }: { title: Rea
   return (
     <section className={cn("card-surface rounded-2xl", className)}>
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
+        <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
         {action}
       </div>
       <div className="p-4">{children}</div>
@@ -294,7 +294,7 @@ export function SectionCard({ title, action, children, className }: { title: Rea
 
 export function DefinitionList({ items }: { items: Array<{ label: string; value: React.ReactNode }> }) {
   return (
-    <dl className="grid gap-x-4 gap-y-2.5 text-[13px] sm:grid-cols-[minmax(0,140px)_minmax(0,1fr)]">
+    <dl className="grid gap-x-4 gap-y-2.5 text-[14px] sm:grid-cols-[minmax(0,140px)_minmax(0,1fr)]">
       {items.map((i) => (
         <React.Fragment key={i.label}>
           <dt className="text-muted">{i.label}</dt>

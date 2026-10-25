@@ -82,12 +82,12 @@ export function OnboardingBlueprintPicker({
 
   return (
     <fieldset disabled={disabled} aria-describedby={disabled ? reasonId : undefined} className="min-w-0">
-      <legend className="mb-1 text-[13px] font-medium text-ink-2">CRM setup</legend>
-      <p className="mb-3 text-[12.5px] leading-relaxed text-muted">
+      <legend className="mb-1 text-[14px] font-medium text-ink-2">CRM setup</legend>
+      <p className="mb-3 text-[13px] leading-relaxed text-muted">
         Start empty, or copy a Blueprint&apos;s configuration (pipelines, tags, fields, forms, templates and more) into this client&apos;s own CRM. It is applied right after the client is created.
       </p>
       {disabled && (
-        <p id={reasonId} className="mb-3 flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-muted">
+        <p id={reasonId} className="mb-3 flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-muted">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           {disabledReason}
         </p>
@@ -97,8 +97,8 @@ export function OnboardingBlueprintPicker({
           <label className={radioClass(value === "blank", disabled)}>
             <input type="radio" name={name} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={value === "blank"} onChange={() => onChange("blank")} disabled={disabled} />
             <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-ink">Blank CRM</span>
-              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">Nothing is added. The team builds its own pipelines, fields, tags and calendars (a basic sales pipeline appears when the board is first opened).</span>
+              <span className="block text-[14px] font-medium text-ink">Blank CRM</span>
+              <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">Nothing is added. The team builds its own pipelines, fields, tags and calendars (a basic sales pipeline appears when the board is first opened).</span>
             </span>
           </label>
 
@@ -108,16 +108,16 @@ export function OnboardingBlueprintPicker({
               <Skeleton className="h-14 w-full" />
             </div>
           ) : error ? (
-            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">
               <span>Blueprints couldn&apos;t be loaded: {error}</span>
               <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
                 <RefreshCw className="size-3.5" aria-hidden />Try again
               </Button>
             </div>
           ) : choices && !choices.canApply ? (
-            <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-muted">Your agency role can&apos;t apply Blueprints, so this client starts with a blank CRM.</p>
+            <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-muted">Your agency role can&apos;t apply Blueprints, so this client starts with a blank CRM.</p>
           ) : choices && options.length === 0 ? (
-            <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-muted">
+            <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-muted">
               No published Blueprints yet. Publish one in{" "}
               <Link href="/admin/crm-blueprints" className="font-medium text-primary underline-offset-2 hover:underline">CRM Blueprints</Link>, or start with a blank CRM.
             </p>
@@ -137,7 +137,7 @@ export function OnboardingBlueprintPicker({
                     {starters.map(radio)}
                   </Group>
                 )}
-                {shown.length === 0 && <p className="px-1 text-[12.5px] text-muted">No Blueprints match “{q.trim()}”.</p>}
+                {shown.length === 0 && <p className="px-1 text-[13px] text-muted">No Blueprints match “{q.trim()}”.</p>}
               </div>
             </>
           ) : null}
@@ -175,7 +175,7 @@ function SetupRadio({ name, option, checked, onSelect, disabled, industry }: { n
       <input type="radio" name={name} value={option.value} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={checked} onChange={onSelect} disabled={disabled} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[13px] font-medium text-ink">{it.name}</span>
+          <span className="text-[14px] font-medium text-ink">{it.name}</span>
           {option.kind === "blueprint" && option.item.featured && <Badge tone="violet" className="h-5 px-2 text-[12px]">Featured</Badge>}
         </span>
         <span className="mt-0.5 block text-[12px] text-muted">
@@ -193,7 +193,7 @@ function SetupRadio({ name, option, checked, onSelect, disabled, industry }: { n
 function SetupPreview({ option }: { option: Option | null }) {
   if (!option) {
     return (
-      <div className="rounded-xl border border-dashed border-line p-4 text-[12.5px] leading-relaxed text-muted">
+      <div className="rounded-xl border border-dashed border-line p-4 text-[13px] leading-relaxed text-muted">
         <p className="font-medium text-ink-2">Blank CRM</p>
         <p className="mt-1">You can apply a Blueprint to this client later from CRM Blueprints, without touching anything the team has set up.</p>
       </div>
@@ -209,13 +209,13 @@ function SetupPreview({ option }: { option: Option | null }) {
           {option.kind === "starter" ? <Sparkles className="size-4" aria-hidden /> : <LayoutTemplate className="size-4" aria-hidden />}
         </span>
         <div className="min-w-0">
-          <p className="text-[13.5px] font-semibold text-ink">{it.name}</p>
+          <p className="text-[14px] font-semibold text-ink">{it.name}</p>
           <p className="text-[12px] text-muted">
             {option.kind === "blueprint" ? `Version ${option.item.currentVersion} · ${option.item.sourceLabel ?? BLUEPRINT_SOURCE_LABELS[option.item.source]}` : "Added to your library as version 1, then applied"}
           </p>
         </div>
       </div>
-      {it.description && <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-muted">{it.description}</p>}
+      {it.description && <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-muted">{it.description}</p>}
 
       <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">What it adds</p>
       {it.modules.length ? (
@@ -227,12 +227,12 @@ function SetupPreview({ option }: { option: Option | null }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-1 text-[12.5px] text-muted">This Blueprint is empty.</p>
+        <p className="mt-1 text-[13px] text-muted">This Blueprint is empty.</p>
       )}
 
       <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Left to set up afterwards</p>
       {reqs.length ? (
-        <ul className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
+        <ul className="mt-1.5 space-y-1 text-[13px] text-ink-2">
           {reqs.slice(0, 8).map((r) => (
             <li key={r} className="flex items-start gap-1.5">
               <span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-faint" />
@@ -242,7 +242,7 @@ function SetupPreview({ option }: { option: Option | null }) {
           {reqs.length > 8 && <li className="text-muted">and {reqs.length - 8} more on the client&apos;s setup checklist</li>}
         </ul>
       ) : (
-        <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted"><CheckCircle2 className="size-3.5 text-success" aria-hidden />Nothing to connect, map or approve.</p>
+        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted"><CheckCircle2 className="size-3.5 text-success" aria-hidden />Nothing to connect, map or approve.</p>
       )}
 
       {option.kind === "blueprint" && option.item.compatibility === "partial" && option.item.compatibilityNotes.length > 0 && (

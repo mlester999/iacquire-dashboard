@@ -22,7 +22,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const reviewExpectation = settings.showProjectTargetsToClients ? projectReviewSentence(settings.projectReviewTargetHours) : null;
   return (
     <div className="space-y-5">
-      <Link href="/projects" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+      <Link href="/projects" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
         <ArrowLeft className="size-3.5" /> My projects
       </Link>
       <ProjectWorkspace

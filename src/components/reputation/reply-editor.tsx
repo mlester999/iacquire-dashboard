@@ -78,24 +78,24 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
     <div className="space-y-5 p-5">
       <section aria-label="The review" className="space-y-2 rounded-2xl border border-line bg-surface-2/50 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          {review.rating !== null ? <RatingStars rating={review.rating} /> : <span className="text-[13px] font-medium text-ink">{review.ratingText}</span>}
+          {review.rating !== null ? <RatingStars rating={review.rating} /> : <span className="text-[14px] font-medium text-ink">{review.ratingText}</span>}
           <Badge tone="outline">{review.providerLabel}</Badge>
           {review.simulated && <Badge tone="violet">Simulated</Badge>}
           {review.removedAt && <Badge tone="warning">Removed from the site</Badge>}
         </div>
-        <p className="text-[12.5px] text-muted">{review.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={review.at} timezone={timezone} /></p>
-        {review.comment ? <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{review.comment}</p> : <p className="text-[13px] text-muted">The reviewer wrote no text.</p>}
+        <p className="text-[13px] text-muted">{review.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={review.at} timezone={timezone} /></p>
+        {review.comment ? <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{review.comment}</p> : <p className="text-[14px] text-muted">The reviewer wrote no text.</p>}
         {review.providerReply && (
           <div className="rounded-xl border border-line bg-surface p-3">
             <p className="text-[12px] font-medium text-muted">Already answered on {siteName}</p>
-            <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{review.providerReply.text}</p>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{review.providerReply.text}</p>
             <p className="mt-1 text-[12px] text-muted">A reply posted from here may replace this one.</p>
           </div>
         )}
       </section>
 
-      {!enabled && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">{ab.note}</p>}
-      {enabled && ab.note && !open && <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />{ab.note}</p>}
+      {!enabled && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">{ab.note}</p>}
+      {enabled && ab.note && !open && <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />{ab.note}</p>}
 
       {reply && (
         <section aria-label="Where the reply stands" className="space-y-2">
@@ -105,17 +105,17 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
             {reply.origin === "ai" && <Badge tone="violet"><Bot className="size-3" aria-hidden />AI-drafted</Badge>}
             <span className="text-[12px] text-muted">Version {reply.version}</span>
           </div>
-          <p className="text-[13px] leading-relaxed text-ink-2" role="status">{REPLY_STATUS_EXPLAIN[reply.status]}</p>
+          <p className="text-[14px] leading-relaxed text-ink-2" role="status">{REPLY_STATUS_EXPLAIN[reply.status]}</p>
           {reply.origin === "ai" && reply.ai && (
-            <p className="text-[12.5px] leading-relaxed text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Written by the AI assist for {reply.authorName ?? "a team member"}, who asked for it. A person still has to read it and approve it.{reply.ai.knowledgeSections.length ? ` It was given only your approved ${reply.ai.knowledgeSections.map((s) => KNOWLEDGE_TITLES[s] ?? s).join(", ")}.` : " It was given no business information, so it can only say thank you."}
             </p>
           )}
-          {reply.status === "approved" && reply.approvedByName && <p className="flex items-start gap-1.5 text-[12.5px] text-success-ink"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /><span>Approved by {reply.approvedByName} {reply.approvedAt && <RelativeTime iso={reply.approvedAt} timezone={timezone} />}. These exact words, and nothing else, can be posted.</span></p>}
-          {reply.status === "posted" && <p className="flex items-center gap-1.5 text-[12.5px] text-success-ink"><CheckCircle2 className="size-4" aria-hidden />{reply.postedVia === "person" ? "A person said they posted it themselves." : reply.verifiedAt ? `Posted, and ${siteName} shows it.` : `Posted. ${siteName} has not been asked to confirm it yet.`}</p>}
-          {reply.decisionNote && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{reply.decisionNote}</p>}
-          {reply.failureMessage && ["failed", "needs_reconciliation"].includes(reply.status) && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{reply.failureMessage}</p>}
-          {!open && <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[13.5px] leading-relaxed text-ink">{reply.body}</p>}
+          {reply.status === "approved" && reply.approvedByName && <p className="flex items-start gap-1.5 text-[13px] text-success-ink"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /><span>Approved by {reply.approvedByName} {reply.approvedAt && <RelativeTime iso={reply.approvedAt} timezone={timezone} />}. These exact words, and nothing else, can be posted.</span></p>}
+          {reply.status === "posted" && <p className="flex items-center gap-1.5 text-[13px] text-success-ink"><CheckCircle2 className="size-4" aria-hidden />{reply.postedVia === "person" ? "A person said they posted it themselves." : reply.verifiedAt ? `Posted, and ${siteName} shows it.` : `Posted. ${siteName} has not been asked to confirm it yet.`}</p>}
+          {reply.decisionNote && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{reply.decisionNote}</p>}
+          {reply.failureMessage && ["failed", "needs_reconciliation"].includes(reply.status) && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{reply.failureMessage}</p>}
+          {!open && <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[14px] leading-relaxed text-ink">{reply.body}</p>}
         </section>
       )}
 
@@ -126,12 +126,12 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
           </Field>
           <div id={`${bodyId}-rules`} aria-live="polite" className="space-y-1.5">
             {body.trim() !== "" && problems.length > 0 && (
-              <ul role="alert" className="list-disc space-y-1 rounded-xl bg-danger-soft py-2.5 pl-8 pr-3 text-[13px] text-danger-ink">
+              <ul role="alert" className="list-disc space-y-1 rounded-xl bg-danger-soft py-2.5 pl-8 pr-3 text-[14px] text-danger-ink">
                 {problems.map((p, i) => <li key={`${p.code}-${i}`}>{p.message}{p.term ? <> (<span className="font-mono text-[12px]">{p.term}</span>)</> : null}</li>)}
               </ul>
             )}
-            {warnings.length > 0 && <ul className="list-disc space-y-1 pl-5 text-[12.5px] text-warning-ink">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
-            {long && warnings.length === 0 && <p className="text-[12.5px] text-warning-ink">This is a long reply.</p>}
+            {warnings.length > 0 && <ul className="list-disc space-y-1 pl-5 text-[13px] text-warning-ink">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+            {long && warnings.length === 0 && <p className="text-[13px] text-warning-ink">This is a long reply.</p>}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {!open ? (
@@ -152,8 +152,8 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
         </div>
       )}
 
-      {open && !editing && <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[13.5px] leading-relaxed text-ink">{open.body}</p>}
-      {open && ab.note && <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />{ab.note}</p>}
+      {open && !editing && <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[14px] leading-relaxed text-ink">{open.body}</p>}
+      {open && ab.note && <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />{ab.note}</p>}
 
       {open && (ab.approve || ab.requestChanges || ab.reject || ab.post || ab.markPosted || ab.markNotPosted || ab.cancel) && (
         <div className="space-y-2 border-t border-line pt-4">
@@ -166,14 +166,14 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
             {ab.markNotPosted && <Button variant="secondary" onClick={() => setAsking("not_posted")}>It is not on {siteName}</Button>}
             {ab.cancel && <Button variant="ghost" onClick={() => setAsking("cancel")}>Cancel this reply</Button>}
           </div>
-          {open.status === "approved" && !ab.post && ab.markPosted && <p className="text-[12.5px] leading-relaxed text-muted">Posting from here is not available, so post the approved words on {siteName} yourself, then say so. That is recorded as your word; iAcquire doesn&apos;t check it.</p>}
+          {open.status === "approved" && !ab.post && ab.markPosted && <p className="text-[13px] leading-relaxed text-muted">Posting from here is not available, so post the approved words on {siteName} yourself, then say so. That is recorded as your word; iAcquire doesn&apos;t check it.</p>}
         </div>
       )}
 
       {reply && reply.events.length > 0 && (
         <section aria-label="History of this reply" className="space-y-1.5 border-t border-line pt-4">
-          <h3 className="text-[13px] font-semibold text-ink">History</h3>
-          <ol className="space-y-1 text-[12.5px] text-muted">
+          <h3 className="text-[14px] font-semibold text-ink">History</h3>
+          <ol className="space-y-1 text-[13px] text-muted">
             {reply.events.map((e) => (
               <li key={e.id}>{eventLabel(e.kind)}{e.actorName ? ` · ${e.actorName}` : e.actorKind === "ai" ? " · AI assist" : e.actorKind === "system" ? " · automatic" : ""} · <RelativeTime iso={e.at} timezone={timezone} /></li>
             ))}
@@ -183,7 +183,7 @@ export function ReplyEditor({ orgId, review, facts, enabled, timezone }: { orgId
 
       <ConfirmDialog open={asking === "post"} onOpenChange={(o) => !o && setAsking(null)} title={`Post this reply to ${siteName}?`} confirmLabel="Post reply" loading={busy("post")} onConfirm={post}
         description={`This posts the exact words below under ${review.connectionName}'s name, where anyone can read them. It can't be taken back from here.`}>
-        <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface-2/50 p-3 text-[13.5px] leading-relaxed text-ink">{open?.body}</p>
+        <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface-2/50 p-3 text-[14px] leading-relaxed text-ink">{open?.body}</p>
       </ConfirmDialog>
       <ConfirmDialog open={asking === "cancel"} onOpenChange={(o) => !o && setAsking(null)} title="Cancel this reply?" confirmLabel="Cancel reply" danger loading={busy("cancel")} onConfirm={cancel} description="The words are not posted and the draft is closed. You can start another reply to this review." />
       <ConfirmDialog open={asking === "reject"} onOpenChange={(o) => !o && setAsking(null)} title="Reject this reply?" confirmLabel="Reject" danger loading={busy("reject")} onConfirm={() => decide("reject")} description="It will not be posted. The person who wrote it is told." />

@@ -153,7 +153,7 @@ export default async function OperationsPreview({ searchParams }: { searchParams
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
       <PreviewTheme />
-      <div role="note" className="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-2.5 text-[12.5px] text-muted">
+      <div role="note" className="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-2.5 text-[13px] text-muted">
         Design preview with <strong>sample data</strong>. Nothing here is real, saved or sent. Views: <span className="inline-flex flex-wrap gap-x-3">{VIEWS.map((v) => <a key={v} href={`?view=${v}`} className="font-medium text-primary underline">{v}</a>)}</span>
       </div>
       {view === "incidents" && <IncidentsPanel incidents={SAMPLE_INCIDENTS} timeZone="UTC" canManage />}

@@ -125,16 +125,16 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
               <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-ink" aria-hidden><LifeBuoy className="size-4" /></span>
               <div className="min-w-0 flex-1">
                 <h2 id="aqi-support-title" className="text-[16px] font-semibold tracking-tight text-ink">{phase === "sent" ? "Your request has been sent" : "Prepare a support request"}</h2>
-                {phase !== "sent" && <p className="mt-1 text-[12.5px] leading-relaxed text-muted">I&apos;ve drafted this from our chat. Check it, change anything, then send it. Nothing is sent until you press <strong className="font-medium text-ink-2">Send</strong>.</p>}
+                {phase !== "sent" && <p className="mt-1 text-[13px] leading-relaxed text-muted">I&apos;ve drafted this from our chat. Check it, change anything, then send it. Nothing is sent until you press <strong className="font-medium text-ink-2">Send</strong>.</p>}
               </div>
             </div>
 
-            {phase === "loading" && <p role="status" className="mt-6 flex items-center justify-center gap-2 py-8 text-[13px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden /> Preparing your request…</p>}
+            {phase === "loading" && <p role="status" className="mt-6 flex items-center justify-center gap-2 py-8 text-[14px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden /> Preparing your request…</p>}
 
             {phase === "failed" && (
               <div className="mt-4 space-y-3">
-                <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</p>
-                <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onClose}>Close</Button><Link href="/support" className="inline-flex h-9 items-center rounded-xl border border-line px-3 text-[12.5px] font-medium hover:bg-surface-2">Open the Support page instead</Link></div>
+                <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[13px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</p>
+                <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onClose}>Close</Button><Link href="/support" className="inline-flex h-9 items-center rounded-xl border border-line px-3 text-[13px] font-medium hover:bg-surface-2">Open the Support page instead</Link></div>
               </div>
             )}
 
@@ -142,17 +142,17 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
               <div className="mt-4 space-y-4" role="status" aria-live="polite">
                 <div className="flex flex-col items-center rounded-xl border border-success/25 bg-success-soft/60 p-5 text-center">
                   <CheckCircle2 className="size-7 text-success-ink" aria-hidden />
-                  <p className="mt-2 text-[13.5px] text-ink-2">{result.existing ? "This request had already been sent, so nothing was duplicated." : "The iAcquire team has your request and will reply in the Support area."}</p>
-                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2"><span className="rounded-lg bg-surface px-2.5 py-1 font-mono text-[13px] font-semibold text-ink ring-1 ring-inset ring-line">{result.ref}</span><StatusPill status={result.status} tone="primary">Received</StatusPill></div>
-                  {result.expectation && <p className="mt-3 text-[12.5px] text-ink-2">{result.expectation}</p>}
+                  <p className="mt-2 text-[14px] text-ink-2">{result.existing ? "This request had already been sent, so nothing was duplicated." : "The iAcquire team has your request and will reply in the Support area."}</p>
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2"><span className="rounded-lg bg-surface px-2.5 py-1 font-mono text-[14px] font-semibold text-ink ring-1 ring-inset ring-line">{result.ref}</span><StatusPill status={result.status} tone="primary">Received</StatusPill></div>
+                  {result.expectation && <p className="mt-3 text-[13px] text-ink-2">{result.expectation}</p>}
                 </div>
-                <div className="flex flex-wrap gap-2"><Link href={`/support/${result.id}`} className="inline-flex h-9 items-center rounded-xl bg-primary px-3.5 text-[12.5px] font-semibold text-white hover:brightness-110" onClick={onClose}>View your request</Link><Button variant="ghost" onClick={onClose}>Done</Button></div>
+                <div className="flex flex-wrap gap-2"><Link href={`/support/${result.id}`} className="inline-flex h-9 items-center rounded-xl bg-primary px-3.5 text-[13px] font-semibold text-white hover:brightness-110" onClick={onClose}>View your request</Link><Button variant="ghost" onClick={onClose}>Done</Button></div>
               </div>
             )}
 
             {(phase === "edit" || phase === "sending") && draft && (
               <form className="mt-4 space-y-4" onSubmit={(e) => { e.preventDefault(); void send(); }} aria-busy={phase === "sending"}>
-                {error && <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] leading-relaxed text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> <span>{error}<span className="mt-1 block text-[12px] opacity-90">No request has been created.</span></span></p>}
+                {error && <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[13px] leading-relaxed text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> <span>{error}<span className="mt-1 block text-[12px] opacity-90">No request has been created.</span></span></p>}
                 <Field label="Subject" htmlFor="aqi-support-subject"><Input ref={subjectRef} id="aqi-support-subject" maxLength={160} value={subject} onChange={(e) => setSubject(e.target.value)} disabled={phase === "sending"} /></Field>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="This is a" htmlFor="aqi-support-type"><Select id="aqi-support-type" value={requestType} onChange={(e) => changeType(e.target.value as RequestType)} disabled={phase === "sending"}>{ASSISTANT_REQUEST_TYPES.map((t) => <option key={t} value={t}>{REQUEST_TYPE_LABELS[t].label}</option>)}</Select></Field>
@@ -164,30 +164,30 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                 </Field>
 
                 <fieldset className="rounded-xl border border-line bg-surface-2/50 p-3.5" disabled={phase === "sending"}>
-                  <legend className="px-1 text-[12.5px] font-semibold text-ink">What to share from our chat</legend>
-                  <label className="flex items-start gap-2.5 text-[13px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-1" checked={share} onChange={(e) => { setShare(e.target.checked); if (!e.target.checked) setConsent(false); }} /> <span><strong className="font-medium text-ink">Share my conversation with AQi.</strong> It helps the team see what you already tried.</span></label>
+                  <legend className="px-1 text-[13px] font-semibold text-ink">What to share from our chat</legend>
+                  <label className="flex items-start gap-2.5 text-[14px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-1" checked={share} onChange={(e) => { setShare(e.target.checked); if (!e.target.checked) setConsent(false); }} /> <span><strong className="font-medium text-ink">Share my conversation with AQi.</strong> It helps the team see what you already tried.</span></label>
                   {!share && <p className="mt-2 flex items-start gap-1.5 pl-6 text-[12px] text-muted"><ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Only the subject and description above will be sent. Nothing from our chat is shared.</p>}
                   {share && (
                     <div className="mt-3 space-y-3 pl-6">
                       <div>
                         <p className="text-[12px] font-medium text-ink-2">This is exactly what would be shared:</p>
-                        <ul className="mt-1.5 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-surface p-2.5 text-[12.5px] leading-relaxed" aria-label="Messages that would be shared">
+                        <ul className="mt-1.5 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-surface p-2.5 text-[13px] leading-relaxed" aria-label="Messages that would be shared">
                           {draft.excerpt.map((m, i) => <li key={i} className={cn("whitespace-pre-wrap break-words", m.role === "user" ? "text-ink" : "text-muted")}><strong className="font-medium">{m.role === "user" ? "Me" : "AQi"}:</strong> {m.text}</li>)}
                         </ul>
                         <p className="mt-1.5 text-[12px] text-muted">Plus the page you were on: <code className="rounded bg-surface-3 px-1 text-ink-2">{draft.pageContext}</code>. Passwords and keys are removed.</p>
                       </div>
-                      <label className="flex items-start gap-2.5 text-[12.5px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree to share these messages and this page with iAcquire support.</label>
+                      <label className="flex items-start gap-2.5 text-[13px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree to share these messages and this page with iAcquire support.</label>
                     </div>
                   )}
                 </fieldset>
 
                 <div>
-                  <p className="mb-1.5 text-[13px] font-medium text-ink-2">Attach files <span className="text-[12px] font-normal text-faint">Optional</span></p>
+                  <p className="mb-1.5 text-[14px] font-medium text-ink-2">Attach files <span className="text-[12px] font-normal text-faint">Optional</span></p>
                   <AttachmentPicker compact maxMb={draft.limits.maxMb} maxFiles={draft.limits.maxFiles} onChange={setFiles} disabled={phase === "sending"} />
                   <p className="mt-1.5 text-[12px] text-muted">Files from your AQi chat are never copied. Add only what you want the team to see.</p>
                 </div>
 
-                {draft.expectation && <p className="flex items-start gap-2 text-[12.5px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{draft.expectation}</p>}
+                {draft.expectation && <p className="flex items-start gap-2 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{draft.expectation}</p>}
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <Button type="submit" variant="brand" disabled={!canSend} loading={phase === "sending"}>{phase !== "sending" && <Send className="size-4" aria-hidden />} {phase === "sending" ? "Sending…" : "Send to iAcquire support"}</Button>

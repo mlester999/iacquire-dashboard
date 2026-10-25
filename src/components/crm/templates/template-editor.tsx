@@ -201,7 +201,7 @@ export function TemplateEditor(props: TemplateEditorProps) {
       }
       footer={
         <>
-          {dirty && <span className="mr-auto self-center text-[12.5px] text-warning-ink">Unsaved changes</span>}
+          {dirty && <span className="mr-auto self-center text-[13px] text-warning-ink">Unsaved changes</span>}
           <Button variant="secondary" onClick={onClose}>{dirty ? "Discard" : "Close"}</Button>
           {editable && (
             <Button loading={busy("save")} disabled={!dirty && !!id} onClick={save}>
@@ -212,9 +212,9 @@ export function TemplateEditor(props: TemplateEditorProps) {
       }
     >
       {loadError ? (
-        <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[13px] text-danger-ink">{loadError}</p>
+        <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[14px] text-danger-ink">{loadError}</p>
       ) : template && !detail ? (
-        <p className="flex items-center gap-2 text-[13px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Loading the template…</p>
+        <p className="flex items-center gap-2 text-[14px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Loading the template…</p>
       ) : (
         <div className="space-y-5">
           {detail && (
@@ -247,8 +247,8 @@ export function TemplateEditor(props: TemplateEditorProps) {
               {!canApprove && scope.agency && <span className="text-[12px] text-muted">Approving wording and test sends are done by the client&apos;s own team.</span>}
             </div>
           )}
-          {archived && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">This template is archived. It is never sent; restore it to edit or approve it again.</p>}
-          {!props.canManage && !archived && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">{scope.readOnly ? "This support session is read-only." : "Only owners and managers can change templates."}</p>}
+          {archived && <p className="rounded-xl bg-surface-2 p-3 text-[14px] text-muted">This template is archived. It is never sent; restore it to edit or approve it again.</p>}
+          {!props.canManage && !archived && <p className="rounded-xl bg-surface-2 p-3 text-[14px] text-muted">{scope.readOnly ? "This support session is read-only." : "Only owners and managers can change templates."}</p>}
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
             <div className="min-w-0 space-y-4">
@@ -256,7 +256,7 @@ export function TemplateEditor(props: TemplateEditorProps) {
                 <Input id="tpl-name" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={80} disabled={!editable} autoFocus={!template} />
               </Field>
               <div className="space-y-1.5">
-                <p className="text-[13px] font-medium text-ink-2" id="tpl-channel-l">Channel</p>
+                <p className="text-[14px] font-medium text-ink-2" id="tpl-channel-l">Channel</p>
                 <Segmented
                   id="tpl-channel"
                   ariaLabel="Channel"
@@ -270,12 +270,12 @@ export function TemplateEditor(props: TemplateEditorProps) {
                 {detail && form.channel !== base.channel && <p className="text-[12px] text-warning-ink">Changing the channel saves a new version{detail.status === "approved" ? " and needs approving again" : ""}.</p>}
               </div>
               <fieldset className="space-y-2" disabled={!editable}>
-                <legend className="text-[13px] font-medium text-ink-2">Purpose</legend>
+                <legend className="text-[14px] font-medium text-ink-2">Purpose</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(Object.keys(PURPOSE_INFO) as TemplatePurpose[]).map((p) => (
-                    <label key={p} className={cn("flex cursor-pointer gap-2.5 rounded-xl border p-3 text-[12.5px] leading-relaxed transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.purpose === p ? "border-primary/50 bg-primary-soft/40" : "border-line bg-surface hover:bg-surface-2")}>
+                    <label key={p} className={cn("flex cursor-pointer gap-2.5 rounded-xl border p-3 text-[13px] leading-relaxed transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.purpose === p ? "border-primary/50 bg-primary-soft/40" : "border-line bg-surface hover:bg-surface-2")}>
                       <input type="radio" name="tpl-purpose" value={p} checked={form.purpose === p} onChange={() => set("purpose", p)} className="mt-0.5 accent-[var(--color-primary)]" />
-                      <span><span className="block text-[13px] font-medium text-ink">{PURPOSE_INFO[p].label}</span><span className="text-muted">{PURPOSE_INFO[p].text}</span></span>
+                      <span><span className="block text-[14px] font-medium text-ink">{PURPOSE_INFO[p].label}</span><span className="text-muted">{PURPOSE_INFO[p].text}</span></span>
                     </label>
                   ))}
                 </div>
@@ -324,7 +324,7 @@ export function TemplateEditor(props: TemplateEditorProps) {
               )}
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label htmlFor="tpl-body" className="flex items-center gap-1.5 text-[13px] font-medium text-ink-2"><Icon className="size-3.5 text-muted" aria-hidden />Message</label>
+                  <label htmlFor="tpl-body" className="flex items-center gap-1.5 text-[14px] font-medium text-ink-2"><Icon className="size-3.5 text-muted" aria-hidden />Message</label>
                   <TokenPicker onPick={insertToken} disabled={!editable} />
                 </div>
                 <Textarea
@@ -362,7 +362,7 @@ export function TemplateEditor(props: TemplateEditorProps) {
                 <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-muted">Checks</p>
                 <ValidationList check={check} onFix={editable ? fix : undefined} />
               </div>
-              {saveError && <p role="alert" className="text-[12.5px] text-danger-ink">{saveError}</p>}
+              {saveError && <p role="alert" className="text-[13px] text-danger-ink">{saveError}</p>}
             </div>
 
             <div className="min-w-0 space-y-5">

@@ -138,7 +138,7 @@ export function AssistantPanel({
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
-        {stage === "thinking" && <p className="text-[12.5px] text-muted" role="status">Working out what to change…</p>}
+        {stage === "thinking" && <p className="text-[13px] text-muted" role="status">Working out what to change…</p>}
 
         {proposal && (
           <section aria-label="Suggested changes" className="space-y-3 rounded-xl border border-line bg-surface p-3">
@@ -150,13 +150,13 @@ export function AssistantPanel({
             </div>
             {proposal.note && <p className="rounded-lg bg-warning-soft p-2 text-[12px] leading-relaxed text-warning-ink">{proposal.note}</p>}
 
-            {proposal.plan.summary && dry && dry.applied.length > 0 && <p className="text-[13px] font-medium leading-snug">{proposal.plan.summary}</p>}
+            {proposal.plan.summary && dry && dry.applied.length > 0 && <p className="text-[14px] font-medium leading-snug">{proposal.plan.summary}</p>}
 
             {dry && dry.applied.length > 0 && (
               <>
                 <ul className="space-y-1.5" aria-label="What would change">
                   {dry.applied.map((line, i) => (
-                    <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden /><span>{line}</span></li>
+                    <li key={i} className="flex items-start gap-2 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden /><span>{line}</span></li>
                   ))}
                 </ul>
                 {diff && diff.summary.length > 0 && (
@@ -177,9 +177,9 @@ export function AssistantPanel({
             )}
 
             {dry && dry.applied.length === 0 && !proposal.plan.clarification && (
-              <p className="text-[12.5px] leading-relaxed text-ink-2">{proposal.plan.ops.length === 0 ? "There was nothing I could change for that." : "None of those changes could be made on this page."}</p>
+              <p className="text-[13px] leading-relaxed text-ink-2">{proposal.plan.ops.length === 0 ? "There was nothing I could change for that." : "None of those changes could be made on this page."}</p>
             )}
-            {proposal.plan.clarification && <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-ink-2"><Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> {proposal.plan.clarification}</p>}
+            {proposal.plan.clarification && <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-ink-2"><Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> {proposal.plan.clarification}</p>}
 
             {dry && dry.rejected.length > 0 && (
               <div className="rounded-lg bg-surface-2 p-2.5 text-[12px] leading-relaxed text-ink-2">
@@ -211,7 +211,7 @@ export function AssistantPanel({
 
         {stage === "applied" && done.length > 0 && (
           <section aria-label="Changes applied" className="space-y-2 rounded-xl border border-success/30 bg-success-soft p-3">
-            <p className="flex items-center gap-1.5 text-[13px] font-medium text-success-ink"><Check className="size-4" aria-hidden /> Applied {done.length} change{done.length === 1 ? "" : "s"}</p>
+            <p className="flex items-center gap-1.5 text-[14px] font-medium text-success-ink"><Check className="size-4" aria-hidden /> Applied {done.length} change{done.length === 1 ? "" : "s"}</p>
             <ul className="list-disc space-y-0.5 pl-5 text-[12px] text-ink-2">{done.slice(0, 8).map((l, i) => <li key={i}>{l}</li>)}</ul>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => { undo(); setStage("idle"); setDone([]); }}><Undo2 className="size-3.5" aria-hidden /> Undo these changes</Button>

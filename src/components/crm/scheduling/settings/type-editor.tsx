@@ -115,14 +115,14 @@ export function TypeEditor({ open, onOpenChange, scope, calendar, type, meeting 
             </Field>
           </div>
           <div className="space-y-2">
-            <p className="text-[13px] font-medium text-ink-2">Who attends</p>
+            <p className="text-[14px] font-medium text-ink-2">Who attends</p>
             <Segmented id={`${id}-cap`} ariaLabel="Who attends" value={form.group ? "group" : "one"} onChange={(v) => set("group", v === "group")} options={[{ value: "one", label: "One customer" }, { value: "group", label: "Group session" }]} />
             {form.group && (
               <Field label="Places per session" htmlFor={`${id}-capn`} error={err("capacity")} hint="Several customers can book the same time until it's full.">
                 <MinutesInput id={`${id}-capn`} value={form.capacity} onChange={(v) => set("capacity", v)} suffix="places" invalid={!!err("capacity")} />
               </Field>
             )}
-            {type && (type.capacity > 1) !== form.group && <p className="text-[12.5px] text-muted">If upcoming appointments use this type, switching between one customer and a group isn&apos;t allowed. Create a new type instead.</p>}
+            {type && (type.capacity > 1) !== form.group && <p className="text-[13px] text-muted">If upcoming appointments use this type, switching between one customer and a group isn&apos;t allowed. Create a new type instead.</p>}
           </div>
         </Section>
 
@@ -141,10 +141,10 @@ export function TypeEditor({ open, onOpenChange, scope, calendar, type, meeting 
           </div>
           {form.locationKind === "video" && (
             <fieldset className="space-y-2">
-              <legend className="text-[13px] font-medium text-ink-2">Meeting link</legend>
+              <legend className="text-[14px] font-medium text-ink-2">Meeting link</legend>
               <div className="grid gap-2 sm:grid-cols-2">
                 {PROVIDERS.map((p) => (
-                  <label key={p.value} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-[13px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.meetingProvider === p.value ? "border-primary bg-primary-soft/40 text-ink" : "border-line text-ink-2 hover:bg-surface-2")}>
+                  <label key={p.value} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-[14px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", form.meetingProvider === p.value ? "border-primary bg-primary-soft/40 text-ink" : "border-line text-ink-2 hover:bg-surface-2")}>
                     <input type="radio" name={`${id}-provider`} value={p.value} checked={form.meetingProvider === p.value} onChange={() => set("meetingProvider", p.value)} className="accent-primary" />
                     {p.label}
                   </label>
@@ -156,7 +156,7 @@ export function TypeEditor({ open, onOpenChange, scope, calendar, type, meeting 
                 </Field>
               )}
               {providerKey && (
-                <div className="flex gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[12.5px] leading-relaxed text-ink-2">
+                <div className="flex gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px] leading-relaxed text-ink-2">
                   <Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
                   <div className="min-w-0 space-y-1.5">
                     <p>
@@ -181,22 +181,22 @@ export function TypeEditor({ open, onOpenChange, scope, calendar, type, meeting 
 
         <Section title="Booking form" description="What customers fill in when they book.">
           <fieldset className="space-y-1">
-            <legend className="text-[13px] font-medium text-ink-2">Contact details required</legend>
+            <legend className="text-[14px] font-medium text-ink-2">Contact details required</legend>
             <div className="flex flex-wrap gap-x-5">
-              <label className="flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-8">
+              <label className="flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-8">
                 <input type="checkbox" className="size-4 accent-primary" checked={form.requireEmail} onChange={(e) => set("requireEmail", e.target.checked)} aria-invalid={!!err("contact") || undefined} />
                 Email address
               </label>
-              <label className="flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-8">
+              <label className="flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-8">
                 <input type="checkbox" className="size-4 accent-primary" checked={form.requirePhone} onChange={(e) => set("requirePhone", e.target.checked)} aria-invalid={!!err("contact") || undefined} />
                 Phone number
               </label>
             </div>
-            {err("contact") ? <p role="alert" className="text-[12.5px] text-danger-ink">{err("contact")}</p> : <p className="text-[12.5px] text-muted">At least one is required, so you can reach the person who booked.</p>}
+            {err("contact") ? <p role="alert" className="text-[13px] text-danger-ink">{err("contact")}</p> : <p className="text-[13px] text-muted">At least one is required, so you can reach the person who booked.</p>}
           </fieldset>
           <div className="space-y-2">
-            <p className="text-[13px] font-medium text-ink-2">Extra questions</p>
-            {err("questions") && <p role="alert" className="text-[12.5px] text-danger-ink">{err("questions")}</p>}
+            <p className="text-[14px] font-medium text-ink-2">Extra questions</p>
+            {err("questions") && <p role="alert" className="text-[13px] text-danger-ink">{err("questions")}</p>}
             <QuestionsBuilder idPrefix={`${id}-q`} value={form.questions} onChange={(q) => set("questions", q)} showErrors={tried} />
           </div>
         </Section>
@@ -230,8 +230,8 @@ function Section({ title, description, children }: { title: string; description?
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="text-[13px] font-semibold text-ink">{title}</h3>
-        {description && <p className="mt-0.5 text-[12.5px] text-muted">{description}</p>}
+        <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+        {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
       </div>
       {children}
     </section>
@@ -243,7 +243,7 @@ function MinutesInput({ id, value, onChange, suffix, invalid, placeholder }: { i
     <div className="relative">
       <Input id={id} type="text" inputMode="numeric" pattern="[0-9]*" value={value} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))} aria-invalid={invalid || undefined} placeholder={placeholder}
         className="pr-24" aria-describedby={`${id}-suffix`} />
-      <span id={`${id}-suffix`} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12.5px] text-faint">{suffix}</span>
+      <span id={`${id}-suffix`} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-faint">{suffix}</span>
     </div>
   );
 }

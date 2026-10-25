@@ -55,8 +55,8 @@ export function RunsList({ base, runs, filter, timezone, nextBefore, paged, work
               onClick={() => go({ status: f.value || null })}
               className={
                 filter === f.value
-                  ? "inline-flex min-h-11 shrink-0 items-center rounded-xl border border-primary/25 bg-primary-soft px-3 text-[13px] font-medium text-primary-ink sm:min-h-8"
-                  : "inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:min-h-8"
+                  ? "inline-flex min-h-11 shrink-0 items-center rounded-xl border border-primary/25 bg-primary-soft px-3 text-[14px] font-medium text-primary-ink sm:min-h-8"
+                  : "inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2 sm:min-h-8"
               }
             >
               {f.label}
@@ -92,18 +92,18 @@ export function RunsList({ base, runs, filter, timezone, nextBefore, paged, work
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <RunStatusBadge status={r.status} test={r.startedVia === "test"} />
-                      {showWorkflow && <span className="min-w-0 truncate text-[13.5px] font-medium text-ink">{r.workflowName}</span>}
-                      <span className="min-w-0 truncate text-[13px] text-ink-2">{r.contactName ?? (r.contactId ? "A contact" : "No contact")}</span>
+                      {showWorkflow && <span className="min-w-0 truncate text-[14px] font-medium text-ink">{r.workflowName}</span>}
+                      <span className="min-w-0 truncate text-[14px] text-ink-2">{r.contactName ?? (r.contactId ? "A contact" : "No contact")}</span>
                     </div>
-                    <p className="mt-1 text-[12.5px] text-muted">
+                    <p className="mt-1 text-[13px] text-muted">
                       {r.triggerLabel}
                       {r.version ? ` · v${r.version}` : ""} · started <RelativeTime iso={r.createdAt} timezone={timezone} />
                       {r.finishedAt ? <> · finished <RelativeTime iso={r.finishedAt} timezone={timezone} /></> : null}
                       {!r.finishedAt && r.currentStep ? ` · at “${r.currentStep}”` : ""}
                       {!r.finishedAt && r.status === "waiting" && r.nextRunAt ? ` · continues ${formatDateTime(r.nextRunAt, timezone)}` : ""}
                     </p>
-                    {r.outcome ? <p className="mt-1 line-clamp-2 text-[12.5px] text-warning-ink">{r.outcome}</p>
-                      : r.lastError && (r.status === "failed" || r.status === "dead") ? <p className="mt-1 line-clamp-2 text-[12.5px] text-danger-ink">{r.currentStep ? `${r.currentStep}: ` : ""}{r.lastError}</p> : null}
+                    {r.outcome ? <p className="mt-1 line-clamp-2 text-[13px] text-warning-ink">{r.outcome}</p>
+                      : r.lastError && (r.status === "failed" || r.status === "dead") ? <p className="mt-1 line-clamp-2 text-[13px] text-danger-ink">{r.currentStep ? `${r.currentStep}: ` : ""}{r.lastError}</p> : null}
                   </div>
                   <ChevronRight className="mt-1 size-4 shrink-0 text-faint" aria-hidden />
                 </Link>

@@ -48,7 +48,7 @@ export function CopyField({ value, label, id }: { value: string; label: string; 
         value={value}
         aria-label={label}
         onFocus={(e) => e.currentTarget.select()}
-        className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 font-mono text-[12.5px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9"
+        className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 font-mono text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9"
       />
       <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} size="icon-sm" />
     </div>
@@ -75,24 +75,24 @@ export function OneTimeSecret({ open, title, description, secret, note, onClose 
       footer={<Button onClick={onClose} disabled={!saved}>Done</Button>}
     >
       <div className="space-y-4">
-        <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-[12.5px] leading-relaxed text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-[13px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           {note}
         </p>
         <div>
-          <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink-2">Secret</label>
+          <label htmlFor={id} className="mb-1.5 block text-[14px] font-medium text-ink-2">Secret</label>
           <div className="flex min-w-0 items-center gap-2">
             <input
               id={id}
               readOnly
               value={secret}
               onFocus={(e) => e.currentTarget.select()}
-              className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface-2 px-3 font-mono text-[12.5px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface-2 px-3 font-mono text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <CopyButton value={secret} label="Copy" />
           </div>
         </div>
-        <label className={cn("flex items-start gap-2.5 rounded-xl border border-line p-3 text-[13px] leading-relaxed text-ink-2")}>
+        <label className={cn("flex items-start gap-2.5 rounded-xl border border-line p-3 text-[14px] leading-relaxed text-ink-2")}>
           <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
           <span>I&apos;ve stored it somewhere safe, such as my app&apos;s secret settings.</span>
         </label>

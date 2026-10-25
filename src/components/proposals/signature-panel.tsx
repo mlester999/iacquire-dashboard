@@ -26,7 +26,7 @@ function ConnectionLine({ detail }: { detail: ProposalDetail }) {
   const c = detail.signature.connection;
   if (!c) {
     return (
-      <p className="text-[13.5px] text-ink-2">
+      <p className="text-[14px] text-ink-2">
         No signing service is connected.{" "}
         {detail.signature.canConnect
           ? <>Connect one in the <Link href="/proposals/settings" className="font-medium text-primary-ink underline">proposal settings</Link>.</>
@@ -42,8 +42,8 @@ function ConnectionLine({ detail }: { detail: ProposalDetail }) {
         {c.mode === "sandbox" && <Badge tone="outline">Sandbox</Badge>}
         {c.mode === "simulated" && <Badge tone="violet">Simulated</Badge>}
       </div>
-      {c.statusDetail && c.status !== "connected" && <p className="text-[13px] text-warning-ink">{c.statusDetail}</p>}
-      {c.notice && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{c.notice}</p>}
+      {c.statusDetail && c.status !== "connected" && <p className="text-[14px] text-warning-ink">{c.statusDetail}</p>}
+      {c.notice && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2">{c.notice}</p>}
     </div>
   );
 }
@@ -71,7 +71,7 @@ function AskForm({ detail }: { detail: ProposalDetail }) {
       <Button type="submit" variant="brand" loading={busy("ask")} disabled={!name.trim() || !email.trim()}>
         <FileSignature className="size-4" aria-hidden />Ask for a signature
       </Button>
-      <p className="text-[12.5px] leading-relaxed text-muted">
+      <p className="text-[13px] leading-relaxed text-muted">
         {label} emails the signer a link to sign version {detail.version} of the proposal. iAcquire does not send that email. Signing there is how the proposal is accepted: it is marked accepted only when {label} reports the signature.
       </p>
     </form>
@@ -87,11 +87,11 @@ function RequestItem({ r, tz, simulated }: { r: RequestView; tz: string; simulat
     <li className="space-y-2 rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={STATUS_TONE[r.status]}>{r.statusLabel}</Badge>
-        <span className="text-[13px] text-muted">Version {r.proposalVersion}{r.current ? "" : " (an older version)"}</span>
+        <span className="text-[14px] text-muted">Version {r.proposalVersion}{r.current ? "" : " (an older version)"}</span>
         {r.mode === "simulated" && <Badge tone="violet">Simulated</Badge>}
       </div>
-      <p className="text-[13.5px] text-ink-2">{r.explain}</p>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">
+      <p className="text-[14px] text-ink-2">{r.explain}</p>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[14px]">
         <dt className="text-muted">Asked to sign</dt><dd className="min-w-0 break-words text-ink-2">{r.signerName}, {r.signerEmail}</dd>
         <dt className="text-muted">Asked</dt><dd className="text-ink-2">{whenIn(r.createdAt, tz)}</dd>
         {r.sentAt && <><dt className="text-muted">Sent by {r.providerLabel}</dt><dd className="text-ink-2">{whenIn(r.sentAt, tz)}</dd></>}
@@ -99,11 +99,11 @@ function RequestItem({ r, tz, simulated }: { r: RequestView; tz: string; simulat
       </dl>
       {r.status === "completed" && (
         r.applied
-          ? <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-[13px] text-success-ink">The signature was applied: the proposal is accepted.</p>
-          : r.notAppliedText && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{r.notAppliedText}</p>
+          ? <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-[14px] text-success-ink">The signature was applied: the proposal is accepted.</p>
+          : r.notAppliedText && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{r.notAppliedText}</p>
       )}
       {r.status === "completed" && (
-        <p className="text-[13px] text-ink-2">
+        <p className="text-[14px] text-ink-2">
           {r.signedFileId
             ? <>Signed copy stored. <a href={`/api/files/${r.signedFileId}`} download className="font-medium text-primary-ink underline">Download{" "}<span className="sr-only">the signed copy</span></a>
                 {r.certificateFileId && <> · <a href={`/api/files/${r.certificateFileId}`} download className="font-medium text-primary-ink underline">Download{" "}<span className="sr-only">the completion certificate</span></a></>}</>
@@ -111,14 +111,14 @@ function RequestItem({ r, tz, simulated }: { r: RequestView; tz: string; simulat
               : `The signature is recorded. The signed copy has not been fetched from ${r.providerLabel} yet; this is tried again automatically.`}
         </p>
       )}
-      {r.status === "failed" && r.lastError && <p className="text-[13px] text-danger-ink">{r.lastError}</p>}
-      {r.status === "voided" || r.status === "superseded" ? (r.voidReason && <p className="text-[13px] text-muted">{r.voidReason}</p>) : null}
-      {r.cancelNote && <p className="text-[13px] text-muted">{r.cancelNote}</p>}
+      {r.status === "failed" && r.lastError && <p className="text-[14px] text-danger-ink">{r.lastError}</p>}
+      {r.status === "voided" || r.status === "superseded" ? (r.voidReason && <p className="text-[14px] text-muted">{r.voidReason}</p>) : null}
+      {r.cancelNote && <p className="text-[14px] text-muted">{r.cancelNote}</p>}
       {r.canVoid && live && <div><Button variant="outline" size="sm" onClick={() => setConfirm(true)}>Withdraw this request</Button></div>}
       {simulated && r.mode === "simulated" && live && (
         <div className="space-y-2 rounded-xl border border-dashed border-line px-3 py-2.5">
-          <p className="text-[12.5px] font-medium text-ink-2">Simulated signing service (testing only)</p>
-          <p className="text-[12.5px] text-muted">Nothing real is sent. These play the signer at the stand-in service; what comes back goes through the same signed notice a real service uses.</p>
+          <p className="text-[13px] font-medium text-ink-2">Simulated signing service (testing only)</p>
+          <p className="text-[13px] text-muted">Nothing real is sent. These play the signer at the stand-in service; what comes back goes through the same signed notice a real service uses.</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" loading={busy("sim-send_now")} onClick={() => sim("send_now", "Handed over.")}>Hand it over now</Button>
             <Button variant="secondary" size="sm" loading={busy("sim-view")} onClick={() => sim("view", "The signer opened it.")}>Signer opens it</Button>
@@ -129,7 +129,7 @@ function RequestItem({ r, tz, simulated }: { r: RequestView; tz: string; simulat
         </div>
       )}
       {r.events.length > 0 && (
-        <details className="rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+        <details className="rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
           <summary className="min-h-11 cursor-pointer font-medium text-ink sm:min-h-8">History ({r.events.length})</summary>
           <ul className="mt-2 space-y-1.5">
             {r.events.map((e) => (
@@ -156,7 +156,7 @@ export function SignaturePanel({ detail, tz }: { detail: ProposalDetail; tz: str
     <div className="space-y-6">
       <section aria-label="Signing service" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">Signing service</h2>
-        {sig.enabled ? <ConnectionLine detail={detail} /> : <p className="text-[13.5px] text-ink-2">{sig.blocked}</p>}
+        {sig.enabled ? <ConnectionLine detail={detail} /> : <p className="text-[14px] text-ink-2">{sig.blocked}</p>}
       </section>
 
       {/* Until signing is switched on there is nothing to ask for, and the section above has already said so. */}
@@ -164,14 +164,14 @@ export function SignaturePanel({ detail, tz }: { detail: ProposalDetail; tz: str
         <section aria-label="Ask the customer to sign" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
           <h2 className="text-[15px] font-semibold text-ink">Ask the customer to sign</h2>
           {!asks ? (
-            <p className="text-[13.5px] text-ink-2">This proposal doesn&apos;t ask for a signature. To ask for one, turn it on in the editor and send a new version.</p>
+            <p className="text-[14px] text-ink-2">This proposal doesn&apos;t ask for a signature. To ask for one, turn it on in the editor and send a new version.</p>
           ) : sig.canRequest ? (
             <AskForm detail={detail} />
           ) : (
-            <p role="status" className="text-[13.5px] text-ink-2">{sig.blocked ?? "Only someone who can send proposals can ask for a signature."}</p>
+            <p role="status" className="text-[14px] text-ink-2">{sig.blocked ?? "Only someone who can send proposals can ask for a signature."}</p>
           )}
           {asks && !sig.canRequest && sig.blocked && detail.status === "sent" && (
-            <p className="text-[12.5px] text-muted">If the customer signs on paper or in person, the owner or a manager can record it as their own word under &ldquo;Record the customer&apos;s answer&rdquo; above. That is not verified by anyone.</p>
+            <p className="text-[13px] text-muted">If the customer signs on paper or in person, the owner or a manager can record it as their own word under &ldquo;Record the customer&apos;s answer&rdquo; above. That is not verified by anyone.</p>
           )}
         </section>
       )}
@@ -179,7 +179,7 @@ export function SignaturePanel({ detail, tz }: { detail: ProposalDetail; tz: str
       <section aria-label="Signing requests" className="space-y-3">
         <h2 className="text-[15px] font-semibold text-ink">Requests</h2>
         {sig.requests.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13.5px] text-muted">No signing request has been made for this proposal.</p>
+          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[14px] text-muted">No signing request has been made for this proposal.</p>
         ) : (
           <ul className="space-y-3">{sig.requests.map((r) => <RequestItem key={r.id} r={r} tz={tz} simulated={sig.simulated} />)}</ul>
         )}

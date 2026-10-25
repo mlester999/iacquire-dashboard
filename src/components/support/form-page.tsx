@@ -59,8 +59,8 @@ export async function SupportFormPage({ kind, searchParams }: { kind: RequestTyp
         <PageHero eyebrow={hero.eyebrow} title={hero.title} description={hero.description} icon={hero.icon} tone="blue" />
         <Card className="p-6" role="status">
           <h2 className="text-[15px] font-semibold tracking-tight text-ink">Request a Change isn&apos;t switched on for your workspace yet</h2>
-          <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-muted">{REQUEST_CHANGES_NOT_ENABLED_MESSAGE}</p>
-          <Link href="/support" className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-primary-ink hover:underline">Get support <ArrowRight className="size-3" aria-hidden /></Link>
+          <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-muted">{REQUEST_CHANGES_NOT_ENABLED_MESSAGE}</p>
+          <Link href="/support" className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-primary-ink hover:underline">Get support <ArrowRight className="size-3" aria-hidden /></Link>
         </Card>
       </div>
     );
@@ -93,7 +93,7 @@ export async function SupportFormPage({ kind, searchParams }: { kind: RequestTyp
               {STEPS[kind].map((s, i) => (
                 <li key={s.title} className="flex gap-3">
                   <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-ink" aria-hidden>{s.icon}</span>
-                  <div className="min-w-0"><p className="text-[13.5px] font-semibold text-ink">{i + 1}. {s.title}</p><p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{s.text}</p></div>
+                  <div className="min-w-0"><p className="text-[14px] font-semibold text-ink">{i + 1}. {s.title}</p><p className="mt-0.5 text-[13px] leading-relaxed text-muted">{s.text}</p></div>
                 </li>
               ))}
             </ol>
@@ -102,17 +102,17 @@ export async function SupportFormPage({ kind, searchParams }: { kind: RequestTyp
           <Card className="p-5" data-aqi-target={kind === "support" ? "support.ticket-list" : undefined}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[15px] font-semibold tracking-tight text-ink">Your recent requests</h2>
-              <Link href="/support/requests" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-primary-ink hover:underline">View all <ArrowRight className="size-3" aria-hidden /></Link>
+              <Link href="/support/requests" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">View all <ArrowRight className="size-3" aria-hidden /></Link>
             </div>
             {recent.items.length === 0 ? (
-              <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted"><Inbox className="mt-0.5 size-4 shrink-0" aria-hidden /> Nothing yet. Requests you send will appear here.</p>
+              <p className="mt-3 flex items-start gap-2 text-[14px] leading-relaxed text-muted"><Inbox className="mt-0.5 size-4 shrink-0" aria-hidden /> Nothing yet. Requests you send will appear here.</p>
             ) : (
               <ul className="mt-3 divide-y divide-line">
                 {recent.items.map((r) => (
                   <li key={r.id}>
                     <Link href={`/support/${r.id}`} className="block rounded-lg py-2.5 hover:bg-surface-2/60 focus-visible:outline-2 focus-visible:outline-primary">
                       <div className="flex items-center gap-2"><span className="font-mono text-[12px] text-muted">{r.ref}</span><StatusPill size="sm" status={r.status}>{statusLabelForClient(r.status, r.requestType, r.feedbackStage as FeedbackStage | null)}</StatusPill>{r.hasUnreadReply && <span role="img" className="size-2 rounded-full bg-primary" aria-label="New reply" />}</div>
-                      <p className="mt-1 line-clamp-1 text-[13px] font-medium text-ink">{r.subject}</p>
+                      <p className="mt-1 line-clamp-1 text-[14px] font-medium text-ink">{r.subject}</p>
                       <p className="text-[12px] text-muted"><span suppressHydrationWarning>{REQUEST_TYPE_LABELS[r.requestType].label} · {relativeTime(r.lastActivityAt)}</span></p>
                     </Link>
                   </li>
@@ -123,7 +123,7 @@ export async function SupportFormPage({ kind, searchParams }: { kind: RequestTyp
 
           <Card className="p-5">
             <h2 className="text-[15px] font-semibold tracking-tight text-ink">Something else?</h2>
-            <ul className="mt-3 space-y-1.5 text-[13px]">
+            <ul className="mt-3 space-y-1.5 text-[14px]">
               {others.map((k) => (
                 <li key={k}><Link href={href[k]} className="inline-flex items-center gap-1.5 font-medium text-primary-ink hover:underline">{linkLabel[k]} <ArrowRight className="size-3" aria-hidden /></Link></li>
               ))}

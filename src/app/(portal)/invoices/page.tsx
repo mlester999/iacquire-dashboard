@@ -24,7 +24,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   ]);
   const canCreate = ctx.can("invoices.create");
   const newLink = canCreate ? (
-    <Link href="/invoices/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13.5px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New invoice</Link>
+    <Link href="/invoices/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[14px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New invoice</Link>
   ) : undefined;
   return (
     <div className="space-y-5">

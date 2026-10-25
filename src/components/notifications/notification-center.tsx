@@ -173,7 +173,7 @@ export function NotificationCenter({
                   animate={{ scale: 1 }}
                   exit={{ scale: 0.6 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b42328] px-1 text-[12px] leading-none font-bold tabular-nums text-white ring-2 ring-bg"
+                  className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b42328] px-1 text-[12px] leading-none font-bold tabular-nums text-white ring-2 ring-bg"
                 >
                   {unreadLabel}
                 </motion.span>
@@ -205,7 +205,7 @@ export function NotificationCenter({
                 onClick={() => void markAll()}
                 disabled={!unread || markingAll}
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:text-faint"
-                aria-label="Mark all notifications as read"
+                aria-label="Mark all read"
               >
                 <CheckCheck className={cn("size-3.5", markingAll && "animate-pulse")} aria-hidden />
                 <span className="hidden min-[380px]:inline">Mark all read</span>
@@ -272,7 +272,7 @@ export function NotificationCenter({
                 <span className="mx-auto grid size-10 place-items-center rounded-xl bg-danger-soft text-danger-ink">
                   <AlertTriangle className="size-4" aria-hidden />
                 </span>
-                <p className="mt-3 text-[13px] font-semibold text-ink">Couldn&apos;t load notifications</p>
+                <p className="mt-3 text-[14px] font-semibold text-ink">Couldn&apos;t load notifications</p>
                 <p className="mt-1 text-[12px] leading-relaxed text-muted">{error}</p>
                 <button
                   type="button"

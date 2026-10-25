@@ -68,7 +68,7 @@ function RenameForm({ view, onChanged }: { view: ConversationView; onChanged: ()
         </Field>
       )}
       {problem && (
-        <p role="alert" className="text-[12.5px] text-danger-ink">
+        <p role="alert" className="text-[13px] text-danger-ink">
           {problem.text}
           {problem.conflict && <> The latest values are shown now; make your change again if it is still needed.</>}
         </p>
@@ -121,8 +121,8 @@ export function DetailsPanel({ open, onOpenChange, view, selfId, timeZone, onCha
       <Sheet open={open} onOpenChange={onOpenChange} side="right" title={c.kind === "direct" ? "Conversation details" : `Details: ${c.kind === "channel" ? "#" : ""}${c.name}`} description={headerSubtitle({ kind: c.kind, topic: c.topic, memberCount: view.memberCount, archived: c.archived })}>
         <Section id="details-about" title="About">
           <p className="text-[14px] text-ink">{kindLabel}</p>
-          {c.kind !== "direct" && view.can.rename ? <RenameForm key={`${c.name}|${c.topic ?? ""}`} view={view} onChanged={onChanged} /> : c.topic ? <p className="text-[13.5px] leading-relaxed text-ink-2">{c.topic}</p> : null}
-          {c.kind === "direct" && <p className="text-[13px] text-muted">Only the two of you can read this conversation. A direct message can be muted but not left.</p>}
+          {c.kind !== "direct" && view.can.rename ? <RenameForm key={`${c.name}|${c.topic ?? ""}`} view={view} onChanged={onChanged} /> : c.topic ? <p className="text-[14px] leading-relaxed text-ink-2">{c.topic}</p> : null}
+          {c.kind === "direct" && <p className="text-[14px] text-muted">Only the two of you can read this conversation. A direct message can be muted but not left.</p>}
         </Section>
 
         {c.memberRole && (
@@ -161,7 +161,7 @@ export function DetailsPanel({ open, onOpenChange, view, selfId, timeZone, onCha
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-muted">{pluralize(view.memberCount, "person", "people")}. Join to see who they are.</p>
+            <p className="text-[14px] text-muted">{pluralize(view.memberCount, "person", "people")}. Join to see who they are.</p>
           )}
           {view.can.manageMembers && (
             <Button variant="soft" size="sm" onClick={onAddPeople}>
@@ -174,7 +174,7 @@ export function DetailsPanel({ open, onOpenChange, view, selfId, timeZone, onCha
           <Section id="details-activity" title="Recent changes">
             <ol className="space-y-2">
               {[...view.events].reverse().slice(0, 12).map((event, i) => (
-                <li key={`${event.at}-${i}`} className="text-[13px] text-ink-2">
+                <li key={`${event.at}-${i}`} className="text-[14px] text-ink-2">
                   {eventText(event.kind, nameOf(event.actor), event.subject ? nameOf(event.subject) : null)}
                   <time dateTime={event.at} className="ml-2 text-[12px] text-muted">{formatDateTime(event.at, timeZone)}</time>
                 </li>

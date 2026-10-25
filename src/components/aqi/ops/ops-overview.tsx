@@ -47,7 +47,7 @@ export function OpsOverviewPanel({ initial, initialError }: { initial: OpsOvervi
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="ops-overview-heading" className="text-[17px] font-semibold tracking-[-0.025em] text-ink">Operations overview</h2>
-          <p className="mt-1 text-[13px] text-muted">
+          <p className="mt-1 text-[14px] text-muted">
             {data ? <>Read from recorded system state at <time dateTime={data.generatedAt} suppressHydrationWarning>{new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time> in {data.durationMs} ms. It does not update by itself.</> : "Real figures from the platform, with the source of each."}
           </p>
         </div>
@@ -56,7 +56,7 @@ export function OpsOverviewPanel({ initial, initialError }: { initial: OpsOvervi
         </Button>
       </div>
       {error && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2.5 text-[13px] text-danger-ink" role="alert">
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-danger/25 bg-danger-soft/50 px-3 py-2.5 text-[14px] text-danger-ink" role="alert">
           <TriangleAlert className="size-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1">{error} The figures below, if any, may be out of date.</span>
           {!data && <Button size="sm" variant="secondary" onClick={() => void refresh()}>Try again</Button>}
         </div>
@@ -67,12 +67,12 @@ export function OpsOverviewPanel({ initial, initialError }: { initial: OpsOvervi
             {data.tiles.map((t) => (
               <li key={t.key} className={cn("relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-soft before:absolute before:inset-y-0 before:left-0 before:w-1", tileAccent[t.state])}>
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="min-w-0 text-[12.5px] font-medium text-muted">{t.label}</h3>
+                  <h3 className="min-w-0 text-[13px] font-medium text-muted">{t.label}</h3>
                   <OpsStatePill state={t.state} size="sm" />
                 </div>
                 <p className="mt-2 text-[20px] font-semibold leading-tight tracking-[-0.03em] text-ink">{t.headline}</p>
-                <p className="mt-1 flex-1 text-[12.5px] leading-relaxed text-muted">{t.detail}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
+                <p className="mt-1 flex-1 text-[13px] leading-relaxed text-muted">{t.detail}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
                   <Link href={t.href} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-line px-2 font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">Open<ArrowUpRight className="size-3" aria-hidden /></Link>
                   <button type="button" onClick={() => ask(t.ask)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-medium text-primary-ink hover:bg-primary-soft">
                     <MessageCircleQuestion className="size-3.5" aria-hidden />Ask AQi
@@ -82,7 +82,7 @@ export function OpsOverviewPanel({ initial, initialError }: { initial: OpsOvervi
             ))}
           </ul>
           {data.notConfigured.length > 0 && (
-            <details className="mt-3 rounded-xl border border-line bg-surface-2/50 px-3 py-2.5 text-[12.5px] text-muted">
+            <details className="mt-3 rounded-xl border border-line bg-surface-2/50 px-3 py-2.5 text-[13px] text-muted">
               <summary className="flex cursor-pointer select-none items-center gap-2 font-medium text-ink-2"><Plug className="size-3.5" aria-hidden />Not measured in this deployment ({data.notConfigured.length})</summary>
               <ul className="mt-2 space-y-1.5">
                 {data.notConfigured.map((n) => <li key={n.label}><span className="font-medium text-ink-2">{n.label}.</span> Needs: {n.needs}</li>)}

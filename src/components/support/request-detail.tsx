@@ -140,7 +140,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
 
   return (
     <div className="mx-auto min-w-0 max-w-3xl space-y-5">
-      <Link href="/support/requests" className="inline-flex h-10 items-center gap-1.5 rounded-lg pr-2 text-[13px] font-medium text-muted transition hover:text-ink">
+      <Link href="/support/requests" className="inline-flex h-10 items-center gap-1.5 rounded-lg pr-2 text-[14px] font-medium text-muted transition hover:text-ink">
         <ArrowLeft className="size-3.5" aria-hidden /> My Requests
       </Link>
 
@@ -166,12 +166,12 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
         </div>
         <Notice className="mt-5" tone={progressTone} icon={<ProgressIcon />} role="status">
           {progress}
-          {detail.expectation && <span className="mt-1 block text-[12.5px] text-muted">{detail.expectation}</span>}
+          {detail.expectation && <span className="mt-1 block text-[13px] text-muted">{detail.expectation}</span>}
         </Notice>
         {t.status === "resolved" && (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-success/25 bg-success-soft/60 p-3.5">
             <CheckCircle2 className="size-5 shrink-0 text-success-ink" aria-hidden />
-            <p className="min-w-0 flex-1 text-[13.5px] text-ink-2">Marked resolved{t.resolvedAt ? ` on ${formatDateTime(t.resolvedAt, timeZone)}` : ""}. {detail.canReopen ? `If it isn't sorted, you can reopen it for ${detail.reopenWindowDays} days.` : ""}</p>
+            <p className="min-w-0 flex-1 text-[14px] text-ink-2">Marked resolved{t.resolvedAt ? ` on ${formatDateTime(t.resolvedAt, timeZone)}` : ""}. {detail.canReopen ? `If it isn't sorted, you can reopen it for ${detail.reopenWindowDays} days.` : ""}</p>
             {detail.canReopen && <Button type="button" variant="secondary" size="sm" onClick={() => setReopenOpen(true)}><RotateCcw className="size-3.5" aria-hidden /> Reopen</Button>}
           </div>
         )}
@@ -182,12 +182,12 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
       {detail.linkedChange && (
         <Card className="p-5" role="region" aria-labelledby="linked-change-title">
           <h2 id="linked-change-title" className="text-[15px] font-semibold tracking-tight text-ink">Also on your project&apos;s change list</h2>
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-[13.5px] text-ink-2">
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-[14px] text-ink-2">
             <span className="font-mono text-[12px] text-muted">{detail.linkedChange.ref}</span> {detail.linkedChange.title}
             <StatusPill size="sm" tone={detail.linkedChange.status === "quoted" ? "warning" : detail.linkedChange.status === "accepted" || detail.linkedChange.status === "applied" ? "success" : detail.linkedChange.status === "declined" || detail.linkedChange.status === "withdrawn" ? "neutral" : "primary"}>{CHANGE_ORDER_STATUS_LABEL[detail.linkedChange.status as ChangeOrderStatus] ?? detail.linkedChange.status}</StatusPill>
           </p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">On {detail.linkedChange.projectRef} · {detail.linkedChange.projectTitle}. A quote, if the team sends one, waits there for the owner&apos;s decision.</p>
-          <Link href={`/projects/${detail.linkedChange.projectId}#project-changes`} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">Open the project&apos;s change requests</Link>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">On {detail.linkedChange.projectRef} · {detail.linkedChange.projectTitle}. A quote, if the team sends one, waits there for the owner&apos;s decision.</p>
+          <Link href={`/projects/${detail.linkedChange.projectId}#project-changes`} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[14px] font-medium text-primary-ink hover:underline">Open the project&apos;s change requests</Link>
         </Card>
       )}
 
@@ -222,7 +222,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
             </div>
           </div>
         ) : (
-          <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2/70 px-4 py-3.5 text-[13px] leading-relaxed text-ink-2">
+          <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2/70 px-4 py-3.5 text-[14px] leading-relaxed text-ink-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-surface-3 text-muted" aria-hidden><Lock className="size-4" /></span>
             <div className="min-w-0 flex-1 pt-1">
               <p>{detail.replyBlockedReason}</p>
@@ -235,7 +235,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
       {t.diagnostics && (
         <Card className="p-5">
           <div className="flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-xl bg-surface-2 text-ink-2" aria-hidden><ShieldCheck className="size-4" /></span><h2 className="text-[15px] font-semibold tracking-tight text-ink">Technical details you shared</h2></div>
-          <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-[auto_minmax(0,1fr)]">
+          <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[14px] sm:grid-cols-[auto_minmax(0,1fr)]">
             {describeDiagnostics(t.diagnostics).map((r) => (<React.Fragment key={r.label}><dt className="text-muted">{r.label}</dt><dd className="min-w-0 break-words font-medium text-ink">{r.value}</dd></React.Fragment>))}
           </dl>
         </Card>
@@ -257,7 +257,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
 
       <Dialog open={reopenOpen} onOpenChange={setReopenOpen} title="Reopen this request?" icon={<RotateCcw />} size="sm" description="The iAcquire team will be told, and the request goes back to their queue."
         footer={<><Button variant="secondary" onClick={() => setReopenOpen(false)}>Cancel</Button><Button variant="brand" loading={reopening} onClick={() => void reopen()}>Reopen request</Button></>}>
-        <label htmlFor="reopen-note" className="text-[13px] font-medium text-ink-2">What&apos;s still not right? <span className="text-[12px] font-normal text-faint">Optional</span></label>
+        <label htmlFor="reopen-note" className="text-[14px] font-medium text-ink-2">What&apos;s still not right? <span className="text-[12px] font-normal text-faint">Optional</span></label>
         <Textarea id="reopen-note" className="mt-1.5" rows={3} maxLength={1000} value={reopenNote} onChange={(e) => setReopenNote(e.target.value)} placeholder="A sentence or two helps the team pick up where they left off." />
       </Dialog>
     </div>

@@ -142,7 +142,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                     aria-pressed={active}
                     onClick={() => setState(k)}
                     className={cn(
-                      "inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-200",
+                      "inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-colors duration-200",
                       active ? "bg-ink text-surface shadow-soft" : "text-ink-2 hover:bg-surface-3/70",
                     )}
                   >
@@ -166,7 +166,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                 aria-pressed={needs[k]}
                 onClick={() => setNeeds({ ...needs, [k]: !needs[k] })}
                 className={cn(
-                  "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium ring-1 ring-inset transition-colors duration-200",
+                  "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium ring-1 ring-inset transition-colors duration-200",
                   needs[k] ? "bg-primary-soft text-primary-ink ring-primary/25" : "bg-surface text-muted ring-line-strong hover:text-ink",
                 )}
               >
@@ -176,11 +176,11 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
               </button>
             ))}
             {filtering && (
-              <button type="button" onClick={reset} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12.5px] text-muted hover:text-ink">
+              <button type="button" onClick={reset} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[13px] text-muted hover:text-ink">
                 <X className="size-3.5" /> Clear
               </button>
             )}
-            <span className="ml-1 whitespace-nowrap text-[12.5px] tabular-nums text-muted" aria-live="polite">
+            <span className="ml-1 whitespace-nowrap text-[13px] tabular-nums text-muted" aria-live="polite">
               {list.length} of {rows.length}
             </span>
           </div>
@@ -194,7 +194,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
             title="No clients match"
             description="Try a different search or clear the filters."
             action={
-              <button type="button" onClick={reset} className="text-[13.5px] font-medium text-primary hover:underline">
+              <button type="button" onClick={reset} className="text-[14px] font-medium text-primary hover:underline">
                 Clear filters
               </button>
             }
@@ -205,7 +205,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           {/* Desktop table */}
           <Card className={cn("overflow-hidden", view === "table" ? "hidden md:block" : "hidden")}>
             <div className="scrollbar-thin overflow-x-auto">
-              <table className="workspace-table w-full min-w-[960px] text-left text-[13px]">
+              <table className="workspace-table w-full min-w-[960px] text-left text-[14px]">
                 <thead className="border-b border-line bg-surface-2/60">
                   <tr>
                     <th scope="col" className="px-4 py-3.5 font-semibold">Company</th>
@@ -308,12 +308,12 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
 }
 
 function SetupCell({ r }: { r: ClientSetupRow }) {
-  if (!r.setup.started) return <span className="text-[12.5px] text-faint">Checklist not started</span>;
-  if (r.setup.percent === null) return <span className="text-[12.5px] text-faint">No required steps</span>;
+  if (!r.setup.started) return <span className="text-[13px] text-faint">Checklist not started</span>;
+  if (r.setup.percent === null) return <span className="text-[13px] text-faint">No required steps</span>;
   return (
     <div className="flex min-w-[140px] items-center gap-2">
       <ProgressBar value={r.setup.percent} tone={r.setup.percent === 100 ? "success" : "primary"} className="h-2 min-w-12 flex-1" label={`${r.name} setup progress`} />
-      <span className="shrink-0 whitespace-nowrap text-right text-[12.5px] tabular-nums text-ink-2">
+      <span className="shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-ink-2">
         <span className="font-semibold">{r.setup.percent}%</span> <span className="text-faint">· {r.setup.completed}/{r.setup.total}</span>
       </span>
     </div>

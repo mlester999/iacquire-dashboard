@@ -95,7 +95,7 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-semibold">{section.label}</span>
-          <span className="block truncate text-[12.5px] text-muted">{section.content ? section.content.slice(0, 90) : section.hint}</span>
+          <span className="block truncate text-[13px] text-muted">{section.content ? section.content.slice(0, 90) : section.hint}</span>
         </span>
         {section.held ? (
           <Badge tone="warning">
@@ -110,12 +110,12 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
             <div className="space-y-3 border-t border-line px-5 pb-5 pt-4">
-              <p className="text-[12.5px] text-muted">{section.hint}</p>
+              <p className="text-[13px] text-muted">{section.hint}</p>
               <label htmlFor={`k-${section.key}`} className="sr-only">
                 {section.label}
               </label>
               <Textarea id={`k-${section.key}`} rows={6} maxLength={12000} value={value} disabled={!canEdit} onChange={(e) => setValue(e.target.value)} />
-              {section.held && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">This update is waiting for a quick iAcquire review because it may conflict with AI safety rules. Your AI team keeps using the previous approved knowledge until then.</p>}
+              {section.held && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">This update is waiting for a quick iAcquire review because it may conflict with AI safety rules. Your AI team keeps using the previous approved knowledge until then.</p>}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-faint">
                   <Clock className="size-3.5" />
@@ -215,7 +215,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
             className={cn("flex flex-col items-center rounded-2xl border-2 border-dashed px-4 py-7 text-center transition", drag ? "border-primary bg-primary-soft/40" : "border-line")}
           >
             <UploadCloud className="size-7 text-primary" />
-            <p className="mt-2 text-[13.5px] font-medium">{uploading ? `Uploading ${uploading}…` : "Drop a file here"}</p>
+            <p className="mt-2 text-[14px] font-medium">{uploading ? `Uploading ${uploading}…` : "Drop a file here"}</p>
             <p className="text-[12px] text-muted">or</p>
             <Button size="sm" variant="secondary" className="mt-2" loading={Boolean(uploading)} onClick={() => inputRef.current?.click()}>
               Choose file
@@ -235,7 +235,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
           </div>
         )}
         {documents.length === 0 ? (
-          <p className="py-4 text-center text-[13px] text-muted">No documents yet.</p>
+          <p className="py-4 text-center text-[14px] text-muted">No documents yet.</p>
         ) : (
           <ul className="divide-y divide-line">
             {documents.map((d) => (
@@ -244,7 +244,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                   <FileText className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{d.filename}</p>
+                  <p className="truncate text-[14px] font-medium">{d.filename}</p>
                   <p className="text-[12px] text-muted">
                     {size(d.size_bytes)} · {documentStatus(d)} · {formatDateTime(d.created_at, timeZone)}
                   </p>

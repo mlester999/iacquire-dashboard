@@ -35,7 +35,7 @@ function Summary({ s, scope, canRead }: { s: ConnectionSummary; scope: CrmScope;
             {s.status === "disconnected" && <Badge tone="neutral">Disconnected</Badge>}
             {(s.status === "needs_reauth" || s.status === "revoked" || s.status === "error") && <Badge tone="warning">Needs attention</Badge>}
           </h3>
-          <p className="mt-1 text-[12.5px] text-muted">Read <span className="text-ink-2">{s.ago}</span>. These numbers come from the {word}s read, not from {s.label}&apos;s own average.</p>
+          <p className="mt-1 text-[13px] text-muted">Read <span className="text-ink-2">{s.ago}</span>. These numbers come from the {word}s read, not from {s.label}&apos;s own average.</p>
         </div>
         {canRead && s.status === "connected" && (
           <Button variant="secondary" size="sm" loading={busy("read")} onClick={() => run("read", () => readReviewsNowAction(scope.orgId, s.connectionId), (r) => (r.status === "synced" ? "Read again." : r.status === "partial" ? "Read part of the list; the rest follows." : r.reason ?? "Nothing was read."))}>Read now</Button>
@@ -52,13 +52,13 @@ function Summary({ s, scope, canRead }: { s: ConnectionSummary; scope: CrmScope;
         </div>
         <div>
           <dt className="text-[12px] font-medium text-muted">{s.label} says</dt>
-          <dd className="mt-1 text-[22px] font-semibold leading-none tabular-nums text-ink">{s.reportedCount !== null ? num(s.reportedCount) : "No total"}{s.reportedRating !== null && <span className="ml-2 text-[13px] font-normal text-muted">average {s.reportedRating.toFixed(1)}</span>}</dd>
+          <dd className="mt-1 text-[22px] font-semibold leading-none tabular-nums text-ink">{s.reportedCount !== null ? num(s.reportedCount) : "No total"}{s.reportedRating !== null && <span className="ml-2 text-[14px] font-normal text-muted">average {s.reportedRating.toFixed(1)}</span>}</dd>
         </div>
       </dl>
-      <p className="text-[13px] leading-relaxed text-ink-2">{s.line}</p>
-      {s.provider === "facebook" && (m.recommended > 0 || m.notRecommended > 0) && <p className="text-[12.5px] text-muted">{num(m.recommended)} recommend and {num(m.notRecommended)} don&apos;t.</p>}
-      {m.removed > 0 && <p className="text-[12.5px] text-muted">{num(m.removed)} read earlier {m.removed === 1 ? "is" : "are"} no longer on the site and {m.removed === 1 ? "is" : "are"} not counted above.</p>}
-      {m.rated > 0 && m.rated < 10 && <p className="text-[12.5px] text-warning-ink">Only {num(m.rated)} star {m.rated === 1 ? "rating" : "ratings"} read: an average of so few moves a lot with each new one.</p>}
+      <p className="text-[14px] leading-relaxed text-ink-2">{s.line}</p>
+      {s.provider === "facebook" && (m.recommended > 0 || m.notRecommended > 0) && <p className="text-[13px] text-muted">{num(m.recommended)} recommend and {num(m.notRecommended)} don&apos;t.</p>}
+      {m.removed > 0 && <p className="text-[13px] text-muted">{num(m.removed)} read earlier {m.removed === 1 ? "is" : "are"} no longer on the site and {m.removed === 1 ? "is" : "are"} not counted above.</p>}
+      {m.rated > 0 && m.rated < 10 && <p className="text-[13px] text-warning-ink">Only {num(m.rated)} star {m.rated === 1 ? "rating" : "ratings"} read: an average of so few moves a lot with each new one.</p>}
     </Card>
   );
 }
@@ -69,7 +69,7 @@ function Weekly({ weekly }: { weekly: PublicReviewsData["weekly"] }) {
   return (
     <Card className="space-y-2 p-4 sm:p-5">
       <h3 className="text-[14.5px] font-semibold text-ink">New public reviews each week</h3>
-      <p className="text-[12.5px] leading-relaxed text-muted">{num(total)} in the last 12 weeks, from every review site connected. This counts every review that appeared, whatever the reason. It does not show that a request for a review produced one.</p>
+      <p className="text-[13px] leading-relaxed text-muted">{num(total)} in the last 12 weeks, from every review site connected. This counts every review that appeared, whatever the reason. It does not show that a request for a review produced one.</p>
       <ol className="space-y-1" aria-label="New public reviews by week">
         {weekly.map((w) => (
           <li key={w.weekStart} className="flex items-center gap-3 text-[12px]">
@@ -89,17 +89,17 @@ function ReviewRow({ r, onOpen, scope, contactsLinked }: { r: PublicReviewView; 
   return (
     <li className={cn("rounded-2xl border bg-surface p-4", r.low && !answered && !r.removedAt ? "border-warning/40" : "border-line")}>
       <div className="flex flex-wrap items-center gap-2">
-        {r.rating !== null ? <RatingStars rating={r.rating} /> : <span className="text-[13px] font-medium text-ink">{r.ratingText}</span>}
+        {r.rating !== null ? <RatingStars rating={r.rating} /> : <span className="text-[14px] font-medium text-ink">{r.ratingText}</span>}
         <Badge tone="outline">{r.providerLabel}</Badge>
         {r.simulated && <Badge tone="violet">Simulated</Badge>}
         {r.removedAt && <Badge tone="warning">Removed from the site</Badge>}
         {answered && <Badge tone="success">Answered</Badge>}
         {reply && reply.status !== "posted" && <ReplyStatusBadge status={reply.status} />}
       </div>
-      <p className="mt-1 break-words text-[12.5px] text-muted">{r.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={r.at} timezone={scope.timezone} /></p>
-      {r.comment ? <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{r.comment}</p> : <p className="mt-2 text-[13px] text-muted">The reviewer wrote no text.</p>}
+      <p className="mt-1 break-words text-[13px] text-muted">{r.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={r.at} timezone={scope.timezone} /></p>
+      {r.comment ? <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{r.comment}</p> : <p className="mt-2 text-[14px] text-muted">The reviewer wrote no text.</p>}
       {r.contactId && r.contactName && (
-        <p className="mt-2 text-[12.5px] text-muted">
+        <p className="mt-2 text-[13px] text-muted">
           Linked by your team to {contactsLinked ? <Link href={`${scope.base}/contacts/${r.contactId}`} className="font-medium text-primary hover:underline">{r.contactName}</Link> : r.contactName}. iAcquire never matches a reviewer to a customer by itself.
         </p>
       )}
@@ -126,12 +126,12 @@ export function PublicReviewsPanel({ scope, data, enabled, contactsLinked, hrefF
   return (
     <div className="min-w-0 space-y-5">
       {!enabled && (
-        <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
+        <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
           <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
           Public reviews aren&apos;t switched on for this workspace now, so nothing new is read and nothing can be written. What was read earlier is shown below.
         </p>
       )}
-      <p className="text-[13px] leading-relaxed text-muted">
+      <p className="text-[14px] leading-relaxed text-muted">
         Reviews customers wrote on a review site, as the site returned them. iAcquire doesn&apos;t write, hide or change a review, and a reviewer is never matched to a customer by name. A reply is written by a person or drafted by the AI assist for a person,
         and goes out only after the owner or a manager approves those exact words.
       </p>
@@ -142,13 +142,13 @@ export function PublicReviewsPanel({ scope, data, enabled, contactsLinked, hrefF
       )}
       {data.summaries.length > 0 && <Weekly weekly={data.weekly} />}
 
-      <nav aria-label="Filter public reviews" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <nav aria-label="Filter public reviews" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
         {REVIEW_FILTERS.map((f) => (
           <Link
             key={f}
             href={hrefFor({ filter: f })}
             aria-current={f === data.filter ? "page" : undefined}
-            className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9", f === data.filter ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
+            className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9", f === data.filter ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
           >
             {REVIEW_FILTER_LABELS[f]}<span className="tabular-nums text-muted">{data.counts[f]}</span>
           </Link>

@@ -50,7 +50,7 @@ export function VerifyPanel({ token, peek, notice, linkUnused }: { token: string
           {returning ? "Continue my demo" : "Open my demo"}
         </Button>
       </form>
-      <p className="text-[12.5px]">This link works once. If you did not ask for a demo, you can close this page.</p>
+      <p className="text-[13px]">This link works once. If you did not ask for a demo, you can close this page.</p>
     </DemoMessage>
   );
 }

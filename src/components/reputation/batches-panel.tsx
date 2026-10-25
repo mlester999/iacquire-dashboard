@@ -28,8 +28,8 @@ function Checks({ legend, hint, items, selected, onChange, disabled }: { legend:
   if (!items.length) return null;
   return (
     <fieldset className="space-y-1.5">
-      <legend className="text-[13px] font-medium text-ink">{legend} <span className="font-normal text-faint">Optional</span></legend>
-      {hint && <p className="text-[12.5px] leading-relaxed text-muted">{hint}</p>}
+      <legend className="text-[14px] font-medium text-ink">{legend} <span className="font-normal text-faint">Optional</span></legend>
+      {hint && <p className="text-[13px] leading-relaxed text-muted">{hint}</p>}
       <div className="max-h-44 space-y-0.5 overflow-y-auto rounded-xl border border-line p-1.5">
         {items.map((it) => (
           <label key={it.id} htmlFor={`${ids}-${it.id}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 text-[14px] text-ink hover:bg-surface-2 sm:min-h-9">
@@ -105,7 +105,7 @@ export function BatchFormDialog({ scope, open, onOpenChange, templates, options,
       }
     >
       <div className="space-y-4">
-        {error && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink">{error}</p>}
         <Field label="Name" htmlFor={`${ids}-name`} hint="Only your team sees this.">
           <Input id={`${ids}-name`} maxLength={120} value={d.name} placeholder="October visits" className={inputClass} onChange={(e) => set("name", e.target.value)} />
         </Field>
@@ -114,7 +114,7 @@ export function BatchFormDialog({ scope, open, onOpenChange, templates, options,
             <option value="">{serviceTemplates.length ? "Choose a template" : "No review request templates yet"}</option>
             {serviceTemplates.map((t) => <option key={t.id} value={t.id}>{t.name} · {CHANNEL_LABELS[t.channel]} · v{t.version}</option>)}
           </Select>
-          {template && <p className="mt-1 text-[12.5px] text-muted">Goes by {CHANNEL_LABELS[template.channel]}, to customers who agreed to service messages there.</p>}
+          {template && <p className="mt-1 text-[13px] text-muted">Goes by {CHANNEL_LABELS[template.channel]}, to customers who agreed to service messages there.</p>}
         </Field>
         {surveysEnabled && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -194,7 +194,7 @@ export function BatchesPanel({ scope, batches, templates, options, enabled, canP
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id={`${ids}-title`} className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Layers className="size-4 text-muted" aria-hidden />Ask many customers at once</h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
+            <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
               Choose customers by a service you finished for them, such as appointments marked attended last month. You see who would be asked and who would not, the owner approves the wording, the
               people and the pace, and the messages go out a few at a time through the same checks as one request: only to customers who agreed, never to anyone who opted out or was asked in the last 30 days.
               Everyone gets the same public review links.
@@ -204,8 +204,8 @@ export function BatchesPanel({ scope, batches, templates, options, enabled, canP
             <Button variant="secondary" size="sm" disabled={Boolean(blocked)} title={blocked ?? undefined} onClick={() => setCreating(true)}><Plus className="size-4" aria-hidden />New batch</Button>
           )}
         </div>
-        {canPrepare && enabled && blocked && <p className="mt-3 text-[12.5px] text-warning-ink">{blocked}</p>}
-        {!canPrepare && enabled && <p className="mt-3 text-[12.5px] text-muted">{scope.agency ? "Batches are the client's own decision: an iAcquire support session can look, not prepare or approve them." : "Owners and managers prepare batches. Only the owner approves one."}</p>}
+        {canPrepare && enabled && blocked && <p className="mt-3 text-[13px] text-warning-ink">{blocked}</p>}
+        {!canPrepare && enabled && <p className="mt-3 text-[13px] text-muted">{scope.agency ? "Batches are the client's own decision: an iAcquire support session can look, not prepare or approve them." : "Owners and managers prepare batches. Only the owner approves one."}</p>}
       </Card>
 
       {batches.length === 0 ? (
@@ -226,20 +226,20 @@ export function BatchesPanel({ scope, batches, templates, options, enabled, canP
                     <Badge tone={statusTone(b.status)}>{BATCH_STATUS_LABELS[b.status]}</Badge>
                     <Badge tone="outline">{b.kind === "survey" ? "Survey" : "Review request"}</Badge>
                   </div>
-                  <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{b.criteriaText}</p>
-                  <p className="mt-1 text-[12.5px] text-muted">
+                  <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{b.criteriaText}</p>
+                  <p className="mt-1 text-[13px] text-muted">
                     {CHANNEL_LABELS[b.channel]} · up to {b.ratePerMinute} a minute · made {when(b.createdAt, scope.timezone)}{b.createdByName ? ` by ${b.createdByName}` : ""}
                   </p>
                   {c.total > 0 ? (
-                    <p className="mt-2 text-[13px] text-ink-2 tabular-nums">
+                    <p className="mt-2 text-[14px] text-ink-2 tabular-nums">
                       {c.queued} asked · {c.pending} waiting · {c.excluded} left out{c.failed ? ` · ${c.failed} not sent` : ""}
                     </p>
                   ) : b.estimate ? (
-                    <p className="mt-2 text-[13px] text-ink-2">{b.estimate.eligible} of {b.estimate.total} could be asked when it was last checked.</p>
+                    <p className="mt-2 text-[14px] text-ink-2">{b.estimate.eligible} of {b.estimate.total} could be asked when it was last checked.</p>
                   ) : (
-                    <p className="mt-2 text-[13px] text-muted">Not checked yet. Open it to see who would be asked.</p>
+                    <p className="mt-2 text-[14px] text-muted">Not checked yet. Open it to see who would be asked.</p>
                   )}
-                  {c.notice && <p className="mt-2 text-[12.5px] text-warning-ink">{c.notice.detail}</p>}
+                  {c.notice && <p className="mt-2 text-[13px] text-warning-ink">{c.notice.detail}</p>}
                 </Link>
               </li>
             );

@@ -11,7 +11,7 @@ function StageNode({ icon: Icon, meta, title, badge, trigger }: { icon: Componen
       <span className={cn("inline-flex size-8 shrink-0 items-center justify-center rounded-xl", trigger ? "brand-gradient text-white" : "bg-[var(--stage-raised-2)] text-[var(--stage-accent)]")}><Icon className="size-4" /></span>
       <span className="min-w-0">
         <span className="block text-[12px] font-semibold uppercase tracking-wider text-[var(--stage-muted)]">{meta}</span>
-        <span className="block truncate text-[13.5px] font-semibold text-[var(--stage-ink)]">{title}</span>
+        <span className="block truncate text-[14px] font-semibold text-[var(--stage-ink)]">{title}</span>
       </span>
       {badge && <span className="absolute -top-2.5 right-3 inline-flex items-center gap-1 rounded-full bg-[#1e2c55] px-2 py-px text-[12px] font-medium text-[var(--stage-accent)] ring-1 ring-[var(--stage-line)]"><ExternalLink className="size-3" />{badge}</span>}
     </div>
@@ -51,7 +51,7 @@ export function EditorVisual() {
       <span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg", tone)}><Icon className="size-3.5" /></span>
       <span className="min-w-0">
         <span className="block text-[12px] font-semibold uppercase tracking-wider text-faint">{meta}</span>
-        <span className="block truncate text-[12.5px] font-semibold text-ink">{title}</span>
+        <span className="block truncate text-[13px] font-semibold text-ink">{title}</span>
       </span>
     </div>
   );
@@ -118,7 +118,7 @@ export function ApprovalVisual() {
     <div aria-hidden className="flex h-full flex-col justify-center bg-surface-2 p-4">
       <div className="rounded-xl border border-line bg-surface p-3 shadow-soft">
         <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-warning-ink"><ShieldCheck className="size-3.5" />Waiting for the owner</p>
-        <p className="mt-1.5 text-[13px] font-semibold text-ink">Approve version 3 of “Welcome new leads”</p>
+        <p className="mt-1.5 text-[14px] font-semibold text-ink">Approve version 3 of “Welcome new leads”</p>
         <p className="mt-1 flex flex-wrap gap-1.5">
           <span className="rounded-full bg-primary-soft px-2 py-px text-[12px] font-medium text-primary-ink">Texts customers</span>
           <span className="rounded-full bg-surface-3 px-2 py-px text-[12px] font-medium text-ink-2">Consent and quiet hours apply</span>

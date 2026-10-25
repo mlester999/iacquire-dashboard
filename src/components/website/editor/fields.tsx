@@ -137,7 +137,7 @@ function IconField({ value, onChange, label }: { value: string; onChange: (v: st
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label={`${label}: ${value}`} className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink-2 hover:border-line-strong">
+        <button type="button" aria-label={`${label}: ${value}`} className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink-2 hover:border-line-strong">
           <Icon name={value} className="size-4 text-primary" />
           <span className="flex-1 truncate text-left capitalize">{value.replace(/-/g, " ")}</span>
           <ChevronDown className="size-3.5 text-muted" aria-hidden />
@@ -380,7 +380,7 @@ function ListEditor({ spec, rows, onChange, scope }: { spec: Extract<FieldSpec, 
           return (
             <li key={i} className="overflow-hidden rounded-xl border border-line bg-surface">
               <div className="flex items-center gap-0.5 pr-1">
-                <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)} className="flex min-h-9 flex-1 items-center gap-1.5 px-2.5 text-left text-[12.5px] font-medium text-ink-2 hover:text-ink">
+                <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)} className="flex min-h-9 flex-1 items-center gap-1.5 px-2.5 text-left text-[13px] font-medium text-ink-2 hover:text-ink">
                   <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform", !isOpen && "-rotate-90")} aria-hidden />
                   <span className="truncate">{summary(r, i)}</span>
                 </button>

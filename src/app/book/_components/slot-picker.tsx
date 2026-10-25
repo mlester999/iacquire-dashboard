@@ -64,7 +64,7 @@ export function TimeZoneSelect({ id, value, onChange, suggested }: { id: string;
       <Globe className="size-4 shrink-0 text-muted" aria-hidden />
       <label htmlFor={id} className="sr-only">Time zone</label>
       <div className="min-w-0 flex-1">
-        <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="sm:h-9 sm:text-[13px]">
+        <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="sm:h-9 sm:text-[14px]">
           {mounted ? (
             <>
               <optgroup label="Suggested">
@@ -331,7 +331,7 @@ export function SlotPicker({
           </tbody>
         </table>
         {!loading && !failure && !available.length && (
-          <div className="mt-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
+          <div className="mt-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">
             {canNext ? (
               <span className="flex flex-wrap items-center justify-between gap-2">
                 No open times in {formatMonth(view.y, view.m)}.
@@ -346,17 +346,17 @@ export function SlotPicker({
 
       <div className="min-w-0 lg:border-l lg:border-line lg:pl-8">
         <h3 className="text-[14px] font-semibold text-ink">{day ? formatDayHeading(day) : "Times"}</h3>
-        <p className="mt-0.5 text-[12.5px] text-muted">{zoneCity(timeZone)} time ({zoneOffset(timeZone)})</p>
+        <p className="mt-0.5 text-[13px] text-muted">{zoneCity(timeZone)} time ({zoneOffset(timeZone)})</p>
         <p role="status" aria-live="polite" className="sr-only">{status}</p>
         {failure ? (
-          <div className="mt-3 rounded-xl border border-danger/20 bg-danger-soft px-3 py-3 text-[13px] text-danger-ink" role="alert">
+          <div className="mt-3 rounded-xl border border-danger/20 bg-danger-soft px-3 py-3 text-[14px] text-danger-ink" role="alert">
             <p className="flex items-start gap-2"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{failure.error}</p>
             <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={retry}>Try again</Button>
           </div>
         ) : loading && !daySlots.length ? (
-          <p className="mt-4 flex items-center gap-2 text-[13px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Loading open times…</p>
+          <p className="mt-4 flex items-center gap-2 text-[14px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Loading open times…</p>
         ) : !day ? (
-          <p className="mt-4 text-[13px] text-muted">{available.length ? "Choose a date to see its times." : "No times to show."}</p>
+          <p className="mt-4 text-[14px] text-muted">{available.length ? "Choose a date to see its times." : "No times to show."}</p>
         ) : (
           <ul className="mt-3 grid max-h-[26rem] grid-cols-2 gap-2 overflow-y-auto pb-1 pr-1 scrollbar-thin sm:grid-cols-3 lg:grid-cols-1" aria-label={`Open times on ${formatDayHeading(day)}`}>
             {daySlots.map((s) => {

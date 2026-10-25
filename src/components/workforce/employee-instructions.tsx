@@ -77,7 +77,7 @@ export function EmployeeInstructions({
             <Button size="sm" variant="secondary" onClick={() => setTesting(true)} disabled={!settings}>
               <FlaskConical className="size-3.5" aria-hidden /> Test active configuration
             </Button>
-            <Link href={`/employees/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2">
+            <Link href={`/employees/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2">
               Edit in Configure
             </Link>
           </div>
@@ -89,11 +89,11 @@ export function EmployeeInstructions({
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface text-[12px] font-semibold text-muted ring-1 ring-line">{String(index + 1).padStart(2, "0")}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[13px] font-semibold">{layer.label}</p>
+                    <p className="text-[14px] font-semibold">{layer.label}</p>
                     <Badge tone={MANAGED_TONE[layer.managedBy]}>{layer.managedBy}</Badge>
                     {!layer.editable && <Lock className="size-3 text-faint" aria-label="Read only" />}
                   </div>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{layer.body}</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-muted">{layer.body}</p>
                 </div>
               </li>
             ))}
@@ -123,7 +123,7 @@ export function EmployeeInstructions({
             </div>
             {overview.active.compiledInstructions && (
               <details className="rounded-xl border border-line">
-                <summary className="cursor-pointer px-3 py-2 text-[12.5px] font-medium">View the exact applied instructions</summary>
+                <summary className="cursor-pointer px-3 py-2 text-[13px] font-medium">View the exact applied instructions</summary>
                 <div className="border-t border-line p-3">
                   <pre tabIndex={0} aria-label="Applied employee instructions" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-muted">{overview.active.compiledInstructions}</pre>
                   <div className="mt-2 flex justify-end"><CopyTextButton text={overview.active.compiledInstructions} label="Copy instructions" /></div>
@@ -141,7 +141,7 @@ export function EmployeeInstructions({
                 <CardDescription>What persists, and what can honestly be inspected.</CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-[12.5px]">
+            <CardContent className="space-y-3 text-[13px]">
               <dl className="grid grid-cols-2 gap-3">
                 <div><dt className="text-[12px] uppercase tracking-wide text-muted">Conversations</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.conversations}</dd></div>
                 <div><dt className="text-[12px] uppercase tracking-wide text-muted">Messages</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.messages}</dd></div>
@@ -176,7 +176,7 @@ export function EmployeeInstructions({
                 <CardDescription>Only recorded values. Unknown measurements stay unavailable.</CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-[12.5px]">
+            <CardContent className="space-y-3 text-[13px]">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <div><p className="text-[12px] uppercase tracking-wide text-muted">Runs</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.runs}</p></div>
                 <div><p className="text-[12px] uppercase tracking-wide text-muted">Completed</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.completed}</p></div>

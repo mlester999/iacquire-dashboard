@@ -65,7 +65,7 @@ export function OpsConsole({ overview }: { overview: React.ReactNode }) {
             <OpsQuickActions scope={scope} />
             <section aria-labelledby="ops-safeguards" className="rounded-2xl border border-line bg-surface-2/50 p-4">
               <h2 id="ops-safeguards" className="flex items-center gap-2 text-[14px] font-semibold text-ink"><ShieldCheck className="size-4 text-primary" aria-hidden />How it stays safe</h2>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[12.5px] leading-relaxed text-muted">
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-muted">
                 <li>It reads operational metadata, never private client conversations or CRM records.</li>
                 <li>Reading a client is an audited access, limited to the context you selected.</li>
                 <li>It cannot change anything by itself. Changes are previews that you confirm; success is reported only after the system is read back.</li>

@@ -55,14 +55,14 @@ export function Stat({ label, value, hint, definition, tone }: { label: string; 
 }
 
 export function StatGrid({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6", className)}>{children}</div>;
+  return <div className={cn("grid grid-cols-2 gap-2.5 @md:grid-cols-3 @3xl:grid-cols-6", className)}>{children}</div>;
 }
 
 function Block({ title, description, children, className }: { title: string; description?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
-      {description && <p className="mt-0.5 text-[12.5px] text-muted">{description}</p>}
+      <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+      {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
       <div className="mt-2.5">{children}</div>
     </div>
   );
@@ -80,11 +80,11 @@ interface TableProps {
 
 /** A plain data table: the first column names the row (a row header), the rest are values. */
 export function DataTable({ caption, head, rows, empty = "No data yet.", textColumns = [], minWidth = "min-w-[28rem]" }: TableProps) {
-  if (!rows.length) return <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13px] text-muted">{empty}</p>;
+  if (!rows.length) return <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted">{empty}</p>;
   const align = (i: number) => (i === 0 || textColumns.includes(i) ? "text-left" : "text-right tabular-nums");
   return (
     <div role="region" aria-label={`${caption} table`} tabIndex={0} className="scrollbar-thin overflow-x-auto rounded-xl border border-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-      <table className={cn("w-full text-[13px]", minWidth)}>
+      <table className={cn("w-full text-[14px]", minWidth)}>
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-surface-2/70 text-[12px] text-muted">
           <tr>
@@ -112,7 +112,7 @@ export function DataTable({ caption, head, rows, empty = "No data yet.", textCol
 }
 
 function TraceLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return <Link href={href} className="text-[12.5px] font-medium text-primary hover:underline">{children}</Link>;
+  return <Link href={href} className="text-[13px] font-medium text-primary hover:underline">{children}</Link>;
 }
 
 function DayTrend({ ctx, rows, unit, label }: { ctx: SectionContext; rows: Array<{ day: string; n: number }>; unit: string; label: string }) {
@@ -136,7 +136,7 @@ export function LeadsBody({ data: d, ctx }: { data: SectionPayloads["leads"]; ct
         <Stat label="Lead sources" value={count(d.byCreatedVia.length)} hint="Ways contacts arrived" />
       </StatGrid>
       {d.newContacts > 0 && <DayTrend ctx={ctx} rows={d.byDay} unit="contacts" label="New contacts per day" />}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 @2xl:grid-cols-2">
         <Block title="How they arrived" description="How each contact was created, and how many are qualified now.">
           <DataTable
             caption="New contacts by how they arrived"
@@ -222,7 +222,7 @@ export function AppointmentsBody({ data: d, ctx }: { data: SectionPayloads["appo
               { label: "Not recorded yet", value: d.unmarked, color: "var(--line-strong)", icon: <HelpCircle className="size-3.5 text-muted" aria-hidden /> },
             ]}
           />
-          {d.unmarked > 0 && <p className="mt-2 text-[12.5px] text-muted">{count(d.unmarked)} appointment{d.unmarked === 1 ? " has" : "s have"} passed without anyone recording whether it happened, so the show rate leaves {d.unmarked === 1 ? "it" : "them"} out.</p>}
+          {d.unmarked > 0 && <p className="mt-2 text-[13px] text-muted">{count(d.unmarked)} appointment{d.unmarked === 1 ? " has" : "s have"} passed without anyone recording whether it happened, so the show rate leaves {d.unmarked === 1 ? "it" : "them"} out.</p>}
         </Block>
       )}
       <Block title="Breakdown" description="Appointments scheduled in the period. A collective appointment counts once for each host.">
@@ -257,7 +257,7 @@ export function DealsBody({ data: d, ctx }: { data: SectionPayloads["deals"]; ct
         <Stat label="Win rate" value={percent(d.winRate)} definition="Won ÷ (won + lost) for deals closed in the period." />
         <Stat label="Open now" value={count(d.openNow)} hint={moneyText(d.openValueNow) ?? undefined} definition="Open deals right now (not limited to the period)." />
       </StatGrid>
-      {d.wonWithoutValue > 0 && <p className="text-[12.5px] text-muted">{count(d.wonWithoutValue)} won deal{d.wonWithoutValue === 1 ? " has" : "s have"} no value recorded, so {d.wonWithoutValue === 1 ? "it isn't" : "they aren't"} in the won value.</p>}
+      {d.wonWithoutValue > 0 && <p className="text-[13px] text-muted">{count(d.wonWithoutValue)} won deal{d.wonWithoutValue === 1 ? " has" : "s have"} no value recorded, so {d.wonWithoutValue === 1 ? "it isn't" : "they aren't"} in the won value.</p>}
       <Block title="By owner" description="Deals created, won and lost in the period by the person who owns them.">
         <DataTable
           caption="Deals by owner"
@@ -267,7 +267,7 @@ export function DealsBody({ data: d, ctx }: { data: SectionPayloads["deals"]; ct
           minWidth="min-w-[30rem]"
         />
       </Block>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 @2xl:grid-cols-2">
         <Block title="How deals were created">
           <DataTable caption="Deals by how they were created" head={["Created via", "Created", "Won"]} rows={d.byCreatedVia.map((v) => ({ key: v.key, cells: [v.label, count(v.created), count(v.won)] }))} minWidth="min-w-[16rem]" />
         </Block>
@@ -320,7 +320,7 @@ export function PipelineBody({ data: d, ctx }: { data: SectionPayloads["pipeline
           />
         </div>
       ))}
-      {d.more > 0 && <p className="text-[12.5px] text-muted">{count(d.more)} more pipeline{d.more === 1 ? "" : "s"} not shown. Choose one with the pipeline filter to see it.</p>}
+      {d.more > 0 && <p className="text-[13px] text-muted">{count(d.more)} more pipeline{d.more === 1 ? "" : "s"} not shown. Choose one with the pipeline filter to see it.</p>}
       <p className="text-[12px] text-muted">Average days in stage comes from recorded stage changes in the period: how long deals stayed in a stage before they moved on.</p>
     </div>
   );
@@ -361,7 +361,7 @@ export function MessagingBody({ data: d, ctx }: { data: SectionPayloads["messagi
           minWidth="min-w-[36rem]"
         />
       </Block>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 @2xl:grid-cols-2">
         <Block title="Delivery failures reported by providers" description="Failure and non-delivery reports received in the period.">
           <DataTable
             caption="Delivery failures by provider and status"
@@ -410,7 +410,7 @@ export function FollowUpsBody({ data: d, ctx }: { data: SectionPayloads["followu
       <Block title="Why sequences stopped">
         <HBarList unit="sequences" rows={d.stoppedBy.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No sequences stopped in this period." />
       </Block>
-      {d.booked > 0 && <p className="text-[12.5px] text-muted">{count(d.booked)} sequence{d.booked === 1 ? "" : "s"} stopped because the customer booked.</p>}
+      {d.booked > 0 && <p className="text-[13px] text-muted">{count(d.booked)} sequence{d.booked === 1 ? "" : "s"} stopped because the customer booked.</p>}
       {ctx.can("inbox.view") && <TraceLink href={`${ctx.base}/follow-ups`}>Open follow-up sequences</TraceLink>}
     </div>
   );
@@ -459,7 +459,7 @@ export function AiBody({ data: d, ctx }: { data: SectionPayloads["ai"]; ctx: Sec
         <Stat label="Waiting" value={count(a.pending)} tone={a.pending ? "warning" : undefined} />
         <Stat label="Carried out" value={count(a.executed)} hint={a.failed || a.held ? `${count(a.failed)} failed · ${count(a.held)} held` : undefined} definition="Approved actions that ran. Held means it was approved but its integration is off, so nothing ran." />
       </StatGrid>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 @2xl:grid-cols-3">
         <Block title="By result"><HBarList unit="calls" rows={d.byOutcome.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
         <Block title="By tool"><HBarList unit="calls" rows={d.byTool.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
         <Block title="By AI employee"><HBarList unit="calls" rows={d.byEmployee.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
@@ -541,7 +541,7 @@ export function IntegrationsBody({ data: d, ctx }: { data: SectionPayloads["inte
           minWidth="min-w-[36rem]"
         />
       </Block>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 @2xl:grid-cols-2">
         <Block title="Calendar connections">
           <DataTable
             caption="Calendar connections by provider and status"

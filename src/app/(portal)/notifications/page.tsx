@@ -32,7 +32,7 @@ export default async function NotificationsPage() {
               <IconTile icon={<BellDot />} tone={unread ? "primary" : "success"} size="lg" />
               <div>
                 <p className="text-[32px] font-semibold leading-none tracking-[-0.04em] tabular-nums text-ink">{unread}</p>
-                <p className="mt-1.5 text-[12.5px] text-muted">unread {unread === 1 ? "update" : "updates"}</p>
+                <p className="mt-1.5 text-[13px] text-muted">unread {unread === 1 ? "update" : "updates"}</p>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-1.5">

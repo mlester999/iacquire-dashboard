@@ -1153,7 +1153,7 @@ describe("the forms screens", () => {
     expect(labelFor("phone")).not.toContain("(optional)");
     expect(labelFor("last_name")).toContain("(optional)");
     expect(labelFor("first_name")).not.toContain("(optional)");
-    expect(html).toContain('<p id="pf-one-of" class="text-[12.5px] leading-relaxed text-muted sm:col-span-2">Give an email address or a phone number, or both, so we can reply.</p>');
+    expect(html).toContain('<p id="pf-one-of" class="text-[13px] leading-relaxed text-muted sm:col-span-2">Give an email address or a phone number, or both, so we can reply.</p>');
     for (const key of ["email", "phone"]) expect(html.match(new RegExp(`<input[^>]*id="pf-${key}"[^>]*>`))?.[0]).toContain("pf-one-of");
     // The page's own note says what the marks mean, as they are drawn.
     const page = readFileSync(path.join(process.cwd(), "src/app/f/[org]/[key]/page.tsx"), "utf8");

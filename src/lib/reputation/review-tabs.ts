@@ -22,7 +22,7 @@ export const TAB_FADE_CLASS = "pointer-events-none absolute inset-y-0 z-10 w-8 f
 
 export const tabLinkClass = (active: boolean) =>
   cn(
-    "inline-flex min-h-11 shrink-0 snap-start items-center whitespace-nowrap border-b-2 px-3 text-[13.5px] font-medium transition-colors",
+    "inline-flex min-h-11 shrink-0 snap-start items-center whitespace-nowrap border-b-2 px-3 text-[14px] font-medium transition-colors",
     active ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink",
   );
 

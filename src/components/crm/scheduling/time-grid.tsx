@@ -156,7 +156,7 @@ export function TimeGrid({
                     <span className={cn("mt-0.5 inline-flex size-7 items-center justify-center rounded-full text-[14px] font-semibold tabular-nums", isToday ? "bg-primary text-primary-on" : "text-ink")}>{formatDay(d, { day: "numeric" })}</span>
                   </button>
                 ) : (
-                  <p className={cn("text-[12.5px] font-medium", isToday ? "text-primary" : "text-ink-2")}>{formatDay(d, { weekday: "long", month: "long", day: "numeric" })}{isToday ? " · Today" : ""}</p>
+                  <p className={cn("text-[13px] font-medium", isToday ? "text-primary" : "text-ink-2")}>{formatDay(d, { weekday: "long", month: "long", day: "numeric" })}{isToday ? " · Today" : ""}</p>
                 )}
               </div>
             );

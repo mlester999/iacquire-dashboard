@@ -92,7 +92,7 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
   return (
     <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); if (canSave && sync !== "conflict") void save(); }} aria-label={mode.kind === "new" ? "New invoice" : "Edit invoice"}>
       {sync === "conflict" && (
-        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
           <p className="font-medium">Someone changed this invoice while you were editing it.</p>
           <p className="mt-0.5">You started from version {loaded.version}; it is now version {mode.kind === "edit" ? mode.version : loaded.version}. Your edits are kept below, but they cannot be saved over the newer version. Copy anything you want to keep, then load the latest version.</p>
           <Button type="button" size="sm" variant="outline" className="mt-2" onClick={adoptCurrent}>Load the latest version</Button>
@@ -112,10 +112,10 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
             onPick={(d) => setS((p) => ({ ...p, deal: { id: d.id, name: d.name }, contact: p.contact ?? (d.contactId ? { id: d.contactId, name: d.contactName ?? "Customer" } : null) }))} value={s.deal ? s.deal.name : undefined} onClear={() => setS((p) => ({ ...p, deal: null, closesDeal: false }))}
           />
         </div>
-        {!s.contact && <p className="text-[12.5px] text-muted">An invoice needs a customer before it can be sent for approval. Choose one, or choose a deal and its customer comes with it.</p>}
+        {!s.contact && <p className="text-[13px] text-muted">An invoice needs a customer before it can be sent for approval. Choose one, or choose a deal and its customer comes with it.</p>}
         <details className="rounded-xl border border-line bg-surface-2/50 px-3 py-2">
-          <summary className="min-h-11 cursor-pointer text-[13.5px] font-medium text-ink-2 sm:min-h-8">Customer details printed on the invoice (optional)</summary>
-          <p className="mt-2 text-[12.5px] text-muted">Left empty, the invoice uses what is on the customer&apos;s record when it is issued. Whatever is printed is frozen when the invoice is issued.</p>
+          <summary className="min-h-11 cursor-pointer text-[14px] font-medium text-ink-2 sm:min-h-8">Customer details printed on the invoice (optional)</summary>
+          <p className="mt-2 text-[13px] text-muted">Left empty, the invoice uses what is on the customer&apos;s record when it is issued. Whatever is printed is frozen when the invoice is issued.</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Name" htmlFor="bt-name" optional><Input id="bt-name" className={input16} value={s.billTo.name} maxLength={160} onChange={(e) => set("billTo", { ...s.billTo, name: e.target.value })} /></Field>
             <Field label="Company" htmlFor="bt-company" optional><Input id="bt-company" className={input16} value={s.billTo.company} maxLength={160} onChange={(e) => set("billTo", { ...s.billTo, company: e.target.value })} /></Field>
@@ -160,20 +160,20 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
                   <Button type="button" variant="ghost" size="sm" disabled={s.lines.length === 1} aria-label={`Remove line ${i + 1}`} onClick={() => set("lines", s.lines.filter((_, j) => j !== i))}><Trash2 className="size-4" aria-hidden />Remove</Button>
                 </div>
               </div>
-              {preview.errors[i] && <p role="alert" className="mt-2 text-[12.5px] text-danger-ink">{preview.errors[i]}</p>}
+              {preview.errors[i] && <p role="alert" className="mt-2 text-[13px] text-danger-ink">{preview.errors[i]}</p>}
             </li>
           ))}
         </ol>
         <Button type="button" variant="secondary" disabled={s.lines.length >= 100} onClick={() => set("lines", [...s.lines, blankLine()])}><Plus className="size-4" aria-hidden />Add a line</Button>
-        <p className="text-[12.5px] text-muted">Tax is only what you enter on a line: nothing is worked out for you, and this is not tax advice.</p>
+        <p className="text-[13px] text-muted">Tax is only what you enter on a line: nothing is worked out for you, and this is not tax advice.</p>
 
-        <dl aria-label="Preview of the totals" className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[13.5px]">
+        <dl aria-label="Preview of the totals" className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[14px]">
           <dt className="text-muted">Subtotal{s.taxInclusive ? " (before tax)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(preview.subtotalMinor, s.currency)}</dd>
           <dt className="text-muted">Tax{s.taxInclusive ? " (included)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(preview.taxMinor, s.currency)}</dd>
           <dt className="border-t border-line-strong pt-1.5 font-semibold text-ink">Total</dt><dd className="border-t border-line-strong pt-1.5 text-right text-[15px] font-semibold tabular-nums text-ink">{money(preview.totalMinor, s.currency)}</dd>
         </dl>
         <p className="text-right text-[12px] text-muted">A preview. The server works out the real totals when you save.</p>
-        {preview.problem && filled.length > 0 && <p role="alert" className="text-[12.5px] text-danger-ink">{preview.problem}</p>}
+        {preview.problem && filled.length > 0 && <p role="alert" className="text-[13px] text-danger-ink">{preview.problem}</p>}
       </section>
 
       <section aria-labelledby="inv-details" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
@@ -187,7 +187,7 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
         <Field label="Notes" htmlFor="inv-notes" optional><Textarea id="inv-notes" rows={2} className={input16} maxLength={2000} value={s.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
         <Field label="Terms" htmlFor="inv-terms" optional><Textarea id="inv-terms" rows={2} className={input16} maxLength={2000} value={s.terms} onChange={(e) => set("terms", e.target.value)} /></Field>
         {s.deal && !s.isTest && (
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2">
             <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.closesDeal} onChange={(e) => set("closesDeal", e.target.checked)} />
             <span>Paying this invoice in full may mark the deal &ldquo;{s.deal.name}&rdquo; as won. <span className="text-muted">It only happens if the owner has turned that rule on in the invoice settings, and only for a payment the payment provider confirmed.</span></span>
           </label>
@@ -197,7 +197,7 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
       {(canMarkTest || s.isTest) && (
         <section aria-labelledby="inv-test" className="space-y-2 rounded-2xl border border-line bg-surface p-4 sm:p-5">
           <h2 id="inv-test" className="text-[15px] font-semibold text-ink">Trying your payment account</h2>
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
+          <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2">
             <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.isTest} disabled={!canMarkTest} onChange={(e) => setS((p) => ({ ...p, isTest: e.target.checked, closesDeal: e.target.checked ? false : p.closesDeal }))} />
             <span>
               <span className="font-medium text-ink">This is a test invoice.</span> Nothing is owed on it and no money moves.{" "}
@@ -210,7 +210,7 @@ export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: {
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="brand" loading={busy("save")} disabled={!canSave || sync === "conflict"}>{mode.kind === "new" ? "Save draft" : "Save changes"}</Button>
         <Button type="button" variant="ghost" onClick={() => router.push(mode.kind === "edit" ? `/invoices/${mode.id}` : "/invoices")}>Cancel</Button>
-        {!canSave && <p className="text-[12.5px] text-muted">{filled.length === 0 ? "Add at least one line to save." : "Fix the lines marked above to save."}</p>}
+        {!canSave && <p className="text-[13px] text-muted">{filled.length === 0 ? "Add at least one line to save." : "Fix the lines marked above to save."}</p>}
       </div>
     </form>
   );

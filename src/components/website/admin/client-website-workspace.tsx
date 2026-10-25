@@ -84,12 +84,12 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
             <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Status</CardTitle><div className="mt-1.5"><InfoChip icon={<Globe />}>{site.templateName}</InfoChip></div></div><LifecycleBadge state={site.lifecycle} /></div></CardHeader>
             <CardContent className="space-y-4">
               <dl className="grid gap-3 sm:grid-cols-3">
-                <div className="min-w-0 rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line"><dt className="flex items-center gap-1.5 text-[12px] font-medium text-muted"><Clock className="size-3.5" aria-hidden /> Draft last edited</dt><dd className="mt-1.5 text-[13.5px] font-semibold text-ink">{formatDateTime(site.draftUpdatedAt, timeZone)}</dd></div>
-                <div className="min-w-0 rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line"><dt className="flex items-center gap-1.5 text-[12px] font-medium text-muted"><Rocket className="size-3.5" aria-hidden /> Live version</dt><dd className="mt-1.5 text-[13.5px] font-semibold text-ink">{site.published ? `#${site.published.number} · ${relativeTime(site.published.publishedAt)}` : <StatusPill tone="neutral">Nothing is live</StatusPill>}</dd></div>
+                <div className="min-w-0 rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line"><dt className="flex items-center gap-1.5 text-[12px] font-medium text-muted"><Clock className="size-3.5" aria-hidden /> Draft last edited</dt><dd className="mt-1.5 text-[14px] font-semibold text-ink">{formatDateTime(site.draftUpdatedAt, timeZone)}</dd></div>
+                <div className="min-w-0 rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line"><dt className="flex items-center gap-1.5 text-[12px] font-medium text-muted"><Rocket className="size-3.5" aria-hidden /> Live version</dt><dd className="mt-1.5 text-[14px] font-semibold text-ink">{site.published ? `#${site.published.number} · ${relativeTime(site.published.publishedAt)}` : <StatusPill tone="neutral">Nothing is live</StatusPill>}</dd></div>
                 <div className="min-w-0 rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line"><dt className="flex items-center gap-1.5 text-[12px] font-medium text-muted"><UserCheck className="size-3.5" aria-hidden /> Owner&apos;s approval</dt><dd className="mt-1.5"><StatusPill tone={APPROVAL[site.approval].tone}>{APPROVAL[site.approval].label}</StatusPill></dd></div>
               </dl>
-              {site.approvalNote && <p className="rounded-xl border-l-2 border-primary/40 bg-surface-2 p-3 text-[13px] leading-relaxed text-ink-2"><span className="font-semibold text-ink">Owner&apos;s note: </span>{site.approvalNote}</p>}
-              {site.warnings.length > 0 && <ul className="space-y-1.5">{site.warnings.map((w) => <li key={w} className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[13px] leading-snug text-warning-ink ring-1 ring-inset ring-warning/20"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{w}</span></li>)}</ul>}
+              {site.approvalNote && <p className="rounded-xl border-l-2 border-primary/40 bg-surface-2 p-3 text-[14px] leading-relaxed text-ink-2"><span className="font-semibold text-ink">Owner&apos;s note: </span>{site.approvalNote}</p>}
+              {site.warnings.length > 0 && <ul className="space-y-1.5">{site.warnings.map((w) => <li key={w} className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[14px] leading-snug text-warning-ink ring-1 ring-inset ring-warning/20"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{w}</span></li>)}</ul>}
               <div className="flex flex-wrap gap-2 border-t border-line pt-4">
                 {perms.publish && !site.archived && <Button variant="brand" onClick={() => setPublish(true)}>Publish…</Button>}
                 {perms.review && !site.archived && <Button variant="secondary" onClick={() => setChanges(true)}>Request changes</Button>}
@@ -107,7 +107,7 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
                 : (
                   <>
                     <div className="flex flex-wrap gap-1.5"><StatusPill tone="success" size="sm">{review.diff.counts.added} added</StatusPill><StatusPill tone="danger" size="sm">{review.diff.counts.removed} removed</StatusPill><StatusPill tone="primary" size="sm">{review.diff.counts.changed} changed</StatusPill><StatusPill tone="violet" size="sm">{review.diff.counts.moved} moved</StatusPill></div>
-                    <ul className="mt-2 max-h-72 list-disc space-y-1 overflow-y-auto pl-5 text-[13px] text-ink-2">{review.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                    <ul className="mt-2 max-h-72 list-disc space-y-1 overflow-y-auto pl-5 text-[14px] text-ink-2">{review.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
                   </>
                 )}
             </CardContent>
@@ -123,8 +123,8 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
                       <div className="min-w-0 space-y-0.5">
                         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">Publication {p.number}
                           {p.status === "live" && <StatusPill tone="success" size="sm">Live</StatusPill>}{p.status === "failed" && <StatusPill tone="danger" size="sm">Couldn&apos;t be served</StatusPill>}{p.status === "superseded" && <StatusPill tone="neutral" size="sm">Superseded</StatusPill>}{p.rolledBackTo !== null && <InfoChip icon={<Undo2 />}>Rolled back to {p.rolledBackTo}</InfoChip>}</p>
-                        <p className="text-[12.5px] text-muted">{formatDateTime(p.publishedAt, timeZone)}{p.publishedByName ? ` by ${p.publishedByName}` : ""}</p>
-                        {p.note && <p className="text-[13px] italic text-ink-2">“{p.note}”</p>}
+                        <p className="text-[13px] text-muted">{formatDateTime(p.publishedAt, timeZone)}{p.publishedByName ? ` by ${p.publishedByName}` : ""}</p>
+                        {p.note && <p className="text-[14px] italic text-ink-2">“{p.note}”</p>}
                       </div>
                       {perms.publish && p.status === "superseded" && <Button size="sm" variant="secondary" className="max-sm:h-10" onClick={() => setRollback(p)}><Undo2 className="size-3.5" /> Roll back to this</Button>}
                     </li>
@@ -142,7 +142,7 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
             <CardContent>
               <ul className="space-y-2.5">
                 {summary.domains.map((d) => (
-                  <li key={d.id} className="flex flex-col gap-1.5 rounded-xl bg-surface-2 p-3 ring-1 ring-inset ring-line"><span className="flex items-center gap-1.5 text-[13px] font-medium text-ink"><Globe className="size-3.5 shrink-0 text-muted" aria-hidden /><span className="min-w-0 truncate" title={d.hostname}>{d.hostname}</span></span><span><StatusPill tone={domainStatusTone(d)}>{domainStatusLabel(d)}</StatusPill></span></li>
+                  <li key={d.id} className="flex flex-col gap-1.5 rounded-xl bg-surface-2 p-3 ring-1 ring-inset ring-line"><span className="flex items-center gap-1.5 text-[14px] font-medium text-ink"><Globe className="size-3.5 shrink-0 text-muted" aria-hidden /><span className="min-w-0 truncate" title={d.hostname}>{d.hostname}</span></span><span><StatusPill tone={domainStatusTone(d)}>{domainStatusLabel(d)}</StatusPill></span></li>
                 ))}
                 {summary.domains.length === 0 && <li><EmptyState compact icon={<Globe className="size-5" />} title="No domains" /></li>}
               </ul>
@@ -161,8 +161,8 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
               <ul className="space-y-3">
                 {[...open, ...done].map((c) => (
                   <li key={c.id} className={c.resolvedAt ? "rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line" : "rounded-xl bg-surface-2 p-3 ring-1 ring-inset ring-line-strong"}>
-                    <div className="flex items-center gap-2"><AvatarTile name={c.authorName ?? "Someone"} size="sm" /><span className="min-w-0 truncate text-[12.5px] font-semibold text-ink">{c.authorName ?? "Someone"}</span><StatusPill tone={c.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{c.authorKind === "agency" ? "iAcquire" : "Client"}</StatusPill><span className="ml-auto shrink-0 text-[12px] text-muted">{relativeTime(c.createdAt)}</span></div>
-                    <p className={c.resolvedAt ? "mt-2 break-words text-[13px] leading-relaxed text-ink-2" : "mt-2 break-words text-[13px] leading-relaxed text-ink"}>{c.body}</p>
+                    <div className="flex items-center gap-2"><AvatarTile name={c.authorName ?? "Someone"} size="sm" /><span className="min-w-0 truncate text-[13px] font-semibold text-ink">{c.authorName ?? "Someone"}</span><StatusPill tone={c.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{c.authorKind === "agency" ? "iAcquire" : "Client"}</StatusPill><span className="ml-auto shrink-0 text-[12px] text-muted">{relativeTime(c.createdAt)}</span></div>
+                    <p className={c.resolvedAt ? "mt-2 break-words text-[14px] leading-relaxed text-ink-2" : "mt-2 break-words text-[14px] leading-relaxed text-ink"}>{c.body}</p>
                     <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
                       {c.resolvedAt ? <StatusPill tone="success" size="sm">Resolved</StatusPill> : <StatusPill tone="warning" size="sm">Open</StatusPill>}
                       <button type="button" onClick={() => void run(`r${c.id}`, () => resolveCommentAction(c.id, !c.resolvedAt, orgId), c.resolvedAt ? "Reopened." : "Marked resolved.")} className="inline-flex min-h-8 items-center font-medium text-primary-ink hover:underline">{c.resolvedAt ? "Reopen" : "Mark resolved"}</button>

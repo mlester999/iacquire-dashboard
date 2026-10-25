@@ -104,38 +104,38 @@ export function DemoSettingsForm({ settings, version, env, canManage }: { settin
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/admin/prospects" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/admin/prospects" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-4" aria-hidden />
           All prospects
         </Link>
       </div>
       <header className="space-y-1.5">
         <h1 className="text-[22px] font-semibold tracking-tight">Demo settings</h1>
-        <p className="max-w-3xl text-[13.5px] leading-relaxed text-muted">
+        <p className="max-w-3xl text-[14px] leading-relaxed text-muted">
           The demo is off until three things agree: this deployment allows it, you switch it on here, and (for the AI chat) the AI chat is switched on and a language model is connected. The
           numbers below are proposals that the founder has not confirmed yet.
         </p>
       </header>
 
-      <p role="status" className={`rounded-xl border px-4 py-3 text-[13.5px] leading-relaxed ${state.tone === "success" ? "border-success/25 bg-success-soft text-success-ink" : state.tone === "danger" ? "border-danger/20 bg-danger-soft text-danger-ink" : "border-warning/30 bg-warning-soft text-warning-ink"}`}>
+      <p role="status" className={`rounded-xl border px-4 py-3 text-[14px] leading-relaxed ${state.tone === "success" ? "border-success/25 bg-success-soft text-success-ink" : state.tone === "danger" ? "border-danger/20 bg-danger-soft text-danger-ink" : "border-warning/30 bg-warning-soft text-warning-ink"}`}>
         {state.text}
       </p>
 
       {conflict && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
           <span>The settings were changed by someone else while you were looking at them. Reload to see their change before you save yours.</span>
           <Button variant="secondary" onClick={() => router.refresh()}>
             Reload
           </Button>
         </div>
       )}
-      {off && <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">Only a Super Admin can change these settings. You can read them.</p>}
+      {off && <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Only a Super Admin can change these settings. You can read them.</p>}
 
       {/* noValidate: the checks below say what is wrong in plain sentences beside the field (the same checks the server makes), instead of a different bubble in each browser. */}
       <form onSubmit={save} noValidate className="space-y-5" aria-describedby={problems.form ? "settings-form-error" : undefined}>
         <Card className="space-y-4 p-4">
           <h2 className="text-[15px] font-semibold text-ink">Switches</h2>
-          <dl className="space-y-1 text-[13px] text-muted">
+          <dl className="space-y-1 text-[14px] text-muted">
             <div className="flex flex-wrap gap-x-2">
               <dt>DEMO_ENABLED in this deployment:</dt>
               <dd className="font-medium text-ink">{env.environment ? "on" : "off"}</dd>
@@ -149,23 +149,23 @@ export function DemoSettingsForm({ settings, version, env, canManage }: { settin
             <input type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" checked={form.enabled} disabled={off} onChange={(e) => set("enabled", e.target.checked)} />
             <span>
               <span className="font-medium">The demo is open to visitors</span>
-              <span className="block text-[13px] text-muted">Off: /demo says it is not open. Prospects who already started keep their data.</span>
+              <span className="block text-[14px] text-muted">Off: /demo says it is not open. Prospects who already started keep their data.</span>
             </span>
           </label>
           <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink">
             <input type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" checked={form.aiEnabled} disabled={off} onChange={(e) => set("aiEnabled", e.target.checked)} />
             <span>
               <span className="font-medium">The AI chat is on</span>
-              <span className="block text-[13px] text-muted">Off: prospects get the guided tour only. On: they may ask the AI team questions, up to the limits below. It also needs a connected language model.</span>
+              <span className="block text-[14px] text-muted">Off: prospects get the guided tour only. On: they may ask the AI team questions, up to the limits below. It also needs a connected language model.</span>
             </span>
           </label>
           {problems.aiEnabled && (
-            <p role="alert" className="text-[12.5px] text-danger-ink">
+            <p role="alert" className="text-[13px] text-danger-ink">
               {problems.aiEnabled}
             </p>
           )}
           {turningAiOn && (
-            <div className="space-y-2 rounded-xl border border-warning/30 bg-warning-soft p-3 text-[13px] leading-relaxed text-warning-ink">
+            <div className="space-y-2 rounded-xl border border-warning/30 bg-warning-soft p-3 text-[14px] leading-relaxed text-warning-ink">
               <p className="flex items-start gap-2">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span>
@@ -214,7 +214,7 @@ export function DemoSettingsForm({ settings, version, env, canManage }: { settin
         </Card>
 
         {problems.form && (
-          <p id="settings-form-error" role="alert" className="text-[13px] text-danger-ink">
+          <p id="settings-form-error" role="alert" className="text-[14px] text-danger-ink">
             {problems.form}
           </p>
         )}

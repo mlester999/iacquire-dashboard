@@ -45,17 +45,17 @@ export function SearchPanel({ open, onOpenChange, conversationId, conversationNa
           </Button>
         </div>
         {conversationId && (
-          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[13px] text-ink-2">
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[14px] text-ink-2">
             <input type="checkbox" className="size-5 accent-[var(--color-primary,#305ecb)]" checked={scoped} onChange={(e) => setScoped(e.target.checked)} />
             Only in {conversationName ? `“${conversationName}”` : "this conversation"}
           </label>
         )}
       </form>
       <div className="mt-4" aria-live="polite">
-        {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
+        {problem && <p role="alert" className="text-[14px] text-danger-ink">{problem}</p>}
         {result && (
           <>
-            <p role="status" className="mb-2 text-[13px] text-muted">
+            <p role="status" className="mb-2 text-[14px] text-muted">
               {result.value.hits.length === 0
                 ? `No messages match “${result.asked}”.`
                 : `${result.value.hits.length} ${result.value.hits.length === 1 ? "message matches" : "messages match"} “${result.asked}”${result.value.truncated ? `. Showing the newest ${SEARCH_MAX_RESULTS}; use more specific words to narrow it down` : ""}.`}

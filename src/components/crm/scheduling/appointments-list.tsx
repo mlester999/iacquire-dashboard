@@ -69,7 +69,7 @@ export function AppointmentsList({
         description={<>Every appointment in your calendars, shown in {zoneCity(tz)} time.</>}
         actions={
           <>
-            <Link href={`${scope.base}/calendar`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><CalendarDays className="size-4" aria-hidden />Calendar</Link>
+            <Link href={`${scope.base}/calendar`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><CalendarDays className="size-4" aria-hidden />Calendar</Link>
             {canBook && <Button onClick={() => setNewOpen(true)}><Plus className="size-4" />New appointment</Button>}
           </>
         }
@@ -91,16 +91,16 @@ export function AppointmentsList({
               if (range.from && range.to && range.from <= range.to) go({ when: "range", from: range.from, to: range.to });
             }}
           >
-            <label className="space-y-1 text-[12.5px] text-muted">
+            <label className="space-y-1 text-[13px] text-muted">
               <span className="block">From</span>
               <Input type="date" className="w-[10.5rem]" value={range.from} max={range.to || undefined} onChange={(e) => setRange({ ...range, from: e.target.value })} required />
             </label>
-            <label className="space-y-1 text-[12.5px] text-muted">
+            <label className="space-y-1 text-[13px] text-muted">
               <span className="block">To</span>
               <Input type="date" className="w-[10.5rem]" value={range.to} min={range.from || undefined} onChange={(e) => setRange({ ...range, to: e.target.value })} required />
             </label>
             <Button type="submit" variant="secondary" disabled={!range.from || !range.to || range.from > range.to}>Show</Button>
-            {range.from && range.to && range.from > range.to && <p className="text-[12.5px] text-danger-ink" role="alert">The start date must be on or before the end date.</p>}
+            {range.from && range.to && range.from > range.to && <p className="text-[13px] text-danger-ink" role="alert">The start date must be on or before the end date.</p>}
           </form>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -123,7 +123,7 @@ export function AppointmentsList({
               <X className="size-3.5" />Clear filters
             </Button>
           )}
-          <p className="ml-auto text-[12.5px] text-muted" role="status">{total.toLocaleString("en-US")} {total === 1 ? "appointment" : "appointments"}</p>
+          <p className="ml-auto text-[13px] text-muted" role="status">{total.toLocaleString("en-US")} {total === 1 ? "appointment" : "appointments"}</p>
         </div>
       </Card>
 
@@ -141,7 +141,7 @@ export function AppointmentsList({
           <>
             <Card className="hidden overflow-hidden md:block">
               <div className="overflow-x-auto">
-                <table className="workspace-table w-full min-w-[820px] text-left text-[13px]">
+                <table className="workspace-table w-full min-w-[820px] text-left text-[14px]">
                   <thead>
                     <tr>
                       <th scope="col" className="px-4 py-2.5">When</th>
@@ -175,7 +175,7 @@ export function AppointmentsList({
                         </td>
                         <td className="max-w-[200px] truncate px-4 py-2.5 text-ink-2">{a.hosts.map((h) => h.name).join(", ") || "—"}</td>
                         <td className="px-4 py-2.5"><StatusBadge status={a.status} /></td>
-                        <td className="px-4 py-2.5 text-[12.5px] text-muted">{a.bookedVia ? VIA_LABEL[a.bookedVia] ?? a.bookedVia : "—"}</td>
+                        <td className="px-4 py-2.5 text-[13px] text-muted">{a.bookedVia ? VIA_LABEL[a.bookedVia] ?? a.bookedVia : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -192,7 +192,7 @@ export function AppointmentsList({
                         <span className={cn("truncate text-[14px] font-medium text-ink", a.status === "cancelled" && "line-through")}>{a.contact?.name ?? a.title}</span>
                         <StatusBadge status={a.status} className="h-5 text-[12px]" />
                       </span>
-                      <span className="block text-[12.5px] tabular-nums text-ink-2">{dateTimeIn(a.startAt, tz)}</span>
+                      <span className="block text-[13px] tabular-nums text-ink-2">{dateTimeIn(a.startAt, tz)}</span>
                       <span className="block truncate text-[12px] text-muted">{a.type?.name ?? "Appointment"}{a.hosts.length ? ` · ${a.hosts.map((h) => h.name).join(", ")}` : ""}</span>
                     </span>
                   </button>

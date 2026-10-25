@@ -27,7 +27,7 @@ function Fact({ label, children, wide }: { label: string; children: React.ReactN
   return (
     <div className={`min-w-0 rounded-xl bg-surface-2/70 px-3 py-2.5 ring-1 ring-inset ring-line ${wide ? "sm:col-span-2" : ""}`}>
       <dt className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{label}</dt>
-      <dd className="mt-1 min-w-0 break-words text-[13.5px] font-medium text-ink">{children}</dd>
+      <dd className="mt-1 min-w-0 break-words text-[14px] font-medium text-ink">{children}</dd>
     </div>
   );
 }
@@ -70,7 +70,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
             </div>
             <CardDescription className="mt-3">{state.text}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-[13.5px]">
+          <CardContent className="space-y-3 text-[14px]">
             {site.hasUnpublishedChanges && (
               <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-warning-ink ring-1 ring-inset ring-warning/25">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> You have edits that aren&apos;t live yet. Publish to show them to visitors.
@@ -98,7 +98,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
           </CardHeader>
           <CardContent className="space-y-4">
             {pf.blockers.length > 0 && (
-              <ul className="space-y-2 text-[13.5px]">
+              <ul className="space-y-2 text-[14px]">
                 {pf.blockers.slice(0, 4).map((b, i) => (
                   <li key={`${b.code}-${i}`} className="flex items-start gap-2.5 rounded-xl bg-danger-soft/70 p-3 ring-1 ring-inset ring-danger/20"><ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-danger-ink" /><span className="min-w-0">{b.message} <InfoChip className="ml-1 align-middle">{b.where}</InfoChip></span></li>
                 ))}
@@ -106,10 +106,10 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
               </ul>
             )}
             {pf.needsAcknowledgement.length > 0 && (
-              <p className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-3 text-[13px] text-ink-2 ring-1 ring-inset ring-line"><TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-ink" /> {pf.needsAcknowledgement.length} claim{pf.needsAcknowledgement.length === 1 ? "" : "s"} on your site will need your confirmation when you publish.</p>
+              <p className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-3 text-[14px] text-ink-2 ring-1 ring-inset ring-line"><TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-ink" /> {pf.needsAcknowledgement.length} claim{pf.needsAcknowledgement.length === 1 ? "" : "s"} on your site will need your confirmation when you publish.</p>
             )}
             {pf.blockers.length === 0 && pf.needsAcknowledgement.length === 0 && site.approval.status !== "submitted" && (
-              <p className="flex items-center gap-2 rounded-xl bg-success-soft/70 p-3 text-[13px] text-success-ink ring-1 ring-inset ring-success/20"><CheckCircle2 aria-hidden className="size-4 shrink-0" /> Everything checks out. Publish whenever you&apos;re ready.</p>
+              <p className="flex items-center gap-2 rounded-xl bg-success-soft/70 p-3 text-[14px] text-success-ink ring-1 ring-inset ring-success/20"><CheckCircle2 aria-hidden className="size-4 shrink-0" /> Everything checks out. Publish whenever you&apos;re ready.</p>
             )}
             {site.approval.status === "submitted" && <ApprovalPanel canDecide={perms.canApprove} />}
           </CardContent>
@@ -121,13 +121,13 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3"><IconTile><Link2 className="size-4" /></IconTile><CardTitle>Domains</CardTitle></div>
-              <Link href="/website/domains" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[13px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">Manage <ArrowRight className="size-3.5" aria-hidden /></Link>
+              <Link href="/website/domains" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[14px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">Manage <ArrowRight className="size-3.5" aria-hidden /></Link>
             </div>
           </CardHeader>
           <CardContent>
             <ul className="divide-y divide-line">
               {site.domains.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 py-2.5 text-[13.5px]">
+                <li key={d.id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
                   <span className="flex min-w-0 items-center gap-2.5">
                     <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-line"><Globe className="size-3.5" /></span>
                     <span className="min-w-0">
@@ -146,7 +146,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3"><IconTile><Inbox className="size-4" /></IconTile><CardTitle>Recent enquiries</CardTitle></div>
-              <Link href="/website/leads" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[13px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">See all <ArrowRight className="size-3.5" aria-hidden /></Link>
+              <Link href="/website/leads" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[14px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">See all <ArrowRight className="size-3.5" aria-hidden /></Link>
             </div>
           </CardHeader>
           <CardContent>
@@ -155,7 +155,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
             ) : (
               <ul className="divide-y divide-line">
                 {enquiries.map((e) => (
-                  <li key={e.id} className="flex items-start gap-3 py-2.5 text-[13.5px]">
+                  <li key={e.id} className="flex items-start gap-3 py-2.5 text-[14px]">
                     <AvatarTile name={e.name} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center justify-between gap-3"><span className="min-w-0 truncate font-medium" title={e.name}>{e.name}</span><InfoChip className="shrink-0" icon={<Clock />}>{relativeTime(e.createdAt)}</InfoChip></p>

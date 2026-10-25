@@ -61,7 +61,7 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
       {!liveRunsVerified && (
         <Card className="flex items-start gap-3 border-primary/25 bg-primary-soft/40 p-4">
           <Info className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
-          <div className="text-[13px] leading-relaxed text-ink-2">
+          <div className="text-[14px] leading-relaxed text-ink-2">
             <p className="font-medium text-ink">Not in use yet</p>
             <p className="mt-0.5">Live AI employee runs stay switched off until iAcquire can verify each employee&apos;s complete tool permissions, so these tools aren&apos;t being called yet. The rules on this page are already enforced for every call once they are.</p>
           </div>
@@ -70,7 +70,7 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
       {pauses.agency && (
         <Card role="status" className="flex items-start gap-3 border-warning/40 bg-warning-soft/60 p-4">
           <OctagonAlert className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />
-          <p className="text-[13px] leading-relaxed text-ink-2"><span className="font-medium text-ink">Automation is on hold.</span> iAcquire has paused automation for your workspace, so every CRM tool call is refused for now.</p>
+          <p className="text-[14px] leading-relaxed text-ink-2"><span className="font-medium text-ink">Automation is on hold.</span> iAcquire has paused automation for your workspace, so every CRM tool call is refused for now.</p>
         </Card>
       )}
 
@@ -90,12 +90,12 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><Hand className="size-4" aria-hidden /></span>
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight text-ink">Emergency stop</h3>
-              <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
+              <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
                 Pausing an employee refuses every CRM tool call from it at once. <span className="text-ink-2">Stop tool access</span> below also ends the credentials it holds right now.
                 The messaging and outbound pauses stop messages to customers (an approved draft is held), not CRM lookups or record changes.
               </p>
               {(pauses.messaging || pauses.outbound) && (
-                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[12.5px] text-ink-2">
+                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px] text-ink-2">
                   <span className="text-muted">On now:</span>
                   {pauses.messaging && <Badge tone="warning">Customer messaging paused</Badge>}
                   {pauses.outbound && <Badge tone="warning">Outbound actions paused</Badge>}
@@ -135,7 +135,7 @@ function Stat({ label, value, icon, href }: { label: string; value: number; icon
       <dd className="mt-1.5 text-[22px] font-semibold tabular-nums tracking-tight text-ink">{value.toLocaleString("en-US")}</dd>
       {href && (
         <dd>
-          <Link href={href} className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-medium text-primary-ink underline-offset-2 hover:underline sm:min-h-0">
+          <Link href={href} className="inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink underline-offset-2 hover:underline sm:min-h-0">
             Review<span className="sr-only"> {label.toLowerCase()}</span><ArrowUpRight className="size-3" aria-hidden />
           </Link>
         </dd>
@@ -167,14 +167,14 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
             <h4 id={headingId} className="truncate text-[14px] font-semibold text-ink">{e.name}</h4>
             <Badge tone={mode.tone}>{mode.label}</Badge>
           </div>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{mode.help}</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{mode.help}</p>
           {!e.connected && e.enabled && <p className="mt-1 text-[12px] text-muted">Not connected to its AI service yet.</p>}
         </div>
       </div>
 
       <div className="flex-1 space-y-4 p-4">
         {available.length === 0 ? (
-          <p className="text-[13px] text-muted">This role has no CRM tools.</p>
+          <p className="text-[14px] text-muted">This role has no CRM tools.</p>
         ) : (
           KIND_GROUPS.map((g) => {
             const tools = available.filter((t) => t.kind === g.kind);
@@ -188,7 +188,7 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
                     return (
                       <li key={t.name} className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2">
                         <div className="min-w-0">
-                          <p className="text-[13px] text-ink">{t.label}</p>
+                          <p className="text-[14px] text-ink">{t.label}</p>
                           {t.note && <p className="text-[12px] text-muted">{t.note}</p>}
                         </div>
                         <Badge tone={b.tone} title={b.description}>{b.label}<span className="sr-only">: {b.description}</span></Badge>
@@ -204,7 +204,7 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
-        <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
+        <p className="flex items-center gap-1.5 text-[13px] text-muted">
           <KeyRound className="size-3.5" aria-hidden />
           {e.liveTokens ? `${e.liveTokens} live tool ${e.liveTokens === 1 ? "credential" : "credentials"}` : "No live tool credentials"}
         </p>
@@ -242,17 +242,17 @@ function CallList({ calls, timezone }: { calls: ToolCallEntry[]; timezone: strin
         {calls.map((c) => {
           const o = OUTCOME[c.outcome];
           return (
-            <li key={c.id} className="grid gap-1.5 px-4 py-3 text-[13px] md:grid-cols-[9rem_10rem_minmax(0,1fr)_11rem] md:items-center md:gap-3">
-              <RelativeTime iso={c.at} timezone={timezone} className="text-[12.5px] text-muted" />
+            <li key={c.id} className="grid gap-1.5 px-4 py-3 text-[14px] md:grid-cols-[9rem_10rem_minmax(0,1fr)_11rem] md:items-center md:gap-3">
+              <RelativeTime iso={c.at} timezone={timezone} className="text-[13px] text-muted" />
               <span className="truncate font-medium text-ink">{c.employee ?? "AI employee"}</span>
               <div className="min-w-0">
                 <p className="text-ink">{c.toolLabel}{c.approved && <span className="text-muted"> · approved by a person</span>}</p>
-                {c.detail && <p className="line-clamp-2 text-[12.5px] text-muted">{c.detail}</p>}
+                {c.detail && <p className="line-clamp-2 text-[13px] text-muted">{c.detail}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
                 <Badge tone={o.tone}>{o.label}</Badge>
                 {c.outcome === "pending_approval" && c.approvalId && (
-                  <Link href="/approvals" className={cn("inline-flex min-h-11 items-center gap-1 text-[12.5px] font-medium text-primary-ink underline-offset-2 hover:underline md:min-h-0")}>
+                  <Link href="/approvals" className={cn("inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink underline-offset-2 hover:underline md:min-h-0")}>
                     Review<ArrowUpRight className="size-3" aria-hidden />
                   </Link>
                 )}

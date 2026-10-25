@@ -87,7 +87,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
               href={href(item)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+                "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
                 active ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
               )}
             >
@@ -115,7 +115,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
                           href={href(item)}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex min-h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13.5px] font-medium transition-colors",
+                            "flex min-h-9 items-center gap-2.5 rounded-xl px-2.5 text-[14px] font-medium transition-colors",
                             active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
                           )}
                         >

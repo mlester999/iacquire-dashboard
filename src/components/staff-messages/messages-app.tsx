@@ -201,7 +201,7 @@ export function MessagesApp({ me, initial, conversationId, aroundSeq, threadId: 
           <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-[-0.03em] text-ink sm:text-[27px]">
             <MessagesSquare className="size-6 shrink-0 text-primary" aria-hidden /> Messages
           </h1>
-          <p className="mt-1 text-[13px] text-muted">The agency team&apos;s own conversations. Customers and clients never see them.</p>
+          <p className="mt-1 text-[14px] text-muted">The agency team&apos;s own conversations. Customers and clients never see them.</p>
         </div>
         {me.role === "agency_super_admin" && (
           <ButtonLink href="/admin/messages/settings" variant="secondary" size="sm">
@@ -213,7 +213,7 @@ export function MessagesApp({ me, initial, conversationId, aroundSeq, threadId: 
       <NoticeBanner />
 
       {accessLost && (
-        <div role="alert" className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>
             {accessLostText(accessLost)}{" "}
@@ -222,12 +222,12 @@ export function MessagesApp({ me, initial, conversationId, aroundSeq, threadId: 
         </div>
       )}
       {!accessLost && noticeText && (
-        <p role="status" className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-4 py-2 text-[13px] text-ink-2">
+        <p role="status" className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-4 py-2 text-[14px] text-ink-2">
           <WifiOff className="size-4 shrink-0" aria-hidden /> {noticeText}
         </p>
       )}
       {!accessLost && !noticeText && error && (
-        <p role="alert" className="rounded-xl border border-line bg-surface-2 px-4 py-2 text-[13px] text-danger-ink">
+        <p role="alert" className="rounded-xl border border-line bg-surface-2 px-4 py-2 text-[14px] text-danger-ink">
           {error}
         </p>
       )}
@@ -267,7 +267,7 @@ export function MessagesApp({ me, initial, conversationId, aroundSeq, threadId: 
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
               <MessagesSquare className="size-8 text-faint" aria-hidden />
               <h2 className="text-[16px] font-semibold text-ink">Choose a conversation</h2>
-              <p className="max-w-sm text-[13.5px] leading-relaxed text-muted">Pick one from the list, or start a direct message, a group or a channel with the button above it.</p>
+              <p className="max-w-sm text-[14px] leading-relaxed text-muted">Pick one from the list, or start a direct message, a group or a channel with the button above it.</p>
             </div>
           )}
         </section>

@@ -67,7 +67,7 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
       }
     >
       <div className="space-y-4">
-        <div className="rounded-2xl border border-line bg-surface-2/50 p-3 text-[13px]">
+        <div className="rounded-2xl border border-line bg-surface-2/50 p-3 text-[14px]">
           <p className="font-medium text-ink">Starts when: {triggerLine(def.trigger, names)}</p>
           <p className="mt-1 text-muted">{TRIGGERS[def.trigger.type]?.description}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">{version.effects.map((e) => <Badge key={e} tone="warning">{effectLongLabel(e)}</Badge>)}</div>
@@ -77,11 +77,11 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
             const Icon = ICON[it.kind];
             return (
               <li key={it.stepKey} className="rounded-2xl border border-line p-3">
-                <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-ink">
+                <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
                   <Icon className="size-4 text-muted" aria-hidden />Step {it.stepNumber}: {it.title}
                   {it.asksFirst && <Badge tone="warning" className="h-5 px-2 text-[12px] font-medium">Also asks a person each time</Badge>}
                 </p>
-                <dl className="mt-2 grid gap-x-3 gap-y-1 text-[12.5px] sm:grid-cols-[max-content_minmax(0,1fr)]">
+                <dl className="mt-2 grid gap-x-3 gap-y-1 text-[13px] sm:grid-cols-[max-content_minmax(0,1fr)]">
                   {it.lines.map((l) => (
                     <React.Fragment key={l.label}>
                       <dt className="text-muted">{l.label}</dt>
@@ -92,26 +92,26 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
                 {it.message && (
                   <div className="mt-2 rounded-xl bg-surface-2 p-3">
                     <p className="mb-1 text-[12px] font-semibold uppercase tracking-wider text-faint">Exact wording</p>
-                    {it.message.subject && <p className="text-[13px] font-medium text-ink">{it.message.subject}</p>}
-                    <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{it.message.body}</p>
+                    {it.message.subject && <p className="text-[14px] font-medium text-ink">{it.message.subject}</p>}
+                    <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{it.message.body}</p>
                     <p className="mt-1.5 text-[12px] text-muted">Placeholders like {"{{contact.first_name}}"} are filled in for each contact. A message missing a value isn&apos;t sent.</p>
                   </div>
                 )}
-                {it.warning && <p className="mt-2 flex gap-1.5 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{it.warning}</p>}
+                {it.warning && <p className="mt-2 flex gap-1.5 rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{it.warning}</p>}
               </li>
             );
           })}
         </ol>
-        <p className="text-[12.5px] leading-relaxed text-muted">
+        <p className="text-[13px] leading-relaxed text-muted">
           The approval covers version {version.version} only (fingerprint <span className="font-mono">#{version.contentHash.slice(0, 10)}</span>). Changing any step makes a new version that needs approving again. A paused workspace, a paused AI employee or missing consent still stops a message at the moment it would send.
         </p>
-        {blocked && !approved && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">The steps marked above can&apos;t run as they are, so approval can&apos;t be requested yet. Change them and publish again, or wait until what they need is ready.</p>}
+        {blocked && !approved && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">The steps marked above can&apos;t run as they are, so approval can&apos;t be requested yet. Change them and publish again, or wait until what they need is ready.</p>}
         {canRequest && !pending && !approved && !blocked && workflowStatus !== "active" && (
           <Toggle id="wf-approval-activate" label="Turn the workflow on as soon as the owner approves" hint="Leave this off to approve it now and turn it on yourself later." checked={activate} onChange={setActivate} />
         )}
-        {approved && <p className="rounded-xl bg-success-soft px-3 py-2 text-[12.5px] text-success-ink">Approved{version.approvedByName ? ` by ${version.approvedByName}` : ""}. The approval stands while this version is the one running.</p>}
-        {!canRequest && !pending && !approved && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted">Someone who can change automations requests the approval; the workspace owner decides.</p>}
-        {pending && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted">{scope.agency ? "The workspace owner decides in their Approval Center." : "Only the workspace owner can approve it, in Approvals."}</p>}
+        {approved && <p className="rounded-xl bg-success-soft px-3 py-2 text-[13px] text-success-ink">Approved{version.approvedByName ? ` by ${version.approvedByName}` : ""}. The approval stands while this version is the one running.</p>}
+        {!canRequest && !pending && !approved && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">Someone who can change automations requests the approval; the workspace owner decides.</p>}
+        {pending && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">{scope.agency ? "The workspace owner decides in their Approval Center." : "Only the workspace owner can approve it, in Approvals."}</p>}
       </div>
     </Dialog>
   );

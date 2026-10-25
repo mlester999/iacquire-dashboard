@@ -202,7 +202,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
         {created ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
-              <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]">{created.link}</code>
+              <code className="min-w-0 flex-1 truncate px-2 font-mono text-[13px]">{created.link}</code>
               <Button
                 size="sm"
                 variant="secondary"
@@ -250,7 +250,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
             </div>
 
             <fieldset>
-              <legend className="mb-2 text-[13px] font-medium text-ink-2">CRM</legend>
+              <legend className="mb-2 text-[14px] font-medium text-ink-2">CRM</legend>
               <div className="grid gap-2 sm:grid-cols-2">
                 {CRM_MODES.map((m) => {
                   const on = crmMode === m.value;
@@ -264,8 +264,8 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
                     >
                       <input type="radio" name={modeName} value={m.value} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={on} onChange={() => setCrmMode(m.value)} />
                       <span className="min-w-0">
-                        <span className="block text-[13px] font-medium text-ink">{m.title}</span>
-                        <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{m.description}</span>
+                        <span className="block text-[14px] font-medium text-ink">{m.title}</span>
+                        <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{m.description}</span>
                       </span>
                     </label>
                   );
@@ -285,7 +285,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
             />
 
             <fieldset>
-              <legend className="mb-2 text-[13px] font-medium text-ink-2">AI employees included</legend>
+              <legend className="mb-2 text-[14px] font-medium text-ink-2">AI employees included</legend>
               <div className="grid gap-2 sm:grid-cols-2">
                 {AGENT_ROLES.map((r) => {
                   const on = roles.includes(r.key);
@@ -298,7 +298,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
                         onChange={() => setRoles((rs) => (on ? rs.filter((x) => x !== r.key) : [...rs, r.key]))}
                       />
                       <AgentAvatar role={r} size="sm" />
-                      <span className="text-[13px] font-medium">{r.shortName}</span>
+                      <span className="text-[14px] font-medium">{r.shortName}</span>
                     </label>
                   );
                 })}

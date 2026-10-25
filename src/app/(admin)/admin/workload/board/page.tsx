@@ -45,7 +45,7 @@ export default async function WorkloadBoardPage() {
     <div className="space-y-5">
       <WorkloadHeader active="board" showTeam showSettings={showSettings} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-muted">
+        <p className="text-[14px] text-muted">
           {team.unassigned.items.length} shown {team.unassigned.items.length === 1 ? "item has" : "items have"} no owner. Only people who can open the client and hold the module&apos;s permission are offered.
         </p>
         <ButtonLink href="/admin/workload" variant="ghost" size="sm">

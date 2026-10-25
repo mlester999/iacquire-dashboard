@@ -14,7 +14,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   return (
     <div className="min-w-0">
       <dt className="text-[12px] font-medium text-muted">{label}</dt>
-      <dd className="mt-0.5 break-words text-[13.5px] text-ink">{children}</dd>
+      <dd className="mt-0.5 break-words text-[14px] text-ink">{children}</dd>
     </div>
   );
 }
@@ -55,7 +55,7 @@ export function ProspectDetailView({
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/admin/prospects" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/admin/prospects" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-4" aria-hidden />
           All prospects
         </Link>
@@ -67,16 +67,16 @@ export function ProspectDetailView({
           <Badge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
         </div>
         {!p.erased && (
-          <p className="break-words text-[13.5px] text-muted">
+          <p className="break-words text-[14px] text-muted">
             {p.business ?? "No business"}
             {p.industryLabel ? `, ${p.industryLabel}` : ""}
           </p>
         )}
-        <p className="text-[13px] text-ink-2">{windowWords(p, clock)}</p>
-        {p.erased && <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">Their details and conversation were erased on {when(p.erasedAt, timeZone)}. Only dates, counts and the timeline remain.</p>}
-        {p.conversionInProgress && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">A workspace is being made for this prospect right now.</p>}
+        <p className="text-[14px] text-ink-2">{windowWords(p, clock)}</p>
+        {p.erased && <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Their details and conversation were erased on {when(p.erasedAt, timeZone)}. Only dates, counts and the timeline remain.</p>}
+        {p.conversionInProgress && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">A workspace is being made for this prospect right now.</p>}
         {p.convertedOrgId && (
-          <p className="text-[13.5px]">
+          <p className="text-[14px]">
             <Link href={`/admin/clients/${p.convertedOrgId}`} className="text-primary hover:underline">
               Open their client workspace
             </Link>
@@ -132,9 +132,9 @@ export function ProspectDetailView({
             const who = e.actorKind === "prospect" ? "the prospect" : e.actorKind === "system" ? "the system" : (e.actorName ?? "a team member");
             return (
               <li key={e.id} className="border-l-2 border-line pl-3">
-                <p className="text-[13.5px] font-medium text-ink">{words.label}</p>
+                <p className="text-[14px] font-medium text-ink">{words.label}</p>
                 {words.lines.map((l) => (
-                  <p key={l} className="break-words text-[13px] leading-relaxed text-ink-2">
+                  <p key={l} className="break-words text-[14px] leading-relaxed text-ink-2">
                     {l}
                   </p>
                 ))}

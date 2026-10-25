@@ -58,11 +58,11 @@ export function PayPanel({ token, canPay, balanceMinor, currency, isTest = false
           Print or save as PDF
         </Button>
       </div>
-      {canPay && !isTest && <p className="text-[12.5px] leading-relaxed text-muted">You will be taken to your payment provider&apos;s own page to pay. Your card details are entered there, not on this page.</p>}
-      {canPay && isTest && <p className="text-[12.5px] leading-relaxed text-muted">This is a test invoice. You will be taken to a testing page; no card is asked for and no money moves.</p>}
-      <noscript><p className="text-[12.5px] text-muted">Paying online needs JavaScript. You can still pay using the instructions on the invoice.</p></noscript>
+      {canPay && !isTest && <p className="text-[13px] leading-relaxed text-muted">You will be taken to your payment provider&apos;s own page to pay. Your card details are entered there, not on this page.</p>}
+      {canPay && isTest && <p className="text-[13px] leading-relaxed text-muted">This is a test invoice. You will be taken to a testing page; no card is asked for and no money moves.</p>}
+      <noscript><p className="text-[13px] text-muted">Paying online needs JavaScript. You can still pay using the instructions on the invoice.</p></noscript>
       {error && (
-        <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+        <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>{error}</span>
         </p>

@@ -14,7 +14,7 @@ const n = (v: number) => v.toLocaleString("en-US");
 function Tile({ label, value, sub, tone }: { label: string; value: number; sub?: string; tone?: "danger" | "warning" }) {
   return (
     <Card className="p-4">
-      <p className="text-[12.5px] font-medium text-muted">{label}</p>
+      <p className="text-[13px] font-medium text-muted">{label}</p>
       <p className={cn("mt-1 text-[22px] font-semibold tracking-[-0.03em] tabular-nums", value && tone === "danger" ? "text-danger-ink" : value && tone === "warning" ? "text-warning-ink" : "text-ink")}>{n(value)}</p>
       {sub && <p className="text-[12px] text-faint">{sub}</p>}
     </Card>
@@ -56,9 +56,9 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/admin/crm" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Client CRMs</Link>
+        <Link href="/admin/crm" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Client CRMs</Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-ink">CRM operations</h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           What is failing, waiting or needs support across {superAdmin ? "every client" : "the clients assigned to you"}. Counts and flags only: no contact details, messages or amounts.
           Opening a client&rsquo;s records still needs a support session, which the client can see.
         </p>
@@ -104,7 +104,7 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
       ) : (
         <Card className="overflow-hidden p-0">
           <div className="scrollbar-thin overflow-x-auto">
-            <table className="w-full min-w-[68rem] text-[13px]">
+            <table className="w-full min-w-[68rem] text-[14px]">
               <caption className="sr-only">CRM operations by client</caption>
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>

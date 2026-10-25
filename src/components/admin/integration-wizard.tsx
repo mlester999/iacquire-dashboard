@@ -117,7 +117,7 @@ function Row({ ok, title, children }: { ok: boolean | null; title: string; child
   return (
     <li className="flex gap-3 rounded-xl bg-surface-2 p-3">
       <Icon className={cn("mt-0.5 size-4 shrink-0", ok === null ? "text-muted" : ok ? "text-success" : "text-danger")} aria-hidden />
-      <div className="min-w-0 text-[13px] leading-relaxed">
+      <div className="min-w-0 text-[14px] leading-relaxed">
         <p className="font-medium text-ink">
           {title}
           <span className="sr-only">{ok === null ? " — informational" : ok ? " — verified" : " — not verified"}</span>
@@ -150,7 +150,7 @@ function ExecutionSummary({ caps }: { caps: Record<string, unknown> }) {
           const runs = list(executions[text(w.id)]);
           const failed = runs.filter((r) => /error|fail|crash/i.test(text(r.status))).length;
           return (
-            <li key={text(w.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+            <li key={text(w.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
               <span className="min-w-0 break-words">{text(w.name) || text(w.id)}</span>
               <Badge tone={failed ? "danger" : "neutral"}>{runs.length} recent{failed ? ` · ${failed} failed` : ""}</Badge>
             </li>
@@ -169,7 +169,7 @@ function ResultBanner({ result }: { result: WizardResult }) {
         <Badge tone={tone(result.status)}>{stateLabel(result.status)}</Badge>
         <span className="text-xs text-muted">Verified with a real read-only request</span>
       </div>
-      <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{result.detail}</p>
+      <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{result.detail}</p>
     </div>
   );
 }
@@ -520,7 +520,7 @@ export function ConnectionWizard({
               <p className="text-xs font-semibold uppercase tracking-wider text-muted">Client</p>
               <p className="mt-1 text-[16px] font-semibold text-ink">{companyName ?? "Selected client"}</p>
             </div>
-            <ol className="list-inside list-decimal space-y-1.5 text-[13px] leading-relaxed text-muted">
+            <ol className="list-inside list-decimal space-y-1.5 text-[14px] leading-relaxed text-muted">
               <li>Create this client&apos;s GoHighLevel sub-account manually from the approved iAcquire Master Snapshot.</li>
               <li>Copy the new sub-account&apos;s Location ID.</li>
               <li>Create a Private Integration token for that one sub-account with read-only scopes.</li>
@@ -589,7 +589,7 @@ export function ConnectionWizard({
       case "test":
         return (
           <div className="space-y-4">
-            <p className="text-[13px] leading-relaxed text-muted">
+            <p className="text-[14px] leading-relaxed text-muted">
               {provider === "hermes" && (isGatewayWizard
                 ? "The portal sends a Cloudflare-authenticated, read-only request to the Hermes health endpoint. This verifies gateway connectivity only; each agency profile is checked separately."
                 : "The portal reaches the gateway, signs in with this employee's own key, and checks which profile answers. No AI run is started.")}
@@ -597,7 +597,7 @@ export function ConnectionWizard({
               {provider === "n8n" && "The portal authenticates with the API key and reads the workflow list. It never edits, runs or activates a workflow."}
             </p>
             {!saved && connection.status === "not_configured" && <Notice tone="warning">Save the credential first.</Notice>}
-            {busy === "test" && <p className="text-[13px] text-muted" role="status">Testing the live service…</p>}
+            {busy === "test" && <p className="text-[14px] text-muted" role="status">Testing the live service…</p>}
             {result && <ResultBanner result={result} />}
             {result && !OK_STATES.includes(result.status) && <Notice tone="warning">Go back to correct the endpoint or credential, then test again. The connection stays unverified until a test succeeds.</Notice>}
           </div>
@@ -620,7 +620,7 @@ export function ConnectionWizard({
       case "routing":
         return (
           <div className="space-y-4">
-            <dl className="grid gap-3 rounded-2xl border border-line p-4 text-[13px] sm:grid-cols-2">
+            <dl className="grid gap-3 rounded-2xl border border-line p-4 text-[14px] sm:grid-cols-2">
               <div><dt className="text-xs text-muted">Gateway host</dt><dd className="break-all font-medium">{safeHost(baseUrl)}</dd></div>
               <div><dt className="text-xs text-muted">Profile</dt><dd className="break-all font-medium">{profile}</dd></div>
               <div><dt className="text-xs text-muted">Serves</dt><dd className="font-medium">{orgId ? `${companyName ?? "This client"} · ${AGENT_BY_KEY[roleKey as keyof typeof AGENT_BY_KEY]?.name ?? roleKey}` : "Agency gateway (not a client identity)"}</dd></div>
@@ -633,7 +633,7 @@ export function ConnectionWizard({
         const step = setupState?.steps.find((item) => item.index === 3);
         return (
           <div className="space-y-4">
-            <p className="text-[13px] leading-relaxed text-muted">The six existing iAcquire identities have separate profile keys and individual read-only checks. The portal does not create profiles or use Hermes&apos; default profile as a substitute.</p>
+            <p className="text-[14px] leading-relaxed text-muted">The six existing iAcquire identities have separate profile keys and individual read-only checks. The portal does not create profiles or use Hermes&apos; default profile as a substitute.</p>
             <Row ok={step?.complete === true} title={step?.complete ? "Agency profiles verified" : "Agency profile mapping and checks"}>{step?.detail ?? `${selectedGateway?.mappedProfileCount ?? 0} of 6 existing agency identities mapped to this gateway.`}</Row>
             <p className="text-xs text-muted">Client profile mappings on this gateway: {selectedGateway?.clientMappedProfileCount ?? 0}. Client identity checks stay in their own client workspaces.</p>
             <Link href="/admin/employees?from=integrations" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Open Internal Workforce</Link>
@@ -696,7 +696,7 @@ export function ConnectionWizard({
         const calendars = list(inventory.calendars);
         return (
           <div className="space-y-4">
-            <p className="text-[13px] leading-relaxed text-muted">Optionally choose the pipeline and calendars the system should be prepared to use. Only items found in this location&apos;s verified metadata can be selected. This is a preparation record; nothing is written to GoHighLevel.</p>
+            <p className="text-[14px] leading-relaxed text-muted">Optionally choose the pipeline and calendars the system should be prepared to use. Only items found in this location&apos;s verified metadata can be selected. This is a preparation record; nothing is written to GoHighLevel.</p>
             <Field label="Pipeline" htmlFor="w-pipeline" optional>
               <Select id="w-pipeline" value={pipelineId} onChange={(e) => setPipelineId(e.target.value)} disabled={!pipelines.length}>
                 <option value="">{pipelines.length ? "No pipeline mapping" : "Sync metadata to list pipelines"}</option>
@@ -706,7 +706,7 @@ export function ConnectionWizard({
             <fieldset className="space-y-2">
               <legend className="mb-1 text-sm font-medium">Calendars <span className="font-normal text-muted">(optional)</span></legend>
               {calendars.length ? calendars.map((c) => (
-                <label key={text(c.id)} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                <label key={text(c.id)} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                   <input type="checkbox" checked={calendarIds.includes(text(c.id))} onChange={(e) => setCalendarIds((ids) => (e.target.checked ? [...ids, text(c.id)] : ids.filter((id) => id !== text(c.id))))} />
                   <span className="min-w-0 break-words">{text(c.name) || text(c.id)}</span>
                 </label>
@@ -726,7 +726,7 @@ export function ConnectionWizard({
               {workflows.length ? (
                 <ul className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
                   {workflows.map((w) => (
-                    <li key={text(w.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                    <li key={text(w.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                       <span className="min-w-0 break-words">{text(w.name) || text(w.id)} <span className="text-xs text-muted">({text(w.id)})</span></span>
                       <Badge tone={w.active ? "warning" : "neutral"}>{w.active ? "Active" : "Inactive"}</Badge>
                     </li>
@@ -744,12 +744,12 @@ export function ConnectionWizard({
         const processor = workflows.find((w) => /iacquire.*appointment.*event.*processor/i.test(text(w.name)));
         return (
           <div className="space-y-4">
-            <p className="text-[13px] leading-relaxed text-muted">Choose which workflows the portal may read execution summaries for. You can then associate them with a client on that client&apos;s integrations page. Clients never choose workflows.</p>
+            <p className="text-[14px] leading-relaxed text-muted">Choose which workflows the portal may read execution summaries for. You can then associate them with a client on that client&apos;s integrations page. Clients never choose workflows.</p>
             {workflows.length ? (
               <fieldset className="space-y-2">
                 <legend className="sr-only">Approved workflows</legend>
                 {workflows.map((w) => (
-                  <label key={text(w.id)} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                  <label key={text(w.id)} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                     <input type="checkbox" checked={approved.includes(text(w.id))} onChange={(e) => setApproved((ids) => (e.target.checked ? [...ids, text(w.id)] : ids.filter((id) => id !== text(w.id))))} />
                     <span className="min-w-0 break-words">{text(w.name) || text(w.id)} <span className="text-xs text-muted">({text(w.id)})</span></span>
                   </label>
@@ -770,7 +770,7 @@ export function ConnectionWizard({
                 <Badge tone={tone(connection.status)}>{isGatewayWizard ? connection.status === "connected" ? "Gateway connected" : "Gateway needs attention" : stateLabel(connection.status)}</Badge>
                 <span className="text-xs text-muted">{mode}</span>
               </div>
-              <dl className="mt-3 grid gap-2 text-[13px] sm:grid-cols-2">
+              <dl className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
                 <div><dt className="text-xs text-muted">{isGatewayWizard ? "Last gateway health check" : "Last successful test"}</dt><dd>{connection.lastSuccessAt ? formatDateTime(connection.lastSuccessAt, timeZone) : "Not yet verified"}</dd></div>
                 <div><dt className="text-xs text-muted">Last failed test</dt><dd>{connection.lastFailureAt ? formatDateTime(connection.lastFailureAt, timeZone) : "None recorded"}</dd></div>
               </dl>
@@ -862,7 +862,7 @@ export function ConnectionWizard({
         <h2 ref={heading} tabIndex={-1} className="border-t border-line pt-5 text-[20px] font-semibold tracking-tight text-ink outline-none">{flow[index].label}</h2>
         {error && <p className="rounded-xl bg-danger-soft p-3 text-xs leading-relaxed text-danger-ink" role="alert">{error}</p>}
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={step} initial={reduce ? false : { opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={reduce ? undefined : { opacity: 0, x: -10 }} transition={{ duration: 0.16 }}>
+          <motion.div key={step} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={reduce ? undefined : { opacity: 0, x: -10 }} transition={{ duration: 0.16 }}>
             {Body()}
           </motion.div>
         </AnimatePresence>

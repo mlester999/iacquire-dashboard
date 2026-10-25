@@ -51,7 +51,7 @@ export async function CrmAppointmentsView({ actor, scope, searchParams = {} }: {
   await auditSupportView(actor, "appointments", state.appointmentId ?? undefined);
   return (
     <>
-      {rangeError && <p className="mb-3 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="alert">{rangeError}</p>}
+      {rangeError && <p className="mb-3 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink" role="alert">{rangeError}</p>}
       <AppointmentsList scope={scope} state={state} items={JSON.parse(JSON.stringify(result.items))} total={result.total} pageSize={result.pageSize} filters={filters} today={todayIn(tz)} />
     </>
   );

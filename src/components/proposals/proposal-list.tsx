@@ -18,11 +18,11 @@ export interface ListViewerCan {
 export function ProposalFilters({ active, search }: { active: ListFilterKey; search: string }) {
   return (
     <div className="space-y-3">
-      <nav aria-label="Filter proposals" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Filter proposals" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
         {LIST_FILTERS.map((f) => (
           <Link
             key={f.key} href={{ pathname: "/proposals", query: { ...(f.key === "open" ? {} : { filter: f.key }), ...(search ? { q: search } : {}) } }} aria-current={active === f.key ? "page" : undefined}
-            className={cn("inline-flex h-11 shrink-0 items-center rounded-xl px-3.5 text-[13.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:h-9", active === f.key ? "border border-primary/30 bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")}
+            className={cn("inline-flex h-11 shrink-0 items-center rounded-xl px-3.5 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:h-9", active === f.key ? "border border-primary/30 bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")}
           >{f.label}</Link>
         ))}
       </nav>
@@ -33,7 +33,7 @@ export function ProposalFilters({ active, search }: { active: ListFilterKey; sea
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
           <input id="pl-search" name="q" type="search" defaultValue={search} maxLength={80} placeholder="Search by number, title or customer" className="h-11 w-full rounded-xl border border-line-strong bg-surface pl-9 pr-3 text-[16px] text-ink placeholder:text-faint focus-visible:outline-2 focus-visible:outline-primary sm:h-10 sm:text-[14px]" />
         </div>
-        <button type="submit" className="inline-flex h-11 items-center rounded-xl border border-line bg-surface px-4 text-[13.5px] font-medium text-ink hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary sm:h-10">Search</button>
+        <button type="submit" className="inline-flex h-11 items-center rounded-xl border border-line bg-surface px-4 text-[14px] font-medium text-ink hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary sm:h-10">Search</button>
       </form>
     </div>
   );
@@ -51,19 +51,19 @@ export function ProposalList({ rows, today, tz, can, empty }: { rows: ProposalSu
           <li key={p.id}>
             <Link href={`/proposals/${p.id}`} className="block rounded-2xl border border-line bg-surface p-4 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary">
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="text-[12.5px] font-medium tabular-nums text-muted">{p.number}</span>
+                <span className="text-[13px] font-medium tabular-nums text-muted">{p.number}</span>
                 <StatusBadge status={p.status} />
                 {p.origin === "ai" && <AiBadge />}
                 {p.requiresSignature && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">Needs a signature</span>}
               </span>
               <span className="mt-1.5 block break-words text-[15px] font-semibold text-ink">{p.title}</span>
-              <span className="mt-0.5 block break-words text-[13px] text-ink-2">{customer || "No customer chosen yet"}</span>
-              <span className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px]">
+              <span className="mt-0.5 block break-words text-[14px] text-ink-2">{customer || "No customer chosen yet"}</span>
+              <span className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[14px]">
                 <span className="font-medium tabular-nums text-ink">{groupTotalsText(p.totals, p.currency)}</span>
                 {valid && <span className={valid.tone === "danger" ? "text-danger-ink" : valid.tone === "warning" ? "text-warning-ink" : "text-muted"}>{valid.text}</span>}
                 <span className="text-muted">Version {p.version} · {p.ownerName ?? "No owner"} · Updated {dayIn(p.updatedAt, tz)}</span>
               </span>
-              {step && <span className="mt-2 block text-[13px] font-medium text-primary-ink underline">{step}</span>}
+              {step && <span className="mt-2 block text-[14px] font-medium text-primary-ink underline">{step}</span>}
             </Link>
           </li>
         );

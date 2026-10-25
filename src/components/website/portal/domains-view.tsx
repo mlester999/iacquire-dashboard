@@ -31,7 +31,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
     <div className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-2.5 ring-1 ring-inset ring-line">
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{label}</p>
-        <p className="break-all font-mono text-[12.5px] text-ink">{value}</p>
+        <p className="break-all font-mono text-[13px] text-ink">{value}</p>
       </div>
       <button type="button" onClick={() => void copy()} aria-label={`Copy ${label}`} className="grid size-10 shrink-0 place-items-center rounded-lg text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-9">
         <Copy className="size-3.5" aria-hidden />
@@ -51,7 +51,7 @@ function Step({ done, title, children }: { done: boolean | null; title: string; 
           {title}
           {done === true ? <StatusPill tone="success" size="sm">Done</StatusPill> : done === false ? <StatusPill tone="warning" size="sm">To do</StatusPill> : <StatusPill tone="neutral" size="sm">Up next</StatusPill>}
         </p>
-        {children && <div className="mt-1.5 space-y-2 text-[13px] leading-relaxed text-muted">{children}</div>}
+        {children && <div className="mt-1.5 space-y-2 text-[14px] leading-relaxed text-muted">{children}</div>}
       </div>
     </li>
   );
@@ -79,7 +79,7 @@ function DomainCard({ d, dns, canManage, canApprove, hasPublished, run, busy }: 
       </CardHeader>
       <CardContent className="space-y-4">
         {d.acquisition === "purchase_requested" && (
-          <div className="space-y-3 rounded-xl bg-surface-2/70 p-4 text-[13.5px] ring-1 ring-inset ring-line">
+          <div className="space-y-3 rounded-xl bg-surface-2/70 p-4 text-[14px] ring-1 ring-inset ring-line">
             {d.purchaseCostMicros ? (
               <>
                 <p className="flex items-center gap-2 font-medium"><span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary-ink"><ShoppingCart className="size-4" /></span> We found it for {formatCurrency(d.purchaseCostMicros / 1_000_000)} for the first year.</p>
@@ -95,7 +95,7 @@ function DomainCard({ d, dns, canManage, canApprove, hasPublished, run, busy }: 
             )}
           </div>
         )}
-        {d.acquisition === "purchase_approved" && <p className="rounded-xl bg-surface-2/70 p-4 text-[13.5px] text-muted ring-1 ring-inset ring-line">Approved. We&apos;re registering it in your business&apos;s name and will tell you as soon as it&apos;s done.</p>}
+        {d.acquisition === "purchase_approved" && <p className="rounded-xl bg-surface-2/70 p-4 text-[14px] text-muted ring-1 ring-inset ring-line">Approved. We&apos;re registering it in your business&apos;s name and will tell you as soon as it&apos;s done.</p>}
         {d.acquisition === "purchased" && d.registrar && (
           <div className="flex flex-wrap items-center gap-2">
             <InfoChip icon={<Landmark />}>Registered with {d.registrar}</InfoChip>
@@ -261,10 +261,10 @@ export function DomainsView({
           </>
         }
       >
-        <label htmlFor="sub-input" className="mb-1.5 block text-[13px] font-medium text-ink-2">New address</label>
+        <label htmlFor="sub-input" className="mb-1.5 block text-[14px] font-medium text-ink-2">New address</label>
         <div className="flex items-center gap-2">
           <Input id="sub-input" value={sub} onChange={(e) => setSub(e.target.value.toLowerCase())} maxLength={42} autoComplete="off" spellCheck={false} />
-          <span className="shrink-0 text-[13px] text-muted">.{baseDomain}</span>
+          <span className="shrink-0 text-[14px] text-muted">.{baseDomain}</span>
         </div>
       </Dialog>
     </div>

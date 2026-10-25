@@ -251,7 +251,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                   <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-3 rounded-xl border border-line p-2.5 text-left transition hover:-translate-y-px hover:border-line-strong hover:shadow-card">
                     <DateTile at={a.start_at} timeZone={timeZone} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-semibold" title={a.title}>{a.title}</span>
+                      <span className="block truncate text-[14px] font-semibold" title={a.title}>{a.title}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-1.5">
                         <InfoChip icon={<Clock />}>{formatTime(a.start_at, timeZone)}</InfoChip>
                         <StatusPill tone={STATUS_TONE[a.status] ?? "neutral"} size="sm">{statusLabel(a.status)}</StatusPill>
@@ -268,7 +268,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
             <div>
               <p className="text-[14px] font-semibold">Appointment Setter</p>
-              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
               {setterReady ? (
                 <ButtonLink href="/chat/appointment-setter" variant="secondary" size="sm" className="mt-3">
                   Ask the Appointment Setter
@@ -286,14 +286,14 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
 
       <Sheet open={Boolean(open)} onOpenChange={(o) => !o && setOpen(null)} title={open?.title ?? "Appointment"} description={open ? `${formatDate(open.start_at, timeZone)} · ${formatTime(open.start_at, timeZone)} – ${formatTime(open.end_at, timeZone)}` : undefined}>
         {open && (
-          <div className="space-y-4 p-5 text-[13.5px]">
+          <div className="space-y-4 p-5 text-[14px]">
             <div className="flex flex-wrap gap-1.5">
               <StatusPill tone={STATUS_TONE[open.status] ?? "neutral"}>{statusLabel(open.status)}</StatusPill>
               {flags(open).map((f) => <StatusPill key={f.key} tone={f.tone}>{f.label}</StatusPill>)}
             </div>
-            {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
-            {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
-            {(open.reschedule_count ?? 0) > 0 && open.previous_start_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><MoveRight className="mt-0.5 size-4 shrink-0" aria-hidden />Moved from {formatDate(open.previous_start_at, timeZone)} at {formatTime(open.previous_start_at, timeZone)}.</p>}
+            {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
+            {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[13px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
+            {(open.reschedule_count ?? 0) > 0 && open.previous_start_at && <p className="flex items-start gap-2 text-[13px] text-muted"><MoveRight className="mt-0.5 size-4 shrink-0" aria-hidden />Moved from {formatDate(open.previous_start_at, timeZone)} at {formatTime(open.previous_start_at, timeZone)}.</p>}
             <dl className="space-y-3">
               <div>
                 <dt className="text-[12px] text-muted">Meeting type</dt>
@@ -320,7 +320,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                 <dd>{timeZoneLabel(timeZone)}</dd>
               </div>
             </dl>
-            <p className="rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">To reschedule or cancel, change it in your calendar. This page follows the calendar&apos;s own record, so the change appears here once the calendar confirms it.</p>
+            <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">To reschedule or cancel, change it in your calendar. This page follows the calendar&apos;s own record, so the change appears here once the calendar confirms it.</p>
           </div>
         )}
       </Sheet>

@@ -130,13 +130,13 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
       </CardHeader>
       <CardContent className="grid gap-5 md:grid-cols-2">
         {data.error ? (
-          <p role="alert" className="text-[13px] text-danger-ink md:col-span-2">Blueprint details couldn&apos;t be loaded: {data.error}</p>
+          <p role="alert" className="text-[14px] text-danger-ink md:col-span-2">Blueprint details couldn&apos;t be loaded: {data.error}</p>
         ) : (
           <>
             <div className="min-w-0">
               <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Applied</p>
               {data.blueprints.length === 0 ? (
-                <p className="mt-1.5 text-[13px] text-muted">{ghl ? "None. This client's CRM configuration lives in GoHighLevel." : "No Blueprint applied. The client's CRM is set up by hand."}</p>
+                <p className="mt-1.5 text-[14px] text-muted">{ghl ? "None. This client's CRM configuration lives in GoHighLevel." : "No Blueprint applied. The client's CRM is set up by hand."}</p>
               ) : (
                 <ul className="mt-1.5 divide-y divide-line">
                   {data.blueprints.map((b) => {
@@ -144,7 +144,7 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
                     return (
                       <li key={b.blueprintId} className="flex flex-wrap items-start justify-between gap-2 py-2 first:pt-0 last:pb-0">
                         <span className="min-w-0">
-                          <span className="block text-[13px] font-medium text-ink">{b.name}</span>
+                          <span className="block text-[14px] font-medium text-ink">{b.name}</span>
                           <span className="block text-[12px] text-muted">
                             Version {b.version} · {formatDate(b.appliedAt, timeZone)} · {b.via === "onboarding" ? "at onboarding" : "by the agency"}
                           </span>
@@ -172,20 +172,20 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
               <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Setup checklist</p>
               {data.checklist ? (
                 <div className="mt-1.5 space-y-2">
-                  <p className="text-[13px] text-ink-2">{data.checklist.done} of {data.checklist.total} done</p>
+                  <p className="text-[14px] text-ink-2">{data.checklist.done} of {data.checklist.total} done</p>
                   <ProgressBar value={pct} tone={pct === 100 ? "success" : "primary"} label={`Setup checklist: ${data.checklist.done} of ${data.checklist.total} done`} />
                   {data.checklist.pending.length > 0 && (
-                    <ul className="space-y-0.5 text-[12.5px] text-muted">
+                    <ul className="space-y-0.5 text-[13px] text-muted">
                       {data.checklist.pending.slice(0, 3).map((p) => <li key={p}>{p}</li>)}
                       {data.checklist.pending.length > 3 && <li>and {data.checklist.pending.length - 3} more</li>}
                     </ul>
                   )}
                 </div>
               ) : (
-                <p className="mt-1.5 text-[13px] text-muted">{data.blueprints.length ? "Nothing left to connect, assign or approve." : "Appears once a Blueprint is applied."}</p>
+                <p className="mt-1.5 text-[14px] text-muted">{data.blueprints.length ? "Nothing left to connect, assign or approve." : "Appears once a Blueprint is applied."}</p>
               )}
               {!ghl && (
-                <Link href={checklistHref} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary underline-offset-2 hover:underline sm:min-h-0">
+                <Link href={checklistHref} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[14px] font-medium text-primary underline-offset-2 hover:underline sm:min-h-0">
                   Open the checklist<ArrowRight className="size-3.5" aria-hidden />
                 </Link>
               )}

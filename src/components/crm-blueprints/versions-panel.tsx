@@ -72,14 +72,14 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
           <div className="min-w-0">
             <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">Working draft</p>
             <h2 className="mt-1 text-[16px] font-semibold text-ink">Revision {b.draftRevision}</h2>
-            <p className="mt-1 text-[12.5px] text-muted"><When iso={b.draftUpdatedAt} prefix="Saved" timeZone={timeZone} />{b.draftUpdatedBy ? ` by ${b.draftUpdatedBy}` : ""}</p>
-            <p className="mt-2 text-[13px] text-ink-2">
+            <p className="mt-1 text-[13px] text-muted"><When iso={b.draftUpdatedAt} prefix="Saved" timeZone={timeZone} />{b.draftUpdatedBy ? ` by ${b.draftUpdatedBy}` : ""}</p>
+            <p className="mt-2 text-[14px] text-ink-2">
               {latest === null ? "Never published. Publishing freezes this draft as version 1."
                 : b.hasUnpublishedChanges ? `Changed since version ${latest}.` : `The same as version ${latest}: nothing to publish.`}
             </p>
-            {b.unpublishedDiff && !b.unpublishedDiff.empty && <ul className="mt-2 space-y-0.5 text-[12.5px] text-muted">{b.unpublishedDiff.summary.map((l) => <li key={l}>{l}</li>)}</ul>}
+            {b.unpublishedDiff && !b.unpublishedDiff.empty && <ul className="mt-2 space-y-0.5 text-[13px] text-muted">{b.unpublishedDiff.summary.map((l) => <li key={l}>{l}</li>)}</ul>}
             {(b.draftErrors.length > 0 || b.draftWarnings.length > 0) && (
-              <p className={cn("mt-2 text-[12.5px] font-medium", b.draftErrors.length ? "text-danger-ink" : "text-warning-ink")}>
+              <p className={cn("mt-2 text-[13px] font-medium", b.draftErrors.length ? "text-danger-ink" : "text-warning-ink")}>
                 {b.draftErrors.length ? `${b.draftErrors.length} ${b.draftErrors.length === 1 ? "problem blocks" : "problems block"} publishing` : ""}
                 {b.draftErrors.length && b.draftWarnings.length ? " · " : ""}
                 {b.draftWarnings.length ? `${b.draftWarnings.length} ${b.draftWarnings.length === 1 ? "warning" : "warnings"}` : ""}
@@ -95,9 +95,9 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
 
       <Card className="p-5">
         <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><GitCompare className="size-4 text-primary" aria-hidden /> Compare versions</h2>
-        <p className="mt-1 text-[12.5px] text-muted">Any two versions, or a version and the working draft. Changes are listed asset by asset.</p>
+        <p className="mt-1 text-[13px] text-muted">Any two versions, or a version and the working draft. Changes are listed asset by asset.</p>
         {refs.length < 2 ? (
-          <p className="mt-3 text-[13px] text-muted">There is only the working draft so far. Publish a version to compare against it.</p>
+          <p className="mt-3 text-[14px] text-muted">There is only the working draft so far. Publish a version to compare against it.</p>
         ) : (
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -113,10 +113,10 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
               </Field>
               <Button variant="secondary" loading={busy("compare")} disabled={from === null || from === to} onClick={() => from !== null && void compare(from, to)}>Compare</Button>
             </div>
-            {from !== null && from === to && <p className="mt-2 text-[12.5px] text-muted">Choose two different versions.</p>}
+            {from !== null && from === to && <p className="mt-2 text-[13px] text-muted">Choose two different versions.</p>}
             {diff && (
               <div className="mt-5" aria-live="polite">
-                <p className="mb-3 text-[12.5px] font-medium text-ink-2">{refLabel(diff.from)} → {refLabel(diff.to)}</p>
+                <p className="mb-3 text-[13px] font-medium text-ink-2">{refLabel(diff.from)} → {refLabel(diff.to)}</p>
                 <DiffView diff={diff.diff} />
               </div>
             )}
@@ -127,7 +127,7 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
       <section aria-labelledby="bp-versions-heading">
         <h2 id="bp-versions-heading" className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-ink"><History className="size-4 text-primary" aria-hidden /> Published versions</h2>
         {versions.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[13px] text-muted">No version has been published yet. Clients can only be given a published version.</p>
+          <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[14px] text-muted">No version has been published yet. Clients can only be given a published version.</p>
         ) : (
           <ol className="space-y-3">
             {versions.map((v) => (
@@ -140,8 +140,8 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
                         {v.version === latest && <Badge tone="success">Latest</Badge>}
                         <span className="text-[12px] text-muted">{formatDate(v.publishedAt, timeZone)}{v.publishedBy ? ` · ${v.publishedBy}` : ""}</span>
                       </div>
-                      {v.changeSummary && <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{v.changeSummary}</p>}
-                      {v.summaryLines.length > 0 && <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-muted">{v.summaryLines.map((l) => <li key={l}>{l}</li>)}</ul>}
+                      {v.changeSummary && <p className="mt-1.5 whitespace-pre-line text-[14px] leading-relaxed text-ink-2">{v.changeSummary}</p>}
+                      {v.summaryLines.length > 0 && <ul className="mt-1.5 space-y-0.5 text-[13px] text-muted">{v.summaryLines.map((l) => <li key={l}>{l}</li>)}</ul>}
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
                         <span>{total(v.counts)} assets</span>
                         <span>Format v{v.schemaVersion}</span>
@@ -190,15 +190,15 @@ function PublishDialog({ open, onOpenChange, b, latest, preview }: { open: boole
       </>}>
       <div className="space-y-4">
         {blocked && (
-          <div role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[12.5px] text-danger-ink">
+          <div role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">
             <p className="font-semibold">Fix these before publishing</p>
             <ul className="mt-1 space-y-0.5">{issueLines(b.draftErrors).map((l) => <li key={l}>{l}</li>)}</ul>
             <ul className="mt-2 list-disc space-y-0.5 pl-5">{b.draftErrors.slice(0, 5).map((e, i) => <li key={`${e.path}-${i}`}>{e.message}</li>)}</ul>
           </div>
         )}
-        {unchanged && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[12.5px] text-ink-2">The working draft is the same as version {latest}, so there is nothing new to publish.</p>}
+        {unchanged && <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">The working draft is the same as version {latest}, so there is nothing new to publish.</p>}
         {!blocked && b.draftWarnings.length > 0 && (
-          <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[12.5px] text-warning-ink">
+          <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
             <p className="font-semibold">{b.draftWarnings.length} {b.draftWarnings.length === 1 ? "warning" : "warnings"} (publishing is still allowed)</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">{b.draftWarnings.slice(0, 5).map((w, i) => <li key={`${w.path}-${i}`}>{w.message}</li>)}</ul>
           </div>
@@ -216,20 +216,20 @@ const KIND_LABEL = { added: "Added", changed: "Changed", removed: "Removed" } as
 
 /** A comparison, section by section, with each asset's field-level changes. */
 export function DiffView({ diff }: { diff: BlueprintDiff }) {
-  if (diff.empty) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">No differences: these versions are identical.</p>;
+  if (diff.empty) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">No differences: these versions are identical.</p>;
   return (
     <div className="space-y-4">
-      {diff.summary.length > 0 && <ul className="space-y-0.5 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[12.5px] text-ink-2">{diff.summary.map((l) => <li key={l}>{l}</li>)}</ul>}
+      {diff.summary.length > 0 && <ul className="space-y-0.5 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">{diff.summary.map((l) => <li key={l}>{l}</li>)}</ul>}
       {ASSET_SECTIONS.map((section) => {
         const changes = diff.changes.filter((c) => c.section === section);
         if (!changes.length) return null;
         return (
           <section key={section} aria-label={SECTION_LABELS[section]}>
-            <h3 className="mb-1.5 text-[13px] font-semibold text-ink">{SECTION_LABELS[section]}</h3>
+            <h3 className="mb-1.5 text-[14px] font-semibold text-ink">{SECTION_LABELS[section]}</h3>
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {changes.map((c) => (
                 <li key={`${c.kind}-${c.id}`} className="px-4 py-2.5">
-                  <div className="flex flex-wrap items-center gap-2"><Badge tone={KIND_TONE[c.kind]}>{KIND_LABEL[c.kind]}</Badge><span className="text-[13px] font-medium text-ink">{c.name}</span><code className="font-mono text-[12px] text-muted">{c.id}</code></div>
+                  <div className="flex flex-wrap items-center gap-2"><Badge tone={KIND_TONE[c.kind]}>{KIND_LABEL[c.kind]}</Badge><span className="text-[14px] font-medium text-ink">{c.name}</span><code className="font-mono text-[12px] text-muted">{c.id}</code></div>
                   {c.fields.length > 0 && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[12px] text-muted">{c.fields.map((f) => <li key={f}>{f}</li>)}</ul>}
                 </li>
               ))}

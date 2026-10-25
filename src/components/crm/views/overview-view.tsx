@@ -18,7 +18,7 @@ function Stat({ label, value, sub, href, icon: Icon }: { label: string; value: s
   const body = (
     <Card className="h-full p-4 transition-shadow hover:shadow-float">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[12.5px] font-medium text-muted">{label}</p>
+        <p className="text-[13px] font-medium text-muted">{label}</p>
         <Icon className="size-4 text-faint" aria-hidden />
       </div>
       <p className="mt-1.5 truncate text-[22px] font-semibold tracking-[-0.03em] text-ink tabular-nums">{value}</p>
@@ -41,7 +41,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
     <div className="space-y-5">
       <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Overview</h2>
       {ghlCaps.length > 0 && (
-        <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           GoHighLevel still owns {ghlCaps.map((c) => CAPABILITY_LABELS[c].toLowerCase()).join(", ")} for this workspace, so those stay read-only here. <Link href={`${b}/settings/provider`} className="font-medium underline">CRM provider settings</Link>
         </p>
       )}
@@ -58,7 +58,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
       {starting && !scope.readOnly && (
         <Card className="p-5">
           <h3 className="text-[15px] font-semibold text-ink">Set up your CRM</h3>
-          <p className="mt-1 text-[13px] text-muted">New contacts arrive automatically from your website forms, messages and bookings. To bring in what you already have:</p>
+          <p className="mt-1 text-[14px] text-muted">New contacts arrive automatically from your website forms, messages and bookings. To bring in what you already have:</p>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { href: `${b}/settings/data`, icon: Database, title: "Import a spreadsheet", body: "CSV from Excel, Google Sheets or another CRM", show: !!scope.can["contacts.import"] },
@@ -69,7 +69,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
               <li key={s.href}>
                 <Link href={s.href} className="flex h-full items-start gap-3 rounded-xl border border-line p-3 hover:bg-surface-2">
                   <s.icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-                  <span><span className="block text-[13.5px] font-medium text-ink">{s.title}</span><span className="block text-[12px] text-muted">{s.body}</span></span>
+                  <span><span className="block text-[14px] font-medium text-ink">{s.title}</span><span className="block text-[12px] text-muted">{s.body}</span></span>
                 </Link>
               </li>
             ))}
@@ -83,11 +83,11 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
             <Card className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[15px] font-semibold text-ink">{o.pipeline.name}</h3>
-                <Link href={`${b}/pipelines?p=${o.pipeline.id}`} className="inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">Open board<ArrowRight className="size-3.5" /></Link>
+                <Link href={`${b}/pipelines?p=${o.pipeline.id}`} className="inline-flex items-center gap-1 text-[14px] font-medium text-primary hover:underline">Open board<ArrowRight className="size-3.5" /></Link>
               </div>
               <ul className="mt-4 space-y-2">
                 {o.pipeline.stages.map((s) => (
-                  <li key={s.id} className="grid grid-cols-[140px_minmax(0,1fr)_32px] items-center gap-3 text-[13px] sm:grid-cols-[180px_minmax(0,1fr)_40px]">
+                  <li key={s.id} className="grid grid-cols-[140px_minmax(0,1fr)_32px] items-center gap-3 text-[14px] sm:grid-cols-[180px_minmax(0,1fr)_40px]">
                     <span className="truncate text-ink-2">{s.name}</span>
                     <span className="h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden><span className="block h-full rounded-full bg-primary/70" style={{ width: `${(s.count / maxStage) * 100}%` }} /></span>
                     <span className="text-right tabular-nums text-ink">{s.count}</span>
@@ -102,7 +102,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
             {o.activity.length ? (
               <ul className="mt-3 divide-y divide-line">
                 {o.activity.map((a) => (
-                  <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2.5 text-[13px]">
+                  <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2.5 text-[14px]">
                     <span className="min-w-0">
                       <span className="text-ink">{a.summary}</span>
                       {a.contact && <> · <Link href={`${b}/contacts/${a.contact.id}`} className="font-medium text-primary hover:underline">{a.contact.name}</Link></>}
@@ -111,7 +111,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
                   </li>
                 ))}
               </ul>
-            ) : <p className="mt-2 text-[13px] text-muted">Nothing yet. Changes to contacts, deals and tasks show up here as they happen.</p>}
+            ) : <p className="mt-2 text-[14px] text-muted">Nothing yet. Changes to contacts, deals and tasks show up here as they happen.</p>}
           </Card>
         </div>
 
@@ -120,14 +120,14 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
             <Card className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[15px] font-semibold text-ink">My tasks</h3>
-                <Link href={`${b}/tasks`} className="text-[13px] font-medium text-primary hover:underline">All tasks</Link>
+                <Link href={`${b}/tasks`} className="text-[14px] font-medium text-primary hover:underline">All tasks</Link>
               </div>
               <div className="mt-3"><TaskList scope={scope} tasks={JSON.parse(JSON.stringify(o.myTasks))} emptyText="Nothing assigned to you right now." /></div>
             </Card>
           )}
           <Card className="p-5">
             <h3 className="text-[15px] font-semibold text-ink">Shortcuts</h3>
-            <ul className="mt-2 space-y-1 text-[13.5px]">
+            <ul className="mt-2 space-y-1 text-[14px]">
               {[
                 { href: `${b}/smart-lists`, label: `Smart Lists (${o.counts.smartLists})`, icon: ListFilter },
                 { href: `${b}/tags`, label: `Tags (${o.counts.tags})`, icon: Tags },

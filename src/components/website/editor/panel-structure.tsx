@@ -44,7 +44,7 @@ export function PagesPanel({ doc, pageId, setPage, commit, announce, onAfterAdd 
               <div className={cn("group flex items-center gap-1 rounded-xl pr-1 transition-colors", current ? "bg-primary-soft" : "hover:bg-surface-2")}>
                 {renaming === p.id ? (
                   <input
-                    autoFocus aria-label="Page name" defaultValue={p.title} maxLength={60} className="m-1 h-8 min-w-0 flex-1 rounded-lg border border-primary bg-surface px-2 text-[13px]"
+                    autoFocus aria-label="Page name" defaultValue={p.title} maxLength={60} className="m-1 h-8 min-w-0 flex-1 rounded-lg border border-primary bg-surface px-2 text-[14px]"
                     onBlur={(e) => { const t = e.target.value.trim(); if (t && t !== p.title) commit(updatePage(doc, p.id, { title: t })); setRenaming(null); }}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setRenaming(null); }}
                   />
@@ -52,7 +52,7 @@ export function PagesPanel({ doc, pageId, setPage, commit, announce, onAfterAdd 
                   <button type="button" onClick={() => setPage(p.id)} onDoubleClick={() => setRenaming(p.id)} aria-current={current ? "page" : undefined} className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-2.5 text-left">
                     {home ? <Home className="size-3.5 shrink-0 text-primary" aria-label="Home page" /> : p.kind === "thanks" ? <Link2 className="size-3.5 shrink-0 text-muted" aria-label="Thank-you page" /> : p.kind === "landing" ? <LayoutPanelTop className="size-3.5 shrink-0 text-muted" aria-label="Landing page" /> : <FileText className="size-3.5 shrink-0 text-muted" aria-hidden />}
                     <span className="min-w-0 flex-1">
-                      <span className={cn("block truncate text-[13px]", current ? "font-semibold text-primary-ink" : "font-medium text-ink")}>{p.title}</span>
+                      <span className={cn("block truncate text-[14px]", current ? "font-semibold text-primary-ink" : "font-medium text-ink")}>{p.title}</span>
                       <span className="block truncate text-[12px] text-muted">/{home ? "" : p.slug}{!p.showInNav && " · hidden from menu"}</span>
                     </span>
                   </button>
@@ -119,7 +119,7 @@ function AddPageDialog({ open, onOpenChange, doc, onCreate }: { open: boolean; o
         <div role="radiogroup" aria-label="Start from" className="grid gap-2 sm:grid-cols-2">
           {PAGE_STARTERS.map((s) => (
             <button key={s.id} type="button" role="radio" aria-checked={starter === s.id} onClick={() => setStarter(s.id)} className={cn("rounded-xl border p-3 text-left transition-colors", starter === s.id ? "border-primary bg-primary-soft" : "border-line hover:border-line-strong")}>
-              <span className="block text-[13px] font-semibold">{s.label}</span>
+              <span className="block text-[14px] font-semibold">{s.label}</span>
               <span className="mt-0.5 block text-[12px] leading-snug text-muted">{s.description}</span>
             </button>
           ))}
@@ -226,7 +226,7 @@ export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteCont
           return (
             <li key={`${r.id}-${i}`} role="none">
               <div role="treeitem" aria-label={r.label} aria-selected={on} aria-level={r.depth + 1} aria-expanded={r.hasChildren ? !effectiveCollapsed.has(r.id) : undefined} tabIndex={0} onKeyDown={(e) => onKey(e, i)} onClick={() => actions.select(r.id)}
-                className={cn("group flex h-8 cursor-default items-center gap-1 rounded-lg pr-1 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-primary", on ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")} style={{ paddingLeft: 4 + r.depth * 14 }}>
+                className={cn("group flex h-8 cursor-default items-center gap-1 rounded-lg pr-1 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-primary", on ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")} style={{ paddingLeft: 4 + r.depth * 14 }}>
                 {r.hasChildren ? (
                   <button type="button" tabIndex={-1} aria-label={effectiveCollapsed.has(r.id) ? "Expand" : "Collapse"} onClick={(e) => { e.stopPropagation(); toggle(r.id); }} className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-surface-3"><ChevronRight className={cn("size-3 transition-transform", !effectiveCollapsed.has(r.id) && "rotate-90")} /></button>
                 ) : <span className="size-5 shrink-0" />}

@@ -53,32 +53,32 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
   };
 
   const fixFirst = (list: typeof blockSubmit) => list.length > 0 && (
-    <p className="text-[12.5px] text-danger-ink">
+    <p className="text-[13px] text-danger-ink">
       {list[0].message} <button type="button" className="font-medium underline" onClick={() => onOpenTab("edit")}>Open the editor</button>
     </p>
   );
-  const saveFirst = dirty && <p className="text-[12.5px] text-warning-ink">You have unsaved changes. Save them first, so what is approved or sent is what you see.</p>;
+  const saveFirst = dirty && <p className="text-[13px] text-warning-ink">You have unsaved changes. Save them first, so what is approved or sent is what you see.</p>;
 
   return (
     <section aria-label="Status and actions" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={s} />
         {detail.origin === "ai" && <AiBadge />}
-        <span className="text-[12.5px] text-muted">Version {detail.version}</span>
+        <span className="text-[13px] text-muted">Version {detail.version}</span>
       </div>
-      <p className="text-[13.5px] text-ink-2">{STATUS_EXPLAIN[s]}</p>
+      <p className="text-[14px] text-ink-2">{STATUS_EXPLAIN[s]}</p>
       {detail.approvedByName && detail.approvedVersion === detail.version && ["approved", "sent", "accepted", "declined", "expired"].includes(s) && (
-        <p className="text-[12.5px] text-muted">Approved by {detail.approvedByName}{detail.approvedAt ? `, ${whenIn(detail.approvedAt, tz)}` : ""}.</p>
+        <p className="text-[13px] text-muted">Approved by {detail.approvedByName}{detail.approvedAt ? `, ${whenIn(detail.approvedAt, tz)}` : ""}.</p>
       )}
-      {detail.decisionNote && (s === "changes_requested" || s === "rejected") && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink"><span className="font-semibold">Reviewer&apos;s note: </span>{detail.decisionNote}</p>}
-      {detail.validUntil && ["sent", "approved", "draft", "pending_approval", "changes_requested"].includes(s) && <p className="text-[12.5px] text-muted">Valid until {formatDay(detail.validUntil)}.</p>}
+      {detail.decisionNote && (s === "changes_requested" || s === "rejected") && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink"><span className="font-semibold">Reviewer&apos;s note: </span>{detail.decisionNote}</p>}
+      {detail.validUntil && ["sent", "approved", "draft", "pending_approval", "changes_requested"].includes(s) && <p className="text-[13px] text-muted">Valid until {formatDay(detail.validUntil)}.</p>}
 
-      {draftLike && !mine && <p className="border-t border-line pt-4 text-[13px] text-muted">Only the person who wrote this proposal, or a manager, can send it on.</p>}
+      {draftLike && !mine && <p className="border-t border-line pt-4 text-[14px] text-muted">Only the person who wrote this proposal, or a manager, can send it on.</p>}
       {draftLike && mine && (
         <div className="space-y-3 border-t border-line pt-4">
           {needsApproval ? (
             <>
-              <div className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">
+              <div className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">
                 <p className="font-medium text-ink">A second look is needed before this goes out:</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-5">{detail.approval.reasons.map((r) => <li key={r}>{APPROVAL_REASON_TEXT[r]}</li>)}</ul>
               </div>
@@ -87,7 +87,7 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
             </>
           ) : can.send ? (
             <>
-              <p className="text-[12.5px] text-muted">Nothing here needs a second look, so you can mark it as sent yourself. It is recorded as approved by you.</p>
+              <p className="text-[13px] text-muted">Nothing here needs a second look, so you can mark it as sent yourself. It is recorded as approved by you.</p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="brand" disabled={dirty || blockSend.length > 0} onClick={() => setConfirm("send")}>Mark as sent</Button>
                 <Button variant="secondary" loading={busy("submit")} disabled={dirty || blockSubmit.length > 0 || !can.create} onClick={() => run("submit", () => submitForApprovalAction(detail.id), "Sent for approval.")}>Ask for approval first</Button>
@@ -97,7 +97,7 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
           ) : (
             <>
               <Button variant="brand" loading={busy("submit")} disabled={dirty || blockSubmit.length > 0 || !can.create} onClick={() => run("submit", () => submitForApprovalAction(detail.id), "Sent for approval.")}>Send for approval</Button>
-              <p className="text-[12.5px] text-muted">You can write proposals but not send them, so someone who can has to approve this one.</p>
+              <p className="text-[13px] text-muted">You can write proposals but not send them, so someone who can has to approve this one.</p>
               {fixFirst(blockSubmit)}
             </>
           )}
@@ -117,11 +117,11 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
                 <Button variant="secondary" loading={busy("changes")} disabled={!note.trim()} onClick={() => run("changes", () => decideProposalAction(detail.id, { decision: "request_changes", version: detail.version, note }), "Changes requested.")}>Request changes</Button>
                 <Button variant="outline" onClick={() => setConfirm("reject")}>Reject</Button>
               </div>
-              {approveBlock && <p className="text-[12.5px] text-muted">{approveBlock}</p>}
+              {approveBlock && <p className="text-[13px] text-muted">{approveBlock}</p>}
               {!approveBlock && fixFirst(blockSubmit)}
-              <p className="text-[12.5px] text-muted">Your approval is of version {detail.version} exactly as it is in the Preview tab. If the text changes afterwards, it has to be approved again.</p>
+              <p className="text-[13px] text-muted">Your approval is of version {detail.version} exactly as it is in the Preview tab. If the text changes afterwards, it has to be approved again.</p>
             </>
-          ) : <p className="text-[13px] text-muted">{approveBlock ?? "Only the business owner or a manager can approve it."}</p>}
+          ) : <p className="text-[14px] text-muted">{approveBlock ?? "Only the business owner or a manager can approve it."}</p>}
         </div>
       )}
 
@@ -133,24 +133,24 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
               {fixFirst(blockSend)}
               {saveFirst}
             </>
-          ) : <p className="text-[13px] text-muted">Approved. Someone who can send proposals needs to send it.</p>}
+          ) : <p className="text-[14px] text-muted">Approved. Someone who can send proposals needs to send it.</p>}
         </div>
       )}
 
       {s === "sent" && (
         <div className="space-y-3 border-t border-line pt-4">
-          <p className="text-[13px] text-ink-2">
+          <p className="text-[14px] text-ink-2">
             The customer&apos;s link, and any message sent with it, are on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("delivery")}>Delivery tab</button>. Marking a proposal as sent contacts no one: send the link from there, or copy it and give it to the customer yourself.
           </p>
           {detail.requiresSignature && (
-            <p className="text-[13px] text-ink-2">
+            <p className="text-[14px] text-ink-2">
               This proposal needs a signature, which the customer gives at your signing service, not on their proposal page. Ask for it on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("signature")}>Signature tab</button>. It is accepted only when the signing service reports the signature.
             </p>
           )}
           <div className="flex flex-wrap gap-2">
             {can.record && <Button variant="secondary" onClick={() => setRecording(true)}>Record the customer&apos;s answer</Button>}
           </div>
-          {!can.record && <p className="text-[12.5px] text-muted">If the customer answers by phone or on paper, the owner or a manager can record it.</p>}
+          {!can.record && <p className="text-[13px] text-muted">If the customer answers by phone or on paper, the owner or a manager can record it.</p>}
         </div>
       )}
 
@@ -159,7 +159,7 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
         {can.create && <Button variant="outline" size="sm" loading={busy("duplicate")} onClick={duplicate}>Duplicate</Button>}
         {(mine || can.send) && ["draft", "pending_approval", "changes_requested", "approved", "sent"].includes(s) && <Button variant="ghost" size="sm" onClick={() => setConfirm("withdraw")}>{s === "sent" ? "Withdraw" : "Withdraw this proposal"}</Button>}
       </div>
-      {s === "accepted" && <p className="text-[12.5px] text-muted">An accepted proposal is final. To change what was agreed, duplicate it and start a new proposal.</p>}
+      {s === "accepted" && <p className="text-[13px] text-muted">An accepted proposal is final. To change what was agreed, duplicate it and start a new proposal.</p>}
 
       <ConfirmDialog
         open={confirm === "send"} onOpenChange={(o) => !o && setConfirm(null)} title="Mark this version as sent?" confirmLabel="Mark as sent" loading={busy("send")}

@@ -103,7 +103,7 @@ export function ContactProfile({
 
   return (
     <div className="space-y-5">
-      <Link href={`${scope.base}/contacts`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />Contacts</Link>
+      <Link href={`${scope.base}/contacts`} className="inline-flex items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />Contacts</Link>
 
       <section className="card-surface rounded-2xl p-5">
         <div className="flex flex-wrap items-start gap-4">
@@ -114,7 +114,7 @@ export function ContactProfile({
               <LeadStatusBadge status={detail.leadStatus} />
               {detail.archivedAt && <Badge tone="warning">Archived</Badge>}
             </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[14px] text-muted">
               {detail.email && <a href={`mailto:${detail.email}`} className="inline-flex items-center gap-1.5 hover:text-ink"><Mail className="size-3.5" />{detail.email}</a>}
               {detail.phone && <a href={`tel:${detail.phone}`} className="inline-flex items-center gap-1.5 hover:text-ink"><Phone className="size-3.5" />{formatPhone(detail.phone)}</a>}
               {detail.companies[0] && <Link href={`${scope.base}/companies/${detail.companies[0].id}`} className="inline-flex items-center gap-1.5 hover:text-ink"><Building2 className="size-3.5" />{detail.companies[0].name}</Link>}
@@ -130,7 +130,7 @@ export function ContactProfile({
                         <i className="mr-2 size-2 rounded-full" style={{ background: t.color }} aria-hidden />{t.name}
                       </MenuItem>
                     ))}
-                    {!tags.some((t) => !detail.tags.some((x) => x.id === t.id)) && <p className="px-3 py-2 text-[12.5px] text-muted">No more tags. Create them under Tags &amp; Segments.</p>}
+                    {!tags.some((t) => !detail.tags.some((x) => x.id === t.id)) && <p className="px-3 py-2 text-[13px] text-muted">No more tags. Create them under Tags &amp; Segments.</p>}
                   </MenuContent>
                 </Menu>
               )}
@@ -162,7 +162,7 @@ export function ContactProfile({
             )}
           </div>
         </div>
-        <dl className="mt-5 grid gap-3 border-t border-line pt-4 text-[12.5px] sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="mt-5 grid gap-3 border-t border-line pt-4 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-muted">Owner</dt>
             <dd className="mt-0.5">
@@ -195,8 +195,8 @@ export function ContactProfile({
                       <Link href={`/inbox?c=${c.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2/60">
                         <MessageSquare className="size-4 text-muted" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-[13.5px] font-medium text-ink">{CHANNEL_LABEL[c.channel] ?? c.channel} conversation <span className="font-normal text-muted">· {c.ownerKind === "human" ? "handled by a person" : c.ownerKind === "ai" ? "AI handling" : "unassigned"}</span></p>
-                          {c.preview && <p className="truncate text-[12.5px] text-muted">{c.preview}</p>}
+                          <p className="text-[14px] font-medium text-ink">{CHANNEL_LABEL[c.channel] ?? c.channel} conversation <span className="font-normal text-muted">· {c.ownerKind === "human" ? "handled by a person" : c.ownerKind === "ai" ? "AI handling" : "unassigned"}</span></p>
+                          {c.preview && <p className="truncate text-[13px] text-muted">{c.preview}</p>}
                         </div>
                         {c.unread > 0 && <Badge tone="primary">{c.unread} new</Badge>}
                         <span className="shrink-0 text-[12px] text-muted">{c.lastMessageAt ? <RelativeTime iso={c.lastMessageAt} timezone={scope.timezone} /> : ""}</span>
@@ -214,9 +214,9 @@ export function ContactProfile({
                       <li key={o.id}>
                         <Link href={`${scope.base}/opportunities/${o.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2/60">
                           <Handshake className="size-4 text-muted" />
-                          <div className="min-w-0 flex-1"><p className="truncate text-[13.5px] font-medium text-ink">{o.name}</p><p className="text-[12.5px] text-muted">{o.pipelineName} · {o.stageName}</p></div>
+                          <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-medium text-ink">{o.name}</p><p className="text-[13px] text-muted">{o.pipelineName} · {o.stageName}</p></div>
                           <Badge tone={o.status === "won" ? "success" : o.status === "lost" ? "danger" : "primary"} className="capitalize">{o.status}</Badge>
-                          <span className="shrink-0 text-[13px] font-medium tabular-nums text-ink">{money(o.value, o.currency)}</span>
+                          <span className="shrink-0 text-[14px] font-medium tabular-nums text-ink">{money(o.value, o.currency)}</span>
                         </Link>
                       </li>
                     ))}
@@ -230,7 +230,7 @@ export function ContactProfile({
                   {appointments.map((a) => (
                     <li key={a.id} className="flex items-center gap-3 px-4 py-3">
                       <CalendarClock className="size-4 text-muted" />
-                      <div className="min-w-0 flex-1"><p className="truncate text-[13.5px] font-medium text-ink">{a.title}</p><p className="text-[12.5px] text-muted">{new Date(a.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone })}</p></div>
+                      <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-medium text-ink">{a.title}</p><p className="text-[13px] text-muted">{new Date(a.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone })}</p></div>
                       <Badge tone={a.status === "cancelled" ? "neutral" : a.status === "noshow" ? "warning" : "primary"} className="capitalize">{a.status === "noshow" ? "No-show" : a.status}</Badge>
                     </li>
                   ))}
@@ -260,7 +260,7 @@ export function ContactProfile({
                 <p className="mb-1.5 text-[12px] font-medium text-muted">Email and phone</p>
                 <ul className="space-y-1.5">
                   {detail.identities.map((i) => (
-                    <li key={i.id} className="flex items-center gap-2 text-[13px]">
+                    <li key={i.id} className="flex items-center gap-2 text-[14px]">
                       {i.kind === "email" ? <Mail className="size-3.5 shrink-0 text-muted" /> : <Phone className="size-3.5 shrink-0 text-muted" />}
                       <span className="min-w-0 flex-1 truncate">{i.kind === "phone" ? formatPhone(i.value) : i.value}</span>
                       {i.primary && <Badge className="h-5 px-1.5 text-[12px]">Primary</Badge>}
@@ -268,7 +268,7 @@ export function ContactProfile({
                       {canEdit && <button type="button" onClick={() => run(`rm-${i.id}`, () => removeIdentityAction(scope.orgId, detail.id, i.id), "Removed.")} className="inline-flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-danger-ink" aria-label={`Remove ${i.value}`}><X className="size-3.5" /></button>}
                     </li>
                   ))}
-                  {!detail.identities.length && <li className="text-[13px] text-faint">None recorded</li>}
+                  {!detail.identities.length && <li className="text-[14px] text-faint">None recorded</li>}
                 </ul>
                 {canEdit && (addingIdentity ? (
                   <form className="mt-2 flex gap-2" onSubmit={async (e) => { e.preventDefault(); if (await run("identity", () => addIdentityAction(scope.orgId, detail.id, addingIdentity, identityValue), "Added.")) { setAddingIdentity(null); setIdentityValue(""); } }}>
@@ -277,7 +277,7 @@ export function ContactProfile({
                     <Button type="button" size="sm" variant="ghost" onClick={() => setAddingIdentity(null)}>Cancel</Button>
                   </form>
                 ) : (
-                  <div className="mt-2 flex gap-3 text-[12.5px] font-medium text-primary-ink">
+                  <div className="mt-2 flex gap-3 text-[13px] font-medium text-primary-ink">
                     <button type="button" onClick={() => setAddingIdentity("email")} className="hover:underline">+ Email</button>
                     <button type="button" onClick={() => setAddingIdentity("phone")} className="hover:underline">+ Phone</button>
                   </div>
@@ -297,14 +297,14 @@ export function ContactProfile({
             <SectionCard title="Companies">
               <ul className="space-y-2">
                 {detail.companies.map((c) => (
-                  <li key={c.id} className="flex items-center gap-2 text-[13px]">
+                  <li key={c.id} className="flex items-center gap-2 text-[14px]">
                     <Building2 className="size-3.5 text-muted" />
                     <Link href={`${scope.base}/companies/${c.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{c.name}</Link>
                     {c.title && <span className="truncate text-muted">{c.title}</span>}
                     {canEdit && <button type="button" aria-label={`Unlink ${c.name}`} onClick={() => run(`unlink-${c.id}`, () => unlinkCompanyAction(scope.orgId, detail.id, c.id), "Unlinked.")} className="inline-flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2"><X className="size-3.5" /></button>}
                   </li>
                 ))}
-                {!detail.companies.length && <li className="text-[13px] text-faint">Not linked to a company</li>}
+                {!detail.companies.length && <li className="text-[14px] text-faint">Not linked to a company</li>}
               </ul>
               {canEdit && (
                 <div className="mt-3">
@@ -323,7 +323,7 @@ export function ContactProfile({
           )}
 
           <SectionCard title="Consent" action={scope.can["consent.manage"] && !scope.readOnly ? <Button variant="ghost" size="sm" onClick={() => setConsentOpen(true)}>Record</Button> : undefined}>
-            <table className="w-full text-[12.5px]">
+            <table className="w-full text-[13px]">
               <thead className="text-muted"><tr><th className="pb-1.5 text-left font-medium">Channel</th><th className="pb-1.5 text-left font-medium">Service</th><th className="pb-1.5 text-left font-medium">Marketing</th></tr></thead>
               <tbody>
                 {(["email", "sms", "whatsapp"] as const).map((ch) => (
@@ -397,7 +397,7 @@ function EditContactSheet({ open, onOpenChange, scope, detail }: { open: boolean
         </div>
         {detail.fields.length > 0 && (
           <div className="space-y-3 border-t border-line pt-4">
-            <p className="text-[13px] font-semibold text-ink">Custom fields</p>
+            <p className="text-[14px] font-semibold text-ink">Custom fields</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {detail.fields.map((f) => (
                 <Field key={f.fieldId} label={f.label} htmlFor={`e-cf-${f.fieldId}`} optional={!f.required} hint={f.helpText ?? undefined} className={f.type === "textarea" || f.type === "multiselect" ? "sm:col-span-2" : undefined}>

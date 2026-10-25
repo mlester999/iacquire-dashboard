@@ -82,7 +82,7 @@ function GroupEditor({ group, onChange, fields, options, depth, onRemove }: { gr
   return (
     <div className={cn("space-y-2.5", depth > 1 && "rounded-2xl border border-dashed border-line-strong bg-surface-2/50 p-3")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-[13px] text-ink-2">
+        <div className="flex items-center gap-2 text-[14px] text-ink-2">
           <span>Match</span>
           <Segmented id={`match-${groupId}`} size="sm" ariaLabel="Match all or any" value={group.op} onChange={(op) => onChange({ ...group, op })} options={[{ value: "and", label: "all" }, { value: "or", label: "any" }]} />
           <span>of these conditions</span>
@@ -93,7 +93,7 @@ function GroupEditor({ group, onChange, fields, options, depth, onRemove }: { gr
           </Button>
         )}
       </div>
-      {!group.conditions.length && <p className="rounded-xl border border-line bg-surface px-3 py-3 text-[13px] text-muted">No conditions yet. Everyone matches.</p>}
+      {!group.conditions.length && <p className="rounded-xl border border-line bg-surface px-3 py-3 text-[14px] text-muted">No conditions yet. Everyone matches.</p>}
       {group.conditions.map((c, i) =>
         isGroup(c) ? (
           <GroupEditor key={i} group={c} onChange={(g) => update(i, g)} fields={fields} options={options} depth={depth + 1} onRemove={() => update(i, null)} />
@@ -151,7 +151,7 @@ function ConditionRow({ condition, fields, options, onChange, onRemove }: { cond
 }
 
 function MultiChoice({ choices, value, onChange, label }: { choices: Array<{ value: string; label: string; color?: string }>; value: string[]; onChange: (v: string[]) => void; label: string }) {
-  if (!choices.length) return <p className="py-2 text-[12.5px] text-muted">Nothing to choose from yet.</p>;
+  if (!choices.length) return <p className="py-2 text-[13px] text-muted">Nothing to choose from yet.</p>;
   return (
     <div role="group" aria-label={label} className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
       {choices.map((c) => {
@@ -162,7 +162,7 @@ function MultiChoice({ choices, value, onChange, label }: { choices: Array<{ val
             type="button"
             aria-pressed={on}
             onClick={() => onChange(on ? value.filter((v) => v !== c.value) : [...value, c.value])}
-            className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] font-medium transition-colors sm:min-h-7", on ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
+            className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition-colors sm:min-h-7", on ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
           >
             {c.color && <i className="size-2 rounded-full" style={{ background: c.color }} aria-hidden />}
             {c.label}
@@ -174,14 +174,14 @@ function MultiChoice({ choices, value, onChange, label }: { choices: Array<{ val
 }
 
 function ValueEditor({ field, op, value, options, onChange, id }: { field: Field; op: string; value: unknown; options: FilterOptions; onChange: (v: unknown) => void; id: string }) {
-  if (!opNeedsValue(field.kind, op)) return <p className="py-2.5 text-[12.5px] text-muted">No value needed.</p>;
+  if (!opNeedsValue(field.kind, op)) return <p className="py-2.5 text-[13px] text-muted">No value needed.</p>;
   const arr = Array.isArray(value) ? (value as string[]) : [];
   const days = ["within_last_days", "more_than_days_ago", "within_next_days", "no_reply_in_days", "replied_within_days"].includes(op);
   if (days) {
     return (
       <div className="flex items-center gap-2">
         <Input aria-label="Number of days" type="number" min={0} max={3650} value={String(value ?? "")} onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))} className="w-24" />
-        <span className="text-[13px] text-muted">days</span>
+        <span className="text-[14px] text-muted">days</span>
       </div>
     );
   }
@@ -191,7 +191,7 @@ function ValueEditor({ field, op, value, options, onChange, id }: { field: Field
     return (
       <div className="flex items-center gap-2">
         <Input aria-label="From" type={type} value={String(v.from ?? "")} onChange={(e) => onChange({ ...v, from: type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value })} />
-        <span className="text-[13px] text-muted">and</span>
+        <span className="text-[14px] text-muted">and</span>
         <Input aria-label="To" type={type} value={String(v.to ?? "")} onChange={(e) => onChange({ ...v, to: type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value })} />
       </div>
     );

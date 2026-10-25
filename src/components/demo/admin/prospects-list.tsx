@@ -55,7 +55,7 @@ export function ProspectsList({
             <UsersRound className="size-5 text-primary" aria-hidden />
             Demo prospects
           </h1>
-          <p className="max-w-3xl text-[13.5px] leading-relaxed text-muted">
+          <p className="max-w-3xl text-[14px] leading-relaxed text-muted">
             People who asked for a demo with their work email. A prospect is not a user and has no workspace; you can turn a confirmed one into a client on their page. Reading what a prospect
             wrote to the AI chat is a separate step that is recorded.
           </p>
@@ -66,7 +66,7 @@ export function ProspectsList({
         </Link>
       </header>
 
-      <p role="status" className={`rounded-xl border px-4 py-3 text-[13.5px] leading-relaxed ${TONE[state.tone]}`}>
+      <p role="status" className={`rounded-xl border px-4 py-3 text-[14px] leading-relaxed ${TONE[state.tone]}`}>
         {state.text}
       </p>
 
@@ -85,13 +85,13 @@ export function ProspectsList({
       <Card className="p-4">
         <form method="get" action="/admin/prospects" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_12rem_12rem_auto] lg:items-end">
           <div className="space-y-1.5">
-            <label htmlFor="prospect-search" className="text-[13px] font-medium text-ink-2">
+            <label htmlFor="prospect-search" className="text-[14px] font-medium text-ink-2">
               Search name, email or business
             </label>
             <Input id="prospect-search" name="q" defaultValue={query.search} maxLength={100} />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="prospect-status" className="text-[13px] font-medium text-ink-2">
+            <label htmlFor="prospect-status" className="text-[14px] font-medium text-ink-2">
               Status
             </label>
             <Select id="prospect-status" name="status" defaultValue={query.status}>
@@ -103,7 +103,7 @@ export function ProspectsList({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="prospect-owner" className="text-[13px] font-medium text-ink-2">
+            <label htmlFor="prospect-owner" className="text-[14px] font-medium text-ink-2">
               Followed by
             </label>
             <Select id="prospect-owner" name="owner" defaultValue={query.owner}>
@@ -139,12 +139,12 @@ export function ProspectsList({
                     {r.accessRequestId && <Badge tone="outline">Also on the get-started form</Badge>}
                   </div>
                   {!r.erased && (
-                    <p className="mt-0.5 break-words text-[13px] text-muted">
+                    <p className="mt-0.5 break-words text-[14px] text-muted">
                       {r.business ?? "No business"}
                       {r.industryLabel ? `, ${r.industryLabel}` : ""} · <span className="break-all">{r.email}</span>
                     </p>
                   )}
-                  <p className="mt-1.5 text-[12.5px] text-muted">
+                  <p className="mt-1.5 text-[13px] text-muted">
                     {windowWords(r, clock)} · {r.messagesUsed} of {r.messageAllowance} messages used · Asked {formatDateTime(r.createdAt, timeZone)}
                     {r.ownerName ? ` · Followed by ${r.ownerName}` : ""}
                   </p>
@@ -154,7 +154,7 @@ export function ProspectsList({
           </ul>
         )}
         {(hasMore || query.after) && (
-          <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3 text-[13px]">
+          <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3 text-[14px]">
             {query.after ? (
               <Link href={listHref({ ...query, after: null })} className="inline-flex min-h-11 items-center text-primary hover:underline">
                 Back to the newest

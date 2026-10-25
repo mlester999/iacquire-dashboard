@@ -300,11 +300,11 @@ export function RequestForm({
           <h2 className="mt-5 text-[22px] font-semibold tracking-tight text-ink">{sent.existing ? "That request was already sent" : copy.sentTitle}</h2>
           <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted">{sent.existing ? "We found the request you just sent, so nothing was duplicated." : copy.sentBody}</p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
-            <span className="rounded-lg bg-surface-2 px-2.5 py-1 font-mono text-[13px] font-semibold text-ink ring-1 ring-inset ring-line">{sent.ref}</span>
+            <span className="rounded-lg bg-surface-2 px-2.5 py-1 font-mono text-[14px] font-semibold text-ink ring-1 ring-inset ring-line">{sent.ref}</span>
             <StatusPill status={sent.status} tone="primary">{statusLabelForClient(sent.status, kind, kind === "feedback" ? "received" : null)}</StatusPill>
           </div>
-          {sent.changeOrderRef && <p className="mt-4 max-w-md text-[13px] text-ink-2">It is also on the project&apos;s Change requests list as <strong className="font-medium text-ink">{sent.changeOrderRef}</strong>. The team decides how to answer it; nothing is done or charged yet.</p>}
-          {sent.expectation && <p className="mt-4 max-w-md text-[13px] text-ink-2">{sent.expectation}</p>}
+          {sent.changeOrderRef && <p className="mt-4 max-w-md text-[14px] text-ink-2">It is also on the project&apos;s Change requests list as <strong className="font-medium text-ink">{sent.changeOrderRef}</strong>. The team decides how to answer it; nothing is done or charged yet.</p>}
+          {sent.expectation && <p className="mt-4 max-w-md text-[14px] text-ink-2">{sent.expectation}</p>}
           <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5">
             <ButtonLink href={`/support/${sent.id}`} variant="brand">View your request <ArrowRight className="size-4" aria-hidden /></ButtonLink>
             <Button type="button" variant="secondary" onClick={another}>{kind === "feedback" ? "Send more feedback" : kind === "issue" ? "Report another issue" : kind === "change" ? "Request another change" : "Ask something else"}</Button>
@@ -329,11 +329,11 @@ export function RequestForm({
       )}
 
       {error && (
-        <div ref={summaryRef} tabIndex={-1} role="alert" className="flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger-soft p-3.5 text-[13.5px] leading-relaxed text-danger-ink outline-none">
+        <div ref={summaryRef} tabIndex={-1} role="alert" className="flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger-soft p-3.5 text-[14px] leading-relaxed text-danger-ink outline-none">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="font-medium">{error}</p>
-            {!submitting && <p className="mt-0.5 text-[12.5px] opacity-90">Nothing was lost. Your answers are still here, and sending again won&apos;t create a duplicate.</p>}
+            {!submitting && <p className="mt-0.5 text-[13px] opacity-90">Nothing was lost. Your answers are still here, and sending again won&apos;t create a duplicate.</p>}
           </div>
           <button type="button" className="-m-1 rounded-lg p-1.5 hover:bg-danger/10" aria-label="Dismiss message" onClick={() => setError(null)}><X className="size-4" /></button>
         </div>
@@ -357,7 +357,7 @@ export function RequestForm({
                 </li>
               ))}
             </ul>
-            <p className="mt-1.5 text-[12.5px] text-muted">Following up there keeps everything in one place. You can still send a new request below.</p>
+            <p className="mt-1.5 text-[13px] text-muted">Following up there keeps everything in one place. You can still send a new request below.</p>
           </Notice>
         )}
 
@@ -384,30 +384,30 @@ export function RequestForm({
                 {change.projects.map((p) => <option key={p.id} value={p.id}>{p.ref} · {p.title}</option>)}
               </Select>
             </Field>
-            {change.projects.length === 0 && <p className="text-[12.5px] text-muted">You have no agreed custom project yet. A change can be asked for once a quote has been accepted.</p>}
+            {change.projects.length === 0 && <p className="text-[13px] text-muted">You have no agreed custom project yet. A change can be asked for once a quote has been accepted.</p>}
             {pickedProject?.canFileAsChange ? (
-              <label className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3 text-[13px] leading-relaxed text-ink-2">
+              <label className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3 text-[14px] leading-relaxed text-ink-2">
                 <input type="checkbox" className="mt-1 size-4" checked={values.asChange} onChange={(e) => set("asChange", e.target.checked)} />
                 <span><strong className="font-medium text-ink">This changes what we agreed</strong> (the scope, features or deliverables). It is added to the project&apos;s Change requests list, where the team says whether it is a revision your agreement includes or needs a quote. Nothing is charged until you accept a quote.</span>
               </label>
             ) : pickedProject ? (
-              <p className="text-[12.5px] text-muted">This project can&apos;t take a change to its agreed scope right now{change.projects.length ? ", or your role can't ask for one" : ""}. Your request still goes to the team.</p>
+              <p className="text-[13px] text-muted">This project can&apos;t take a change to its agreed scope right now{change.projects.length ? ", or your role can't ask for one" : ""}. Your request still goes to the team.</p>
             ) : null}
           </div>
         )}
         {kind !== "change" && aboutProject && (
-          <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2" role="status"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />About the project <strong className="font-medium text-ink">{aboutProject.label}</strong>.</p>
+          <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2" role="status"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />About the project <strong className="font-medium text-ink">{aboutProject.label}</strong>.</p>
         )}
-        {kind === "change" && change?.allowanceNote && <p className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-2" role="status"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{change.allowanceNote}</p>}
+        {kind === "change" && change?.allowanceNote && <p className="flex items-start gap-2 text-[14px] leading-relaxed text-ink-2" role="status"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{change.allowanceNote}</p>}
 
         {categorySuggestionVisible && (
-          <p className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2" role="status">
+          <p className="flex flex-wrap items-center gap-2 text-[14px] text-ink-2" role="status">
             <Sparkles className="size-3.5 text-primary" aria-hidden /> This looks like <strong className="font-medium">{categoryLabel(suggestion!.category)}</strong>.
             <button type="button" className="font-medium text-primary-ink hover:underline" onClick={() => { set("category", suggestion!.category); setCategoryChosen(true); }}>Use this</button>
           </p>
         )}
         {otherPage && (
-          <p className="text-[13px] text-ink-2" role="status">
+          <p className="text-[14px] text-ink-2" role="status">
             <Info className="mr-1.5 inline size-3.5 text-primary" aria-hidden />{suggestion!.reason}{" "}
             <Link href={otherPage.href} className="font-medium text-primary-ink hover:underline">Try &ldquo;{otherPage.label}&rdquo; instead</Link>
           </p>
@@ -426,14 +426,14 @@ export function RequestForm({
               <Textarea id={`${formId}-steps`} rows={3} value={values.steps} maxLength={1500} placeholder={"1. Open Contacts\n2. Click Filters\n3. …"} onChange={(e) => set("steps", e.target.value)} />
             </Field>
             <fieldset className="space-y-2">
-              <legend className="text-[13px] font-medium text-ink-2">How much is this affecting you? <span className="ml-1 text-[12px] font-normal text-faint">Optional</span></legend>
+              <legend className="text-[14px] font-medium text-ink-2">How much is this affecting you? <span className="ml-1 text-[12px] font-normal text-faint">Optional</span></legend>
               <div role="radiogroup" aria-label="How much is this affecting you" className="grid gap-2 sm:grid-cols-3">
                 {CLIENT_URGENCIES.map((u) => {
                   const on = values.urgency === u;
                   return (
                     <button key={u} type="button" role="radio" aria-checked={on} onClick={() => set("urgency", on ? "" : u)}
                       className={cn("rounded-xl border p-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", on ? "border-primary/50 bg-primary-soft ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong hover:bg-surface-2/60")}>
-                      <span className="block text-[13.5px] font-medium text-ink">{CLIENT_URGENCY_LABELS[u].label}</span>
+                      <span className="block text-[14px] font-medium text-ink">{CLIENT_URGENCY_LABELS[u].label}</span>
                       <span className="mt-0.5 block text-[12px] leading-snug text-muted">{CLIENT_URGENCY_LABELS[u].hint}</span>
                     </button>
                   );
@@ -458,19 +458,19 @@ export function RequestForm({
           </Button>
           <span className="text-[12px] text-muted">Optional. You decide whether to use the suggestion.</span>
         </div>
-        {improving && <p role="status" className="text-[12.5px] text-muted">Looking at your draft…</p>}
+        {improving && <p role="status" className="text-[13px] text-muted">Looking at your draft…</p>}
         {improved && (
           <div className="rounded-2xl border border-primary/20 bg-primary-soft/40 p-4" role="region" aria-label="Suggestion">
             {"reason" in improved ? (
-              <p className="text-[13px] text-ink-2">{improved.reason}</p>
+              <p className="text-[14px] text-ink-2">{improved.reason}</p>
             ) : (
               <>
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Suggested wording</p>
-                <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink">{improved.text}</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">{improved.text}</p>
                 {improved.questions.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-[12.5px] font-medium text-ink-2">Adding answers to these could help us resolve it faster:</p>
-                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] text-ink-2">{improved.questions.map((q) => <li key={q}>{q}</li>)}</ul>
+                    <p className="text-[13px] font-medium text-ink-2">Adding answers to these could help us resolve it faster:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[14px] text-ink-2">{improved.questions.map((q) => <li key={q}>{q}</li>)}</ul>
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -493,7 +493,7 @@ export function RequestForm({
       <Card className="space-y-4 p-5 sm:p-6">
         <div>
           <h2 className="text-[15px] font-semibold tracking-tight text-ink">{kind === "issue" ? "Screenshots or files" : "Attachments"} <span className="ml-1 text-[12px] font-normal text-faint">Optional</span></h2>
-          <p className="mt-1 text-[13px] text-muted">{kind === "issue" ? "A screenshot of what you're seeing often saves a round of questions." : "Add anything that helps us understand."}</p>
+          <p className="mt-1 text-[14px] text-muted">{kind === "issue" ? "A screenshot of what you're seeing often saves a round of questions." : "Add anything that helps us understand."}</p>
         </div>
         <AttachmentPicker key={pickerKey} maxMb={maxMb} maxFiles={maxFiles} onChange={setFiles} disabled={submitting} />
       </Card>
@@ -503,7 +503,7 @@ export function RequestForm({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="text-[15px] font-semibold tracking-tight text-ink">Include technical details</h2>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted">Share a few facts about your browser and the page you were on so the team can reproduce the problem. You can see exactly what would be attached.</p>
+              <p className="mt-1 text-[14px] leading-relaxed text-muted">Share a few facts about your browser and the page you were on so the team can reproduce the problem. You can see exactly what would be attached.</p>
             </div>
             <Switch checked={values.includeDiagnostics} onCheckedChange={(on) => set("includeDiagnostics", on)} aria-label="Include technical details" />
           </div>
@@ -513,8 +513,8 @@ export function RequestForm({
                 <Input id={`${formId}-ref`} value={values.errorReference} maxLength={64} placeholder="For example: err_9f3a21" autoComplete="off" onChange={(e) => set("errorReference", e.target.value)} onBlur={() => setTouched((t) => ({ ...t, errorReference: true }))} />
               </Field>
               <div className="rounded-2xl border border-line bg-surface-2/60 p-4" role="region" aria-label="What will be attached">
-                <p className="flex items-center gap-2 text-[12.5px] font-semibold text-ink"><ShieldCheck className="size-4 text-success-ink" aria-hidden /> This is everything that will be attached</p>
-                <dl className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-[auto_minmax(0,1fr)] text-[13px]">
+                <p className="flex items-center gap-2 text-[13px] font-semibold text-ink"><ShieldCheck className="size-4 text-success-ink" aria-hidden /> This is everything that will be attached</p>
+                <dl className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-[auto_minmax(0,1fr)] text-[14px]">
                   {describeDiagnostics(diagnostics ?? {}).map((row) => (
                     <React.Fragment key={row.label}>
                       <dt className="text-muted">{row.label}</dt>
@@ -530,14 +530,14 @@ export function RequestForm({
       )}
 
       <Card className="p-5 sm:p-6">
-        {expectation && <p className="mb-4 flex items-start gap-2 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{expectation}</p>}
+        {expectation && <p className="mb-4 flex items-start gap-2 text-[14px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{expectation}</p>}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <p id={`${formId}-privacy`} className="flex max-w-md items-start gap-2 text-[12.5px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> Please don&apos;t include passwords, API keys or payment details. Your workspace and name are added for you.</p>
+          <p id={`${formId}-privacy`} className="flex max-w-md items-start gap-2 text-[13px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> Please don&apos;t include passwords, API keys or payment details. Your workspace and name are added for you.</p>
           <Button type="submit" variant="brand" size="lg" loading={submitting} disabled={submitting || files.busy} className="w-full sm:w-auto">
             {!submitting && <Send className="size-4" aria-hidden />} {submitting ? "Sending…" : files.busy ? "Uploading files…" : copy.submit}
           </Button>
         </div>
-        {invalidCount > 0 && Object.keys(touched).length > 0 && <p className="mt-3 text-[12.5px] text-danger-ink" role="status">{invalidCount} thing{invalidCount === 1 ? "" : "s"} to fill in before sending.</p>}
+        {invalidCount > 0 && Object.keys(touched).length > 0 && <p className="mt-3 text-[13px] text-danger-ink" role="status">{invalidCount} thing{invalidCount === 1 ? "" : "s"} to fill in before sending.</p>}
       </Card>
     </form>
   );

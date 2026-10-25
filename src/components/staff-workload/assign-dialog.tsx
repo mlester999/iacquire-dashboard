@@ -87,18 +87,18 @@ export function AssignDialog({ source, itemId, title, orgName, assigneeId, disab
         }
       >
         {loading && (
-          <p className="flex items-center gap-2 py-6 text-[13px] text-muted" role="status">
+          <p className="flex items-center gap-2 py-6 text-[14px] text-muted" role="status">
             <Loader2 className="size-4 animate-spin" aria-hidden /> Finding the people who could take it…
           </p>
         )}
         {error && (
-          <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">
+          <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">
             {error}
           </p>
         )}
         {data && !loading && (
           <div className="space-y-4">
-            <div className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2">
+            <div className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2">
               <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
               <p>
                 Ranked by recorded skill, current load, the effect of this item, and who has had the least from the board. A suggestion changes nothing until you choose it.
@@ -114,7 +114,7 @@ export function AssignDialog({ source, itemId, title, orgName, assigneeId, disab
                           {s.name}
                           {s.skillLevel !== null && <Badge tone="primary">{SKILL_LEVEL_LABELS[s.skillLevel]} skill</Badge>}
                         </p>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+                        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[13px] text-muted">
                           {s.current.label ? (
                             <Badge tone={LABEL_TONE[s.current.label]}>{LABEL_TEXT[s.current.label]}</Badge>
                           ) : (
@@ -141,7 +141,7 @@ export function AssignDialog({ source, itemId, title, orgName, assigneeId, disab
                 ))}
               </ul>
             ) : (
-              <p className="rounded-xl border border-line bg-surface-2 px-3 py-4 text-[13px] leading-relaxed text-muted">
+              <p className="rounded-xl border border-line bg-surface-2 px-3 py-4 text-[14px] leading-relaxed text-muted">
                 {data.list.notes.length ? data.list.notes.join(" ") : "Nobody who can open this client and holds the permission for this kind of work is available."}
               </p>
             )}

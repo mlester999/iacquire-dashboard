@@ -55,7 +55,7 @@ export function AddQuestionMenu({ onAdd, disabled, label = "Add question" }: { o
             <MenuItem key={t} onSelect={() => onAdd(t)} className="items-start">
               <Icon className="mt-0.5 size-4 shrink-0 text-muted" />
               <span className="min-w-0">
-                <span className="block text-[13px] font-medium text-ink">{QUESTION_TYPE_LABELS[t]}</span>
+                <span className="block text-[14px] font-medium text-ink">{QUESTION_TYPE_LABELS[t]}</span>
                 <span className="block text-[12px] leading-snug text-muted">{QUESTION_TYPE_HINTS[t]}</span>
               </span>
             </MenuItem>
@@ -88,7 +88,7 @@ export function QuestionList({
             <button type="button" onClick={() => onSelect(q.key)} aria-current={active ? "true" : undefined} className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"><Icon className="size-3.5" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-ink">{q.label || <span className="text-faint">Untitled question</span>}{q.required && <span role="img" className="text-danger" aria-label="required"> *</span>}</span>
+                <span className="block truncate text-[14px] font-medium text-ink">{q.label || <span className="text-faint">Untitled question</span>}{q.required && <span role="img" className="text-danger" aria-label="required"> *</span>}</span>
                 <span className="flex items-center gap-1.5 truncate text-[12px] text-muted">
                   {QUESTION_TYPE_LABELS[q.type]}
                   {q.visibleWhen?.conditions.length ? <GitBranch className="size-3" aria-label="Shown only when a condition holds" /> : null}
@@ -172,7 +172,7 @@ export function QuestionPanel({
       </div>
       {own.length > 0 && (
         <ul className="space-y-1 rounded-xl border border-danger/20 bg-danger-soft/50 px-3 py-2" aria-label="Problems with this question">
-          {own.map((x, i) => <li key={i} className={cn("text-[12.5px] leading-relaxed", x.level === "error" ? "text-danger-ink" : "text-warning-ink")}>{x.message}</li>)}
+          {own.map((x, i) => <li key={i} className={cn("text-[13px] leading-relaxed", x.level === "error" ? "text-danger-ink" : "text-warning-ink")}>{x.message}</li>)}
         </ul>
       )}
 
@@ -185,7 +185,7 @@ export function QuestionPanel({
           </Field>
           <Field label="Answer key" htmlFor={id("key")} hint="How reports, workflows and exports name this answer. Keep it the same after publishing.">
             <Input
-              id={id("key")} value={keyDraft} maxLength={40} className="font-mono text-[13px]"
+              id={id("key")} value={keyDraft} maxLength={40} className="font-mono text-[14px]"
               onChange={(e) => setKeyDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
               onBlur={() => {
                 const next = keyDraft.trim();
@@ -211,16 +211,16 @@ export function QuestionPanel({
 
         {q.type !== "hidden" && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <label className="inline-flex min-h-11 items-center gap-2.5 text-[13px] text-ink-2 sm:min-h-9">
+            <label className="inline-flex min-h-11 items-center gap-2.5 text-[14px] text-ink-2 sm:min-h-9">
               <Switch checked={q.required} onCheckedChange={(v) => set("required", v)} aria-label="Required" />
               {q.type === "checkbox" ? "Must be ticked" : "Required"}
             </label>
-            <div className="flex items-center gap-2 text-[13px] text-ink-2">
+            <div className="flex items-center gap-2 text-[14px] text-ink-2">
               <span id={id("width-l")}>Width</span>
               <Segmented id={id("width")} ariaLabel="Width on wide screens" size="sm" value={q.width ?? "full"} onChange={(v) => set("width", v)} options={[{ value: "full", label: "Full" }, { value: "half", label: "Half" }]} />
             </div>
             {q.type === "single_choice" && (
-              <div className="flex items-center gap-2 text-[13px] text-ink-2">
+              <div className="flex items-center gap-2 text-[14px] text-ink-2">
                 <span>Show as</span>
                 <Segmented id={id("display")} ariaLabel="Show choices as" size="sm" value={q.display ?? "radio"} onChange={(v) => set("display", v)} options={[{ value: "radio", label: "Buttons" }, { value: "dropdown", label: "Dropdown" }]} />
               </div>
@@ -285,7 +285,7 @@ function ChoicesEditor({ q, onChange, readOnly }: { q: FormQuestion; onChange: (
   };
   return (
     <div className="space-y-2">
-      <p className="text-[13px] font-medium text-ink-2">Choices</p>
+      <p className="text-[14px] font-medium text-ink-2">Choices</p>
       <ul className="space-y-1.5">
         {opts.map((o, i) => (
           <li key={i} className="flex items-center gap-1.5">
@@ -325,7 +325,7 @@ function ValidationEditor({ q, id, setValidation }: { q: FormQuestion; id: (k: s
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Lowest" htmlFor={id("min")} optional><Input id={id("min")} type="number" inputMode="decimal" value={v.min ?? ""} onChange={(e) => setValidation({ min: num(e.target.value) })} /></Field>
         <Field label="Highest" htmlFor={id("max")} optional><Input id={id("max")} type="number" inputMode="decimal" value={v.max ?? ""} onChange={(e) => setValidation({ max: num(e.target.value) })} /></Field>
-        <label className="inline-flex min-h-11 items-center gap-2.5 self-end text-[13px] text-ink-2"><Switch checked={Boolean(v.integer)} onCheckedChange={(x) => setValidation({ integer: x || undefined })} aria-label="Whole numbers only" />Whole numbers only</label>
+        <label className="inline-flex min-h-11 items-center gap-2.5 self-end text-[14px] text-ink-2"><Switch checked={Boolean(v.integer)} onCheckedChange={(x) => setValidation({ integer: x || undefined })} aria-label="Whole numbers only" />Whole numbers only</label>
       </div>
     );
   }
@@ -352,7 +352,7 @@ function HiddenSourceEditor({ q, id, onChange }: { q: FormQuestion; id: (k: stri
   const src = q.source ?? { kind: "param", param: "utm_source" };
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface-2/50 p-3.5">
-      <p className="text-[12.5px] leading-relaxed text-muted">A hidden field isn&apos;t shown. It records a value only when the visit actually had one; it is never guessed.</p>
+      <p className="text-[13px] leading-relaxed text-muted">A hidden field isn&apos;t shown. It records a value only when the visit actually had one; it is never guessed.</p>
       <Field label="Value comes from" htmlFor={id("src")}>
         <Select id={id("src")} value={src.kind} onChange={(e) => onChange(e.target.value === "param" ? { kind: "param", param: src.kind === "param" ? src.param : "utm_source" } : (e.target.value === "referrer" ? { kind: "referrer" } : { kind: "landing_page" }))}>
           <option value="param">A parameter in the link (such as utm_source)</option>
@@ -362,7 +362,7 @@ function HiddenSourceEditor({ q, id, onChange }: { q: FormQuestion; id: (k: stri
       </Field>
       {src.kind === "param" && (
         <Field label="Parameter name" htmlFor={id("param")} hint={`Common ones: ${ATTRIBUTION_PARAMS.slice(0, 5).join(", ")}.`}>
-          <Input id={id("param")} value={src.param} maxLength={40} list={id("params")} className="font-mono text-[13px]" onChange={(e) => onChange({ kind: "param", param: e.target.value.trim() })} />
+          <Input id={id("param")} value={src.param} maxLength={40} list={id("params")} className="font-mono text-[14px]" onChange={(e) => onChange({ kind: "param", param: e.target.value.trim() })} />
           <datalist id={id("params")}>{ATTRIBUTION_PARAMS.map((p) => <option key={p} value={p} />)}</datalist>
         </Field>
       )}
@@ -385,7 +385,7 @@ function ConditionEditor({ q, earlier, id, onChange }: { q: FormQuestion; earlie
   const summary = describeVisibility(rule, (k) => byKey.get(k));
   return (
     <div className="space-y-3 rounded-xl border border-line p-3.5">
-      <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+      <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
         <Switch
           checked={on}
           disabled={!earlier.length}
@@ -406,7 +406,7 @@ function ConditionEditor({ q, earlier, id, onChange }: { q: FormQuestion; earlie
       {on && (
         <div className="space-y-2">
           {conditions.length > 1 && (
-            <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+            <div className="flex items-center gap-2 text-[13px] text-ink-2">
               <span>Show when</span>
               <Segmented id={id("match")} ariaLabel="Match" size="sm" value={rule?.match ?? "all"} onChange={(m) => onChange({ match: m, conditions })} options={[{ value: "all", label: "all hold" }, { value: "any", label: "any holds" }]} />
             </div>

@@ -30,7 +30,7 @@ const people = (n: number) => `${num(n)} ${n === 1 ? "person" : "people"}`;
 function Tile({ label, value, detail }: { label: string; value: React.ReactNode; detail?: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-2xl border border-line bg-surface p-4">
-      <p className="text-[12.5px] font-medium text-muted">{label}</p>
+      <p className="text-[13px] font-medium text-muted">{label}</p>
       <p className="mt-2 text-[24px] font-semibold leading-none tracking-[-0.03em] text-ink tabular-nums">{value}</p>
       {detail && <p className="mt-2 text-[12px] leading-relaxed text-muted">{detail}</p>}
     </div>
@@ -49,12 +49,12 @@ function PreviewCard({ preview, batch }: { preview: BatchPreview; batch: BatchVi
     <Card className="space-y-4 p-4 sm:p-5">
       <div>
         <h3 className="text-[15px] font-semibold text-ink">Who would be asked</h3>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 text-[14px] leading-relaxed text-muted">
           Checked just now against the same rules each request passes. Everyone is checked again, one by one, at the moment they are asked, so this can change a little before the batch finishes.
         </p>
       </div>
       {preview.problems.length > 0 && (
-        <div role="alert" className="space-y-1.5 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
+        <div role="alert" className="space-y-1.5 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] leading-relaxed text-warning-ink">
           <p className="flex items-center gap-2 font-medium"><AlertTriangle className="size-4 shrink-0" aria-hidden />It can&apos;t be approved yet</p>
           <ul className="list-disc space-y-1 pl-6">{preview.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
@@ -66,10 +66,10 @@ function PreviewCard({ preview, batch }: { preview: BatchPreview; batch: BatchVi
       </div>
       {left.length > 0 && (
         <div>
-          <h4 className="text-[13.5px] font-semibold text-ink">Why people are left out</h4>
+          <h4 className="text-[14px] font-semibold text-ink">Why people are left out</h4>
           <ul className="mt-2 space-y-1.5" aria-label="Reasons people are left out">
             {left.map((r) => (
-              <li key={r} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2/70 px-3 py-2 text-[13px]">
+              <li key={r} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2/70 px-3 py-2 text-[14px]">
                 <span className="text-ink-2">{reasonLabel(r)}</span>
                 <span className="tabular-nums font-medium text-ink">{num(a.excluded[r] ?? 0)}</span>
               </li>
@@ -81,14 +81,14 @@ function PreviewCard({ preview, batch }: { preview: BatchPreview; batch: BatchVi
         <div className="grid gap-4 sm:grid-cols-2">
           {preview.sample.eligible.length > 0 && (
             <div>
-              <h4 className="text-[13.5px] font-semibold text-ink">First in line</h4>
-              <ul className="mt-2 space-y-1 text-[13px] text-ink-2">{preview.sample.eligible.map((p) => <li key={p.id}>{p.name}</li>)}</ul>
+              <h4 className="text-[14px] font-semibold text-ink">First in line</h4>
+              <ul className="mt-2 space-y-1 text-[14px] text-ink-2">{preview.sample.eligible.map((p) => <li key={p.id}>{p.name}</li>)}</ul>
             </div>
           )}
           {preview.sample.excluded.length > 0 && (
             <div>
-              <h4 className="text-[13.5px] font-semibold text-ink">Some who are left out</h4>
-              <ul className="mt-2 space-y-1 text-[13px] text-ink-2">{preview.sample.excluded.map((p) => <li key={p.id}>{p.name}<span className="text-muted"> · {reasonLabel(p.reason)}</span></li>)}</ul>
+              <h4 className="text-[14px] font-semibold text-ink">Some who are left out</h4>
+              <ul className="mt-2 space-y-1 text-[14px] text-ink-2">{preview.sample.excluded.map((p) => <li key={p.id}>{p.name}<span className="text-muted"> · {reasonLabel(p.reason)}</span></li>)}</ul>
             </div>
           )}
         </div>
@@ -96,8 +96,8 @@ function PreviewCard({ preview, batch }: { preview: BatchPreview; batch: BatchVi
       {preview.message && (
         <div className="space-y-1.5 rounded-2xl border border-line bg-surface-2/50 p-3">
           <p className="text-[12px] font-medium text-muted">What {preview.message.forName} would receive by {CHANNEL_LABELS[preview.channel]} (each customer gets their own link)</p>
-          {preview.message.subject && <p className="text-[13px] font-medium text-ink">{preview.message.subject}</p>}
-          <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{preview.message.body}</p>
+          {preview.message.subject && <p className="text-[14px] font-medium text-ink">{preview.message.subject}</p>}
+          <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{preview.message.body}</p>
         </div>
       )}
     </Card>
@@ -145,7 +145,7 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
 
   return (
     <div className="space-y-5">
-      <Link href={backHref} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-primary hover:underline sm:min-h-9"><ArrowLeft className="size-4" aria-hidden />All batches</Link>
+      <Link href={backHref} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-primary hover:underline sm:min-h-9"><ArrowLeft className="size-4" aria-hidden />All batches</Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -153,7 +153,7 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
             <h2 className="min-w-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">{batch.name}</h2>
             <Badge tone={statusTone(s)}>{BATCH_STATUS_LABELS[s]}</Badge>
           </div>
-          <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-ink-2">{batch.criteriaText}</p>
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-ink-2">{batch.criteriaText}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canPrepare && editable && enabled && <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil className="size-4" aria-hidden />Change</Button>}
@@ -176,18 +176,18 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
         </div>
       </div>
 
-      {!enabled && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-2">Batches are switched off for this workspace, so this one is not being worked on. You can still look at it, pause it or cancel it.</p>}
+      {!enabled && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[14px] leading-relaxed text-ink-2">Batches are switched off for this workspace, so this one is not being worked on. You can still look at it, pause it or cancel it.</p>}
       {c.notice && (
-        <p role={s === "stopped" || s === "paused" ? "alert" : "status"} className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
+        <p role={s === "stopped" || s === "paused" ? "alert" : "status"} className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /><span>{c.notice.detail}</span>
         </p>
       )}
-      {s === "awaiting_approval" && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-2">Waiting for the owner{batch.requestedByName ? `, asked by ${batch.requestedByName}` : ""}. Nothing is sent until they approve.</p>}
-      {s === "approved" && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-2">Approved{batch.approvedByName ? ` by ${batch.approvedByName}` : ""}. It starts the next time the scheduler runs; the scheduler isn&apos;t something you can start from here.</p>}
+      {s === "awaiting_approval" && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[14px] leading-relaxed text-ink-2">Waiting for the owner{batch.requestedByName ? `, asked by ${batch.requestedByName}` : ""}. Nothing is sent until they approve.</p>}
+      {s === "approved" && <p role="status" className="rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[14px] leading-relaxed text-ink-2">Approved{batch.approvedByName ? ` by ${batch.approvedByName}` : ""}. It starts the next time the scheduler runs; the scheduler isn&apos;t something you can start from here.</p>}
 
       <Card className="p-4 sm:p-5">
         <h3 className="text-[15px] font-semibold text-ink">About this batch</h3>
-        <dl className="mt-3 grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2">
+        <dl className="mt-3 grid gap-x-6 gap-y-3 text-[14px] sm:grid-cols-2">
           <div><dt className="text-muted">Message</dt><dd className="mt-0.5 text-ink">{batch.template ? batch.template.name : "The template is no longer available"}</dd></div>
           <div><dt className="text-muted">Goes by</dt><dd className="mt-0.5 text-ink">{CHANNEL_LABELS[batch.channel]}, to customers who agreed to service messages there</dd></div>
           <div><dt className="text-muted">Sends</dt><dd className="mt-0.5 text-ink">{batch.kind === "survey" ? `A short survey (${batch.scale === "nps10" ? "0 to 10" : "1 to 5"}) with the public review links` : "A review request with the public review links"}</dd></div>
@@ -195,7 +195,7 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
           <div><dt className="text-muted">Made by</dt><dd className="mt-0.5 text-ink">{batch.createdByName ?? "A teammate"}</dd></div>
           <div><dt className="text-muted">Approved</dt><dd className="mt-0.5 text-ink">{batch.approvedAt ? `${batch.approvedByName ?? "The owner"}, ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone }).format(new Date(batch.approvedAt))}` : "Not yet"}</dd></div>
         </dl>
-        <p className="mt-4 text-[12.5px] leading-relaxed text-muted">
+        <p className="mt-4 text-[13px] leading-relaxed text-muted">
           The owner&apos;s approval covers the message&apos;s approved wording, who it is for, the channel and the pace. If any of that changes, the batch stops instead of sending something the owner didn&apos;t see. A person on your team can hold a customer back from automatic messages; those customers are counted as left out, never asked.
         </p>
       </Card>
@@ -240,14 +240,14 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
       {peoplePage && c.total > 0 && (
         <section aria-label="People in this batch" className="space-y-3">
           <h3 className="text-[15px] font-semibold text-ink">People</h3>
-          <nav aria-label="Filter people" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          <nav aria-label="Filter people" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
             {PERSON_FILTERS.map((f) => (
               <Link
                 key={f}
                 href={peopleHref({ filter: f })}
                 aria-current={f === peopleFilter ? "page" : undefined}
                 className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+                  "inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
                   f === peopleFilter ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
                 )}
               >
@@ -262,9 +262,9 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
               {peoplePage.rows.map((p) => (
                 <li key={p.contactId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                   <div className="min-w-0">
-                    {scope.base ? <Link href={`${scope.base}/contacts/${p.contactId}`} className="truncate text-[13.5px] font-medium text-ink hover:underline">{p.name}</Link> : <span className="truncate text-[13.5px] font-medium text-ink">{p.name}</span>}
-                    {p.reasonText && <p className="text-[12.5px] text-muted">{p.reasonText}</p>}
-                    {p.delivery && <p className="text-[12.5px] text-muted">{DELIVERY_TEXT[p.delivery]}</p>}
+                    {scope.base ? <Link href={`${scope.base}/contacts/${p.contactId}`} className="truncate text-[14px] font-medium text-ink hover:underline">{p.name}</Link> : <span className="truncate text-[14px] font-medium text-ink">{p.name}</span>}
+                    {p.reasonText && <p className="text-[13px] text-muted">{p.reasonText}</p>}
+                    {p.delivery && <p className="text-[13px] text-muted">{DELIVERY_TEXT[p.delivery]}</p>}
                   </div>
                   <Badge tone={p.status === "queued" ? "success" : p.status === "failed" ? "danger" : p.status === "excluded" ? "neutral" : "primary"}>{ITEM_STATUS_LABELS[p.status]}</Badge>
                 </li>
@@ -299,7 +299,7 @@ export function BatchDetail({ scope, batch, preview, people: peoplePage, peopleF
         loading={busy("approve")}
         onConfirm={approve}
       >
-        <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-ink-2">
+        <ul className="list-disc space-y-1.5 pl-5 text-[14px] leading-relaxed text-ink-2">
           <li>Each customer is checked again when they are asked: consent, opt-outs, the 30-day limit, quiet hours and your message credits.</li>
           <li>If the message, the dates, the channel or the pace changes, the batch stops instead of sending something you didn&apos;t see.</li>
           <li>The approval lapses after 14 days if the batch hasn&apos;t finished. You can pause or cancel it at any time.</li>

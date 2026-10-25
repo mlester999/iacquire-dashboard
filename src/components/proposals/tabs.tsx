@@ -33,14 +33,14 @@ export function PanelTabs({ label, items, value, onChange, panels, idPrefix = "t
   };
   return (
     <div>
-      <div role="tablist" aria-label={label} className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
+      <div role="tablist" aria-label={label} className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
         {items.map((t, i) => {
           const selected = t.id === value;
           return (
             <button
               key={t.id} ref={(el) => { refs.current[t.id] = el; }} type="button" role="tab" id={`${idPrefix}-${t.id}`} aria-selected={selected} aria-controls={`${idPrefix}-${t.id}-panel`} tabIndex={selected ? 0 : -1}
               onClick={() => onChange(t.id)} onKeyDown={(e) => move(e, i)}
-              className={cn("inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:h-9", selected ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}
+              className={cn("inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:h-9", selected ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}
             >
               {t.label}
               {t.count !== undefined && t.count > 0 && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2"><span aria-hidden>{t.count}</span><span className="sr-only">, {t.count}</span></span>}

@@ -99,7 +99,7 @@ export function AqiInsightsDashboard() {
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.16em] text-primary-ink"><BarChart3 className="size-3" /> AQi Insights</p>
           <h1 className="text-[27px] font-semibold tracking-[-0.045em] text-ink">How AQi is actually used</h1>
-          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">Real event and usage records only. A section with no reliable source is labelled unavailable rather than estimated. Conversation text is never displayed here.</p>
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted">Real event and usage records only. A section with no reliable source is labelled unavailable rather than estimated. Conversation text is never displayed here.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/admin/aqi" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-ink-2 shadow-soft hover:bg-surface-2"><ArrowLeft className="size-3.5" /> AQi Management</Link>
@@ -165,7 +165,7 @@ export function AqiInsightsDashboard() {
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <span className="flex size-10 items-center justify-center rounded-xl bg-danger-soft text-danger-ink"><TriangleAlert className="size-5" /></span>
             <p className="text-[14px] font-semibold">Insights could not be loaded</p>
-            <p className="max-w-md text-[12.5px] text-muted">{error ?? "The analytics request failed. No estimate has been substituted."}</p>
+            <p className="max-w-md text-[13px] text-muted">{error ?? "The analytics request failed. No estimate has been substituted."}</p>
             <Button size="sm" variant="secondary" onClick={() => void load()}><RefreshCw className="size-3.5" /> Try again</Button>
           </CardContent>
         </Card>
@@ -202,7 +202,7 @@ export function AqiInsightsDashboard() {
                 <Metric label="Rate-limited requests" value={data.performance.rateLimits.toLocaleString()} detail="Rejected before the provider call" icon={<ShieldCheck />} definition="Requests refused by the AQi per-person rate limit." />
                 <div className="rounded-2xl border border-line bg-surface p-4">
                   <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Provider</p>
-                  <p className="mt-1 flex items-center gap-2 text-[13px] font-semibold"><StatusPill size="sm" tone={data.performance.provider.available ? "success" : "warning"}>{data.performance.provider.available ? "Connected" : "Unavailable"}</StatusPill></p>
+                  <p className="mt-1 flex items-center gap-2 text-[14px] font-semibold"><StatusPill size="sm" tone={data.performance.provider.available ? "success" : "warning"}>{data.performance.provider.available ? "Connected" : "Unavailable"}</StatusPill></p>
                   <p className="mt-1 text-[12px] leading-relaxed text-muted">{data.performance.provider.detail}</p>
                   <p className="mt-1 truncate text-[12px] text-faint">{data.performance.provider.model ?? "No model resolved"}{data.performance.provider.connectionStatus ? ` · ${data.performance.provider.connectionStatus}` : ""}</p>
                 </div>
@@ -345,7 +345,7 @@ function Metric({ label, value, detail, icon, definition, compact = false }: { l
 function Unavailable({ note }: { note: string | null }) {
   return (
     <div className="rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-6 text-center">
-      <p className="text-[12.5px] font-medium text-ink-2">No reliable data for this period</p>
+      <p className="text-[13px] font-medium text-ink-2">No reliable data for this period</p>
       <p className="mx-auto mt-1 max-w-lg text-[12px] leading-relaxed text-muted">{note ?? "This metric has no recorded event source in the selected period. It is left empty rather than estimated."}</p>
     </div>
   );

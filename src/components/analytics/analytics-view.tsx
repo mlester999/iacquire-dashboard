@@ -47,7 +47,7 @@ function Metric({ label, value, definition }: { label: string; value: React.Reac
 function AskAnalyst({ prompt, canChat }: { prompt: string; canChat: boolean }) {
   if (!canChat) return null;
   return (
-    <Link href={`/chat/performance-analyst?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-medium text-primary transition hover:bg-primary-soft">
+    <Link href={`/chat/performance-analyst?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-primary transition hover:bg-primary-soft">
       <Sparkles className="size-3.5" /> Ask Performance Analyst
     </Link>
   );
@@ -55,7 +55,7 @@ function AskAnalyst({ prompt, canChat }: { prompt: string; canChat: boolean }) {
 
 function Unavailable({ what }: { what: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-xl border border-dashed border-line p-4 text-[13px] text-muted">
+    <div className="flex items-start gap-2 rounded-xl border border-dashed border-line p-4 text-[14px] text-muted">
       <Info className="mt-0.5 size-4 shrink-0" />
       <span>
         {what} is unavailable until iAcquire connects the source. We never estimate missing data. <Link href="/settings/integrations" className="text-primary hover:underline">Integration status</Link>
@@ -136,13 +136,13 @@ export function AnalyticsView({
               <label htmlFor="from" className="sr-only">
                 From
               </label>
-              <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-8 w-36 text-[13px]" />
+              <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-8 w-36 text-[14px]" />
               <span className="text-muted">–</span>
               <label htmlFor="to" className="sr-only">
                 To
               </label>
-              <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-8 w-36 text-[13px]" />
-              <button type="submit" className="h-8 rounded-lg bg-ink px-3 text-[12.5px] font-medium text-surface">
+              <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-8 w-36 text-[14px]" />
+              <button type="submit" className="h-8 rounded-lg bg-ink px-3 text-[13px] font-medium text-surface">
                 Apply
               </button>
             </form>
@@ -173,12 +173,12 @@ export function AnalyticsView({
           {lt.total > 0 ? (
             <Columns data={leadsByDay.map((d) => ({ x: fmt(d.day), y: d.n }))} unit="leads" label="Leads researched per day" />
           ) : (
-            <p className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-muted">No leads were researched in this period.</p>
+            <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No leads were researched in this period.</p>
           )}
           {data.leads.bySource.length > 0 && (
             <div className="scrollbar-thin overflow-x-auto">
-              <table className="w-full min-w-[420px] text-[13px]">
-                <caption className="pb-2 text-left text-[12.5px] font-semibold text-ink">Lead source performance</caption>
+              <table className="w-full min-w-[420px] text-[14px]">
+                <caption className="pb-2 text-left text-[13px] font-semibold text-ink">Lead source performance</caption>
                 <thead className="text-left text-[12px] text-muted">
                   <tr className="border-b border-line">
                     <th className="py-2 font-medium">Source</th>
@@ -243,9 +243,9 @@ export function AnalyticsView({
                 </div>
                 <HBarList unit="opportunities" rows={data.sales.stages.map((s) => ({ key: s.stage, label: s.stage, value: s.n }))} emptyLabel="No open opportunities." />
                 {data.sales.wonValues
-                  ? data.sales.wonValues.length > 0 && <p className="text-[12.5px] text-muted">Won value in period: {data.sales.wonValues.map((v) => formatCurrency(v.value, v.currency)).join(" · ")}</p>
-                  : data.sales.wonValue > 0 && <p className="text-[12.5px] text-muted">Won value in period: {formatCurrency(data.sales.wonValue)}</p>}
-                {nativeDeals && <Link href="/crm/reports" className="inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary hover:underline sm:min-h-0">Pipeline, stage and lead source detail in CRM Reports</Link>}
+                  ? data.sales.wonValues.length > 0 && <p className="text-[13px] text-muted">Won value in period: {data.sales.wonValues.map((v) => formatCurrency(v.value, v.currency)).join(" · ")}</p>
+                  : data.sales.wonValue > 0 && <p className="text-[13px] text-muted">Won value in period: {formatCurrency(data.sales.wonValue)}</p>}
+                {nativeDeals && <Link href="/crm/reports" className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline sm:min-h-0">Pipeline, stage and lead source detail in CRM Reports</Link>}
               </>
             ) : (
               <Unavailable what="Sales funnel data" />
@@ -303,7 +303,7 @@ export function AnalyticsView({
                 { label: "Failed", value: data.execution.failed, color: "var(--status-critical)", icon: <XCircle className="size-3.5 text-danger" /> },
               ]}
             />
-            <p className="text-[12.5px] text-muted">
+            <p className="text-[13px] text-muted">
               Held means the action was approved but its integration isn&apos;t enabled, so nothing ran. Rejected: {data.execution.rejected} · Expired: {data.execution.expired}.
             </p>
             <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] text-muted">
@@ -330,7 +330,7 @@ export function AnalyticsView({
             {data.usage.messages > 0 ? (
               <AreaChart data={messagesByDay.map((d) => ({ x: d.day, y: d.n }))} label="AI messages per day" unit="messages" formatX={fmt} />
             ) : (
-              <p className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-muted">No AI messages in this period.</p>
+              <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No AI messages in this period.</p>
             )}
             <div className="mt-4 grid grid-cols-3 gap-3">
               <Metric label="AI messages" value={formatNumber(data.usage.messages)} definition="Messages sent to AI employees in this period." />

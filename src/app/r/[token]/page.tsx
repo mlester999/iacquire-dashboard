@@ -88,7 +88,7 @@ function PublicReviews({ view, token }: { view: ReviewPageView; token: string })
           <Star className="size-4 text-primary" aria-hidden />
           Leave a public review
         </h2>
-        <p className="mt-1 text-[13.5px] leading-relaxed text-muted">
+        <p className="mt-1 text-[14px] leading-relaxed text-muted">
           If you&apos;d like to tell others about your experience, you can review {business.name} on the site of your choice. It&apos;s entirely up to you, and these links are the same for everyone, whatever you tell us below.
         </p>
       </div>
@@ -116,7 +116,7 @@ function PublicReviews({ view, token }: { view: ReviewPageView; token: string })
           ))}
         </ul>
       ) : (
-        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-muted">{business.name} hasn&apos;t added a public review site yet.</p>
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-muted">{business.name} hasn&apos;t added a public review site yet.</p>
       )}
     </section>
   );
@@ -146,7 +146,7 @@ function ContactLinks({ business }: { business: Business }) {
 function StarScale() {
   return (
     <fieldset>
-      <legend className="text-[13.5px] font-medium text-ink-2">How was your experience?</legend>
+      <legend className="text-[14px] font-medium text-ink-2">How was your experience?</legend>
       <div className="mt-2 grid grid-cols-5 gap-1.5 sm:gap-2">
         {RATINGS.map((r) => (
           <label key={r.value} className={`${choiceClass} flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-center`}>
@@ -164,7 +164,7 @@ function StarScale() {
 function RecommendScale({ business }: { business: Business }) {
   return (
     <fieldset>
-      <legend className="text-[13.5px] font-medium text-ink-2">How likely are you to recommend {business.name} to a friend or colleague?</legend>
+      <legend className="text-[14px] font-medium text-ink-2">How likely are you to recommend {business.name} to a friend or colleague?</legend>
       <div className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-11 sm:gap-2">
         {NPS_VALUES.map((n) => (
           <label key={n} className={`${choiceClass} flex min-h-12 items-center justify-center px-1 py-2 text-center`}>
@@ -187,7 +187,7 @@ function FeedbackForm({ token, business, scale, result }: { token: string; busin
       <input type="hidden" name="t" value={token} />
       {scale === "nps10" ? <RecommendScale business={business} /> : <StarScale />}
       <div className="space-y-1.5">
-        <label htmlFor="review-comment" className="text-[13.5px] font-medium text-ink-2">Anything you&apos;d like {business.name} to know? <span className="font-normal text-faint">Optional</span></label>
+        <label htmlFor="review-comment" className="text-[14px] font-medium text-ink-2">Anything you&apos;d like {business.name} to know? <span className="font-normal text-faint">Optional</span></label>
         <textarea
           id="review-comment"
           name="comment"
@@ -197,13 +197,13 @@ function FeedbackForm({ token, business, scale, result }: { token: string; busin
         />
       </div>
       {result?.tone === "error" && (
-        <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+        <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>{result.text}</span>
         </p>
       )}
       <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
+        <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted">
           <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           Goes privately to {business.name}. It isn&apos;t posted anywhere.
         </p>
@@ -268,7 +268,7 @@ export default async function ReviewRequestPage({ params, searchParams }: { para
           <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">We&apos;d love to hear how it went.</p>
         </div>
         {topAlert && (
-          <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+          <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>{topAlert.text}</span>
           </p>

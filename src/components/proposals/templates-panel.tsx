@@ -35,7 +35,7 @@ export function TemplatesPanel({ orgId, templates, canEdit, tz }: { orgId: strin
                   <span className="text-[15px] font-semibold text-ink">{t.name}</span>
                   <Badge tone={TONE[t.status]}>{t.status === "approved" ? "Approved" : t.status === "draft" ? "Not approved yet" : "Archived"}</Badge>
                 </span>
-                <span className="mt-1 block text-[12.5px] text-muted">
+                <span className="mt-1 block text-[13px] text-muted">
                   Latest version {t.currentVersion}
                   {t.approvedVersion !== null ? ` · approved version ${t.approvedVersion}${t.approvedVersion !== t.currentVersion ? " (a newer version is waiting for approval)" : ""}` : " · no version approved yet"}
                   {` · updated ${dayIn(t.updatedAt, tz)}`}
@@ -51,7 +51,7 @@ export function TemplatesPanel({ orgId, templates, canEdit, tz }: { orgId: strin
           <Field label="Name" htmlFor="tp-name" hint="For example: Website project, Monthly care plan."><Input id="tp-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} className="text-[16px] sm:text-[14px]" /></Field>
           <Button type="submit" variant="secondary" loading={busy("create")} disabled={!name.trim()}>Start a template</Button>
         </form>
-      ) : <p className="text-[12.5px] text-muted">The owner or a manager writes templates, and the owner approves them.</p>}
+      ) : <p className="text-[13px] text-muted">The owner or a manager writes templates, and the owner approves them.</p>}
     </div>
   );
 }

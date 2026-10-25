@@ -77,7 +77,7 @@ function NavLink({ item, pathname, count, trailing, locked = false, onNavigate, 
   // visible link, which measured 40 background RSC requests on one dashboard load. `prefetch={false}`
   // turns that off; the manual prefetch below still runs on intent, once per destination.
   const warm = () => { if (!active) onWarm(item.href); };
-  const link = <Link href={item.href} prefetch={false} onClick={onNavigate} onMouseEnter={warm} onFocus={warm} onPointerDown={warm} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? (locked ? `${item.label} (needs the Automation Studio plan)` : item.label) : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+  const link = <Link href={item.href} prefetch={false} onClick={onNavigate} onMouseEnter={warm} onFocus={warm} onPointerDown={warm} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? (locked ? `${item.label} (needs the Automation Studio plan)` : item.label) : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[14px] font-medium", compact && "justify-center")}>
     <NavPendingBar />
     {active && <motion.span layoutId="client-nav-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
     <span className="nav-icon-box relative"><item.icon className="size-[17px]" /></span>

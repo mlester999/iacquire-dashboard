@@ -68,7 +68,7 @@ export function Panel({
           <IconTile tone={tone}>{icon}</IconTile>
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold leading-tight tracking-tight text-ink">{title}</h2>
-            {description && <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>}
+            {description && <p className="mt-1 text-[14px] leading-relaxed text-muted">{description}</p>}
           </div>
         </div>
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}

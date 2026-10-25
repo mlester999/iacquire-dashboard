@@ -32,8 +32,8 @@ export function PrerequisitesCard({ items, timeZone }: { items: PrerequisiteView
             <li key={p.id} className="flex gap-3">
               <span className="mt-0.5 shrink-0">{ICON[p.status]}</span>
               <div className="min-w-0">
-                <p className="text-[13.5px] font-medium text-ink">{p.label}</p>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                <p className="text-[14px] font-medium text-ink">{p.label}</p>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-muted">
                   <span className="mr-1.5 font-medium text-ink-2">{PREREQUISITE_KIND_LABEL[p.kind]} · {PREREQUISITE_STATUS_LABEL[p.status]}.</span>
                   {clientPrerequisiteSentence(p)}
                   {p.satisfiedAt ? ` Confirmed ${formatDate(p.satisfiedAt, timeZone)}.` : p.waivedAt ? ` Decided ${formatDate(p.waivedAt, timeZone)}.` : ""}

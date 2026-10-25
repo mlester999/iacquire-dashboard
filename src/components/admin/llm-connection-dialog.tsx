@@ -190,7 +190,7 @@ export function LlmConnectionDialog({
             </Button>
           </div>
           {models && (
-            <button type="button" className="text-[12.5px] text-primary hover:underline" onClick={() => setManual((v) => !v)}>
+            <button type="button" className="text-[13px] text-primary hover:underline" onClick={() => setManual((v) => !v)}>
               {manual ? "Choose from the list" : "Type a model ID instead"}
             </button>
           )}

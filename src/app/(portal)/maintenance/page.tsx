@@ -15,13 +15,13 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-6">
       {back === "success" && (
-        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[13px] leading-relaxed text-ink-2">
+        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">
           Thank you. PayMongo confirms a payment to iAcquire directly, and your plan updates when it does, usually within a minute. This page does not decide that a payment arrived; it looks again every few seconds and shows the new paid-through date once PayMongo has confirmed.
         </p>
       )}
       {back === "success" && <ReturnRefresh active />}
       {back === "cancelled" && (
-        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[13px] leading-relaxed text-ink-2">You left PayMongo&apos;s page without paying. Nothing was charged and your plan has not changed.</p>
+        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">You left PayMongo&apos;s page without paying. Nothing was charged and your plan has not changed.</p>
       )}
       <PageHero icon={<Wrench className="size-4" />} eyebrow="Optional" title="Managed maintenance" description="Hands-on upkeep for your live iAcquire system. It's never required to use what you already have, and nothing here enrolls you automatically." />
       <MaintenancePanel overview={overview} timeZone={ctx.org.timezone} canManagePlan={ctx.can("maintenance.manage_plan")} canRequest={ctx.can("maintenance.request")} />

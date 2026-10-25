@@ -23,7 +23,7 @@ export function NextActions({ actions }: { actions: Array<{ title: string; body:
           </IconTile>
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight text-ink">Needs your attention</h2>
-            <p className="text-[12.5px] text-muted">The quickest ways to keep things moving.</p>
+            <p className="text-[13px] text-muted">The quickest ways to keep things moving.</p>
           </div>
         </div>
         <StatusPill tone="primary">{actions.length === 1 ? "1 next step" : `${actions.length} next steps`}</StatusPill>
@@ -43,9 +43,9 @@ export function NextActions({ actions }: { actions: Array<{ title: string; body:
               </div>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold leading-snug text-ink">{a.title}</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{a.body}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">{a.body}</p>
               </div>
-              <span className="mt-auto inline-flex items-center gap-1 text-[12.5px] font-semibold text-primary-ink">
+              <span className="mt-auto inline-flex items-center gap-1 text-[13px] font-semibold text-primary-ink">
                 {a.cta}
                 <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
               </span>
@@ -81,8 +81,8 @@ export function AlertsList({ alerts }: { alerts: Array<{ tone: "warning" | "crit
                 <StatusPill tone={t.tone} size="sm">
                   {t.label}
                 </StatusPill>
-                <span className="mt-1.5 block text-[13px] font-semibold leading-snug text-ink">{a.title}</span>
-                <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{a.body}</span>
+                <span className="mt-1.5 block text-[14px] font-semibold leading-snug text-ink">{a.title}</span>
+                <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{a.body}</span>
               </span>
               <ChevronRight className="mt-1 size-4 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
             </Link>
@@ -106,7 +106,7 @@ export function TeamGrid({ agents }: { agents: Array<{ id: string; role_key: Age
             >
               <AgentAvatar role={meta} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, meta)}>
+                <p className="truncate text-[14px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, meta)}>
                   {agentIdentityLabel(a.display_name, meta)}
                 </p>
                 <p className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted" title={meta.tagline}>
@@ -137,7 +137,7 @@ export function FollowUps({ tasks }: { tasks: Array<{ id: string; title: string;
             <CalendarClock />
           </IconTile>
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-medium leading-snug text-ink">{t.title}</p>
+            <p className="text-[14px] font-medium leading-snug text-ink">{t.title}</p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {t.due_at ? (
                 <>
@@ -171,7 +171,7 @@ export function ActivityFeed({ rows }: { rows: Array<{ id: string; action: strin
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] leading-snug text-ink-2">
+              <p className="text-[14px] leading-snug text-ink-2">
                 <span className="font-semibold text-ink">{person ?? "iAcquire system"}</span> {describeAction(r.action, r.agent)}
               </p>
               <p className="mt-0.5 text-[12px] text-muted" suppressHydrationWarning>
@@ -203,7 +203,7 @@ export function SetupChecklist({ steps }: { steps: Array<{ key: string; label: s
           </IconTile>
           <span className="min-w-0 flex-1 basis-48">
             <span className="block text-[15px] font-semibold tracking-tight text-ink">Make the workspace yours</span>
-            <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">Getting-started steps. Your full system setup is tracked separately.</span>
+            <span className="mt-0.5 block text-[13px] leading-snug text-muted">Getting-started steps. Your full system setup is tracked separately.</span>
           </span>
           <StatusPill tone={done === steps.length ? "success" : "primary"}>
             {done} of {steps.length} done
@@ -218,7 +218,7 @@ export function SetupChecklist({ steps }: { steps: Array<{ key: string; label: s
                 <Link
                   href={s.href}
                   className={cn(
-                    "group/step flex min-h-11 items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px] transition hover:-translate-y-px hover:shadow-card",
+                    "group/step flex min-h-11 items-center gap-2.5 rounded-xl border px-3 py-2 text-[14px] transition hover:-translate-y-px hover:shadow-card",
                     s.done ? TINT.success.row : "border-line bg-surface hover:border-line-strong",
                   )}
                 >

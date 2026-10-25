@@ -61,8 +61,8 @@ export function GuidanceCard({
   );
 }
 
-const PRIMARY_BUTTON = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-[12.5px] font-semibold text-primary-on transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60";
-const GHOST_BUTTON = "inline-flex h-9 items-center justify-center rounded-lg px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60";
+const PRIMARY_BUTTON = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-[13px] font-semibold text-primary-on transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60";
+const GHOST_BUTTON = "inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60";
 
 export function GuidancePrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type="button" {...props} className={cn(PRIMARY_BUTTON, props.className)} />;

@@ -59,7 +59,7 @@ export async function ContactsView({ actor, scope, searchParams }: { actor: CrmA
     if (!data.total && !list && !q && !filter && archived === "exclude") return notice;
     return (
       <div className="space-y-4">
-        <p role="note" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+        <p role="note" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
           Contacts are managed in GoHighLevel for this workspace, so these are shown read-only. {scope.agency ? "Moving them to iAcquire is done from the CRM provider settings." : "An owner can move them to iAcquire in Settings → CRM Provider."}
         </p>
         <ContactsWorkspace

@@ -22,7 +22,7 @@ export function NoticeBanner({ notice }: { notice: Notice | null }) {
   if (!notice) return null;
   const ok = notice.tone === "ok";
   return (
-    <p role={ok ? "status" : "alert"} className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-[13.5px] ${ok ? "border-success/25 bg-success-soft text-success-ink" : "border-danger/20 bg-danger-soft text-danger-ink"}`}>
+    <p role={ok ? "status" : "alert"} className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-[14px] ${ok ? "border-success/25 bg-success-soft text-success-ink" : "border-danger/20 bg-danger-soft text-danger-ink"}`}>
       {ok ? <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> : <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />}
       <span>{notice.text}</span>
     </p>
@@ -121,7 +121,7 @@ export function AnswerPanel({ token, view, code, result }: { token: string; view
               </Button>
             </form>
             <form method="post" action={api("verify")} className="space-y-2">
-              <label htmlFor="proposal-code" className="text-[13.5px] font-medium text-ink-2">6-digit code</label>
+              <label htmlFor="proposal-code" className="text-[14px] font-medium text-ink-2">6-digit code</label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input id="proposal-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 \-]*" maxLength={12} required className={`${inputClass} sm:max-w-[12rem]`} />
                 <Button type="submit" className="w-full sm:w-auto">Confirm</Button>
@@ -130,11 +130,11 @@ export function AnswerPanel({ token, view, code, result }: { token: string; view
           </div>
         ) : (
           <div className="space-y-5">
-            <p role="status" className="flex items-start gap-2 text-[13.5px] text-success-ink">
+            <p role="status" className="flex items-start gap-2 text-[14px] text-success-ink">
               <MailCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>Email confirmed: {view.verified.emailMasked}</span>
             </p>
-            {view.changeRequests > 0 && <p className="text-[13.5px] text-muted">You have asked {business.name} for changes {view.changeRequests === 1 ? "once" : `${view.changeRequests} times`}. They will get back to you. You can still answer here.</p>}
+            {view.changeRequests > 0 && <p className="text-[14px] text-muted">You have asked {business.name} for changes {view.changeRequests === 1 ? "once" : `${view.changeRequests} times`}. They will get back to you. You can still answer here.</p>}
             {proposal.requiresSignature ? null : (
               <form method="post" action={api("decide")} className="space-y-3">
                 <input type="hidden" name="decision" value="accept" />
@@ -149,14 +149,14 @@ export function AnswerPanel({ token, view, code, result }: { token: string; view
             <form method="post" action={api("decide")} className="space-y-2 border-t border-line pt-4">
               <input type="hidden" name="decision" value="request_changes" />
               <input type="hidden" name="h" value={proposal.contentHash} />
-              <label htmlFor="proposal-changes" className="text-[13.5px] font-medium text-ink-2">Ask for changes</label>
+              <label htmlFor="proposal-changes" className="text-[14px] font-medium text-ink-2">Ask for changes</label>
               <textarea id="proposal-changes" name="note" required minLength={3} maxLength={2000} rows={3} placeholder="What would you like changed?" className={`${inputClass} min-h-[88px] resize-y`} />
               <Button type="submit" variant="secondary" className="w-full sm:w-auto">Send to {business.name}</Button>
             </form>
             <form method="post" action={api("decide")} className="space-y-2 border-t border-line pt-4">
               <input type="hidden" name="decision" value="decline" />
               <input type="hidden" name="h" value={proposal.contentHash} />
-              <label htmlFor="proposal-decline" className="text-[13.5px] font-medium text-ink-2">Decline <span className="font-normal text-faint">Optional note</span></label>
+              <label htmlFor="proposal-decline" className="text-[14px] font-medium text-ink-2">Decline <span className="font-normal text-faint">Optional note</span></label>
               <textarea id="proposal-decline" name="note" maxLength={2000} rows={2} className={`${inputClass} min-h-[64px] resize-y`} />
               <Button type="submit" variant="outline" className="w-full sm:w-auto">Decline this proposal</Button>
             </form>

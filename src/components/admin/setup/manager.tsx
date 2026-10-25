@@ -59,7 +59,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
 
   return (
     <div className="space-y-6">
-      <Link href={`/admin/clients/${orgId}`} className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+      <Link href={`/admin/clients/${orgId}`} className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
         <ArrowLeft className="size-3.5" /> {data.org.name}
       </Link>
 
@@ -75,25 +75,25 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[12.5px] font-semibold uppercase tracking-wider text-primary">Client setup manager</p>
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-primary">Client setup manager</p>
               <Badge tone={STATE_TONE[data.state]} className="hidden lg:inline-flex">
                 {STATE_LABEL[data.state]}
               </Badge>
             </div>
             <h1 className="mt-1 text-[24px] font-semibold tracking-[-0.02em] text-ink sm:text-[28px]">{data.org.name}</h1>
-            <p className="mt-1 text-[13.5px] text-muted">
+            <p className="mt-1 text-[14px] text-muted">
               {p.total === 0 ? "No required steps apply." : `${p.completed} of ${p.total} required steps complete`}
               {p.counts.waiting_for_client > 0 && ` · ${p.counts.waiting_for_client} waiting on the client`}
               {p.counts.blocked > 0 && ` · ${p.counts.blocked} blocked`}
               {data.estimatedCompletion && ` · est. ${formatDate(`${data.estimatedCompletion}T12:00:00Z`, "UTC")}`}
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-muted">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-muted">
               <label className="inline-flex items-center gap-2">
                 <UserCheck className="size-3.5" />
                 <span className="sr-only sm:not-sr-only">Responsible</span>
                 <Select
                   aria-label="Responsible team member"
-                  className="h-8 w-48 text-[12.5px]"
+                  className="h-8 w-48 text-[13px]"
                   value={data.responsibleUserId ?? ""}
                   onChange={(e) => void act("resp", () => setResponsibleStaffAction(orgId, e.target.value || null), "Responsible person updated")}
                 >
@@ -109,9 +109,9 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
             </div>
           </div>
           <div className="flex flex-wrap gap-2 lg:max-w-[260px] lg:justify-end">
-            <Link href={`/admin/clients/${orgId}/provisioning`} className="rounded-xl border border-line px-3 py-2 text-[12.5px] font-medium text-ink-2 transition hover:bg-surface-2">Provisioning</Link>
-            <Link href={`/admin/clients/${orgId}/activation`} className="rounded-xl border border-line px-3 py-2 text-[12.5px] font-medium text-ink-2 transition hover:bg-surface-2">Readiness</Link>
-            <Link href={`/admin/clients/${orgId}/integrations`} className="rounded-xl border border-line px-3 py-2 text-[12.5px] font-medium text-ink-2 transition hover:bg-surface-2">Integrations</Link>
+            <Link href={`/admin/clients/${orgId}/provisioning`} className="rounded-xl border border-line px-3 py-2 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2">Provisioning</Link>
+            <Link href={`/admin/clients/${orgId}/activation`} className="rounded-xl border border-line px-3 py-2 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2">Readiness</Link>
+            <Link href={`/admin/clients/${orgId}/integrations`} className="rounded-xl border border-line px-3 py-2 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2">Integrations</Link>
             <Button variant="secondary" size="sm" onClick={() => setDialog("add")}>
               <ListPlus className="size-4" /> Add step
             </Button>
@@ -125,7 +125,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
       </motion.section>
 
       {error && (
-        <div role="status" className="flex flex-col gap-3 rounded-2xl border border-warning/25 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink sm:flex-row sm:items-center">
+        <div role="status" className="flex flex-col gap-3 rounded-2xl border border-warning/25 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink sm:flex-row sm:items-center">
           <span className="flex flex-1 items-start gap-2.5">
             <WifiOff className="mt-0.5 size-4 shrink-0" /> {error}
           </span>
@@ -146,7 +146,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                   <h2 id={`mg-${section}`} className="text-[15px] font-semibold tracking-tight text-ink">
                     {SECTION_TITLE[section]}
                   </h2>
-                  <span className="text-[12.5px] text-muted">{list.filter((t) => t.status === "completed").length} of {list.length} complete</span>
+                  <span className="text-[13px] text-muted">{list.filter((t) => t.status === "completed").length} of {list.length} complete</span>
                 </div>
                 <ol className="space-y-2">
                   {list.map((t, i) => (
@@ -182,7 +182,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-xl bg-surface-2/60 px-3 py-2.5 text-[13px]">
+              <div className="rounded-xl bg-surface-2/60 px-3 py-2.5 text-[14px]">
                 <div className="flex items-center justify-between">
                   <span className="text-ink-2">Setup tasks</span>
                   <span className={cn("font-medium", r.tasksComplete ? "text-success-ink" : "text-ink")}>{r.tasksComplete ? "All complete" : `${p.completed} of ${p.total}`}</span>
@@ -191,7 +191,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
 
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-[13px] font-semibold text-ink">System checks</h3>
+                  <h3 className="text-[14px] font-semibold text-ink">System checks</h3>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -211,7 +211,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                   {data.checks.map((c) => (
                     <li key={c.key} className="rounded-xl border border-line px-3 py-2.5">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-[13px] font-medium text-ink">{c.label}</span>
+                        <span className="text-[14px] font-medium text-ink">{c.label}</span>
                         <Badge tone={CHECK_BADGE[c.status].tone}>{CHECK_BADGE[c.status].label}</Badge>
                       </div>
                       {c.detail && <p className="mt-1 text-[12px] leading-relaxed text-muted">{c.detail}</p>}
@@ -225,10 +225,10 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
 
               {data.state !== "activated" && r.blockers.length > 0 && (
                 <div>
-                  <h3 className="mb-1.5 text-[13px] font-semibold text-ink">What&apos;s stopping activation</h3>
+                  <h3 className="mb-1.5 text-[14px] font-semibold text-ink">What&apos;s stopping activation</h3>
                   <ul className="space-y-1.5">
                     {r.blockers.slice(0, 6).map((b, i) => (
-                      <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug text-muted">
+                      <li key={i} className="flex items-start gap-2 text-[13px] leading-snug text-muted">
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" /> {b.message}
                       </li>
                     ))}
@@ -254,7 +254,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                         <ShieldCheck className="size-4" /> Approve activation
                       </Button>
                     ) : (
-                      <p className="rounded-xl bg-violet-soft px-3 py-2.5 text-[12.5px] text-violet-ink">A super admin approves activation after reviewing the checks.</p>
+                      <p className="rounded-xl bg-violet-soft px-3 py-2.5 text-[13px] text-violet-ink">A super admin approves activation after reviewing the checks.</p>
                     )}
                     <Button className="w-full" variant="secondary" onClick={() => setDialog("sendback")}>
                       <Undo2 className="size-4" /> Send back to setup
@@ -262,7 +262,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                   </>
                 )}
                 {data.state === "activated" && (
-                  <p className="flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[13px] text-success-ink">
+                  <p className="flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[14px] text-success-ink">
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> Approved for activation{data.activatedAt ? ` on ${formatDate(data.activatedAt, timeZone)}` : ""}.
                   </p>
                 )}
@@ -276,11 +276,11 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
             </CardHeader>
             <CardContent>
               {data.events.length === 0 ? (
-                <p className="text-[13px] text-muted">Nothing yet.</p>
+                <p className="text-[14px] text-muted">Nothing yet.</p>
               ) : (
                 <ol className="space-y-3">
                   {data.events.slice(0, 10).map((e) => (
-                    <li key={e.id} className="text-[12.5px] leading-snug">
+                    <li key={e.id} className="text-[13px] leading-snug">
                       <p className="text-ink-2">{eventLabel(e, byId)}</p>
                       <p className="mt-0.5 text-[12px] text-faint"><RelativeTime iso={e.at} timezone={timeZone} /></p>
                     </li>

@@ -47,7 +47,7 @@ export default async function EditPersonWorkloadPage({ params }: { params: Promi
     <div className="space-y-5">
       <WorkloadHeader active="overview" showTeam={data.caps.team} showSettings={user.platformRole === "agency_super_admin"} />
       <div>
-        <Link href={`/admin/workload/people/${userId}`} className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href={`/admin/workload/people/${userId}`} className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" aria-hidden /> {data.person.name}
         </Link>
       </div>

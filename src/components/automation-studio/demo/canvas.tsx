@@ -67,7 +67,7 @@ function NodeCard({ node, layout }: { node: DemoNode; layout: DemoLayout }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className={cn("truncate font-semibold uppercase leading-4 tracking-wider text-faint", narrow ? "text-[12px]" : "text-[12px]")}>{node.meta}</p>
-        <p className={cn("truncate font-semibold leading-5 text-ink", narrow ? "text-[14px]" : "text-[13.5px]")}>{node.title}</p>
+        <p className={cn("truncate font-semibold leading-5 text-ink", narrow ? "text-[14px]" : "text-[14px]")}>{node.title}</p>
         <p className={cn("leading-snug text-muted", narrow ? "truncate text-[12px]" : "line-clamp-2 text-[12px]")} title={narrow ? node.summary : undefined}>{node.summary}</p>
       </div>
       {node.reachesOut && (
@@ -162,7 +162,7 @@ export function DemoCanvas({ beat, fresh, className }: { beat: Beat; fresh: { no
           })}
         </ol>
       </div>
-      <p aria-hidden className={cn("pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-[13px] text-faint transition-opacity duration-300", beat.nodes.length ? "opacity-0" : "opacity-100")}>
+      <p aria-hidden className={cn("pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-[14px] text-faint transition-opacity duration-300", beat.nodes.length ? "opacity-0" : "opacity-100")}>
         The automation appears here as it’s built
       </p>
     </div>

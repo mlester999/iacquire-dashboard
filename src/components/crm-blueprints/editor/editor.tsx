@@ -208,14 +208,14 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
     <EditorContext.Provider value={api}>
       <div className="space-y-4" onClickCapture={onClickCapture}>
         <div>
-          <Link href={blueprintHref(blueprint.id)} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8">
+          <Link href={blueprintHref(blueprint.id)} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8">
             <ArrowLeft className="size-4" aria-hidden />Back to the Blueprint
           </Link>
           <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">Blueprint editor</p>
               <h1 className="break-words text-[22px] font-semibold tracking-[-0.03em] text-ink">{content.blueprint.name || blueprint.name}</h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
                 <Badge tone={blueprint.status === "published" ? "success" : blueprint.status === "archived" ? "neutral" : "warning"}>{blueprint.status === "published" ? `Version ${blueprint.currentVersion} published` : blueprint.status === "archived" ? "Archived" : "Never published"}</Badge>
                 <Badge tone="outline">{BLUEPRINT_SOURCE_LABELS[blueprint.source]}{blueprint.sourceLabel ? `: ${blueprint.sourceLabel}` : ""}</Badge>
                 {!readOnly && <span role="status" aria-live="polite">{saving ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}</span>}
@@ -236,7 +236,7 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
             </div>
           </div>
           {blueprint.canPublish && (
-            <p id="bp-publish-hint" className="mt-1.5 text-[12.5px] text-muted">
+            <p id="bp-publish-hint" className="mt-1.5 text-[13px] text-muted">
               {dirty ? "Save the draft first: publishing freezes the saved draft as a new version on the Blueprint's page." : "Publishing freezes the saved draft as a new version on the Blueprint's page. Clients only ever receive published versions."}
             </p>
           )}
@@ -245,7 +245,7 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
         {!canEdit && <ReadOnlyNotice>You can look through this Blueprint. Changing it needs the agency&apos;s Blueprint design permission.</ReadOnlyNotice>}
         {canEdit && blueprint.status === "archived" && <ReadOnlyNotice>This Blueprint is archived. Restore it on its page to edit it again.</ReadOnlyNotice>}
         {serverAhead && dirty && (
-          <p className="flex flex-wrap items-start gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink" role="status">
+          <p className="flex flex-wrap items-start gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink" role="status">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1">Someone else saved this Blueprint after you opened it. Saving now replaces their changes with yours.</span>
             <Button variant="secondary" size="sm" onClick={() => { setDirty(false); setSynced(-1); router.refresh(); }}>Load their version</Button>
@@ -266,7 +266,7 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
                       onClick={() => open(s)}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors lg:min-h-9",
+                        "flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-[14px] font-medium transition-colors lg:min-h-9",
                         active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:bg-surface-2 hover:text-ink",
                       )}
                     >
@@ -370,7 +370,7 @@ function ProblemsBar({
   return (
     <Card className="p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-[13px]" role="status" aria-live="polite">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-[14px]" role="status" aria-live="polite">
           {none ? (
             <span className="inline-flex items-center gap-1.5 font-medium text-success-ink"><CheckCircle2 className="size-4" aria-hidden />No problems found{checking ? " (checking…)" : ""}</span>
           ) : (
@@ -392,7 +392,7 @@ function ProblemsBar({
         <ul id="bp-problems" className="mt-3 max-h-[min(420px,60dvh)] space-y-1.5 overflow-y-auto scrollbar-thin" aria-label="Problems">
           {sorted.slice(0, 200).map((i, n) => (
             <li key={`${i.code}-${i.path}-${n}`}>
-              <button type="button" onClick={() => onGo(i.section, i.assetId)} className={cn("flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left text-[12.5px] leading-relaxed hover:brightness-95", i.severity === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+              <button type="button" onClick={() => onGo(i.section, i.assetId)} className={cn("flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left text-[13px] leading-relaxed hover:brightness-95", i.severity === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
                 {i.severity === "error" ? <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                 <span className="min-w-0">
                   <span className="font-semibold">{NAV_LABELS[i.section]}{i.severity === "error" && SAVE_BLOCKING_CODES.has(i.code) ? " · can't be saved" : ""}:</span>{" "}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { EMPTY_GALLERY_FILTERS, INDUSTRY_FILTERS, LAYOUT_FILTERS, STYLE_FILTERS, TYPOGRAPHY_FILTERS, templateStyles, type DiscoverableTemplate, type GalleryFilters as Filters } from "@/lib/website/gallery";
 
-const SELECT_CLASS = "h-11 rounded-xl border border-line bg-surface px-3 text-[13px] text-ink-2 outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25";
+const SELECT_CLASS = "h-11 rounded-xl border border-line bg-surface px-3 text-[14px] text-ink-2 outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25";
 
 export function GalleryFilters({ cards, value, onChange, actions }: { cards: DiscoverableTemplate[]; value: Filters; onChange: (filters: Filters) => void; actions?: React.ReactNode }) {
   const id = React.useId();

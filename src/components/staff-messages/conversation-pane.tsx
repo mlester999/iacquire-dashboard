@@ -75,7 +75,7 @@ function Title({ view }: { view: ConversationView }) {
       )}
       <span className="min-w-0">
         <span className="block truncate text-[16px] font-semibold tracking-tight text-ink">{railTitle({ kind: c.kind, name: c.name })}</span>
-        <span className="block truncate text-[12.5px] text-muted">{headerSubtitle({ kind: c.kind, topic: c.topic, memberCount: view.memberCount, archived: c.archived })}</span>
+        <span className="block truncate text-[13px] text-muted">{headerSubtitle({ kind: c.kind, topic: c.topic, memberCount: view.memberCount, archived: c.archived })}</span>
       </span>
     </span>
   );
@@ -131,8 +131,8 @@ export function ConversationPane(props: ConversationPaneProps) {
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center" role="status">
           <Info className="size-6 text-muted" aria-hidden />
           <h3 className="text-[16px] font-semibold text-ink">{CONVERSATION_GONE_TITLE}</h3>
-          <p className="max-w-sm text-[13.5px] leading-relaxed text-muted">{CONVERSATION_GONE_TEXT}</p>
-          <Link href={MESSAGES_HOME} className="mt-2 text-[13px] font-medium text-primary-ink underline">Back to your conversations</Link>
+          <p className="max-w-sm text-[14px] leading-relaxed text-muted">{CONVERSATION_GONE_TEXT}</p>
+          <Link href={MESSAGES_HOME} className="mt-2 text-[14px] font-medium text-primary-ink underline">Back to your conversations</Link>
         </div>
       </div>
     );
@@ -164,7 +164,7 @@ export function ConversationPane(props: ConversationPaneProps) {
       {!member ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
           <h3 className="text-[16px] font-semibold text-ink">You haven&apos;t joined this channel</h3>
-          <p className="max-w-sm text-[13.5px] leading-relaxed text-muted">
+          <p className="max-w-sm text-[14px] leading-relaxed text-muted">
             It is open to the whole team. Join to read what has been said and to write in it{view.memberCount > 0 ? ` (${view.memberCount} ${view.memberCount === 1 ? "person is" : "people are"} in it)` : ""}.
           </p>
           {view.can.join && <Button onClick={actions.onJoin} loading={busyJoin}>Join {railTitle({ kind: c.kind, name: c.name })}</Button>}
@@ -172,7 +172,7 @@ export function ConversationPane(props: ConversationPaneProps) {
       ) : (
         <>
           {c.archived && (
-            <p className="border-b border-line bg-warning-soft px-4 py-2 text-[13px] text-warning-ink" role="status">
+            <p className="border-b border-line bg-warning-soft px-4 py-2 text-[14px] text-warning-ink" role="status">
               This conversation is archived. Nothing new can be written in it.
             </p>
           )}
@@ -202,7 +202,7 @@ export function ConversationPane(props: ConversationPaneProps) {
                 </div>
               )}
               {!hasMore && messages.length === 0 && pending.length === 0 && (
-                <p className="px-6 py-10 text-center text-[13.5px] text-muted">No messages yet. Write the first one below.</p>
+                <p className="px-6 py-10 text-center text-[14px] text-muted">No messages yet. Write the first one below.</p>
               )}
               <ul className="space-y-0">
                 {items.map((item) => {
@@ -254,14 +254,14 @@ export function ConversationPane(props: ConversationPaneProps) {
                     <div className="w-9 shrink-0" aria-hidden />
                     <div className="min-w-0 flex-1">
                       <p className={cn("whitespace-pre-wrap break-words text-[15px] leading-relaxed [overflow-wrap:anywhere]", p.status === "sending" ? "text-ink-2" : "text-ink")}>{plainMentions(p.body, (id) => names.get(id) ?? null)}</p>
-                      {p.attachments.length > 0 && <p className="text-[12.5px] text-muted">{p.attachments.length} {p.attachments.length === 1 ? "file" : "files"}</p>}
+                      {p.attachments.length > 0 && <p className="text-[13px] text-muted">{p.attachments.length} {p.attachments.length === 1 ? "file" : "files"}</p>}
                       {p.status === "sending" ? (
-                        <p className="flex items-center gap-1.5 text-[12.5px] text-muted" role="status">
+                        <p className="flex items-center gap-1.5 text-[13px] text-muted" role="status">
                           <Loader2 className="size-3 animate-spin" aria-hidden /> Sending…
                         </p>
                       ) : (
                         <div role="alert" className="mt-1 space-y-1">
-                          <p className="text-[12.5px] text-danger-ink">{failureText(p.error, p.errorCode)}</p>
+                          <p className="text-[13px] text-danger-ink">{failureText(p.error, p.errorCode)}</p>
                           <div className="flex flex-wrap gap-2">
                             {canRetry(p.errorCode) && (
                               <Button size="sm" variant="secondary" onClick={() => actions.onRetry(p.clientId)}>
@@ -292,7 +292,7 @@ export function ConversationPane(props: ConversationPaneProps) {
             )}
           </div>
           {readingAround && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-primary-soft px-4 py-2 text-[13px] text-primary-ink" role="status">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-primary-soft px-4 py-2 text-[14px] text-primary-ink" role="status">
               <span>You are reading older messages. New ones are not shown here.</span>
               <Link href={conversationHref(c.id)} onClick={actions.onJumpToLatest} className="inline-flex min-h-11 items-center font-medium underline sm:min-h-8">Jump to the newest</Link>
             </div>

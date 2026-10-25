@@ -87,7 +87,7 @@ export function FairUseAdmin({ fleet, policies, reviews, clients, canManage }: {
                   </div>
                   <dl className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
                     {f.metrics.map((m) => (
-                      <div key={m.metric} className="management-row flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-[13px]">
+                      <div key={m.metric} className="management-row flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-[14px]">
                         <dt className="min-w-0 flex-1 basis-32 truncate text-ink-2" title={METRIC_INFO[m.metric].label}>{METRIC_INFO[m.metric].label}</dt>
                         <dd className="flex items-center justify-end gap-3">
                           <span className="min-w-16 whitespace-nowrap text-right font-semibold tabular-nums">{m.valueText}</span>
@@ -122,7 +122,7 @@ export function FairUseAdmin({ fleet, policies, reviews, clients, canManage }: {
                       {p.limit !== null ? <InfoChip icon={<Gauge />}>Limit {formatMetricValue(p.metric, p.limit)}</InfoChip> : <InfoChip>No limit</InfoChip>}
                       {p.enforcement === "block_new" ? <StatusPill tone="warning" size="sm" icon={<Lock className="size-3" aria-hidden />}>Refuses new uploads when over</StatusPill> : <StatusPill tone="neutral" size="sm" icon={<Eye className="size-3" aria-hidden />}>Report only</StatusPill>}
                     </div>
-                    {p.note && <p className="mt-2.5 border-l-2 border-line-strong pl-3 text-[12.5px] leading-relaxed text-muted">{p.note}</p>}
+                    {p.note && <p className="mt-2.5 border-l-2 border-line-strong pl-3 text-[13px] leading-relaxed text-muted">{p.note}</p>}
                   </div>
                   {canManage && <Button size="sm" variant="outline" loading={busy === p.id} onClick={() => clear(p.id)} aria-label={`Remove the ${p.label} threshold for ${p.orgName ?? "all clients"}`}><Trash2 className="size-3.5" aria-hidden />Remove</Button>}
                 </li>
@@ -166,7 +166,7 @@ export function FairUseAdmin({ fleet, policies, reviews, clients, canManage }: {
               <Button loading={busy === "save"} onClick={save} className="w-full sm:w-auto">Save threshold</Button>
             </div>
           ) : (
-            <p className="flex items-center gap-2 border-t border-line pt-4 text-[12.5px] text-muted"><Lock className="size-3.5" aria-hidden />Only super admins can change thresholds.</p>
+            <p className="flex items-center gap-2 border-t border-line pt-4 text-[13px] text-muted"><Lock className="size-3.5" aria-hidden />Only super admins can change thresholds.</p>
           )}
         </Card>
       </section>

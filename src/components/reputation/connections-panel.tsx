@@ -37,19 +37,19 @@ export function ConnectionStatusCard({ scope, sites, enabled }: { scope: CrmScop
     <Card className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <h2 className="flex items-center gap-2 text-[14.5px] font-semibold text-ink"><Star className="size-4 text-muted" aria-hidden />Public reviews in iAcquire</h2>
-        <Link href={`${scope.base}/reviews?tab=${enabled ? "public" : "settings"}`} className="text-[13px] font-medium text-primary hover:underline">{enabled ? "Open" : "Settings"}</Link>
+        <Link href={`${scope.base}/reviews?tab=${enabled ? "public" : "settings"}`} className="text-[14px] font-medium text-primary hover:underline">{enabled ? "Open" : "Settings"}</Link>
       </div>
       <ul className="mt-3 space-y-3" aria-label="Review sites">
         {sites.map((s) => (
           <li key={s.provider} className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13.5px] font-medium text-ink">{s.label}</span>
+              <span className="text-[14px] font-medium text-ink">{s.label}</span>
               <Badge tone={toneOf(s.state.tone)}>{s.state.label}</Badge>
               {s.connection?.simulated && <Badge tone="violet">Simulated</Badge>}
             </div>
-            <p className="text-[12.5px] leading-relaxed text-muted">{s.state.detail}</p>
+            <p className="text-[13px] leading-relaxed text-muted">{s.state.detail}</p>
             {s.connection && s.state.state === "connected" && (
-              <p className="text-[12.5px] leading-relaxed text-ink-2">
+              <p className="text-[13px] leading-relaxed text-ink-2">
                 {syncedAgainstReported(s.label, PROVIDER_REVIEW_WORD[s.provider], s.connection.syncedCount, s.connection.reportedReviewCount)}{" "}
                 {s.connection.lastSuccessAt ? <>Read <RelativeTime iso={s.connection.lastSuccessAt} timezone={scope.timezone} />.</> : "Not read yet."}
               </p>
@@ -57,8 +57,8 @@ export function ConnectionStatusCard({ scope, sites, enabled }: { scope: CrmScop
           </li>
         ))}
       </ul>
-      {!enabled && <p className="mt-3 text-[12.5px] leading-relaxed text-muted">Public reviews aren&apos;t switched on for this workspace yet. Ask your iAcquire contact to switch them on. Your review links work as usual.</p>}
-      <p className="mt-3 text-[12.5px] leading-relaxed text-muted">iAcquire reads the reviews a site returns. It doesn&apos;t write, hide or count reviews for you, and it never says that a review came from a request you sent.</p>
+      {!enabled && <p className="mt-3 text-[13px] leading-relaxed text-muted">Public reviews aren&apos;t switched on for this workspace yet. Ask your iAcquire contact to switch them on. Your review links work as usual.</p>}
+      <p className="mt-3 text-[13px] leading-relaxed text-muted">iAcquire reads the reviews a site returns. It doesn&apos;t write, hide or count reviews for you, and it never says that a review came from a request you sent.</p>
     </Card>
   );
 }
@@ -83,9 +83,9 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
         <Badge tone={toneOf(site.state.tone)}>{site.state.label}</Badge>
         {c?.simulated && <Badge tone="violet">Simulated</Badge>}
       </div>
-      <p className="text-[13px] leading-relaxed text-ink-2">{site.state.detail}</p>
+      <p className="text-[14px] leading-relaxed text-ink-2">{site.state.detail}</p>
       {c && (
-        <dl className="grid gap-2 text-[13px] sm:grid-cols-2">
+        <dl className="grid gap-2 text-[14px] sm:grid-cols-2">
           <div><dt className="text-[12px] font-medium text-muted">{site.provider === "facebook" ? "Page" : "Location"}</dt><dd className="mt-0.5 break-words text-ink">{c.name}</dd></div>
           <div><dt className="text-[12px] font-medium text-muted">Last read</dt><dd className="mt-0.5 text-ink">{c.lastSuccessAt ? <RelativeTime iso={c.lastSuccessAt} timezone={scope.timezone} /> : "Not yet"}</dd></div>
           <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-muted">What was read</dt><dd className="mt-0.5 text-ink-2">{syncedAgainstReported(site.label, word, c.syncedCount, c.reportedReviewCount)}{c.removedCount ? ` ${c.removedCount} read earlier ${c.removedCount === 1 ? "is" : "are"} no longer on the site.` : ""}</dd></div>
@@ -93,7 +93,7 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
         </dl>
       )}
       {!canManage ? (
-        <p className="text-[12.5px] text-muted">{scope.agency ? "Review sites belong to the client's own workspace: iAcquire support can look, not connect or change them." : "Only owners and managers connect review sites."}</p>
+        <p className="text-[13px] text-muted">{scope.agency ? "Review sites belong to the client's own workspace: iAcquire support can look, not connect or change them." : "Only owners and managers connect review sites."}</p>
       ) : !enabled ? null : (
         <div className="flex flex-wrap items-center gap-2">
           {c && c.status !== "disconnected" && (
@@ -115,7 +115,7 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
         <ul className="space-y-2" aria-label="Facebook Pages you can read recommendations from">
           {site.pages.map((p) => (
             <li key={p.socialAccountId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2">
-              <span className="min-w-0 break-words text-[13px] text-ink">{p.name}</span>
+              <span className="min-w-0 break-words text-[14px] text-ink">{p.name}</span>
               <Button size="sm" variant="secondary" disabled={!p.hasPermission || p.connected || !site.state.canConnect || Boolean(c && !p.reconnect)} loading={busy(`page-${p.socialAccountId}`)} onClick={() => run(`page-${p.socialAccountId}`, () => connectFacebookPageAction(scope.orgId, p.socialAccountId), p.reconnect ? "Reconnected. Its recommendations are read next." : "Connected. Its recommendations are read next.")}>
                 {p.connected ? "Connected" : !p.hasPermission ? "Needs more permission" : p.reconnect ? "Reconnect this Page" : "Read its recommendations"}
               </Button>
@@ -125,17 +125,17 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
       )}
       {canManage && enabled && access && (
         <div className="space-y-1.5 rounded-xl border border-line p-3">
-          <a href={REVIEW_ACCESS_HREF} className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft transition-colors hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
+          <a href={REVIEW_ACCESS_HREF} className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink shadow-soft transition-colors hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
             <Link2 className="size-4" aria-hidden />{access === "connect" ? "Connect Facebook with review access" : "Reconnect with review access"}
           </a>
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-[13px] leading-relaxed text-muted">
             Facebook asks you to allow iAcquire to read your Page&apos;s recommendations{site.environment.repliesReady ? " and to reply to them" : ""}. You choose the Page on the next screen; come back here afterwards to read its recommendations.
           </p>
         </div>
       )}
       {canManage && enabled && site.provider === "google" && pending && pending.length > 0 && stateId && (
         <fieldset className="space-y-2 rounded-xl border border-line p-3">
-          <legend className="px-1 text-[13px] font-medium text-ink">Choose the location to read</legend>
+          <legend className="px-1 text-[14px] font-medium text-ink">Choose the location to read</legend>
           <div className="max-h-56 space-y-0.5 overflow-y-auto">
             {pending.map((l) => (
               <label key={`${l.accountId}|${l.locationId}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 text-[14px] text-ink hover:bg-surface-2 sm:min-h-9">
@@ -171,11 +171,11 @@ export function ConnectionsPanel({ scope, sites, enabled, canManage, pending, pe
     <section aria-labelledby="sites-title" className="max-w-2xl space-y-4">
       <div>
         <h2 id="sites-title" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Globe2 className="size-4 text-muted" aria-hidden />Review sites</h2>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 text-[14px] leading-relaxed text-muted">
           Connect the sites your customers review you on, so their reviews can be read here and answered. A site that isn&apos;t set up shows why, in words; nothing is read, shown or counted until a site is connected and says it works.
         </p>
       </div>
-      {notice && <p role="status" className="rounded-xl bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">{SIGN_IN_NOTICES[notice] ?? SIGN_IN_NOTICES.failed}</p>}
+      {notice && <p role="status" className="rounded-xl bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">{SIGN_IN_NOTICES[notice] ?? SIGN_IN_NOTICES.failed}</p>}
       {sites.map((s) => (
         <SiteCard key={s.provider} scope={scope} site={s} canManage={canManage} enabled={enabled} pending={s.provider === "google" ? pending : null} stateId={pendingStateId} />
       ))}

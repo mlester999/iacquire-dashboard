@@ -109,7 +109,7 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
       <div ref={bottomRef} />
 
       {!canWrite ? (
-        <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2/70 px-4 py-3.5 text-[13px] text-ink-2"><Lock className="mt-0.5 size-4 shrink-0" aria-hidden /> You can read this request, but your role doesn&apos;t allow replying to it.</div>
+        <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2/70 px-4 py-3.5 text-[14px] text-ink-2"><Lock className="mt-0.5 size-4 shrink-0" aria-hidden /> You can read this request, but your role doesn&apos;t allow replying to it.</div>
       ) : (
         <div className={cn("rounded-2xl border bg-surface p-3 shadow-card focus-within:ring-4", internal ? "border-warning/50 bg-warning-soft/30 focus-within:ring-warning/15" : "border-line-strong focus-within:border-primary focus-within:ring-primary/10")}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -117,7 +117,7 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
               {([["reply", "Reply to client"], ["note", "Internal note"]] as const).map(([value, label]) => (
                 <button key={value} type="button" role="radio" aria-checked={mode === value} disabled={value === "note" && !canNote} onClick={() => setMode(value)}
                   title={value === "note" && !canNote ? "Your role doesn't allow internal notes" : undefined}
-                  className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-[10px] px-3 text-[12.5px] font-medium transition disabled:opacity-50", mode === value ? (value === "note" ? "bg-warning-soft text-warning-ink shadow-soft" : "bg-surface text-ink shadow-soft") : "text-muted hover:text-ink")}>
+                  className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition disabled:opacity-50", mode === value ? (value === "note" ? "bg-warning-soft text-warning-ink shadow-soft" : "bg-surface text-ink shadow-soft") : "text-muted hover:text-ink")}>
                   {value === "note" && <Lock className="size-3" aria-hidden />}{label}
                 </button>
               ))}
@@ -139,13 +139,13 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
           )}
           {draft && (
             <div className="mt-2 rounded-xl border border-primary/20 bg-primary-soft/40 p-3.5" role="region" aria-label="Suggested reply">
-              {"reason" in draft ? <p className="text-[13px] text-ink-2">{draft.reason}</p> : (
+              {"reason" in draft ? <p className="text-[14px] text-ink-2">{draft.reason}</p> : (
                 <>
                   <p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Suggested reply (not sent)</p>
-                  <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink">{draft.text}</p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">{draft.text}</p>
                   {draft.warnings.length > 0 && (
                     <ul className="mt-2.5 space-y-1" aria-label="Check before sending">
-                      {draft.warnings.map((w) => <li key={w} className="flex items-start gap-1.5 text-[12.5px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {w}</li>)}
+                      {draft.warnings.map((w) => <li key={w} className="flex items-start gap-1.5 text-[13px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {w}</li>)}
                     </ul>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -159,11 +159,11 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
           )}
           {questions && (
             <div className="mt-2 rounded-xl border border-line bg-surface-2/60 p-3.5" role="region" aria-label="Missing information">
-              {"reason" in questions ? <p className="text-[13px] text-ink-2">{questions.reason}</p> : questions.items.length === 0 ? <p className="text-[13px] text-ink-2">Nothing obvious is missing from this request.</p> : (
+              {"reason" in questions ? <p className="text-[14px] text-ink-2">{questions.reason}</p> : questions.items.length === 0 ? <p className="text-[14px] text-ink-2">Nothing obvious is missing from this request.</p> : (
                 <>
-                  <p className="text-[12.5px] font-medium text-ink-2">Questions that could move this forward:</p>
+                  <p className="text-[13px] font-medium text-ink-2">Questions that could move this forward:</p>
                   <ul className="mt-1.5 space-y-1">{questions.items.map((q) => (
-                    <li key={q} className="flex items-start justify-between gap-3 text-[13px] text-ink"><span>{q}</span><button type="button" className="shrink-0 text-[12px] font-medium text-primary-ink hover:underline" onClick={() => setBody((b) => `${b}${b && !b.endsWith("\n") ? "\n" : ""}${q}`)}>Add to reply</button></li>
+                    <li key={q} className="flex items-start justify-between gap-3 text-[14px] text-ink"><span>{q}</span><button type="button" className="shrink-0 text-[12px] font-medium text-primary-ink hover:underline" onClick={() => setBody((b) => `${b}${b && !b.endsWith("\n") ? "\n" : ""}${q}`)}>Add to reply</button></li>
                   ))}</ul>
                 </>
               )}

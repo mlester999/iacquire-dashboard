@@ -136,14 +136,14 @@ export function AttachmentPicker({
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface text-muted ring-1 ring-inset ring-line" aria-hidden><Paperclip className="size-4" /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-ink">{full ? `You've added the most files you can (${maxFiles}).` : "Drag files here, or choose them"}</p>
+          <p className="text-[14px] font-medium text-ink">{full ? `You've added the most files you can (${maxFiles}).` : "Drag files here, or choose them"}</p>
           <p className="text-[12px] text-muted">{ATTACHMENT_TYPE_SUMMARY}, up to {maxMb} MB each{internal ? ". Only your team will see these." : "."}</p>
         </div>
         <Button type="button" variant="secondary" size="sm" disabled={disabled || full} onClick={() => inputRef.current?.click()}>
           <Upload className="size-3.5" aria-hidden /> {label}
         </Button>
       </div>
-      {notice && <p role="status" className="text-[12.5px] text-warning-ink">{notice}</p>}
+      {notice && <p role="status" className="text-[13px] text-warning-ink">{notice}</p>}
       {items.length > 0 && (
         <ul className="grid gap-2 sm:grid-cols-2" aria-label="Files to send">
           {items.map((item) => (
@@ -155,7 +155,7 @@ export function AttachmentPicker({
                 <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-line" aria-hidden>{isImageFile(item.file.name) ? <ImageIcon className="size-4" /> : <FileText className="size-4" />}</span>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-ink" title={item.file.name}>{item.file.name}</p>
+                <p className="truncate text-[14px] font-medium text-ink" title={item.file.name}>{item.file.name}</p>
                 {item.status === "uploading" ? (
                   <div className="mt-1.5">
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={item.progress} aria-label={`Uploading ${item.file.name}`}>

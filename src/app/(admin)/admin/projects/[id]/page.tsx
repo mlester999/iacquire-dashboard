@@ -14,7 +14,7 @@ export default async function AdminProjectPage({ params }: { params: Promise<{ i
   if (!project) notFound();
   return (
     <div className="space-y-5">
-      <Link href="/admin/projects" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+      <Link href="/admin/projects" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
         <ArrowLeft className="size-3.5" /> Custom projects
       </Link>
       <AdminProjectWorkspace project={project} currentUserId={user.id} />

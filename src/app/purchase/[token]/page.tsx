@@ -20,7 +20,7 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
   const { token } = await params;
   const limited = await consumeRateLimit(RATE_LIMITS.purchaseIntentViewByIp, (await ip()) ?? "unknown");
   if (!limited.allowed) {
-    return <Shell><Card><CardContent className="py-10 text-center"><p className="text-[15px] font-semibold text-ink">Too many attempts</p><p className="mt-1 text-[13px] text-muted">Wait a moment and open the link again.</p></CardContent></Card></Shell>;
+    return <Shell><Card><CardContent className="py-10 text-center"><p className="text-[15px] font-semibold text-ink">Too many attempts</p><p className="mt-1 text-[14px] text-muted">Wait a moment and open the link again.</p></CardContent></Card></Shell>;
   }
   const purchase = await getPublicPurchase(token);
   if (!purchase) {
@@ -30,7 +30,7 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
           <CardContent className="py-12 text-center">
             <LockKeyhole className="mx-auto size-9 text-muted" aria-hidden />
             <h1 className="mt-3 text-[19px] font-semibold text-ink">This link is not valid</h1>
-            <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">Check that you copied the whole link from your email, or ask iAcquire for a new one. No details were looked up.</p>
+            <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-muted">Check that you copied the whole link from your email, or ask iAcquire for a new one. No details were looked up.</p>
           </CardContent>
         </Card>
       </Shell>
@@ -42,7 +42,7 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
         <div className="text-center">
           <Badge tone="outline" className="mb-3 h-7 px-3">Purchase · {purchase.reference}</Badge>
           <h1 className="text-[28px] font-semibold tracking-[-0.045em] text-ink">Welcome, {purchase.buyerName.split(" ")[0]}</h1>
-          <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-muted">This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; your card is never entered on this page.</p>
+          <p className="mx-auto mt-2 max-w-lg text-[14px] leading-relaxed text-muted">This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; your card is never entered on this page.</p>
         </div>
         <Card>
           <CardHeader className="pb-2">
@@ -56,11 +56,11 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
               </div>
               <div className="rounded-xl border border-line bg-surface-2 p-3">
                 <dt className="text-[12px] uppercase tracking-wide text-muted">Managed Maintenance + Automation Studio</dt>
-                <dd className="mt-1 text-[22px] font-semibold tabular-nums text-ink">{formatUsdCents(purchase.maintenanceMonthlyCents)}<span className="text-[13px] font-normal text-muted">/month</span></dd>
+                <dd className="mt-1 text-[22px] font-semibold tabular-nums text-ink">{formatUsdCents(purchase.maintenanceMonthlyCents)}<span className="text-[14px] font-normal text-muted">/month</span></dd>
                 <dd className="text-[12px] text-muted">{purchase.maintenanceSelected ? "Selected" : "Not selected"}</dd>
               </div>
             </dl>
-            <ul className="grid gap-2 text-[13px] leading-relaxed text-ink-2">
+            <ul className="grid gap-2 text-[14px] leading-relaxed text-ink-2">
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> A dedicated iAcquireOS client workspace and onboarding.</li>
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> CRM setup, integrations and AI employee provisioning follow verification and onboarding.</li>
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> {purchase.maintenanceSelected ? "The optional maintenance plan is recorded with your purchase." : "The maintenance plan is optional and was not selected."}</li>
@@ -68,7 +68,7 @@ export default async function PublicPurchasePage({ params }: { params: Promise<{
             <ConfirmPurchase token={token} canConfirm={purchase.canConfirm} problem={purchase.problem} setupFeeCents={purchase.setupFeeCents} checkout={purchase.checkout} />
           </CardContent>
         </Card>
-        <div className="grid gap-2 text-[12px] leading-relaxed text-muted sm:grid-cols-3">
+        <div className="grid gap-3 text-[13px] leading-relaxed text-muted sm:grid-cols-3">
           <p className="flex gap-1.5"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> The price and product version are frozen when the invitation is created.</p>
           <p className="flex gap-1.5"><LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> Only a hash of this link is stored; it expires on {new Date(purchase.expiresAt).toLocaleDateString()}.</p>
           <p className="flex gap-1.5"><BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> A workspace is created only after the payment is verified: by the payment provider&apos;s confirmation, or by iAcquire.</p>

@@ -124,7 +124,7 @@ export function RequestWizard({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary-soft/70 via-surface to-surface p-5 sm:p-6">
-        <Link href="/add-ons" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/add-ons" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" /> Custom Projects &amp; Add-ons
         </Link>
         <p className="mt-4 text-[12px] font-semibold uppercase tracking-[.16em] text-primary">From your idea to a clear scope</p>
@@ -151,7 +151,7 @@ export function RequestWizard({
               {step === 0 && (
                 <>
                   {reference && (
-                    <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+                    <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[14px] text-muted">
                       <Info className="mt-0.5 size-4 shrink-0" /> You&apos;re asking for something similar to{" "}
                       <Link href={`/our-work/${reference.slug}`} className="font-medium text-primary hover:underline">
                         {reference.title}
@@ -217,7 +217,7 @@ export function RequestWizard({
                     <ul className="flex flex-wrap gap-2" aria-label="Your tools">
                       {tools.map((t) => (
                         <li key={t}>
-                          <button type="button" onClick={() => setTools(tools.filter((x) => x !== t))} className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-[12.5px] font-medium text-primary-ink hover:bg-primary/15" aria-label={`Remove ${t}`}>
+                          <button type="button" onClick={() => setTools(tools.filter((x) => x !== t))} className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-[13px] font-medium text-primary-ink hover:bg-primary/15" aria-label={`Remove ${t}`}>
                             {t} <X className="size-3" />
                           </button>
                         </li>
@@ -238,7 +238,7 @@ export function RequestWizard({
               )}
               {step === 3 && (
                 <>
-                  <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+                  <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[14px] text-muted">
                     <Info className="mt-0.5 size-4 shrink-0" /> Everything on this page is optional. Share only what helps us scope it well.
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -258,12 +258,12 @@ export function RequestWizard({
                   </div>
                   <Field label="Documents, screenshots or examples" htmlFor="rq-files" optional hint={`Up to ${MAX_FILES} files, 10 MB each (PDF, Word, images, text or CSV). Stored privately; only you and the iAcquire team can see them.`}>
                     <div className="space-y-2">
-                      <label htmlFor="rq-files" className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-6 text-[13px] text-muted transition hover:border-primary hover:text-primary">
+                      <label htmlFor="rq-files" className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-6 text-[14px] text-muted transition hover:border-primary hover:text-primary">
                         <Paperclip className="size-4" /> Choose files to attach
                         <input ref={fileRef} id="rq-files" type="file" multiple accept={ACCEPT} className="sr-only" onChange={(e) => addFiles(e.target.files)} />
                       </label>
                       {files.map((f, i) => (
-                        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                           <FileText className="size-4 shrink-0 text-muted" />
                           <span className="min-w-0 flex-1 truncate">{f.name}</span>
                           <span className="shrink-0 text-[12px] text-faint">{bytesLabel(f.size)}</span>
@@ -279,7 +279,7 @@ export function RequestWizard({
               {step === 4 && (
                 <div className="space-y-4">
                   <h3 className="text-[16px] font-semibold">Review your request</h3>
-                  <dl className="divide-y divide-line overflow-hidden rounded-xl bg-surface-2/50 text-[13.5px] ring-1 ring-inset ring-line">
+                  <dl className="divide-y divide-line overflow-hidden rounded-xl bg-surface-2/50 text-[14px] ring-1 ring-inset ring-line">
                     {[
                       ["What to build", title],
                       ["The problem", problem],
@@ -297,11 +297,11 @@ export function RequestWizard({
                       </div>
                     ))}
                   </dl>
-                  <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft/60 p-3.5 text-[13px] leading-relaxed text-success-ink">
+                  <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft/60 p-3.5 text-[14px] leading-relaxed text-success-ink">
                     <ShieldCheck className="mt-0.5 size-4 shrink-0" /> Submitting only sends your request to the iAcquire team. You won&apos;t be charged, and nothing is built until you&apos;ve reviewed and accepted a written quote.
                   </p>
                   {error && (
-                    <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[13px] text-danger-ink">
+                    <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[14px] text-danger-ink">
                       {error}
                     </p>
                   )}
@@ -327,20 +327,20 @@ export function RequestWizard({
 
         <aside aria-label="Suggestions" className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card className="p-4">
-            <h3 className="flex items-center gap-2 text-[13.5px] font-semibold">
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold">
               <Lightbulb className="size-4 text-warning" /> Suggestions
             </h3>
             {suggestions.length === 0 ? (
-              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">As you describe your idea, we&apos;ll point out published services that look related, with their published price ranges.</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted">As you describe your idea, we&apos;ll point out published services that look related, with their published price ranges.</p>
             ) : (
               <ul className="mt-3 space-y-3">
                 <AnimatePresence initial={false}>
                   {suggestions.map(({ service: s, reasons }) => (
-                    <motion.li key={s.id} layout={!reduce} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduce ? undefined : { opacity: 0 }} className="rounded-xl border border-line bg-surface-2/60 p-3">
-                      <p className="flex items-center gap-1.5 text-[13.5px] font-semibold">
+                    <motion.li key={s.id} layout={!reduce} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduce ? undefined : { opacity: 0 }} className="rounded-xl border border-line bg-surface-2/60 p-3">
+                      <p className="flex items-center gap-1.5 text-[14px] font-semibold">
                         <Sparkles className="size-3.5 text-primary" /> {s.name}
                       </p>
-                      <p className="mt-0.5 text-[12.5px] tabular-nums text-ink-2">
+                      <p className="mt-0.5 text-[13px] tabular-nums text-ink-2">
                         {formatPrice(s.price)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5"><InfoChip>Published, not a quote</InfoChip>{reasons.map((r) => <InfoChip key={r}>{r}</InfoChip>)}</div>
@@ -357,7 +357,7 @@ export function RequestWizard({
           </Card>
           {connected.length > 0 && (
             <Card className="p-4">
-              <p className="text-[12.5px] font-semibold">Already connected to your workspace</p>
+              <p className="text-[13px] font-semibold">Already connected to your workspace</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {connected.map((c) => (
                   <StatusPill key={c} size="sm" tone="success">{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI workforce" : c === "ghl_calendar" ? "GoHighLevel calendar" : sentenceCase(c)}</StatusPill>
@@ -367,7 +367,7 @@ export function RequestWizard({
           )}
           <Card className="p-4">
             <StatusPill tone="primary" icon={<Info className="size-3" />}>Good to know</StatusPill>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
           </Card>
         </aside>
       </div>

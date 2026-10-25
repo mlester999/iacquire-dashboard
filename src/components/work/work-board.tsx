@@ -262,8 +262,8 @@ export function WorkBoard({
             aria-current={filter === item.key ? "page" : undefined}
             className={
               filter === item.key
-                ? "inline-flex min-h-9 items-center rounded-xl bg-primary-soft px-3 text-[12.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20"
-                : "inline-flex min-h-9 items-center rounded-xl px-3 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"
+                ? "inline-flex min-h-9 items-center rounded-xl bg-primary-soft px-3 text-[13px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20"
+                : "inline-flex min-h-9 items-center rounded-xl px-3 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink"
             }
           >
             {item.label}
@@ -328,7 +328,7 @@ export function WorkBoard({
             )}
             <div className="rounded-xl border border-line bg-surface-2/30 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
+                <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
                   <Switch checked={restrictHours} aria-label="Only run during business hours" onCheckedChange={setRestrictHours} />
                   Only run during business hours
                 </label>
@@ -338,9 +338,9 @@ export function WorkBoard({
                 <div className="mt-3 space-y-2.5">
                   <div className="flex flex-wrap items-center gap-2 text-[12px]">
                     <span className="font-medium text-ink-2">From</span>
-                    <input type="time" aria-label="Business hours start" value={businessStart} onChange={(event) => setBusinessStart(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                    <input type="time" aria-label="Business hours start" value={businessStart} onChange={(event) => setBusinessStart(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[14px]" />
                     <span className="font-medium text-ink-2">to</span>
-                    <input type="time" aria-label="Business hours end" value={businessEnd} onChange={(event) => setBusinessEnd(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                    <input type="time" aria-label="Business hours end" value={businessEnd} onChange={(event) => setBusinessEnd(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[14px]" />
                   </div>
                   <div className="flex flex-wrap gap-1" role="group" aria-label="Business days">
                     {WEEKDAY_ORDER.map((day) => {
@@ -368,7 +368,7 @@ export function WorkBoard({
               </p>
             )}
             {schedules.length === 0 ? (
-              <p className="text-[12.5px] text-muted">No schedules yet. Saving one is always paused first.</p>
+              <p className="text-[13px] text-muted">No schedules yet. Saving one is always paused first.</p>
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line">
                 {schedules.map((schedule) => (
@@ -380,7 +380,7 @@ export function WorkBoard({
                       aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
+                      <p className="truncate text-[13px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
                       {schedule.payload.prompt && <p className="mt-0.5 truncate text-[12px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
                       <p className="mt-0.5 text-[12px] text-muted" suppressHydrationWarning>
                         {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
@@ -439,7 +439,7 @@ export function WorkBoard({
               </p>
             )}
             {triggers.length === 0 ? (
-              <p className="text-[12.5px] text-muted">No event triggers yet. Saving one is always paused first.</p>
+              <p className="text-[13px] text-muted">No event triggers yet. Saving one is always paused first.</p>
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line">
                 {triggers.map((trigger) => (
@@ -451,7 +451,7 @@ export function WorkBoard({
                       aria-label={`${trigger.enabled ? "Pause" : "Enable"} ${TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType} trigger`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
+                      <p className="truncate text-[13px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
                       <p className="mt-0.5 text-[12px] text-muted">
                         {trigger.capabilityLabel} · {trigger.employeeName} · last event #{trigger.lastEventId}
                         {trigger.enabled && !triggerOperatorEnabled ? " · paused by operator" : ""}
@@ -511,7 +511,7 @@ export function WorkBoard({
                         aria-expanded={open}
                         className="mt-1 block w-full text-left"
                       >
-                        <span className="block truncate text-[13.5px] font-semibold text-ink" title={job.title}>{job.title}</span>
+                        <span className="block truncate text-[14px] font-semibold text-ink" title={job.title}>{job.title}</span>
                         <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
                           {job.status === "running" ? job.stageLabel ?? "Working…" : job.resultSummary ?? job.failureMessage ?? job.stageLabel ?? "No further detail recorded."}
                         </span>

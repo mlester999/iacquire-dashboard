@@ -77,14 +77,14 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
     <div className="space-y-5">
       <header className="space-y-1.5">
         <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight"><Rocket className="size-5 text-primary" aria-hidden />Inbox rollout</h1>
-        <p className="max-w-3xl text-[13.5px] leading-relaxed text-muted">
+        <p className="max-w-3xl text-[14px] leading-relaxed text-muted">
           A workspace keeps the inbox screen it has today until you switch the new inbox on for it. Switching it on or off changes only which screen that workspace&apos;s people see.
           It never switches a messaging provider on, never cancels or changes a queued reply, a draft or an escalation, and never touches another workspace.
         </p>
       </header>
 
       {globallyOff && (
-        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p><strong>The global emergency switch is on (INBOX_DISABLED).</strong> No workspace has the new inbox right now, whatever is switched on below. Remove the setting and redeploy to let this list take effect.</p>
         </div>
@@ -113,7 +113,7 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
             </Button>
           </div>
         </div>
-        {pickedOff.length > BULK_ON_MAX && <p role="status" className="mt-2 text-[12.5px] text-warning-ink">Switch on at most {BULK_ON_MAX} workspaces at a time, so a rollout stays gradual.</p>}
+        {pickedOff.length > BULK_ON_MAX && <p role="status" className="mt-2 text-[13px] text-warning-ink">Switch on at most {BULK_ON_MAX} workspaces at a time, so a rollout stays gradual.</p>}
       </Card>
 
       <Card className="overflow-hidden">
@@ -132,12 +132,12 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
                     {r.kind === "agency" && <Badge tone="primary">Internal</Badge>}
                     {r.status !== "active" && <Badge tone="warning">{r.status}</Badge>}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-muted">
+                  <p className="mt-0.5 text-[13px] text-muted">
                     {count(r.openConversations, "open conversation")} · {count(r.liveChannels, "channel")} switched on
                     {r.enabled && r.enabledAt ? ` · on since ${formatDateTime(r.enabledAt, "UTC")} UTC${r.enabledByName ? ` by ${r.enabledByName}` : ""}` : ""}
                     {!r.enabled && r.disabledAt ? ` · switched off ${formatDateTime(r.disabledAt, "UTC")} UTC${r.disabledByName ? ` by ${r.disabledByName}` : ""}` : ""}
                   </p>
-                  {r.note && <p className="mt-0.5 text-[12.5px] text-faint">{r.note}</p>}
+                  {r.note && <p className="mt-0.5 text-[13px] text-faint">{r.note}</p>}
                 </div>
               </div>
               <div className="ml-7 flex items-center gap-3 sm:ml-0">
@@ -149,13 +149,13 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
               </div>
             </li>
           ))}
-          {!shown.length && <li className="px-4 py-8 text-center text-[13px] text-muted">No workspace matches.</li>}
+          {!shown.length && <li className="px-4 py-8 text-center text-[14px] text-muted">No workspace matches.</li>}
         </ul>
       </Card>
 
       <Card className="border-danger/30 p-4">
         <h2 className="flex items-center gap-2 text-[14px] font-semibold"><ShieldAlert className="size-4 text-danger" aria-hidden />Rollback</h2>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           Puts every workspace back on the previous inbox in one step. Queued replies, drafts, escalations and messages are not touched. {on} workspace{on === 1 ? " has" : "s have"} the new inbox on now.
         </p>
         <Button className={`mt-3 ${DANGER_CONTRAST}`} size="sm" variant="danger" disabled={!on} onClick={() => ask({ kind: "all_off" })}>Switch off for every workspace</Button>
@@ -178,7 +178,7 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
         }
       >
         {pending && pending.kind !== "all_off" && pending.orgIds.length === 1 && pending.kind === "off" && (
-          <div className="mb-3 rounded-xl bg-surface-2 p-3 text-[12.5px]" aria-live="polite">
+          <div className="mb-3 rounded-xl bg-surface-2 p-3 text-[13px]" aria-live="polite">
             <p className="font-medium text-ink">In flight in this workspace (kept as it is):</p>
             {impactError ? <p className="mt-1 text-danger-ink">{impactError}</p> : !impact ? <p className="mt-1 text-muted">Reading…</p> : (
               <ul className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted">
@@ -193,7 +193,7 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
             )}
           </div>
         )}
-        <label htmlFor="rollout-note" className="text-[12.5px] font-medium text-ink">Note (optional, kept with the change)</label>
+        <label htmlFor="rollout-note" className="text-[13px] font-medium text-ink">Note (optional, kept with the change)</label>
         <Textarea id="rollout-note" className="mt-1" rows={2} maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} placeholder="For example: internal first, week 1" />
       </Dialog>
     </div>

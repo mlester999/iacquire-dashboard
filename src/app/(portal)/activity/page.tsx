@@ -89,7 +89,7 @@ export default async function ActivityPage() {
                       </IconTile>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] leading-snug text-ink-2">
+                      <p className="text-[14px] leading-snug text-ink-2">
                         <span className="font-semibold text-ink">{a.actor ?? (isAgent ? (a.agent ?? "AI employee") : "iAcquire system")}</span> {describeAction(a.action, a.agent)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -136,7 +136,7 @@ export default async function ActivityPage() {
                       </IconTile>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-semibold text-ink" title={role?.shortName ?? r.role_key}>
+                      <p className="truncate text-[14px] font-semibold text-ink" title={role?.shortName ?? r.role_key}>
                         {role?.shortName ?? sentenceCase(r.role_key)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

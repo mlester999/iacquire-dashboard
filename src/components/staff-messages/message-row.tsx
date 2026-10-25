@@ -106,7 +106,7 @@ function Editor({ message, names, onCancel, onSave }: { message: MessageView; na
         className="min-h-[88px] w-full resize-y rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[16px] leading-relaxed text-ink shadow-soft outline-none focus:border-primary focus:ring-4 focus:ring-primary/12 sm:text-sm"
       />
       {problem && (
-        <p id={`edit-problem-${message.id}`} role="alert" className="text-[12.5px] text-danger-ink">
+        <p id={`edit-problem-${message.id}`} role="alert" className="text-[13px] text-danger-ink">
           {problem.text}
         </p>
       )}
@@ -163,7 +163,7 @@ export function MessageRow(props: MessageRowProps) {
                     <a
                       href={downloadHref(file.id)}
                       download
-                      className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink-2 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       <FileText className="size-4 shrink-0 text-primary" aria-hidden />
                       <span className="min-w-0 truncate">{attachmentLabel(file)}</span>
@@ -187,7 +187,7 @@ export function MessageRow(props: MessageRowProps) {
                 disabled={!allow.canReact}
                 onClick={() => onReact(message, r.reaction, !r.mine)}
                 className={cn(
-                  "inline-flex h-11 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium tabular-nums sm:h-8",
+                  "inline-flex h-11 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium tabular-nums sm:h-8",
                   r.mine ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
                 )}
               >
@@ -231,7 +231,7 @@ export function MessageRow(props: MessageRowProps) {
               <button
                 type="button"
                 onClick={() => onOpenThread(message)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-primary-ink hover:bg-primary-soft sm:min-h-8"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-primary-ink hover:bg-primary-soft sm:min-h-8"
               >
                 <CornerDownRight className="size-3.5" aria-hidden />
                 {pluralize(message.replyCount, "reply", "replies")}

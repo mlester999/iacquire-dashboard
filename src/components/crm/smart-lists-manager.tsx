@@ -31,7 +31,7 @@ export function SmartListsManager({ scope, lists, counts, options }: { scope: Cr
       <PageTitle
         title="Smart Lists"
         description="Saved, always-current views of your contacts. A list keeps its filter, not a frozen copy: anyone who matches later shows up automatically."
-        actions={<Link href={`${scope.base}/contacts`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13.5px] font-medium text-primary-on hover:bg-primary/90 sm:min-h-10"><ListFilter className="size-4" />Build a list</Link>}
+        actions={<Link href={`${scope.base}/contacts`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-medium text-primary-on hover:bg-primary/90 sm:min-h-10"><ListFilter className="size-4" />Build a list</Link>}
       />
       {!lists.length ? (
         <Card>
@@ -51,10 +51,10 @@ export function SmartListsManager({ scope, lists, counts, options }: { scope: Cr
                         {l.isDefault && <Badge tone="primary"><Star className="size-3" />Default view</Badge>}
                         {l.visibility === "team" ? <Badge tone="neutral"><Users className="size-3" />Team</Badge> : null}
                       </div>
-                      <p className="mt-0.5 truncate text-[12.5px] text-muted">{describeFilter(l.filter, catalog, options) || "Everyone"}</p>
+                      <p className="mt-0.5 truncate text-[13px] text-muted">{describeFilter(l.filter, catalog, options) || "Everyone"}</p>
                       <p className="mt-0.5 text-[12px] text-faint">{l.mine ? "Yours" : `By ${l.ownerName ?? "a teammate"}`} · updated <RelativeTime iso={l.updatedAt} timezone={scope.timezone} />{l.lastUsedAt ? <> · you opened it <RelativeTime iso={l.lastUsedAt} timezone={scope.timezone} /></> : ""}</p>
                     </div>
-                    <span className="text-[13px] font-medium tabular-nums text-ink-2">{counts[l.id] === null || counts[l.id] === undefined ? "—" : `${counts[l.id]!.toLocaleString("en-US")} ${counts[l.id] === 1 ? "contact" : "contacts"}`}</span>
+                    <span className="text-[14px] font-medium tabular-nums text-ink-2">{counts[l.id] === null || counts[l.id] === undefined ? "—" : `${counts[l.id]!.toLocaleString("en-US")} ${counts[l.id] === 1 ? "contact" : "contacts"}`}</span>
                     {!scope.readOnly && (
                       <Menu>
                         <MenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Actions for ${l.name}`}><MoreHorizontal className="size-4" /></Button></MenuTrigger>
@@ -107,7 +107,7 @@ function EditListDialog({ scope, list, canShare, onClose }: { scope: CrmScope; l
             <option value="team">Everyone on the team</option>
           </Select>
         </Field>
-        <p className="text-[12.5px] text-muted">To change the filter, open the list in Contacts, adjust it, and save.</p>
+        <p className="text-[13px] text-muted">To change the filter, open the list in Contacts, adjust it, and save.</p>
       </div>
     </Dialog>
   );

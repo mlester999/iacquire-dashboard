@@ -42,7 +42,7 @@ export function TagsManager({ scope, tags }: { scope: CrmScope; tags: TagView[] 
       ) : (
         <Card className="max-w-full min-w-0 overflow-hidden p-0">
           <div className="w-full min-w-0 max-w-full overflow-x-auto">
-            <table className="w-full min-w-[560px] text-[13px]">
+            <table className="w-full min-w-[560px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 text-left font-medium">Tag</th>
@@ -110,7 +110,7 @@ function TagDialog({ scope, tag, onClose }: { scope: CrmScope; tag: TagView | nu
       <div className="space-y-3">
         <Field label="Name" htmlFor="tg-name"><Input id="tg-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus /></Field>
         <div>
-          <p className="mb-1.5 text-[13px] font-medium text-ink">Colour</p>
+          <p className="mb-1.5 text-[14px] font-medium text-ink">Colour</p>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Colour">
             {TAG_COLORS.map((c) => (
               <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c} onClick={() => setColor(c)} className={cn("size-8 rounded-full sm:size-7", color === c && "ring-2 ring-primary ring-offset-2")} style={{ background: c }} />
@@ -118,7 +118,7 @@ function TagDialog({ scope, tag, onClose }: { scope: CrmScope; tag: TagView | nu
           </div>
         </div>
         <Field label="What it means" htmlFor="tg-desc" optional><Textarea id="tg-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} /></Field>
-        {name.trim() && <p className="text-[12.5px] text-muted">Preview: <TagChip name={name.trim()} color={color} /></p>}
+        {name.trim() && <p className="text-[13px] text-muted">Preview: <TagChip name={name.trim()} color={color} /></p>}
       </div>
     </Dialog>
   );

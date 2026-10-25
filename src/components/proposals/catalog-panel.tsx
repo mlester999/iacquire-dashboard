@@ -34,15 +34,15 @@ export function CatalogPanel({ orgId, items, taxRates, canEdit, defaultCurrency 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-[16px] font-semibold text-ink">Tax rates</h2>
-            <p className="max-w-2xl text-[13px] text-muted">A rate is added on top of the price, line by line. iAcquire does not know your local tax rules and gives no tax advice: use the rates your accountant gives you.</p>
+            <p className="max-w-2xl text-[14px] text-muted">A rate is added on top of the price, line by line. iAcquire does not know your local tax rules and gives no tax advice: use the rates your accountant gives you.</p>
           </div>
           {canEdit && <Button variant="secondary" onClick={() => setTax("new")}><Plus className="size-4" aria-hidden />Add a tax rate</Button>}
         </div>
-        {taxRates.length === 0 ? <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13.5px] text-muted">No tax rates yet. Without one, no tax is added to any line.</p> : (
+        {taxRates.length === 0 ? <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted">No tax rates yet. Without one, no tax is added to any line.</p> : (
           <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
             {taxRates.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-                <span className="min-w-0 flex-1 text-[13.5px]"><span className="font-medium text-ink">{t.name}</span> <span className="text-muted">· {bpsLabel(t.rateBps)}</span></span>
+                <span className="min-w-0 flex-1 text-[14px]"><span className="font-medium text-ink">{t.name}</span> <span className="text-muted">· {bpsLabel(t.rateBps)}</span></span>
                 {t.archived && <Badge tone="outline">Archived</Badge>}
                 {canEdit && <Button size="sm" variant="ghost" onClick={() => setTax(t)} aria-label={`Edit ${t.name}`}>Edit</Button>}
               </li>
@@ -55,7 +55,7 @@ export function CatalogPanel({ orgId, items, taxRates, canEdit, defaultCurrency 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-[16px] font-semibold text-ink">Price book</h2>
-            <p className="max-w-2xl text-[13px] text-muted">The items you sell, with their prices. A proposal line copies its item&apos;s price when it is added, so changing a price here never changes a proposal already written. The AI can only choose items from here.</p>
+            <p className="max-w-2xl text-[14px] text-muted">The items you sell, with their prices. A proposal line copies its item&apos;s price when it is added, so changing a price here never changes a proposal already written. The AI can only choose items from here.</p>
           </div>
           {canEdit && <Button variant="secondary" onClick={() => setItem("new")}><Plus className="size-4" aria-hidden />Add an item</Button>}
         </div>
@@ -67,8 +67,8 @@ export function CatalogPanel({ orgId, items, taxRates, canEdit, defaultCurrency 
               <li key={i.id} className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-medium text-ink">{i.name} {i.archived && <Badge tone="outline" className="ml-1 align-middle">Archived</Badge>}</p>
-                  {i.description && <p className="mt-0.5 line-clamp-2 break-words text-[12.5px] text-muted">{i.description}</p>}
-                  <p className="mt-1 text-[12.5px] text-ink-2">{i.billing === "one_time" ? "Billed once" : BILLING_LABELS[i.billing]} · per {i.unitLabel}{i.taxRateName ? ` · ${i.taxRateName} ${i.taxBps !== null ? bpsLabel(i.taxBps) : ""}` : " · no tax"}</p>
+                  {i.description && <p className="mt-0.5 line-clamp-2 break-words text-[13px] text-muted">{i.description}</p>}
+                  <p className="mt-1 text-[13px] text-ink-2">{i.billing === "one_time" ? "Billed once" : BILLING_LABELS[i.billing]} · per {i.unitLabel}{i.taxRateName ? ` · ${i.taxRateName} ${i.taxBps !== null ? bpsLabel(i.taxBps) : ""}` : " · no tax"}</p>
                 </div>
                 <span className="text-[14px] font-semibold tabular-nums text-ink">{isCurrency(i.currency) ? formatMinor(i.unitPriceMinor, i.currency) : `${i.currency} ${i.unitPriceMinor}`}</span>
                 {canEdit && <Button size="sm" variant="ghost" onClick={() => setItem(i)} aria-label={`Edit ${i.name}`}>Edit</Button>}
@@ -77,7 +77,7 @@ export function CatalogPanel({ orgId, items, taxRates, canEdit, defaultCurrency 
           </ul>
         )}
       </section>
-      {!canEdit && <p className="text-[12.5px] text-muted">The owner or a manager changes the price book and tax rates.</p>}
+      {!canEdit && <p className="text-[13px] text-muted">The owner or a manager changes the price book and tax rates.</p>}
 
       {tax && <TaxDialog key={tax === "new" ? "new" : tax.id} orgId={orgId} tax={tax === "new" ? null : tax} onClose={() => setTax(null)} />}
       {item && <ItemDialog key={item === "new" ? "new" : item.id} orgId={orgId} item={item === "new" ? null : item} taxRates={taxRates} defaultCurrency={defaultCurrency} onClose={() => setItem(null)} />}

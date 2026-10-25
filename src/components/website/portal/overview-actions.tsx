@@ -73,11 +73,11 @@ export function ApprovalPanel({ canDecide }: { canDecide: boolean }) {
     toast.success(approve ? "Approved. It can now be published." : "Sent back with your note.");
     router.refresh();
   };
-  if (!canDecide) return <p className="text-[13.5px] text-muted">Waiting for the business owner to review it.</p>;
+  if (!canDecide) return <p className="text-[14px] text-muted">Waiting for the business owner to review it.</p>;
   return (
     <div className="space-y-3">
       <div>
-        <label htmlFor="approval-note" className="mb-1.5 block text-[13px] font-medium text-ink-2">
+        <label htmlFor="approval-note" className="mb-1.5 block text-[14px] font-medium text-ink-2">
           Note <span className="font-normal text-muted">(optional)</span>
         </label>
         <Textarea id="approval-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What should change, or anything the team should know" />

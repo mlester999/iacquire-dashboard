@@ -105,7 +105,7 @@ export function ReviewPanel({
           <p className="flex items-center gap-2 text-[14px] font-semibold text-warning-ink">
             <AlertTriangle className="size-4" aria-hidden /> Before you can approve
           </p>
-          <ul className="mt-2 list-disc space-y-1 pl-6 text-[13.5px] text-ink-2">
+          <ul className="mt-2 list-disc space-y-1 pl-6 text-[14px] text-ink-2">
             {blockers.map((b) => (
               <li key={b}>{b}</li>
             ))}
@@ -170,12 +170,12 @@ export function ReviewPanel({
                 <AgentAvatar role={AGENT_BY_KEY[e.role]} size="md" />
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold">{e.name}</p>
-                  <p className="text-[12.5px] text-muted">{e.tagline}</p>
+                  <p className="text-[13px] text-muted">{e.tagline}</p>
                 </div>
               </div>
-              {e.configuredFrom.length > 0 && <p className="mt-3 text-[12.5px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
+              {e.configuredFrom.length > 0 && <p className="mt-3 text-[13px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
               {e.gaps.map((g) => (
-                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[12.5px] text-warning-ink">
+                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[13px] text-warning-ink">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   {g}
                 </p>
@@ -183,7 +183,7 @@ export function ReviewPanel({
             </div>
           ))}
         </div>
-        <p className="text-[12.5px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
+        <p className="text-[13px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -206,7 +206,7 @@ export function ReviewPanel({
           </h2>
           <ul className="space-y-2 rounded-2xl border border-line bg-surface p-4">
             {review.permissions.map((p) => (
-              <li key={p} className="flex items-start gap-2 text-[13.5px] leading-relaxed">
+              <li key={p} className="flex items-start gap-2 text-[14px] leading-relaxed">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 {p}
               </li>
@@ -220,7 +220,7 @@ export function ReviewPanel({
           Connections that aren&apos;t ready yet
         </h2>
         {review.missingConnections.length === 0 ? (
-          <p className="flex items-center gap-2 rounded-2xl border border-success/30 bg-success-soft/50 p-4 text-[13.5px] text-success-ink">
+          <p className="flex items-center gap-2 rounded-2xl border border-success/30 bg-success-soft/50 p-4 text-[14px] text-success-ink">
             <CheckCircle2 className="size-4" aria-hidden /> Everything your answers need is connected and verified.
           </p>
         ) : (
@@ -233,13 +233,13 @@ export function ReviewPanel({
                     <p className="text-[14px] font-medium">{m.label}</p>
                     <StatusPill tone="warning" size="sm">Not connected</StatusPill>
                   </div>
-                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{m.why}</p>
+                  <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{m.why}</p>
                 </div>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[12.5px] text-muted">These are checked against your real workspace connections. Missing items don&apos;t block approval; they are tracked in your Setup Center.</p>
+        <p className="text-[13px] text-muted">These are checked against your real workspace connections. Missing items don&apos;t block approval; they are tracked in your Setup Center.</p>
       </section>
 
       {review.optionalConnections.length > 0 && (
@@ -258,12 +258,12 @@ export function ReviewPanel({
                     <p className="text-[14px] font-medium">{o.label}</p>
                     <StatusPill tone={o.state === "connected" ? "success" : "neutral"} size="sm">{o.state === "connected" ? "Connected" : o.state === "waiting" ? "Waiting" : "Not connected"}</StatusPill>
                   </div>
-                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{o.detail}</p>
+                  <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{o.detail}</p>
                 </div>
               </li>
             ))}
           </ul>
-          <p className="text-[12.5px] text-muted">These are optional. Approving your setup does not depend on any of them.</p>
+          <p className="text-[13px] text-muted">These are optional. Approving your setup does not depend on any of them.</p>
         </section>
       )}
 
@@ -274,11 +274,11 @@ export function ReviewPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           {(["you", "iacquire"] as const).map((owner) => (
             <div key={owner} className="rounded-2xl border border-line bg-surface p-4">
-              <p className="flex items-center gap-2 text-[13px] font-semibold">
+              <p className="flex items-center gap-2 text-[14px] font-semibold">
                 {owner === "you" ? <UserRound className="size-4 text-primary" aria-hidden /> : <Wrench className="size-4 text-violet" aria-hidden />}
                 {owner === "you" ? "You" : "The iAcquire team"}
               </p>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed text-ink-2">
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[14px] leading-relaxed text-ink-2">
                 {review.humanTasks
                   .filter((t) => t.owner === owner)
                   .map((t) => (
@@ -301,19 +301,19 @@ export function ReviewPanel({
           </span>
         </label>
         {alreadySubmitted && (
-          <p className="mt-3 text-[13px] leading-relaxed text-muted">
+          <p className="mt-3 text-[14px] leading-relaxed text-muted">
             You&apos;ve approved a setup before. Approving again saves a new version of each employee&apos;s configuration, keeps the changes you made to individual employees, and leaves earlier versions available to restore.
           </p>
         )}
         {error && (
-          <p role="alert" className="mt-3 text-[13px] text-danger-ink">
+          <p role="alert" className="mt-3 text-[14px] text-danger-ink">
             {error}
           </p>
         )}
         {!hideSubmit && <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
           <Sparkles className="size-4" /> {alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
         </Button>}
-        {blockers.length > 0 && <p className="mt-2 text-[12.5px] text-muted">Resolve the items above to continue.</p>}
+        {blockers.length > 0 && <p className="mt-2 text-[13px] text-muted">Resolve the items above to continue.</p>}
       </section>
     </div>
   );

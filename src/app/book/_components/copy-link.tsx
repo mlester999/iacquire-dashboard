@@ -20,7 +20,7 @@ export function CopyLink({ id, value, label }: { id: string; value: string; labe
   };
   return (
     <div>
-      <label htmlFor={id} className="text-[13px] font-medium text-ink-2">{label}</label>
+      <label htmlFor={id} className="text-[14px] font-medium text-ink-2">{label}</label>
       <div className="mt-1.5 flex gap-2">
         <input
           ref={input}
@@ -28,7 +28,7 @@ export function CopyLink({ id, value, label }: { id: string; value: string; labe
           readOnly
           value={value}
           onFocus={(e) => e.currentTarget.select()}
-          className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface-2 px-3 font-mono text-[12.5px] text-ink-2 outline-none focus:border-primary focus:ring-4 focus:ring-primary/12 sm:h-10"
+          className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface-2 px-3 font-mono text-[13px] text-ink-2 outline-none focus:border-primary focus:ring-4 focus:ring-primary/12 sm:h-10"
         />
         <Button type="button" variant="secondary" onClick={copy} aria-label={copied ? "Link copied" : "Copy link"}>
           {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}

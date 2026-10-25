@@ -60,7 +60,7 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
           </div>
           <Switch checked={settings.autoReplyEnabled} disabled={!isOwner || busy === "auto"} onCheckedChange={(next) => save("auto", { autoReplyEnabled: next }, next ? "Automatic replies are on." : "Automatic replies are off.")} aria-label="Automatic replies" />
         </CardHeader>
-        <CardContent className="space-y-2 text-[13px]">
+        <CardContent className="space-y-2 text-[14px]">
           <ul className="space-y-1.5">
             <li className="flex items-center gap-2"><Badge tone={anyEnabled ? "success" : "warning"}>{anyEnabled ? "Ready" : "Needed"}</Badge>At least one verified channel is switched on</li>
             <li className="flex items-center gap-2"><Badge tone="neutral">Per employee</Badge>The responsible AI employee is set to Autonomous and has passed its connection check</li>
@@ -93,7 +93,7 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
                     <span className="flex size-9 items-center justify-center rounded-xl bg-surface-2"><Icon className="size-4" aria-hidden /></span>
                     <span className="min-w-0">
                       <span className="block text-[14px] font-medium">{CHANNEL_LABELS[c.channel]}{native && <span className="font-normal text-muted"> · through {c.providerLabel}</span>}</span>
-                      <span className="block truncate text-[12.5px] text-muted">{c.senderIdentity ?? "No sender recorded yet"}</span>
+                      <span className="block truncate text-[13px] text-muted">{c.senderIdentity ?? "No sender recorded yet"}</span>
                       {c.detail && <span className="block text-[12px] text-muted">{c.detail}</span>}
                       {native && !c.enabled && (
                         <span id={hintId} className="block text-[12px] text-muted">
@@ -133,18 +133,18 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
         <CardContent className="space-y-3">
           <ul className="space-y-2">
             {DAY_ORDER.map((d) => (
-              <li key={d} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 text-[13px] sm:grid-cols-[7rem_auto_1fr]">
+              <li key={d} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 text-[14px] sm:grid-cols-[7rem_auto_1fr]">
                 <span className="font-medium">{DAY_LABEL[d]}</span>
                 <Switch checked={hours[d].open} disabled={!canConfigure} aria-label={`${DAY_LABEL[d]} open`} onCheckedChange={(open) => setHours((h) => ({ ...h, [d]: { ...h[d], open } }))} />
                 <span className="col-span-2 flex items-center gap-2 sm:col-span-1">
-                  <input type="time" aria-label={`${DAY_LABEL[d]} opens`} value={hours[d].from} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], from: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
+                  <input type="time" aria-label={`${DAY_LABEL[d]} opens`} value={hours[d].from} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], from: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[14px] disabled:opacity-40" />
                   <span className="text-muted">to</span>
-                  <input type="time" aria-label={`${DAY_LABEL[d]} closes`} value={hours[d].to} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], to: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
+                  <input type="time" aria-label={`${DAY_LABEL[d]} closes`} value={hours[d].to} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], to: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[14px] disabled:opacity-40" />
                 </span>
               </li>
             ))}
           </ul>
-          <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]">
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[14px]">
             <span><span className="block font-medium">Only reply during business hours</span><span className="block text-[12px] text-muted">Outside these hours, replies wait until you open. Off means the AI can reply 24/7.</span></span>
             <Switch checked={bhOnly} disabled={!canConfigure} onCheckedChange={setBhOnly} aria-label="Only reply during business hours" />
           </label>
@@ -164,7 +164,7 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
             {([...Object.entries(FOLLOW_UP_PRESETS).map(([k, v]) => [k, v.label, v.description] as const), ["off", "Off", "No automatic follow-ups."], ["custom", "Custom", "Choose how many attempts and how far apart."]] as const).map(([value, label, description]) => (
               <button key={value} role="radio" aria-checked={preset === value} disabled={!canConfigure} onClick={() => setPreset(value as typeof preset)} className={cn("rounded-2xl border p-3 text-left transition disabled:opacity-60", preset === value ? "border-primary bg-primary-soft/50" : "border-line bg-surface hover:border-line-strong")}>
                 <span className="text-[14px] font-semibold">{label}{value === "balanced" ? " · default" : ""}</span>
-                <span className="mt-1 block text-[12.5px] text-muted">{description}</span>
+                <span className="mt-1 block text-[13px] text-muted">{description}</span>
               </button>
             ))}
           </div>
@@ -173,10 +173,10 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
               <Field label="Number of follow-ups" htmlFor="fu-attempts"><Input id="fu-attempts" inputMode="numeric" value={attempts} onChange={(e) => setAttempts(e.target.value.replace(/\D/g, ""))} /></Field>
               <Field label="Days between (comma-separated)" htmlFor="fu-gaps" hint="For example 2, 3 means day 2, then 3 days later, then 3 days later."><Input id="fu-gaps" value={gaps} onChange={(e) => setGaps(e.target.value)} /></Field>
               <Field label="Channel" htmlFor="fu-channel"><Select id="fu-channel" value={customChannel} onChange={(e) => setCustomChannel(e.target.value as typeof customChannel)}><option value="same">Same channel as the conversation</option><option value="sms">SMS</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></Select></Field>
-              <label className="flex items-center justify-between gap-3 self-end rounded-xl border border-line p-3 text-[13px]"><span>Business hours only</span><Switch checked={customBh} onCheckedChange={setCustomBh} aria-label="Business hours only" /></label>
+              <label className="flex items-center justify-between gap-3 self-end rounded-xl border border-line p-3 text-[14px]"><span>Business hours only</span><Switch checked={customBh} onCheckedChange={setCustomBh} aria-label="Business hours only" /></label>
             </div>
           )}
-          <div className="rounded-2xl bg-surface-2 p-3 text-[12.5px] leading-relaxed text-muted">
+          <div className="rounded-2xl bg-surface-2 p-3 text-[13px] leading-relaxed text-muted">
             <p className="flex items-center gap-1.5 font-medium text-ink"><ShieldCheck className="size-3.5" aria-hidden />iAcquire safety limits always apply</p>
             <p className="mt-1">At most {L.maxFollowupAttempts} follow-ups per plan and {L.maxFollowupsPer30Days} per person per 30 days across all channels, at least {L.minHoursBetweenFollowups} hours apart, never during quiet hours ({L.quietHoursStart}–{L.quietHoursEnd}), and never after an opt-out, a reply, a booking or a person taking over.</p>
           </div>

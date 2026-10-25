@@ -22,7 +22,7 @@ export default async function InternalConfigReviewsPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-[15px] font-semibold text-ink">No internal configuration changes are waiting.</p>
-            <p className="mt-1 text-[13px] text-muted">Sensitive edits will appear here for a Super Admin decision. Routine edits apply automatically after validation.</p>
+            <p className="mt-1 text-[14px] text-muted">Sensitive edits will appear here for a Super Admin decision. Routine edits apply automatically after validation.</p>
           </CardContent>
         </Card>
       ) : (

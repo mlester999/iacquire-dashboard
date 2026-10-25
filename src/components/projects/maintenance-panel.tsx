@@ -106,7 +106,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
               <StatusPill tone="violet">Optional</StatusPill>
               <StatusPill tone={sub?.status === "active" ? "success" : sub ? "warning" : "neutral"}>{MAINTENANCE_STATUS_LABEL[sub?.status ?? "not_enrolled"]}</StatusPill>
             </div>
-            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-slate-300">{plan?.tagline}</p>
+            <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-slate-300">{plan?.tagline}</p>
           </div>
           {plan?.price && (
             <div className="shrink-0 sm:text-right">
@@ -117,13 +117,13 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
         </CardHeader>
         <CardContent className="relative space-y-5">
           {!o.eligible && !open && (
-            <p className="flex items-start gap-3 rounded-xl bg-surface-2 p-3.5 text-[13px] leading-relaxed text-ink-2 ring-1 ring-inset ring-line">
+            <p className="flex items-start gap-3 rounded-xl bg-surface-2 p-3.5 text-[14px] leading-relaxed text-ink-2 ring-1 ring-inset ring-line">
               <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3"><Lock className="size-4 text-muted" /></span><span className="self-center">{o.eligibilityNote}</span>
             </p>
           )}
 
           {sub?.status === "requested" && (
-            <p className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-soft/60 p-3.5 text-[13px] leading-relaxed text-warning-ink">
+            <p className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-soft/60 p-3.5 text-[14px] leading-relaxed text-warning-ink">
               <Info aria-hidden className="mt-0.5 size-4 shrink-0" />Your request is with the iAcquire team. The plan starts, and billing begins, only once we activate it. You haven&apos;t been charged.
             </p>
           )}
@@ -136,7 +136,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
                 <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
                   <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">Requests this month</p>
                   <p className="mt-1 text-[18px] font-semibold tabular-nums">
-                    {o.allowance.used} <span className="text-[13px] font-normal text-muted">of {o.allowance.total} used</span>
+                    {o.allowance.used} <span className="text-[14px] font-normal text-muted">of {o.allowance.total} used</span>
                   </p>
                   <ProgressBar className="mt-2" value={o.allowance.total ? (o.allowance.used / o.allowance.total) * 100 : 0} tone={o.allowance.remaining === 0 ? "warning" : "primary"} label="Maintenance requests used this month" />
                 </div>
@@ -149,13 +149,13 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
               <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">What&apos;s included</h3>
               <ul className="space-y-1.5">
                 {plan?.deliverables.map((d) => (
-                  <li key={d} className="flex items-start gap-2 text-[13.5px] leading-snug text-ink-2">
+                  <li key={d} className="flex items-start gap-2 text-[14px] leading-snug text-ink-2">
                     <Check className="mt-0.5 size-4 shrink-0 text-success" /> {d}
                   </li>
                 ))}
               </ul>
               {plan && (
-                <p className="mt-3 rounded-xl bg-surface-2 p-3 text-[12.5px] leading-relaxed text-ink-2">
+                <p className="mt-3 rounded-xl bg-surface-2 p-3 text-[13px] leading-relaxed text-ink-2">
                   <strong className="font-semibold">{plan.monthlyRequestAllowance} managed requests per calendar month.</strong> A request is one focused change or fix. Unused requests don&apos;t roll over. Larger work is quoted as a custom project.
                 </p>
               )}
@@ -164,7 +164,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
               <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Not included</h3>
               <ul className="space-y-1.5">
                 {plan?.exclusions.map((d) => (
-                  <li key={d} className="flex items-start gap-2 text-[13.5px] leading-snug text-ink-2">
+                  <li key={d} className="flex items-start gap-2 text-[14px] leading-snug text-ink-2">
                     <span className="mt-2 size-1 shrink-0 rounded-full bg-faint" /> {d}
                   </li>
                 ))}
@@ -206,7 +206,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
             <Card key={l.id} className="group flex flex-col p-5 transition hover:border-primary/25 hover:shadow-card">
               <span className="mb-3 flex size-9 items-center justify-center rounded-xl bg-primary-soft text-primary">{l.id==="core_defect"?<ShieldCheck className="size-4"/>:l.id==="basic_support"?<LifeBuoy className="size-4"/>:l.id==="managed"?<Wrench className="size-4"/>:<Code2 className="size-4"/>}</span>
               <p className="text-[14.5px] font-semibold">{l.title}</p>
-              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-muted">{l.body}</p>
+              <p className="mt-1.5 flex-1 text-[14px] leading-relaxed text-muted">{l.body}</p>
               <div className="mt-4">
                 {l.id === "core_defect" &&
                   (canRequest ? (
@@ -258,12 +258,12 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
                       {r.kind === "core_defect" ? <StatusPill size="sm" tone="primary" icon={<ShieldCheck className="size-3" />}>Core defect · no charge</StatusPill> : <InfoChip>{r.countsAgainstAllowance ? "Managed · uses 1 request" : "Managed request"}</InfoChip>}
                       <InfoChip><RelativeTime value={r.createdAt} /></InfoChip>
                     </span>
-                    {r.resolutionNote && <span className="mt-1.5 block text-[12.5px] leading-relaxed text-ink-2">{r.resolutionNote}</span>}
+                    {r.resolutionNote && <span className="mt-1.5 block text-[13px] leading-relaxed text-ink-2">{r.resolutionNote}</span>}
                   </span>
                   <span className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-1.5">
                     <StatusPill tone={r.status === "completed" ? "success" : r.status === "declined" ? "danger" : r.status === "waiting_for_client" ? "warning" : r.status === "in_progress" ? "primary" : "neutral"}>{sentenceCase(r.status)}</StatusPill>
                     {r.ticketId && (
-                      <Link href={`/support/${r.ticketId}`} className="inline-flex min-h-8 items-center gap-1 text-[12.5px] font-medium text-primary hover:underline">
+                      <Link href={`/support/${r.ticketId}`} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-primary hover:underline">
                         Open thread <ArrowRight className="size-3" />
                       </Link>
                     )}
@@ -298,8 +298,8 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
             ))}
           </select>
         </Field>
-        {payError && <p role="alert" className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] leading-relaxed text-danger-ink">{payError}</p>}
-        <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+        {payError && <p role="alert" className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] leading-relaxed text-danger-ink">{payError}</p>}
+        <p className="mt-3 text-[13px] leading-relaxed text-muted">
           The price comes from your plan. PayMongo charges in Philippine pesos, so the dollar amount is converted at iAcquire&apos;s published rate and the exact peso amount is shown on PayMongo&apos;s page before you pay.
           Months you pay for are added after the day your plan is already paid through, so paying early loses nothing.
         </p>
@@ -322,10 +322,10 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
         }
       >
         <div className="space-y-4">
-          <p className="rounded-xl bg-surface-2 p-3.5 text-[13px] leading-relaxed text-ink-2">
+          <p className="rounded-xl bg-surface-2 p-3.5 text-[14px] leading-relaxed text-ink-2">
             {plan ? `${formatPrice(plan.price)} · ${plan.monthlyRequestAllowance} managed requests per month. ` : ""}It&apos;s optional, covers monitoring, troubleshooting, reasonable configuration changes and AI optimization, and doesn&apos;t cover new projects or third-party costs.
           </p>
-          <label className="flex items-start gap-3 text-[13px] leading-relaxed text-ink-2">
+          <label className="flex items-start gap-3 text-[14px] leading-relaxed text-ink-2">
             <input type="checkbox" className="mt-1" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
             <span>I&apos;ve read the scope above and want to request this plan. I understand billing starts only after iAcquire activates it.</span>
           </label>
@@ -394,7 +394,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
         }
       >
         <div className="space-y-4">
-          <p className="flex items-start gap-2 text-[12.5px] text-muted">
+          <p className="flex items-start gap-2 text-[13px] text-muted">
             <Info className="mt-0.5 size-4 shrink-0" /> It&apos;s created as a support request so you can follow the conversation in one place.
           </p>
           <Field label="Short title" htmlFor="mr-title">

@@ -42,11 +42,11 @@ function Purchase({ orgId, d }: { orgId: string; d: DomainView }) {
       {d.acquisition === "purchase_requested" && !d.purchaseCostMicros && (
         <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(e) => { e.preventDefault(); void act(() => quoteDomainAction(orgId, d.id, Number(price), renews), "Price sent to the client for approval."); }}>
           <div>
-            <label htmlFor={`price-${d.id}`} className="mb-1.5 block text-[13px] font-medium text-ink-2">First-year price (USD)</label>
+            <label htmlFor={`price-${d.id}`} className="mb-1.5 block text-[14px] font-medium text-ink-2">First-year price (USD)</label>
             <Input id={`price-${d.id}`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="14.98" />
           </div>
           <div>
-            <label htmlFor={`renews-${d.id}`} className="mb-1.5 block text-[13px] font-medium text-ink-2">First renewal date (optional)</label>
+            <label htmlFor={`renews-${d.id}`} className="mb-1.5 block text-[14px] font-medium text-ink-2">First renewal date (optional)</label>
             <Input id={`renews-${d.id}`} type="date" value={renews} onChange={(e) => setRenews(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -63,11 +63,11 @@ function Purchase({ orgId, d }: { orgId: string; d: DomainView }) {
             The client approved {d.purchaseCostMicros ? formatCurrency(d.purchaseCostMicros / 1_000_000) : "the price"} for the first year, billed at cost. Register it in the client&apos;s own name at a registrar, then record it here.
           </Callout>
           <div>
-            <label htmlFor={`reg-${d.id}`} className="mb-1.5 block text-[13px] font-medium text-ink-2">Registrar</label>
+            <label htmlFor={`reg-${d.id}`} className="mb-1.5 block text-[14px] font-medium text-ink-2">Registrar</label>
             <Input id={`reg-${d.id}`} value={registrar} onChange={(e) => setRegistrar(e.target.value)} maxLength={80} placeholder="Where it's registered" />
           </div>
           <div>
-            <label htmlFor={`renew-${d.id}`} className="mb-1.5 block text-[13px] font-medium text-ink-2">Renews on</label>
+            <label htmlFor={`renew-${d.id}`} className="mb-1.5 block text-[14px] font-medium text-ink-2">Renews on</label>
             <Input id={`renew-${d.id}`} type="date" value={renews} onChange={(e) => setRenews(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -155,7 +155,7 @@ export function AgencyWebsitePanel({ orgId, data, timeZone }: { orgId: string; d
           {data.domains.length === 0 && <EmptyState compact icon={<Globe className="size-5" />} title="No domains yet" description="The platform address and any custom domains appear here once they exist." />}
           <ul className="divide-y divide-line">
             {data.domains.map((d) => (
-              <li key={d.id} className="management-row -mx-2 flex flex-wrap items-center justify-between gap-3 rounded-lg px-2 py-3 text-[13.5px]">
+              <li key={d.id} className="management-row -mx-2 flex flex-wrap items-center justify-between gap-3 rounded-lg px-2 py-3 text-[14px]">
                 <div className="flex min-w-0 flex-1 basis-56 items-center gap-3">
                   <IconTile icon={<Globe />} tone={domainStatusTone(d)} size="sm" />
                   <div className="min-w-0">

@@ -88,10 +88,10 @@ export function TemplateEditor({ orgId, template, catalog, canEdit, canApprove, 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <form className="space-y-6" aria-label="Edit template" onSubmit={(e) => { e.preventDefault(); if (sync !== "conflict") void save(); }}>
-        {archived && <p role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">This template is archived. It can no longer be used or changed.</p>}
-        {!canEdit && !archived && <p role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">The owner or a manager changes templates.</p>}
+        {archived && <p role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">This template is archived. It can no longer be used or changed.</p>}
+        {!canEdit && !archived && <p role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">The owner or a manager changes templates.</p>}
         {sync === "conflict" && (
-          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
             <p className="font-medium">Someone changed this template while you were editing it.</p>
             <p className="mt-0.5">Your edits are kept below, but they cannot be saved over the newer version. Copy anything you want to keep, then load the latest version.</p>
             <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(template)}>Load the latest version</Button>
@@ -107,8 +107,8 @@ export function TemplateEditor({ orgId, template, catalog, canEdit, canApprove, 
         </fieldset>
         <fieldset className="space-y-3" disabled={readOnly}>
           <legend className="mb-1 text-[15px] font-semibold text-ink">Starting items</legend>
-          <p className="max-w-2xl text-[13px] text-muted">These price book items start every proposal made from this template, at the price book&apos;s price at the time.</p>
-          {s.lines.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13.5px] text-muted">No starting items. Proposals made from this template start with just the wording.</p>}
+          <p className="max-w-2xl text-[14px] text-muted">These price book items start every proposal made from this template, at the price book&apos;s price at the time.</p>
+          {s.lines.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted">No starting items. Proposals made from this template start with just the wording.</p>}
           <ol className="space-y-3">
             {s.lines.map((l, i) => {
               const it = itemName(l.catalogItemId);
@@ -144,7 +144,7 @@ export function TemplateEditor({ orgId, template, catalog, canEdit, canApprove, 
         {!readOnly && (
           <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-soft backdrop-blur">
             <Button type="submit" variant="brand" loading={busy("save")} disabled={!dirty || sync === "conflict"}>Save changes</Button>
-            <span className="text-[12.5px] text-muted" role="status">{touched && issues.length > 0 && dirty ? `${issues.length === 1 ? "One thing needs" : `${issues.length} things need`} fixing before this can be saved.` : dirty ? "You have unsaved changes. A change makes a new version that the owner has to approve." : "All changes saved."}</span>
+            <span className="text-[13px] text-muted" role="status">{touched && issues.length > 0 && dirty ? `${issues.length === 1 ? "One thing needs" : `${issues.length} things need`} fixing before this can be saved.` : dirty ? "You have unsaved changes. A change makes a new version that the owner has to approve." : "All changes saved."}</span>
           </div>
         )}
       </form>
@@ -152,18 +152,18 @@ export function TemplateEditor({ orgId, template, catalog, canEdit, canApprove, 
       <aside aria-label="Approval and versions" className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <section className="space-y-3 rounded-2xl border border-line bg-surface p-4">
           <h2 className="text-[15px] font-semibold text-ink">Approval</h2>
-          <p className="text-[13px] text-ink-2">{template.approvedVersion === null ? "No version is approved yet, so nobody can start a proposal from this template." : approvedNow ? `Version ${template.approvedVersion} is approved and in use${template.approvedByName ? `, approved by ${template.approvedByName}` : ""}${template.approvedAt ? ` on ${whenIn(template.approvedAt, tz)}` : ""}.` : `Version ${template.approvedVersion} is in use. Version ${template.currentVersion} is waiting for the owner to approve it.`}</p>
+          <p className="text-[14px] text-ink-2">{template.approvedVersion === null ? "No version is approved yet, so nobody can start a proposal from this template." : approvedNow ? `Version ${template.approvedVersion} is approved and in use${template.approvedByName ? `, approved by ${template.approvedByName}` : ""}${template.approvedAt ? ` on ${whenIn(template.approvedAt, tz)}` : ""}.` : `Version ${template.approvedVersion} is in use. Version ${template.currentVersion} is waiting for the owner to approve it.`}</p>
           {canApprove && !archived ? (
             <>
               <Button variant="brand" loading={busy("approve")} disabled={dirty || approvedNow} onClick={() => run("approve", () => approveTemplateAction(template.id, template.currentVersion), "Approved.")}>{approvedNow ? "This version is approved" : `Approve version ${template.currentVersion}`}</Button>
-              {dirty && <p className="text-[12.5px] text-warning-ink">Save your changes first, so you approve what you see.</p>}
+              {dirty && <p className="text-[13px] text-warning-ink">Save your changes first, so you approve what you see.</p>}
             </>
-          ) : <p className="text-[12.5px] text-muted">Only the business owner approves a template: the wording is theirs to stand behind.</p>}
+          ) : <p className="text-[13px] text-muted">Only the business owner approves a template: the wording is theirs to stand behind.</p>}
           {canEdit && !archived && <Button variant="ghost" size="sm" onClick={() => setArchive(true)}>Archive this template</Button>}
         </section>
         <section className="space-y-2 rounded-2xl border border-line bg-surface p-4">
           <h2 className="text-[15px] font-semibold text-ink">Versions</h2>
-          <ul className="space-y-1.5 text-[13px]">
+          <ul className="space-y-1.5 text-[14px]">
             {template.versions.map((v) => (
               <li key={v.version} className="flex flex-wrap items-center gap-2"><span className="font-medium text-ink">Version {v.version}</span>{v.approved && <Badge tone="success">Approved</Badge>}<span className="font-mono text-[12px] text-muted">{shortHash(v.contentHash)}</span></li>
             ))}

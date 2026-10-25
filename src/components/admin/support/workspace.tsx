@@ -109,7 +109,7 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
   const Icon = t ? TYPE_ICON[t.requestType] : MessageSquare;
   const header = detail && t && (
     <Card className="p-4 sm:p-5">
-      {layout === "split" && <Link href={queueHref(query, { ticket: "" })} className="mb-3 inline-flex min-h-10 items-center gap-1.5 text-[13px] font-medium text-ink-2 hover:text-ink xl:hidden"><ArrowLeft className="size-3.5" aria-hidden /> Back to requests</Link>}
+      {layout === "split" && <Link href={queueHref(query, { ticket: "" })} className="mb-3 inline-flex min-h-10 items-center gap-1.5 text-[14px] font-medium text-ink-2 hover:text-ink xl:hidden"><ArrowLeft className="size-3.5" aria-hidden /> Back to requests</Link>}
       <div className="flex flex-wrap items-center gap-1.5">
         <Icon className="size-4 text-muted" aria-hidden />
         <InfoChip className="font-mono">{t.ref}</InfoChip>

@@ -21,8 +21,8 @@ export function ReceivablesCards({ summary }: { summary: ReceivablesSummary }) {
           <div key={r.currency} className="rounded-2xl border border-line bg-surface p-4">
             <p className="text-[12px] font-semibold uppercase tracking-[.1em] text-muted">{r.currency}</p>
             <p className="mt-1 text-[24px] font-semibold tabular-nums text-ink">{money(r.outstandingMinor, r.currency)}</p>
-            <p className="text-[12.5px] text-muted">owed on {r.openCount} {r.openCount === 1 ? "invoice" : "invoices"}</p>
-            <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[13px]">
+            <p className="text-[13px] text-muted">owed on {r.openCount} {r.openCount === 1 ? "invoice" : "invoices"}</p>
+            <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[14px]">
               <dt className="text-muted">Overdue</dt>
               <dd className={cn("text-right tabular-nums", r.overdueMinor > 0 ? "font-medium text-danger-ink" : "text-ink-2")}>{money(r.overdueMinor, r.currency)}{r.overdueCount > 0 ? ` (${r.overdueCount})` : ""}</dd>
               <dt className="text-muted">Received, net of refunds</dt>
@@ -31,7 +31,7 @@ export function ReceivablesCards({ summary }: { summary: ReceivablesSummary }) {
           </div>
         ))}
       </div>
-      <p className="text-[12.5px] text-muted">Each currency is shown on its own and is never converted. Overdue is worked out when you open this page; the reminder and overdue notices go out only while the scheduler runs.{summary.testInvoices > 0 ? ` ${summary.testInvoices} test ${summary.testInvoices === 1 ? "invoice is" : "invoices are"} kept apart: nothing is owed on a test invoice, so it is never counted here.` : ""}</p>
+      <p className="text-[13px] text-muted">Each currency is shown on its own and is never converted. Overdue is worked out when you open this page; the reminder and overdue notices go out only while the scheduler runs.{summary.testInvoices > 0 ? ` ${summary.testInvoices} test ${summary.testInvoices === 1 ? "invoice is" : "invoices are"} kept apart: nothing is owed on a test invoice, so it is never counted here.` : ""}</p>
     </section>
   );
 }
@@ -39,19 +39,19 @@ export function ReceivablesCards({ summary }: { summary: ReceivablesSummary }) {
 export function InvoiceFilters({ active, search }: { active: ListFilter; search: string }) {
   const href = (f: ListFilter) => `/invoices?filter=${f}${search ? `&q=${encodeURIComponent(search)}` : ""}`;
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <nav aria-label="Filter invoices" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <nav aria-label="Filter invoices" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
         {LIST_FILTERS.map((f) => (
-          <Link key={f} href={href(f)} aria-current={active === f ? "page" : undefined} className={cn("inline-flex h-11 shrink-0 items-center rounded-xl px-3 text-[13px] font-medium sm:h-9", active === f ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>
+          <Link key={f} href={href(f)} aria-current={active === f ? "page" : undefined} className={cn("inline-flex h-11 shrink-0 items-center rounded-xl px-3 text-[14px] font-medium sm:h-9", active === f ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>
             {LIST_FILTER_LABELS[f]}
           </Link>
         ))}
       </nav>
-      <form action="/invoices" method="get" role="search" className="flex gap-2">
+      <form action="/invoices" method="get" role="search" className="flex gap-2 lg:shrink-0">
         <input type="hidden" name="filter" value={active} />
         <label htmlFor="invoice-search" className="sr-only">Search by invoice number or customer</label>
-        <input id="invoice-search" name="q" defaultValue={search} placeholder="Number or customer" maxLength={80} className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-3 text-[16px] text-ink shadow-soft outline-none focus:border-primary focus:ring-4 focus:ring-primary/12 sm:h-9 sm:w-56 sm:text-[13px]" />
-        <button type="submit" className="inline-flex h-11 items-center rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2 sm:h-9">Search</button>
+        <input id="invoice-search" name="q" defaultValue={search} placeholder="Number or customer" maxLength={80} className="h-11 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-3 text-[16px] text-ink shadow-soft outline-none focus:border-primary focus:ring-4 focus:ring-primary/12 sm:h-9 sm:w-56 sm:text-[14px]" />
+        <button type="submit" className="inline-flex h-11 items-center rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink hover:bg-surface-2 sm:h-9">Search</button>
       </form>
     </div>
   );
@@ -66,7 +66,7 @@ export function InvoiceList({ rows, empty }: { rows: InvoiceView[]; empty: { tit
           <Link href={`/invoices/${i.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 hover:bg-surface-2/60 focus-visible:outline-2 focus-visible:outline-primary">
             <span className="min-w-0 flex-1 basis-48">
               <span className="block truncate text-[14px] font-medium text-ink"><span className="tabular-nums">{i.number ?? "Draft"}</span>{i.contactName ? <span className="font-normal text-ink-2"> · {i.contactName}</span> : <span className="font-normal text-warning-ink"> · no customer yet</span>}</span>
-              <span className="block truncate text-[12.5px] text-muted">{i.dueOn ? `Due ${formatDay(i.dueOn)}` : "No due date yet"}{i.opportunityName ? ` · Deal: ${i.opportunityName}` : ""}</span>
+              <span className="block truncate text-[13px] text-muted">{i.dueOn ? `Due ${formatDay(i.dueOn)}` : "No due date yet"}{i.opportunityName ? ` · Deal: ${i.opportunityName}` : ""}</span>
             </span>
             <span className="flex flex-wrap items-center gap-1.5">
               <StatusBadge status={i.status} />
@@ -99,11 +99,11 @@ export function NeedsLookList({ rows, tz }: { rows: NeedsLookRow[]; tz: string }
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-warning-ink/30 bg-warning-soft/40">
         {rows.map((r) => (
           <li key={r.paymentId}>
-            <Link href={`/invoices/${r.invoiceId}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[13.5px] hover:bg-warning-soft/70 focus-visible:outline-2 focus-visible:outline-primary">
+            <Link href={`/invoices/${r.invoiceId}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[14px] hover:bg-warning-soft/70 focus-visible:outline-2 focus-visible:outline-primary">
               <span className="font-medium tabular-nums text-ink">{r.invoiceNumber ?? "Invoice"}</span>
               <span className="tabular-nums text-ink-2">{money(r.amountMinor, r.currency)}</span>
               <span className="min-w-0 flex-1 basis-56 text-ink-2">{LOOK_WORDS[r.status]}</span>
-              <span className="text-[12.5px] text-muted">{PROVIDER_NAMES[r.provider] ?? r.provider} · {formatInstant(r.at, tz)}</span>
+              <span className="text-[13px] text-muted">{PROVIDER_NAMES[r.provider] ?? r.provider} · {formatInstant(r.at, tz)}</span>
             </Link>
           </li>
         ))}

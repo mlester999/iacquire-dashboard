@@ -127,7 +127,47 @@ export async function metrics(page) {
       }
       if (!intended) clipped.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}.${String(el.className).split(/\s+/).slice(0, 2).join(".")} right=${Math.round(r.right)} "${(el.textContent ?? "").trim().slice(0, 24)}"`);
     }
-    return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, overflow: docOverflow || clipped.length > 0, docOverflow, clipped: clipped.slice(0, 4), clippedCount: clipped.length, title: document.title };
+    // A row of links or buttons (tabs, filters, chips) whose last visible item is cut in half by the edge of a scroller or a clipping box: a person sees "Eve" and nothing says there is more.
+    // Tables, boards and other wide content are scrolled on purpose and are not looked at: only containers whose children are all links, buttons or tabs.
+    const cut = [];
+    const isTabStripScroller = innerWidth >= 1024; // On a phone or a tablet a strip that peeks past the edge is how a person knows it scrolls.
+    const isItem = (c) => ["A", "BUTTON", "LABEL"].includes(c.tagName) || c.getAttribute("role") === "tab";
+    for (const box of document.querySelectorAll("main nav, main [role=tablist], main ul, main div")) {
+      const cs = getComputedStyle(box);
+      if (cs.overflowX === "visible" || cs.display === "none") continue;
+      const kids = [...box.children];
+      if (!isTabStripScroller || kids.length < 3 || !kids.every(isItem)) continue;
+      // A strip that draws a fade at its edges (an aria-hidden gradient beside it) is telling the person there is more; that is the design, not a cut-off.
+      if (box.parentElement && [...box.parentElement.children].some((s) => s !== box && s.getAttribute("aria-hidden") === "true" && /gradient/.test(String(s.className)))) continue;
+      if (box.parentElement && /gradient/.test(box.parentElement.innerHTML.slice(0, 4000)) && box.parentElement.querySelector(":scope > [aria-hidden=true][class*=gradient]")) continue;
+      const b = box.getBoundingClientRect();
+      if (b.width < 2) continue;
+      for (const k of kids) {
+        const r = k.getBoundingClientRect();
+        if (r.width < 2) continue;
+        if ((r.left < b.right - 1 && r.right > b.right + 2) || (r.right > b.left + 1 && r.left < b.left - 2)) cut.push(`${box.tagName.toLowerCase()}>"${(k.textContent ?? "").trim().slice(0, 20)}" ${Math.round(r.left)}-${Math.round(r.right)} in ${Math.round(b.left)}-${Math.round(b.right)}`);
+      }
+    }
+    // Text clipped by a box that hides its overflow, with no ellipsis and no line clamp: it just stops mid-word.
+    const hiddenCut = [];
+    for (const el of document.querySelectorAll("main *")) {
+      if (el.children.length > 0 || !(el.textContent ?? "").trim() || el.closest(".sr-only, [aria-hidden=true]")) continue;
+      const cs = getComputedStyle(el);
+      if (!/(hidden|clip)/.test(cs.overflowX) || cs.textOverflow === "ellipsis" || el.scrollWidth <= el.clientWidth + 2 || el.clientWidth < 8) continue;
+      if (cs.webkitLineClamp && cs.webkitLineClamp !== "none") continue;
+      hiddenCut.push(`${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 2).join(".")} "${(el.textContent ?? "").trim().slice(0, 24)}" ${el.scrollWidth}>${el.clientWidth}`);
+    }
+    const wide = [];
+    if (docOverflow) {
+      for (const el of document.querySelectorAll("body *")) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.right <= innerWidth + 1 || el.closest("[aria-hidden=true]")) continue;
+        let inScroller = false;
+        for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) { const o = getComputedStyle(a); if (/(auto|scroll|hidden|clip)/.test(o.overflowX) && a !== document.body) { inScroller = true; break; } }
+        if (!inScroller) wide.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}.${String(el.className).split(/\s+/).slice(0, 2).join(".")} right=${Math.round(r.right)} "${(el.textContent ?? "").trim().slice(0, 24)}"`);
+      }
+    }
+    return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, overflow: docOverflow || clipped.length > 0, docOverflow, clipped: clipped.length ? clipped.slice(0, 4) : wide.slice(0, 4), clippedCount: clipped.length, cut: cut.slice(0, 4), hiddenCut: hiddenCut.slice(0, 4), title: document.title };
   });
 }
 

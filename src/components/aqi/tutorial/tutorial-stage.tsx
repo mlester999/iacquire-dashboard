@@ -559,7 +559,7 @@ interface StageBodyProps {
 
 function StageBody({ phase, routeMismatch, routeLabel, stepNumber, step, state, tutorialTitle, waiting, missing, canSkip, titleId, hasNavHighlight }: StageBodyProps) {
   const heading = "text-[15px] font-semibold leading-snug tracking-tight text-ink";
-  const copy = "mt-1 text-[13px] leading-relaxed text-muted";
+  const copy = "mt-1 text-[14px] leading-relaxed text-muted";
   if (phase === "completed") return <CompletionCard verified={state.verified} title={tutorialTitle} message={state.message} titleId={titleId} />;
   if (phase === "exited") {
     return (
@@ -646,7 +646,7 @@ function CompletionCard({ verified, title, message, titleId }: { verified: boole
         <Check className="size-3" aria-hidden /> {verified ? "Verified" : "Finished"}
       </span>
       <h2 id={titleId} className="mt-1.5 text-[15px] font-semibold tracking-tight text-ink">{verified ? "Action verified" : "Walkthrough finished"}</h2>
-      <p id="aqi-tutorial-body" className="mt-1 text-[13px] leading-relaxed text-muted">
+      <p id="aqi-tutorial-body" className="mt-1 text-[14px] leading-relaxed text-muted">
         {message ?? (verified ? `The workspace confirmed the action for “${title}”.` : `You reached the end of “${title}”. No business action was submitted or confirmed.`)}
       </p>
     </div>

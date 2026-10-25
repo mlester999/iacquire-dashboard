@@ -44,7 +44,7 @@ function Card({ title, icon: Icon, action, children }: { title: string; icon: Re
   return (
     <section className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
+        <h2 className="flex items-center gap-1.5 text-[14px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
         {action}
       </div>
       <div className="mt-2">{children}</div>
@@ -53,9 +53,9 @@ function Card({ title, icon: Icon, action, children }: { title: string; icon: Re
 }
 
 function SectionBody<T>({ section, empty, render }: { section: Section<T>; empty: string; render: (items: T[]) => React.ReactNode }) {
-  if (section.state === "no_access") return <p className="flex items-center gap-1.5 text-[12.5px] text-muted"><Lock className="size-3.5 shrink-0" aria-hidden />Your role can&apos;t see this.</p>;
-  if (section.state === "error") return <p className="flex items-center gap-1.5 text-[12.5px] text-warning-ink"><TriangleAlert className="size-3.5 shrink-0" aria-hidden />This couldn&apos;t be loaded.</p>;
-  if (!section.items.length) return <p className="text-[12.5px] text-muted">{empty}</p>;
+  if (section.state === "no_access") return <p className="flex items-center gap-1.5 text-[13px] text-muted"><Lock className="size-3.5 shrink-0" aria-hidden />Your role can&apos;t see this.</p>;
+  if (section.state === "error") return <p className="flex items-center gap-1.5 text-[13px] text-warning-ink"><TriangleAlert className="size-3.5 shrink-0" aria-hidden />This couldn&apos;t be loaded.</p>;
+  if (!section.items.length) return <p className="text-[13px] text-muted">{empty}</p>;
   return <>{render(section.items)}</>;
 }
 
@@ -74,7 +74,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
   }
   if (state.kind === "error") {
     return (
-      <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[13px] text-danger-ink">
+      <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[14px] text-danger-ink">
         <p className="font-medium">{state.message}</p>
         <Button size="sm" variant="secondary" className="mt-2" onClick={reload}><RotateCcw className="size-3.5" aria-hidden />Try again</Button>
       </div>
@@ -95,7 +95,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       <QuickActions d={d} conversationId={conversationId} onChanged={changed} />
       <Card title="Deals" icon={Handshake} action={<Link href={d.links.deals} className="inline-flex items-center gap-1 text-[12px] text-primary">Pipeline<ExternalLink className="size-3" aria-hidden /></Link>}>
         <SectionBody section={d.deals} empty="No deals for this customer yet." render={(items) => (
-          <ul className="space-y-2 text-[12.5px]">
+          <ul className="space-y-2 text-[13px]">
             {items.map((o) => (
               <li key={o.id}>
                 <Link href={`/crm/opportunities/${o.id}`} className="block rounded-lg hover:bg-surface-2">
@@ -109,7 +109,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="Tasks" icon={CheckSquare} action={<Link href={d.links.tasks} className="inline-flex items-center gap-1 text-[12px] text-primary">All tasks<ExternalLink className="size-3" aria-hidden /></Link>}>
         <SectionBody section={d.tasks} empty="No open tasks." render={(items) => (
-          <ul className="space-y-1.5 text-[12.5px]">
+          <ul className="space-y-1.5 text-[13px]">
             {items.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-2">
                 <span className="min-w-0"><span className="block truncate font-medium">{t.title}</span><span className="text-muted">{t.assignee ?? "Unassigned"}{t.dueAt ? ` · due ${formatDateTime(t.dueAt, timeZone)}` : ""}</span></span>
@@ -121,7 +121,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="Appointments" icon={CalendarDays} action={<Link href={d.links.appointments} className="inline-flex items-center gap-1 text-[12px] text-primary">Calendar<ExternalLink className="size-3" aria-hidden /></Link>}>
         <SectionBody section={d.appointments} empty="No appointments." render={(items) => (
-          <ul className="space-y-1.5 text-[12.5px]">
+          <ul className="space-y-1.5 text-[13px]">
             {items.slice(0, 5).map((a) => (
               <li key={a.id} className="flex items-start justify-between gap-2">
                 <span className="min-w-0"><span className="block truncate font-medium">{a.title}</span><span className="text-muted" suppressHydrationWarning>{formatDateTime(a.startAt, timeZone)}</span></span>
@@ -133,7 +133,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="Calls" icon={PhoneCall} action={<Link href={d.links.calls} className="inline-flex items-center gap-1 text-[12px] text-primary">All calls<ExternalLink className="size-3" aria-hidden /></Link>}>
         <SectionBody section={d.calls} empty="No calls from this customer." render={(items) => (
-          <ul className="space-y-2 text-[12.5px]">
+          <ul className="space-y-2 text-[13px]">
             {items.slice(0, 4).map((c) => (
               <li key={c.id}>
                 <span className="flex items-center justify-between gap-2"><span className="font-medium">{c.direction === "inbound" ? "Incoming" : "Outgoing"} · {sentenceCase(c.status.replace(/_/g, " "))}</span><span className="text-faint" suppressHydrationWarning>{c.startedAt ? relativeTime(c.startedAt) : ""}</span></span>
@@ -146,7 +146,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="Notes" icon={NotebookPen}>
         <SectionBody section={d.notes} empty="No notes on this customer." render={(items) => (
-          <ul className="space-y-2 text-[12.5px]">
+          <ul className="space-y-2 text-[13px]">
             {items.slice(0, 4).map((n) => (
               <li key={n.id} className="rounded-lg bg-surface-2 p-2"><p className="line-clamp-4 whitespace-pre-wrap">{n.body}</p><p className="mt-1 text-[12px] text-faint" suppressHydrationWarning>{n.authorName ?? "Teammate"} · {relativeTime(n.createdAt)}{n.pinned ? " · pinned" : ""}</p></li>
             ))}
@@ -155,7 +155,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="Other conversations" icon={Users}>
         <SectionBody section={d.otherConversations} empty="This is their only conversation." render={(items) => (
-          <ul className="space-y-1.5 text-[12.5px]">
+          <ul className="space-y-1.5 text-[13px]">
             {items.map((c) => (
               <li key={c.id}>
                 <Link href={`/inbox?conversation=${c.id}`} className="block rounded-lg hover:bg-surface-2">
@@ -169,7 +169,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
         )} />
       </Card>
       <Card title="AI employee activity" icon={Bot}>
-        <dl className="space-y-1.5 text-[12.5px]">
+        <dl className="space-y-1.5 text-[13px]">
           <div className="flex justify-between gap-2"><dt className="text-muted">Employees involved</dt><dd className="text-right">{d.ai.employees.length ? d.ai.employees.map((e) => employeeShortName(e)).join(", ") : "None"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Messages the AI sent</dt><dd>{d.ai.aiMessages}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Drafts waiting for approval</dt><dd>{d.ai.draftsWaiting}</dd></div>
@@ -188,13 +188,13 @@ function ContactCard({ d, conversationId, onChanged }: { d: InboxCrmContext; con
   if (!c) {
     return (
       <Card title="Customer record" icon={Users}>
-        <p className="flex items-center gap-1.5 text-[12.5px] text-muted"><Lock className="size-3.5 shrink-0" aria-hidden />Your role can&apos;t open the customer&apos;s CRM record.</p>
+        <p className="flex items-center gap-1.5 text-[13px] text-muted"><Lock className="size-3.5 shrink-0" aria-hidden />Your role can&apos;t open the customer&apos;s CRM record.</p>
       </Card>
     );
   }
   return (
     <Card title="Customer record" icon={Users} action={<Link href={d.links.contact} className="inline-flex items-center gap-1 text-[12px] text-primary">Open in CRM<ExternalLink className="size-3" aria-hidden /></Link>}>
-      <dl className="space-y-1.5 text-[12.5px]">
+      <dl className="space-y-1.5 text-[13px]">
         <div className="flex justify-between gap-2"><dt className="text-muted">Lead status</dt>
           <dd>
             {d.can.leadStatus ? (
@@ -220,7 +220,7 @@ function ContactCard({ d, conversationId, onChanged }: { d: InboxCrmContext; con
         {c.preferredChannel && <div className="flex justify-between gap-2"><dt className="text-muted">Prefers</dt><dd>{sentenceCase(c.preferredChannel)}</dd></div>}
       </dl>
       {c.companies.length > 0 && (
-        <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[12.5px]"><Building2 className="size-3.5 text-muted" aria-hidden />{c.companies.map((co) => <Link key={co.id} href={`/crm/companies/${co.id}`} className="text-primary hover:underline">{co.name}{co.title ? ` (${co.title})` : ""}</Link>)}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px]"><Building2 className="size-3.5 text-muted" aria-hidden />{c.companies.map((co) => <Link key={co.id} href={`/crm/companies/${co.id}`} className="text-primary hover:underline">{co.name}{co.title ? ` (${co.title})` : ""}</Link>)}</p>
       )}
       {c.tags.length > 0 && <p className="mt-2 flex flex-wrap gap-1.5">{c.tags.map((t) => <Badge key={t.id} tone="outline">{t.name}</Badge>)}</p>}
       {d.possibleDuplicates.length > 0 && (
@@ -254,15 +254,15 @@ function QuickActions({ d, conversationId, onChanged }: { d: InboxCrmContext; co
   }
   return (
     <section aria-label="Quick actions" className="rounded-2xl border border-line bg-surface p-4">
-      <h2 className="text-[13px] font-semibold">Quick actions</h2>
+      <h2 className="text-[14px] font-semibold">Quick actions</h2>
       <div className="mt-2 flex flex-wrap gap-2">
         {d.can.task && (
           <Popover open={taskOpen} onOpenChange={setTaskOpen}>
             <PopoverTrigger asChild><Button size="sm" variant="secondary"><Plus className="size-3.5" aria-hidden />Task</Button></PopoverTrigger>
             <PopoverContent align="start" className="w-[min(320px,calc(100vw-32px))] space-y-2 p-3">
-              <label className="text-[12.5px] font-medium" htmlFor="qa-task-title">Task for this customer</label>
+              <label className="text-[13px] font-medium" htmlFor="qa-task-title">Task for this customer</label>
               <Input id="qa-task-title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Send the quote" />
-              <label className="text-[12.5px] font-medium" htmlFor="qa-task-due">Due (optional)</label>
+              <label className="text-[13px] font-medium" htmlFor="qa-task-due">Due (optional)</label>
               <Input id="qa-task-due" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setTaskOpen(false)}>Cancel</Button>
@@ -276,7 +276,7 @@ function QuickActions({ d, conversationId, onChanged }: { d: InboxCrmContext; co
           <Popover open={noteOpen} onOpenChange={setNoteOpen}>
             <PopoverTrigger asChild><Button size="sm" variant="secondary"><StickyNote className="size-3.5" aria-hidden />CRM note</Button></PopoverTrigger>
             <PopoverContent align="start" className="w-[min(320px,calc(100vw-32px))] space-y-2 p-3">
-              <label className="text-[12.5px] font-medium" htmlFor="qa-note">Note on the customer&apos;s record</label>
+              <label className="text-[13px] font-medium" htmlFor="qa-note">Note on the customer&apos;s record</label>
               <Textarea id="qa-note" rows={3} value={note} maxLength={4000} onChange={(e) => setNote(e.target.value)} placeholder="Saved to the CRM record. Your team sees it everywhere the record appears." />
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setNoteOpen(false)}>Cancel</Button>

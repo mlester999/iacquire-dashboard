@@ -29,7 +29,7 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, sched
   const account = usable.find((a) => a.id === accountId);
 
   if (!enabled) {
-    return <section aria-label="AI help" className="rounded-2xl border border-line bg-surface-2 p-4 text-[13px] text-ink-2">AI drafting is switched off for this workspace. The business owner can switch it on in the social media settings.</section>;
+    return <section aria-label="AI help" className="rounded-2xl border border-line bg-surface-2 p-4 text-[14px] text-ink-2">AI drafting is switched off for this workspace. The business owner can switch it on in the social media settings.</section>;
   }
 
   const defaultKind = (): PostKind => (account && PLATFORM_LIMITS[account.platform].kinds.includes("text") ? "text" : "image");
@@ -54,7 +54,7 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, sched
   return (
     <section aria-label="AI help" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
       <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-ink"><Sparkles className="size-4 text-violet-ink" aria-hidden />Get AI help</h2>
-      <p className="text-[12.5px] text-muted">Written from your approved business knowledge. It only makes drafts: a person edits and approves them before anything is published.</p>
+      <p className="text-[13px] text-muted">Written from your approved business knowledge. It only makes drafts: a person edits and approves them before anything is published.</p>
       <Field label="Account" htmlFor="ai-account">
         <Select id="ai-account" value={accountId} onChange={(e) => { setAccountId(e.target.value); setIdeas(null); setCaptions(null); }}>
           {usable.map((a) => <option key={a.id} value={a.id}>{a.name} ({PLATFORM_LABELS[a.platform]})</option>)}
@@ -84,7 +84,7 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, sched
       {ideas && !captions && (
         <ul className="space-y-2" aria-label="Ideas">
           {ideas.map((idea, i) => (
-            <li key={i} className="rounded-xl border border-line p-3 text-[13px]">
+            <li key={i} className="rounded-xl border border-line p-3 text-[14px]">
               <p className="font-medium text-ink">{idea.title}</p>
               <p className="mt-0.5 text-ink-2">{idea.angle}</p>
               {idea.callToAction && <p className="mt-0.5 text-muted">Call to action: {idea.callToAction}</p>}
@@ -96,10 +96,10 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, sched
 
       {captions && (
         <div role="group" className="space-y-2" aria-label="Caption options">
-          <button type="button" className="inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary-ink underline sm:min-h-8" onClick={() => setCaptions(null)}>Back to ideas</button>
+          <button type="button" className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink underline sm:min-h-8" onClick={() => setCaptions(null)}>Back to ideas</button>
           <ul className="space-y-2">
             {captions.options.map((o, i) => (
-              <li key={i} className="rounded-xl border border-line p-3 text-[13px]">
+              <li key={i} className="rounded-xl border border-line p-3 text-[14px]">
                 <p className="whitespace-pre-wrap text-ink">{o.caption}</p>
                 {o.hashtags.length > 0 && <p className="mt-1 text-muted">{o.hashtags.map((h) => `#${h}`).join(" ")}</p>}
                 <Button className="mt-2" size="sm" variant="soft" loading={busy(`draft-${i}`)} onClick={() => makeDraft(i)}>Save as a draft</Button>

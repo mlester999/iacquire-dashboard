@@ -66,7 +66,7 @@ export function StatTile({
     success: { icon: "bg-success-soft text-success-ink", strip: "from-success to-success/20", wash: "from-success-soft/60" },
     warning: { icon: "bg-warning-soft text-warning-ink", strip: "from-warning to-warning/20", wash: "from-warning-soft/60" },
   }[accent];
-  const metric = <><p className="text-[12.5px] font-medium text-muted">{label}</p>{value === null ? (
+  const metric = <><p className="text-[13px] font-medium text-muted">{label}</p>{value === null ? (
     <div className="mt-1.5 flex flex-col items-start gap-2"><span className="text-[26px] font-semibold leading-none tracking-tight text-faint">—</span><StatusPill tone="neutral" size="sm" className="h-auto min-h-5 max-w-full whitespace-normal py-0.5 text-left leading-snug">{unavailableReason ?? "Unavailable"}</StatusPill></div>
   ) : <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight tabular-nums text-ink" />}</>;
   const content = (
@@ -113,7 +113,6 @@ export function AreaChart({
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = React.useState<number | null>(null);
   const [showTable, setShowTable] = React.useState(false);
-  const reduce = useReducedMotion();
   const pad = { l: 32, r: 22, t: 12, b: 26 };
   const w = Math.max(0, width - pad.l - pad.r);
   const h = height - pad.t - pad.b;
@@ -142,7 +141,7 @@ export function AreaChart({
       </div>
       {showTable ? (
         <div className="scrollbar-thin max-h-[240px] overflow-y-auto rounded-xl border border-line">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-[14px]">
             <caption className="sr-only">{label}</caption>
             <thead className="bg-surface-2 text-left text-muted">
               <tr>
@@ -185,7 +184,7 @@ export function AreaChart({
                   </text>
                 ) : null,
               )}
-              <motion.path d={area} fill="url(#area-wash)" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }} />
+              <motion.path d={area} fill="url(#area-wash)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }} />
               <motion.path
                 d={line}
                 fill="none"
@@ -193,7 +192,7 @@ export function AreaChart({
                 strokeWidth={2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                initial={reduce ? false : { pathLength: 0 }}
+                initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
               />
@@ -255,7 +254,7 @@ export function Funnel({ stages, unavailableLabel = "Not connected" }: { stages:
         const rate = s.value !== null && prev && s.value <= prev ? s.value / prev : null;
         return (
           <li key={s.label}>
-            <div className="mb-1.5 flex items-center justify-between gap-3 text-[13px]">
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-[14px]">
               <span className="min-w-0 truncate font-medium text-ink-2">{s.label}</span>
               <span className="flex shrink-0 items-center gap-2 tabular-nums text-ink">
                 {rate !== null && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[12px] font-medium text-muted ring-1 ring-inset ring-line">{Math.round(rate * 100)}% of previous</span>}
@@ -293,26 +292,25 @@ export function HBarList({
   unit: string;
   emptyLabel?: string;
 }) {
-  const reduce = useReducedMotion();
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (!rows.some((r) => r.value > 0)) return <EmptyState compact icon={<BarChart3 className="size-5" />} title={emptyLabel} description="Counts appear here as soon as there is something to show." />;
   return (
-    <ul className="space-y-3">
+    <ul className="@container space-y-3">
       {rows.map((r, i) => (
-        <li key={r.key} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 text-[13px]">
-          <span className="min-w-0 truncate text-ink-2">{r.label}</span>
-          <div className="h-4 rounded bg-surface-2" title={`${formatNumber(r.value)} ${unit}`}>
+        <li key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-[14px] @sm:grid-cols-[minmax(0,10rem)_1fr_auto]">
+          <span className="min-w-0 truncate text-ink-2 @sm:col-start-1">{r.label}</span>
+          <div className="col-span-2 row-start-2 h-4 rounded bg-surface-2 @sm:col-span-1 @sm:col-start-2 @sm:row-start-1" title={`${formatNumber(r.value)} ${unit}`}>
             {r.value > 0 && (
               <motion.div
                 className="h-4 rounded-r-[4px]"
                 style={{ background: "var(--series-1)" }}
-                initial={reduce ? false : { width: 0 }}
+                initial={{ width: 0 }}
                 animate={{ width: `${Math.max(2, (r.value / max) * 100)}%` }}
                 transition={{ duration: 0.7, delay: i * 0.05, ease: [0.16, 1, 0.3, 1] }}
               />
             )}
           </div>
-          <span className="w-12 text-right tabular-nums text-ink">{formatNumber(r.value)}</span>
+          <span className="col-start-2 row-start-1 text-right tabular-nums text-ink @sm:col-start-3 @sm:w-12">{formatNumber(r.value)}</span>
         </li>
       ))}
     </ul>
@@ -326,7 +324,6 @@ export function HBarList({
 export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: string; y: number }>; height?: number; unit: string; label: string }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = React.useState<number | null>(null);
-  const reduce = useReducedMotion();
   const pad = { l: 28, r: 18, t: 10, b: 24 };
   const w = Math.max(0, width - pad.l - pad.r);
   const h = height - pad.t - pad.b;
@@ -358,7 +355,7 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
                     d={`M${cx - barW / 2},${pad.t + h} V${pad.t + h - bh + 4} Q${cx - barW / 2},${pad.t + h - bh} ${cx - barW / 2 + 4},${pad.t + h - bh} H${cx + barW / 2 - 4} Q${cx + barW / 2},${pad.t + h - bh} ${cx + barW / 2},${pad.t + h - bh + 4} V${pad.t + h} Z`}
                     fill="var(--series-1)"
                     opacity={hover === null || hover === i ? 1 : 0.55}
-                    initial={reduce ? false : { opacity: 0 }}
+                    initial={{ opacity: 0 }}
                     animate={{ opacity: hover === null || hover === i ? 1 : 0.55 }}
                   />
                 )}
@@ -397,7 +394,7 @@ export function StatusSplit({ segments }: { segments: Array<{ label: string; val
             <div key={s.label} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} title={`${s.label}: ${s.value}`} />
           ))}
       </div>
-      <ul className="mt-3 flex flex-wrap gap-2 text-[12.5px]">
+      <ul className="mt-3 flex flex-wrap gap-2 text-[13px]">
         {segments.map((s) => (
           <li key={s.label} className="inline-flex min-h-7 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-ink-2 ring-1 ring-inset ring-line">
             {s.icon}

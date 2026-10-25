@@ -20,13 +20,13 @@ const VIA: Record<ReviewRequestView["requestedVia"], string> = { manual: "Sent b
 
 /** A private rating as five small stars and the words, so it reads the same with or without colour. */
 export function RatingStars({ rating, className }: { rating: number | null; className?: string }) {
-  if (rating === null) return <span className={cn("text-[12.5px] text-muted", className)}>No rating</span>;
+  if (rating === null) return <span className={cn("text-[13px] text-muted", className)}>No rating</span>;
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
       <span className="inline-flex" aria-hidden>
         {[1, 2, 3, 4, 5].map((i) => <Star key={i} className={cn("size-3.5", i <= rating ? "fill-current text-warning" : "text-line-strong")} />)}
       </span>
-      <span className="text-[12.5px] font-medium text-ink">{rating} of 5<span className="font-normal text-muted"> · {RATING_WORDS[rating]}</span></span>
+      <span className="text-[13px] font-medium text-ink">{rating} of 5<span className="font-normal text-muted"> · {RATING_WORDS[rating]}</span></span>
     </span>
   );
 }
@@ -36,8 +36,8 @@ const BAND_LABEL = { promoter: "Promoter", passive: "Passive", detractor: "Detra
 /** A private answer on either scale: stars for one to five, "9 of 10 · Promoter" for zero to ten. The group is for the team's reading; the customer is never told it. */
 export function FeedbackScore({ rating, npsScore, scale, className }: { rating: number | null; npsScore: number | null; scale: FeedbackScale; className?: string }) {
   if (scale !== "nps10") return <RatingStars rating={rating} className={className} />;
-  if (npsScore === null) return <span className={cn("text-[12.5px] text-muted", className)}>No score</span>;
-  return <span className={cn("text-[12.5px] font-medium text-ink", className)}>{npsScore} of 10<span className="font-normal text-muted"> · {BAND_LABEL[npsBand(npsScore)]}</span></span>;
+  if (npsScore === null) return <span className={cn("text-[13px] text-muted", className)}>No score</span>;
+  return <span className={cn("text-[13px] font-medium text-ink", className)}>{npsScore} of 10<span className="font-normal text-muted"> · {BAND_LABEL[npsBand(npsScore)]}</span></span>;
 }
 
 /** Review requests: who was asked, on which channel, how far it got, and their private feedback if they gave any. */
@@ -59,13 +59,13 @@ export function RequestsList({ scope, rows, canCancel, contactsLinked, emptyText
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {r.contact ? (
-                    contactsLinked ? <Link href={`${scope.base}/contacts/${r.contact.id}`} className="truncate text-[13.5px] font-medium text-ink hover:underline">{r.contact.name}</Link> : <span className="truncate text-[13.5px] font-medium text-ink">{r.contact.name}</span>
-                  ) : <span className="text-[13.5px] text-muted">Removed contact</span>}
+                    contactsLinked ? <Link href={`${scope.base}/contacts/${r.contact.id}`} className="truncate text-[14px] font-medium text-ink hover:underline">{r.contact.name}</Link> : <span className="truncate text-[14px] font-medium text-ink">{r.contact.name}</span>
+                  ) : <span className="text-[14px] text-muted">Removed contact</span>}
                   <Badge tone={REQUEST_STATUS_TONES[status]}>{REQUEST_STATUS_LABELS[status]}</Badge>
                   {r.kind === "survey" && <Badge tone="outline">Survey</Badge>}
                   {r.expired && r.status !== "cancelled" && <Badge tone="outline">Link expired</Badge>}
                 </div>
-                <p className="mt-0.5 text-[12.5px] text-muted">
+                <p className="mt-0.5 text-[13px] text-muted">
                   {CHANNEL_LABELS[r.channel]}{r.templateName ? ` · ${r.templateName}` : ""} · {r.requestedVia === "manual" ? `${VIA.manual} ${r.requestedByName ?? "a teammate"}` : VIA[r.requestedVia]} <RelativeTime iso={r.createdAt} timezone={scope.timezone} />
                 </p>
                 <dl className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
@@ -73,11 +73,11 @@ export function RequestsList({ scope, rows, canCancel, contactsLinked, emptyText
                   <div className="flex gap-1"><dt>Opened</dt><dd className="text-ink-2">{r.openedAt ? <RelativeTime iso={r.openedAt} timezone={scope.timezone} /> : "No"}</dd></div>
                   <div className="flex gap-1"><dt>Review site</dt><dd className="text-ink-2">{r.clickedAt ? <RelativeTime iso={r.clickedAt} timezone={scope.timezone} /> : "Not opened"}</dd></div>
                 </dl>
-                {r.messageDetail && <p className="mt-1.5 text-[12.5px] text-danger-ink">{r.messageDetail}</p>}
+                {r.messageDetail && <p className="mt-1.5 text-[13px] text-danger-ink">{r.messageDetail}</p>}
                 {r.feedback && (
                   <div className="mt-2 rounded-xl bg-surface-2/70 px-3 py-2">
                     <FeedbackScore rating={r.feedback.rating} npsScore={r.feedback.npsScore} scale={r.feedback.scale} />
-                    {r.feedback.comment && <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{r.feedback.comment}</p>}
+                    {r.feedback.comment && <p className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{r.feedback.comment}</p>}
                   </div>
                 )}
               </div>
@@ -135,19 +135,19 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
                   <FeedbackScore rating={f.rating} npsScore={f.npsScore} scale={f.scale} />
                   {f.lowScore && <Badge tone="warning">Low</Badge>}
                 </span>
-                <p className="mt-1 text-[12.5px] text-muted">
+                <p className="mt-1 text-[13px] text-muted">
                   {f.contact ? (contactsLinked ? <Link href={`${scope.base}/contacts/${f.contact.id}`} className="font-medium text-ink hover:underline">{f.contact.name}</Link> : <span className="font-medium text-ink">{f.contact.name}</span>) : f.source === "survey" ? "No name attached" : "A customer"}
                   {" · "}{SOURCE_LABELS[f.source]} · <RelativeTime iso={f.receivedAt} timezone={scope.timezone} />
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {f.escalatedTaskId && (
-                  <Link href={`${scope.base}/tasks?task=${f.escalatedTaskId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
+                  <Link href={`${scope.base}/tasks?task=${f.escalatedTaskId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-primary hover:bg-primary-soft">
                     <ListTodo className="size-3.5" aria-hidden />Follow-up task
                   </Link>
                 )}
                 {f.conversationId && !scope.agency && (
-                  <Link href={`/inbox?c=${f.conversationId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
+                  <Link href={`/inbox?c=${f.conversationId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-primary hover:bg-primary-soft">
                     <MessageSquareText className="size-3.5" aria-hidden />Open in the inbox
                   </Link>
                 )}
@@ -175,9 +175,9 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
                 )}
               </div>
             </div>
-            {f.comment ? <p className="mt-2 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{f.comment}</p> : <p className="mt-2 text-[13px] text-muted">No comment.</p>}
+            {f.comment ? <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{f.comment}</p> : <p className="mt-2 text-[14px] text-muted">No comment.</p>}
             {f.possibleContact && (
-              <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-ink">
+              <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-3 text-[14px] leading-relaxed text-warning-ink">
                 <p className="font-medium">
                   May be from {contactsLinked ? <Link href={`${scope.base}/contacts/${f.possibleContact.id}`} className="underline">{f.possibleContact.name}</Link> : f.possibleContact.name}. Not confirmed.
                 </p>
@@ -193,7 +193,7 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
               </div>
             )}
             {(f.acknowledgedAt || f.resolvedAt) && (
-              <p className="mt-2 text-[12.5px] text-muted">
+              <p className="mt-2 text-[13px] text-muted">
                 {f.acknowledgedAt && <>Acknowledged{f.acknowledgedByName ? ` by ${f.acknowledgedByName}` : ""} <RelativeTime iso={f.acknowledgedAt} timezone={scope.timezone} />. </>}
                 {f.resolvedAt && <>Resolved{f.resolvedByName ? ` by ${f.resolvedByName}` : ""} <RelativeTime iso={f.resolvedAt} timezone={scope.timezone} />.{f.resolutionNote ? ` ${f.resolutionNote}` : ""}</>}
               </p>
@@ -228,7 +228,7 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
         if (await run("resolve-feedback", () => setFeedbackFollowUpAction(scope.orgId, resolving.id, "resolved", note.trim() || null), "Feedback resolved.")) setResolving(null);
       }}
     >
-      <label htmlFor="resolve-note" className="text-[13px] font-medium text-ink">What was done <span className="font-normal text-muted">Optional</span></label>
+      <label htmlFor="resolve-note" className="text-[14px] font-medium text-ink">What was done <span className="font-normal text-muted">Optional</span></label>
       <Textarea id="resolve-note" rows={3} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} className="mt-1.5 text-[16px] sm:text-[14px]" />
     </ConfirmDialog>
     </>

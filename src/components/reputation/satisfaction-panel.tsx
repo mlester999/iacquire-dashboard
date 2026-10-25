@@ -18,7 +18,7 @@ const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 function Tile({ icon: Icon, label, value, detail }: { icon: typeof Gauge; label: string; value: React.ReactNode; detail: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-2xl border border-line bg-surface p-4">
-      <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><Icon className="size-4 shrink-0" aria-hidden />{label}</p>
+      <p className="flex items-center gap-2 text-[13px] font-medium text-muted"><Icon className="size-4 shrink-0" aria-hidden />{label}</p>
       <p className="mt-2 text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink tabular-nums">{value}</p>
       <p className="mt-2 text-[12px] leading-relaxed text-muted">{detail}</p>
     </div>
@@ -53,13 +53,13 @@ function SegmentList({ title, segments, empty }: { title: string; segments: Segm
     <Card className="p-4 sm:p-5">
       <h3 className="text-[14.5px] font-semibold text-ink">{title}</h3>
       {segments.length === 0 ? (
-        <p className="mt-2 text-[13px] text-muted">{empty}</p>
+        <p className="mt-2 text-[14px] text-muted">{empty}</p>
       ) : (
         <ul className="mt-3 space-y-2" aria-label={title}>
           {segments.map((s) => (
             <li key={s.id} className="rounded-xl bg-surface-2/70 px-3 py-2">
-              <p className="text-[13.5px] font-medium text-ink">{s.name}</p>
-              <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-muted"><span>{s.answers} {s.answers === 1 ? "answer" : "answers"}</span><Scores block={s.block} /></p>
+              <p className="text-[14px] font-medium text-ink">{s.name}</p>
+              <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-muted"><span>{s.answers} {s.answers === 1 ? "answer" : "answers"}</span><Scores block={s.block} /></p>
             </li>
           ))}
         </ul>
@@ -74,7 +74,7 @@ export function SatisfactionPanel({ report }: { report: SatisfactionReport }) {
   const period = r.days === 365 ? "12 months" : `${r.days} days`;
   return (
     <section aria-label="Satisfaction" className="space-y-5">
-      <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+      <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
         <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         <span>
           Private feedback from your customers over the last {period}. It is never published and is not a public review. A score appears only after {MIN_RESPONSES.csat5} answers on the 1 to 5 scale, or {MIN_RESPONSES.nps10} on the 0 to 10 scale.
@@ -102,8 +102,8 @@ export function SatisfactionPanel({ report }: { report: SatisfactionReport }) {
             <ul className="mt-3 space-y-2" aria-label="Answers by week">
               {r.trend.map((t) => (
                 <li key={t.week} className="rounded-xl bg-surface-2/70 px-3 py-2">
-                  <p className="text-[13.5px] font-medium text-ink">{weekLabel(t.week)}</p>
-                  <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-muted"><span>{t.answers} {t.answers === 1 ? "answer" : "answers"}</span><Scores block={t.block} /></p>
+                  <p className="text-[14px] font-medium text-ink">{weekLabel(t.week)}</p>
+                  <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-muted"><span>{t.answers} {t.answers === 1 ? "answer" : "answers"}</span><Scores block={t.block} /></p>
                 </li>
               ))}
             </ul>
@@ -112,11 +112,11 @@ export function SatisfactionPanel({ report }: { report: SatisfactionReport }) {
 
         <Card className="p-4 sm:p-5">
           <h3 className="text-[14.5px] font-semibold text-ink">Following up on low feedback</h3>
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-[13px]">
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-[14px]">
             <div><dt className="text-muted">Waiting for a follow-up now</dt><dd className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{r.followUp.open}</dd></div>
             <div><dt className="text-muted">Past {r.followUp.acknowledgeWithinHours} {r.followUp.acknowledgeWithinHours === 1 ? "hour" : "hours"} unacknowledged</dt><dd className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{r.followUp.overdue}</dd></div>
           </dl>
-          <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-3 text-[13px] leading-relaxed text-muted">
             {r.followUp.medianHoursToAcknowledge === null
               ? `Time to acknowledge: ${r.followUp.acknowledged} acknowledged so far in this period. A typical time appears after ${MIN_ACKNOWLEDGED_SAMPLE}.`
               : `Typical time to acknowledge: ${formatHours(r.followUp.medianHoursToAcknowledge)} (from ${r.followUp.acknowledged} acknowledged in this period).`}
@@ -131,7 +131,7 @@ export function SatisfactionPanel({ report }: { report: SatisfactionReport }) {
 
       <Card className="p-4 sm:p-5">
         <h3 className="flex items-center gap-2 text-[14.5px] font-semibold text-ink"><UserRound className="size-4 text-muted" aria-hidden />Anonymous survey answers <Badge tone="outline">Not in the numbers above</Badge></h3>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        <p className="mt-2 text-[14px] leading-relaxed text-muted">
           {answersIn(r.anonymous) === 0
             ? "No answers from surveys that didn't ask who was answering."
             : `${answersIn(r.anonymous)} ${answersIn(r.anonymous) === 1 ? "answer" : "answers"} from surveys that didn't know who answered. `}

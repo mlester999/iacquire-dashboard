@@ -175,10 +175,10 @@ function HelpHeader({ view, setView, onClose, canOpenTickets }: { view: View; se
       </div>
       {view === "chat" && canOpenTickets && (
         <div className="relative flex gap-2 px-4 pb-3">
-          <button type="button" onClick={() => setView("human")} className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 shadow-soft hover:text-ink">
+          <button type="button" onClick={() => setView("human")} className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[13px] font-medium text-ink-2 shadow-soft hover:text-ink">
             <HeadsetIcon className="size-3.5 text-primary" /> Talk to iAcquire Team
           </button>
-          <button type="button" onClick={() => setView("requests")} className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 shadow-soft hover:text-ink">
+          <button type="button" onClick={() => setView("requests")} className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[13px] font-medium text-ink-2 shadow-soft hover:text-ink">
             <Ticket className="size-3.5 text-violet" /> My requests
           </button>
         </div>
@@ -236,7 +236,7 @@ function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: stri
       <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl rounded-tl-md border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink">
           Hi{firstName ? ` ${firstName}` : ""}! I&apos;m the iAcquire Assistant. I can help with your workspace, AI employees, approvals, and settings.
-          {aiAvailable === false && <span className="mt-1 block text-[12.5px] text-muted">Answers come from the iAcquire help center.</span>}
+          {aiAvailable === false && <span className="mt-1 block text-[13px] text-muted">Answers come from the iAcquire help center.</span>}
         </motion.div>
         {messages.length === 0 && (
           <div className="space-y-2">
@@ -249,7 +249,7 @@ function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: stri
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.05 * i }}
                 onClick={() => ask(s)}
-                className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-[13.5px] text-ink-2 shadow-soft transition hover:border-primary/30 hover:text-ink"
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-[14px] text-ink-2 shadow-soft transition hover:border-primary/30 hover:text-ink"
               >
                 {s}
                 <ArrowUpRight className="size-3.5 shrink-0 text-faint" />
@@ -292,7 +292,7 @@ function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: stri
             <span className="sr-only">Assistant is answering</span>
           </div>
         )}
-        {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
+        {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{error}</p>}
       </div>
       <form
         className="shrink-0 border-t border-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
@@ -349,7 +349,7 @@ function HumanView({ onDone }: { onDone: () => void }) {
           <CheckCircle2 className="size-7" />
         </motion.div>
         <p className="text-[16px] font-semibold text-ink">Request {created.ref} created</p>
-        <p className="mt-2 text-[13.5px] leading-relaxed text-muted">
+        <p className="mt-2 text-[14px] leading-relaxed text-muted">
           Status: <span className="font-medium text-ink">Open</span>. Our team sees it in the iAcquire support inbox and will reply here and on your Support page.
           {created.externalNotification === "sent" ? " We've also alerted the team directly." : ""}
         </p>
@@ -364,7 +364,7 @@ function HumanView({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="scrollbar-thin flex h-full flex-col gap-4 overflow-y-auto px-4 py-4">
-      <p className="text-[13.5px] leading-relaxed text-muted">Tell us what you need help with. We&apos;ll attach your workspace and this page so you don&apos;t have to explain the context.</p>
+      <p className="text-[14px] leading-relaxed text-muted">Tell us what you need help with. We&apos;ll attach your workspace and this page so you don&apos;t have to explain the context.</p>
       <Field label="What do you need help with?" htmlFor="ticket-subject">
         <Input id="ticket-subject" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={160} required placeholder="e.g. Connect our calendar" />
       </Field>
@@ -380,7 +380,7 @@ function HumanView({ onDone }: { onDone: () => void }) {
       <Field label="Details" htmlFor="ticket-message">
         <Textarea id="ticket-message" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={5000} required rows={5} placeholder="A short description is perfect." />
       </Field>
-      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
+      {error && <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{error}</p>}
       <div className="safe-bottom mt-auto">
         <Button type="submit" variant="brand" className="w-full" loading={pending} disabled={subject.trim().length < 3 || message.trim().length < 5}>
           <LifeBuoy className="size-4" /> Send to iAcquire Team
@@ -406,7 +406,7 @@ function RequestsView({ onNew, onNavigate }: { onNew: () => void; onNavigate: ()
   }, []);
   return (
     <div className="scrollbar-thin h-full overflow-y-auto px-4 py-4">
-      {error && <p className="text-[13px] text-danger-ink">{error}</p>}
+      {error && <p className="text-[14px] text-danger-ink">{error}</p>}
       {rows === null && !error && (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
@@ -414,7 +414,7 @@ function RequestsView({ onNew, onNavigate }: { onNew: () => void; onNavigate: ()
           ))}
         </div>
       )}
-      {rows?.length === 0 && <p className="py-10 text-center text-[13.5px] text-muted">No support requests yet.</p>}
+      {rows?.length === 0 && <p className="py-10 text-center text-[14px] text-muted">No support requests yet.</p>}
       <div className="space-y-2">
         {rows?.map((t) => (
           <Link key={t.id} href={`/support/${t.id}`} onClick={onNavigate} className="block rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft transition hover:border-line-strong">
@@ -422,7 +422,7 @@ function RequestsView({ onNew, onNavigate }: { onNew: () => void; onNavigate: ()
               <span className="font-mono text-[12px] text-muted">{t.ref}</span>
               <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", STATUS_TONE[t.status])}>{sentenceCase(t.status)}</span>
             </div>
-            <p className="mt-1 truncate text-[13.5px] font-medium text-ink">{t.subject}</p>
+            <p className="mt-1 truncate text-[14px] font-medium text-ink">{t.subject}</p>
             <p className="mt-0.5 text-[12px] text-faint">Updated {relativeTime(t.lastMessageAt)}</p>
           </Link>
         ))}

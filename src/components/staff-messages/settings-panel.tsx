@@ -51,18 +51,18 @@ export function SettingsPanel({ enabled: initialEnabled, retentionDays: initialD
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Link href={MESSAGES_HOME} className="inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline sm:min-h-8">
+        <Link href={MESSAGES_HOME} className="inline-flex min-h-11 items-center gap-1 text-[14px] font-medium text-primary-ink hover:underline sm:min-h-8">
           <ChevronLeft className="size-4" aria-hidden /> Back to Messages
         </Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-ink sm:text-[27px]">Messages settings</h1>
-        <p className="mt-1 text-[13.5px] leading-relaxed text-muted">For Super Admins. Messages is the agency team&apos;s own chat: direct messages, groups and channels. It is not shown to clients or their customers.</p>
+        <p className="mt-1 text-[14px] leading-relaxed text-muted">For Super Admins. Messages is the agency team&apos;s own chat: direct messages, groups and channels. It is not shown to clients or their customers.</p>
       </div>
 
       <section aria-labelledby="settings-switch" className="space-y-3 rounded-2xl border border-line bg-surface p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 id="settings-switch" className="text-[16px] font-semibold text-ink">Messages is {enabled ? "on" : "off"}</h2>
-            <p className="mt-1 text-[13.5px] leading-relaxed text-muted">
+            <p className="mt-1 text-[14px] leading-relaxed text-muted">
               {enabled
                 ? "Everyone on the agency team who may use Messages sees it in the navigation. Switching it off hides it and refuses every request; nothing is deleted."
                 : "Nobody can use it yet. Switching it on connects nothing outside iAcquire and sends no email."}
@@ -75,7 +75,7 @@ export function SettingsPanel({ enabled: initialEnabled, retentionDays: initialD
       <section aria-labelledby="settings-keep" className="space-y-4 rounded-2xl border border-line bg-surface p-5">
         <div>
           <h2 id="settings-keep" className="text-[16px] font-semibold text-ink">How long messages are kept</h2>
-          <p className="mt-1 text-[13.5px] leading-relaxed text-muted">
+          <p className="mt-1 text-[14px] leading-relaxed text-muted">
             By default nothing is deleted. If you choose a number of days, the hourly clean-up deletes older messages and their files for good (a message that starts a thread waits until its newest
             reply is old enough). The clean-up runs only once the scheduler stage that names it has been started; until then nothing is deleted, whatever is chosen here.
           </p>
@@ -98,19 +98,19 @@ export function SettingsPanel({ enabled: initialEnabled, retentionDays: initialD
             <Input id="retention-days" inputMode="numeric" value={daysText} onChange={(e) => setDaysText(e.target.value)} className="max-w-40" autoComplete="off" />
           </Field>
         )}
-        {problem && <p role="alert" className="text-[13px] text-danger-ink">{problem}</p>}
+        {problem && <p role="alert" className="text-[14px] text-danger-ink">{problem}</p>}
         <Button disabled={!changed} loading={busy("retention")} onClick={() => (parsed === null ? void saveRetention() : setConfirm("retention"))}>Save</Button>
       </section>
 
       <section aria-labelledby="settings-notice" className="space-y-3 rounded-2xl border border-line bg-surface p-5">
         <h2 id="settings-notice" className="text-[16px] font-semibold text-ink">What staff are told</h2>
-        <p className="text-[13.5px] leading-relaxed text-muted">Everyone who uses Messages can open this notice at the top of the page. Its wording is a draft for your counsel; nothing treats it as approved.</p>
+        <p className="text-[14px] leading-relaxed text-muted">Everyone who uses Messages can open this notice at the top of the page. Its wording is a draft for your counsel; nothing treats it as approved.</p>
         <NoticeBanner />
       </section>
 
       <section aria-labelledby="settings-limits" className="space-y-3 rounded-2xl border border-line bg-surface p-5">
         <h2 id="settings-limits" className="text-[16px] font-semibold text-ink">What to know before relying on it</h2>
-        <ul className="list-disc space-y-2 pl-5 text-[13.5px] leading-relaxed text-ink-2">
+        <ul className="list-disc space-y-2 pl-5 text-[14px] leading-relaxed text-ink-2">
           <li>Messages are protected by access rules, not by encryption. People who run the system, or anyone with a database backup, could read them.</li>
           <li>A Super Admin cannot open a direct message or a private group they are not part of. There is no way to read one for an investigation; that would need a decision and a build.</li>
           <li>Files are limited to 10 MB, five to a message, and a few safe types. They are not scanned for viruses, and a hosting platform may refuse uploads larger than a few megabytes.</li>

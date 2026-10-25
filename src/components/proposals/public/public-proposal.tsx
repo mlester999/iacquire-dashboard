@@ -86,11 +86,11 @@ export function PublicProposal({ token, view, result, code }: { token: string; v
       <div className="space-y-5">
         {/* Errors from the answer forms show inside the answer panel; anything that has no panel (an answered proposal) shows here. */}
         {view.state === "answered" && <NoticeBanner notice={result} />}
-        {proposal.validity === "last_day" && view.state === "open" && <p className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">Today is the last day this proposal can be accepted{proposal.snapshot.validUntil ? ` (valid until ${formatDay(proposal.snapshot.validUntil)})` : ""}.</p>}
+        {proposal.validity === "last_day" && view.state === "open" && <p className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">Today is the last day this proposal can be accepted{proposal.snapshot.validUntil ? ` (valid until ${formatDay(proposal.snapshot.validUntil)})` : ""}.</p>}
         <div className="card-surface rounded-2xl p-5 sm:p-8">
           <ProposalDocument snapshot={proposal.snapshot} version={proposal.version} />
           <div className="mt-6 flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
+            <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted">
               <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               This page is private to you. Anyone with the address can read it, so don&apos;t share it.
             </p>

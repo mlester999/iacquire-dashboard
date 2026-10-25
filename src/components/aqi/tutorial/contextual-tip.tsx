@@ -120,7 +120,7 @@ export function ContextualTip() {
         <p className="text-[14px] font-semibold leading-snug tracking-tight text-ink">{tip.title}</p>
         <GuidanceCloseButton label="Dismiss this tip" onClick={() => void dismiss()} />
       </div>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted">{tip.body}</p>
+      <p className="mt-1 text-[14px] leading-relaxed text-muted">{tip.body}</p>
       <div className="mt-3 flex items-center gap-1.5">
         {tip.tutorialSlug && (
           <GuidancePrimaryButton disabled={busy} onClick={() => void start()}>

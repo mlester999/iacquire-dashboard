@@ -112,8 +112,8 @@ export function PipelineBoard({
             {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? " (default)" : ""}</option>)}
           </Select>
           <div className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5" role="group" aria-label="View">
-            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-surface px-3 text-[13px] font-medium text-ink shadow-soft sm:min-h-8"><KanbanSquare className="size-4" aria-hidden />Board</span>
-            <Link href={`${scope.base}/opportunities?pipeline=${pipelineId}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><Table2 className="size-4" aria-hidden />Table</Link>
+            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-surface px-3 text-[14px] font-medium text-ink shadow-soft sm:min-h-8"><KanbanSquare className="size-4" aria-hidden />Board</span>
+            <Link href={`${scope.base}/opportunities?pipeline=${pipelineId}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><Table2 className="size-4" aria-hidden />Table</Link>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -197,7 +197,7 @@ export function PipelineBoard({
               >
                 <div className="flex items-start justify-between gap-2 border-b border-line px-3 py-2.5">
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                    <p className="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
                       {col.stage.color && <i className="size-2 shrink-0 rounded-full" style={{ background: col.stage.color }} aria-hidden />}
                       {col.stage.kind === "won" && <CheckCircle2 className="size-3.5 text-success" aria-hidden />}
                       {col.stage.kind === "lost" && <CircleSlash className="size-3.5 text-muted" aria-hidden />}
@@ -234,7 +234,7 @@ export function PipelineBoard({
                     />
                   ))}
                   {!col.cards.length && (
-                    <li className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-faint">
+                    <li className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-line px-3 py-6 text-center text-[13px] text-faint">
                       {col.stage.kind === "open" ? "No deals here" : `No deals ${col.stage.kind} in the last ${state.closed} days`}
                     </li>
                   )}
@@ -318,7 +318,7 @@ function DealCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <Link href={`${scope.base}/opportunities/${card.id}`} className="min-w-0 text-[13.5px] font-semibold leading-snug text-ink after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary hover:text-primary" aria-describedby={canMove ? "board-kbd-hint" : undefined}>
+        <Link href={`${scope.base}/opportunities/${card.id}`} className="min-w-0 text-[14px] font-semibold leading-snug text-ink after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary hover:text-primary" aria-describedby={canMove ? "board-kbd-hint" : undefined}>
           <span className="line-clamp-2">{card.name}</span>
         </Link>
         {canMove && (
@@ -341,7 +341,7 @@ function DealCard({
         )}
       </div>
       {(card.contact || card.company) && (
-        <p className="mt-1 truncate text-[12.5px] text-muted">{[card.contact?.name, card.company?.name].filter(Boolean).join(" · ")}</p>
+        <p className="mt-1 truncate text-[13px] text-muted">{[card.contact?.name, card.company?.name].filter(Boolean).join(" · ")}</p>
       )}
       {card.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
@@ -350,7 +350,7 @@ function DealCard({
         </div>
       )}
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        <span className="text-[13px] font-semibold tabular-nums text-ink">{card.value === null ? <span className="font-normal text-faint">No value</span> : money(card.value, card.currency)}</span>
+        <span className="text-[14px] font-semibold tabular-nums text-ink">{card.value === null ? <span className="font-normal text-faint">No value</span> : money(card.value, card.currency)}</span>
         <span className="flex items-center gap-2 text-[12px] text-muted">
           {card.openTasks > 0 && <span className="inline-flex items-center gap-0.5" title={`${card.openTasks} open ${card.openTasks === 1 ? "task" : "tasks"}`}><ListChecks className="size-3.5" aria-hidden />{card.openTasks}<span className="sr-only"> open tasks</span></span>}
           {card.expectedCloseDate && card.status === "open" && (
@@ -373,7 +373,7 @@ function LostReasonDialog({ pending, onCancel, onConfirm }: { pending: NonNullab
       <div className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {presets.map((p) => (
-            <button key={p} type="button" onClick={() => setReason(p)} className={cn("min-h-9 rounded-full border px-3 text-[12.5px]", reason === p ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>{p}</button>
+            <button key={p} type="button" onClick={() => setReason(p)} className={cn("min-h-9 rounded-full border px-3 text-[13px]", reason === p ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>{p}</button>
           ))}
         </div>
         <Field label="Reason" htmlFor="lost-reason"><Textarea id="lost-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} autoFocus /></Field>

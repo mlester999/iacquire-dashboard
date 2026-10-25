@@ -41,7 +41,7 @@ export function MessagesUnavailable({ reason, superAdmin }: { reason: Unavailabl
       icon={<LockKeyhole className="size-5" aria-hidden />}
       title="You can't use Messages"
       description="Your agency role does not include Messages. If you think this is a mistake, ask a Super Admin to check your permissions."
-      action={<Link href="/admin" className="text-[13px] font-medium text-primary-ink underline">Back to the dashboard</Link>}
+      action={<Link href="/admin" className="text-[14px] font-medium text-primary-ink underline">Back to the dashboard</Link>}
     />
   );
 }

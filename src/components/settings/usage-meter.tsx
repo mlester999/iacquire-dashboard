@@ -42,11 +42,11 @@ export function UsageMeter({
       </div>
       <p className="mt-4 flex flex-wrap items-baseline gap-x-1.5 text-[24px] font-semibold leading-none tracking-[-0.03em] text-ink tabular-nums">
         {value}
-        {limit && <span className="text-[13px] font-medium tracking-normal text-muted">of {limit}</span>}
+        {limit && <span className="text-[14px] font-medium tracking-normal text-muted">of {limit}</span>}
         {percent !== null && <InfoChip className="ml-auto self-center tabular-nums">{Math.round(percent)}%</InfoChip>}
       </p>
       {percent !== null && <ProgressBar className="mt-3.5" tone={barTone} value={percent} label={`${label} used`} />}
-      {hint && <p className="mt-3 text-[12.5px] leading-relaxed text-muted">{hint}</p>}
+      {hint && <p className="mt-3 text-[13px] leading-relaxed text-muted">{hint}</p>}
     </div>
   );
 }

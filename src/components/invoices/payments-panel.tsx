@@ -68,7 +68,7 @@ export function PaymentsPanel({ payments, refunds, currency, canRefund: mayRefun
     <section aria-labelledby="inv-payments" className="space-y-3">
       <h2 id="inv-payments" className="text-[15px] font-semibold text-ink">Payments and refunds</h2>
       {payments.length === 0 ? (
-        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">{isTest ? "No test payment has been made on this test invoice yet. Use Pay as a test to try your payment account." : "Nothing has been received against this invoice. A payment appears here only when your payment provider confirms it or you record it yourself."}</p>
+        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">{isTest ? "No test payment has been made on this test invoice yet. Use Pay as a test to try your payment account." : "Nothing has been received against this invoice. A payment appears here only when your payment provider confirms it or you record it yourself."}</p>
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface" aria-label="Payments">
           {payments.map((p) => {
@@ -79,14 +79,14 @@ export function PaymentsPanel({ payments, refunds, currency, canRefund: mayRefun
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <span className="text-[14px] font-semibold tabular-nums text-ink">{money(p.amountMinor, currency)}</span>
                   <PaymentRowBadge status={p.status} testMode={p.provider !== "manual" && !p.livemode} />
-                  <span className="text-[12.5px] text-muted">{PROVIDER_NAMES[p.provider] ?? p.provider}{p.method ? ` · ${methodLabel(p.method)}` : ""} · {formatInstant(p.receivedAt, tz)}</span>
+                  <span className="text-[13px] text-muted">{PROVIDER_NAMES[p.provider] ?? p.provider}{p.method ? ` · ${methodLabel(p.method)}` : ""} · {formatInstant(p.receivedAt, tz)}</span>
                   <span className="ml-auto flex flex-wrap items-center gap-2">
                     {canRefund && providerConfirmed && ["succeeded", "partially_refunded"].includes(p.status) && <Button variant="ghost" size="sm" onClick={() => openDispute(p, "open")}><ShieldAlert className="size-4" aria-hidden />Record a dispute</Button>}
                     {canRefund && providerConfirmed && p.status === "disputed" && <Button variant="secondary" size="sm" onClick={() => openDispute(p, "result")}><ShieldAlert className="size-4" aria-hidden />Record how the dispute ended</Button>}
                     {canRefund && refundable && <Button variant="ghost" size="sm" onClick={() => open(p)}><Undo2 className="size-4" aria-hidden />Record a refund</Button>}
                   </span>
                 </div>
-                <p className="text-[12.5px] text-muted">
+                <p className="text-[13px] text-muted">
                   {p.verification === "manual" ? `Recorded by ${p.recordedByName ?? "a team member"} from their own word${p.evidence ? `: ${p.evidence}` : "."}` : p.livemode ? "Confirmed by the payment provider." : "Confirmed by the payment provider in test mode. No real money moved."}
                   {p.refundedMinor > 0 ? ` ${money(p.refundedMinor, currency)} refunded.` : ""}
                   {p.status === "disputed" ? " Under dispute: held out of your revenue until the result is recorded." : ""}
@@ -99,9 +99,9 @@ export function PaymentsPanel({ payments, refunds, currency, canRefund: mayRefun
       {refunds.length > 0 && (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface" aria-label="Refunds">
           {refunds.map((r) => (
-            <li key={r.id} className="space-y-0.5 px-4 py-3 text-[13.5px]">
+            <li key={r.id} className="space-y-0.5 px-4 py-3 text-[14px]">
               <p><span className="font-semibold tabular-nums text-ink">{money(r.amountMinor, currency)}</span> <span className="text-muted">refunded · {REFUND_SOURCE_LABELS[r.source] ?? r.source}{r.recordedByName ? ` · ${r.recordedByName}` : ""} · {formatInstant(r.createdAt, tz)}</span></p>
-              <p className="text-[12.5px] text-ink-2">{r.reason}</p>
+              <p className="text-[13px] text-ink-2">{r.reason}</p>
             </li>
           ))}
         </ul>
@@ -117,7 +117,7 @@ export function PaymentsPanel({ payments, refunds, currency, canRefund: mayRefun
           </Field>
           <Field label="Why?" htmlFor="refund-reason"><Textarea id="refund-reason" rows={2} className={input16} maxLength={400} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {twin && (
-            <div role="note" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+            <div role="note" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
               <p>Your payment provider already reported a refund of {money(twin.amountMinor, currency)} on this payment ({formatInstant(twin.createdAt, tz)}), and it is counted. Recording this too would count it twice.</p>
               <label className="mt-1 flex min-h-11 items-start gap-3"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={separate} onChange={(e) => setSeparate(e.target.checked)} />This is a different refund. Record it as well.</label>
             </div>
@@ -138,9 +138,9 @@ export function PaymentsPanel({ payments, refunds, currency, canRefund: mayRefun
       >
         <div className="space-y-3">
           <fieldset className="space-y-1">
-            <legend className="text-[13px] font-medium text-ink">How did it end?</legend>
-            <label className="flex min-h-11 items-center gap-3 text-[13.5px] text-ink-2"><input type="radio" name="dispute-result" className="size-5 shrink-0" checked={result === "won"} onChange={() => setResult("won")} />We won: the money stays with us</label>
-            <label className="flex min-h-11 items-center gap-3 text-[13.5px] text-ink-2"><input type="radio" name="dispute-result" className="size-5 shrink-0" checked={result === "lost"} onChange={() => setResult("lost")} />We lost: the buyer got money back</label>
+            <legend className="text-[14px] font-medium text-ink">How did it end?</legend>
+            <label className="flex min-h-11 items-center gap-3 text-[14px] text-ink-2"><input type="radio" name="dispute-result" className="size-5 shrink-0" checked={result === "won"} onChange={() => setResult("won")} />We won: the money stays with us</label>
+            <label className="flex min-h-11 items-center gap-3 text-[14px] text-ink-2"><input type="radio" name="dispute-result" className="size-5 shrink-0" checked={result === "lost"} onChange={() => setResult("lost")} />We lost: the buyer got money back</label>
           </fieldset>
           {result === "lost" && (
             <Field label={`How much the buyer got back (${currency})`} htmlFor="dispute-lost" hint={`Most it can be: ${amountText(left, currency)}`}>

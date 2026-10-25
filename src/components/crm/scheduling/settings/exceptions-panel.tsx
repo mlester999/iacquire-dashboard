@@ -92,7 +92,7 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
     <div className="space-y-5">
       {canAdd ? (
         <form className="space-y-4 rounded-2xl border border-line p-4" onSubmit={add} noValidate>
-          <h3 className="text-[13px] font-semibold text-ink">Add a day off or different hours</h3>
+          <h3 className="text-[14px] font-semibold text-ink">Add a day off or different hours</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="For" htmlFor={pickWho ? "exc-who" : undefined} hint={userId === null ? "Applies to every host. Someone with their own exception that day keeps theirs." : undefined}>
               {pickWho ? (
@@ -101,7 +101,7 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
                   {choices.map((h) => <option key={h.userId} value={h.userId}>{names.get(h.userId)}</option>)}
                 </Select>
               ) : (
-                <p className="flex min-h-11 items-center text-[13px] text-ink sm:min-h-10">{who === EVERYONE ? "Everyone (workspace holiday)" : names.get(who) ?? "You"}</p>
+                <p className="flex min-h-11 items-center text-[14px] text-ink sm:min-h-10">{who === EVERYONE ? "Everyone (workspace holiday)" : names.get(who) ?? "You"}</p>
               )}
             </Field>
             <Field label="Date" htmlFor="exc-date" error={tried ? dateProblem : null}>
@@ -109,35 +109,35 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
             </Field>
           </div>
           <div className="space-y-2">
-            <p className="text-[13px] font-medium text-ink-2">What changes</p>
+            <p className="text-[14px] font-medium text-ink-2">What changes</p>
             <Segmented<Kind> id="exc-kind" ariaLabel="What changes" size="sm" value={effectiveKind} onChange={setKind}
               options={[{ value: "closed", label: "Closed all day" }, ...(userId !== null ? [{ value: "away" as Kind, label: "Away part of the day" }] : []), { value: "custom", label: "Different hours" }]} />
           </div>
           {effectiveKind === "away" && (
             <div className="space-y-2">
-              <p className="text-[12.5px] text-muted">Away from</p>
+              <p className="text-[13px] text-muted">Away from</p>
               <RangeSelects id="exc-away" range={away} onChange={setAway} label="Away" />
               {awayProblem ? (
-                <p role={tried ? "alert" : undefined} className="text-[12.5px] text-muted">{awayProblem}</p>
+                <p role={tried ? "alert" : undefined} className="text-[13px] text-muted">{awayProblem}</p>
               ) : date ? (
-                <p className="text-[12.5px] text-ink-2" aria-live="polite">
+                <p className="text-[13px] text-ink-2" aria-live="polite">
                   {remaining.length
                     ? <>Bookable that day: {remaining.map(rangeLabel).join(", ")} (from the usual {WEEKDAY_NAMES[weekdayOfDate(date)]} hours, {usual.map(rangeLabel).join(", ")}).</>
                     : "That covers the whole working day, so the day will be closed."}
                 </p>
-              ) : <p className="text-[12.5px] text-muted">Choose a date to see the hours left that day.</p>}
+              ) : <p className="text-[13px] text-muted">Choose a date to see the hours left that day.</p>}
             </div>
           )}
           {effectiveKind === "custom" && (
             <div className="space-y-2">
-              <p className="text-[12.5px] text-muted">Only these hours can be booked that day. They replace the usual weekly hours.</p>
+              <p className="text-[13px] text-muted">Only these hours can be booked that day. They replace the usual weekly hours.</p>
               {windows.map((w, i) => (
                 <div key={i} className="flex items-center gap-1">
                   <RangeSelects id={`exc-w${i}`} range={w} onChange={(r) => setWindows(windows.map((x, j) => (j === i ? r : x)))} label={`Range ${i + 1}`} />
                   <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${rangeLabel(w)}`} onClick={() => setWindows(windows.filter((_, j) => j !== i))}><Trash2 className="size-4" /></Button>
                 </div>
               ))}
-              {tried && customProblem && <p role="alert" className="text-[12.5px] text-danger-ink">{customProblem}</p>}
+              {tried && customProblem && <p role="alert" className="text-[13px] text-danger-ink">{customProblem}</p>}
               <Button type="button" variant="ghost" size="sm" disabled={windows.length >= 6} onClick={() => {
                 const last = windows.length ? Math.max(...windows.map((w) => w.endMinute)) : 480;
                 const start = Math.min(last + 60, 1380);
@@ -148,7 +148,7 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
           <Field label="Reason" htmlFor="exc-reason" optional hint="A note for your team.">
             <Input id="exc-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={120} placeholder="Public holiday, training, dentist" />
           </Field>
-          {existing && <p className="text-[12.5px] text-warning-ink">This replaces what&apos;s already set for {nameOf(existing.userId).replace(" (you)", "")} on {dateLabel(existing.date)}.</p>}
+          {existing && <p className="text-[13px] text-warning-ink">This replaces what&apos;s already set for {nameOf(existing.userId).replace(" (you)", "")} on {dateLabel(existing.date)}.</p>}
           <div className="flex justify-end">
             <Button type="submit" loading={busy("add")} disabled={!who}>Save exception</Button>
           </div>
@@ -156,7 +156,7 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
       ) : null}
 
       <div>
-        <h3 className="mb-2 text-[13px] font-semibold text-ink">Upcoming</h3>
+        <h3 className="mb-2 text-[14px] font-semibold text-ink">Upcoming</h3>
         {!groups.length ? (
           <EmptyState compact icon={<CalendarOff className="size-5" />} title="No days off or exceptions coming up" description="Everyone's weekly hours apply as set." />
         ) : (
@@ -164,11 +164,11 @@ export function ExceptionsPanel({ scope, hosts, overrides, today, canManageOther
             {groups.map((g) => (
               <li key={g.key} className="flex flex-wrap items-start justify-between gap-3 px-3 py-3">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink">
+                  <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-ink">
                     <span className="tabular-nums">{dateLabel(g.date)}</span>
                     {g.userId === null ? <Badge tone="violet">Everyone</Badge> : <span className="text-ink-2">{nameOf(g.userId, overrides.find((o) => o.userId === g.userId)?.person)}</span>}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-muted">
+                  <p className="mt-0.5 text-[13px] text-muted">
                     {g.closed ? "Closed all day" : `Only ${g.windows.map(rangeLabel).join(", ")}`}
                     {g.reason ? ` · ${g.reason}` : ""}
                   </p>

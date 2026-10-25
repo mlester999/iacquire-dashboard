@@ -90,7 +90,7 @@ function Panel({ tone, title, children }: { tone: "info" | "success" | "warning"
     <div
       role={tone === "danger" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px] leading-relaxed",
+        "flex items-start gap-3 rounded-xl border px-4 py-3 text-[14px] leading-relaxed",
         tone === "success" && "border-success/30 bg-success-soft text-success-ink",
         tone === "warning" && "border-warning/40 bg-warning-soft text-warning-ink",
         tone === "danger" && "border-danger/30 bg-danger-soft text-danger-ink",

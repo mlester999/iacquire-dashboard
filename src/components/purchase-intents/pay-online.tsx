@@ -28,16 +28,16 @@ export function PayOnline({ token, setupFeeCents, previous }: { token: string; s
   return (
     <div className="space-y-3">
       {previous && (
-        <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink">
+        <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">
           The last payment attempt did not go through. Nothing was charged. You can try again.
         </p>
       )}
-      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
       <Button type="button" size="lg" variant="brand" onClick={() => void pay()} disabled={busy} loading={busy} className="min-h-12 w-full sm:w-auto">
         {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <CreditCard className="size-4" aria-hidden />}
         Pay {formatUsdCents(setupFeeCents)} securely online
       </Button>
-      <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-muted">
+      <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted">
         <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
         <span>
           You pay on PayMongo&apos;s own page; iAcquire never sees your card details. PayMongo charges in Philippine pesos, so the dollar price is converted at iAcquire&apos;s published rate and you see

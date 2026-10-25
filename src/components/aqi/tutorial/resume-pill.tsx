@@ -20,7 +20,7 @@ export function TutorialResumePill() {
         </div>
         <GuidanceCloseButton label="Hide walkthrough reminder" onClick={dismissResume} />
       </div>
-      <p className="mt-0.5 text-[12.5px] text-muted">{resume.versionChanged ? "Restart with the published version" : `Step ${Math.min(resume.currentStep + 1, resume.stepCount)} of ${resume.stepCount}`}</p>
+      <p className="mt-0.5 text-[13px] text-muted">{resume.versionChanged ? "Restart with the published version" : `Step ${Math.min(resume.currentStep + 1, resume.stepCount)} of ${resume.stepCount}`}</p>
       <div className="mt-3 flex items-center gap-1.5">
         <GuidancePrimaryButton onClick={() => void resumeTutorial()}>
           <Play className="size-3.5" aria-hidden /> {resume.versionChanged ? "Restart" : "Resume"}

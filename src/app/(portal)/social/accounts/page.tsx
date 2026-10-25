@@ -37,10 +37,10 @@ export default async function SocialAccountsPage({ searchParams }: { searchParam
     <div className="space-y-5">
       <header>
         <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink"><PlugZap className="size-5 text-muted" aria-hidden />Accounts</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">The Facebook Pages and Instagram accounts posts can go to. They belong to your business: only you can connect or disconnect them, and you can remove iAcquire&apos;s access at any time.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">The Facebook Pages and Instagram accounts posts can go to. They belong to your business: only you can connect or disconnect them, and you can remove iAcquire&apos;s access at any time.</p>
       </header>
-      {notice && <p role="status" className={`rounded-2xl px-4 py-3 text-[13.5px] ${notice.kind === "error" ? "bg-danger-soft text-danger-ink" : notice.kind === "success" ? "bg-success-soft text-success-ink" : "bg-surface-2 text-ink-2"}`}>{notice.message}</p>}
-      {expired && <p role="status" className="rounded-2xl bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">That connection expired. Start it again.</p>}
+      {notice && <p role="status" className={`rounded-2xl px-4 py-3 text-[14px] ${notice.kind === "error" ? "bg-danger-soft text-danger-ink" : notice.kind === "success" ? "bg-success-soft text-success-ink" : "bg-surface-2 text-ink-2"}`}>{notice.message}</p>}
+      {expired && <p role="status" className="rounded-2xl bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">That connection expired. Start it again.</p>}
       <AccountsPanel
         accounts={accounts} canConnect={ctx.can("social.connect")} metaReady={metaConfigured()} liveEnabled={livePublishingEnabled()} tz={ctx.org.timezone || "UTC"}
         choose={choose} testAccounts={simulatedAllowed()}

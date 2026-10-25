@@ -14,7 +14,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("mt-1 text-[13px] leading-relaxed text-muted", className)} {...props} />;
+  return <p className={cn("mt-1 text-[14px] leading-relaxed text-muted", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -107,7 +107,7 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
 });
 
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("text-[13px] font-medium text-ink-2", className)} {...props} />;
+  return <label className={cn("text-[14px] font-medium text-ink-2", className)} {...props} />;
 }
 
 export function Field({
@@ -135,11 +135,11 @@ export function Field({
       </div>
       {children}
       {error ? (
-        <p className="text-[12.5px] text-danger-ink" role="alert">
+        <p className="text-[13px] text-danger-ink" role="alert">
           {error}
         </p>
       ) : hint ? (
-        <div className="text-[12.5px] leading-relaxed text-muted">{hint}</div>
+        <div className="text-[13px] leading-relaxed text-muted">{hint}</div>
       ) : null}
     </div>
   );
@@ -190,7 +190,7 @@ export function EmptyState({
         </div>
       )}
       {headingLevel === 2 ? <h2 className={titleClass}>{title}</h2> : headingLevel === 4 ? <h4 className={titleClass}>{title}</h4> : <h3 className={titleClass}>{title}</h3>}
-      {description && <div className="mt-2 max-w-md text-[13px] leading-[1.7] text-muted">{description}</div>}
+      {description && <div className="mt-2 max-w-md text-[14px] leading-[1.7] text-muted">{description}</div>}
       {action && <div className="mt-5 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>
   );
@@ -219,7 +219,7 @@ export function SectionHeading({ title, description, action }: { title: string; 
     <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
-        {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
+        {description && <p className="mt-0.5 text-[14px] text-muted">{description}</p>}
       </div>
       {action}
     </div>

@@ -28,13 +28,13 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
     router.refresh();
   };
 
-  if (problem) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted">{problem}</p>;
+  if (problem) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-muted">{problem}</p>;
   // Confirmed (now or earlier) and online payment is open: the next step is paying. After a checkout that did not complete, the buyer may try again.
   const previous = checkout.status === "failed" || checkout.status === "cancelled" || checkout.status === "expired" ? checkout.status : null;
   if ((done || !canConfirm) && checkout.offered) {
     return (
       <div className="space-y-3">
-        <div className="rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-[13px] leading-relaxed text-success-ink">
+        <div className="rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-[14px] leading-relaxed text-success-ink">
           <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="size-4" aria-hidden /> Your purchase is confirmed.</p>
           <p className="mt-1">The next step is the payment.</p>
         </div>
@@ -45,7 +45,7 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
   }
   if (done || !canConfirm) {
     return (
-      <div className="rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-[13px] leading-relaxed text-success-ink">
+      <div className="rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-[14px] leading-relaxed text-success-ink">
         <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="size-4" aria-hidden /> Your purchase is confirmed.</p>
         <p className="mt-1">iAcquire will verify the payment and send your workspace invitation. You can close this page.</p>
       </div>
@@ -53,11 +53,11 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
   }
   return (
     <div className="space-y-2">
-      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
       <Button type="button" size="lg" variant="brand" onClick={() => void confirm()} loading={saving} disabled={saving}>
         {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null} Confirm and continue
       </Button>
-      <p className="text-[12px] leading-relaxed text-muted">No card is charged on this page. Confirming records your choice and the frozen price. Then you pay on the payment provider&apos;s own page, or iAcquire sends you another secure way to pay.</p>
+      <p className="text-[13px] leading-relaxed text-muted">No card is charged on this page. Confirming records your choice and the frozen price. Then you pay on the payment provider&apos;s own page, or iAcquire sends you another secure way to pay.</p>
     </div>
   );
 }

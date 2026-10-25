@@ -1093,7 +1093,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
             data-aqi-launcher
           >
             <span className="grid size-8 place-items-center rounded-xl bg-white/15"><Sparkles className="size-4" /></span>
-            <span className="text-[13px] font-semibold tracking-tight">AQi</span>
+            <span className="text-[14px] font-semibold tracking-tight">AQi</span>
           </motion.button>
         )}
       </AnimatePresence>
@@ -1201,7 +1201,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                     {messages.length === 0 ? (
                       <div className="flex min-h-full flex-col">
                         <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
-                          <p className="text-[13.5px] leading-relaxed text-ink">Hey! How can I help you today?</p>
+                          <p className="text-[14px] leading-relaxed text-ink">Hey! How can I help you today?</p>
                           <p className="mt-2 text-[12px] leading-relaxed text-muted">Ask me anything about iAcquireOS.</p>
                         </div>
                         <div className="mt-4">
@@ -1215,7 +1215,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                     type="button"
                                     onClick={() => { setSendingSuggestion(suggestion.question); void send(suggestion.question).finally(() => setSendingSuggestion(null)); }}
                                     disabled={streaming || Boolean(sendingSuggestion) || uploadsBusy}
-                                    className="group flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-[12.5px] leading-snug text-ink-2 shadow-soft transition-[border-color,background-color,transform] duration-150 hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="group flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-[13px] leading-snug text-ink-2 shadow-soft transition-[border-color,background-color,transform] duration-150 hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     <span className="line-clamp-2">{suggestion.question}</span>
                                     {sendingSuggestion === suggestion.question
@@ -1262,7 +1262,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                         )}
                         {messages.map((message) => (
                           <div key={message.id} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                            <div className={cn("min-w-0 max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", message.role === "user" ? "bg-primary text-primary-on" : "border border-line bg-surface text-ink")}>
+                            <div className={cn("min-w-0 max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", message.role === "user" ? "bg-primary text-primary-on" : "border border-line bg-surface text-ink")}>
                               {message.role === "assistant" ? (
                                 <>
                                   {message.content ? <AqiAnswer content={message.content} streaming={message.status === "streaming"} routes={welcome?.navigation ?? NO_ROUTES} currentPath={pathname ?? null} onNavigate={closeForNavigation} /> : <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span>}
@@ -1481,7 +1481,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                           placeholder="Ask about iAcquireOS…"
                           disabled={streaming}
                           aria-label="Ask AQi"
-                          className="max-h-28 min-h-9 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] shadow-none focus-visible:ring-0"
+                          className="max-h-28 min-h-9 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[14px] shadow-none focus-visible:ring-0"
                         />
                         <Button type="button" size="icon" variant="brand" onClick={() => void send(input)} disabled={(!input.trim() && !readyAttachments.length) || streaming || uploadsBusy} aria-label="Send to AQi">{uploadsBusy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}</Button>
                       </div>
@@ -1528,7 +1528,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           </>
         }
       >
-        <p className="text-[12.5px] leading-relaxed text-muted">This chat has not been saved to your AQi history yet. Save it first if you want to keep it.</p>
+        <p className="text-[13px] leading-relaxed text-muted">This chat has not been saved to your AQi history yet. Save it first if you want to keep it.</p>
       </Dialog>
 
       <Dialog
@@ -1584,10 +1584,10 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                 <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-danger-soft text-danger-ink"><Trash2 className="size-5" aria-hidden /></span>
                 <div className="min-w-0">
                   <h2 id="aqi-delete-title" className="text-[15.5px] font-semibold tracking-tight text-ink">Delete this conversation?</h2>
-                  <p id="aqi-delete-desc" className="mt-1 text-[12.5px] leading-relaxed text-muted">This conversation will be permanently deleted. This action cannot be undone.</p>
+                  <p id="aqi-delete-desc" className="mt-1 text-[13px] leading-relaxed text-muted">This conversation will be permanently deleted. This action cannot be undone.</p>
                 </div>
               </div>
-              <p className="mt-3 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] font-medium text-ink">{deleteTarget.title === DEFAULT_AQI_CONVERSATION_TITLE ? "New conversation (no title yet)" : deleteTarget.title}</p>
+              <p className="mt-3 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] font-medium text-ink">{deleteTarget.title === DEFAULT_AQI_CONVERSATION_TITLE ? "New conversation (no title yet)" : deleteTarget.title}</p>
               {deleteError && <p role="alert" className="mt-3 rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-[12px] leading-relaxed text-danger-ink">{deleteError}</p>}
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button variant="secondary" onClick={cancelDelete} disabled={deleteBusy} autoFocus>Cancel</Button>
@@ -1623,7 +1623,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                 <div className="min-w-0"><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">Source {sourcePreview.index}</p><h3 id="aqi-source-title" className="mt-1 text-[15px] font-semibold text-ink">{sourcePreview.title}</h3><p className="mt-0.5 text-[12px] text-muted">{sourcePreview.category}</p></div>
                 <button type="button" onClick={() => setSourcePreview(null)} className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="Close source preview"><X className="size-4" /></button>
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-2">{sourcePreview.snippet ?? "This approved source is available in the AQi knowledge library."}</p>
+              <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-2">{sourcePreview.snippet ?? "This approved source is available in the AQi knowledge library."}</p>
               <p className="mt-3 border-t border-line pt-2 text-[12px] text-faint">Only approved, published knowledge is shown here.</p>
             </motion.div>
           </motion.div>
@@ -1687,7 +1687,7 @@ function HistoryView({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search conversations"
-            className="h-10 min-w-0 flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint"
+            className="h-10 min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint"
             aria-label="Search conversations"
           />
           {loading && conversations.length > 0 && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted" aria-label="Loading conversations" />}
@@ -1696,7 +1696,7 @@ function HistoryView({
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {error ? (
           <div className="mx-1 my-3 rounded-xl border border-line bg-surface-2 px-4 py-4">
-            <p className="text-[12.5px] font-medium text-ink">We couldn&apos;t load your conversations.</p>
+            <p className="text-[13px] font-medium text-ink">We couldn&apos;t load your conversations.</p>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">Please try again in a moment.</p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>Try again</Button>
           </div>
@@ -1707,7 +1707,7 @@ function HistoryView({
           </div>
         ) : conversations.length === 0 ? (
           <div className="mx-1 my-3 rounded-xl border border-dashed border-line-strong px-4 py-5">
-            <p className="text-[12.5px] font-medium text-ink">{trimmed ? "No conversations match your search" : "No saved conversations yet."}</p>
+            <p className="text-[13px] font-medium text-ink">{trimmed ? "No conversations match your search" : "No saved conversations yet."}</p>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">{trimmed ? "Try another title or clear your search." : "Start a chat and choose Save conversation to keep it here."}</p>
           </div>
         ) : (
@@ -1739,7 +1739,7 @@ function HistoryView({
                               disabled={renaming.saving}
                               aria-label="Conversation name"
                               aria-invalid={Boolean(renaming.error)}
-                              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[12.5px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
                             />
                             {renaming.saving
                               ? <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-label="Saving name" />
@@ -1760,7 +1760,7 @@ function HistoryView({
                           >
                             <span className="flex items-start gap-1.5">
                               {active && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
-                              <span className="line-clamp-2 break-words text-[12.5px] font-medium leading-snug text-ink">{conversation.title}</span>
+                              <span className="line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">{conversation.title}</span>
                             </span>
                             <span className="mt-0.5 block text-[12px] text-muted"><span suppressHydrationWarning>{relativeTime(conversation.lastMessageAt)}</span></span>
                           </button>

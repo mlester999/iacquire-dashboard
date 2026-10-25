@@ -46,12 +46,12 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
           <h2 id="onboarding-stage-title" className="text-[18px] font-semibold leading-snug tracking-[-0.02em] sm:text-[21px] lg:text-[26px] lg:leading-tight">
             {welcome ? "Let's set up your workspace." : section.title}
           </h2>
-          <p className="mt-1 hidden max-w-xl text-[13.5px] leading-relaxed text-[var(--stage-ink-2)] sm:block lg:mt-1.5 lg:text-[14px]">
+          <p className="mt-1 hidden max-w-xl text-[14px] leading-relaxed text-[var(--stage-ink-2)] sm:block lg:mt-1.5 lg:text-[14px]">
             {welcome ? "We'll start with the basics about your business. Everything saves as you go." : section.blurb}
           </p>
         </div>
-        <p className="mt-1 flex shrink-0 items-baseline gap-2 text-[12.5px] tabular-nums sm:mt-0 sm:flex-col sm:items-end sm:gap-0.5 sm:text-right">
-          <span className="font-medium text-[var(--stage-ink-2)] sm:text-[13px]">{position}</span>
+        <p className="mt-1 flex shrink-0 items-baseline gap-2 text-[13px] tabular-nums sm:mt-0 sm:flex-col sm:items-end sm:gap-0.5 sm:text-right">
+          <span className="font-medium text-[var(--stage-ink-2)] sm:text-[14px]">{position}</span>
           <span aria-hidden className="text-[var(--stage-muted)] sm:hidden">·</span>
           <span className="text-[var(--stage-muted)]">{progress.percent}% answered</span>
         </p>

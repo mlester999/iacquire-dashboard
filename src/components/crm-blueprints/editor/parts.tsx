@@ -77,7 +77,7 @@ export function IssueNotes({ issues, className }: { issues: readonly ValidationI
   return (
     <ul className={cn("space-y-1.5 rounded-xl border border-line bg-surface-2 p-3", className)} aria-label="Problems with this item">
       {sorted.slice(0, 12).map((i, n) => (
-        <li key={`${i.code}-${i.path}-${n}`} className={cn("flex gap-2 text-[12.5px] leading-relaxed", i.severity === "error" ? "text-danger-ink" : "text-warning-ink")}>
+        <li key={`${i.code}-${i.path}-${n}`} className={cn("flex gap-2 text-[13px] leading-relaxed", i.severity === "error" ? "text-danger-ink" : "text-warning-ink")}>
           {i.severity === "error" ? <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
           <span><span className="sr-only">{i.severity === "error" ? "Must fix: " : "Check: "}</span>{i.message}</span>
         </li>
@@ -133,7 +133,7 @@ export function AssetWorkspace({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">{title}</h2>
-          <div className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">{intro}</div>
+          <div className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">{intro}</div>
         </div>
         {!readOnly && <Button variant="secondary" onClick={onAdd}><Plus className="size-4" aria-hidden />{addLabel}</Button>}
       </div>
@@ -151,7 +151,7 @@ export function AssetWorkspace({
                   <li key={item.id} className={cn("group flex items-center gap-1 rounded-xl border pr-1 transition-colors", active ? "border-primary/40 bg-primary-soft/40" : "border-transparent hover:border-line")}>
                     <button type="button" onClick={() => choose(item.id)} aria-current={active ? "true" : undefined} className="flex min-h-12 min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left">
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium text-ink">{item.name || <span className="text-faint">Untitled</span>}</span>
+                        <span className="block truncate text-[14px] font-medium text-ink">{item.name || <span className="text-faint">Untitled</span>}</span>
                         {item.detail && <span className="block truncate text-[12px] text-muted">{item.detail}</span>}
                       </span>
                       {item.badges}
@@ -219,7 +219,7 @@ export function FieldGrid({ children, className }: { children: React.ReactNode; 
 /** A fixed explanation shown at the top of a section (what applying does with it). */
 export function SectionNote({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "warning" }) {
   return (
-    <p className={cn("rounded-xl border px-3.5 py-2.5 text-[12.5px] leading-relaxed", tone === "warning" ? "border-warning/30 bg-warning-soft text-warning-ink" : "border-line bg-surface-2 text-ink-2")}>
+    <p className={cn("rounded-xl border px-3.5 py-2.5 text-[13px] leading-relaxed", tone === "warning" ? "border-warning/30 bg-warning-soft text-warning-ink" : "border-line bg-surface-2 text-ink-2")}>
       {children}
     </p>
   );
@@ -283,7 +283,7 @@ export function NumberInput({
         }}
         className="w-28"
       />
-      {suffix && <span className="text-[13px] text-muted">{suffix}</span>}
+      {suffix && <span className="text-[14px] text-muted">{suffix}</span>}
       {invalid && <span className="text-[12px] text-danger-ink" role="status">{min !== undefined && max !== undefined ? `${min} to ${max}` : "A whole number"}{nullable ? ", or empty" : ""}</span>}
     </div>
   );
@@ -508,7 +508,7 @@ export function AddAssetDialog({ request, onClose, onCreate }: {
             <Input id="add-key" value={effectiveKey} maxLength={48} aria-invalid={keyProblem ? true : undefined} onChange={(e) => { setKeyTouched(true); setKey(e.target.value.toLowerCase()); }} className="font-mono" />
           </Field>
         )}
-        <p className="text-[12.5px] text-muted" aria-live="polite">
+        <p className="text-[13px] text-muted" aria-live="polite">
           {idPreview ? <>Reference: <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2">{idPreview}</code></> : "Type a name to see its reference."}
         </p>
       </form>
@@ -590,25 +590,25 @@ export function RemoveAssetDialog({ request, onClose, onRemove }: { request: Rem
             {refs.map((r) => (
               <li key={r.assetId} className="rounded-xl border border-line bg-surface-2 px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 text-[13px] font-medium text-ink">{r.name} <span className="font-normal text-muted">· {ASSET_TYPE_LABELS[r.assetType]}</span></span>
-                  <button type="button" className="text-[12.5px] font-medium text-primary-ink hover:underline" onClick={() => { onClose(); open(r.section, r.assetId); }}>Open</button>
+                  <span className="min-w-0 text-[14px] font-medium text-ink">{r.name} <span className="font-normal text-muted">· {ASSET_TYPE_LABELS[r.assetType]}</span></span>
+                  <button type="button" className="text-[13px] font-medium text-primary-ink hover:underline" onClick={() => { onClose(); open(r.section, r.assetId); }}>Open</button>
                 </div>
                 <p className="mt-0.5 break-words text-[12px] text-muted">{r.places.slice(0, 4).map(placeLabel).join(" · ")}{r.places.length > 4 ? ` · ${r.places.length - 4} more` : ""}</p>
               </li>
             ))}
           </ul>
           {tokens.length > 0 && (
-            <p className="text-[12.5px] text-muted">Texts keep their {"{{custom_values…}}"} placeholders either way: a client applying this Blueprint then needs a configuration value with that key of its own.</p>
+            <p className="text-[13px] text-muted">Texts keep their {"{{custom_values…}}"} placeholders either way: a client applying this Blueprint then needs a configuration value with that key of its own.</p>
           )}
           {leftover.length > 0 && (
-            <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink">
+            <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">
               <p className="font-medium">Clearing them leaves {leftover.length === 1 ? "a setting" : `${leftover.length} settings`} with nothing chosen, and the draft can&apos;t be saved until {leftover.length === 1 ? "it gets" : "they get"} a new choice:</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
                 {leftover.slice(0, 4).map((i, n) => <li key={n}>{refs.find((r) => r.assetId === i.where.assetId)?.name ?? "An item"}: {i.message}</li>)}
               </ul>
             </div>
           )}
-          <p className="text-[12.5px] text-muted">“Remove only” leaves the references in place; they show as problems until they point at something again.</p>
+          <p className="text-[13px] text-muted">“Remove only” leaves the references in place; they show as problems until they point at something again.</p>
         </div>
       )}
     </Dialog>

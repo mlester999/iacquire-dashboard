@@ -26,6 +26,15 @@ describe("the type scale has a floor of 12px", () => {
     expect(found, "raise these to text-[12px] or larger").toEqual([]);
   });
 
+  it("has no relative (em) text size, whose result depends on the parent and can fall under 12px, and no rem size below 0.75rem", () => {
+    const found: string[] = [];
+    for (const f of files) {
+      const text = readFileSync(f, "utf8");
+      for (const m of text.matchAll(/text-\[(\d*\.?\d+)(em|rem)\]/g)) if (m[2] === "em" || Number(m[1]) < 0.75) found.push(`${f}: ${m[0]}`);
+    }
+    expect(found, "use an absolute size of 12px or more").toEqual([]);
+  });
+
   it("has no CSS font size below 12px (px) or 0.75rem", () => {
     const found: string[] = [];
     for (const f of files) {

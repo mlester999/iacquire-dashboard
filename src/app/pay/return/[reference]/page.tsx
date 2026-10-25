@@ -55,12 +55,12 @@ export default async function PaymentReturnPage({ params, searchParams }: { para
   return (
     <PublicShell business={v.business}>
       <ReturnStatus reference={v.reference} initial={{ state: v.description.state, headline: v.description.headline, detail: v.description.detail, polling: v.description.polling, tone: v.description.tone }} approvedCheckoutId={approved && /^[A-Za-z0-9_-]{4,120}$/.test(approved) && v.description.polling ? approved : null} />
-      <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-2xl border border-line bg-surface px-5 py-4 text-[13.5px]">
+      <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-2xl border border-line bg-surface px-5 py-4 text-[14px]">
         {v.invoiceNumber && <><dt className="text-muted">Invoice</dt><dd className="font-medium tabular-nums text-ink">{v.invoiceNumber}{v.isTest ? " (a test invoice: no money moves)" : ""}</dd></>}
         <dt className="text-muted">Amount of this payment</dt><dd className="font-medium tabular-nums text-ink">{money(v.amountMinor, v.currency)}</dd>
-        <dt className="text-muted">Reference</dt><dd className="break-all font-mono text-[12.5px] text-ink-2">{v.reference}</dd>
+        <dt className="text-muted">Reference</dt><dd className="break-all font-mono text-[13px] text-ink-2">{v.reference}</dd>
       </dl>
-      <p className="mt-3 text-[12.5px] text-muted">Keep the reference if you need to ask {v.business.name} about this payment.</p>
+      <p className="mt-3 text-[13px] text-muted">Keep the reference if you need to ask {v.business.name} about this payment.</p>
     </PublicShell>
   );
 }

@@ -92,7 +92,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
           <InfoChip icon={<Receipt />} className="tabular-nums">{formatMoney(s.monthlyPriceCents, s.currency)}/month</InfoChip>
           <InfoChip icon={<Gauge />} className="tabular-nums">{s.monthlyRequestAllowance} requests/month</InfoChip>
         </div>
-        {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">“{s.requestNote}”</p>}
+        {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[14px] text-ink-2">“{s.requestNote}”</p>}
         {s.status === "active" || s.status === "past_due" || s.status === "cancel_requested" ? (
           <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-3">
             {[
@@ -102,15 +102,15 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
             ].map((f) => (
               <div key={f.label} className="min-w-0 rounded-xl bg-surface-2/70 px-3 py-2 ring-1 ring-inset ring-line">
                 <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">{f.label}</p>
-                <p className="mt-0.5 truncate text-[12.5px] font-medium tabular-nums text-ink">{f.value}</p>
+                <p className="mt-0.5 truncate text-[13px] font-medium tabular-nums text-ink">{f.value}</p>
               </div>
             ))}
           </div>
         ) : null}
-        {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[13px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
+        {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[14px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
         {s.lifecycle && ["active", "past_due", "cancel_requested", "expired"].includes(s.status) && <PlanLifecycle subscriptionId={s.id} status={s.status} info={s.lifecycle} />}
         {!s.eligible && s.status === "requested" && (
-          <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink ring-1 ring-inset ring-warning/25">
+          <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink ring-1 ring-inset ring-warning/25">
             <CalendarClock className="size-4 shrink-0" />
             {s.blockedBy === "setup_payment"
               ? <span>The client&apos;s setup payment isn&apos;t confirmed yet, so this can&apos;t start. <Link href={`/admin/clients/${s.orgId}?tab=billing`} className="font-medium underline underline-offset-2">Open the client&apos;s billing</Link></span>
@@ -128,7 +128,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
                 Payment covers through
                 <Input type="date" value={through} onChange={(e) => setThrough(e.target.value)} className="mt-1 h-9 w-44" />
               </label>
-              <label className="flex basis-full items-start gap-2 text-[12.5px] text-ink-2">
+              <label className="flex basis-full items-start gap-2 text-[13px] text-ink-2">
                 <input type="checkbox" className="mt-0.5 size-4 rounded border-line-strong" checked={paymentConfirmed} onChange={(e) => setPaymentConfirmed(e.target.checked)} />
                 <span>I confirmed this client&apos;s payment in our billing records. iAcquire doesn&apos;t detect payments, so the plan starts only on this confirmation.</span>
               </label>
@@ -145,7 +145,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
               Confirm cancellation
             </Button>
           )}
-          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
+          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-primary-soft">
             Client <ExternalLink className="size-3" />
           </Link>
         </div>
@@ -170,7 +170,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
           <InfoChip><RelativeTime value={r.createdAt} /></InfoChip>
           <InfoChip>{r.kind === "core_defect" ? "No charge, not counted" : r.countsAgainstAllowance ? "Uses monthly allowance" : "Allowance waived"}</InfoChip>
         </div>
-        <p className="mt-2 line-clamp-2 text-[12.5px] text-ink-2" title={r.description}>{r.description}</p>
+        <p className="mt-2 line-clamp-2 text-[13px] text-ink-2" title={r.description}>{r.description}</p>
       </div>
       <Select
         aria-label={`Status of ${r.ref}`}
@@ -201,7 +201,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
           </Button>
         )}
         {r.ticketId && (
-          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-primary-soft">
+          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[14px] font-medium text-primary hover:bg-primary-soft">
             Open thread
           </Link>
         )}

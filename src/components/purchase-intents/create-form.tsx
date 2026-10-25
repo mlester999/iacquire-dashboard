@@ -45,7 +45,7 @@ export function CreatePurchaseIntentForm() {
         <p className="flex items-center gap-2 text-[14px] font-semibold text-success-ink">
           <Link2 className="size-4" aria-hidden /> Invitation {created.reference} is ready
         </p>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-success-ink">Send this link to {buyerEmail}. It expires on {new Date(created.expiresAt).toLocaleDateString()}. The link is shown only now; if it is lost, rotate it from the intent&apos;s page.</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-success-ink">Send this link to {buyerEmail}. It expires on {new Date(created.expiresAt).toLocaleDateString()}. The link is shown only now; if it is lost, rotate it from the intent&apos;s page.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-surface px-3 py-2">
           <code className="min-w-0 flex-1 break-all text-[12px] text-ink">{url}</code>
           <CopyTextButton text={url} label="Copy link" />
@@ -68,8 +68,8 @@ export function CreatePurchaseIntentForm() {
         <Send className="size-4 text-primary" aria-hidden />
         <h2 className="text-[15px] font-semibold text-ink">Invite a buyer</h2>
       </div>
-      <p className="text-[12.5px] leading-relaxed text-muted">The link freezes the approved price: US$1,499 setup, plus the optional US$299/month Managed Maintenance + Automation Studio plan. Nothing is sent to the buyer by iAcquire; copy the link into your own email until an email provider is approved.</p>
-      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{error}</p>}
+      <p className="text-[13px] leading-relaxed text-muted">The link freezes the approved price: US$1,499 setup, plus the optional US$299/month Managed Maintenance + Automation Studio plan. Nothing is sent to the buyer by iAcquire; copy the link into your own email until an email provider is approved.</p>
+      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="pi-name">Buyer name</Label>
@@ -104,13 +104,13 @@ export function CreatePurchaseIntentForm() {
           </Select>
         </div>
       </div>
-      <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2">
+      <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2">
         <input type="checkbox" checked={maintenanceSelected} onChange={(e) => setMaintenanceSelected(e.target.checked)} className="mt-0.5" />
         <span>
           Include the optional Managed Maintenance + Automation Studio plan at <strong>US$299/month</strong>. This records the buyer&apos;s choice in the price snapshot; it does not charge the plan on this page.
         </span>
       </label>
-      <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2">
+      <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2">
         <input type="checkbox" checked={autoProvision} onChange={(e) => setAutoProvision(e.target.checked)} className="mt-0.5" />
         <span>
           Create the workspace by itself once the payment provider confirms the payment online. <span className="text-muted">It runs with your permissions, checked again at that moment, and only after PayMongo&apos;s signed confirmation of the exact fee; a refund, dispute or mismatch always waits for a person. Leave this off to create the workspace yourself.</span>

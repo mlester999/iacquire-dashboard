@@ -17,7 +17,7 @@ function SurveyThanks() {
   return (
     <section aria-live="polite" className="rounded-2xl border border-success/25 bg-success-soft/60 p-5">
       <p className="flex items-center gap-2 text-[14px] font-semibold text-success-ink"><CheckCircle2 className="size-4" aria-hidden /> Thank you — your answer was recorded.</p>
-      <p className="mt-1 text-[13px] leading-relaxed text-ink-2">It stays with this request for the team to learn from. You can close this page.</p>
+      <p className="mt-1 text-[14px] leading-relaxed text-ink-2">It stays with this request for the team to learn from. You can close this page.</p>
     </section>
   );
 }
@@ -68,16 +68,16 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-soft" aria-hidden><HeartHandshake className="size-5" /></span>
         <div className="min-w-0">
           <h2 id={`survey-${survey.id}`} className="text-[17px] font-semibold tracking-tight text-ink">How did we do?</h2>
-          <p className="mt-1 max-w-xl text-[13.5px] leading-relaxed text-ink-2">This request is resolved. One quick answer helps the team know what worked and what to improve.</p>
+          <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-ink-2">This request is resolved. One quick answer helps the team know what worked and what to improve.</p>
         </div>
       </div>
 
       <fieldset className="relative mt-5">
-        <legend className="text-[13px] font-medium text-ink-2">How satisfied are you?</legend>
+        <legend className="text-[14px] font-medium text-ink-2">How satisfied are you?</legend>
         <div role="radiogroup" aria-label="How satisfied are you" className="mt-2 flex flex-wrap gap-1.5">
           {[1, 2, 3, 4, 5].map((n) => (
             <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={`${n} out of 5`} onClick={() => setRating(n)}
-              className={cn("grid size-11 place-items-center rounded-xl border text-[13px] font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              className={cn("grid size-11 place-items-center rounded-xl border text-[14px] font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 rating >= n ? "border-primary/40 bg-primary text-white shadow-soft" : "border-line-strong bg-surface text-muted hover:border-primary/40 hover:text-primary-ink")}>
               <Star className={cn("size-4", rating >= n ? "fill-current" : "")} aria-hidden />
               <span className="sr-only">{n} out of 5</span>
@@ -87,11 +87,11 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
       </fieldset>
 
       <fieldset className="relative mt-4">
-        <legend className="text-[13px] font-medium text-ink-2">Did the reply help?</legend>
+        <legend className="text-[14px] font-medium text-ink-2">Did the reply help?</legend>
         <div role="radiogroup" aria-label="Did the reply help" className="mt-2 flex gap-2">
           {([true, false] as const).map((v) => (
             <button key={String(v)} type="button" role="radio" aria-checked={helpful === v} onClick={() => setHelpful(v)}
-              className={cn("min-h-10 rounded-xl border px-4 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              className={cn("min-h-10 rounded-xl border px-4 text-[14px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 helpful === v ? "border-primary bg-primary text-white shadow-soft" : "border-line-strong bg-surface text-ink-2 hover:border-primary/40 hover:text-ink")}>
               {v ? "Yes, it helped" : "Not really"}
             </button>
@@ -100,7 +100,7 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
       </fieldset>
 
       <div className="relative mt-4">
-        <label htmlFor={`survey-comment-${survey.id}`} className="text-[13px] font-medium text-ink-2">Anything you&apos;d like to add? <span className="font-normal text-muted">Optional</span></label>
+        <label htmlFor={`survey-comment-${survey.id}`} className="text-[14px] font-medium text-ink-2">Anything you&apos;d like to add? <span className="font-normal text-muted">Optional</span></label>
         <Textarea id={`survey-comment-${survey.id}`} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={1000} rows={3} placeholder="A sentence for the team…" className="mt-1.5" />
       </div>
 

@@ -51,7 +51,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
         <div>
           <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
           <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Meet your AI team</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
         </div>
         <span className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink">{ready}/6 ready</span>
       </div>

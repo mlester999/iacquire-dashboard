@@ -50,7 +50,7 @@ export function FoldersDialog({ open, onOpenChange, folders, preview }: { open: 
           <Button type="submit" variant="secondary" loading={busy("folder-new")}><FolderPlus className="size-4" /> Add</Button>
         </form>
         {folders.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">No folders yet. Blueprints without a folder show as Unfiled.</p>
+          <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">No folders yet. Blueprints without a folder show as Unfiled.</p>
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Folders">
             {folders.map((f) => (
@@ -63,7 +63,7 @@ export function FoldersDialog({ open, onOpenChange, folders, preview }: { open: 
                   </form>
                 ) : confirming === f.id ? (
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[13px] text-ink">Delete “{f.name}”? {f.count ? `${f.count} ${f.count === 1 ? "Blueprint becomes" : "Blueprints become"} unfiled.` : "It is empty."}</p>
+                    <p className="text-[14px] text-ink">Delete “{f.name}”? {f.count ? `${f.count} ${f.count === 1 ? "Blueprint becomes" : "Blueprints become"} unfiled.` : "It is empty."}</p>
                     <div className="flex gap-2">
                       <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Keep</Button>
                       <Button size="sm" variant="danger" loading={busy(`folder-delete-${f.id}`)} onClick={() => void run(`folder-delete-${f.id}`, () => deleteLibraryFolderAction(f.id), "Folder deleted.").then((r) => r && setConfirming(null))}>Delete folder</Button>
@@ -71,7 +71,7 @@ export function FoldersDialog({ open, onOpenChange, folders, preview }: { open: 
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">{f.name}</p>
+                    <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{f.name}</p>
                     <span className="text-[12px] tabular-nums text-muted">{f.count} {f.count === 1 ? "Blueprint" : "Blueprints"}</span>
                     <Button size="icon-sm" variant="ghost" aria-label={`Rename ${f.name}`} onClick={() => { setEditing(f.id); setDraft(f.name); setConfirming(null); }}><Pencil className="size-3.5" /></Button>
                     <Button size="icon-sm" variant="ghost" aria-label={`Delete ${f.name}`} onClick={() => { setConfirming(f.id); setEditing(null); }}><Trash2 className="size-3.5" /></Button>

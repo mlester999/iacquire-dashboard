@@ -110,7 +110,7 @@ export function AgencyChannelSetup({ orgId, channels, webhooks, superAdmin, time
   return (
     <div className="space-y-5">
       {!superAdmin && (
-        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-muted">You can see each channel&apos;s setup. Only agency super admins enter credentials, run tests and switch channels.</p>
+        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-muted">You can see each channel&apos;s setup. Only agency super admins enter credentials, run tests and switch channels.</p>
       )}
       <ul className="grid gap-4 xl:grid-cols-3" aria-label="Channels">
         {ordered.map((c) => (
@@ -139,19 +139,19 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><Icon className="size-5" aria-hidden /></span>
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold text-ink">{c.channelLabel}</h2>
-            <p className="text-[12.5px] text-muted">Through {c.providerLabel}</p>
+            <p className="text-[13px] text-muted">Through {c.providerLabel}</p>
           </div>
         </div>
         {c.enabled ? <Badge tone="success"><Power className="size-3" aria-hidden />On</Badge> : <Badge tone={c.native ? "warning" : "neutral"}>Off</Badge>}
       </div>
 
       {c.enabled && !c.sendingAllowedHere && (
-        <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] leading-relaxed text-warning-ink">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />This deployment&apos;s kill switch for {c.providerLabel} is off, so messages are held instead of sent.
         </p>
       )}
 
-      <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+      <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
         <dt className="text-muted">Sender</dt>
         <dd className="min-w-0 truncate">{c.senderIdentity ?? <span className="text-muted">Not set</span>}</dd>
         {c.native && (
@@ -196,7 +196,7 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
           </p>
           <ul className="mt-2 space-y-1.5" aria-live="polite">
             {checks.map((k, i) => (
-              <li key={i} className="flex items-start gap-2 text-[12.5px] leading-relaxed">
+              <li key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
                 {k.ok ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-label="Passed" /> : <XCircle className="mt-0.5 size-3.5 shrink-0 text-danger-ink" aria-label="Failed" />}
                 <span><span className="font-medium text-ink">{k.label}</span>{k.detail ? <span className="text-muted"> · {k.detail}</span> : null}</span>
               </li>
@@ -206,7 +206,7 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
       )}
 
       {c.readinessIssues.length > 0 && (
-        <ul className="space-y-1 text-[12.5px] text-muted" aria-label={c.enabled ? "Why sending is paused" : "Before it can be switched on"}>
+        <ul className="space-y-1 text-[13px] text-muted" aria-label={c.enabled ? "Why sending is paused" : "Before it can be switched on"}>
           {c.readinessIssues.map((r) => <li key={r} className="flex items-start gap-1.5"><CircleDashed className="mt-0.5 size-3.5 shrink-0" aria-hidden />{r}</li>)}
         </ul>
       )}
@@ -386,12 +386,12 @@ function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; o
           </>
         )}
         {liveWarning && (
-          <label className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-soft/50 p-3 text-[13px] leading-relaxed text-warning-ink">
+          <label className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-soft/50 p-3 text-[14px] leading-relaxed text-warning-ink">
             <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={replaceLive} onChange={(e) => setReplaceLive(e.target.checked)} />
             <span>{liveWarning}</span>
           </label>
         )}
-        {error && <p role="alert" className="text-[12.5px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="text-[13px] text-danger-ink">{error}</p>}
         <button type="submit" className="sr-only">Save setup</button>
       </form>
     </Dialog>

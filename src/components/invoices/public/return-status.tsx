@@ -102,17 +102,17 @@ export function ReturnStatus({ reference, initial, approvedCheckoutId }: { refer
         <div>
           <h1 className="text-[18px] font-semibold tracking-[-0.02em]">{view.headline}</h1>
           <p className="mt-1 text-[14px] leading-relaxed">{view.detail}</p>
-          {view.polling && !exhausted && <p className="mt-2 flex items-center gap-1.5 text-[12.5px]"><Loader2 className="size-3.5 animate-spin" aria-hidden />Checking again in a moment. You can leave this page open.</p>}
+          {view.polling && !exhausted && <p className="mt-2 flex items-center gap-1.5 text-[13px]"><Loader2 className="size-3.5 animate-spin" aria-hidden />Checking again in a moment. You can leave this page open.</p>}
         </div>
       </div>
       {view.polling && exhausted && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <p className="text-[13.5px] text-ink-2">Still waiting for your payment provider to confirm it.</p>
+          <p className="text-[14px] text-ink-2">Still waiting for your payment provider to confirm it.</p>
           <Button variant="secondary" onClick={() => { setExhausted(false); setRound((r) => r + 1); }}>Check again</Button>
         </div>
       )}
       {back && (
-        <p className="text-[13.5px]"><a href={back} className="inline-flex min-h-11 items-center font-medium text-primary-ink underline">Back to your invoice</a></p>
+        <p className="text-[14px]"><a href={back} className="inline-flex min-h-11 items-center font-medium text-primary-ink underline">Back to your invoice</a></p>
       )}
     </div>
   );

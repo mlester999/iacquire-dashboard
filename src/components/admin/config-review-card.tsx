@@ -65,14 +65,14 @@ export function ConfigReviewCard({
               <Badge tone={blocked ? "danger" : "warning"}>{blocked ? "Blocked" : "Review required"}</Badge>
               <Badge tone="neutral">{configSourceLabel(item.source, item.orgKind)}</Badge>
             </div>
-            <p className="mt-1 text-[12.5px] text-muted">
+            <p className="mt-1 text-[13px] text-muted">
               {item.orgName} · submitted by {item.submittedBy}
               {item.submittedByRole ? ` (${item.submittedByRole})` : ""} · {formatDateTime(item.submittedAt, timeZone)}
             </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <dl className="grid gap-x-5 gap-y-3 rounded-xl border border-line bg-surface p-3.5 text-[12.5px] sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="grid gap-x-5 gap-y-3 rounded-xl border border-line bg-surface p-3.5 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Client organization</dt>
               <dd className="mt-0.5 font-medium text-ink">{item.orgName}</dd>
@@ -102,7 +102,7 @@ export function ConfigReviewCard({
             </div>
           </dl>
 
-          <div className="rounded-xl border border-line bg-surface-2/60 p-3 text-[12.5px] text-ink-2">
+          <div className="rounded-xl border border-line bg-surface-2/60 p-3 text-[13px] text-ink-2">
             <p className="font-medium text-ink">{item.summary}</p>
             {item.changeRequest && <p className="mt-1 italic">Request: “{item.changeRequest}”</p>}
           </div>
@@ -114,11 +114,11 @@ export function ConfigReviewCard({
                 <div key={`${reason.code}-${reason.field}`} className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/30 p-3">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-ink">
+                    <p className="text-[14px] font-medium text-ink">
                       {reason.label}
                       <span className="ml-2 text-[12px] font-normal uppercase tracking-wide text-warning-ink">{reason.severity === "block" ? "Blocked" : "Review required"}</span>
                     </p>
-                    <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{reason.detail}</p>
+                    <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{reason.detail}</p>
                     {reason.field && <p className="mt-1 font-mono text-[12px] text-faint">{reason.field}</p>}
                     {reason.match && <p className="mt-1 break-words rounded-lg bg-surface px-2 py-1 text-[12px] text-ink-2">“{reason.match}”</p>}
                   </div>
@@ -128,7 +128,7 @@ export function ConfigReviewCard({
           )}
 
           {item.review.legacyNote && (
-            <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-[12.5px] text-muted">
+            <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-[13px] text-muted">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden /> {item.review.legacyNote}
             </p>
           )}
@@ -139,7 +139,7 @@ export function ConfigReviewCard({
               <div className="scrollbar-thin max-h-80 overflow-auto rounded-xl border border-line" tabIndex={0} role="region" aria-label="Proposed configuration changes">
                 {item.review.diff.map((change) => (
                   <div key={change.key} className="border-b border-line px-3 py-2.5 last:border-b-0">
-                    <p className="text-[12.5px] font-medium text-ink">{change.label}</p>
+                    <p className="text-[13px] font-medium text-ink">{change.label}</p>
                     <div className="mt-1 grid gap-1 text-[12px] sm:grid-cols-2">
                       <p className="whitespace-pre-wrap rounded-lg bg-surface-2 px-2 py-1 text-muted">
                         <span className="font-medium text-faint">Before: </span>{change.before}
@@ -156,7 +156,7 @@ export function ConfigReviewCard({
 
           {canDecide && item.compiledInstructions && (
             <details className="group rounded-xl border border-line bg-surface">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[12.5px] font-medium text-ink-2">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[13px] font-medium text-ink-2">
                 <span className="flex items-center gap-2"><FileText className="size-4 text-faint" aria-hidden /> Compiled instruction evidence</span>
                 <span className="text-[12px] text-faint">Authorized reviewers only</span>
               </summary>
@@ -171,7 +171,7 @@ export function ConfigReviewCard({
           )}
 
           {!canDecide && (
-            <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-[12.5px] text-muted">
+            <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-[13px] text-muted">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden /> You can view this review, but your agency role can&apos;t decide it.
             </p>
           )}
@@ -219,9 +219,9 @@ export function ConfigReviewCard({
       >
         <div className="space-y-2">
           {actionError && (
-            <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft/40 p-2.5 text-[12.5px] text-danger-ink">{actionError}</p>
+            <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft/40 p-2.5 text-[13px] text-danger-ink">{actionError}</p>
           )}
-          <label htmlFor={`review-note-${item.id}`} className="flex flex-wrap items-baseline justify-between gap-2 text-[13px] font-medium text-ink-2">
+          <label htmlFor={`review-note-${item.id}`} className="flex flex-wrap items-baseline justify-between gap-2 text-[14px] font-medium text-ink-2">
             <span>Reason for the decision <span className="text-danger-ink">(required)</span></span>
             <span className="text-[12px] font-normal text-faint">{note.length}/300</span>
           </label>
@@ -242,7 +242,7 @@ export function ConfigReviewCard({
             placeholder={decision === "approve" ? "e.g. Reviewed the diff; the change is safe and keeps the approval guardrail." : "e.g. This removes an approval guardrail; please revise and resubmit."}
           />
           {noteError && (
-            <p id={`review-note-error-${item.id}`} role="alert" className="text-[12.5px] text-danger-ink">{noteError}</p>
+            <p id={`review-note-error-${item.id}`} role="alert" className="text-[13px] text-danger-ink">{noteError}</p>
           )}
         </div>
       </Dialog>

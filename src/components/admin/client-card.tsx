@@ -172,12 +172,12 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
 
           <div className="min-w-0">
             <h2 className="truncate text-[18px] font-semibold leading-snug tracking-[-0.025em] text-ink">{r.name}</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Onboarding not submitted"}</p>
+            <p className="mt-0.5 text-[13px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Onboarding not submitted"}</p>
             <div className="mt-3 min-h-6">
               {r.contact ? (
                 <div className="flex min-w-0 items-center gap-2">
                   <AvatarTile name={r.contact.name} size="sm" className="!shadow-none" />
-                  <span className="min-w-0 truncate text-[13px] text-ink-2">
+                  <span className="min-w-0 truncate text-[14px] text-ink-2">
                     <span className="font-medium">{r.contact.name}</span>
                     {r.contact.name !== r.contact.email && <span className="text-muted"> · {r.contact.email}</span>}
                   </span>
@@ -254,7 +254,7 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
           <div className="mt-auto flex items-center gap-3 border-t border-line pt-4">
             {r.responsible ? <AvatarTile name={r.responsible.name} size="sm" /> : <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-lg border border-dashed border-line-strong text-faint"><UserRound className="size-3.5" /></span>}
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-[13px] font-medium text-ink-2">{r.responsible ? r.responsible.name : "Unassigned"}</p>
+              <p className="truncate text-[14px] font-medium text-ink-2">{r.responsible ? r.responsible.name : "Unassigned"}</p>
               <p className="truncate text-[12px] text-muted">{r.lastActivityAt ? <RelativeTime value={r.lastActivityAt} prefix="Active " /> : "No activity yet"}</p>
             </div>
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 ring-1 ring-inset ring-line transition duration-300 group-hover:bg-primary group-hover:text-white group-hover:ring-primary" aria-hidden>

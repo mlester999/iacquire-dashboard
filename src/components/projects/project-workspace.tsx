@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronDown, CircleDashed, Flag, Info, History, Milestone, CircleDot, Download, FileText, Hourglass, LifeBuoy, MessageSquare, Paperclip, PartyPopper, Send, ShieldCheck,
@@ -91,7 +91,7 @@ export function ProjectWorkspace({
           <PartyPopper className="mt-0.5 size-5 shrink-0 text-success" />
           <div>
             <p className="text-[14px] font-semibold text-success-ink">Request received. Thank you!</p>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-success-ink/90">The iAcquire team has been notified and will review it. We&apos;ll ask anything we need to know here, then send a written quote. You haven&apos;t been charged.</p>
+            <p className="mt-0.5 text-[14px] leading-relaxed text-success-ink/90">The iAcquire team has been notified and will review it. We&apos;ll ask anything we need to know here, then send a written quote. You haven&apos;t been charged.</p>
           </div>
         </motion.div>
       )}
@@ -107,11 +107,11 @@ export function ProjectWorkspace({
 
       <Card className="border-primary/15 bg-primary-soft/15 px-4 py-5 sm:px-6">
         <ProgressStepper status={r.status} before={r.statusBeforeHold} />
-        <p className="mt-4 flex items-center justify-center gap-2 text-[12.5px] text-muted">
+        <p className="mt-4 flex items-center justify-center gap-2 text-[13px] text-muted">
           Current stage <ProjectStatusBadge status={r.status} />
         </p>
       </Card>
-      <nav aria-label="Project workspace sections" className="relative flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}{project.delivery&&<a href="#project-changes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Changes{project.changes.length>0&&<span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.changes.length}</span>}</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
+      <nav aria-label="Project workspace sections" className="relative flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}{project.delivery&&<a href="#project-changes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Changes{project.changes.length>0&&<span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.changes.length}</span>}</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-5">
@@ -142,7 +142,7 @@ function Notice({ tone, title, body, action }: { tone: "warning" | "danger" | "n
       <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface/70 ring-1 ring-inset ring-current/15">{tone === "neutral" ? <Info className="size-[18px]" /> : <AlertTriangle className="size-[18px]" />}</span>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold">{title}</p>
-        <p className="mt-0.5 text-[13px] leading-relaxed opacity-90">{body}</p>
+        <p className="mt-0.5 text-[14px] leading-relaxed opacity-90">{body}</p>
       </div>
       {action}
     </div>
@@ -170,13 +170,13 @@ function QuoteSection({ requestId, quotes, timeZone, canAct, canApprove }: { req
       <QuoteCard requestId={requestId} quote={shown} timeZone={timeZone} canAct={canAct && shown.status === "sent"} canApprove={canApprove} />
       {history.length > 0 && (
         <div>
-          <button type="button" onClick={() => setShowHistory((v) => !v)} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] font-medium text-ink-2 hover:text-ink" aria-expanded={showHistory}>
+          <button type="button" onClick={() => setShowHistory((v) => !v)} className="inline-flex min-h-10 items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink" aria-expanded={showHistory}>
             <ChevronDown className={cn("size-4 transition-transform", showHistory && "rotate-180")} /> Earlier quote versions ({history.length})
           </button>
           {showHistory && (
             <ul className="mt-2 space-y-2">
               {history.map((q) => (
-                <li key={q.id} className="rounded-xl border border-line bg-surface-2/50 p-3 text-[13px]">
+                <li key={q.id} className="rounded-xl border border-line bg-surface-2/50 p-3 text-[14px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">Version {q.version}</span>
                     <span className="tabular-nums text-ink-2">{formatMoney(q.oneTimeCents, q.currency)}</span>
@@ -244,29 +244,29 @@ function QuoteCard({ requestId, quote: q, timeZone, canAct, canApprove }: { requ
           </div>
         </div>
         <Block title="Scope of work">
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-2">{q.scope}</p>
+          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{q.scope}</p>
         </Block>
         <div className="grid gap-5 sm:grid-cols-2">
           <ListBlock title="Deliverables" items={q.deliverables} />
           <ListBlock title="Included integrations" items={q.includedIntegrations} />
           <ListBlock title="Exclusions" items={q.exclusions} muted />
           <Block title="Estimated timeline">
-            <p className="text-[13.5px] text-ink-2">{q.timelineText}</p>
+            <p className="text-[14px] text-ink-2">{q.timelineText}</p>
           </Block>
         </div>
         <div className="grid gap-5 sm:grid-cols-3">
           <Block title="Revision terms">
-            <p className="text-[13px] leading-relaxed text-ink-2">{q.revisionTerms}</p>
+            <p className="text-[14px] leading-relaxed text-ink-2">{q.revisionTerms}</p>
           </Block>
           <Block title="Payment terms">
-            <p className="text-[13px] leading-relaxed text-ink-2">{q.paymentTerms}</p>
+            <p className="text-[14px] leading-relaxed text-ink-2">{q.paymentTerms}</p>
           </Block>
           <Block title="Support / warranty">
-            <p className="text-[13px] leading-relaxed text-ink-2">{q.warrantyTerms}</p>
+            <p className="text-[14px] leading-relaxed text-ink-2">{q.warrantyTerms}</p>
           </Block>
         </div>
         {q.decision && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-surface-2 p-3 text-[14px] text-ink-2 ring-1 ring-inset ring-line">
             <StatusPill tone={q.decision.decision === "accepted" ? "success" : q.decision.decision === "declined" ? "danger" : "warning"}>{q.decision.decision === "accepted" ? "Accepted" : q.decision.decision === "declined" ? "Declined" : "Changes requested"}</StatusPill>
             <span>by {q.decision.decidedByName ?? "your team"} on {formatDateTime(q.decision.decidedAt, timeZone)}</span>
             {q.decision.note && <p className="w-full text-muted">“{q.decision.note}”</p>}
@@ -286,7 +286,7 @@ function QuoteCard({ requestId, quote: q, timeZone, canAct, canApprove }: { requ
                 Decline Quote
               </Button>
             </div>
-            {!canApprove && <p className="text-[12.5px] text-muted">A workspace owner accepts or declines quotes. You can still request changes.</p>}
+            {!canApprove && <p className="text-[13px] text-muted">A workspace owner accepts or declines quotes. You can still request changes.</p>}
           </div>
         )}
       </CardContent>
@@ -321,11 +321,11 @@ function QuoteCard({ requestId, quote: q, timeZone, canAct, canApprove }: { requ
       >
         {mode === "accept" ? (
           <div className="space-y-4">
-            <label className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[13px] leading-relaxed text-ink-2">
+            <label className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[14px] leading-relaxed text-ink-2">
               <input type="checkbox" className="mt-1" checked={ack} onChange={(e) => setAck(e.target.checked)} />
               <span>{QUOTE_ACKNOWLEDGEMENT}</span>
             </label>
-            <p className="flex items-start gap-2 text-[12.5px] text-muted">
+            <p className="flex items-start gap-2 text-[13px] text-muted">
               <ShieldCheck className="mt-0.5 size-4 shrink-0" /> No payment is taken here. We&apos;ll confirm the agreement and payment terms with you directly.
             </p>
           </div>
@@ -362,7 +362,7 @@ function ListBlock({ title, items, muted }: { title: string; items: string[]; mu
     <Block title={title}>
       <ul className="space-y-1">
         {items.map((i) => (
-          <li key={i} className="flex items-start gap-2 text-[13.5px] leading-snug text-ink-2">
+          <li key={i} className="flex items-start gap-2 text-[14px] leading-snug text-ink-2">
             {muted ? <span className="mt-2 size-1 shrink-0 rounded-full bg-faint" /> : <Check className="mt-0.5 size-4 shrink-0 text-success" />} {i}
           </li>
         ))}
@@ -394,22 +394,22 @@ function DeliveryCard({ project, timeZone }: { project: ProjectDetail; timeZone:
           {d.warrantyEndsOn && <InfoChip icon={<ShieldCheck />}>Support until {formatDay(d.warrantyEndsOn)}</InfoChip>}
         </div>
         <Block title="Scope">
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-2">{d.scope}</p>
+          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{d.scope}</p>
         </Block>
         {project.amendments.map((a) => (
           <Block key={a.id} title={`Added: ${a.changeRef}`}>
-            <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-2">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
+            <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
           </Block>
         ))}
         <ListBlock title="Deliverables" items={d.deliverables} />
         {d.handoverNotes && (
           <div className="rounded-xl border border-success/25 bg-success-soft/60 p-4">
-            <p className="text-[13px] font-semibold text-success-ink">Handover{d.completedAt ? ` · ${formatDate(d.completedAt, timeZone)}` : ""}</p>
-            <p className="mt-1 whitespace-pre-wrap text-[13.5px] leading-relaxed text-success-ink/90">{d.handoverNotes}</p>
+            <p className="text-[14px] font-semibold text-success-ink">Handover{d.completedAt ? ` · ${formatDate(d.completedAt, timeZone)}` : ""}</p>
+            <p className="mt-1 whitespace-pre-wrap text-[14px] leading-relaxed text-success-ink/90">{d.handoverNotes}</p>
           </div>
         )}
         {d.completedAt && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px]">
             <Link href={`/support/report-issue?project=${project.request.id}`} className="inline-flex min-h-11 items-center gap-1.5 font-medium text-primary-ink hover:underline"><LifeBuoy className="size-4" aria-hidden /> Report an issue with this project</Link>
             <Link href={`/support/feedback?project=${project.request.id}`} className="inline-flex min-h-11 items-center gap-1.5 font-medium text-primary-ink hover:underline"><MessageSquare className="size-4" aria-hidden /> Share feedback about it</Link>
           </div>
@@ -461,9 +461,9 @@ function MilestonesCard({ requestId, milestones, canAct, timeZone }: { requestId
                     <StatusPill size="sm" tone={m.status === "completed" ? "success" : m.status === "awaiting_approval" ? "warning" : m.status === "blocked" ? "danger" : m.status === "in_progress" ? "primary" : "neutral"}>{MILESTONE_LABEL[m.status]}</StatusPill>
                     {m.requiresClientApproval && m.status !== "completed" && <InfoChip>Needs your approval</InfoChip>}
                   </div>
-                  {m.description && <p className="mt-0.5 text-[13px] text-muted">{m.description}</p>}
+                  {m.description && <p className="mt-0.5 text-[14px] text-muted">{m.description}</p>}
                   {(m.completedAt || m.dueOn) && <p className="mt-1 inline-flex items-center gap-1.5 text-[12px] text-muted"><CalendarClock aria-hidden className="size-3.5" />{m.completedAt ? `Completed ${formatDate(m.completedAt, timeZone)}` : `Target ${formatDate(m.dueOn!, timeZone)}`}</p>}
-                  {m.clientNote && m.status !== "completed" && <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2 ring-1 ring-inset ring-line">Your note: “{m.clientNote}”</p>}
+                  {m.clientNote && m.status !== "completed" && <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2 ring-1 ring-inset ring-line">Your note: “{m.clientNote}”</p>}
                   {m.status === "awaiting_approval" && canAct && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Button size="sm" variant="brand" loading={isPending(`${m.id}:approve`)} onClick={() => void respond(m, "approve")}>
@@ -521,7 +521,7 @@ function UpdatesCard({ updates, timeZone }: { updates: ProjectDetail["updates"];
               <li key={u.id} className="flex gap-3">
                 <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-primary/60" />
                 <div className="min-w-0">
-                  <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{u.body}</p>
+                  <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{u.body}</p>
                   <p className="mt-0.5 text-[12px] text-faint">
                     {u.authorName ? `${u.authorName} · ` : ""}
                     {formatDateTime(u.createdAt, timeZone)}
@@ -547,7 +547,6 @@ function UpdatesCard({ updates, timeZone }: { updates: ProjectDetail["updates"];
 
 function ThreadCard({ requestId, messages, canPost, timeZone }: { requestId: string; messages: ProjectDetail["messages"]; canPost: boolean; timeZone: string }) {
   const router = useRouter();
-  const reduce = useReducedMotion();
   const { run, isPending } = useRunner();
   const [body, setBody] = React.useState("");
   // The same message sent twice (a double click, a retry after a dropped connection) is saved once; the id changes after each message that went through.
@@ -571,7 +570,7 @@ function ThreadCard({ requestId, messages, canPost, timeZone }: { requestId: str
         ) : (
           <ul className="space-y-3">
             {messages.map((m) => (
-              <motion.li key={m.id} initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
+              <motion.li key={m.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
                 {m.kind === "info_request" && <StatusPill size="sm" tone="warning" className="mb-2">Question from iAcquire</StatusPill>}
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
                 <p className="mt-1.5 text-[12px]">
@@ -594,7 +593,7 @@ function ThreadCard({ requestId, messages, canPost, timeZone }: { requestId: str
             </div>
           </div>
         ) : (
-          <p className="flex items-start gap-2 border-t border-line pt-3 text-[12.5px] text-muted"><Info aria-hidden className="mt-0.5 size-4 shrink-0" />Messaging is available to workspace owners and admins while a project is open.</p>
+          <p className="flex items-start gap-2 border-t border-line pt-3 text-[13px] text-muted"><Info aria-hidden className="mt-0.5 size-4 shrink-0" />Messaging is available to workspace owners and admins while a project is open.</p>
         )}
       </CardContent>
     </Card>
@@ -617,7 +616,7 @@ function RequestCard({ project }: { project: ProjectDetail }) {
           {rows.slice(0, open ? rows.length : 2).map((x) => (
             <div key={x.key}>
               <dt className="text-[12px] font-medium text-muted">{x.label}</dt>
-              <dd className={cn("mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2", !open && "line-clamp-3")}>{x.answer}</dd>
+              <dd className={cn("mt-0.5 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2", !open && "line-clamp-3")}>{x.answer}</dd>
             </div>
           ))}
         </dl>
@@ -660,7 +659,7 @@ function FilesCard({ project, canUpload }: { project: ProjectDetail; canUpload: 
           <ul className="space-y-2">
             {project.files.map((f) => (
               <li key={f.id}>
-                <a href={`/api/projects/files/${f.id}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] transition hover:bg-surface-3">
+                <a href={`/api/projects/files/${f.id}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px] transition hover:bg-surface-3">
                   <FileText className="size-4 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{f.filename}</span>
@@ -709,7 +708,7 @@ function SupportCard({ project, canOpen }: { project: ProjectDetail; canOpen: bo
           <ul className="space-y-1.5">
             {project.tickets.map((t) => (
               <li key={t.id}>
-                <Link href={`/support/${t.id}`} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] hover:bg-surface-3">
+                <Link href={`/support/${t.id}`} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px] hover:bg-surface-3">
                   <span className="min-w-0 truncate">
                     <span className="font-mono text-[12px] text-muted">{t.ref}</span> {t.subject.replace(`${project.request.ref}: `, "")}
                   </span>
@@ -724,7 +723,7 @@ function SupportCard({ project, canOpen }: { project: ProjectDetail; canOpen: bo
             Open a support request
           </Button>
         ) : (
-          <p className="text-[12.5px] text-muted">Support requests are opened by your workspace team.</p>
+          <p className="text-[13px] text-muted">Support requests are opened by your workspace team.</p>
         )}
       </CardContent>
       <Dialog

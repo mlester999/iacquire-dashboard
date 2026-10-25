@@ -56,14 +56,14 @@ export function AvailabilityManager({ scope, hosts, people, overrides, orgTimezo
         <CardContent>
           {host ? (
             <>
-              {all.length === 1 && <p className="mb-3 flex items-center gap-2 text-[13px] font-medium text-ink">{host.name}{isMe && <Badge tone="neutral">You</Badge>}</p>}
-              {!editable && !scope.readOnly && <p className="mb-3 text-[12.5px] text-muted">{permissionNeeded(`Changing ${host.name}'s hours`, "calendars.manage")}</p>}
+              {all.length === 1 && <p className="mb-3 flex items-center gap-2 text-[14px] font-medium text-ink">{host.name}{isMe && <Badge tone="neutral">You</Badge>}</p>}
+              {!editable && !scope.readOnly && <p className="mb-3 text-[13px] text-muted">{permissionNeeded(`Changing ${host.name}'s hours`, "calendars.manage")}</p>}
               {/* Keyed by what was saved, so a save or a switch to another person starts from the stored hours. */}
               <HoursEditor key={`${host.userId}:${host.timezone}:${host.accepting}:${host.rules.map((r) => `${r.weekday}.${r.startMinute}.${r.endMinute}`).join(",")}`}
                 scope={scope} host={host} editable={editable} timeZones={timeZones} isMe={isMe} />
             </>
           ) : (
-            <p className="text-[13px] text-muted">Nobody hosts appointments yet. Add hosts to a calendar first.</p>
+            <p className="text-[14px] text-muted">Nobody hosts appointments yet. Add hosts to a calendar first.</p>
           )}
         </CardContent>
       </Card>

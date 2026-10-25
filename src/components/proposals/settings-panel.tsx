@@ -17,7 +17,7 @@ function Check({ id, checked, onChange, disabled, label, hint }: { id: string; c
       <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-5 shrink-0 rounded border-line-strong accent-[var(--color-primary,#2563eb)]" />
       <div className="min-w-0">
         <label htmlFor={id} className="text-[14px] font-medium text-ink after:absolute after:inset-0 after:content-['']">{label}</label>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{hint}</p>
       </div>
     </div>
   );
@@ -59,7 +59,7 @@ export function ProposalSettingsPanel({ settings, currency, canEdit, tags, stage
   return (
     <form className="space-y-8" aria-label="Proposal settings" onSubmit={(e) => { e.preventDefault(); if (sync !== "conflict") void save(); }}>
       {sync === "conflict" && (
-        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
           <p className="font-medium">Someone else changed these settings while you were editing them.</p>
           <p className="mt-0.5">Your changes are kept below, but they cannot be saved over the newer settings. Load the latest settings, then make your changes again.</p>
           <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(settings)}>Load the latest settings</Button>
@@ -68,7 +68,7 @@ export function ProposalSettingsPanel({ settings, currency, canEdit, tags, stage
 
       <fieldset className="space-y-3 rounded-2xl border border-line bg-surface p-4" disabled={!canEdit}>
         <legend className="px-1 text-[15px] font-semibold text-ink">Approval</legend>
-        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">A proposal written by AI always needs a person&apos;s approval before it can be sent, and so does one written by someone who cannot send proposals. Only the owner or a manager approves. There is no setting that changes this.</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">A proposal written by AI always needs a person&apos;s approval before it can be sent, and so does one written by someone who cannot send proposals. Only the owner or a manager approves. There is no setting that changes this.</p>
         <Field label="Which proposals get a second look" htmlFor="ps-mode">
           <Select id="ps-mode" value={f.approvalMode} onChange={(e) => set({ approvalMode: e.target.value as SettingsForm["approvalMode"] })}>
             <option value="ai_and_discounts">Only the ones that need it (AI drafts, discounts, large totals)</option>
@@ -96,7 +96,7 @@ export function ProposalSettingsPanel({ settings, currency, canEdit, tags, stage
 
       <fieldset className="space-y-3 rounded-2xl border border-line bg-surface p-4" disabled={!canEdit}>
         <legend className="px-1 text-[15px] font-semibold text-ink">Deals and tags</legend>
-        <p className="text-[13px] text-muted">All of this is off by default. When a step fails, the proposal itself is not affected and the history says what failed.</p>
+        <p className="text-[14px] text-muted">All of this is off by default. When a step fails, the proposal itself is not affected and the history says what failed.</p>
         <Field label="When a proposal is sent, add this tag to the customer" htmlFor="ps-tag" optional hint="A Blueprint can start a follow-up from the tag.">
           <Select id="ps-tag" value={f.tagOnSendId} onChange={(e) => set({ tagOnSendId: e.target.value })}>
             <option value="">Do nothing</option>
@@ -121,7 +121,7 @@ export function ProposalSettingsPanel({ settings, currency, canEdit, tags, stage
 
       {canEdit ? (
         <Button type="submit" variant="brand" loading={busy("save")} disabled={!dirty || invalid || sync === "conflict"}>Save settings</Button>
-      ) : <p className="text-[12.5px] text-muted">Only the business owner can change these.</p>}
+      ) : <p className="text-[13px] text-muted">Only the business owner can change these.</p>}
     </form>
   );
 }

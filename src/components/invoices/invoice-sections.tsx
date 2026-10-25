@@ -22,8 +22,8 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
         {i.writtenOffAt && <Badge tone="outline" title={i.writeOffReason ?? undefined}>Written off</Badge>}
         {madeByText(i.createdVia) && <Badge tone="violet">{madeByText(i.createdVia)}</Badge>}
       </div>
-      {i.isTest && <p role="note" className="rounded-xl border border-violet-ink/20 bg-violet-soft px-3 py-2 text-[13px] text-violet-ink">This is a test invoice: nothing is owed on it and no money moves. It has its own numbers, is never reminded about, is left out of what is owed, overdue, your revenue and your deals, and can be voided or deleted even after a test payment.</p>}
-      <dl className="grid gap-x-8 gap-y-3 text-[13.5px] sm:grid-cols-2 lg:grid-cols-3">
+      {i.isTest && <p role="note" className="rounded-xl border border-violet-ink/20 bg-violet-soft px-3 py-2 text-[14px] text-violet-ink">This is a test invoice: nothing is owed on it and no money moves. It has its own numbers, is never reminded about, is left out of what is owed, overdue, your revenue and your deals, and can be voided or deleted even after a test payment.</p>}
+      <dl className="grid gap-x-8 gap-y-3 text-[14px] sm:grid-cols-2 lg:grid-cols-3">
         <div><dt className="text-muted">Customer</dt><dd className="font-medium text-ink">{i.contactId ? <Link href={`/crm/contacts/${i.contactId}`} className="inline-flex min-h-11 items-center underline-offset-2 hover:underline sm:min-h-0">{i.contactName ?? "Customer"}</Link> : <span className="text-warning-ink">Not chosen yet</span>}{i.companyName ? <span className="font-normal text-ink-2"> · {i.companyName}</span> : null}</dd></div>
         {dealHref && <div><dt className="text-muted">Deal</dt><dd className="font-medium text-ink"><Link href={dealHref} className="inline-flex min-h-11 items-center underline-offset-2 hover:underline sm:min-h-0">{i.opportunityName ?? "Deal"}</Link></dd></div>}
         <div><dt className="text-muted">Issued</dt><dd className="text-ink">{i.issueOn ? formatDay(i.issueOn) : "Not issued yet"}</dd></div>
@@ -39,7 +39,7 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
           <div key={label as string} className="rounded-xl bg-surface-2/60 px-3 py-2"><dt className="text-[12px] text-muted">{label as string}</dt><dd className="text-[17px] font-semibold tabular-nums text-ink">{money(minor as number, i.currency)}</dd></div>
         ))}
       </dl>
-      {i.overpaidMinor > 0 && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">More than the total was received ({money(i.overpaidMinor, i.currency)} extra). Nothing was refunded; decide what to do with the difference.</p>}
+      {i.overpaidMinor > 0 && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">More than the total was received ({money(i.overpaidMinor, i.currency)} extra). Nothing was refunded; decide what to do with the difference.</p>}
     </section>
   );
 }
@@ -55,14 +55,14 @@ export function SourceNote({ detail }: { detail: InvoiceFullDetail }) {
   return (
     <section aria-labelledby="inv-source" className="space-y-2 rounded-2xl border border-line bg-surface p-4">
       <h2 id="inv-source" className="text-[15px] font-semibold text-ink">Made from a proposal</h2>
-      <p className="text-[13.5px] text-ink-2">
+      <p className="text-[14px] text-ink-2">
         The lines the customer pays once were copied from{" "}
         {s.proposalNumber ? <Link href={`/proposals/${s.proposalId}`} className="inline-flex min-h-11 items-center font-medium text-ink underline-offset-2 hover:underline sm:min-h-0">proposal {s.proposalNumber}</Link> : "an accepted proposal"}
         , version {s.proposalVersion}, as that version was accepted. Nothing else was copied, and nothing was issued or sent.
         {i.status === "draft" || i.status === "pending_approval" ? " You can change this draft before it is issued." : ""}
       </p>
       {s.recurringCount > 0 && (
-        <div className="rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+        <div className="rounded-xl bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
           <p className="font-medium">{s.recurringCount === 1 ? "One line is" : `${s.recurringCount} lines are`} not on this invoice.</p>
           <p className="mt-0.5">The customer pays {s.recurringCount === 1 ? "it" : "them"} every month or every year, and whether and when to invoice {s.recurringCount === 1 ? "it" : "them"} is yours to decide.</p>
           {s.recurring.length > 0 && (
@@ -83,7 +83,7 @@ export function LinesTable({ detail }: { detail: InvoiceFullDetail }) {
     <section aria-labelledby="inv-lines-read" className="space-y-2">
       <h2 id="inv-lines-read" className="text-[15px] font-semibold text-ink">Lines</h2>
       <div className="overflow-x-auto rounded-2xl border border-line bg-surface" role="region" aria-label="Invoice lines" tabIndex={0}>
-        <table className="w-full min-w-[520px] text-left text-[13.5px]">
+        <table className="w-full min-w-[520px] text-left text-[14px]">
           <caption className="sr-only">Lines on this invoice, amounts in {i.currency}</caption>
           <thead className="border-b border-line text-[12px] text-muted">
             <tr><th scope="col" className="px-4 py-2 font-medium">Description</th><th scope="col" className="px-2 py-2 text-right font-medium">Qty</th><th scope="col" className="px-2 py-2 text-right font-medium">Price</th><th scope="col" className="px-2 py-2 text-right font-medium">Tax</th><th scope="col" className="px-4 py-2 text-right font-medium">Amount</th></tr>
@@ -101,13 +101,13 @@ export function LinesTable({ detail }: { detail: InvoiceFullDetail }) {
           </tbody>
         </table>
       </div>
-      <dl className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[13.5px]">
+      <dl className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[14px]">
         <dt className="text-muted">Subtotal{i.taxInclusive ? " (before tax)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.subtotalMinor, i.currency)}</dd>
         <dt className="text-muted">Tax{i.taxInclusive ? " (included)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.taxMinor, i.currency)}</dd>
         <dt className="font-semibold text-ink">Total</dt><dd className="text-right font-semibold tabular-nums text-ink">{money(i.totalMinor, i.currency)}</dd>
       </dl>
       {(i.paymentInstructions || i.notes || i.terms) && (
-        <div className="grid gap-3 text-[13px] text-ink-2 sm:grid-cols-3">
+        <div className="grid gap-3 text-[14px] text-ink-2 sm:grid-cols-3">
           {i.paymentInstructions && <div><p className="text-[12px] font-medium text-muted">How to pay</p><p className="whitespace-pre-wrap break-words">{i.paymentInstructions}</p></div>}
           {i.notes && <div><p className="text-[12px] font-medium text-muted">Notes</p><p className="whitespace-pre-wrap break-words">{i.notes}</p></div>}
           {i.terms && <div><p className="text-[12px] font-medium text-muted">Terms</p><p className="whitespace-pre-wrap break-words">{i.terms}</p></div>}
@@ -128,19 +128,19 @@ export function RemindersList({ detail, tz }: { detail: InvoiceFullDetail; tz: s
     <section aria-labelledby="inv-reminders" className="space-y-2">
       <h2 id="inv-reminders" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><BellRing className="size-4 text-muted" aria-hidden />Reminders</h2>
       {rows.length === 0 && detail.invoice.isTest ? (
-        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">A test invoice is never reminded about: nothing is owed on it, so no customer is asked to pay it.</p>
+        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">A test invoice is never reminded about: nothing is owed on it, so no customer is asked to pay it.</p>
       ) : rows.length === 0 ? (
-        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">No reminders are planned for this invoice. Reminders go out only after the owner has authorized their exact wording in the invoice settings, and only to a customer who has agreed to receive service messages. They are checked when the scheduler runs, not live.</p>
+        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">No reminders are planned for this invoice. Reminders go out only after the owner has authorized their exact wording in the invoice settings, and only to a customer who has agreed to receive service messages. They are checked when the scheduler runs, not live.</p>
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface" aria-label="Reminders">
           {rows.map((r) => {
             const offset = Number(r.stepKey.split(":")[1]);
             return (
-              <li key={r.stepKey} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3 text-[13.5px]">
+              <li key={r.stepKey} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3 text-[14px]">
                 <span className="min-w-36 font-medium text-ink">{Number.isFinite(offset) ? stepLabel(offset) : r.stepKey}</span>
                 <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{STATUS_WORDS[r.status] ?? r.status}</Badge>
-                <span className="text-[12.5px] text-muted">{formatInstant(r.dueAt, tz)}{r.channel ? ` · ${r.channel}` : ""}{r.messageStatus ? ` · ${MESSAGE_WORDS[r.messageStatus] ?? r.messageStatus}` : ""}</span>
-                {r.reasonText && <span className="basis-full text-[12.5px] text-ink-2">{r.reasonText}</span>}
+                <span className="text-[13px] text-muted">{formatInstant(r.dueAt, tz)}{r.channel ? ` · ${r.channel}` : ""}{r.messageStatus ? ` · ${MESSAGE_WORDS[r.messageStatus] ?? r.messageStatus}` : ""}</span>
+                {r.reasonText && <span className="basis-full text-[13px] text-ink-2">{r.reasonText}</span>}
               </li>
             );
           })}
@@ -157,9 +157,9 @@ export function Timeline({ detail, tz }: { detail: InvoiceFullDetail; tz: string
       <h2 id="inv-history" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><History className="size-4 text-muted" aria-hidden />History</h2>
       <ol className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
         {rows.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 text-[13.5px]">
+          <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 text-[14px]">
             <span className="min-w-0 flex-1 basis-64 text-ink">{eventSentence(e.kind, e.detail)}</span>
-            <span className="text-[12.5px] text-muted">{e.actorName ? `${e.actorName} · ` : e.actorKind === "customer" ? "The customer · " : e.actorKind === "provider" ? "Payment provider · " : e.actorKind === "system" ? "Automatic · " : ""}{formatInstant(e.at, tz)}</span>
+            <span className="text-[13px] text-muted">{e.actorName ? `${e.actorName} · ` : e.actorKind === "customer" ? "The customer · " : e.actorKind === "provider" ? "Payment provider · " : e.actorKind === "system" ? "Automatic · " : ""}{formatInstant(e.at, tz)}</span>
           </li>
         ))}
       </ol>

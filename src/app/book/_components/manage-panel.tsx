@@ -153,12 +153,12 @@ export function ManagePanel({ view, token, formToken, renderedAt }: { view: Mana
       </div>
 
       {notice && (
-        <div ref={noticeRef} tabIndex={-1} role="status" className="flex items-start gap-2 rounded-xl border border-success/20 bg-success-soft px-4 py-3 text-[13.5px] text-success-ink outline-none">
+        <div ref={noticeRef} tabIndex={-1} role="status" className="flex items-start gap-2 rounded-xl border border-success/20 bg-success-soft px-4 py-3 text-[14px] text-success-ink outline-none">
           <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden />{notice}
         </div>
       )}
       {banner && (
-        <div role="alert" className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+        <div role="alert" className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
           <p className="flex min-w-0 items-start gap-2"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /><span>{banner.text}</span></p>
           {banner.reload && <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()}>Reload page</Button>}
         </div>
@@ -179,10 +179,10 @@ export function ManagePanel({ view, token, formToken, renderedAt }: { view: Mana
           {cancelled && view.bookAgainUrl && <ButtonLink href={view.bookAgainUrl} variant="secondary">Book another time</ButtonLink>}
         </div>
         {view.canChange && view.changeCutoffMinutes > 0 && view.changeDeadline && mode === "view" && (
-          <p className="mt-3 text-[12.5px] text-muted">You can reschedule or cancel online until {formatShortDate(view.changeDeadline, timeZone)} at {formatTime(view.changeDeadline, timeZone)}.</p>
+          <p className="mt-3 text-[13px] text-muted">You can reschedule or cancel online until {formatShortDate(view.changeDeadline, timeZone)} at {formatTime(view.changeDeadline, timeZone)}.</p>
         )}
         {!view.canChange && reasonText(view) && (
-          <div className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">
+          <div className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-[14px] text-ink-2">
             <p>{reasonText(view)}</p>
             {(view.cannotChangeReason === "not_allowed" || view.cannotChangeReason === "past_cutoff") && contact}
           </div>
@@ -210,7 +210,7 @@ export function ManagePanel({ view, token, formToken, renderedAt }: { view: Mana
           </>
         }
       >
-        <label htmlFor="mp-reason" className="text-[13px] font-medium text-ink-2">Reason <span className="font-normal text-faint">(optional)</span></label>
+        <label htmlFor="mp-reason" className="text-[14px] font-medium text-ink-2">Reason <span className="font-normal text-faint">(optional)</span></label>
         <Textarea id="mp-reason" className="mt-1.5" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="Let them know why, if you like." />
       </Dialog>
     </div>
@@ -247,7 +247,7 @@ export function NewTimeCard({
         currentStart={a.startAt} selected={slot} onSelect={onSelect}
       />
       <div className="mt-6 flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[13.5px] text-ink-2">
+        <p className="text-[14px] text-ink-2">
           {slot ? <>Move to <span className="font-semibold text-ink">{formatShortDate(slot.start, timeZone)}</span> at <span className="font-semibold tabular-nums text-ink">{formatTime(slot.start, timeZone)}</span>?</> : "Pick a new time above."}
         </p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row">

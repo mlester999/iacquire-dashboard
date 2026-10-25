@@ -63,12 +63,12 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
           <ul className="space-y-2">
             {invoicing.existing.map((i) => (
               <li key={i.id}>
-                <Link href={`/invoices/${i.id}`} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line px-3 py-2.5 text-[13.5px] hover:bg-surface-2/60 focus-visible:outline-2 focus-visible:outline-primary">
+                <Link href={`/invoices/${i.id}`} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line px-3 py-2.5 text-[14px] hover:bg-surface-2/60 focus-visible:outline-2 focus-visible:outline-primary">
                   <span className="font-medium tabular-nums text-ink">{i.number ?? "Draft invoice"}</span>
                   <StatusBadge status={i.status} />
                   {i.status === "issued" && <PaymentBadge status={i.paymentStatus} />}
                   <span className="tabular-nums text-ink-2">{moneyCode(i.totalMinor, i.currency)}</span>
-                  <span className="text-[12.5px] text-muted">from version {i.proposalVersion} · {whenIn(i.createdAt, tz)}</span>
+                  <span className="text-[13px] text-muted">from version {i.proposalVersion} · {whenIn(i.createdAt, tz)}</span>
                 </Link>
               </li>
             ))}
@@ -79,13 +79,13 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
       <section aria-label="Invoice this proposal" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
         <div>
           <h2 className="text-[15px] font-semibold text-ink">Invoice this proposal</h2>
-          <p className="mt-1 text-[13px] text-muted">
+          <p className="mt-1 text-[14px] text-muted">
             An invoice is made as a draft from the version the customer accepted. Only the lines the customer pays once are copied. Making it issues nothing, sends nothing, charges no one and does not change the deal.
           </p>
         </div>
 
         {!preview && (
-          <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">
+          <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">
             {invoicing.canCreate
               ? detail.status === "accepted" ? "This proposal's saved version could not be read, so no invoice can be made from it." : "Only an accepted proposal can be invoiced. When the customer's answer is accepted, what would be invoiced is shown here."
               : "Your role can't make invoices. Ask the business owner or a manager."}
@@ -94,13 +94,13 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
 
         {preview && (
           <>
-            {preview.basis && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2"><span className="font-medium text-ink">How it was accepted.</span> {preview.basis.text}</p>}
-            {preview.problem && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">{preview.problem.text}</p>}
+            {preview.basis && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2"><span className="font-medium text-ink">How it was accepted.</span> {preview.basis.text}</p>}
+            {preview.problem && <p role="status" className="rounded-xl bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">{preview.problem.text}</p>}
 
             {!preview.problem && currency && (
               <>
                 <div className="overflow-x-auto rounded-xl border border-line" role="region" aria-label="Lines that would be on the invoice" tabIndex={0}>
-                  <table className="w-full min-w-[480px] text-left text-[13.5px]">
+                  <table className="w-full min-w-[480px] text-left text-[14px]">
                     <caption className="sr-only">Lines that would be copied onto the invoice, amounts in {currency}</caption>
                     <thead className="border-b border-line text-[12px] text-muted">
                       <tr><th scope="col" className="px-3 py-2 font-medium">Description</th><th scope="col" className="px-2 py-2 text-right font-medium">Qty</th><th scope="col" className="px-2 py-2 text-right font-medium">Price</th><th scope="col" className="px-2 py-2 text-right font-medium">Tax</th><th scope="col" className="px-3 py-2 text-right font-medium">Line total</th></tr>
@@ -119,19 +119,19 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
                   </table>
                 </div>
                 {preview.totals && (
-                  <dl className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[13.5px]">
+                  <dl className="ml-auto grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[14px]">
                     <dt className="text-muted">Subtotal</dt><dd className="text-right tabular-nums text-ink">{moneyCode(preview.totals.subtotalMinor, currency)}</dd>
                     <dt className="text-muted">Tax</dt><dd className="text-right tabular-nums text-ink">{moneyCode(preview.totals.taxMinor, currency)}</dd>
                     <dt className="font-semibold text-ink">Total</dt><dd className="text-right font-semibold tabular-nums text-ink">{moneyCode(preview.totals.totalMinor, currency)}</dd>
                   </dl>
                 )}
-                <p className="text-[13px] text-ink-2">{preview.customerName ? `The draft is for ${preview.customerName}.` : "This proposal is not linked to a customer record, so you choose the customer on the draft."}</p>
+                <p className="text-[14px] text-ink-2">{preview.customerName ? `The draft is for ${preview.customerName}.` : "This proposal is not linked to a customer record, so you choose the customer on the draft."}</p>
               </>
             )}
 
-            {preview.notes.map((n) => <p key={n} className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{n}</p>)}
+            {preview.notes.map((n) => <p key={n} className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{n}</p>)}
             {preview.recurring.length > 0 && currency && (
-              <div className="rounded-xl border border-line px-3 py-2.5 text-[13px] text-ink-2">
+              <div className="rounded-xl border border-line px-3 py-2.5 text-[14px] text-ink-2">
                 <p className="font-medium text-ink">Not on the invoice, because the customer pays {preview.recurring.length === 1 ? "it" : "them"} every month or every year:</p>
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5" aria-label="Lines that would be left off">
                   {preview.recurring.map((r, n) => <li key={n} className="break-words">{r.name}, {BILLING_WORDS[r.billing]}, {moneyCode(r.totalMinor, currency)} each time</li>)}
@@ -140,7 +140,7 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
               </div>
             )}
 
-            {offer?.note && !preview.problem && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">{offer.note}</p>}
+            {offer?.note && !preview.problem && <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">{offer.note}</p>}
             {offer && offer.kind !== "none" && (
               <Button type="button" variant={offer.kind === "make" ? "brand" : "secondary"} onClick={() => setConfirm(offer.kind === "another" ? "another" : "make")}>
                 <FilePlus2 className="size-4" aria-hidden />{offer.kind === "make" ? "Make a draft invoice" : "Make a further draft invoice"}
@@ -151,7 +151,7 @@ export function InvoicePanel({ detail, invoicing, tz }: { detail: ProposalDetail
 
         <div ref={statusRef} tabIndex={-1} role={said?.tone === "error" ? "alert" : "status"} className="outline-none">
           {said && (
-            <p className={`rounded-xl px-3 py-2 text-[13px] ${said.tone === "error" ? "bg-danger-soft text-danger-ink" : said.tone === "info" ? "bg-surface-2 text-ink-2" : "bg-success-soft text-success-ink"}`}>
+            <p className={`rounded-xl px-3 py-2 text-[14px] ${said.tone === "error" ? "bg-danger-soft text-danger-ink" : said.tone === "info" ? "bg-surface-2 text-ink-2" : "bg-success-soft text-success-ink"}`}>
               {said.text}
               {openHref && <> <Link href={openHref} className="inline-flex min-h-11 items-center font-medium underline underline-offset-2 sm:min-h-0">Open the draft invoice</Link></>}
             </p>

@@ -40,7 +40,7 @@ export function BookingShell({ business, subtitle, children }: { business: { nam
             <Monogram name={business.name} color={business.brandColor} />
             <div className="min-w-0">
               <p className="truncate text-[16px] font-semibold tracking-[-0.02em] text-ink">{business.name}</p>
-              {subtitle && <p className="truncate text-[13px] text-muted">{subtitle}</p>}
+              {subtitle && <p className="truncate text-[14px] text-muted">{subtitle}</p>}
             </div>
           </div>
         </header>

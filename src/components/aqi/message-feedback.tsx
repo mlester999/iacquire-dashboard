@@ -71,7 +71,7 @@ export function AqiMessageFeedback({ message, status, onChange, onRetry }: {
         {!reduced && reaction?.rating === -1 && <motion.span key={reaction.key} aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-full border border-danger-ink/30" initial={{ scale: 0.7, opacity: 0.6 }} animate={{ scale: 1.5, opacity: 0 }} transition={{ duration: 0.4 }} onAnimationComplete={() => setReaction(null)} />}
       </span>
       <span role="status" aria-live="polite" className="ml-1 inline-flex min-h-6 items-center gap-1.5 text-[12px]">
-        {!status?.error && rating !== null && <motion.span key={rating} initial={reduced ? false : { opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} className={rating === 1 ? "text-success-ink" : "text-muted"}>
+        {!status?.error && rating !== null && <motion.span key={rating} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} className={rating === 1 ? "text-success-ink" : "text-muted"}>
           {rating === 1 ? "Glad that helped!" : "Thanks for telling us."}
         </motion.span>}
         {status?.pending && <span className="inline-flex items-center gap-1 text-faint"><span aria-hidden="true" className="size-1 rounded-full bg-current motion-safe:animate-pulse" /><span className="sr-only">Saving feedback</span></span>}

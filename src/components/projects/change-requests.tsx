@@ -59,9 +59,9 @@ export function ChangeRequestsSection({ project, timeZone, canRequest, canApprov
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-[12.5px] leading-relaxed text-muted">Something you want different from what was agreed? Ask here. The team tells you whether it is a revision your agreement includes or needs a quote. Nothing is done, priced or promised until they reply, and nothing is charged by asking.</p>
+        <p className="text-[13px] leading-relaxed text-muted">Something you want different from what was agreed? Ask here. The team tells you whether it is a revision your agreement includes or needs a quote. Nothing is done, priced or promised until they reply, and nothing is charged by asking.</p>
         {!canAsk && delivery(project) && (
-          <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2" role="status">
+          <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2" role="status">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
             {!takes.ok ? takes.reason : !changesEnabled ? "Asking for changes isn't switched on for your workspace yet. Message the team in the conversation." : "Owners and admins ask for changes. You can follow them here."}
           </p>
@@ -78,10 +78,10 @@ export function ChangeRequestsSection({ project, timeZone, canRequest, canApprov
             <h3 className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Added to what was agreed</h3>
             <ul className="mt-2 space-y-2">
               {project.amendments.map((a) => (
-                <li key={a.id} className="rounded-xl bg-surface-2 p-3 text-[13px]">
+                <li key={a.id} className="rounded-xl bg-surface-2 p-3 text-[14px]">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-mono text-[12px] text-muted">{a.changeRef}</span><span className="font-medium text-ink">{a.changeTitle}</span>
                     <span className="text-ink-2">{describeQuote({ additionalCents: a.addedCents, currency: a.currency, weeksMin: a.weeksMin, weeksMax: a.weeksMax })}</span></p>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-muted">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-muted">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
                   <p className="mt-1 text-[12px] text-faint">Agreed {formatDate(a.agreedAt, timeZone)}</p>
                 </li>
               ))}
@@ -123,7 +123,7 @@ function AskDialog({ requestId, open, onOpenChange }: { requestId: string; open:
         <Field label="Tell us more" htmlFor="chg-desc" hint="What you want different, and why it matters.">
           <Textarea id="chg-desc" rows={5} value={description} maxLength={4000} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />Please don&apos;t include passwords, API keys or payment details.</p>
+        <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />Please don&apos;t include passwords, API keys or payment details.</p>
       </div>
     </Dialog>
   );
@@ -164,12 +164,12 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
         </div>
         <StatusPill tone={TONE[shown]}>{CHANGE_ORDER_STATUS_LABEL[shown]}</StatusPill>
       </div>
-      <p className="mt-2 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{c.description}</p>
-      <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{CHANGE_ORDER_STATUS_EXPLAIN[shown]}</p>
-      {CLASSIFICATION_LABEL_FOR_CLIENT[c.classification] && c.status !== "submitted" && <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{CLASSIFICATION_LABEL_FOR_CLIENT[c.classification]}</p>}
+      <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{c.description}</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-muted">{CHANGE_ORDER_STATUS_EXPLAIN[shown]}</p>
+      {CLASSIFICATION_LABEL_FOR_CLIENT[c.classification] && c.status !== "submitted" && <p className="mt-1 text-[13px] leading-relaxed text-muted">{CLASSIFICATION_LABEL_FOR_CLIENT[c.classification]}</p>}
 
       {hasQuote && (
-        <div className="mt-3 rounded-xl bg-surface-2 p-3.5 text-[13px]">
+        <div className="mt-3 rounded-xl bg-surface-2 p-3.5 text-[14px]">
           <p className="flex flex-wrap items-center gap-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Quote, version {c.quoteVersion}
             {c.validUntil && <InfoChip icon={<CalendarClock />}>{c.expired ? "Expired" : "Valid until"} {formatDay(c.validUntil)}</InfoChip>}</p>
           <p className="mt-1.5 text-[17px] font-semibold tabular-nums text-ink">{describeQuote({ additionalCents: c.additionalCents, currency: c.currency, weeksMin: c.weeksMin, weeksMax: c.weeksMax })}</p>
@@ -179,7 +179,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
       {c.decisions.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {c.decisions.map((d) => (
-            <li key={d.quoteVersion} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-2">
+            <li key={d.quoteVersion} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-2">
               <StatusPill size="sm" tone={d.decision === "accepted" ? "success" : "neutral"}>{d.decision === "accepted" ? "Accepted" : "Declined"}</StatusPill>
               <span>quote version {d.quoteVersion}{d.decidedByName ? ` by ${d.decidedByName}` : ""} on {formatDateTime(d.decidedAt, timeZone)}</span>
               {d.note && <span className="w-full text-muted">“{d.note}”</span>}
@@ -191,7 +191,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
       {messages.length > 0 && (
         <ul className="mt-3 space-y-2" aria-label={`Messages about ${c.ref}`}>
           {messages.map((m) => (
-            <li key={m.id} className={cn("max-w-[94%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
+            <li key={m.id} className={cn("max-w-[94%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
               {m.kind === "info_request" && <StatusPill size="sm" tone="warning" className="mb-1.5">Question from iAcquire</StatusPill>}
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
               <p className="mt-1 text-[12px]">{m.authorKind === "agency" ? "iAcquire team" : (m.authorName ?? "You")} · {formatDateTime(m.createdAt, timeZone)}</p>
@@ -214,7 +214,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
           {canRequest && isOpenChange(c.status) && <Button variant="ghost" onClick={() => setMode("withdraw")}>Withdraw this request</Button>}
         </div>
       )}
-      {c.status === "quoted" && !canApprove && !c.expired && <p className="mt-3 flex items-start gap-2 text-[12.5px] text-muted"><Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />A workspace owner accepts or declines a quote. You can still write to the team above.</p>}
+      {c.status === "quoted" && !canApprove && !c.expired && <p className="mt-3 flex items-start gap-2 text-[13px] text-muted"><Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />A workspace owner accepts or declines a quote. You can still write to the team above.</p>}
 
       <Dialog open={mode !== null} onOpenChange={(o) => !o && close()}
         title={mode === "accept" ? "Accept this change" : mode === "decline" ? "Decline this change" : "Withdraw this request"}
@@ -229,7 +229,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
         }>
         {mode === "accept" ? (
           <div className="space-y-4">
-            <label className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[13px] leading-relaxed text-ink-2">
+            <label className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-[14px] leading-relaxed text-ink-2">
               <input type="checkbox" className="mt-1 size-4" checked={ack} onChange={(e) => setAck(e.target.checked)} />
               <span>{CHANGE_ACCEPT_ACKNOWLEDGEMENT}</span>
             </label>

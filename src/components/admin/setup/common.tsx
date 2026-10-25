@@ -81,9 +81,9 @@ export function CheckRow({ id, label, hint, trailing, checked, onChange, disable
   return (
     <label htmlFor={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-surface px-3 py-2.5 transition hover:border-line-strong", checked ? "border-primary/35 bg-primary-soft/30" : "border-line", disabled && "cursor-not-allowed opacity-60")}>
       <input id={id} type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span className="min-w-0 flex-1 text-[13.5px] leading-snug text-ink">
+      <span className="min-w-0 flex-1 text-[14px] leading-snug text-ink">
         {label}
-        {hint && <span className="mt-0.5 block text-[12.5px] text-muted">{hint}</span>}
+        {hint && <span className="mt-0.5 block text-[13px] text-muted">{hint}</span>}
       </span>
       {trailing && <span className="shrink-0 self-center">{trailing}</span>}
     </label>
@@ -93,9 +93,9 @@ export function CheckRow({ id, label, hint, trailing, checked, onChange, disable
 export function SwitchRow({ id, label, hint, checked, onChange, disabled }: { id: string; label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <label htmlFor={id} className="min-w-0 text-[13.5px] font-medium text-ink">
+      <label htmlFor={id} className="min-w-0 text-[14px] font-medium text-ink">
         {label}
-        {hint && <span className="mt-0.5 block text-[12.5px] font-normal text-muted">{hint}</span>}
+        {hint && <span className="mt-0.5 block text-[13px] font-normal text-muted">{hint}</span>}
       </label>
       <Switch id={id} checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>

@@ -27,7 +27,7 @@ export default async function ProposalTemplatePage({ params }: { params: Promise
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/proposals/templates" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Templates</Link>
+        <Link href="/proposals/templates" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Templates</Link>
         <h1 className="mt-1 break-words text-[22px] font-semibold tracking-tight text-ink">{template.name}</h1>
       </div>
       <TemplateEditor orgId={null} template={template} catalog={catalog} canEdit={ctx.can("proposals.catalog")} canApprove={ctx.can("proposals.settings")} tz={ctx.org.timezone || "UTC"} />

@@ -52,7 +52,7 @@ export function DemoActions({
             <CalendarCheck className="size-4" aria-hidden />
             {ROOM_COPY.consultationButton}
           </Button>
-          <p className="text-[13px] leading-relaxed text-muted">{ROOM_COPY.consultationNote}</p>
+          <p className="text-[14px] leading-relaxed text-muted">{ROOM_COPY.consultationNote}</p>
         </form>
       )}
 
@@ -67,7 +67,7 @@ export function DemoActions({
           <Button type="submit" variant="secondary" size="lg" className="w-full sm:w-auto">
             {ROOM_COPY.buyButton}
           </Button>
-          <p className="text-[13px] leading-relaxed text-muted">{ROOM_COPY.buyNote}</p>
+          <p className="text-[14px] leading-relaxed text-muted">{ROOM_COPY.buyNote}</p>
         </form>
       )}
     </section>

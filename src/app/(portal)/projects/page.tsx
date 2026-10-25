@@ -57,7 +57,7 @@ export default async function ProjectsPage() {
                         <ProjectStatusBadge status={p.status} />
                       </div>
                       <h3 className="mt-2 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>
-                      <p className="mt-0.5 truncate text-[12.5px] text-muted" title={p.serviceName ?? "Custom project"}>{p.serviceName ?? "Custom project"}</p>
+                      <p className="mt-0.5 truncate text-[13px] text-muted" title={p.serviceName ?? "Custom project"}>{p.serviceName ?? "Custom project"}</p>
                     </div>
                   </div>
                   {(p.quoteWaiting || p.approvalsWaiting > 0 || p.infoRequested) && (

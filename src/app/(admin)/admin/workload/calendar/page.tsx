@@ -54,14 +54,14 @@ export default async function WorkloadCalendarPage() {
     <div className="space-y-5">
       <WorkloadHeader active="calendar" showTeam showSettings={showSettings} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-muted">
+        <p className="text-[14px] text-muted">
           {data.calendar.from} to {data.calendar.to} · {data.timeZone}. Milestones carry no points; they are here so a delivery date is not missed.
         </p>
         <ButtonLink href="/admin/workload" variant="ghost" size="sm">
           <ArrowLeft className="size-3.5" aria-hidden /> Overview
         </ButtonLink>
       </div>
-      {data.hidden > 0 && <p className="rounded-xl border border-line bg-surface-2 px-4 py-2 text-[12.5px] text-muted">{data.hidden} more {data.hidden === 1 ? "entry is" : "entries are"} counted but hidden from you.</p>}
+      {data.hidden > 0 && <p className="rounded-xl border border-line bg-surface-2 px-4 py-2 text-[13px] text-muted">{data.hidden} more {data.hidden === 1 ? "entry is" : "entries are"} counted but hidden from you.</p>}
       {data.calendar.overdue.length > 0 && (
         <Card className="border-danger/30">
           <CardHeader className="pb-2">
@@ -72,7 +72,7 @@ export default async function WorkloadCalendarPage() {
           <CardContent>
             <ul className="space-y-2">
               {data.calendar.overdue.map((entry) => (
-                <li key={`${entry.source}:${entry.id}`} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                <li key={`${entry.source}:${entry.id}`} className="flex flex-wrap items-center justify-between gap-2 text-[14px]">
                   <span className="min-w-0">
                     {entry.kind === "item" && entry.source !== "milestone" ? (
                       <Link href={workloadItemHref(entry.source, entry.id, entry.orgId)} className="font-medium text-ink hover:text-primary hover:underline">
@@ -94,7 +94,7 @@ export default async function WorkloadCalendarPage() {
         {data.calendar.days.map((day) => (
           <Card key={day.day} className={cn("min-h-40", day.day === data.today && "border-primary/40 bg-primary-soft/20")}>
             <CardHeader className="pb-1.5">
-              <CardTitle className="flex items-center justify-between gap-2 text-[12.5px]">
+              <CardTitle className="flex items-center justify-between gap-2 text-[13px]">
                 <span>{dayLabel(day.day)}</span>
                 {day.day === data.today && <Badge tone="primary">Today</Badge>}
               </CardTitle>
@@ -142,7 +142,7 @@ export default async function WorkloadCalendarPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="grid gap-1.5 text-[12.5px] text-ink-2 sm:grid-cols-2">
+            <ul className="grid gap-1.5 text-[13px] text-ink-2 sm:grid-cols-2">
               {data.calendar.undated.map((item) => (
                 <li key={`${item.source}:${item.itemId}`}>
                   ·{" "}

@@ -18,7 +18,7 @@ export function AttachmentChips({ files, className }: { files: ThreadAttachment[
         <li key={f.id}>
           <a
             href={`/api/support/attachments/${f.id}`}
-            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px] text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title={`Download ${f.filename}`}
           >
             {isImageFile(f.filename) ? <FileImage className="size-3.5 shrink-0 text-muted" aria-hidden /> : <FileText className="size-3.5 shrink-0 text-muted" aria-hidden />}
@@ -152,11 +152,11 @@ export function Timeline({ entries, viewer, timeZone }: { entries: TimelineEntry
   const rows = entries
     .map((e) => ({ e, text: (EVENT_TEXT[e.kind] ?? (() => null))(e, viewer) }))
     .filter((r): r is { e: TimelineEntry; text: string } => Boolean(r.text));
-  if (!rows.length) return <p className="text-[13px] text-muted">Nothing has happened yet beyond the request being sent.</p>;
+  if (!rows.length) return <p className="text-[14px] text-muted">Nothing has happened yet beyond the request being sent.</p>;
   return (
     <ol className="relative space-y-3 border-l border-line pl-5" aria-label="Activity">
       {rows.map(({ e, text }) => (
-        <li key={e.id} className="relative text-[13px] leading-snug text-ink-2">
+        <li key={e.id} className="relative text-[14px] leading-snug text-ink-2">
           <span className="absolute -left-[25px] top-1.5 size-2 rounded-full bg-line-strong ring-4 ring-surface" aria-hidden />
           <span className="font-medium text-ink">{text.replace(/^./, (c) => c.toUpperCase())}</span>
           <span className="ml-2 text-[12px] text-muted"><time dateTime={e.createdAt}>{formatDateTime(e.createdAt, timeZone)}</time></span>

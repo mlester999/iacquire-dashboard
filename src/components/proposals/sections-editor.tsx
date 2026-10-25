@@ -38,7 +38,7 @@ export function SectionsEditor({ sections, onChange, readOnly, issues, idPrefix 
   };
   return (
     <section ref={region} tabIndex={-1} aria-label="Sections" className="space-y-3 outline-none">
-      {sections.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13.5px] text-muted">No wording yet. Add a section for the introduction, the scope of work, or anything the customer should read.</p>}
+      {sections.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted">No wording yet. Add a section for the introduction, the scope of work, or anything the customer should read.</p>}
       <ol className="space-y-3">
         {sections.map((s, i) => {
           const headingId = `${idPrefix}-${s.key}-heading`;
@@ -57,7 +57,7 @@ export function SectionsEditor({ sections, onChange, readOnly, issues, idPrefix 
               </Field>
               {!readOnly && (
                 <div className="flex flex-wrap items-end gap-2">
-                  <label className="min-w-0 flex-1 text-[12.5px] text-muted sm:max-w-xs">
+                  <label className="min-w-0 flex-1 text-[13px] text-muted sm:max-w-xs">
                     <span className="mb-1 block">Insert a placeholder</span>
                     <Select
                       aria-label={`Insert a placeholder into ${name}`} value=""
@@ -81,7 +81,7 @@ export function SectionsEditor({ sections, onChange, readOnly, issues, idPrefix 
       {!readOnly && (
         <Button type="button" variant="secondary" disabled={sections.length >= DOC_LIMITS.sections} onClick={() => { const added = blankSection(); pending.current = { kind: "heading", key: added.key }; onChange([...sections, added]); }}><Plus className="size-4" aria-hidden />Add a section</Button>
       )}
-      {issueFor(issues, "sections") && <p role="alert" className="text-[12.5px] text-danger-ink">{issueFor(issues, "sections")}</p>}
+      {issueFor(issues, "sections") && <p role="alert" className="text-[13px] text-danger-ink">{issueFor(issues, "sections")}</p>}
     </section>
   );
 }

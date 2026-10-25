@@ -70,7 +70,7 @@ export function WebhookDialog({ scope, events, editing, onClose, onCreated }: { 
         </Field>
         <fieldset>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <legend className="text-[13px] font-medium text-ink-2">Events</legend>
+            <legend className="text-[14px] font-medium text-ink-2">Events</legend>
             <span className="text-[12px] text-muted" aria-live="polite">{picked.length} selected</span>
           </div>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
@@ -79,7 +79,7 @@ export function WebhookDialog({ scope, events, editing, onClose, onCreated }: { 
               const some = !all && items.some((e) => picked.includes(e.type));
               return (
                 <div key={group} className="rounded-xl border border-line p-3">
-                  <label className="flex items-center gap-2.5 text-[13px] font-medium text-ink">
+                  <label className="flex items-center gap-2.5 text-[14px] font-medium text-ink">
                     <input
                       type="checkbox"
                       className="size-4 shrink-0 accent-[var(--primary)]"
@@ -95,7 +95,7 @@ export function WebhookDialog({ scope, events, editing, onClose, onCreated }: { 
                   <ul className="mt-2 space-y-1.5 pl-1">
                     {items.map((e) => (
                       <li key={e.type}>
-                        <label className="flex items-start gap-2.5 text-[13px] leading-snug text-ink-2">
+                        <label className="flex items-start gap-2.5 text-[14px] leading-snug text-ink-2">
                           <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={picked.includes(e.type)} onChange={(ev) => set([e.type], ev.target.checked)} />
                           <span className="min-w-0">
                             {e.label}

@@ -66,7 +66,7 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
   const scheduleControls = (verb: "Schedule" | "Reschedule") => (
     <div className="space-y-3">
       {liveBlocked && (
-        <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">
+        <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <span>Publishing to real Facebook and Instagram accounts is switched off in this environment. A post scheduled here will wait, and nothing is sent until iAcquire switches it on.</span>
         </p>
@@ -78,8 +78,8 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
         <Button variant="brand" loading={busy("schedule")} disabled={!when || !accountReady || blocking.length > 0} onClick={() => run("schedule", () => (verb === "Schedule" ? scheduleAction(post.id, { atLocal: when }) : rescheduleAction(post.id, { atLocal: when })), verb === "Schedule" ? (liveBlocked ? `Scheduled. ${HELD_TOAST}` : "Scheduled.") : "Moved.")}>{verb}</Button>
         {verb === "Schedule" && <Button variant="secondary" loading={busy("asap")} disabled={!accountReady || blocking.length > 0} onClick={() => run("asap", () => scheduleAction(post.id, { asap: true }), liveBlocked ? `Queued. ${HELD_TOAST}` : "Queued to publish now.")}>Publish as soon as possible</Button>}
       </div>
-      {!accountReady && <p className="text-[12.5px] text-warning-ink">This account needs to be reconnected before anything can be published to it.</p>}
-      {blocking.length > 0 && <p className="text-[12.5px] text-danger-ink">Fix the problems listed beside the text first.</p>}
+      {!accountReady && <p className="text-[13px] text-warning-ink">This account needs to be reconnected before anything can be published to it.</p>}
+      {blocking.length > 0 && <p className="text-[13px] text-danger-ink">Fix the problems listed beside the text first.</p>}
     </div>
   );
 
@@ -89,35 +89,35 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
         <StatusBadge status={s} providerPostId={post.providerPostId} liveBlocked={liveBlocked} testAccount={testAccount} />
         {post.origin === "ai" && <span className="rounded bg-violet-soft px-1.5 py-0.5 text-[12px] font-semibold text-violet-ink">AI-written draft</span>}
         {testAccount && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">Test account: nothing is posted anywhere</span>}
-        <span className="text-[12.5px] text-muted">Version {post.version}</span>
+        <span className="text-[13px] text-muted">Version {post.version}</span>
       </div>
-      <p className="text-[13.5px] text-ink-2">{statusExplain(s, { providerPostId: post.providerPostId, liveBlocked, testAccount })}</p>
-      {post.scheduledAt && ["scheduled", "publishing"].includes(s) && <p className="text-[13.5px] text-ink"><span className="font-medium">Planned for</span> {formatWhen(post.scheduledAt, tz)}</p>}
-      {post.approvedByName && post.approvedVersion === post.version && <p className="text-[12.5px] text-muted">Approved by {post.approvedByName}{post.approvedAt ? `, ${formatWhen(post.approvedAt, tz)}` : ""}.</p>}
-      {post.decisionNote && (s === "changes_requested" || s === "rejected") && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink"><span className="font-semibold">Reviewer&apos;s note: </span>{post.decisionNote}</p>}
-      {post.failureMessage && (s === "failed" || s === "needs_reconciliation") && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{post.failureMessage}</p>}
-      {job && s === "publishing" && <p className="text-[12.5px] text-muted">Attempt {job.attempt} of {job.maxAttempts}{job.nextAttemptAt ? `; next try ${formatWhen(job.nextAttemptAt, tz)}` : ""}{job.lastError ? `. Last problem: ${job.lastError}` : ""}</p>}
+      <p className="text-[14px] text-ink-2">{statusExplain(s, { providerPostId: post.providerPostId, liveBlocked, testAccount })}</p>
+      {post.scheduledAt && ["scheduled", "publishing"].includes(s) && <p className="text-[14px] text-ink"><span className="font-medium">Planned for</span> {formatWhen(post.scheduledAt, tz)}</p>}
+      {post.approvedByName && post.approvedVersion === post.version && <p className="text-[13px] text-muted">Approved by {post.approvedByName}{post.approvedAt ? `, ${formatWhen(post.approvedAt, tz)}` : ""}.</p>}
+      {post.decisionNote && (s === "changes_requested" || s === "rejected") && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink"><span className="font-semibold">Reviewer&apos;s note: </span>{post.decisionNote}</p>}
+      {post.failureMessage && (s === "failed" || s === "needs_reconciliation") && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{post.failureMessage}</p>}
+      {job && s === "publishing" && <p className="text-[13px] text-muted">Attempt {job.attempt} of {job.maxAttempts}{job.nextAttemptAt ? `; next try ${formatWhen(job.nextAttemptAt, tz)}` : ""}{job.lastError ? `. Last problem: ${job.lastError}` : ""}</p>}
       {s === "published" && viewLink && !testAccount && (
-        <a href={viewLink} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-[13.5px] font-medium text-primary-ink underline sm:min-h-8">
+        <a href={viewLink} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-primary-ink underline sm:min-h-8">
           View the post{manual ? " (link typed in by a person)" : ""} <ExternalLink className="size-3.5" aria-hidden /><span className="sr-only">(opens in a new tab)</span>
         </a>
       )}
 
       {(s === "draft" || s === "changes_requested") && !can.edit && (
-        <p className="border-t border-line pt-4 text-[13px] text-muted">Only the person who wrote this post, or a manager, can send it for approval.</p>
+        <p className="border-t border-line pt-4 text-[14px] text-muted">Only the person who wrote this post, or a manager, can send it for approval.</p>
       )}
       {(s === "draft" || s === "changes_requested") && can.edit && (
         <div className="space-y-3 border-t border-line pt-4">
-          {blocking.length > 0 && <p className="text-[12.5px] text-danger-ink">Fix the problems listed beside the text before sending it on.</p>}
+          {blocking.length > 0 && <p className="text-[13px] text-danger-ink">Fix the problems listed beside the text before sending it on.</p>}
           {!needsApproval && can.publish ? (
             <>
-              <p className="text-[12.5px] text-muted">You can schedule your own post. It is recorded as approved by you.</p>
+              <p className="text-[13px] text-muted">You can schedule your own post. It is recorded as approved by you.</p>
               {scheduleControls("Schedule")}
             </>
           ) : (
             <>
               <Button variant="brand" loading={busy("submit")} disabled={blocking.length > 0 || !accountReady} onClick={() => run("submit", () => submitForApprovalAction(post.id), "Sent for approval.")}>Send for approval</Button>
-              {!accountReady && <p className="text-[12.5px] text-warning-ink">This account needs to be reconnected before the post can be sent for approval.</p>}
+              {!accountReady && <p className="text-[13px] text-warning-ink">This account needs to be reconnected before the post can be sent for approval.</p>}
             </>
           )}
         </div>
@@ -135,16 +135,16 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
                 <Button variant="secondary" loading={busy("changes")} disabled={!note.trim()} onClick={() => run("changes", () => decideAction(post.id, { decision: "request_changes", version: post.version, note }), "Changes requested.")}>Request changes</Button>
                 <Button variant="outline" onClick={() => setConfirm("reject")}>Reject</Button>
               </div>
-              {approveBlock && <p className="text-[12.5px] text-muted">{approveBlock}</p>}
-              {!approveBlock && blocking.length > 0 && <p className="text-[12.5px] text-danger-ink">This post has problems that would stop it being published. Ask for changes instead.</p>}
+              {approveBlock && <p className="text-[13px] text-muted">{approveBlock}</p>}
+              {!approveBlock && blocking.length > 0 && <p className="text-[13px] text-danger-ink">This post has problems that would stop it being published. Ask for changes instead.</p>}
             </>
           ) : (
-            <p className="text-[13px] text-muted">{approveBlock ?? "Only the business owner or a manager can approve it."}</p>
+            <p className="text-[14px] text-muted">{approveBlock ?? "Only the business owner or a manager can approve it."}</p>
           )}
         </div>
       )}
 
-      {s === "approved" && (can.publish ? <div className="border-t border-line pt-4">{scheduleControls("Schedule")}</div> : <p className="border-t border-line pt-4 text-[13px] text-muted">Approved. Someone who can publish needs to schedule it.</p>)}
+      {s === "approved" && (can.publish ? <div className="border-t border-line pt-4">{scheduleControls("Schedule")}</div> : <p className="border-t border-line pt-4 text-[14px] text-muted">Approved. Someone who can publish needs to schedule it.</p>)}
 
       {(s === "scheduled" || waiting) && can.publish && <div className="border-t border-line pt-4">{scheduleControls("Reschedule")}</div>}
 
@@ -152,7 +152,7 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
         <div className="space-y-3 border-t border-line pt-4">
           {can.publish ? (
             <>
-              <p className="text-[13px] text-ink-2">Open the Page and look for this post, then tell us. It will not be sent again until you do.</p>
+              <p className="text-[14px] text-ink-2">Open the Page and look for this post, then tell us. It will not be sent again until you do.</p>
               <Field label="Link to the post" htmlFor="sp-link-found" optional hint="Only if it is there. It is shown as a link a person typed in; the platform is not asked to confirm it." error={foundSeen ? foundProblem : null}>
                 <Input id="sp-link-found" type="url" inputMode="url" value={found} onChange={(e) => setFound(e.target.value)} onBlur={() => setFoundSeen(true)} placeholder="https://" aria-invalid={foundSeen && foundProblem ? true : undefined} className="text-[16px] sm:text-[14px]" />
               </Field>
@@ -161,15 +161,15 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
                 <Button variant="outline" loading={busy("notposted")} onClick={() => run("notposted", () => resolveUnknownAction(post.id, "not_posted"), "Marked as not posted.")}>It is not there</Button>
               </div>
             </>
-          ) : <p className="text-[13px] text-muted">A manager needs to check the Page and say whether it was posted.</p>}
+          ) : <p className="text-[14px] text-muted">A manager needs to check the Page and say whether it was posted.</p>}
         </div>
       )}
 
       {s === "failed" && !unknownOutcome && (
         <div className="space-y-2 border-t border-line pt-4">
           {can.publish && post.approvedVersion === post.version && accountReady && <Button variant="brand" loading={busy("retry")} onClick={() => run("retry", () => retryPostAction(post.id), liveBlocked ? `Queued. ${HELD_TOAST}` : "Queued to try again.")}>Try again</Button>}
-          {can.publish && post.approvedVersion === post.version && !accountReady && <p className="text-[12.5px] text-warning-ink">Reconnect the account before trying again.</p>}
-          <p className="text-[12.5px] text-muted">Or edit the post, which sends it back to a draft for approval again.</p>
+          {can.publish && post.approvedVersion === post.version && !accountReady && <p className="text-[13px] text-warning-ink">Reconnect the account before trying again.</p>}
+          <p className="text-[13px] text-muted">Or edit the post, which sends it back to a draft for approval again.</p>
         </div>
       )}
 
@@ -177,8 +177,8 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
         {can.create && <Button variant="outline" size="sm" loading={busy("dup")} onClick={duplicate}>Duplicate</Button>}
         {can.edit && (["draft", "pending_approval", "changes_requested", "approved", "scheduled", "failed"].includes(s) || waiting) && !unknownOutcome && <Button variant="ghost" size="sm" onClick={() => setConfirm("cancel")}>Cancel post</Button>}
       </div>
-      {s === "publishing" && !waiting && <p className="text-[12.5px] text-muted">While a post is being sent it cannot be changed or cancelled.</p>}
-      {waiting && <p className="text-[12.5px] text-muted">This post is waiting for its next try. Until that starts you can cancel it, change it (which sends it back to a draft for approval) or move it to another time. If it is being sent at that moment you will be told it is too late.</p>}
+      {s === "publishing" && !waiting && <p className="text-[13px] text-muted">While a post is being sent it cannot be changed or cancelled.</p>}
+      {waiting && <p className="text-[13px] text-muted">This post is waiting for its next try. Until that starts you can cancel it, change it (which sends it back to a draft for approval) or move it to another time. If it is being sent at that moment you will be told it is too late.</p>}
 
       <ConfirmDialog
         open={confirm === "cancel"} onOpenChange={(o) => !o && setConfirm(null)} title="Cancel this post?" description="It will not be published. You can duplicate it later to use the text again."

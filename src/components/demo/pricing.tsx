@@ -15,18 +15,18 @@ export function PricingPanel({ pricing }: { pricing: { setupFeeUsd: number; mont
       </h2>
       <dl className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-line bg-surface p-3">
-          <dt className="text-[13px] font-medium text-muted">{ROOM_COPY.setupLabel}</dt>
+          <dt className="text-[14px] font-medium text-muted">{ROOM_COPY.setupLabel}</dt>
           <dd className="mt-1 text-[24px] font-semibold tracking-[-0.03em] text-ink">{dollars(pricing.setupFeeUsd)}</dd>
-          <dd className="text-[12.5px] text-muted">paid once</dd>
+          <dd className="text-[13px] text-muted">paid once</dd>
         </div>
         <div className="rounded-xl border border-line bg-surface p-3">
-          <dt className="text-[13px] font-medium text-muted">{ROOM_COPY.planLabel}</dt>
+          <dt className="text-[14px] font-medium text-muted">{ROOM_COPY.planLabel}</dt>
           <dd className="mt-1 text-[24px] font-semibold tracking-[-0.03em] text-ink">{dollars(pricing.monthlyPlanUsd)}</dd>
-          <dd className="text-[12.5px] text-muted">per month, only if you choose it</dd>
+          <dd className="text-[13px] text-muted">per month, only if you choose it</dd>
         </div>
       </dl>
-      <p className="mt-3 text-[13.5px] leading-relaxed text-ink-2">{CORE_OFFER.summary}</p>
-      <p className="mt-1 text-[13.5px] leading-relaxed text-ink-2">{ROOM_COPY.planNote}</p>
+      <p className="mt-3 text-[14px] leading-relaxed text-ink-2">{CORE_OFFER.summary}</p>
+      <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{ROOM_COPY.planNote}</p>
     </section>
   );
 }

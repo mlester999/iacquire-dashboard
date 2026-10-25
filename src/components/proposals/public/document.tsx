@@ -66,9 +66,9 @@ function LineItem({ l }: { l: SnapshotLine }) {
   return (
     <div className="min-w-0">
       <p className="font-medium text-ink">{l.name}</p>
-      {l.description.trim() && <Wording text={l.description} className="mt-1 text-[13px] leading-relaxed text-muted" />}
-      {l.note.trim() && <p className="mt-1 text-[13px] italic text-muted">{l.note}</p>}
-      {l.taxBps > 0 && <p className="mt-1 text-[12.5px] text-muted">{l.taxName ?? "Tax"} {bpsLabel(l.taxBps)} is added to the total.</p>}
+      {l.description.trim() && <Wording text={l.description} className="mt-1 text-[14px] leading-relaxed text-muted" />}
+      {l.note.trim() && <p className="mt-1 text-[14px] italic text-muted">{l.note}</p>}
+      {l.taxBps > 0 && <p className="mt-1 text-[13px] text-muted">{l.taxName ?? "Tax"} {bpsLabel(l.taxBps)} is added to the total.</p>}
     </div>
   );
 }
@@ -90,13 +90,13 @@ function Group({ billing, snapshot, labelled, level }: { billing: Billing; snaps
   rows.push({ label: labelled ? `Total ${BILLING_LABELS[billing].toLowerCase()}` : "Total", value: formatMinor(g.total, c), strong: true });
   return (
     <section aria-label={labelled ? BILLING_LABELS[billing] : "Prices"} className="mt-4 first:mt-0">
-      {labelled && <GroupHeading className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{BILLING_LABELS[billing]}</GroupHeading>}
+      {labelled && <GroupHeading className="mb-2 text-[14px] font-semibold uppercase tracking-wide text-muted">{BILLING_LABELS[billing]}</GroupHeading>}
       {/* Phones get a card per line; wider screens get the table. */}
       <ul className="divide-y divide-line rounded-xl border border-line sm:hidden">
         {lines.map((l, i) => (
           <li key={i} className="space-y-2 p-3.5">
             <LineItem l={l} />
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[13px]">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[14px]">
               <dt className="text-muted">Quantity</dt>
               <dd className="text-right tabular-nums">{formatQuantity(l.quantityMilli)} {l.unitLabel}</dd>
               <dt className="text-muted">Unit price</dt>
@@ -114,7 +114,7 @@ function Group({ billing, snapshot, labelled, level }: { billing: Billing; snaps
         ))}
       </ul>
       <div className="hidden overflow-hidden rounded-xl border border-line sm:block">
-        <table className="w-full table-fixed text-left text-[13.5px]">
+        <table className="w-full table-fixed text-left text-[14px]">
           <caption className="sr-only">{labelled ? BILLING_LABELS[billing] : "Prices"}</caption>
           <thead className="bg-surface-2 text-[12px] uppercase tracking-wide text-muted">
             <tr>
@@ -159,11 +159,11 @@ export function ProposalDocument({ snapshot, version, level = 1 }: { snapshot: P
   return (
     <article aria-labelledby="proposal-title" className="space-y-6 text-[14.5px] leading-relaxed text-ink-2">
       <header className="space-y-1">
-        <p className="text-[13px] text-muted">
+        <p className="text-[14px] text-muted">
           Proposal {snapshot.number} &middot; Version {version}
         </p>
         <Title id="proposal-title" className="text-[24px] font-semibold tracking-[-0.03em] text-ink sm:text-[28px]">{snapshot.title}</Title>
-        <dl className="mt-3 grid gap-x-8 gap-y-1 text-[13.5px] sm:grid-cols-[auto_1fr]">
+        <dl className="mt-3 grid gap-x-8 gap-y-1 text-[14px] sm:grid-cols-[auto_1fr]">
           {client.length > 0 && (
             <>
               <dt className="text-muted">Prepared for</dt>
@@ -200,7 +200,7 @@ export function ProposalDocument({ snapshot, version, level = 1 }: { snapshot: P
               <Group key={b} billing={b} snapshot={snapshot} labelled={labelled} level={level} />
             ))}
           </div>
-          {used.length > 1 && <p className="mt-3 text-[13px] text-muted">One-time, monthly and yearly amounts are shown separately and are not added together.</p>}
+          {used.length > 1 && <p className="mt-3 text-[14px] text-muted">One-time, monthly and yearly amounts are shown separately and are not added together.</p>}
         </section>
       )}
 

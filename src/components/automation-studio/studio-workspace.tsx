@@ -291,8 +291,8 @@ export function StudioWorkspace(props: WorkspaceProps) {
         )}
       </header>
 
-      {readOnlyReason && <p className="shrink-0 border-b border-line bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink" role="note">{readOnlyReason}</p>}
-      {workflow.pausedReason && workflow.status === "active" && <p className="shrink-0 border-b border-line bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink" role="note">{workflow.pausedReason}</p>}
+      {readOnlyReason && <p className="shrink-0 border-b border-line bg-warning-soft px-4 py-2 text-[13px] text-warning-ink" role="note">{readOnlyReason}</p>}
+      {workflow.pausedReason && workflow.status === "active" && <p className="shrink-0 border-b border-line bg-warning-soft px-4 py-2 text-[13px] text-warning-ink" role="note">{workflow.pausedReason}</p>}
 
       {/* ---- mobile switcher ---- */}
       {mode === "auto" && (
@@ -333,12 +333,12 @@ export function StudioWorkspace(props: WorkspaceProps) {
           )}
           {mode === "auto" && selected && desktop && (
             <aside aria-label="Step settings" className="absolute inset-y-3 right-3 z-10 flex w-[348px] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg">
-              <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2.5"><h2 className="text-[13px] font-semibold text-ink">Settings</h2><Button variant="ghost" size="sm" onClick={() => setSelected(null)}>Close</Button></div>
+              <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2.5"><h2 className="text-[14px] font-semibold text-ink">Settings</h2><Button variant="ghost" size="sm" onClick={() => setSelected(null)}>Close</Button></div>
               {inspector}
             </aside>
           )}
           {editor.definition.steps.length === 0 && !editor.animating && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 mx-auto w-fit max-w-[88%] rounded-2xl border border-dashed border-line-strong bg-surface/90 px-4 py-3 text-center text-[13px] text-muted shadow-sm">
+            <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 mx-auto w-fit max-w-[88%] rounded-2xl border border-dashed border-line-strong bg-surface/90 px-4 py-3 text-center text-[14px] text-muted shadow-sm">
               {mode === "auto" ? "Describe the automation in the chat and watch it appear here." : "Drag a step in from the left, or click one to add it."}
             </div>
           )}
@@ -346,7 +346,7 @@ export function StudioWorkspace(props: WorkspaceProps) {
 
         {mode === "manual" && (
           <aside aria-label="Step settings" className="hidden w-[360px] shrink-0 flex-col border-l border-line bg-surface lg:flex">
-            <div className="shrink-0 border-b border-line px-4 py-2.5"><h2 className="text-[13px] font-semibold text-ink">Settings</h2></div>
+            <div className="shrink-0 border-b border-line px-4 py-2.5"><h2 className="text-[14px] font-semibold text-ink">Settings</h2></div>
             {inspector}
           </aside>
         )}
@@ -401,7 +401,7 @@ export function StudioWorkspace(props: WorkspaceProps) {
           </>
         }
       >
-        <div className="space-y-3 text-[13.5px] text-ink-2">
+        <div className="space-y-3 text-[14px] text-ink-2">
           {eff.length === 0 ? (
             <p>It only works inside your CRM (tags, tasks, notes and the like), so it can start as soon as it is switched on.</p>
           ) : (
@@ -411,8 +411,8 @@ export function StudioWorkspace(props: WorkspaceProps) {
                 {eff.map((e) => (
                   <li key={e.stepKey} className="rounded-xl border border-line bg-surface-2 p-3">
                     <p className="font-medium text-ink">{e.title}{e.asksFirst ? " (asks first each time)" : ""}</p>
-                    {e.lines.map((l) => <p key={l.label} className="mt-0.5 text-[12.5px] text-muted"><span className="font-medium text-ink-2">{l.label}:</span> {l.value}</p>)}
-                    {e.warning && <p className="mt-1 text-[12.5px] text-warning-ink">{e.warning}</p>}
+                    {e.lines.map((l) => <p key={l.label} className="mt-0.5 text-[13px] text-muted"><span className="font-medium text-ink-2">{l.label}:</span> {l.value}</p>)}
+                    {e.warning && <p className="mt-1 text-[13px] text-warning-ink">{e.warning}</p>}
                   </li>
                 ))}
               </ul>
@@ -425,11 +425,11 @@ export function StudioWorkspace(props: WorkspaceProps) {
         <div className="space-y-4">
           <section aria-label="Published versions">
             <h3 className="pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">Published</h3>
-            {workflow.versions.length === 0 ? <p className="text-[13px] text-muted">Nothing is published yet.</p> : (
+            {workflow.versions.length === 0 ? <p className="text-[14px] text-muted">Nothing is published yet.</p> : (
               <ul className="divide-y divide-line rounded-xl border border-line">
                 {workflow.versions.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                    <div className="min-w-0"><p className="text-[13px] font-medium text-ink">Version {v.version}{v.current && <Badge tone="success" className="ml-2">Running</Badge>}</p><p className="truncate text-[12px] text-muted">{formatDateTime(v.publishedAt, scope.timezone)}{v.publishedByName ? ` · ${v.publishedByName}` : ""}</p></div>
+                    <div className="min-w-0"><p className="text-[14px] font-medium text-ink">Version {v.version}{v.current && <Badge tone="success" className="ml-2">Running</Badge>}</p><p className="truncate text-[12px] text-muted">{formatDateTime(v.publishedAt, scope.timezone)}{v.publishedByName ? ` · ${v.publishedByName}` : ""}</p></div>
                     {!v.current && !readOnly && <Button variant="secondary" size="sm" loading={busy === `restore-${v.id}`} onClick={() => void restore(v.id, v.version)}>Restore to draft</Button>}
                   </li>
                 ))}
@@ -438,8 +438,8 @@ export function StudioWorkspace(props: WorkspaceProps) {
           </section>
           <section aria-label="Recent changes to the draft">
             <h3 className="pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">Recent changes to the draft</h3>
-            {props.history.length === 0 ? <p className="text-[13px] text-muted">No changes yet.</p> : (
-              <ol className="max-h-56 space-y-1 overflow-y-auto text-[12.5px]">
+            {props.history.length === 0 ? <p className="text-[14px] text-muted">No changes yet.</p> : (
+              <ol className="max-h-56 space-y-1 overflow-y-auto text-[13px]">
                 {[...props.history].reverse().slice(0, 25).map((h) => <li key={h.seq} className="flex gap-2 text-ink-2"><span className="w-14 shrink-0 text-faint">{h.source === "ai" ? "Builder" : "You"}</span><span className="min-w-0">{h.label}</span></li>)}
               </ol>
             )}

@@ -23,7 +23,7 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
   const canCreate = ctx.can("proposals.create");
   const tz = ctx.org.timezone || "UTC";
   const newLink = canCreate ? (
-    <Link href="/proposals/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13.5px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New proposal</Link>
+    <Link href="/proposals/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[14px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New proposal</Link>
   ) : undefined;
   return (
     <div className="space-y-5">

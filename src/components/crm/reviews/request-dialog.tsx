@@ -145,7 +145,7 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name} · {CHANNEL_LABELS[t.channel]} · v{t.version}</option>)}
           </Select>
           {!templates.length && (
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">
               Write a service template that includes <span className="font-mono text-[12px]">{"{{review.link}}"}</span>, then approve it. <Link href={`${scope.base}/templates`} className="font-medium text-primary hover:underline">Open Templates</Link>
             </p>
           )}
@@ -154,24 +154,24 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
         <Toggle id={`${ids}-hours`} label="Only during business hours" hint="Quiet hours always apply. Outside these times the request waits for the next sending window." checked={businessHoursOnly} onChange={setBusinessHoursOnly} />
 
         <div aria-live="polite" className="space-y-3">
-          {loading && <p className="flex items-center gap-2 text-[13px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Checking…</p>}
-          {previewError && !loading && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">{previewError}</p>}
+          {loading && <p className="flex items-center gap-2 text-[14px] text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />Checking…</p>}
+          {previewError && !loading && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink">{previewError}</p>}
           {preview && !loading && (
             <>
               <div className="space-y-1.5 rounded-2xl border border-line bg-surface-2/50 p-3">
                 <p className="text-[12px] font-medium text-muted">What {preview.contact.name} will receive by {CHANNEL_LABELS[preview.template.channel]}</p>
-                {preview.subject && <p className="text-[13px] font-medium text-ink">{preview.subject}</p>}
-                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{preview.body}</p>
+                {preview.subject && <p className="text-[14px] font-medium text-ink">{preview.subject}</p>}
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{preview.body}</p>
               </div>
               <ul className="space-y-1.5" aria-label="Checks">
                 {preview.checks.map((c) => (
-                  <li key={c.label} className="flex items-start gap-2 text-[13px]">
+                  <li key={c.label} className="flex items-start gap-2 text-[14px]">
                     {c.ok ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />}
                     <span className="min-w-0"><span className="font-medium text-ink">{c.label}</span><span className="sr-only">{c.ok ? ": passed" : ": not passed"}</span> <span className="text-muted">{c.detail}</span></span>
                   </li>
                 ))}
               </ul>
-              {preview.problem && <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] leading-relaxed text-warning-ink">{preview.problem}</p>}
+              {preview.problem && <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2.5 text-[14px] leading-relaxed text-warning-ink">{preview.problem}</p>}
               <p className="text-[12px] leading-relaxed text-muted">One request per customer every {cooldownDays} days. The message counts towards the customer&apos;s program-message limit and uses your message credits.</p>
             </>
           )}

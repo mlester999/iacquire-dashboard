@@ -125,7 +125,7 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
             <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
             <span className="shrink-0 text-[12px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
           </span>
-          <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
+          <span className="mt-0.5 block truncate text-[13px] text-muted">{c.preview ?? "No messages yet"}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <ChannelMark channel={c.channel} provider={provider} />
             <OwnerPill item={c} />
@@ -156,7 +156,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       tabIndex={view === v ? 0 : -1}
       onClick={() => onChange(v)}
       className={cn(
-        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-medium transition",
+        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition",
         view === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink",
       )}
     >
@@ -189,7 +189,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       </div>
       <Menu>
         <MenuTrigger asChild>
-          <button className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] font-medium text-muted transition hover:text-ink" aria-label="More views">
+          <button className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[13px] font-medium text-muted transition hover:text-ink" aria-label="More views">
             More<ChevronDown className="size-3.5" aria-hidden />
           </button>
         </MenuTrigger>
@@ -228,8 +228,8 @@ export function BulkBar({ selected, perms, team, onClear, onDone }: { selected: 
   return (
     <div role="region" aria-label="Bulk actions" className="space-y-2 rounded-2xl border border-primary/30 bg-primary-soft/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[13px] font-semibold" aria-live="polite">{selected.length} selected</p>
-        <button onClick={onClear} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink"><X className="size-3.5" aria-hidden />Clear</button>
+        <p className="text-[14px] font-semibold" aria-live="polite">{selected.length} selected</p>
+        <button onClick={onClear} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] text-muted hover:text-ink"><X className="size-3.5" aria-hidden />Clear</button>
       </div>
       <p className="text-[12px] text-muted">Nothing here sends a message to a customer.</p>
       <div className="flex flex-wrap gap-1.5">
@@ -348,12 +348,12 @@ export function InboxListPanel(p: ListPanelProps) {
         <button
           onClick={() => { setSelectMode((v) => !v); setChecked(new Set()); }}
           aria-pressed={selectMode}
-          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-medium transition", selectMode ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}
+          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition", selectMode ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}
         >
           <SquareCheckBig className="size-3.5" aria-hidden />{selectMode ? "Done selecting" : "Select"}
         </button>
         {selectMode && p.items.length > 0 && (
-          <button onClick={() => setChecked(new Set(p.items.slice(0, 50).map((i) => i.id)))} className="min-h-9 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink">Select first {Math.min(50, p.items.length)}</button>
+          <button onClick={() => setChecked(new Set(p.items.slice(0, 50).map((i) => i.id)))} className="min-h-9 rounded-lg px-2 text-[13px] text-muted hover:text-ink">Select first {Math.min(50, p.items.length)}</button>
         )}
       </div>
       {selectMode && <BulkBar selected={selectedIds} perms={p.perms} team={p.team} onClear={() => setChecked(new Set())} onDone={() => { setChecked(new Set()); p.onChanged(); }} />}
@@ -362,7 +362,7 @@ export function InboxListPanel(p: ListPanelProps) {
 
       <div id="inbox-list" role="tabpanel" aria-labelledby={`inbox-view-${p.view}`} aria-busy={p.loading || undefined}>
         {p.error && (
-          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[13px] text-danger-ink">
+          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[14px] text-danger-ink">
             <p className="flex items-center gap-2 font-medium"><ShieldAlert className="size-4" aria-hidden />The list couldn&apos;t be loaded.</p>
             <p className="mt-1 text-ink-2">{p.error}</p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={p.onRetry}><RotateCcw className="size-3.5" aria-hidden />Try again</Button>
@@ -396,9 +396,9 @@ export function InboxListPanel(p: ListPanelProps) {
           <div className="rounded-2xl border border-dashed border-line-strong p-8 text-center">
             <Inbox className="mx-auto size-6 text-muted" aria-hidden />
             <h2 className="mt-3 text-[15px] font-semibold">{searching ? "Nothing matches" : empty.title}</h2>
-            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">{searching ? "Try different words, or clear the channel filter." : empty.body}</p>
+            <p className="mx-auto mt-1 max-w-xs text-[14px] leading-relaxed text-muted">{searching ? "Try different words, or clear the channel filter." : empty.body}</p>
             {searching && <Button size="sm" variant="secondary" className="mt-3" onClick={() => { setQ(""); p.onChange({ q: "", channel: "" }); }}>Clear search and filters</Button>}
-            {!searching && p.view === "all" && !restricted && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
+            {!searching && p.view === "all" && !restricted && <Link href="/settings/messaging" className="mt-3 inline-block text-[14px] font-medium text-primary">Check channel setup</Link>}
           </div>
         )}
         {p.hasMore && (

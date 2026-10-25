@@ -189,9 +189,9 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
     return (
       <div className={cn("rounded-2xl border border-line bg-surface-2/40 px-4 py-3", className)} aria-busy={!error}>
         {error ? (
-          <p className="flex items-start gap-2 text-[12.5px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>
+          <p className="flex items-start gap-2 text-[13px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>
         ) : (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted"><Clock3 className="size-4 shrink-0" aria-hidden />Loading the recorded work status…</p>
+          <p className="flex items-center gap-2 text-[13px] text-muted"><Clock3 className="size-4 shrink-0" aria-hidden />Loading the recorded work status…</p>
         )}
       </div>
     );
@@ -225,8 +225,8 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
             {elapsed && job.startedAt && <span className="text-[12px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
             {job.cancelRequested && job.status === "running" && <span className="text-[12px] text-warning-ink">Stop requested</span>}
           </div>
-          <p className="mt-1.5 truncate text-[13.5px] font-semibold text-ink" title={job.title}>{job.title}</p>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-ink" title={job.title}>{job.title}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">
             {running
               ? job.stageLabel ?? "Working on the next recorded step…"
               : job.status === "queued"
@@ -268,7 +268,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
             {counts.map(([label, value]) => (
               <div key={label} className="flex items-baseline gap-1.5">
                 <dt className="order-2 text-[12px] text-muted">{label}</dt>
-                <dd className="order-1 text-[13px] font-semibold tabular-nums text-ink">{value}</dd>
+                <dd className="order-1 text-[14px] font-semibold tabular-nums text-ink">{value}</dd>
               </div>
             ))}
           </dl>
@@ -344,7 +344,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                 return (
                   <li key={item.key ?? index} className={cn("rounded-xl border px-3 py-2.5", tone)}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 flex-1 text-[12.5px] font-semibold text-ink">{item.title}</p>
+                      <p className="min-w-0 flex-1 text-[13px] font-semibold text-ink">{item.title}</p>
                       {typeof item.count === "number" && item.count > 0 && <StatusPill tone={item.severity === "critical" ? "danger" : item.severity === "warning" ? "warning" : "neutral"} size="sm">{item.count}</StatusPill>}
                     </div>
                     {item.detail && <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{item.detail}</p>}
@@ -377,7 +377,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
         )}
 
         {job.failureMessage && (job.status === "failed" || job.status === "blocked") && (
-          <p className="flex items-start gap-2 rounded-xl bg-danger-soft/40 px-3 py-2 text-[12.5px] leading-relaxed text-danger-ink">
+          <p className="flex items-start gap-2 rounded-xl bg-danger-soft/40 px-3 py-2 text-[13px] leading-relaxed text-danger-ink">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             {job.failureMessage}
           </p>

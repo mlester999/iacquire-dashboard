@@ -52,12 +52,12 @@ function CopyField({ id, label, value }: { id: string; label: string; value: str
 
 function WebhookHelp({ provider }: { provider: PaymentProviderId }) {
   if (provider === "paypal") {
-    return <p className="text-[12.5px] text-muted">In your PayPal app, add a webhook for the address above. Choose the events for a payment capture (completed, pending, denied, refunded, reversed) and for a dispute (created, resolved). Then paste the <span className="font-medium">Webhook ID</span> PayPal shows for it. Event names are from PayPal&apos;s documentation and have not been checked against a live app.</p>;
+    return <p className="text-[13px] text-muted">In your PayPal app, add a webhook for the address above. Choose the events for a payment capture (completed, pending, denied, refunded, reversed) and for a dispute (created, resolved). Then paste the <span className="font-medium">Webhook ID</span> PayPal shows for it. Event names are from PayPal&apos;s documentation and have not been checked against a live app.</p>;
   }
   if (provider === "paymongo") {
-    return <p className="text-[12.5px] text-muted">In your PayMongo dashboard, add a webhook for the address above (events for a paid checkout, a failed payment and a refund). PayMongo shows a signing secret for it; paste that here. Event names are from PayMongo&apos;s documentation and have not been checked against a live account.</p>;
+    return <p className="text-[13px] text-muted">In your PayMongo dashboard, add a webhook for the address above (events for a paid checkout, a failed payment and a refund). PayMongo shows a signing secret for it; paste that here. Event names are from PayMongo&apos;s documentation and have not been checked against a live account.</p>;
   }
-  return <p className="text-[12.5px] text-muted">The simulated provider makes its own secret and needs nothing to be set up. It exists only outside production.</p>;
+  return <p className="text-[13px] text-muted">The simulated provider makes its own secret and needs nothing to be set up. It exists only outside production.</p>;
 }
 
 function Deliveries({ id, tz }: { id: string; tz: string }) {
@@ -80,17 +80,17 @@ function Deliveries({ id, tz }: { id: string; tz: string }) {
   };
   return (
     <details className="rounded-xl border border-line px-3 py-2" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && rows === null && !loading) void load(); }}>
-      <summary className="min-h-11 cursor-pointer text-[13px] font-medium text-ink-2 sm:min-h-8">What the provider has sent</summary>
-      {loading && <p className="mt-2 text-[12.5px] text-muted">Loading…</p>}
+      <summary className="min-h-11 cursor-pointer text-[14px] font-medium text-ink-2 sm:min-h-8">What the provider has sent</summary>
+      {loading && <p className="mt-2 text-[13px] text-muted">Loading…</p>}
       {problem && (
-        <div role="alert" className="mt-2 space-y-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[12.5px] text-warning-ink">
+        <div role="alert" className="mt-2 space-y-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
           <p><span className="font-medium">Could not load what the provider has sent.</span> {problem}</p>
           <Button type="button" size="sm" variant="outline" onClick={() => void load()}>Try again</Button>
         </div>
       )}
-      {rows && rows.length === 0 && <p className="mt-2 text-[12.5px] text-muted">Nothing has arrived from this provider yet. After you set up the webhook, run a test payment and it should appear here.</p>}
+      {rows && rows.length === 0 && <p className="mt-2 text-[13px] text-muted">Nothing has arrived from this provider yet. After you set up the webhook, run a test payment and it should appear here.</p>}
       {rows && rows.length > 0 && (
-        <ul className="mt-2 divide-y divide-line text-[12.5px]" aria-label="Recent deliveries">
+        <ul className="mt-2 divide-y divide-line text-[13px]" aria-label="Recent deliveries">
           {rows.map((d) => (
             <li key={d.id} className="flex flex-wrap gap-x-3 gap-y-0.5 py-1.5">
               <span className="font-mono text-ink-2">{d.type}</span>
@@ -120,11 +120,11 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
         <Badge tone={TONE[c.status]}>{c.statusLabel}</Badge>
         {c.liveConfirmedAt && <Badge tone="success">Live confirmed</Badge>}
       </div>
-      <p className="text-[13px] text-ink-2">{c.statusExplain}</p>
-      <p className="text-[12.5px] text-muted">{c.providerNote}</p>
-      {!c.credentialsReadable && <p role="alert" className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The saved keys can no longer be read. Replace them to use this account.</p>}
-      {c.lastError && <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{c.lastError}</p>}
-      <dl className="grid gap-x-6 gap-y-1 text-[13px] sm:grid-cols-2">
+      <p className="text-[14px] text-ink-2">{c.statusExplain}</p>
+      <p className="text-[13px] text-muted">{c.providerNote}</p>
+      {!c.credentialsReadable && <p role="alert" className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The saved keys can no longer be read. Replace them to use this account.</p>}
+      {c.lastError && <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{c.lastError}</p>}
+      <dl className="grid gap-x-6 gap-y-1 text-[14px] sm:grid-cols-2">
         <div><dt className="inline text-muted">Takes: </dt><dd className="inline text-ink-2">{c.supportedCurrencies.join(", ") || "nothing yet"}</dd></div>
         {c.environment && <div><dt className="inline text-muted">PayPal app: </dt><dd className="inline text-ink-2">{c.environment === "live" ? "live" : "sandbox (testing)"}</dd></div>}
         <div><dt className="inline text-muted">Last checked with the provider: </dt><dd className="inline text-ink-2">{c.lastCheckedAt ? formatInstant(c.lastCheckedAt, tz) : "not yet"}</dd></div>
@@ -141,26 +141,26 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
           <Button className={ACTION} variant="secondary" loading={busy("secret")} disabled={!secret.trim()} onClick={async () => { const r = await run("secret", () => saveWebhookSecretAction(c.id, { webhookSecret: secret }), `${secretLabel} saved.`); if (r) setSecret(""); }}>Save {secretLabel.toLowerCase()}</Button>
         </div>
       )}
-      {c.webhookSecretSaved && c.provider !== "simulated" && <p className="flex items-center gap-1.5 text-[13px] text-success-ink"><CheckCircle2 className="size-4" aria-hidden />{secretLabel} saved. It is not shown again.</p>}
+      {c.webhookSecretSaved && c.provider !== "simulated" && <p className="flex items-center gap-1.5 text-[14px] text-success-ink"><CheckCircle2 className="size-4" aria-hidden />{secretLabel} saved. It is not shown again.</p>}
 
-      <div className="rounded-xl bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">
+      <div className="rounded-xl bg-surface-2/60 px-3 py-2.5 text-[14px] text-ink-2">
         <p className="flex items-center gap-1.5 font-medium text-ink"><FlaskConical className="size-4" aria-hidden />Run a test payment</p>
         <p className="mt-1">Make a <span className="font-medium">test invoice</span>, issue it, and press <span className="font-medium">Pay as a test</span> on it. The provider reports the payment in test mode; no real money moves. Only a test invoice can be paid this way: it is marked as a test everywhere, is never reminded about, is left out of what you are owed and your revenue, and can be voided or deleted afterwards. A real invoice is never marked paid by a test.</p>
         {c.mode === "test"
           ? <Link href="/invoices/new?test=1" className="mt-1 inline-flex min-h-11 items-center font-medium text-primary-ink underline">Start a test invoice</Link>
-          : <p className="mt-1 text-[12.5px] text-muted">This account is live, so it takes real invoices only. A test needs an account in test mode.</p>}
+          : <p className="mt-1 text-[13px] text-muted">This account is live, so it takes real invoices only. A test needs an account in test mode.</p>}
       </div>
 
       {c.mode === "live" && (
-        <div className="space-y-1 text-[13px]">
+        <div className="space-y-1 text-[14px]">
           <p className="font-medium text-ink">Going live</p>
           {c.liveConfirmedAt ? <p className="text-success-ink">You confirmed on {formatInstant(c.liveConfirmedAt, tz)}. Customers can be sent to pay.</p> : <p className="text-ink-2">{c.liveConfirmBlock ?? "Everything needed is in place. Confirm when you are ready for customers to pay with real money."}</p>}
           {!liveEnabled && <p className="text-muted">Live payments are switched off for the whole service until iAcquire turns them on. That is a separate step from your confirmation.</p>}
           {!c.liveConfirmedAt && <Button className={ACTION} variant="brand" disabled={Boolean(c.liveConfirmBlock)} loading={busy("live")} onClick={() => setDialog("live")}>Confirm going live</Button>}
         </div>
       )}
-      {c.mode === "test" && c.provider !== "simulated" && <p className="text-[12.5px] text-muted">This account is in test mode, so customers are not sent to it and it takes test invoices only. To take real payments, run a test payment first, then replace the keys with your live ones and confirm going live.</p>}
-      {!callsEnabled && c.provider !== "simulated" && <p className="text-[12.5px] text-muted">Calls to real payment providers are switched off in this environment, so keys cannot be checked and checkouts cannot be started until iAcquire turns them on.</p>}
+      {c.mode === "test" && c.provider !== "simulated" && <p className="text-[13px] text-muted">This account is in test mode, so customers are not sent to it and it takes test invoices only. To take real payments, run a test payment first, then replace the keys with your live ones and confirm going live.</p>}
+      {!callsEnabled && c.provider !== "simulated" && <p className="text-[13px] text-muted">Calls to real payment providers are switched off in this environment, so keys cannot be checked and checkouts cannot be started until iAcquire turns them on.</p>}
 
       {/* One full-width 44 px button per row on a phone; side by side from the small breakpoint up. */}
       <div className="grid gap-2 sm:flex sm:flex-wrap">
@@ -198,7 +198,7 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
           <Field label={isPaypal ? "Client ID" : "Secret key"} htmlFor="rk-key"><Input id="rk-key" type={isPaypal ? "text" : "password"} autoComplete="off" spellCheck={false} className={input16} value={keys.apiKey} onChange={(e) => setKeys({ ...keys, apiKey: e.target.value })} /></Field>
           {isPaypal && <Field label="Client secret" htmlFor="rk-secret"><Input id="rk-secret" type="password" autoComplete="off" spellCheck={false} className={input16} value={keys.apiSecret} onChange={(e) => setKeys({ ...keys, apiSecret: e.target.value })} /></Field>}
           <Field label={`${secretLabel} (only if it changed)`} htmlFor="rk-wh" optional hint="Needed when you switch between test and live keys: the test webhook and the live webhook have different ones, so the old one is not kept for the other mode."><Input id="rk-wh" type="password" autoComplete="off" spellCheck={false} className={input16} value={keys.webhookSecret} onChange={(e) => setKeys({ ...keys, webhookSecret: e.target.value })} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[12.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={keys.accept} onChange={(e) => setKeys({ ...keys, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
+          <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={keys.accept} onChange={(e) => setKeys({ ...keys, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
         </div>
       </ConfirmDialog>
     </li>
@@ -221,12 +221,12 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
   return (
     <div className="space-y-6">
       {!callsEnabled && (
-        <p role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">
+        <p role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <span>Calls to real payment providers are switched off in this environment. You cannot connect PayMongo or PayPal here until iAcquire turns them on; nothing is lost by waiting. Invoices, recording payments by hand, and the customer&apos;s invoice page all work now.</span>
         </p>
       )}
-      <p className="max-w-3xl text-[13.5px] text-ink-2">Customers pay <span className="font-medium">your own</span> payment provider account, and the money is paid out to you by the provider. iAcquire does not hold your customers&apos; money, takes no cut of it and never writes to your provider account except to open a payment page for an invoice you issued.</p>
+      <p className="max-w-3xl text-[14px] text-ink-2">Customers pay <span className="font-medium">your own</span> payment provider account, and the money is paid out to you by the provider. iAcquire does not hold your customers&apos; money, takes no cut of it and never writes to your provider account except to open a payment page for an invoice you issued.</p>
 
       {connections.length > 0 && <ul className="space-y-4" aria-label="Connected payment accounts">{connections.map((c) => <ConnectionCard key={c.id} c={c} tz={tz} callsEnabled={callsEnabled} liveEnabled={liveEnabled} />)}</ul>}
 
@@ -248,7 +248,7 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
           <div className="space-y-2 rounded-xl border border-line bg-surface-2/50 p-3">
             <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">What you are agreeing to</p>
             <p className="rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning-ink">This wording is proposed and has not been reviewed by a lawyer.</p>
-            <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={f.accept} onChange={(e) => setF({ ...f, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
+            <label className="flex min-h-11 items-start gap-3 text-[14px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={f.accept} onChange={(e) => setF({ ...f, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
           </div>
           <div>
             <Button
@@ -259,7 +259,7 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
                 if (done) setF(blankForm);
               }}
             >Check the keys and connect</Button>
-            <p className="mt-2 text-[12.5px] text-muted">The provider is asked to accept the keys first, in a read-only call. Nothing is saved if it does not.</p>
+            <p className="mt-2 text-[13px] text-muted">The provider is asked to accept the keys first, in a read-only call. Nothing is saved if it does not.</p>
           </div>
         </section>
       )}

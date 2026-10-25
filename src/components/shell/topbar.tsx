@@ -121,7 +121,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </MenuTrigger>
           <MenuContent className="w-64">
             <div className="px-2.5 py-2">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{shell.user.name}</p>
+              <p className="truncate text-[14px] font-semibold text-ink">{shell.user.name}</p>
               <p className="truncate text-[12px] text-muted">{shell.user.email}</p>
             </div>
             <MenuSeparator />
@@ -163,7 +163,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
 export function DemoBanner() {
   return (
-    <aside aria-label="Demo workspace" className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[12.5px] font-medium text-violet-ink">
+    <aside aria-label="Demo workspace" className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[13px] font-medium text-violet-ink">
       Demo workspace — the records here are fictional sample data for previewing the portal, not live business results.
     </aside>
   );
@@ -173,7 +173,7 @@ export function SetupBanner() {
   return (
     <div className="mx-auto mt-4 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft px-4 py-3 sm:flex-row sm:items-center">
-        <p className="text-[13.5px] text-primary-ink">
+        <p className="text-[14px] text-primary-ink">
           <span className="font-semibold">Finish your company setup</span> so we can tailor your AI team. It takes about 3–5 minutes and saves as you go.
         </p>
         <ButtonLink href="/onboarding" size="sm" variant="brand">

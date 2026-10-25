@@ -76,7 +76,7 @@ export function BlueprintSetupScreen({ scope, data }: { scope: CrmScope; data: B
       />
 
       {data.mode === "ghl" && (
-        <p className="mb-4 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-muted">
+        <p className="mb-4 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-muted">
           This workspace uses GoHighLevel as its CRM, so Blueprints are not applied here.
         </p>
       )}
@@ -99,7 +99,7 @@ export function BlueprintSetupScreen({ scope, data }: { scope: CrmScope; data: B
             <CardContent className="space-y-5">
               {checklist.total > 0 && <ProgressBar value={pct} tone={pct === 100 ? "success" : "primary"} label={`Setup checklist: ${checklist.done} of ${checklist.total} done`} />}
               {checklist.items.length === 0 ? (
-                <p className="text-[13px] text-muted">{data.applications.length ? "Everything this workspace's Blueprints need is in place." : "No Blueprint has been applied yet, so there is nothing to set up from one."}</p>
+                <p className="text-[14px] text-muted">{data.applications.length ? "Everything this workspace's Blueprints need is in place." : "No Blueprint has been applied yet, so there is nothing to set up from one."}</p>
               ) : (
                 <>
                   <ChecklistGroup title="To do" items={todo} scope={scope} />
@@ -127,12 +127,12 @@ export function BlueprintSetupScreen({ scope, data }: { scope: CrmScope; data: B
                       <span className="flex min-w-0 items-center gap-2">
                         <CalendarClock className="size-4 shrink-0 text-muted" aria-hidden />
                         <span className="min-w-0">
-                          <span className="block truncate text-[13px] font-medium text-ink">{c.name}</span>
+                          <span className="block truncate text-[14px] font-medium text-ink">{c.name}</span>
                           <span className="block text-[12px] text-muted">{c.hosts ? `${c.hosts} ${c.hosts === 1 ? "host" : "hosts"} assigned` : "No hosts assigned yet"}</span>
                         </span>
                       </span>
                       {scope.can["appointments.view"] ? (
-                        <Link href={`${scope.base}/calendars/${c.id}`} className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-medium text-primary underline-offset-2 hover:underline sm:min-h-0">
+                        <Link href={`${scope.base}/calendars/${c.id}`} className="inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary underline-offset-2 hover:underline sm:min-h-0">
                           Verify &amp; activate<ArrowRight className="size-3.5" aria-hidden />
                         </Link>
                       ) : null}
@@ -169,7 +169,7 @@ export function BlueprintSetupScreen({ scope, data }: { scope: CrmScope; data: B
                     return (
                       <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
                         <span className="min-w-0">
-                          <span className="block text-[13px] font-medium text-ink">{a.name}</span>
+                          <span className="block text-[14px] font-medium text-ink">{a.name}</span>
                           <span className="block text-[12px] text-muted">
                             Version {a.version} · {a.via === "onboarding" ? "During onboarding" : scope.agency ? "By the agency" : "By your agency"} · {formatDate(a.appliedAt, scope.timezone)}
                             {a.rolledBackAt ? ` · Undone ${formatDate(a.rolledBackAt, scope.timezone)}` : ""}
@@ -214,18 +214,18 @@ function ChecklistRow({ item, scope }: { item: ChecklistItem; scope: CrmScope })
         <div className="flex min-w-0 items-start gap-2.5">
           <Icon className={item.status === "done" ? "mt-0.5 size-4 shrink-0 text-success" : item.status === "pending" ? "mt-0.5 size-4 shrink-0 text-warning" : "mt-0.5 size-4 shrink-0 text-faint"} aria-hidden />
           <div className="min-w-0">
-            <p className="text-[13px] font-medium text-ink">
+            <p className="text-[14px] font-medium text-ink">
               {item.label}
               {!item.required && <span className="ml-1.5 text-[12px] font-normal text-faint">Optional</span>}
             </p>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{item.description}</p>
-            {item.detail && <p className="mt-1 text-[12.5px] text-ink-2">{item.detail}</p>}
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{item.description}</p>
+            {item.detail && <p className="mt-1 text-[13px] text-ink-2">{item.detail}</p>}
           </div>
         </div>
         <Badge tone={s.tone}>{s.label}</Badge>
       </div>
       {item.status === "pending" && (
-        <div className="mt-2 pl-[26px] text-[12.5px]">
+        <div className="mt-2 pl-[26px] text-[13px]">
           {place?.href ? (
             <Link href={place.href} className="inline-flex min-h-11 items-center gap-1 font-medium text-primary underline-offset-2 hover:underline sm:min-h-0">
               Open {place.label}<ArrowRight className="size-3.5" aria-hidden />

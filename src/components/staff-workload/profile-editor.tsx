@@ -101,21 +101,21 @@ export function ProfileEditor({ userId, name, profile, timeOff, today, canManage
         <form onSubmit={saveProfile} className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-soft sm:p-5">
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Capacity and skills for {name}</h2>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Capacity is a number of points over the planning horizon, not hours. Leave it empty to use the team default (or show no label).</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">Capacity is a number of points over the planning horizon, not hours. Leave it empty to use the team default (or show no label).</p>
           </div>
-          {profileError && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{profileError}</p>}
+          {profileError && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{profileError}</p>}
           <div>
             <Label htmlFor="capacity-points">Capacity points over the horizon</Label>
             <Input id="capacity-points" type="number" min={1} max={200} step={1} inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="Not set" className="mt-1.5 max-w-48" />
           </div>
           <fieldset>
-            <legend className="text-[12.5px] font-medium text-ink-2">Working days</legend>
+            <legend className="text-[13px] font-medium text-ink-2">Working days</legend>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {DAY_NAMES.map((label, i) => {
                 const day = i + 1;
                 const on = days.includes(day);
                 return (
-                  <label key={day} className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[12.5px] ${on ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted"}`}>
+                  <label key={day} className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px] ${on ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted"}`}>
                     <input type="checkbox" checked={on} onChange={() => setDays((cur) => (cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day].sort((a, b) => a - b)))} className="sr-only" />
                     {label}
                   </label>
@@ -124,11 +124,11 @@ export function ProfileEditor({ userId, name, profile, timeOff, today, canManage
             </div>
           </fieldset>
           <fieldset>
-            <legend className="text-[12.5px] font-medium text-ink-2">Skills recorded by a manager</legend>
+            <legend className="text-[13px] font-medium text-ink-2">Skills recorded by a manager</legend>
             <p className="mt-0.5 text-[12px] leading-snug text-muted">Only recorded skills rank suggestions. Nothing is inferred from a person&apos;s work.</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {SKILLS.map((skill) => (
-                <label key={skill} className="flex items-center justify-between gap-2 text-[12.5px] text-ink-2">
+                <label key={skill} className="flex items-center justify-between gap-2 text-[13px] text-ink-2">
                   <span>{SKILL_LABELS[skill]}</span>
                   <Select aria-label={`${SKILL_LABELS[skill]} level`} value={String(skills[skill])} onChange={(e) => setSkills((cur) => ({ ...cur, [skill]: Number(e.target.value) }))} className="h-9 w-32 text-[12px]">
                     <option value="0">Not recorded</option>
@@ -149,11 +149,11 @@ export function ProfileEditor({ userId, name, profile, timeOff, today, canManage
         <div className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-soft sm:p-5">
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Time off</h2>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Time off reduces the available days in the planning horizon. It never appears in a client-facing page, and a colleague without the manage permission learns only that someone is away.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">Time off reduces the available days in the planning horizon. It never appears in a client-facing page, and a colleague without the manage permission learns only that someone is away.</p>
           </div>
-          {timeOffError && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{timeOffError}</p>}
+          {timeOffError && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{timeOffError}</p>}
           {timeOff.length > 0 && (
-            <ul className="divide-y divide-line text-[12.5px]">
+            <ul className="divide-y divide-line text-[13px]">
               {timeOff.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0">
                   <span>
@@ -187,7 +187,7 @@ export function ProfileEditor({ userId, name, profile, timeOff, today, canManage
                   {TIME_OFF_KINDS.map((k) => <option key={k} value={k}>{TIME_OFF_KIND_TEXT[k]}</option>)}
                 </Select>
               </div>
-              <label className="flex items-end gap-2 pb-2 text-[12.5px] text-ink-2">
+              <label className="flex items-end gap-2 pb-2 text-[13px] text-ink-2">
                 <input type="checkbox" checked={partDay} onChange={(e) => setPartDay(e.target.checked)} /> Half a day (one day)
               </label>
             </div>

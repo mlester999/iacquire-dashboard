@@ -26,7 +26,7 @@ export function LoadMeter({ result, compact = false }: { result: WorkloadResult;
   const percent = result.ratioPercent;
   return (
     <div className={cn("min-w-0", compact ? "space-y-1" : "space-y-1.5")}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12.5px]">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[13px]">
         <span className="font-medium text-ink">
           {formatPoints(result.pointsCenti)} pts
           {result.capacity !== null ? <span className="font-normal text-muted"> / {result.capacity} capacity</span> : <span className="font-normal text-muted"> · {CAPACITY_NOT_SET_TEXT.toLowerCase()}</span>}
@@ -57,7 +57,7 @@ export function StatTile({ label, value, detail, tone = "text-ink" }: { label: s
   return (
     <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-soft">
       <p className={cn("text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums", tone)}>{value}</p>
-      <p className="mt-1 text-[12.5px] font-medium text-ink-2">{label}</p>
+      <p className="mt-1 text-[13px] font-medium text-ink-2">{label}</p>
       {detail && <p className="mt-0.5 text-[12px] leading-snug text-muted">{detail}</p>}
     </div>
   );

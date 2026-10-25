@@ -56,7 +56,7 @@ export function FormsList({ scope, forms, canManage, contactsProblem, orgSlug, c
         description="Build forms and surveys for your website or their own page. Every answer is checked against the published version, saved with the exact consent wording people agreed to, and turned into contacts, tags and deals the way you set."
         actions={canManage ? <Button onClick={() => setCreating(true)}><Plus className="size-4" aria-hidden />New form</Button> : undefined}
       />
-      {contactsProblem && <p className="mb-4 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-warning-ink">{contactsProblem}</p>}
+      {contactsProblem && <p className="mb-4 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[14px] leading-relaxed text-warning-ink">{contactsProblem}</p>}
       {!canManage && <div className="mb-4"><ReadOnlyNotice>{scope.readOnly ? undefined : "You can see forms and their results. Owners and managers build and publish them."}</ReadOnlyNotice></div>}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -122,7 +122,7 @@ export function FormsList({ scope, forms, canManage, contactsProblem, orgSlug, c
                   <Badge tone="outline">{FORM_KIND_LABELS[f.kind]}</Badge>
                   {f.hosted && <Badge tone="neutral"><Globe className="size-3" aria-hidden />Own page</Badge>}
                 </div>
-                <p className="mt-2 text-[12.5px] text-muted">{FORM_PURPOSE_LABELS[f.purpose]} · {f.questionCount} {f.questionCount === 1 ? "question" : "questions"}{f.publishedVersion ? ` · version ${f.publishedVersion}` : ""}</p>
+                <p className="mt-2 text-[13px] text-muted">{FORM_PURPOSE_LABELS[f.purpose]} · {f.questionCount} {f.questionCount === 1 ? "question" : "questions"}{f.publishedVersion ? ` · version ${f.publishedVersion}` : ""}</p>
                 {canSeeSubmissions && (
                   <dl className="mt-auto grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
                     <div><dt className="text-[12px] text-muted">Last 7 days</dt><dd className="text-[15px] font-semibold tabular-nums text-ink">{f.submissions.last7Days}</dd></div>

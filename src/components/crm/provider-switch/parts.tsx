@@ -39,7 +39,7 @@ export function Stepper({ current }: { current: WizardStepKey }) {
         const now = i === at;
         return (
           <li key={s.key} aria-current={now ? "step" : undefined}
-            className={cn("flex min-h-11 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[12.5px] sm:min-h-9", now ? "border-primary/40 bg-primary-soft font-medium text-primary-ink" : done ? "border-line bg-surface text-ink-2" : "border-line bg-surface-2/40 text-muted")}>
+            className={cn("flex min-h-11 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[13px] sm:min-h-9", now ? "border-primary/40 bg-primary-soft font-medium text-primary-ink" : done ? "border-line bg-surface text-ink-2" : "border-line bg-surface-2/40 text-muted")}>
             {done ? <CheckCircle2 className="size-3.5 shrink-0 text-success-ink" aria-hidden /> : <Circle className={cn("size-3.5 shrink-0", now ? "text-primary" : "text-faint")} aria-hidden />}
             <span className="tabular-nums">{i + 1}.</span>
             <span className="truncate">{s.label}</span>
@@ -55,7 +55,7 @@ export function Stepper({ current }: { current: WizardStepKey }) {
 export function PreviewTable({ preview }: { preview: SwitchPreview }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-line">
-      <table className="w-full min-w-[760px] text-[13px]">
+      <table className="w-full min-w-[760px] text-[14px]">
         <caption className="sr-only">What changes for each capability</caption>
         <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
           <tr>
@@ -106,10 +106,10 @@ export function StepsTable({ steps, timezone, onRetry, retry, busy, readRest = [
   readRest?: string[];
   onReadRest?: (entity: SwitchStepView["entity"]) => void;
 }) {
-  if (!steps.length) return <p className="rounded-xl border border-dashed border-line px-3 py-3 text-[13px] text-ink-2">Nothing is imported in this switch: it moves ownership only.</p>;
+  if (!steps.length) return <p className="rounded-xl border border-dashed border-line px-3 py-3 text-[14px] text-ink-2">Nothing is imported in this switch: it moves ownership only.</p>;
   return (
     <div className="overflow-x-auto rounded-xl border border-line">
-      <table className="w-full min-w-[720px] text-[13px]">
+      <table className="w-full min-w-[720px] text-[14px]">
         <caption className="sr-only">Migration steps</caption>
         <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
           <tr>
@@ -147,11 +147,11 @@ export function StepsTable({ steps, timezone, onRetry, retry, busy, readRest = [
                 </td>
                 <td className="px-3 py-2 text-right">
                   {onRetry && retry.includes(s.entity) && (
-                    <button type="button" onClick={() => onRetry(s.entity)} disabled={busy?.(`retry-${s.entity}`)} className="inline-flex min-h-11 items-center rounded-lg border border-line px-2.5 text-[12.5px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">Read again</button>
+                    <button type="button" onClick={() => onRetry(s.entity)} disabled={busy?.(`retry-${s.entity}`)} className="inline-flex min-h-11 items-center rounded-lg border border-line px-2.5 text-[13px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">Read again</button>
                   )}
                   {onReadRest && readRest.includes(s.entity) && (
                     <button type="button" onClick={() => onReadRest(s.entity)} disabled={busy?.(`rest-${s.entity}`)} aria-label={`Read the rest of the ${s.label.toLowerCase()} from GoHighLevel`}
-                      className="inline-flex min-h-11 items-center rounded-lg border border-line px-2.5 text-[12.5px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">Read the rest</button>
+                      className="inline-flex min-h-11 items-center rounded-lg border border-line px-2.5 text-[13px] font-medium text-ink hover:bg-surface-2 sm:min-h-9">Read the rest</button>
                   )}
                 </td>
               </tr>
@@ -169,7 +169,7 @@ export function VerificationTable({ verification, timezone }: { verification: Sw
     <div className="space-y-3">
       {verification.steps.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[760px] text-[13px]">
+          <table className="w-full min-w-[760px] text-[14px]">
             <caption className="sr-only">Verification per step</caption>
             <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
               <tr>
@@ -207,14 +207,14 @@ export function VerificationTable({ verification, timezone }: { verification: Sw
         </div>
       )}
       {verification.ok ? (
-        <p className="flex items-center gap-2 text-[13px] text-success-ink">
+        <p className="flex items-center gap-2 text-[14px] text-success-ink">
           <CheckCircle2 className="size-4" aria-hidden />
           {verification.steps.length
             ? <>Every record read {readTimeOf(verification.steps) ? <RelativeTime iso={readTimeOf(verification.steps)!} timezone={timezone} /> : "from GoHighLevel"} is accounted for, the samples match, and GoHighLevel held no more when it was recounted.</>
             : "Ownership is exactly what the cutover set; nothing was imported."}
         </p>
       ) : (
-        <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+        <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
           {verification.issues.map((i) => <li key={i} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{i}</li>)}
         </ul>
       )}

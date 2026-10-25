@@ -100,7 +100,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice }: Demo
         aria-relevant="additions"
         className="max-h-[55dvh] min-h-24 space-y-3 overflow-y-auto rounded-xl border border-line bg-surface-2/50 p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        {state.transcript.length === 0 && <p className="text-[13.5px] text-muted">Nothing here yet. Ask a question about what the AI team does or what it costs.</p>}
+        {state.transcript.length === 0 && <p className="text-[14px] text-muted">Nothing here yet. Ask a question about what the AI team does or what it costs.</p>}
         {state.transcript.map((l) => (
           <div key={l.id} className={l.role === "user" ? "ml-6" : "mr-6"}>
             <p className="text-[12px] font-medium text-muted">{speaker(l, roles)}</p>
@@ -117,7 +117,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice }: Demo
         <form method="post" action="/api/public/demo/message" onSubmit={send} className="space-y-3">
           <input type="hidden" name="clientMessageId" value={fallbackMessageId} />
           <div className="space-y-1.5">
-            <label htmlFor="demo-employee" className="text-[13px] font-medium text-ink-2">
+            <label htmlFor="demo-employee" className="text-[14px] font-medium text-ink-2">
               Ask
             </label>
             <Select id="demo-employee" name="employeeRole" value={employee} onChange={(e) => setEmployee(e.target.value)}>
@@ -130,7 +130,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice }: Demo
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="demo-message" className="text-[13px] font-medium text-ink-2">
+            <label htmlFor="demo-message" className="text-[14px] font-medium text-ink-2">
               Your question
             </label>
             <Textarea
@@ -147,7 +147,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice }: Demo
             />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p aria-live="polite" className="text-[13px] text-muted">
+            <p aria-live="polite" className="text-[14px] text-muted">
               {state.messagesLeft} of {state.messageAllowance} messages left
             </p>
             <Button type="submit" loading={sending}>

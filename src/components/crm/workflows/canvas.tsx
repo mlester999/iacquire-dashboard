@@ -57,7 +57,7 @@ export function WorkflowCanvas(props: CanvasProps) {
           <span className="min-w-0 flex-1">
             <span className="block text-[12px] font-semibold uppercase tracking-wider text-faint">Starts when</span>
             <span className="block text-[14px] font-semibold text-ink">{trigger.title}</span>
-            {trigger.summary && <span className="mt-0.5 block text-[12.5px] text-muted">{trigger.summary}</span>}
+            {trigger.summary && <span className="mt-0.5 block text-[13px] text-muted">{trigger.summary}</span>}
           </span>
           <IssueMark issues={trigger.issues} />
         </button>
@@ -198,7 +198,7 @@ function StepCard({ stepKey, kinds, summaries, issues, numbers, asks, selected, 
             {asks?.[stepKey] && <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-px text-[12px] normal-case tracking-normal text-warning-ink"><Hand className="size-3" aria-hidden />Asks first</span>}
           </span>
           <span className="block text-[14px] font-semibold text-ink">{label}</span>
-          <span className="mt-0.5 block break-words text-[12.5px] text-muted">{summaries[stepKey] || "Not set up yet"}</span>
+          <span className="mt-0.5 block break-words text-[13px] text-muted">{summaries[stepKey] || "Not set up yet"}</span>
         </span>
         <IssueMark issues={stepIssues} />
       </button>

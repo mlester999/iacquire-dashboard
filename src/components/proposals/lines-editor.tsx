@@ -51,7 +51,7 @@ export function LinesEditor({ lines, onChange, currency, catalog, taxRates, canD
   const rateById = new Map(taxRates.map((t) => [t.id, t]));
   return (
     <section ref={region} tabIndex={-1} aria-label="Priced lines" className="space-y-3 outline-none">
-      {lines.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13.5px] text-muted">No priced lines yet. Add an item from your price book, or type one in.</p>}
+      {lines.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted">No priced lines yet. Add an item from your price book, or type one in.</p>}
       <ol className="space-y-3">
         {lines.map((l, i) => {
           const id = (f: string) => `${idPrefix}-${l.key}-${f}`;
@@ -69,7 +69,7 @@ export function LinesEditor({ lines, onChange, currency, catalog, taxRates, canD
                 <Badge tone={fromBook ? "primary" : "outline"}>{fromBook ? "From the price book" : "Typed by hand"}</Badge>
                 {overridden && <Badge tone="warning">Price differs from the price book</Badge>}
                 {l.discount !== "none" && <Badge tone="warning">Discounted</Badge>}
-                <span className="ml-auto text-[13px] font-medium tabular-nums text-ink">{a ? <><span className="sr-only">Amount before tax: </span>{money(a.net)}</> : <span className="font-normal text-muted">Amount not worked out yet</span>}</span>
+                <span className="ml-auto text-[14px] font-medium tabular-nums text-ink">{a ? <><span className="sr-only">Amount before tax: </span>{money(a.net)}</> : <span className="font-normal text-muted">Amount not worked out yet</span>}</span>
               </div>
               <Field label={`Line ${i + 1} name`} htmlFor={id("name")} error={err("name")}>
                 <Input id={id("name")} value={l.name} maxLength={DOC_LIMITS.lineName + 20} disabled={readOnly} onChange={(e) => set(l.key, { name: e.target.value })} className="text-[16px] sm:text-[14px]" />
@@ -124,7 +124,7 @@ export function LinesEditor({ lines, onChange, currency, catalog, taxRates, canD
                 )}
               </div>
               <details className="rounded-xl border border-line px-3 py-2" open={Boolean(l.description || l.note)}>
-                <summary className="min-h-11 cursor-pointer text-[13px] font-medium text-ink-2 sm:min-h-8">Description and note</summary>
+                <summary className="min-h-11 cursor-pointer text-[14px] font-medium text-ink-2 sm:min-h-8">Description and note</summary>
                 <div className="mt-2 space-y-3">
                   <Field label="Description" htmlFor={id("description")} optional error={err("description")} hint="What the customer gets. The customer sees this.">
                     <Textarea id={id("description")} rows={3} value={l.description} disabled={readOnly} onChange={(e) => set(l.key, { description: e.target.value })} className="text-[16px] sm:text-[14px]" />
@@ -145,7 +145,7 @@ export function LinesEditor({ lines, onChange, currency, catalog, taxRates, canD
       </ol>
       {!readOnly && (
         <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-0 flex-1 text-[12.5px] text-muted sm:max-w-sm">
+          <label className="min-w-0 flex-1 text-[13px] text-muted sm:max-w-sm">
             <span className="mb-1 block">Add from your price book</span>
             <Select
               value="" disabled={lines.length >= DOC_LIMITS.lines || offered.length === 0} aria-label="Add an item from your price book"
@@ -161,7 +161,7 @@ export function LinesEditor({ lines, onChange, currency, catalog, taxRates, canD
           <Button type="button" variant="secondary" disabled={lines.length >= DOC_LIMITS.lines} onClick={() => add(blankLine())}><Plus className="size-4" aria-hidden />Add a line by hand</Button>
         </div>
       )}
-      {issueFor(issues, "lines") && <p role="alert" className="flex items-center gap-1.5 text-[12.5px] text-danger-ink"><AlertTriangle className="size-4" aria-hidden />{issueFor(issues, "lines")}</p>}
+      {issueFor(issues, "lines") && <p role="alert" className="flex items-center gap-1.5 text-[13px] text-danger-ink"><AlertTriangle className="size-4" aria-hidden />{issueFor(issues, "lines")}</p>}
     </section>
   );
 }

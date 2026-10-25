@@ -113,7 +113,7 @@ export function PostComposer(p: ComposerProps) {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (sync !== "conflict") void save(); }} aria-label={p.initial ? "Edit post" : "New post"}>
         {sync === "conflict" && p.initial && (
-          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
             <p className="font-medium">Someone changed this post while you were editing it.</p>
             <p className="mt-0.5">Your edits are kept below, but they cannot be saved over the newer text. Copy anything you want to keep, then load the latest version.</p>
             <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(p.initial!)}>Load the latest version</Button>
@@ -154,9 +154,9 @@ export function PostComposer(p: ComposerProps) {
 
         {(kind === "image" || kind === "video") && (
           <fieldset className="space-y-2" disabled={readOnly}>
-            <legend className="text-[13px] font-medium text-ink">{kind === "video" ? "Video" : "Picture"}</legend>
+            <legend className="text-[14px] font-medium text-ink">{kind === "video" ? "Video" : "Picture"}</legend>
             {pickable.length === 0 ? (
-              <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />{p.mediaNote ?? "Add a file in the media library first."} <Link href="/social/media" className="font-medium text-primary-ink underline">Open media</Link></p>
+              <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />{p.mediaNote ?? "Add a file in the media library first."} <Link href="/social/media" className="font-medium text-primary-ink underline">Open media</Link></p>
             ) : (
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {pickable.map((m) => {
@@ -187,7 +187,7 @@ export function PostComposer(p: ComposerProps) {
         {problems.length > 0 && (
           <ul className="space-y-1.5" aria-label="Checks for this post">
             {problems.map((x) => (
-              <li key={x.code + x.message} className={cn("flex items-start gap-2 rounded-xl px-3 py-2 text-[13px]", x.level === "blocking" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+              <li key={x.code + x.message} className={cn("flex items-start gap-2 rounded-xl px-3 py-2 text-[14px]", x.level === "blocking" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span><span className="font-semibold">{x.level === "blocking" ? "Fix before sending for approval: " : "Note: "}</span>{x.message}</span>
               </li>
@@ -198,12 +198,12 @@ export function PostComposer(p: ComposerProps) {
         {!readOnly && (
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant="brand" loading={busy("save")} disabled={!account || (Boolean(p.initial) && !dirty) || sync === "conflict"}>{p.initial ? "Save changes" : "Save draft"}</Button>
-            {p.initial && dirty && <span className="text-[12.5px] text-muted">You have unsaved changes.</span>}
-            {p.initial && p.initial.status !== "draft" && p.initial.status !== "changes_requested" && p.initial.status !== "failed" && dirty && <span className="text-[12.5px] text-warning-ink">Saving sends this back to a draft, because the approval was of the earlier text.</span>}
+            {p.initial && dirty && <span className="text-[13px] text-muted">You have unsaved changes.</span>}
+            {p.initial && p.initial.status !== "draft" && p.initial.status !== "changes_requested" && p.initial.status !== "failed" && dirty && <span className="text-[13px] text-warning-ink">Saving sends this back to a draft, because the approval was of the earlier text.</span>}
           </div>
         )}
         {!readOnly && !p.initial && p.scheduleDay && (
-          <p className="text-[12.5px] text-muted">You started this from {formatDay(p.scheduleDay)}. Once the draft is saved, the schedule box starts on that day. Nothing is scheduled automatically.</p>
+          <p className="text-[13px] text-muted">You started this from {formatDay(p.scheduleDay)}. Once the draft is saved, the schedule box starts on that day. Nothing is scheduled automatically.</p>
         )}
       </form>
 
@@ -212,7 +212,7 @@ export function PostComposer(p: ComposerProps) {
           <div className="flex items-center gap-2">
             <PlatformMark platform={platform} className="size-8 text-[12px]" />
             <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{account?.name ?? "No account"}</p>
+              <p className="truncate text-[14px] font-semibold text-ink">{account?.name ?? "No account"}</p>
               <p className="text-[12px] text-muted">{PLATFORM_LABELS[platform]} · preview</p>
             </div>
           </div>
@@ -228,7 +228,7 @@ export function PostComposer(p: ComposerProps) {
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={`/api/social/media/${chosen[0].id}`} alt={chosen[0].altText ?? chosen[0].filename} className="mt-3 max-h-72 w-full rounded-xl object-cover" />
             : <div className="mt-3 flex h-40 items-center justify-center rounded-xl bg-surface-2 text-muted"><VideoIcon className="size-8" aria-hidden /><span className="sr-only">Video</span></div>)}
-          {link.trim() && platform === "facebook" && kind !== "image" && kind !== "video" && <p className="mt-3 truncate rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">{link.trim()}</p>}
+          {link.trim() && platform === "facebook" && kind !== "image" && kind !== "video" && <p className="mt-3 truncate rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{link.trim()}</p>}
           {fold.hidden && <p className="mt-3 text-[12px] text-muted">The fold is approximate: it moves with the screen. Put the call to action above it.</p>}
         </div>
       </aside>

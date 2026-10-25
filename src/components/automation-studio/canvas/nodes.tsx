@@ -20,7 +20,7 @@ export function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData, 
         <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl brand-gradient text-white"><TriggerIcon /></span>
         <div className="min-w-0">
           <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">When this happens</p>
-          <p className="truncate text-[13.5px] font-semibold text-ink" title={data.title}>{data.title}</p>
+          <p className="truncate text-[14px] font-semibold text-ink" title={data.title}>{data.title}</p>
           {data.detail && <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">{data.detail}</p>}
         </div>
       </div>
@@ -54,7 +54,7 @@ export function StepNode({ data, selected }: NodeProps<Node<StepNodeData, "step"
             <span aria-hidden>·</span>
             <span className="truncate">{kindLabel(data.kind)}</span>
           </p>
-          <p className="truncate text-[13.5px] font-semibold text-ink" title={data.title}>{data.title}</p>
+          <p className="truncate text-[14px] font-semibold text-ink" title={data.title}>{data.title}</p>
           {data.summary && <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">{data.summary}</p>}
         </div>
       </div>

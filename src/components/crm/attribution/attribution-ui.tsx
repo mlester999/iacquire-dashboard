@@ -19,7 +19,7 @@ const CONFIDENCE_TONE = { known: "success", inferred: "warning", unknown: "neutr
 function Card({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-line bg-surface p-4">
-      <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
+      <h2 className="flex items-center gap-1.5 text-[14px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
       <div className="mt-2">{children}</div>
     </section>
   );
@@ -74,7 +74,7 @@ export function AttributionCard({ first, latest, history, edit }: { first: Touch
   if (!first) {
     return (
       <Card title="Where they came from" icon={MapPin}>
-        <p className="text-[12.5px] text-muted">Nothing was recorded about how this contact found you. It is not guessed.</p>
+        <p className="text-[13px] text-muted">Nothing was recorded about how this contact found you. It is not guessed.</p>
         {edit && <RecordSource {...edit} />}
       </Card>
     );
@@ -82,12 +82,12 @@ export function AttributionCard({ first, latest, history, edit }: { first: Touch
   const same = latest && latest.id === first.id;
   return (
     <Card title="Where they came from" icon={MapPin}>
-      <ul className="space-y-1.5 text-[12.5px]">
+      <ul className="space-y-1.5 text-[13px]">
         <TouchLine label="First touch" t={first} />
         {latest && !same && <TouchLine label="Latest touch" t={latest} />}
       </ul>
       {history.length > 2 && (
-        <details className="mt-2 text-[12.5px]">
+        <details className="mt-2 text-[13px]">
           <summary className="cursor-pointer text-muted">All {history.length} touches</summary>
           <ul className="mt-1.5 space-y-1">
             {history.map((t) => (
@@ -104,7 +104,7 @@ export function AttributionCard({ first, latest, history, edit }: { first: Touch
 export function WebChatCard({ view, crmHref }: { view: WebChatContext; crmHref: (id: string) => string }) {
   return (
     <Card title="Website chat" icon={Globe}>
-      <div className="space-y-2 text-[12.5px]">
+      <div className="space-y-2 text-[13px]">
         <p className="text-ink-2">
           Started {relativeTime(view.startedAt)} on <span className="font-medium text-ink">{view.host}</span>{view.surface === "site" ? " (your Website Studio site)" : ""}
           {view.landingPath ? <> from <span className="font-medium text-ink">{view.landingPath}</span></> : null}.

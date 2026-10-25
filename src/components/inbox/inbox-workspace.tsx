@@ -500,7 +500,7 @@ function EmptyThread({ hasList }: { hasList: boolean }) {
     <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong p-10 text-center">
       <Inbox className="size-7 text-muted" aria-hidden />
       <h2 className="mt-3 text-[16px] font-semibold">{hasList ? "Choose a conversation" : "Your inbox is empty"}</h2>
-      <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
+      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
     </div>
   );
 }
@@ -520,10 +520,10 @@ function EscalationQueue({ items, me, canRespond, onOpen }: { items: EscalationC
   }
   return (
     <section aria-label="Needs a person" className="space-y-2 rounded-2xl border border-warning/30 bg-warning-soft/50 p-3">
-      <h2 className="flex items-center gap-2 text-[13px] font-semibold text-warning-ink"><ShieldAlert className="size-4" aria-hidden />Needs a person ({items.length})</h2>
+      <h2 className="flex items-center gap-2 text-[14px] font-semibold text-warning-ink"><ShieldAlert className="size-4" aria-hidden />Needs a person ({items.length})</h2>
       <ul className="space-y-2">
         {items.slice(0, 5).map((e) => (
-          <li key={e.id} className="rounded-xl bg-surface p-3 text-[12.5px]">
+          <li key={e.id} className="rounded-xl bg-surface p-3 text-[13px]">
             <div className="flex items-start justify-between gap-2">
               <button onClick={() => onOpen(e.conversation_id)} className="min-w-0 text-left">
                 <span className="block font-medium">{e.urgency === "urgent" ? "Urgent · " : ""}{ESCALATION_LABELS[e.category]}</span>
@@ -1013,7 +1013,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
   function renderMessage(m: InboxMessage) {
     if (m.direction === "internal") {
       return (
-        <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[13px]">
+        <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[14px]">
           <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
           <p className="whitespace-pre-wrap">{m.body}</p>
         </div>
@@ -1128,7 +1128,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
             <Popover open={resolveOpen} onOpenChange={setResolveOpen}>
               <PopoverTrigger asChild><Button size="sm" variant="secondary" aria-label="Resolve"><SquareCheckBig className="size-3.5" aria-hidden /><span className="hidden sm:inline">Resolve</span></Button></PopoverTrigger>
               <PopoverContent align="end" className="w-[min(300px,calc(100vw-32px))] p-3">
-                <label htmlFor="resolve-outcome" className="text-[12.5px] font-medium">How did it end?</label>
+                <label htmlFor="resolve-outcome" className="text-[13px] font-medium">How did it end?</label>
                 <Select id="resolve-outcome" className="mt-1.5" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
                   <option value="">No outcome</option>
                   {CONVERSATION_OUTCOMES.map((o) => <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>)}
@@ -1176,9 +1176,9 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
       <p role="status" className="sr-only">{olderNote}</p>
 
       <footer className="border-t border-line p-3 sm:p-4">
-        {optedOut && <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-danger-soft p-2.5 text-[12.5px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden />This customer opted out of messages on this channel. Nothing can be sent to them here.</p>}
+        {optedOut && <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-danger-soft p-2.5 text-[13px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden />This customer opted out of messages on this channel. Nothing can be sent to them here.</p>}
         {windowClosed && !optedOut && (
-          <div role="status" className="mb-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] text-warning-ink">
+          <div role="status" className="mb-2 rounded-xl bg-warning-soft p-2.5 text-[13px] text-warning-ink">
             <p className="flex items-start gap-2"><Clock className="mt-0.5 size-4 shrink-0" aria-hidden />WhatsApp&apos;s reply window has closed. Only an approved template can be sent.</p>
             {templates.length ? (
               <>
@@ -1201,13 +1201,13 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         {otherOwner && !perms.assign && <p className="mb-2 text-[12px] text-muted">{c.ownerName ?? "A teammate"} is handling this conversation.</p>}
         <div className="mb-2 flex flex-wrap items-center gap-1">
           <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Composer mode">
-            <button role="tab" aria-selected={mode === "reply"} onClick={() => setMode("reply")} className={cn("min-h-9 rounded-lg px-3 text-[12.5px] font-medium", mode === "reply" ? "bg-ink text-bg" : "text-muted hover:bg-surface-2")}><Send className="mr-1 inline size-3.5" aria-hidden />Reply</button>
-            {perms.notes && <button role="tab" aria-selected={mode === "note"} onClick={() => setMode("note")} className={cn("min-h-9 rounded-lg px-3 text-[12.5px] font-medium", mode === "note" ? "bg-warning-soft text-warning-ink" : "text-muted hover:bg-surface-2")}><StickyNote className="mr-1 inline size-3.5" aria-hidden />Internal note</button>}
+            <button role="tab" aria-selected={mode === "reply"} onClick={() => setMode("reply")} className={cn("min-h-9 rounded-lg px-3 text-[13px] font-medium", mode === "reply" ? "bg-ink text-bg" : "text-muted hover:bg-surface-2")}><Send className="mr-1 inline size-3.5" aria-hidden />Reply</button>
+            {perms.notes && <button role="tab" aria-selected={mode === "note"} onClick={() => setMode("note")} className={cn("min-h-9 rounded-lg px-3 text-[13px] font-medium", mode === "note" ? "bg-warning-soft text-warning-ink" : "text-muted hover:bg-surface-2")}><StickyNote className="mr-1 inline size-3.5" aria-hidden />Internal note</button>}
           </div>
           {/* Outside the tablist: a tablist may only own tabs. */}
           <span className="ml-auto flex flex-wrap items-center gap-1">
             {mode === "reply" && canReply && props.aiAssist && (
-              <button type="button" onClick={suggest} disabled={suggesting} aria-busy={suggesting || undefined} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[12.5px] font-medium text-violet-ink hover:bg-violet-soft disabled:opacity-60">
+              <button type="button" onClick={suggest} disabled={suggesting} aria-busy={suggesting || undefined} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[13px] font-medium text-violet-ink hover:bg-violet-soft disabled:opacity-60">
                 {suggesting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}<span className="hidden sm:inline">Suggest reply</span><span className="sr-only sm:hidden">Suggest reply</span>
               </button>
             )}
@@ -1215,7 +1215,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
           </span>
         </div>
         {suggestion && mode === "reply" && (
-          <div role="region" aria-label="Suggested reply" className="mb-2 rounded-xl border border-violet/30 bg-violet-soft/50 p-3 text-[13px]">
+          <div role="region" aria-label="Suggested reply" className="mb-2 rounded-xl border border-violet/30 bg-violet-soft/50 p-3 text-[14px]">
             <p className="flex items-center gap-1.5 text-[12px] font-semibold text-violet-ink"><Sparkles className="size-3.5" aria-hidden />AI suggestion · not sent · not verified</p>
             <p className="mt-1.5 whitespace-pre-wrap">{suggestion.text}</p>
             {suggestion.warnings.length > 0 && (
@@ -1266,7 +1266,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
           </>
         }
       >
-        <blockquote className="whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{confirmRetry?.body}</blockquote>
+        <blockquote className="whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[14px]">{confirmRetry?.body}</blockquote>
       </Dialog>
     </article>
   );
@@ -1305,7 +1305,7 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
       <PopoverTrigger asChild>
-        <button type="button" className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink" aria-haspopup="dialog">
+        <button type="button" className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink" aria-haspopup="dialog">
           <MessageSquareQuote className="size-3.5" aria-hidden />Canned replies
         </button>
       </PopoverTrigger>
@@ -1320,12 +1320,12 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
           {shown.map((r) => (
             <li key={r.id}>
               <button type="button" onClick={() => { focus.markPicked(); onPick(r.body); setOpen(false); setQ(""); }} className="w-full rounded-xl px-3 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
-                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
+                <span className="flex items-center justify-between gap-2"><span className="truncate text-[14px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
                 <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted">{r.body}</span>
               </button>
             </li>
           ))}
-          {!shown.length && <li className="px-3 py-3 text-center text-[12.5px] text-muted">No canned replies match.</li>}
+          {!shown.length && <li className="px-3 py-3 text-center text-[13px] text-muted">No canned replies match.</li>}
         </ul>
         <p className="mt-2 px-1 text-[12px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
       </PopoverContent>
@@ -1344,7 +1344,7 @@ function EscalationBanner({ detail, me, perms, busy, run }: { detail: InboxDetai
   const e = detail.escalation!;
   const [resolution, setResolution] = React.useState("");
   return (
-    <div role="status" className={cn("border-b px-3 py-2.5 text-[12.5px] sm:px-4", e.urgency === "urgent" ? "border-danger/30 bg-danger-soft/60" : "border-warning/30 bg-warning-soft/60")}>
+    <div role="status" className={cn("border-b px-3 py-2.5 text-[13px] sm:px-4", e.urgency === "urgent" ? "border-danger/30 bg-danger-soft/60" : "border-warning/30 bg-warning-soft/60")}>
       <p className="flex flex-wrap items-center gap-x-2 font-medium"><ShieldAlert className="size-4" aria-hidden />{e.urgency === "urgent" ? "Urgent · " : ""}{ESCALATION_LABELS[e.category as EscalationCategory] ?? sentenceCase(e.category)}
         {e.status === "awaiting_owner" && e.ownerDeadlineAt && <span className="flex items-center gap-1 font-normal"><Clock className="size-3" aria-hidden />Owner first priority <Countdown until={e.ownerDeadlineAt} /></span>}
         {e.status === "open" && <span className="font-normal">Open to teammates</span>}
@@ -1392,14 +1392,14 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
       <AiAssistPanel conversationId={c.id} newestInboundId={[...detail.messages].reverse().find((m) => m.direction === "inbound")?.id ?? null} canUse={aiAssist} />
       <CrmContextPanel conversationId={c.id} version={c.revision} timeZone={timeZone} onChanged={refresh} />
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Identity and consent</h2>
-        <dl className="mt-3 space-y-2 text-[12.5px]">
+        <h2 className="text-[14px] font-semibold">Identity and consent</h2>
+        <dl className="mt-3 space-y-2 text-[13px]">
           <div className="flex justify-between gap-2"><dt className="text-muted">Stage</dt><dd>{sentenceCase(detail.contact.lifecycleStage)}</dd></div>
           {detail.contact.temperature && <div className="flex justify-between gap-2"><dt className="text-muted">Temperature</dt><dd>{sentenceCase(detail.contact.temperature)}</dd></div>}
         </dl>
         <IdentityList identities={detail.contact.identities} canConfirm={perms.editContacts} idPrefix={idp} onConfirm={(identityId, how) => run("identity", () => confirmIdentityAction(identityId, how), "Confirmed as theirs.")} />
         <h3 className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-muted">Consent</h3>
-        <ul className="mt-1.5 space-y-1 text-[12.5px]">
+        <ul className="mt-1.5 space-y-1 text-[13px]">
           {detail.contact.consent.length ? detail.contact.consent.map((x) => (
             <li key={`${x.channel}-${x.purpose}`} className="flex justify-between gap-2"><span>{CONVERSATION_CHANNEL_LABELS[x.channel as ConversationChannel] ?? x.channel} · {x.purpose}</span><span className={x.status === "revoked" ? "font-medium text-danger-ink" : "text-success-ink"}>{sentenceCase(x.status)}</span></li>
           )) : <li className="text-muted">No consent recorded.</li>}
@@ -1407,15 +1407,15 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Follow-up</h2>
-        <p className="mt-1.5 text-[12.5px] text-muted">
+        <h2 className="text-[14px] font-semibold">Follow-up</h2>
+        <p className="mt-1.5 text-[13px] text-muted">
           {detail.followUp ? `${detail.followUp.remaining} follow-up${detail.followUp.remaining === 1 ? "" : "s"} remaining${detail.followUp.nextDueAt ? `, next ${formatDateTime(detail.followUp.nextDueAt, timeZone)}` : ""}. It stops if the customer replies, books, opts out or a person takes over.` : "No follow-ups scheduled."}
         </p>
       </section>
 
       {perms.assign && (
         <section className="rounded-2xl border border-line bg-surface p-4">
-          <h2 className="text-[13px] font-semibold">Assignment</h2>
+          <h2 className="text-[14px] font-semibold">Assignment</h2>
           <label className="sr-only" htmlFor={`${idp}assign`}>Assign to</label>
           <Select id={`${idp}assign`} value={c.assignedUserId ?? ""} onChange={(e) => run("assign", () => assignConversationAction(c.id, e.target.value || null), "Assignment updated.")} className="mt-2" disabled={busy === "assign"}>
             <option value="">Unassigned</option>
@@ -1438,15 +1438,15 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
       )}
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">What we know</h2>
+        <h2 className="text-[14px] font-semibold">What we know</h2>
         <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
-        <ul className="mt-1 space-y-1.5 text-[12.5px]">
+        <ul className="mt-1 space-y-1.5 text-[13px]">
           {confirmed.length ? confirmed.map((m) => (
             <li key={m.id} className="flex items-start justify-between gap-2"><span>{m.content}</span>{perms.editContacts && <button aria-label="Delete this note" onClick={() => run(`m${m.id}`, () => deleteMemoryAction(m.id), "Removed.")} className="text-muted hover:text-danger-ink"><XCircle className="size-3.5" /></button>}</li>
           )) : <li className="text-muted">Nothing confirmed yet.</li>}
         </ul>
         <h3 className="mt-3 text-[12px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
-        <ul className="mt-1 space-y-1.5 text-[12.5px]">
+        <ul className="mt-1 space-y-1.5 text-[13px]">
           {summaries.length ? summaries.map((m) => <li key={m.id} className="text-ink-2">{m.content}</li>) : <li className="text-muted">None.</li>}
         </ul>
         {perms.editContacts && (
@@ -1459,8 +1459,8 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Activity</h2>
-        <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[12.5px]">
+        <h2 className="text-[14px] font-semibold">Activity</h2>
+        <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[13px]">
           {detail.timeline.length ? detail.timeline.slice(-8).map((t, i) => (
             <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[12px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
           )) : <li className="text-muted">No activity recorded yet.</li>}

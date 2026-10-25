@@ -31,13 +31,13 @@ export function SuggestionCard({ q, answers, value, reason, website, limited, cl
         </div>
       ) : <p className="whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{describeValue(q, draft, answers)}</p>)}
       {limited && <p className="mt-2 text-[12px] text-muted">A starting point. Add services or customers to make it more specific.</p>}
-      {draft === null && <p className="text-[13px] text-ink-2">{reason || "Add a detail below to help draft this answer."}</p>}
+      {draft === null && <p className="text-[14px] text-ink-2">{reason || "Add a detail below to help draft this answer."}</p>}
       {clarifications.length > 0 && onRegenerate && (
         <details className="mt-3" open={draft === null ? true : undefined}>
           <summary className="min-h-11 cursor-pointer py-3 text-[12px] font-medium text-primary-ink">Add detail (optional)</summary>
           <div className="space-y-3 pb-2">
             {clarifications.map((item) => <div key={item.fieldId}>
-              <label htmlFor={`clarify-${item.fieldId}`} className="text-[13px] font-medium text-ink">{item.label}</label>
+              <label htmlFor={`clarify-${item.fieldId}`} className="text-[14px] font-medium text-ink">{item.label}</label>
               <Input id={`clarify-${item.fieldId}`} value={details[item.fieldId] ?? ""} maxLength={800} className="mt-1 text-base sm:text-sm" onChange={(event) => setDetails((current) => ({ ...current, [item.fieldId]: event.target.value }))} />
               <p className="mt-1 text-[12px] text-muted">{item.example}</p>
             </div>)}

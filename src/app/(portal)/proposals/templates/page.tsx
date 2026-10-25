@@ -12,7 +12,7 @@ export default async function ProposalTemplatesPage() {
     <div className="space-y-5">
       <header>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Templates</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] text-muted">Reusable wording and a starting set of price book items. Changing a template makes a new version, and the owner approves a version before anyone can start a proposal from it.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Reusable wording and a starting set of price book items. Changing a template makes a new version, and the owner approves a version before anyone can start a proposal from it.</p>
       </header>
       <TemplatesPanel orgId={null} templates={templates} canEdit={ctx.can("proposals.catalog")} tz={ctx.org.timezone || "UTC"} />
     </div>

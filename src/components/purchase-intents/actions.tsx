@@ -100,10 +100,10 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
 
   return (
     <div className="space-y-3">
-      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
       {rotated && (
         <div className="rounded-xl border border-primary/30 bg-primary-soft p-3">
-          <p className="text-[12.5px] font-medium text-primary-ink">New public link (shown once):</p>
+          <p className="text-[13px] font-medium text-primary-ink">New public link (shown once):</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-surface px-2.5 py-1.5">
             <code className="min-w-0 flex-1 break-all text-[12px] text-ink">{rotated}</code>
             <CopyTextButton text={rotated} label="Copy" />
@@ -112,7 +112,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
       )}
       {provisioned && (
         <div className="rounded-xl border border-success/30 bg-success-soft p-3">
-          <p className="flex items-center gap-2 text-[12.5px] font-medium text-success-ink">
+          <p className="flex items-center gap-2 text-[13px] font-medium text-success-ink">
             <CheckCircle2 className="size-4" aria-hidden /> Workspace created
           </p>
           <p className="mt-1 text-[12px] text-success-ink">The client invitation and the setup-payment audit belong to the new workspace. {provisioned.inviteLink ? "Copy the client invitation link below." : "The invitation email was handed to the configured provider."}</p>
@@ -151,7 +151,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
           </Button>
         )}
         {intent.clientOrgId && (
-          <a href={`/admin/clients/${intent.clientOrgId}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2">
+          <a href={`/admin/clients/${intent.clientOrgId}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2">
             <Link2 className="size-3.5" aria-hidden /> Open the client workspace
           </a>
         )}
@@ -159,7 +159,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
 
       {showPayment && (
         <form onSubmit={verify} className="space-y-3 rounded-xl border border-line bg-surface-2 p-3">
-          <p className="text-[12.5px] leading-relaxed text-ink-2">Record the setup payment you checked in the bank, PayPal or PayMongo account. If the buyer has an online checkout open, recording this closes it so they cannot pay twice. The amount must equal the frozen fee; the note is private to the team.</p>
+          <p className="text-[13px] leading-relaxed text-ink-2">Record the setup payment you checked in the bank, PayPal or PayMongo account. If the buyer has an online checkout open, recording this closes it so they cannot pay twice. The amount must equal the frozen fee; the note is private to the team.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="pi-amount">Amount (USD)</Label>
@@ -167,7 +167,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
             </div>
             <div>
               <Label htmlFor="pi-method">How it arrived</Label>
-              <select id="pi-method" value={method} onChange={(e) => setMethod(e.target.value as ManualPaymentMethod)} className="mt-1 h-10 w-full rounded-xl border border-line-strong bg-surface px-3 text-[13px] text-ink">
+              <select id="pi-method" value={method} onChange={(e) => setMethod(e.target.value as ManualPaymentMethod)} className="mt-1 h-10 w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink">
                 {MANUAL_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{MANUAL_METHOD_LABEL[m]}</option>)}
               </select>
             </div>
@@ -190,7 +190,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
 
       {showRelease && (
         <form onSubmit={release} className="space-y-2 rounded-xl border border-line bg-surface-2 p-3">
-          <p className="text-[12.5px] leading-relaxed text-ink-2">
+          <p className="text-[13px] leading-relaxed text-ink-2">
             {intent.status === "payment_verified"
               ? "Release the hold only after you checked with the payment provider that this payment stands. The payment will count again and the workspace can be created."
               : "Release the hold only after you checked with the payment provider. The buyer will be able to pay again from their link."}
@@ -204,7 +204,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
       {showCancel && (
         <form onSubmit={cancel} className="space-y-2 rounded-xl border border-danger/30 bg-danger-soft p-3">
           {closesPaid && (
-            <p className="text-[12.5px] leading-relaxed text-danger-ink">
+            <p className="text-[13px] leading-relaxed text-danger-ink">
               Use this when the money was refunded or lost to a dispute. No workspace is created, the payment record stays on this purchase, and any open checkout is closed. This cannot be undone.
             </p>
           )}

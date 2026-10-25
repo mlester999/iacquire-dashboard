@@ -45,10 +45,10 @@ export default async function SocialCalendarPage({ searchParams }: { searchParam
       <PageHero
         eyebrow="Marketing" title="Social media" icon={<Share2 className="size-4" />} tone="neutral"
         description="Plan, approve and publish posts to your Facebook Page and Instagram account. Every post is reviewed by a person before it goes out, and what happened to each one is kept."
-        action={canCreate ? <Link href="/social/posts/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13.5px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
+        action={canCreate ? <Link href="/social/posts/new" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[14px] font-medium text-white shadow-glow sm:min-h-10"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
       />
       {needAttention.length > 0 && (
-        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-warning-ink/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">
+        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-warning-ink/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>
             {needAttention.map((a) => a.name).join(", ")} {needAttention.length === 1 ? "needs" : "need"} to be reconnected, so nothing can be published to {needAttention.length === 1 ? "it" : "them"}.{" "}
@@ -57,7 +57,7 @@ export default async function SocialCalendarPage({ searchParams }: { searchParam
         </div>
       )}
       {screen === "calendar_without_account" && (
-        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">
+        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <p>
             No account is connected, so nothing new can be written or published. Your earlier posts are still here.{" "}
@@ -66,7 +66,7 @@ export default async function SocialCalendarPage({ searchParams }: { searchParam
         </div>
       )}
       {real.length > 0 && !livePublishingEnabled() && (
-        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">
+        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <p>Publishing to real Facebook and Instagram accounts is switched off in this environment, so posts for them will wait here and nothing will be sent until iAcquire switches it on.</p>
         </div>
@@ -75,7 +75,7 @@ export default async function SocialCalendarPage({ searchParams }: { searchParam
         <EmptyState
           title="Connect an account to start"
           description="Connect your Facebook Page, and the Instagram account linked to it, to plan and publish posts. Until then you can look around, but nothing can be scheduled."
-          action={<Link href="/social/accounts" className="inline-flex min-h-11 items-center rounded-xl brand-gradient px-4 text-[13.5px] font-medium text-white sm:min-h-10">Go to accounts</Link>}
+          action={<Link href="/social/accounts" className="inline-flex min-h-11 items-center rounded-xl brand-gradient px-4 text-[14px] font-medium text-white sm:min-h-10">Go to accounts</Link>}
         />
       ) : (
         <CalendarView view={view} anchor={anchor} tz={tz} today={today} posts={posts} accounts={allAccounts} accountId={accountId} statuses={statuses} canCreate={canCreate} />

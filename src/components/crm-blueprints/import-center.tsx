@@ -115,7 +115,7 @@ function GhlImport({ sources, canImport, sourcesError, preview }: { sources: Ghl
       <section aria-label="How iAcquire reads GoHighLevel" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">How iAcquire reads GoHighLevel, in this order</h2>
-          <ol className="mt-3 space-y-3 text-[13px] leading-relaxed text-ink-2">
+          <ol className="mt-3 space-y-3 text-[14px] leading-relaxed text-ink-2">
             <Method letter="A" title="The official API, with an authorized connection">iAcquire uses only GoHighLevel&apos;s documented API, with read-only permission, from a location your agency is authorized to access. Every request is a read; nothing is ever changed in GoHighLevel.</Method>
             <Method letter="B" title="A sub-account where the snapshot is installed">GoHighLevel has no API that lists what a snapshot contains. Install the snapshot into a template sub-account your agency owns, connect that sub-account below with a read-only private integration token, and import from it.</Method>
             <Method letter="C" title="Structured exports">GoHighLevel offers no file export of a snapshot&apos;s contents. <strong className="font-semibold text-ink">A snapshot share link is an install link, not a JSON export</strong>, so it can&apos;t be uploaded here.</Method>
@@ -124,11 +124,11 @@ function GhlImport({ sources, canImport, sourcesError, preview }: { sources: Ghl
         </Card>
         <Card className="overflow-hidden">
           <h2 className="px-5 pt-5 text-[15px] font-semibold text-ink">What the official API exposes</h2>
-          <p className="px-5 pt-1 text-[12.5px] text-muted">An item that only comes over by name is never shown as converted.</p>
+          <p className="px-5 pt-1 text-[13px] text-muted">An item that only comes over by name is never shown as converted.</p>
           <ul className="mt-3 divide-y divide-line border-t border-line">
             {GHL_COVERAGE.map((c) => (
               <li key={c.kind} className="flex items-start justify-between gap-3 px-5 py-2.5">
-                <div className="min-w-0"><p className="text-[13px] font-medium text-ink">{c.kind}</p><p className="mt-0.5 text-[12px] leading-snug text-muted">{c.result}</p></div>
+                <div className="min-w-0"><p className="text-[14px] font-medium text-ink">{c.kind}</p><p className="mt-0.5 text-[12px] leading-snug text-muted">{c.result}</p></div>
                 <Badge tone={LEVEL[c.level].tone} className="shrink-0">{LEVEL[c.level].label}</Badge>
               </li>
             ))}
@@ -137,14 +137,14 @@ function GhlImport({ sources, canImport, sourcesError, preview }: { sources: Ghl
       </section>
 
       {!canImport ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Only agency super admins can import from GoHighLevel, because it uses a stored connection. You can still import a package file.</p>
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Only agency super admins can import from GoHighLevel, because it uses a stored connection. You can still import a package file.</p>
       ) : (
         <>
           <section aria-label="GoHighLevel sources">
             <SectionLabel title="Sources" count={sources.length} description="Clients' own connected locations you can access, and template sub-accounts your agency keeps for building snapshots. Location IDs are shown masked." />
-            {sourcesError ? <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">{sourcesError}</p>
+            {sourcesError ? <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">{sourcesError}</p>
               : sources.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">No GoHighLevel source yet. Add a template sub-account below, or connect a client&apos;s location from that client&apos;s Integrations page.</p>
+                <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">No GoHighLevel source yet. Add a template sub-account below, or connect a client&apos;s location from that client&apos;s Integrations page.</p>
               ) : (
                 <fieldset>
                   <legend className="sr-only">Source to import from</legend>
@@ -159,7 +159,7 @@ function GhlImport({ sources, canImport, sourcesError, preview }: { sources: Ghl
                               <input type="radio" name="bp-ghl-source" className="mt-1 size-4 shrink-0 accent-[var(--primary)]" value={s.ref} checked={sourceRef === s.ref} disabled={off} onChange={() => setSourceRef(s.ref)} />
                               <span className="min-w-0">
                                 <span className="flex flex-wrap items-center gap-2">
-                                  <span className="text-[13.5px] font-semibold text-ink">{s.label}</span>
+                                  <span className="text-[14px] font-semibold text-ink">{s.label}</span>
                                   <Badge tone={status.tone}>{status.label}</Badge>
                                 </span>
                                 <span className="mt-0.5 block text-[12px] text-muted">{s.kind === "ghl_client" ? "Client's connected location" : "Agency template sub-account"} · <code className="font-mono">{s.locationHint}</code>{s.verifiedAt ? <> · checked <When iso={s.verifiedAt} /></> : null}</span>
@@ -184,7 +184,7 @@ function GhlImport({ sources, canImport, sourcesError, preview }: { sources: Ghl
 
           <Card className="p-5">
             <h2 className="text-[15px] font-semibold text-ink">Run the import</h2>
-            <p className="mt-1 text-[12.5px] text-muted">iAcquire reads the source, converts what the API exposes, and shows you the result. Nothing is saved to the library until you choose to, and nothing changes in GoHighLevel.</p>
+            <p className="mt-1 text-[13px] text-muted">iAcquire reads the source, converts what the API exposes, and shows you the result. Nothing is saved to the library until you choose to, and nothing changes in GoHighLevel.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <OptionRow id="bp-ghl-values" title="Include custom values' contents" text="Off: values come over empty and each client fills in their own. On: the contents are kept, after a check for secrets." checked={includeValues} onChange={setIncludeValues} />
               <OptionRow id="bp-ghl-placeholders" title="Include placeholders" text="Bring forms, surveys, workflows and email designs the API only names as placeholders marked Manual review, so nothing is forgotten." checked={includePlaceholders} onChange={setIncludePlaceholders} />
@@ -210,7 +210,7 @@ function Method({ letter, title, children }: { letter: string; title: string; ch
   return (
     <li className="flex gap-3">
       <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-[12px] font-bold text-primary-ink" aria-hidden>{letter}</span>
-      <div><p className="font-semibold text-ink"><span className="sr-only">{letter}. </span>{title}</p><p className="mt-0.5 text-[12.5px] text-muted">{children}</p></div>
+      <div><p className="font-semibold text-ink"><span className="sr-only">{letter}. </span>{title}</p><p className="mt-0.5 text-[13px] text-muted">{children}</p></div>
     </li>
   );
 }
@@ -218,7 +218,7 @@ function Method({ letter, title, children }: { letter: string; title: string; ch
 function OptionRow({ id, title, text, checked, onChange }: { id: string; title: string; text: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3">
-      <div><p id={id} className="text-[13px] font-semibold text-ink">{title}</p><p className="mt-0.5 text-[12px] leading-relaxed text-muted">{text}</p></div>
+      <div><p id={id} className="text-[14px] font-semibold text-ink">{title}</p><p className="mt-0.5 text-[12px] leading-relaxed text-muted">{text}</p></div>
       <Switch checked={checked} onCheckedChange={onChange} aria-labelledby={id} />
     </div>
   );
@@ -255,7 +255,7 @@ function AddTemplateSource({ preview }: { preview?: boolean }) {
   return (
     <Card className="p-5">
       <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><KeyRound className="size-4 text-primary" aria-hidden /> Add a template sub-account</h2>
-      <p className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-muted">
+      <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
         Use a sub-account your agency owns for building snapshots, never a client&apos;s location. In that sub-account, create a private integration with the read-only scopes below and paste its token here. iAcquire stores it encrypted and never shows it again.
       </p>
       <form className="mt-4 space-y-4" onSubmit={(e) => { e.preventDefault(); void save(); }} autoComplete="off">
@@ -267,14 +267,14 @@ function AddTemplateSource({ preview }: { preview?: boolean }) {
           </Field>
         </div>
         <fieldset>
-          <legend className="text-[13px] font-medium text-ink-2">Read-only scopes the token was given</legend>
-          {errors.scopes && <p role="alert" className="mt-1 text-[12.5px] text-danger-ink">{errors.scopes}</p>}
+          <legend className="text-[14px] font-medium text-ink-2">Read-only scopes the token was given</legend>
+          {errors.scopes && <p role="alert" className="mt-1 text-[13px] text-danger-ink">{errors.scopes}</p>}
           <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
             {GHL_SCOPE_CHOICES.map((s) => (
               <li key={s.scope}>
                 <label className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-surface-2 sm:min-h-9">
                   <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={scopes.includes(s.scope)} onChange={(e) => setScopes((x) => (e.target.checked ? [...x, s.scope] : x.filter((y) => y !== s.scope)))} />
-                  <span className="min-w-0"><span className="block text-[12.5px] text-ink">{s.label}</span><code className="block truncate font-mono text-[12px] text-muted">{s.scope}</code></span>
+                  <span className="min-w-0"><span className="block text-[13px] text-ink">{s.label}</span><code className="block truncate font-mono text-[12px] text-muted">{s.scope}</code></span>
                 </label>
               </li>
             ))}
@@ -331,25 +331,25 @@ function FileImport({ canImport, preview }: { canImport: boolean; preview?: bool
     if (res && typeof res === "object" && "id" in res) router.push(bpHref.importDetail(res.id));
   };
 
-  if (!canImport) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">Your agency role can&apos;t import Blueprints.</p>;
+  if (!canImport) return <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-ink-2">Your agency role can&apos;t import Blueprints.</p>;
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Card className="p-5">
         <h2 className="text-[15px] font-semibold text-ink">Choose a package file</h2>
-        <p className="mt-1 text-[12.5px] text-muted">A file exported from iAcquire (Export on a published Blueprint), up to {decimalSize(BLUEPRINT_MAX_BYTES)}. It is read in your browser and checked on the server; nothing is saved until you review it.</p>
+        <p className="mt-1 text-[13px] text-muted">A file exported from iAcquire (Export on a published Blueprint), up to {decimalSize(BLUEPRINT_MAX_BYTES)}. It is read in your browser and checked on the server; nothing is saved until you review it.</p>
         <label htmlFor="bp-file-input"
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); void take(e.dataTransfer.files?.[0]); }}
           className={cn("mt-4 flex min-h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", dragging ? "border-primary bg-primary-soft/50" : "border-line-strong bg-surface-2/40 hover:bg-surface-2")}>
           <FileJson className="size-8 text-primary" aria-hidden />
-          <span className="text-[13.5px] font-semibold text-ink">{reading ? "Reading…" : "Drop a .json package here, or choose a file"}</span>
+          <span className="text-[14px] font-semibold text-ink">{reading ? "Reading…" : "Drop a .json package here, or choose a file"}</span>
           <span className="text-[12px] text-muted">iAcquire CRM Blueprint packages only</span>
           <input ref={input} id="bp-file-input" type="file" accept=".json,application/json" className="sr-only" onChange={(e) => void take(e.target.files?.[0])} />
         </label>
-        {error && <p role="alert" className="mt-3 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[12.5px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="mt-3 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">{error}</p>}
         {file && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3" role="status">
-            <p className="flex min-w-0 items-center gap-2 text-[13px] text-ink"><CircleCheck className="size-4 shrink-0 text-success-ink" aria-hidden /><span className="truncate font-medium">{file.name}</span><span className="shrink-0 text-muted">{decimalSize(file.size)}</span></p>
+            <p className="flex min-w-0 items-center gap-2 text-[14px] text-ink"><CircleCheck className="size-4 shrink-0 text-success-ink" aria-hidden /><span className="truncate font-medium">{file.name}</span><span className="shrink-0 text-muted">{decimalSize(file.size)}</span></p>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => setFile(null)}><Link2Off className="size-3.5" /> Clear</Button>
               <Button size="sm" variant="brand" loading={busy("file-preview")} onClick={() => void go()}>Check and preview</Button>
@@ -359,7 +359,7 @@ function FileImport({ canImport, preview }: { canImport: boolean; preview?: bool
       </Card>
       <Card className="p-5">
         <h2 className="text-[14px] font-semibold text-ink">What is checked</h2>
-        <ul className="mt-3 space-y-2 text-[12.5px] leading-relaxed text-ink-2">
+        <ul className="mt-3 space-y-2 text-[13px] leading-relaxed text-ink-2">
           {[
             "Format: an iAcquire CRM Blueprint package, not a GoHighLevel snapshot or another product's export.",
             "Size: at most 1 MB, before anything is read.",

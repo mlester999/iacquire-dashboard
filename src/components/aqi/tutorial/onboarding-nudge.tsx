@@ -98,7 +98,7 @@ export function OnboardingNudge() {
         <p id="aqi-welcome-title" className="text-[14px] font-semibold leading-snug tracking-tight text-ink">New to iAcquireOS?</p>
         <GuidanceCloseButton label="Postpone the tour" disabled={busy} onClick={() => void act("defer")} />
       </div>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted">Want a quick tour? I&apos;ll show you around.</p>
+      <p className="mt-1 text-[14px] leading-relaxed text-muted">Want a quick tour? I&apos;ll show you around.</p>
       <div className="mt-3 flex items-center gap-1.5">
         <GuidancePrimaryButton disabled={busy} onClick={() => void act("start")}>
           Start tour <ArrowRight className="size-3.5" aria-hidden />

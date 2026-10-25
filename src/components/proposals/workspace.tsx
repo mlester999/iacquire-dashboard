@@ -59,7 +59,7 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
           edit: <ProposalEditor detail={detail} catalog={catalog} taxRates={taxRates} canDiscount={can.discount} editable={editable} lockedReason={reason} onDirtyChange={setDirty} />,
           preview: (
             <div className="space-y-4">
-              <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">
+              <p role="status" className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">
                 {!preview ? "The figures can't be worked out yet, so there is no preview. Check the prices, quantities and discounts."
                   : preview.frozen ? `This is version ${preview.version} exactly as it was saved${preview.contentHash ? ` (fingerprint ${shortHash(preview.contentHash)})` : ""}. It is what the customer sees.`
                     : `This is how the customer will read your last saved changes, with placeholders filled in. It is not what a reviewer approves until you send it for approval, which saves it as a version.${dirty ? " You have unsaved changes that are not shown here." : ""}`}
@@ -85,12 +85,12 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
 function AiNotice({ ai }: { ai: NonNullable<ProposalDetail["ai"]> }) {
   return (
     <section aria-label="About this AI draft" className="space-y-2 rounded-2xl border border-line bg-violet-soft p-4">
-      <p className="flex items-start gap-2 text-[13.5px] text-ink">
+      <p className="flex items-start gap-2 text-[14px] text-ink">
         <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-ink" aria-hidden />
         <span><span className="font-semibold">The AI wrote this first draft.</span> It chose items from your price book and wrote the wording. It did not set any price: every price comes from your price book. It can still get things wrong, so read all of it before you send it for approval. It always needs a person&apos;s approval.</span>
       </p>
       {(ai.droppedCount > 0 || ai.rejectedItems > 0) && (
-        <details className="rounded-xl bg-surface px-3 py-2 text-[13px] text-ink-2">
+        <details className="rounded-xl bg-surface px-3 py-2 text-[14px] text-ink-2">
           <summary className="min-h-11 cursor-pointer font-medium text-ink sm:min-h-8">
             {ai.droppedCount > 0 ? `${ai.droppedCount} ${ai.droppedCount === 1 ? "sentence was" : "sentences were"} left out` : "Some items were not used"}
             {ai.rejectedItems > 0 ? `${ai.droppedCount > 0 ? ", and " : ": "}${ai.rejectedItems} ${ai.rejectedItems === 1 ? "item it chose was" : "items it chose were"} not used` : ""}

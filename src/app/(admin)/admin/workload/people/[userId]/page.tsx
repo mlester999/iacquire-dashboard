@@ -58,7 +58,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
     <div className="space-y-5">
       <WorkloadHeader active="overview" showTeam={data.caps.team} showSettings={user.platformRole === "agency_super_admin"} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href="/admin/workload" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/admin/workload" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" aria-hidden /> Team workload
         </Link>
         {data.caps.manage && (
@@ -80,7 +80,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
               <LabelPill result={person.result} />
             </div>
             <LoadMeter result={person.result} />
-            <ul className="space-y-1.5 text-[12.5px] leading-relaxed text-ink-2">
+            <ul className="space-y-1.5 text-[13px] leading-relaxed text-ink-2">
               {person.result.reasons.map((r) => (
                 <li key={r}>· {r}</li>
               ))}
@@ -120,7 +120,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
         </CardHeader>
         <CardContent>
           {timeOff.length ? (
-            <ul className="divide-y divide-line text-[13px]">
+            <ul className="divide-y divide-line text-[14px]">
               {timeOff.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                   <span>
@@ -135,7 +135,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-muted">No time off recorded.</p>
+            <p className="text-[14px] text-muted">No time off recorded.</p>
           )}
           {!data.timeOffDetail && <p className="mt-2 text-[12px] text-muted">The kind and note of time off are visible only to the person and to the workload manage permission.</p>}
         </CardContent>

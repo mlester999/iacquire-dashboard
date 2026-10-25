@@ -145,7 +145,7 @@ export function PublicForm({ def, action, hidden = {}, accent, idPrefix = "pf" }
       </div>
 
       {message && (
-        <div ref={alertRef} tabIndex={-1} role="alert" className="flex items-start gap-2.5 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3 text-[13.5px] text-danger-ink outline-none">
+        <div ref={alertRef} tabIndex={-1} role="alert" className="flex items-start gap-2.5 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3 text-[14px] text-danger-ink outline-none">
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>{message}</span>
         </div>
@@ -159,7 +159,7 @@ export function PublicForm({ def, action, hidden = {}, accent, idPrefix = "pf" }
           const inPair = Boolean(pair?.has(q.key));
           return (
             <React.Fragment key={q.key}>
-              {q.key === firstOfPair && <p id={id("one-of")} className="text-[12.5px] leading-relaxed text-muted sm:col-span-2">Give an email address or a phone number, or both, so we can reply.</p>}
+              {q.key === firstOfPair && <p id={id("one-of")} className="text-[13px] leading-relaxed text-muted sm:col-span-2">Give an email address or a phone number, or both, so we can reply.</p>}
               <div data-q={q.key} hidden={!visible} className={cn("min-w-0", q.width === "half" ? "sm:col-span-1" : "sm:col-span-2")}>
                 <Question
                   q={q}
@@ -182,18 +182,18 @@ export function PublicForm({ def, action, hidden = {}, accent, idPrefix = "pf" }
         <div className="space-y-3 rounded-xl border border-line bg-surface-2/60 p-4">
           {def.consent.text && (
             <div>
-              <label className="flex items-start gap-3 text-[13.5px] leading-relaxed text-ink-2">
+              <label className="flex items-start gap-3 text-[14px] leading-relaxed text-ink-2">
                 <input
                   type="checkbox" name="consent" value="yes" required aria-invalid={errorFor("consent") ? true : undefined} aria-describedby={errorFor("consent") ? id("consent-error") : undefined}
                   className="mt-0.5 size-[18px] shrink-0 accent-[var(--primary)]"
                 />
                 <span>{def.consent.text}</span>
               </label>
-              {errorFor("consent") && <p id={id("consent-error")} className="mt-1.5 pl-[30px] text-[12.5px] text-danger-ink">{errorFor("consent")}</p>}
+              {errorFor("consent") && <p id={id("consent-error")} className="mt-1.5 pl-[30px] text-[13px] text-danger-ink">{errorFor("consent")}</p>}
             </div>
           )}
           {def.consent.marketing && (
-            <label className="flex items-start gap-3 text-[13.5px] leading-relaxed text-muted">
+            <label className="flex items-start gap-3 text-[14px] leading-relaxed text-muted">
               <input type="checkbox" name="marketing" value="yes" className="mt-0.5 size-[18px] shrink-0 accent-[var(--primary)]" />
               <span>{def.consent.marketing}</span>
             </label>
@@ -214,7 +214,7 @@ export function PublicForm({ def, action, hidden = {}, accent, idPrefix = "pf" }
           {sending && <Loader2 className="size-4 animate-spin" aria-hidden />}
           {sending ? "Sending…" : def.submitLabel}
         </button>
-        {previewNote && <p role="status" className="text-[12.5px] text-muted">Preview only: answers aren&apos;t sent from here.</p>}
+        {previewNote && <p role="status" className="text-[13px] text-muted">Preview only: answers aren&apos;t sent from here.</p>}
       </div>
     </form>
   );
@@ -234,9 +234,9 @@ function Question({ q, fieldId, disabled, nativeRequired, error, condition, opti
   const optional = !q.required && optionalMark ? <span className="ml-1 text-[12px] font-normal text-faint">(optional)</span> : null;
   const meta = (
     <>
-      {q.help && <p id={`${fieldId}-help`} className="text-[12.5px] leading-relaxed text-muted">{q.help}</p>}
-      {condition && <p id={`${fieldId}-cond`} className="text-[12.5px] text-muted">Answer this if {condition}.</p>}
-      {error && <p id={`${fieldId}-error`} className="text-[12.5px] text-danger-ink">{error}</p>}
+      {q.help && <p id={`${fieldId}-help`} className="text-[13px] leading-relaxed text-muted">{q.help}</p>}
+      {condition && <p id={`${fieldId}-cond`} className="text-[13px] text-muted">Answer this if {condition}.</p>}
+      {error && <p id={`${fieldId}-error`} className="text-[13px] text-danger-ink">{error}</p>}
     </>
   );
 
@@ -256,7 +256,7 @@ function Question({ q, fieldId, disabled, nativeRequired, error, condition, opti
     const multi = q.type === "multiple_choice";
     return (
       <fieldset className="min-w-0 space-y-2" disabled={disabled} aria-describedby={describedBy} aria-invalid={invalid}>
-        <legend className="mb-1 text-[13.5px] font-medium text-ink-2">{q.label}{optional}</legend>
+        <legend className="mb-1 text-[14px] font-medium text-ink-2">{q.label}{optional}</legend>
         <div className={cn("grid gap-2", q.options.length > 4 && "sm:grid-cols-2")}>
           {q.options.map((o, i) => (
             <label key={o.value} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-ink shadow-soft transition has-[:checked]:border-primary/50 has-[:checked]:bg-primary-soft/50 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-primary/15">
@@ -270,7 +270,7 @@ function Question({ q, fieldId, disabled, nativeRequired, error, condition, opti
     );
   }
 
-  const label = <label htmlFor={fieldId} className="text-[13.5px] font-medium text-ink-2">{q.label}{optional}</label>;
+  const label = <label htmlFor={fieldId} className="text-[14px] font-medium text-ink-2">{q.label}{optional}</label>;
   const common = { id: fieldId, name, disabled, required: nativeRequired, "aria-invalid": invalid, "aria-describedby": describedBy, autoComplete: q.autocomplete ?? undefined };
   let control: React.ReactNode;
   switch (q.type) {

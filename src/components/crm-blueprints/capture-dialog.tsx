@@ -188,35 +188,35 @@ export function CaptureDialog({ open, onOpenChange, clients, initialOrgId, initi
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.crmMode === "ghl" ? " (GoHighLevel CRM)" : ""}</option>)}
               </Select>
             </Field>
-            {loading && <p role="status" className="text-[12.5px] text-muted">Reading the client&apos;s configuration…</p>}
-            {loadError && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[12.5px] text-danger-ink">{loadError}</p>}
+            {loading && <p role="status" className="text-[13px] text-muted">Reading the client&apos;s configuration…</p>}
+            {loadError && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">{loadError}</p>}
           </div>
         )}
 
         <section aria-labelledby="bp-capture-never" className="rounded-xl border border-line bg-surface-2 p-4">
-          <h3 id="bp-capture-never" className="flex items-center gap-2 text-[13px] font-semibold text-ink"><Ban className="size-4 text-danger-ink" aria-hidden /> Never captured</h3>
-          <ul className="mt-2 grid gap-x-6 gap-y-1 text-[12.5px] text-ink-2 sm:grid-cols-2">{excluded.map((x) => <li key={x} className="flex gap-2"><span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-muted" />{x}</li>)}</ul>
+          <h3 id="bp-capture-never" className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Ban className="size-4 text-danger-ink" aria-hidden /> Never captured</h3>
+          <ul className="mt-2 grid gap-x-6 gap-y-1 text-[13px] text-ink-2 sm:grid-cols-2">{excluded.map((x) => <li key={x} className="flex gap-2"><span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-muted" />{x}</li>)}</ul>
         </section>
 
         {data && (
           <>
             {!initialPreview && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-4 py-2.5">
-                <p className="text-[13px] text-ink-2">Reading from <span className="font-semibold text-ink">{data.orgName}</span>. Their workspace is not changed.</p>
+                <p className="text-[14px] text-ink-2">Reading from <span className="font-semibold text-ink">{data.orgName}</span>. Their workspace is not changed.</p>
                 <Button size="sm" variant="ghost" onClick={() => { setData(null); setSelected(new Set()); setErrors({}); requested.current = null; }}>Choose another client</Button>
               </div>
             )}
             {data.warnings.length > 0 && (
-              <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[12.5px] text-warning-ink">
+              <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
                 {data.warnings.map((w) => <li key={w} className="flex gap-2"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />{w}</li>)}
               </ul>
             )}
             {!candidates.length ? (
-              <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[13px] text-muted">This client&apos;s CRM has no configuration that can be captured yet.</p>
+              <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-[14px] text-muted">This client&apos;s CRM has no configuration that can be captured yet.</p>
             ) : (
               <fieldset className="space-y-3">
-                <legend className="text-[13px] font-medium text-ink-2">What to capture <span className="font-normal text-muted">· {included.size} of {candidates.length} items</span></legend>
-                {errors.items && <p role="alert" className="text-[12.5px] text-danger-ink">{errors.items}</p>}
+                <legend className="text-[14px] font-medium text-ink-2">What to capture <span className="font-normal text-muted">· {included.size} of {candidates.length} items</span></legend>
+                {errors.items && <p role="alert" className="text-[13px] text-danger-ink">{errors.items}</p>}
                 <div className="space-y-3">
                   {grouped.map((g) => {
                     const pickable = g.items.filter((c) => c.capturable);
@@ -226,7 +226,7 @@ export function CaptureDialog({ open, onOpenChange, clients, initialOrgId, initi
                         <label className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-line bg-surface-2 px-4 py-2">
                           <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={pickable.length > 0 && on === pickable.length} disabled={!pickable.length}
                             ref={(el) => { if (el) el.indeterminate = on > 0 && on < pickable.length; }} onChange={(e) => toggleSection(g.section, e.target.checked)} />
-                          <span className="flex-1 text-[13px] font-semibold text-ink">{sectionLabel(g.section)}</span>
+                          <span className="flex-1 text-[14px] font-semibold text-ink">{sectionLabel(g.section)}</span>
                           <span className="text-[12px] tabular-nums text-muted">{on}/{pickable.length}</span>
                         </label>
                         <ul className="divide-y divide-line">
@@ -238,7 +238,7 @@ export function CaptureDialog({ open, onOpenChange, clients, initialOrgId, initi
                                 <label className={cn("flex min-h-11 gap-3 px-4 py-2.5", c.capturable ? "cursor-pointer hover:bg-surface-2/60" : "cursor-not-allowed opacity-70")}>
                                   <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={included.has(c.assetId)} disabled={!c.capturable || auto} onChange={(e) => toggle(c.assetId, e.target.checked)} />
                                   <span className="min-w-0 flex-1">
-                                    <span className="block break-words text-[13px] font-medium text-ink">{c.name}</span>
+                                    <span className="block break-words text-[14px] font-medium text-ink">{c.name}</span>
                                     {c.note && <span className="mt-0.5 block text-[12px] text-muted">{c.note}</span>}
                                     {auto && <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-primary-ink"><Link2 className="size-3" aria-hidden />Included because {needers.length ? needers.slice(0, 2).join(", ") : "a chosen item"} needs it</span>}
                                   </span>
@@ -257,7 +257,7 @@ export function CaptureDialog({ open, onOpenChange, clients, initialOrgId, initi
 
             <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3">
               <div>
-                <p id="bp-capture-values" className="text-[13px] font-semibold text-ink">Keep configuration values</p>
+                <p id="bp-capture-values" className="text-[14px] font-semibold text-ink">Keep configuration values</p>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{KEEP_VALUES_TEXT}</p>
               </div>
               <Switch checked={includeValues} onCheckedChange={setIncludeValues} aria-labelledby="bp-capture-values" />

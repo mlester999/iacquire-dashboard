@@ -35,7 +35,7 @@ export function IdentityList({
   const [how, setHow] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   return (
-    <ul className="mt-3 space-y-2 text-[12.5px]">
+    <ul className="mt-3 space-y-2 text-[13px]">
       {identities.map((i) => {
         const fieldId = `${idPrefix}confirm-${i.id}`;
         return (

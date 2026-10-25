@@ -68,7 +68,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
   const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
   return (
     <div className="module-stack">
-        <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" /> Clients
         </Link>
         <PageHero eyebrow="Client workspace" icon={<Building2 className="size-5"/>} title={data.org.name} description={<span>{data.org.industry??"Industry not set"} · {data.org.timezone.replaceAll("_"," ")}<span className="mt-1 block text-xs">Registered {formatDate(data.org.created_at,timeZone)} · Private, tenant-scoped workspace</span></span>} aside={<div className="flex items-center gap-4"><span className="grid size-16 place-items-center rounded-2xl border border-primary/15 bg-surface/70 text-xl font-semibold text-primary-ink">{initials(data.org.name)}</span><div className="space-y-2"><Badge tone={data.org.status === "active" ? "success" : data.org.status === "suspended" ? "danger" : "primary"}>{sentenceCase(data.org.status)}</Badge>{data.org.is_demo&&<div><Badge tone="violet">Demo data</Badge></div>}</div></div>} action={<><ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
@@ -127,7 +127,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
             ["CRM location verified", data.ghl?.status === "connected"],
             ["Setup fee paid or waived", ["paid", "waived"].includes(data.billing?.setup_payment_status ?? "")],
           ].map(([label, done]) => (
-            <div key={String(label)} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 text-[13.5px]",done?"border-success/15 bg-success-soft/35":"border-line bg-surface-2/50")}>
+            <div key={String(label)} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 text-[14px]",done?"border-success/15 bg-success-soft/35":"border-line bg-surface-2/50")}>
               {done ? <CheckCircle2 className="size-5 text-success" /> : <span className="size-5 shrink-0 rounded-full border-2 border-line-strong" />}
               <span className={done ? "text-ink" : "text-muted"}>{label}</span>
               <span className="ml-auto text-[12px] text-muted">{done?"Recorded":"Pending"}</span>
@@ -145,7 +145,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
         <CardContent className="space-y-3">
           {data.org.status === "suspended" ? (
             <>
-              <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">Suspended: {data.org.suspended_reason}</p>
+              <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">Suspended: {data.org.suspended_reason}</p>
               {superAdmin && (
                 <Button className="w-full" loading={pending === "reactivate"} onClick={() => run("reactivate", () => setTenantStatusAction(data.org.id, "active"), "Workspace reactivated")}>
                   Reactivate workspace
@@ -157,7 +157,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
               <Ban className="size-4" /> Suspend access
             </Button>
           ) : (
-            <p className="text-[13px] text-muted">Only super admins can suspend workspaces.</p>
+            <p className="text-[14px] text-muted">Only super admins can suspend workspaces.</p>
           )}
         </CardContent>
       </Card>
@@ -174,7 +174,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
           ) : (
             <ul className="divide-y divide-line">
               {data.failedRuns.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
                   <span className="font-medium">{AGENT_BY_KEY[r.agent_role].shortName}</span>
                   <span className="min-w-0 flex-1 truncate text-muted">{r.error_message ?? r.error_code}</span>
                   <span className="text-[12px] text-faint">{r.finished_at ? relativeTime(r.finished_at) : ""}</span>
@@ -223,7 +223,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   return (
     <div className="space-y-6">
       <Card className="border-primary/20 bg-primary-soft/30">
-        <CardContent className="pt-5 text-[13px] leading-relaxed text-primary-ink">
+        <CardContent className="pt-5 text-[14px] leading-relaxed text-primary-ink">
           <details><summary className="flex cursor-pointer items-center gap-2 font-medium"><ShieldAlert className="size-4 shrink-0" />Dedicated identities and restricted tool access<ChevronDown className="ml-auto size-3.5"/></summary><p className="mt-3">
             Each employee needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
             local terminal backend, so the portal only marks an employee online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
@@ -251,8 +251,8 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                     />
                   )}
                 </div>
-                <p className="text-[12.5px] leading-relaxed text-muted">{meta.tagline}</p>
-                <dl className="space-y-1.5 text-[12.5px]">
+                <p className="text-[13px] leading-relaxed text-muted">{meta.tagline}</p>
+                <dl className="space-y-1.5 text-[13px]">
                   <div className="flex justify-between gap-2">
                     <dt className="text-muted">Hermes profile</dt>
                     <dd className="truncate font-mono text-[12px]">{a.hermes_profile ?? "—"}</dd>
@@ -321,11 +321,11 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
         </CardHeader>
         <CardContent>
           {data.provisioning.length === 0 ? (
-            <p className="py-4 text-[13px] text-muted">No provisioning requests.</p>
+            <p className="py-4 text-[14px] text-muted">No provisioning requests.</p>
           ) : (
             <ul className="divide-y divide-line">
               {data.provisioning.map((j) => (
-                <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
+                <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[14px]">
                   <span className="font-medium">{AGENT_BY_KEY[j.agent_role].shortName}</span>
                   <Badge tone={j.status === "succeeded" ? "success" : j.status === "failed" ? "danger" : j.status === "requested" ? "warning" : "primary"}>{sentenceCase(j.status)}</Badge>
                   <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}{j.attempt_count > 0 ? ` · Attempt ${j.attempt_count}/3` : ""}</span>
@@ -408,7 +408,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
-        <p className="text-[12.5px] font-medium text-ink-2">{label}</p>
+        <p className="text-[13px] font-medium text-ink-2">{label}</p>
         <button
           type="button"
           className="flex items-center gap-1 text-[12px] text-primary hover:underline"
@@ -435,8 +435,8 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
               <li key={i} className="flex gap-3">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{i + 1}</span>
                 <div className="min-w-0 space-y-1.5">
-                  <p className="text-[13.5px] font-medium">{s.title}</p>
-                  {s.note && <p className="text-[12.5px] text-muted">{s.note}</p>}
+                  <p className="text-[14px] font-medium">{s.title}</p>
+                  {s.note && <p className="text-[13px] text-muted">{s.note}</p>}
                   {s.command && <pre className="scrollbar-thin overflow-x-auto rounded-lg border border-line bg-surface-2 px-3 py-2 font-mono text-[12px]">{s.command}</pre>}
                 </div>
               </li>
@@ -445,7 +445,7 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
           <CodeBlock label="SOUL.md" value={bundle.soul} />
           <CodeBlock label="config.yaml (merge)" value={bundle.configYaml} />
           <CodeBlock label=".env lines" value={bundle.envTemplate} />
-          <div className="rounded-xl bg-surface-2 p-3 text-[12.5px]">
+          <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
             <p className="font-medium">Online only when:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
               {bundle.verification.map((v) => (
@@ -464,7 +464,7 @@ function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: str
   if (!data.heldVersions.length && !data.heldKnowledge.length) {
     return (
       <Card>
-        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[13px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
+        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[14px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
       </Card>
     );
   }
@@ -484,7 +484,7 @@ function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: str
                 </Badge>
               ))}
             </div>
-            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[12.5px]">{k.content}</pre>
+            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{k.content}</pre>
             <div className="flex gap-2">
               <Button size="sm" disabled={!canDecide} onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
                 Approve
@@ -579,7 +579,7 @@ function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boole
             {data.integrations.map((i) => (
               <li key={i.provider} className="py-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13.5px] font-medium">{i.provider === "ghl" ? "GoHighLevel CRM" : i.provider === "ghl_calendar" ? "GHL calendar" : i.provider === "hermes" ? "Hermes" : i.provider}</span>
+                  <span className="text-[14px] font-medium">{i.provider === "ghl" ? "GoHighLevel CRM" : i.provider === "ghl_calendar" ? "GHL calendar" : i.provider === "hermes" ? "Hermes" : i.provider}</span>
                   <Badge tone={i.status === "connected" ? "success" : i.status === "error" ? "danger" : i.status === "pending" ? "warning" : "neutral"}>{sentenceCase(i.status)}</Badge>
                 </div>
                 {i.detail && <p className="mt-0.5 text-[12px] text-muted">{i.detail}</p>}
@@ -618,7 +618,7 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <div className="mb-1 flex justify-between text-[13px]">
+            <div className="mb-1 flex justify-between text-[14px]">
               <span>AI messages</span>
               <span className="tabular-nums">
                 {formatNumber(u.agentMessages)} / {formatNumber(u.limits.monthly_agent_messages)}
@@ -626,7 +626,7 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
             </div>
             <ProgressBar value={pct} tone={pct >= 100 ? "danger" : pct >= u.limits.warn_at_percent ? "warning" : "primary"} label="AI message usage" />
           </div>
-          <dl className="grid grid-cols-2 gap-3 text-[13px]">
+          <dl className="grid grid-cols-2 gap-3 text-[14px]">
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">Tokens</dt>
               <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.tokens)}</dd>
@@ -677,7 +677,7 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
               </Field>
             ))}
             <div className="flex items-center justify-between rounded-xl border border-line px-3.5 py-2.5">
-              <span className="text-[13px] font-medium">Hard stop at limit</span>
+              <span className="text-[14px] font-medium">Hard stop at limit</span>
               <Switch checked={form.hardStop} disabled={!superAdmin} onCheckedChange={(v) => setForm((f) => ({ ...f, hardStop: v }))} aria-label="Hard stop at limit" />
             </div>
           </div>
@@ -704,7 +704,7 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
   const [refunding, setRefunding] = React.useState<AgencyPaymentView | null>(null);
   const clientOption = [{ orgId: data.org.id, name: data.org.name, setupStatus: b?.setup_payment_status ?? "not_invoiced", setupFeeCents: b?.setup_fee_cents ?? 149900, cleared: b?.cleared === true }];
   const clearingPayment = data.payments.find((p) => p.id === b?.verified_payment_id);
-  if (!b) return <Card className="max-w-3xl"><CardContent><p className="text-[13px] text-muted">Your role does not include this client&apos;s billing.</p></CardContent></Card>;
+  if (!b) return <Card className="max-w-3xl"><CardContent><p className="text-[14px] text-muted">Your role does not include this client&apos;s billing.</p></CardContent></Card>;
   return (
     <div className="space-y-6">
       <Card className="max-w-3xl">
@@ -717,16 +717,16 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={copy.tone}>{copy.label}</Badge>
-            <span className="text-[13px] text-muted">{copy.detail}</span>
+            <span className="text-[14px] text-muted">{copy.detail}</span>
           </div>
           {b?.setup_payment_status === "waived" && (
-            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px] text-ink-2">
+            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[14px] text-ink-2">
               Waived{b.waived_by_name ? ` by ${b.waived_by_name}` : ""}{b.waived_at ? ` on ${formatDate(b.waived_at, timeZone)}` : ""}. Reason: {b.waiver_reason}
               <span className="mt-1 block text-[12px] text-muted">The client is told the fee was waived, not why.</span>
             </p>
           )}
           {b?.setup_payment_status === "paid" && (
-            <p className="text-[13px] text-ink-2">
+            <p className="text-[14px] text-ink-2">
               {clearingPayment ? `Cleared by the ${clearingPayment.provider === "manual" ? "payment recorded" : "payment confirmed"} ${clearingPayment.paidAt ? formatDate(clearingPayment.paidAt, timeZone) : ""}.` : b.verified_payment_id ? "Cleared by a verified payment." : "Marked paid before payments were recorded in the portal. No payment record is attached."}
             </p>
           )}
@@ -736,7 +736,7 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
               <Button variant="secondary" onClick={() => setWaiving(true)}><HandCoins className="size-4" aria-hidden /> Waive the setup fee</Button>
             </div>
           )}
-          {!superAdmin && !b?.cleared && <p className="text-[12.5px] text-muted">Only a Super Admin can record a payment or waive the fee.</p>}
+          {!superAdmin && !b?.cleared && <p className="text-[13px] text-muted">Only a Super Admin can record a payment or waive the fee.</p>}
         </CardContent>
       </Card>
       <Card className="max-w-3xl overflow-hidden">
@@ -748,9 +748,9 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
           {superAdmin && <Button size="sm" variant="secondary" onClick={() => setRecording(true)}><Banknote className="size-3.5" aria-hidden /> Record a payment</Button>}
         </CardHeader>
         {!data.canViewPayments ? (
-          <CardContent><p className="text-[13px] text-muted">Your role does not include payment records.</p></CardContent>
+          <CardContent><p className="text-[14px] text-muted">Your role does not include payment records.</p></CardContent>
         ) : data.payments.length === 0 ? (
-          <CardContent><p className="text-[13px] text-muted">No payments recorded yet.</p></CardContent>
+          <CardContent><p className="text-[14px] text-muted">No payments recorded yet.</p></CardContent>
         ) : (
           <ul className="divide-y divide-line">
             {data.payments.map((p) => <PaymentRow key={p.id} p={p} canManage={superAdmin} onRefund={setRefunding} timeZone={timeZone} showClient={false} />)}
@@ -822,7 +822,7 @@ function BillingDetailsForm({ data, superAdmin, timeZone }: { data: Detail; supe
             Save billing
           </Button>
         )}
-        {b?.paid_at && b.setup_payment_status === "paid" && <p className="text-[12.5px] text-muted">Confirmed paid {formatDateTime(b.paid_at, timeZone)}</p>}
+        {b?.paid_at && b.setup_payment_status === "paid" && <p className="text-[13px] text-muted">Confirmed paid {formatDateTime(b.paid_at, timeZone)}</p>}
       </CardContent>
     </Card>
   );
@@ -858,7 +858,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
         <CardContent className="space-y-4">
           <ul className="divide-y divide-line">
             {data.members.map((m) => (
-              <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-[13px]">
+              <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-[14px]">
                 <div className="min-w-0 flex-1 basis-40">
                   <p className="truncate font-medium">{m.full_name || m.email}</p>
                   <p className="truncate text-[12px] text-muted">{m.email}</p>
@@ -868,7 +868,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
               </li>
             ))}
             {data.invitations.map((i) => (
-              <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-[13px]">
+              <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-[14px]">
                 <div className="min-w-0 flex-1 basis-52">
                   <p className="truncate text-muted">{i.email}</p>
                   <p className="text-[12px] text-faint" suppressHydrationWarning>{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</p>
@@ -888,7 +888,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
           </ul>
           {superAdmin && (
             <div className="space-y-3 rounded-xl border border-line p-3">
-              <p className="text-[13px] font-medium">Invite someone</p>
+              <p className="text-[14px] font-medium">Invite someone</p>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <label htmlFor="inv-email" className="sr-only">
                   Email
@@ -934,11 +934,11 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
         </CardHeader>
         <CardContent>
           {data.staff.length === 0 ? (
-            <p className="py-4 text-[13px] text-muted">No agency staff accounts yet.</p>
+            <p className="py-4 text-[14px] text-muted">No agency staff accounts yet.</p>
           ) : (
             <ul className="divide-y divide-line">
               {data.staff.map((s) => (
-                <li key={s.user_id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+                <li key={s.user_id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{s.full_name || s.email}</p>
                     <p className="truncate text-[12px] text-muted">{s.email}</p>

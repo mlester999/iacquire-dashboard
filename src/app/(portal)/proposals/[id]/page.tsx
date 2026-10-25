@@ -37,9 +37,9 @@ export default async function ProposalPage({ params, searchParams }: { params: P
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/proposals" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Proposals</Link>
+        <Link href="/proposals" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Proposals</Link>
         <h1 className="mt-1 break-words text-[22px] font-semibold tracking-tight text-ink"><span className="tabular-nums text-muted">{detail.number}</span> {detail.title}</h1>
-        <p className="mt-1 text-[13px] text-muted">{customer ? `For ${customer}` : "No customer chosen yet"}{detail.ownerName ? ` · Owner: ${detail.ownerName}` : ""}</p>
+        <p className="mt-1 text-[14px] text-muted">{customer ? `For ${customer}` : "No customer chosen yet"}{detail.ownerName ? ` · Owner: ${detail.ownerName}` : ""}</p>
       </div>
       <ProposalWorkspace
         detail={detail} catalog={catalog} twoPerson={settings.twoPerson} tz={ctx.org.timezone || "UTC"} initialTab={parseWorkspaceTab(sp.tab)} invoicing={invoicing}

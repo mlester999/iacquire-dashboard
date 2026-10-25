@@ -40,7 +40,7 @@ export default async function WorkloadSettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-[13px] leading-relaxed text-muted">
+          <p className="text-[14px] leading-relaxed text-muted">
             Staff workload is internal. Switching it on connects nothing, sends nothing and changes no client workspace; the scheduled history job still runs only when the
             scheduler does and only when it is named. Switching it off hides these pages and refuses every request; it deletes nothing.
           </p>
@@ -51,12 +51,12 @@ export default async function WorkloadSettingsPage() {
               </Button>
             </form>
           ) : (
-            <p className="text-[12.5px] text-muted">Only a Super Admin can change this switch.</p>
+            <p className="text-[13px] text-muted">Only a Super Admin can change this switch.</p>
           )}
         </CardContent>
       </Card>
       {!enabled && !superAdmin && <WorkloadOff canEnable={false} enableAction={enableStaffWorkloadFormAction} />}
-      {!enabled && superAdmin && <p className="text-[12.5px] text-muted">The rules below appear once the module is on.</p>}
+      {!enabled && superAdmin && <p className="text-[13px] text-muted">The rules below appear once the module is on.</p>}
       {enabled && !caps && <WorkloadDenied />}
       {enabled && caps && rules && (
         <Card>
@@ -67,11 +67,11 @@ export default async function WorkloadSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="rounded-xl border border-warning/40 bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink">
+            <p className="rounded-xl border border-warning/40 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">
               Every number below is a proposal from the audit, not a founder-approved rule. Changing them is deliberately not on this page yet.
             </p>
             {rules.problems.length > 0 && (
-              <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">
+              <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">
                 The saved rules could not be read, so the defaults are in force: {rules.problems.join("; ")}
               </p>
             )}
@@ -79,7 +79,7 @@ export default async function WorkloadSettingsPage() {
               {rules.groups.map((group) => (
                 <section key={group.group} aria-label={group.group}>
                   <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted">{group.group}</h3>
-                  <dl className="divide-y divide-line text-[12.5px]">
+                  <dl className="divide-y divide-line text-[13px]">
                     {group.rows.map((row) => (
                       <div key={row.path} className="flex items-baseline justify-between gap-3 py-1.5">
                         <dt className="min-w-0">

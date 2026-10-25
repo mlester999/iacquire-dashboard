@@ -173,7 +173,7 @@ export function ContactsWorkspace({
               return (
                 <li key={b.key}>
                   <Link href={hrefWith({ list: null, f: b.filter ? encode(b.filter) : null, archived: b.archived ?? null })} aria-current={active ? "page" : undefined}
-                    className={cn("flex min-h-9 items-center gap-2 rounded-xl px-2.5 text-[13.5px] font-medium", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2")}>
+                    className={cn("flex min-h-9 items-center gap-2 rounded-xl px-2.5 text-[14px] font-medium", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2")}>
                     <b.icon className="size-4 text-muted" />{b.label}
                   </Link>
                 </li>
@@ -189,7 +189,7 @@ export function ContactsWorkspace({
                   return (
                     <li key={l.id} className="group flex items-center">
                       <Link href={hrefWith({ list: l.id, f: null, archived: null })} aria-current={active ? "page" : undefined}
-                        className={cn("flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[13.5px] font-medium", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2")}>
+                        className={cn("flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[14px] font-medium", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2")}>
                         <span className="truncate">{l.name}</span>
                         {l.isDefault && <Badge tone="primary" className="h-5 px-1.5 text-[12px]">Default</Badge>}
                       </Link>
@@ -203,7 +203,7 @@ export function ContactsWorkspace({
               </ul>
             </div>
           ))}
-          <Link href={`${scope.base}/smart-lists`} className="block px-2.5 text-[12.5px] font-medium text-primary-ink hover:underline">Manage Smart Lists</Link>
+          <Link href={`${scope.base}/smart-lists`} className="block px-2.5 text-[13px] font-medium text-primary-ink hover:underline">Manage Smart Lists</Link>
         </div>
       </aside>
 
@@ -211,15 +211,15 @@ export function ContactsWorkspace({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-[20px] font-semibold tracking-[-0.03em] text-ink">{page.smartList?.name ?? activeBuiltIn?.label ?? "Filtered contacts"}</h2>
-            <p className="mt-0.5 text-[13px] text-muted">{page.total.toLocaleString("en-US")} {page.total === 1 ? "contact" : "contacts"}{filterActive && ` · ${describeFilter(state.filter!, catalog, filterOptions)}`}</p>
+            <p className="mt-0.5 text-[14px] text-muted">{page.total.toLocaleString("en-US")} {page.total === 1 ? "contact" : "contacts"}{filterActive && ` · ${describeFilter(state.filter!, catalog, filterOptions)}`}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {scope.can["contacts.export"] && <a href={exportHref} className="inline-flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-9"><Download className="size-4" />Export</a>}
+            {scope.can["contacts.export"] && <a href={exportHref} className="inline-flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-9"><Download className="size-4" />Export</a>}
             {scope.can["contacts.edit"] && !scope.readOnly && <Button size="sm" data-aqi-target="crm.contacts.new" onClick={() => setCreateOpen(true)}><Plus className="size-4" />New contact</Button>}
           </div>
         </div>
 
-        {error && <p role="alert" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{error} Showing all contacts instead.</p>}
+        {error && <p role="alert" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{error} Showing all contacts instead.</p>}
 
         <Card className="overflow-hidden" data-aqi-target="crm.contacts.table">
           <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
@@ -280,7 +280,7 @@ export function ContactsWorkspace({
           </div>
 
           {selectionCount > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-b border-line bg-primary-soft/50 px-3 py-2 text-[13px]" role="region" aria-label="Bulk actions">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line bg-primary-soft/50 px-3 py-2 text-[14px]" role="region" aria-label="Bulk actions">
               <strong className="font-semibold text-primary-ink">{selectionCount.toLocaleString("en-US")} selected</strong>
               {!allMatching && selected.size === page.rows.length && page.total > page.rows.length && (
                 <button type="button" className="font-medium text-primary-ink underline" onClick={() => setAllMatching(true)}>Select all {page.total.toLocaleString("en-US")} matching</button>
@@ -302,13 +302,13 @@ export function ContactsWorkspace({
               action={!state.q && !filterActive && !state.list && state.archived !== "only" && scope.can["contacts.edit"] && !scope.readOnly ? (
                 <>
                   <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-4" />Add a contact</Button>
-                  {scope.can["contacts.import"] && <Link href={`${scope.base}/settings/data`} className="text-[13px] font-medium text-primary-ink hover:underline">Import a spreadsheet</Link>}
+                  {scope.can["contacts.import"] && <Link href={`${scope.base}/settings/data`} className="text-[14px] font-medium text-primary-ink hover:underline">Import a spreadsheet</Link>}
                 </>
               ) : undefined}
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-[13px]">
+              <table className="w-full min-w-[720px] text-left text-[14px]">
                 <thead className="bg-surface-2/60 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">
                   <tr>
                     <th scope="col" className="w-10 px-3 py-2.5">
@@ -354,7 +354,7 @@ export function ContactsWorkspace({
       <Sheet open={filterOpen} onOpenChange={setFilterOpen} title={editingList ? `Edit "${page.smartList!.name}"` : "Filter contacts"} description={editingList ? "Change the conditions, then save them to the list, or apply them just for now." : "Conditions are checked live against your contacts. Save the filter as a Smart List to reuse it."}>
         <div className="space-y-4 p-5">
           <FilterBuilder value={draft} onChange={setDraft} options={filterOptions} />
-          <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2" aria-live="polite">{draftCount === null ? "Counting…" : `${draftCount.toLocaleString("en-US")} ${draftCount === 1 ? "contact matches" : "contacts match"}`}</p>
+          <p className="rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2" aria-live="polite">{draftCount === null ? "Counting…" : `${draftCount.toLocaleString("en-US")} ${draftCount === 1 ? "contact matches" : "contacts match"}`}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(EMPTY_FILTER)}>Reset</Button>
             <Button variant="secondary" onClick={() => { setFilterOpen(false); setSaveOpen(true); }}><Save className="size-4" />{editingList ? "Save as new list" : "Save as Smart List"}</Button>
@@ -409,7 +409,7 @@ function SaveListDialog({ open, onOpenChange, scope, filter, columns, onSaved }:
       <div className="space-y-3">
         <Field label="Name" htmlFor="sl-name"><Input id="sl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="New leads without an appointment" autoFocus /></Field>
         {scope.can["smartlists.share"] && (
-          <label className="flex items-center gap-2 text-[13px] text-ink-2"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={team} onChange={(e) => setTeam(e.target.checked)} />Share with the whole team</label>
+          <label className="flex items-center gap-2 text-[14px] text-ink-2"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={team} onChange={(e) => setTeam(e.target.checked)} />Share with the whole team</label>
         )}
       </div>
     </Dialog>
@@ -423,13 +423,13 @@ function BulkTagDialog({ open, onOpenChange, tags, count, onSubmit, loading }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={`Tags for ${count.toLocaleString("en-US")} ${count === 1 ? "contact" : "contacts"}`} description="Click a tag once to add it, twice to remove it." size="sm"
       footer={<><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button loading={loading} disabled={!add.length && !remove.length} onClick={() => onSubmit(add, remove)}>Apply</Button></>}>
-      {tags.length === 0 ? <p className="text-[13px] text-muted">There are no tags yet. Create them under Tags &amp; Segments.</p> : (
+      {tags.length === 0 ? <p className="text-[14px] text-muted">There are no tags yet. Create them under Tags &amp; Segments.</p> : (
         <div className="flex flex-wrap gap-1.5">
           {tags.map((t) => {
             const s = state[t.id];
             return (
               <button key={t.id} type="button" onClick={() => setState((x) => ({ ...x, [t.id]: s === undefined ? "add" : s === "add" ? "remove" : undefined }))} aria-label={`${t.name}: ${s === "add" ? "will be added" : s === "remove" ? "will be removed" : "unchanged"}`}
-                className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium", s === "add" ? "border-success/40 bg-success-soft text-success-ink" : s === "remove" ? "border-danger/40 bg-danger-soft text-danger-ink line-through" : "border-line bg-surface text-ink-2")}>
+                className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", s === "add" ? "border-success/40 bg-success-soft text-success-ink" : s === "remove" ? "border-danger/40 bg-danger-soft text-danger-ink line-through" : "border-line bg-surface text-ink-2")}>
                 <i className="size-2 rounded-full" style={{ background: t.color }} aria-hidden />{s === "add" ? "+ " : s === "remove" ? "− " : ""}{t.name}
               </button>
             );

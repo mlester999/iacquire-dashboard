@@ -57,9 +57,9 @@ export default async function SocialPostPage({ params, searchParams }: { params:
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/social" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Calendar</Link>
+        <Link href="/social" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Calendar</Link>
         <h1 className="mt-1 flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink"><PlatformMark platform={post.platform} className="size-7 text-[12px]" />{post.accountName}</h1>
-        <p className="mt-1 text-[13px] text-muted">Written by {post.authorName ?? (post.origin === "ai" ? "AI" : "a teammate")}{post.campaignName ? ` · Campaign: ${post.campaignName}` : ""}{post.trackingCode && post.linkUrl && settings.trackingLinks && PLATFORM_LIMITS[post.platform].clickableLinks ? ` · Tracking code ${post.trackingCode}` : ""}</p>
+        <p className="mt-1 text-[14px] text-muted">Written by {post.authorName ?? (post.origin === "ai" ? "AI" : "a teammate")}{post.campaignName ? ` · Campaign: ${post.campaignName}` : ""}{post.trackingCode && post.linkUrl && settings.trackingLinks && PLATFORM_LIMITS[post.platform].clickableLinks ? ` · Tracking code ${post.trackingCode}` : ""}</p>
       </div>
       <PostActions
         post={post} job={job} tz={tz} can={can} needsApproval={needsApproval} defaultWhen={suggestion ?? `${tomorrow}T09:00`} defaultWhenDay={suggestion && chosenDay ? formatDay(chosenDay) : null}
