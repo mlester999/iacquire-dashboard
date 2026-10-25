@@ -344,6 +344,8 @@ export const usageLimitsSchema = z.object({
   monthlyTokens: z.union([z.literal(""), z.coerce.number().int().min(0).max(10_000_000_000)]).optional(),
   dailyLeadResearch: z.coerce.number().int().min(0).max(1000),
   monthlyHelpRequests: z.coerce.number().int().min(0).max(100_000),
+  /** Blank means no cap on AI replies to customers; a number is a hard stop once hard stop is on. */
+  monthlyCustomerReplies: z.union([z.literal(""), z.coerce.number().int().min(0).max(1_000_000)]).optional(),
   warnAtPercent: z.coerce.number().int().min(1).max(100),
   hardStop: z.coerce.boolean(),
   fairUseNote: z.string().trim().max(1000).optional().default(""),
@@ -354,14 +356,15 @@ export async function updateUsageLimits(admin: SessionUser, orgId: string, input
   const d = usageLimitsSchema.parse(input);
   await withSystem(async (db) => {
     await db.query(
-      `insert into usage_limits (org_id, monthly_agent_messages, monthly_tokens, daily_lead_research, monthly_help_requests,
+      `insert into usage_limits (org_id, monthly_agent_messages, monthly_tokens, daily_lead_research, monthly_help_requests, monthly_customer_replies,
          warn_at_percent, hard_stop, fair_use_note, updated_by, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, nullif($8, ''), $9, now())
+       values ($1, $2, $3, $4, $5, $10, $6, $7, nullif($8, ''), $9, now())
        on conflict (org_id) do update set monthly_agent_messages = excluded.monthly_agent_messages, monthly_tokens = excluded.monthly_tokens,
-         daily_lead_research = excluded.daily_lead_research, monthly_help_requests = excluded.monthly_help_requests,
+         daily_lead_research = excluded.daily_lead_research, monthly_help_requests = excluded.monthly_help_requests, monthly_customer_replies = excluded.monthly_customer_replies,
          warn_at_percent = excluded.warn_at_percent, hard_stop = excluded.hard_stop, fair_use_note = excluded.fair_use_note,
          updated_by = excluded.updated_by, updated_at = now()`,
-      [orgId, d.monthlyAgentMessages, d.monthlyTokens === "" || d.monthlyTokens === undefined ? null : d.monthlyTokens, d.dailyLeadResearch, d.monthlyHelpRequests, d.warnAtPercent, d.hardStop, d.fairUseNote, admin.id],
+      [orgId, d.monthlyAgentMessages, d.monthlyTokens === "" || d.monthlyTokens === undefined ? null : d.monthlyTokens, d.dailyLeadResearch, d.monthlyHelpRequests, d.warnAtPercent, d.hardStop, d.fairUseNote, admin.id,
+        d.monthlyCustomerReplies === "" || d.monthlyCustomerReplies === undefined ? null : d.monthlyCustomerReplies],
     );
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.usage_limits_updated", targetType: "organization", targetId: orgId, result: "success", metadata: { ...d } }, db);
   });

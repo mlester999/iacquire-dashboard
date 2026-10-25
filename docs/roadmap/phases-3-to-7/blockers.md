@@ -99,6 +99,14 @@ Nothing here has been done. Wave 1 is built and verified locally and is dormant 
 | Proposed numbers across Wave 1 | Confidence in the defaults | Confirmation or change of: proposal link life, code and session limits, change-request cap, expiry warning; AI limits (20 an hour, 50 a day, 15 items); survey sample sizes (10 and 30); batch limits (1,000 people, 1 to 60 a minute, 14-day approval, 366-day window, 20 unfinished); reminder days, 09:00, 90-day authorization, 24-hour lateness; the payment attempt, retry and read-back timings; retention periods | Each is one constant in code and is shown on the screen where it matters | Confirmation |
 | Roles: owner-only items | Delegation | Whether managers (not only the owner) may approve a batch, mark a test invoice, or record refunds and write-offs; whether agency staff may prepare a batch | Built owner-only (agency: look only) | The decision |
 
+### Added 2026-10-25 (trust fixes)
+
+| Item | Blocks | Needs | What is done instead |
+| --- | --- | --- | --- |
+| The monthly cap on AI replies to customers (migration 0104) | Telling a client or the founder what a client's AI replies cost at most | A number per plan, and whether it is a hard stop or advisory, set per client on `/admin/clients/<id>` (Usage tab); the `llm` unit rates (see the row above) to price a reply | Built dormant: blank means no cap and every screen says "No cap set"; replies are counted from now on |
+| A hosted key rotation | Rotating `APP_ENCRYPTION_KEY` for real | The founder's approval, a verified backup, and the procedure in `docs/credential-security.md` | Built and tested on embedded Postgres only; never run on a hosted database |
+| The remaining audit items | A "Ready" employee meaning more than a connected Hermes profile | One readiness definition with role prerequisites (calendar, pipeline, channel, knowledge), the scheduled employee health probe (needs a scheduler stage), a per-role tool allowlist (needs the Hermes inventory contract and the VPS policy package to change together), the support-session gate on approvals/activity/knowledge/leads (an RLS change to `app.has_permission` and `app.permitted_orgs`, a founder decision), storage entitlement and Google Drive / OneDrive (OAuth apps) | Not built. Documented in `audit/7bfg-employees-storage-superadmin.md` with a design |
+
 ### Smaller founder questions from the stage reports (each has a built default)
 
 | Question | Built default | Source |

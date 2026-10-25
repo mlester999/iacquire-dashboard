@@ -419,6 +419,7 @@ export async function listUsageByTenant(user: SessionUser) {
       tokens: number;
       research: number;
       failed: number;
+      replies: number;
       limit_messages: number | null;
       hard_stop: boolean | null;
     }>(
@@ -427,6 +428,7 @@ export async function listUsageByTenant(user: SessionUser) {
          coalesce((select sum(coalesce(input_tokens,0)+coalesce(output_tokens,0)) from usage_events u where u.org_id = o.id and u.created_at >= date_trunc('month', now())), 0)::int as tokens,
          coalesce((select sum(quantity) from usage_events u where u.org_id = o.id and u.kind = 'lead_research' and u.created_at >= date_trunc('month', now())), 0)::int as research,
          coalesce((select sum(quantity) from usage_events u where u.org_id = o.id and u.kind = 'agent_run_failed' and u.created_at >= date_trunc('month', now())), 0)::int as failed,
+         coalesce((select sum(quantity) from usage_events u where u.org_id = o.id and u.kind = 'customer_reply' and u.created_at >= date_trunc('month', now())), 0)::int as replies,
          l.monthly_agent_messages as limit_messages, l.hard_stop
        from organizations o left join usage_limits l on l.org_id = o.id
        where o.kind = 'client' order by messages desc, o.name`,

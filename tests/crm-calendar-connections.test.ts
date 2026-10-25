@@ -919,6 +919,38 @@ describe("write-back", () => {
     expect(runs.some((r) => r.kind === "write" && r.status === "ok")).toBe(true);
   });
 
+  it("writes nothing into a person's calendar while the workspace is suspended, paused by iAcquire or stopped from reaching out, and keeps the write pending", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    googleFake();
+    const { typeId } = await nativeSetup(c, { meetingProvider: "google_meet" });
+    await connectGoogle(c);
+    const page = await bookingPageActor(c.org.id);
+    await bookNativeAppointment(page, { typeId, startAt: at("10:00"), contact: { firstName: "Ana", lastName: "Reyes", email: "ana.reyes@example.test", phone: "+639171234567" }, answers: {}, via: "booking_page", now: NOW });
+    const writes = () => router.calls.filter((r) => r.method !== "GET").length;
+    const before = writes();
+    const stop = (sql: string) => withSystem((db) => db.query(sql, [c.org.id]));
+    const resume = () => withSystem(async (db) => {
+      await db.query("update organizations set status = 'active' where id = $1", [c.org.id]);
+      await db.query("delete from automation_pauses where org_id = $1", [c.org.id]);
+    });
+
+    await stop("update organizations set status = 'suspended' where id = $1");
+    expect(await writeBackDue({ now: NOW })).toMatchObject({ written: 0, failed: 0 });
+    await resume();
+    await stop("insert into automation_pauses (org_id, scope, active) values ($1, 'agency', true)");
+    expect(await writeBackDue({ now: NOW })).toMatchObject({ written: 0, failed: 0 });
+    await resume();
+    await stop("insert into automation_pauses (org_id, scope, active) values ($1, 'outbound', true)");
+    expect(await writeBackDue({ now: NOW })).toMatchObject({ written: 0, failed: 0 });
+    expect(writes()).toBe(before);
+
+    // Resumed: the same appointment is written, once.
+    await resume();
+    expect(await writeBackDue({ now: NOW })).toMatchObject({ written: 1, failed: 0 });
+    expect(writes()).toBeGreaterThan(before);
+    expect(router.find("POST", /\/calendars\/[^/]+\/events$/)).toHaveLength(1);
+  });
+
   it("stores a meeting link only when the provider actually returns one", async () => {
     const c = await crmOrg({ timezone: "Asia/Manila" });
     googleFake();

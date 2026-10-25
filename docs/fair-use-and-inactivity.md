@@ -8,8 +8,13 @@ Tests: `tests/fair-use-inactivity.test.ts` (19). Status: **Implemented locally, 
 
 The product has no monthly platform fee, and is described as fair use, not "unlimited". **No limit ships.** Until the agency has measured real provider
 costs and chosen numbers, every measure reads **"No limit set"** to the client and to staff. Six measures are recorded from real data per workspace:
-file storage, website bandwidth (30 days), website requests (30 days), AI employee runs (30 days), lead research requests (30 days), and stored
-messages.
+file storage, website bandwidth (30 days), website requests (30 days), AI employee runs (30 days, which now include the replies the employees prepared for
+customers, recorded since migration 0104), lead research requests (30 days), and stored messages.
+
+Separately from fair use, the usage limits an agency Super Admin sets per client (`/admin/clients/<id>`, Usage tab) gained an optional **monthly cap on AI
+replies to customers**. It is blank by default (shown as "No cap set", never "unlimited"); when set and hard stop is on, the AI employee makes no further
+model call for a customer message once the month's count is reached, leaves an internal note, and asks a person to reply. No number is shipped: it is the
+founder's decision.
 
 | Setting | Behaviour |
 | --- | --- |

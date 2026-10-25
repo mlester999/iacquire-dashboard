@@ -785,6 +785,43 @@ export async function disconnectCalendar(actor: CrmActor, id: string): Promise<{
   return { revoked };
 }
 
+/**
+ * Disconnects every calendar of a workspace that is being closed (offboarding): no signed-in member is involved, and each connection ends exactly as if its owner had disconnected it
+ * (credentials deleted, busy times removed, nothing more written; Google's grant revoked after the commit). Events already added to a person's calendar stay there. A failure is
+ * returned by name so it is reported, never hidden.
+ */
+export async function disconnectWorkspaceCalendars(orgId: string, actorUserId: string): Promise<{ disconnected: number; revoked: number; failed: string[] }> {
+  try {
+    const captured = await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string; provider: CalendarProvider; credentials: string | null }>(
+        "select id, provider, credentials from crm_calendar_connections where org_id = $1 and status <> 'disconnected' order by id for update",
+        [orgId],
+      );
+      const out: Array<{ provider: CalendarProvider; creds: StoredCredentials | null }> = [];
+      for (const c of rows) {
+        await db.query(
+          `update crm_calendar_connections set status = 'disconnected', credentials = null, token_expires_at = null, write_events = false, next_sync_at = null,
+             disconnected_at = now(), sync_cursors = '{}'::jsonb, last_error = null, consecutive_failures = 0 where id = $1`,
+          [c.id],
+        );
+        const busy = await db.query("delete from crm_external_busy where connection_id = $1", [c.id]);
+        await db.query("insert into crm_calendar_sync_runs (org_id, connection_id, kind, status, finished_at, counts) values ($1, $2, 'disconnect', 'ok', now(), $3::jsonb)", [orgId, c.id, JSON.stringify({ busyRemoved: busy.rowCount ?? 0, why: "workspace_closed" })]);
+        await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "crm.calendar_disconnected", targetType: "crm_calendar_connection", targetId: c.id, result: "success", metadata: { provider: c.provider, why: "workspace_closed" } }, db);
+        out.push({ provider: c.provider, creds: unseal(c.credentials) });
+      }
+      return out;
+    });
+    // Revoking talks to the provider, so it happens after the commit; the connections are already gone either way.
+    let revoked = 0;
+    for (const c of captured) {
+      if (c.creds?.kind === "oauth" && c.provider === "google" && (await revokeToken("google", c.creds.refreshToken ?? c.creds.accessToken).catch(() => false))) revoked += 1;
+    }
+    return { disconnected: captured.length, revoked, failed: [] };
+  } catch {
+    return { disconnected: 0, revoked: 0, failed: ["calendars"] };
+  }
+}
+
 /** Checks that a connection is the acting person's own (for "Sync now"): nobody runs another person's calendar sync. */
 export async function assertConnectionOwner(actor: CrmActor, id: string): Promise<{ userId: string; provider: CalendarProvider }> {
   const userId = assertConnector(actor);

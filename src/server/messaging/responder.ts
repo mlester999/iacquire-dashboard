@@ -3,6 +3,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { automationGate } from "@/server/automation/gate";
 import { getBalance } from "@/server/billing/ledger";
+import { customerReplyCapReached, recordUsage, usageSummary } from "@/server/usage";
 import { chargeModelUsage } from "@/server/llm/meter";
 import { buildRunInstructions, loadConnection } from "@/server/workforce/service";
 import { HermesError, startAgentRun, streamRunEvents } from "@/server/integrations/hermes/client";
@@ -224,9 +225,22 @@ export async function respondToConversation(orgId: string, conversationId: strin
     if (gate.decision === "blocked") return { skip: gate.reason };
     const bal = await getBalance(db, orgId);
     if (bal.availableMicros <= 0) return { skip: "credits" as const };
+    // The optional monthly cap on AI replies to customers (none is set unless the agency sets one): over it, no model call is made and a person is asked to reply instead.
+    if (customerReplyCapReached(await usageSummary(db, orgId))) return { skip: "usage_limit" as const, agentId: ctx.agentId, inboundMessageId: ctx.inboundMessageId };
     return { ctx };
   });
-  if ("skip" in pre) return { status: "skipped", reason: pre.skip as string };
+  if ("skip" in pre) {
+    if (pre.skip === "usage_limit" && "agentId" in pre) {
+      const capEmails: OutgoingEmail[] = [];
+      await withSystem(async (db) => {
+        await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_usage_limit')", [orgId, conversationId, pre.agentId, "The AI employee did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself."]);
+        const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: "This workspace has reached its monthly limit on AI replies, so the AI employee did not answer. Please reply.", sourceMessageId: pre.inboundMessageId, agentId: pre.agentId, now: deps.now });
+        capEmails.push(...esc.emails);
+      });
+      await Promise.all(capEmails.map((e) => sendEmail(e)));
+    }
+    return { status: "skipped", reason: pre.skip as string };
+  }
   const { ctx } = pre;
 
   // Only when the customer is talking about booking: read the real calendar so the employee can offer nothing else.
@@ -252,6 +266,12 @@ export async function respondToConversation(orgId: string, conversationId: strin
   }
   const emails: OutgoingEmail[] = [];
   const result = await withSystem(async (db): Promise<RespondResult> => {
+    // The model ran, so the usage is recorded whatever happens to the reply next (it may be discarded below because a person took over). A failed run is a failed run, not a reply.
+    if (outcome.kind === "unavailable") await recordUsage(db, { orgId, agentId: ctx.agentId, kind: "agent_run_failed" });
+    else {
+      const used = "usage" in outcome ? outcome.usage : null;
+      await recordUsage(db, { orgId, agentId: ctx.agentId, kind: "customer_reply", inputTokens: used?.inputTokens ?? null, outputTokens: used?.outputTokens ?? null });
+    }
     // Re-check after the (possibly slow) generation: a person may have taken over meanwhile.
     const fresh = await loadContext(db, orgId, conversationId);
     // The ownership revision is the fence: a takeover (even one handed straight back), a pause or another employee since the reply was

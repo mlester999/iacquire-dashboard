@@ -1239,6 +1239,15 @@ CLEAN["0103_purchase_checkouts"] = {
   },
 };
 
+// Customer reply usage. One recorded customer reply per workspace (the rollback refuses while any exists). The optional monthly cap lives on a row that already exists, so it is not
+// seeded here (changing that row would move an earlier row); the rollback's refusal for a cap is covered by tests/customer-reply-usage.test.ts.
+SEEDS["0104_customer_reply_usage"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org) => {
+    await db.query("insert into usage_events (org_id, kind, quantity, input_tokens, output_tokens) values ($1, 'customer_reply', 1, 120, 80)", [org]);
+  });
+};
+CLEAN["0104_customer_reply_usage"] = { guard: async (db) => { await db.query("delete from usage_events where kind = 'customer_reply'"); } };
+
 // Onboarding completion. Every workspace has a submitted questionnaire with its snapshot, and workspace a also a calendar drafted from the answers with one appointment type
 // (a draft: no booking page, never the default, no host). The baseline has no onboarding_responses, so the clean-up may remove every row that holds a snapshot; the drafted
 // calendar takes its appointment type with it. The rollback also removes the media storage step from the default checklist, and there is no checklist instance here to refuse on.

@@ -13,6 +13,10 @@ import { disconnectIntegration } from "@/server/integrations/manager";
 import { disconnectWorkspaceAccounts } from "@/server/social/accounts";
 import { revokeWorkspaceConnections } from "@/server/customer-payments/connections";
 import { disconnectWorkspaceEsign } from "@/server/esign/connections";
+import { disconnectWorkspaceCalendars } from "@/server/calendars/connections";
+import { revokeWorkspaceAutomationConnections } from "@/server/automation-studio/connections";
+import { revokeWorkspaceApiKeys } from "@/server/crm/api-keys";
+import { pauseWorkspaceWebhooks } from "@/server/crm/webhooks";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -167,7 +171,7 @@ export async function cancelOffboarding(actor: { user: Pick<SessionUser, "id" | 
     }
     await addEvent(db, r.id, actor.orgId, "cancelled", why, actor.user.id);
     await recordAudit({ orgId: actor.orgId, actorUserId: actor.user.id, actorKind: actor.viaOwner ? "user" : "agency", action: "offboarding.cancelled", targetType: "offboarding_request", targetId: r.id, result: "success" }, db);
-    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed, and connect your Facebook and Instagram accounts again in Social media.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
+    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed, connect your Facebook and Instagram accounts again in Social media, and reconnect calendars, Automation Studio connections and webhooks, and create any API keys again.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
   });
 }
 
@@ -280,6 +284,38 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
       esign.failed
         ? "Could not disconnect the signing service. Remove the saved keys by hand and revoke them at the signing service."
         : `Disconnected the signing service and deleted the saved keys${esign.ended ? `; ${esign.ended} signing request${esign.ended === 1 ? "" : "s"} still out ${esign.ended === 1 ? "was" : "were"} ended` : ""}. Revoke the key at the signing service too, and withdraw any document still waiting there.`,
+    );
+  }
+
+  // 2e. What else still holds a live secret or a door into the workspace: calendar connections (OAuth tokens, CalDAV passwords, private feed links), Automation Studio connections
+  // (Slack and HTTP secrets), the CRM's public API keys and its outbound webhooks. Each is closed exactly as its owner's own disconnect would, so nothing here is left to keep
+  // talking after "Workspace is closing". A failure is shown as failed, never hidden. Recorded only when there was something to close.
+  const calendars = await disconnectWorkspaceCalendars(orgId, user.id);
+  if (calendars.disconnected > 0 || calendars.failed.length > 0) {
+    await record(
+      "calendars", calendars.failed.length === 0,
+      calendars.failed.length
+        ? "Could not disconnect the calendar connections. Disconnect them by hand and remove iAcquire's access in each calendar account."
+        : `Disconnected ${calendars.disconnected} calendar connection${calendars.disconnected === 1 ? "" : "s"} and deleted the saved sign-ins${calendars.revoked ? `; ${calendars.revoked} Google grant${calendars.revoked === 1 ? " was" : "s were"} revoked` : ""}. Events already on a calendar stay there; remove iAcquire from each Microsoft account's app permissions too.`,
+    );
+  }
+  const studioConnections = await revokeWorkspaceAutomationConnections(orgId, user.id);
+  if (studioConnections.revoked > 0 || studioConnections.failed) {
+    await record(
+      "automation_connections", !studioConnections.failed,
+      studioConnections.failed
+        ? "Could not revoke the Automation Studio connections. Revoke them by hand and rotate their secrets at the other service."
+        : `Revoked ${studioConnections.revoked} Automation Studio connection${studioConnections.revoked === 1 ? "" : "s"} and erased their secrets. Rotate them at the other service too.`,
+    );
+  }
+  const apiKeys = await revokeWorkspaceApiKeys(orgId, user.id);
+  const webhooks = await pauseWorkspaceWebhooks(orgId, user.id);
+  if (apiKeys.revoked > 0 || apiKeys.failed || webhooks.paused > 0 || webhooks.failed) {
+    await record(
+      "api_access", !apiKeys.failed && !webhooks.failed,
+      apiKeys.failed || webhooks.failed
+        ? "Could not close every API key and webhook. Revoke the keys and pause the webhooks by hand in CRM Settings."
+        : `Revoked ${apiKeys.revoked} API key${apiKeys.revoked === 1 ? "" : "s"} and paused ${webhooks.paused} outbound webhook${webhooks.paused === 1 ? "" : "s"}. The webhooks and their logs stay for the export.`,
     );
   }
 

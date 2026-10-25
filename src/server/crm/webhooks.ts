@@ -318,6 +318,21 @@ export async function setWebhookSubscriptionActive(actor: CrmActor, id: string, 
   });
 }
 
+/** Pauses every outbound webhook of a workspace that is being closed (offboarding). The subscriptions and their logs stay for the export; nothing more is sent to those addresses. */
+export async function pauseWorkspaceWebhooks(orgId: string, actorUserId: string): Promise<{ paused: number; failed: boolean }> {
+  try {
+    return await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string }>("update crm_webhook_subscriptions set active = false, disabled_reason = 'The workspace was closed.' where org_id = $1 and active returning id", [orgId]);
+      for (const r of rows) {
+        await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "crm.webhook_paused", targetType: "crm_webhook_subscription", targetId: r.id, result: "success", metadata: { why: "workspace_closed" } }, db);
+      }
+      return { paused: rows.length, failed: false };
+    });
+  } catch {
+    return { paused: 0, failed: true };
+  }
+}
+
 /** Deletes a subscription and its delivery log. Deliveries waiting to be sent are dropped. */
 export async function deleteWebhookSubscription(actor: CrmActor, id: string): Promise<void> {
   assertCan(actor, "crm.api.manage");

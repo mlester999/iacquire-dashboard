@@ -19,7 +19,7 @@ export const METRIC_INFO: Record<FairUseMetric, MetricInfo> = {
   storage_bytes: { label: "File storage", unit: "bytes", window: "now", explain: "Documents, images, attachments and website pictures kept for your workspace.", canBlock: true },
   site_bandwidth_bytes_30d: { label: "Website bandwidth", unit: "bytes", window: "last 30 days", explain: "Data sent to visitors of your hosted website. Your site is never taken offline for this; if it runs high we talk to you first.", canBlock: false },
   site_requests_30d: { label: "Website requests", unit: "count", window: "last 30 days", explain: "Page and file requests to your hosted website.", canBlock: false },
-  ai_runs_30d: { label: "AI employee runs", unit: "count", window: "last 30 days", explain: "Conversations and tasks your AI employees ran. Messaging and model usage are charged separately from your credits.", canBlock: false },
+  ai_runs_30d: { label: "AI employee runs", unit: "count", window: "last 30 days", explain: "Conversations and tasks your AI employees ran, including the replies they prepared for your customers. Messaging and model usage are charged separately from your credits.", canBlock: false },
   research_calls_30d: { label: "Lead research requests", unit: "count", window: "last 30 days", explain: "Research requests your Lead Hunter made.", canBlock: false },
   stored_messages: { label: "Stored messages", unit: "count", window: "now", explain: "Customer messages kept in your inbox. Nothing is deleted automatically.", canBlock: false },
 };

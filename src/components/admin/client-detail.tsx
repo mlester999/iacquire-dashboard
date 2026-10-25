@@ -601,6 +601,7 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
     monthlyTokens: u.limits.monthly_tokens === null ? "" : String(u.limits.monthly_tokens),
     dailyLeadResearch: String(u.limits.daily_lead_research),
     monthlyHelpRequests: String(u.limits.monthly_help_requests),
+    monthlyCustomerReplies: u.limits.monthly_customer_replies === null ? "" : String(u.limits.monthly_customer_replies),
     warnAtPercent: String(u.limits.warn_at_percent),
     hardStop: u.limits.hard_stop,
     fairUseNote: u.limits.fair_use_note ?? "",
@@ -642,6 +643,13 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
               <dt className="text-muted">Help requests</dt>
               <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.helpRequests)}</dd>
             </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">AI replies to customers</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">
+                {formatNumber(u.customerReplies)}
+                <span className="ml-1 text-[12px] font-normal text-muted">{u.limits.monthly_customer_replies === null ? "No cap set" : `of ${formatNumber(u.limits.monthly_customer_replies)}`}</span>
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>
@@ -660,6 +668,7 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
                 ["monthlyTokens", "Tokens per month (blank = no token cap)"],
                 ["dailyLeadResearch", "Lead research per day"],
                 ["monthlyHelpRequests", "Help assistant AI answers per month"],
+                ["monthlyCustomerReplies", "AI replies to customers per month (blank = no cap)"],
                 ["warnAtPercent", "Warn at (%)"],
               ] as const
             ).map(([k, label]) => (
