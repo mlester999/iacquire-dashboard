@@ -220,6 +220,20 @@ describe("on-demand operations review", () => {
 
   it("does not execute a proactive review for a role that is not allowed", async () => {
     const salesAssistantId = await agentId(org.id, "sales_assistant");
+    await withSystem((db) =>
+      createConfigVersion(db, {
+        orgId: org.id,
+        agentId: salesAssistantId,
+        settings: defaultSettings("sales_assistant"),
+        source: "onboarding",
+        userId: owner.id,
+        apply: true,
+      }),
+    );
+    await withSystem((db) => db.query(
+      "update agent_instances set status = 'online', last_health_ok = true, last_health_check_at = now() where id = $1",
+      [salesAssistantId],
+    ));
     const job = await withSystem((db) =>
       createWorkJob(db, {
         orgId: org.id,
