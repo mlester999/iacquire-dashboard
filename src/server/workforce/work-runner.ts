@@ -2,7 +2,7 @@ import "server-only";
 import { runMissedCallReviewJob } from "@/server/workforce/missed-call-review";
 import { runLeadPriorityReviewJob } from "@/server/workforce/lead-priority-review";
 import crypto from "node:crypto";
-import { withSystem } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
 import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import {
   appendWorkEvent,
@@ -22,6 +22,7 @@ import { runPipelineFollowUpDraftsJob } from "@/server/workforce/pipeline-follow
 import { runAppointmentReviewJob } from "@/server/workforce/appointment-review";
 import { runPerformanceSnapshotJob } from "@/server/workforce/performance-snapshot";
 import { runAppointmentAvailabilityJob } from "@/server/workforce/appointment-availability";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
 
 /**
  * Persistent worker entry points for AI work.
@@ -46,6 +47,46 @@ const HANDLERS: Record<string, Handler> = {
   appointment_availability: runAppointmentAvailabilityJob,
   performance_snapshot: runPerformanceSnapshotJob,
 };
+
+type RequesterGateResult =
+  | { allowed: true }
+  | { allowed: false; code: string; detail: string };
+
+/** A durable job must still have an authorized requester when its worker begins execution. */
+async function requesterGate(job: WorkJobRow): Promise<RequesterGateResult> {
+  if (!job.requested_by) {
+    return {
+      allowed: false,
+      code: "requester_unavailable",
+      detail: "This work has no recorded requester. Nothing was executed.",
+    };
+  }
+  const definition = capabilityDefinition(job.capability);
+  if (!definition) {
+    return {
+      allowed: false,
+      code: "capability_unavailable",
+      detail: "This work has no reviewed permission policy. Nothing was executed.",
+    };
+  }
+
+  const permissions = [...new Set(["agents.use", definition.requiredPermission, ...(definition.additionalPermissions ?? [])])];
+  try {
+    const { rows } = await withUser(job.requested_by, (db) => db.query<{ allowed: boolean }>(
+      `select coalesce(bool_and(app.has_permission($1, required.permission)), false) as allowed
+         from unnest($2::text[]) as required(permission)`,
+      [job.org_id, permissions],
+    ));
+    if (rows[0]?.allowed) return { allowed: true };
+  } catch {
+    // Missing membership or a failed authorization read must not grant system-level access.
+  }
+  return {
+    allowed: false,
+    code: "permission_revoked",
+    detail: "The requester no longer has the permissions required for this employee work. Nothing was executed.",
+  };
+}
 
 function workerId() {
   return `worker-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
@@ -129,6 +170,26 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
             kind: "error",
             stage: "blocked",
             message: "No reviewed handler is registered for this capability, so nothing was executed.",
+          },
+        });
+      });
+      return true;
+    }
+    const requester = await requesterGate(claimed);
+    if (!requester.allowed) {
+      await withSystem(async (db) => {
+        await finishWorkJob(db, {
+          jobId: claimed.id,
+          orgId: claimed.org_id,
+          workerId: id,
+          status: "blocked",
+          stage: "blocked",
+          failureCode: requester.code,
+          failureMessage: requester.detail,
+          event: {
+            kind: "error",
+            stage: "blocked",
+            message: requester.detail,
           },
         });
       });

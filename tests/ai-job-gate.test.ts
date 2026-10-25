@@ -119,6 +119,35 @@ describe("AI work pause gate", () => {
     expect((await jobRow(queued.jobId)).status).toBe("completed");
   });
 
+  it("blocks queued work before the handler reads records if the requester loses a required permission", async () => {
+    const member = await createUser();
+    await addMember(org.id, member.id, "member");
+    const queued = await dispatchCapabilityJob(ctxFor(member, org, "member"), {
+      agentRole: "crm_manager",
+      capability: "crm_quality_review",
+      title: "Review CRM quality",
+      deferKick: true,
+    });
+    await withSystem((db) => db.query(
+      `insert into member_permission_overrides (org_id, user_id, permission, effect)
+       values ($1, $2, 'contacts.view', 'revoke')`,
+      [org.id, member.id],
+    ));
+
+    await runWorkJob(queued.jobId);
+
+    expect(await jobRow(queued.jobId)).toMatchObject({
+      status: "blocked",
+      failure_code: "permission_revoked",
+      failure_message: expect.stringMatching(/no longer has the permissions.*Nothing was executed/),
+    });
+    const events = await withSystem((db) => db.query<{ message: string }>(
+      "select message from ai_work_events where job_id = $1 order by id",
+      [queued.jobId],
+    ));
+    expect(events.rows.map((event) => event.message).join(" ")).toMatch(/Nothing was executed/);
+  });
+
   it("saves paused research as waiting and moves already queued research back to waiting", async () => {
     await setAgent("lead_hunter", "mode = 'paused'");
     const waiting = await createResearchRequest(ctx(), { prompt: "Find 3 independent dental clinics in Singapore", campaignType: "business" }, { deferKick: true });
