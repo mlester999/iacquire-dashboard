@@ -21,12 +21,14 @@ export function DemoActions({
   notice: Notice | null;
 }) {
   const link = consultationUrl && isConsultationUrl(consultationUrl) ? consultationUrl : null;
+  // The confirmation after pressing a button says exactly what the recorded status below already says: showing both read as the sentence twice. Refusals still show.
+  const shown = notice && notice.tone === "ok" && (notice.text === CTA_COPY.consultation || notice.text === CTA_COPY.buy) ? null : notice;
   return (
     <section id="actions" aria-labelledby="actions-heading" className="card-surface scroll-mt-4 space-y-4 rounded-2xl p-4 sm:p-5">
       <h2 id="actions-heading" className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
         {ROOM_COPY.consultationHeading}
       </h2>
-      <DemoNotice notice={notice} />
+      <DemoNotice notice={shown} />
 
       {consultationRequested ? (
         <div role="status" className="flex items-start gap-3 rounded-xl border border-success/25 bg-success-soft p-3 text-success-ink">

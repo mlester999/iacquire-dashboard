@@ -39,6 +39,14 @@ describe("words for each state", () => {
     expect(ai.tone).toBe("success");
     expect(ai.text).toMatch(/still needs a connected language model/);
   });
+
+  it("says whether a language model is really connected when the page looked, instead of always saying the chat still needs one", () => {
+    const on = { environment: true, emergencyStop: false, enabled: true, aiEnabled: true };
+    expect(visitorsSee({ ...on, modelReady: true })).toEqual({ tone: "success", text: "The demo is open. The AI chat is on and a language model is connected." });
+    expect(visitorsSee({ ...on, modelReady: false })).toMatchObject({ tone: "warning", text: expect.stringContaining("no language model is connected") });
+    // With the chat switched off the model does not matter.
+    expect(visitorsSee({ ...on, aiEnabled: false, modelReady: false }).text).toMatch(/AI chat is switched off/);
+  });
 });
 
 describe("the list's filters in an address", () => {

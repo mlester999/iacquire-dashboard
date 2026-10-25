@@ -59,7 +59,7 @@ function patchOf(form: Form, saved: DemoSettings): Record<string, unknown> {
   return patch;
 }
 
-export function DemoSettingsForm({ settings, version, env, canManage }: { settings: DemoSettings; version: number; env: { environment: boolean; emergencyStop: boolean }; canManage: boolean }) {
+export function DemoSettingsForm({ settings, version, env, canManage }: { settings: DemoSettings; version: number; env: { environment: boolean; emergencyStop: boolean; modelReady?: boolean }; canManage: boolean }) {
   const router = useRouter();
   const [saved, setSaved] = React.useState({ settings, version });
   const [form, setForm] = React.useState<Form>(() => toForm(settings));

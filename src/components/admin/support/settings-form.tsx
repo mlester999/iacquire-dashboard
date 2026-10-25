@@ -231,7 +231,7 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
           <Notice tone={emailMode === "capture" ? "warning" : "success"} icon={<BellRing />} role="status">
             {emailMode === "capture"
               ? "This server is in email capture mode: email notifications are recorded but not sent to anyone. In-app notifications work normally."
-              : "Email is delivered through the connected email provider. A message is recorded as â€œsentâ€ once the provider accepts it; that is not a delivery receipt."}
+              : "Email is delivered through the connected email provider. A message is recorded as “sent” once the provider accepts it; that is not a delivery receipt."}
           </Notice>
           <div className="overflow-x-auto rounded-2xl border border-line">
             <table className="w-full min-w-[640px] text-left text-[13px]"><caption className="sr-only">How each support update is delivered</caption>

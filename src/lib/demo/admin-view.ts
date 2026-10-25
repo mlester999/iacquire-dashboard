@@ -39,6 +39,8 @@ export interface SwitchState {
   /** The Super Admin's own switch, in the demo settings. */
   enabled: boolean;
   aiEnabled: boolean;
+  /** Whether a language model could be reached just now (the chat's own check). Left out where the page did not look: the sentence then says what the chat needs, not what it has. */
+  modelReady?: boolean;
 }
 
 /** What visitors get right now, in one sentence, from the switches in the order the server checks them. */
@@ -46,7 +48,10 @@ export function visitorsSee(s: SwitchState): { tone: "success" | "warning" | "da
   if (s.emergencyStop) return { tone: "danger", text: "The emergency stop is on. Every public demo page says it is temporarily unavailable." };
   if (!s.environment) return { tone: "warning", text: "The demo is off for this deployment (DEMO_ENABLED), so visitors are told it is not open, whatever the settings say." };
   if (!s.enabled) return { tone: "warning", text: "The demo is switched off in the demo settings, so visitors are told it is not open." };
-  return { tone: "success", text: s.aiEnabled ? "The demo is open. The AI chat is switched on, and still needs a connected language model to answer." : "The demo is open with the guided tour. The AI chat is switched off." };
+  if (!s.aiEnabled) return { tone: "success", text: "The demo is open with the guided tour. The AI chat is switched off." };
+  if (s.modelReady === true) return { tone: "success", text: "The demo is open. The AI chat is on and a language model is connected." };
+  if (s.modelReady === false) return { tone: "warning", text: "The demo is open. The AI chat is switched on, but no language model is connected right now, so visitors get the guided tour only." };
+  return { tone: "success", text: "The demo is open. The AI chat is switched on, and still needs a connected language model to answer." };
 }
 
 // ---------------------------------------------------------------------------
