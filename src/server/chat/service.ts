@@ -49,6 +49,7 @@ import { requestBooking, type BookingResult } from "@/server/appointments/bookin
 import { appointmentChangeExpected } from "@/server/appointments/changes";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
+import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -1439,9 +1440,19 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
   // depend on an unenforced Hermes approval preference or let a generic run claim an action.
   if (!input.regenerateMessageId && isAutomationBuilderRequest(prepared.userContent)) {
-    const content = ctx.can("workflows.view")
-      ? "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to build a draft and test it, then follow the normal approval process before activation. No email was sent."
-      : "Building automations belongs in Automation Studio, but your workspace role can't open it. Ask an owner or admin for workflow access. No workflow was created and no email was sent.";
+    let content: string;
+    if (!ctx.can("workflows.view")) {
+      content = "Building automations belongs in Automation Studio, but your workspace role can't open it. Ask an owner or admin for workflow access. No workflow was created and no email was sent.";
+    } else if (ctx.org.kind !== "client") {
+      content = "Native workflow building is handled in Automation Studio for client workspaces. This internal workspace doesn't have that builder. I haven't created or activated a workflow, and no email was sent.";
+    } else if (!ctx.can("workflows.manage")) {
+      content = "You can view Automation Studio, but your workspace role can't create or change workflows. Ask an owner or admin to prepare this automation. [Open Automation Studio](/automation-studio) to view workflows available to you. No workflow was created or activated, and no email was sent.";
+    } else {
+      const entitlement = await withSystem((db) => studioEntitlement(db, ctx.org.orgId));
+      content = entitlement.entitled
+        ? "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to build a draft and test it, then follow the normal approval process before activation. No email was sent."
+        : `Building automations belongs in Automation Studio, but this workspace doesn't currently have Studio access: ${entitlement.reason} [Open Automation Studio](/automation-studio) to review its access options. This doesn't block supported AI Employee work or schedule settings. No workflow was created or activated, and no email was sent.`;
+    }
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,
       userId: ctx.user.id,

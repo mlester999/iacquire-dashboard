@@ -615,6 +615,10 @@ describe("six employee chat to native workflow", () => {
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],
     ))).rows[0].count;
+    const beforeWorkflows = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from crm_workflows where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
     const ownerRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "lead_hunter",
       content: "Create an automation that sends an email when we receive a new lead.",
@@ -623,7 +627,9 @@ describe("six employee chat to native workflow", () => {
     expect(ownerRequest).toMatchObject({ runId: null, jobId: null });
     const ownerReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [ownerRequest.assistantMessageId]))).rows[0].content;
     expect(ownerReply).toContain("[Open Automation Studio](/automation-studio)");
-    expect(ownerReply).toContain("No email was sent");
+    expect(ownerReply).toContain("doesn't currently have Studio access");
+    expect(ownerReply).toContain("doesn't block supported AI Employee work or schedule settings");
+    expect(ownerReply).toMatch(/no email was sent/i);
 
     const memberRequest = await sendChatMessage(ctxFor(member, org, "member"), {
       agentRole: "lead_hunter",
@@ -635,11 +641,54 @@ describe("six employee chat to native workflow", () => {
     expect(memberReply).toContain("can't open it");
     expect(memberReply).not.toContain("/automation-studio");
 
+    const ownerContext = ctxFor(owner, org, "owner");
+    const viewOnlyContext = {
+      ...ownerContext,
+      can: (permission: Parameters<typeof ownerContext.can>[0]) =>
+        permission === "workflows.view" || (permission !== "workflows.manage" && ownerContext.can(permission)),
+    };
+    const viewOnlyRequest = await sendChatMessage(viewOnlyContext, {
+      agentRole: "lead_hunter",
+      content: "Create a workflow that assigns each new lead to a salesperson.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(viewOnlyRequest).toMatchObject({ runId: null, jobId: null });
+    const viewOnlyReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1",
+      [viewOnlyRequest.assistantMessageId],
+    ))).rows[0].content;
+    expect(viewOnlyReply).toContain("can't create or change workflows");
+    expect(viewOnlyReply).toContain("[Open Automation Studio](/automation-studio)");
+
+    await withSystem((db) => db.query(
+      `insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_at, billing_start_on)
+       values ($1, 'active', 29900, 4, 'chat-e2e', $2, now(), current_date)`,
+      [org.id, owner.id],
+    ));
+    const entitledRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "Build a workflow that creates a follow-up task for every new lead.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(entitledRequest).toMatchObject({ runId: null, jobId: null });
+    const entitledReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1",
+      [entitledRequest.assistantMessageId],
+    ))).rows[0].content;
+    expect(entitledReply).toContain("build a draft and test it");
+    expect(entitledReply).toContain("[Open Automation Studio](/automation-studio)");
+    expect(entitledReply).toMatch(/no email was sent/i);
+
     const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],
     ))).rows[0].count;
     expect(afterJobs).toBe(beforeJobs);
+    const afterWorkflows = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from crm_workflows where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    expect(afterWorkflows).toBe(beforeWorkflows);
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
   });
 
