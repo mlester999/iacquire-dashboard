@@ -427,7 +427,7 @@ function TemplateCard({ t }: { t: WorkflowTemplateItem }) {
       <span className="block text-[14px] font-semibold text-ink">{t.name}</span>
       <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{t.description}</span>
       <span className="mt-2 block text-[12px] text-ink-2">{t.triggerSummary}</span>
-      <span className="mt-2 flex flex-wrap items-center gap-1" aria-label={`${t.stepKinds.length} ${t.stepKinds.length === 1 ? "step" : "steps"}`}>
+      <span role="img" className="mt-2 flex flex-wrap items-center gap-1" aria-label={`${t.stepKinds.length} ${t.stepKinds.length === 1 ? "step" : "steps"}`}>
         {t.stepKinds.map((k, i) => <span key={`${k}-${i}`} className="inline-flex size-6 items-center justify-center rounded-md bg-surface-2 text-muted"><StepIcon kind={k} className="size-3.5" /></span>)}
       </span>
       {t.sendsMessages && (

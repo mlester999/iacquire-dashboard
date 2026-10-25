@@ -103,7 +103,7 @@ export function ChatPanel({ chat, selectedLabel, onClearSelection, selectedKey, 
       <div className="shrink-0 border-t border-line bg-surface p-3">
         {unavailable && <p className="mb-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] leading-snug text-warning-ink" role="note">{unavailable}</p>}
         {showFollowUps && (
-          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Suggestions">
+          <div role="group" className="mb-2 flex flex-wrap gap-1.5" aria-label="Suggestions">
             {FOLLOW_UPS.map((s) => <button key={s} type="button" onClick={() => void submit(s)} className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-primary hover:text-primary">{s}</button>)}
           </div>
         )}

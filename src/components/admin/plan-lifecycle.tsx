@@ -63,7 +63,7 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface-2/50 p-3" aria-label="Automation Studio plan">
+    <div role="group" className="space-y-3 rounded-xl border border-line bg-surface-2/50 p-3" aria-label="Automation Studio plan">
       <p className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted">Automation Studio plan</p>
       <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-[12.5px] min-[460px]:grid-cols-2">
         <div className="flex gap-2"><dt className="text-muted">Paid through</dt><dd className="font-medium text-ink">{info.paidThroughOn ? formatDate(info.paidThroughOn, "UTC") : "Not recorded"}</dd></div>

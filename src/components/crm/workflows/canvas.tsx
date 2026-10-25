@@ -44,7 +44,7 @@ export function WorkflowCanvas(props: CanvasProps) {
   const { trigger, selected, onSelect } = props;
   const triggerSelected = selected === "trigger";
   return (
-    <div className="mx-auto w-full max-w-3xl" aria-label="Workflow steps">
+    <div role="group" className="mx-auto w-full max-w-3xl" aria-label="Workflow steps">
       <div className={cn("rounded-2xl border bg-surface shadow-soft transition-shadow", triggerSelected ? "border-primary ring-4 ring-primary/12" : "border-line")}>
         <button
           type="button"

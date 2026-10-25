@@ -77,12 +77,14 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
         <ol className="grid grid-cols-3 gap-1.5 md:grid-cols-6 md:gap-2">
           {stages.map((stage) => (
             <li key={stage.id} className="min-w-0">
-              <button type="button" data-state={stage.state} onClick={() => onSelect(stage.id)} disabled={disabled} aria-current={stage.state === "current" ? "step" : undefined} aria-label={stage.label} className="onboarding-stage">
+              <button type="button" data-state={stage.state} onClick={() => onSelect(stage.id)} disabled={disabled} aria-current={stage.state === "current" ? "step" : undefined} className="onboarding-stage">
                 <span aria-hidden className="flex w-full items-center justify-between">
                   <span className="onboarding-stage-number">{stage.number}</span>
                   <StageMark state={stage.complete ? "complete" : stage.state} />
                 </span>
-                <span aria-hidden className="onboarding-stage-label">{stage.short}</span>
+                {/* Named from its own words, with the state said once: an aria-label that replaces visible text fails WCAG label-in-name (axe: label-content-name-mismatch). */}
+                <span className="onboarding-stage-label">{stage.short}</span>
+                <span className="sr-only">: {stage.label.slice(stage.short.length + 2)}</span>
                 <span aria-hidden className="onboarding-stage-status hidden sm:block">
                   {stage.status}
                   {stage.state === "current" && stage.id !== "F" && <span className="hidden lg:inline"> answered</span>}

@@ -103,7 +103,7 @@ export function OnboardingBlueprintPicker({
           </label>
 
           {loading && !choices ? (
-            <div className="space-y-2" aria-busy="true" aria-label="Loading Blueprints">
+            <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading Blueprints">
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
             </div>

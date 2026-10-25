@@ -23,8 +23,8 @@ function Tile({ label, value, sub, tone }: { label: string; value: number; sub?:
 
 /** A count that reads as a problem only when it isn't zero. */
 function Num({ value, tone = "danger", label }: { value: number; tone?: "danger" | "warning"; label?: string }) {
-  if (!value) return <span className="text-faint" aria-label={label ? `${label}: none` : undefined}>0</span>;
-  return <span className={cn("font-medium tabular-nums", tone === "danger" ? "text-danger-ink" : "text-warning-ink")} aria-label={label ? `${label}: ${value}` : undefined}>{n(value)}</span>;
+  if (!value) return <span role={label ? "img" : undefined} className="text-faint" aria-label={label ? `${label}: none` : undefined}>0</span>;
+  return <span role={label ? "img" : undefined} className={cn("font-medium tabular-nums", tone === "danger" ? "text-danger-ink" : "text-warning-ink")} aria-label={label ? `${label}: ${value}` : undefined}>{n(value)}</span>;
 }
 
 function Breakdown({ items }: { items: Array<[string, number]> }) {

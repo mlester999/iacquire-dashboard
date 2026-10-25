@@ -88,14 +88,14 @@ export function QuestionList({
             <button type="button" onClick={() => onSelect(q.key)} aria-current={active ? "true" : undefined} className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"><Icon className="size-3.5" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-ink">{q.label || <span className="text-faint">Untitled question</span>}{q.required && <span className="text-danger" aria-label="required"> *</span>}</span>
+                <span className="block truncate text-[13px] font-medium text-ink">{q.label || <span className="text-faint">Untitled question</span>}{q.required && <span role="img" className="text-danger" aria-label="required"> *</span>}</span>
                 <span className="flex items-center gap-1.5 truncate text-[11.5px] text-muted">
                   {QUESTION_TYPE_LABELS[q.type]}
                   {q.visibleWhen?.conditions.length ? <GitBranch className="size-3" aria-label="Shown only when a condition holds" /> : null}
                   {q.map ? <span className="truncate">· {targetLabel(q.map, fields)}</span> : null}
                 </span>
               </span>
-              {bad && <span className="size-2 shrink-0 rounded-full bg-danger" aria-label="Has a problem" />}
+              {bad && <span role="img" className="size-2 shrink-0 rounded-full bg-danger" aria-label="Has a problem" />}
             </button>
             {!readOnly && (
               <span className="flex shrink-0 flex-col">

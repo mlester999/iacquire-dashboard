@@ -249,10 +249,10 @@ function HoursInput({ value, onChange }: InputProps) {
           const open = ranges.length > 0;
           return (
             <li key={day} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-              <label className="flex w-36 items-center gap-2.5 text-[14px] font-medium">
+              <label className="flex min-h-11 w-36 cursor-pointer items-center gap-2.5 text-[14px] font-medium">
                 <input
                   type="checkbox"
-                  className="size-4 accent-[var(--primary)]"
+                  className="size-5 accent-[var(--primary)]"
                   checked={open}
                   onChange={(e) => setDay(day, e.target.checked ? [["09:00", "17:00"]] : [])}
                 />

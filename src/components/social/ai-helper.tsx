@@ -95,7 +95,7 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, sched
       )}
 
       {captions && (
-        <div className="space-y-2" aria-label="Caption options">
+        <div role="group" className="space-y-2" aria-label="Caption options">
           <button type="button" className="inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary-ink underline sm:min-h-8" onClick={() => setCaptions(null)}>Back to ideas</button>
           <ul className="space-y-2">
             {captions.options.map((o, i) => (

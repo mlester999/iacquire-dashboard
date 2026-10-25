@@ -20,7 +20,7 @@ function Queue({ title, description, empty, emptyIcon, sites, icon, tone, action
         <div className="flex items-start gap-3">
           <span className={cn("grid size-9 shrink-0 place-items-center rounded-[10px] ring-1 ring-inset", TILE[tone])} aria-hidden>{icon}</span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><CardTitle>{title}</CardTitle><span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2" aria-label={`${sites.length} websites`}>{sites.length}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><CardTitle>{title}</CardTitle><span role="img" className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2" aria-label={`${sites.length} websites`}>{sites.length}</span></div>
             <CardDescription>{description}</CardDescription>
           </div>
         </div>

@@ -58,7 +58,10 @@ describe("premium onboarding interaction", () => {
     const progress = screen.getByLabelText("Setup sections");
     expect(within(progress).getAllByRole("button")).toHaveLength(6);
     expect(within(progress).getByRole("button", { name: /Business/ }).getAttribute("aria-current")).toBe("step");
-    expect(within(progress).getAllByRole("button").map((button) => button.getAttribute("aria-label")?.split(":")[0])).toEqual(["Business", "Goals", "Voice", "Sales", "Knowledge", "Review"]);
+    expect(within(progress).getAllByRole("button").map((button) => button.querySelector(".onboarding-stage-label")?.textContent)).toEqual(["Business", "Goals", "Voice", "Sales", "Knowledge", "Review"]);
+    // Named from its own words (not an aria-label that would replace what is drawn: WCAG label-in-name), with the state said once.
+    expect(within(progress).getAllByRole("button").every((button) => !button.hasAttribute("aria-label"))).toBe(true);
+    expect(within(progress).getByRole("button", { name: /^Business: current section, (in progress|not started), \d+ of \d+ answered$/ })).toBeTruthy();
     expect(screen.queryByText("Let's set up your workspace.")).toBeNull();
     expect(screen.getByRole("progressbar", { name: "Setup progress" }).getAttribute("aria-valuenow")).not.toBeNull();
   });

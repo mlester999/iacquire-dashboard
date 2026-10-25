@@ -79,7 +79,7 @@ export function ReviewPanel({
 }) {
   if (loading && !review) {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Preparing your review">
+      <div role="status" className="space-y-4" aria-busy="true" aria-label="Preparing your review">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-40 w-full" />
@@ -130,14 +130,14 @@ export function ReviewPanel({
                 <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
               </span>
             </summary>
-            <dl className="divide-y divide-line border-t border-line">
+            <ul className="divide-y divide-line border-t border-line">
               {section.rows.map((row) => {
                 // An optional question nobody answered is simply empty, not a problem.
                 const badge = row.state === "outstanding" && !row.required ? null : STATE_BADGE[row.state];
                 return (
-                  <div key={row.questionId} className="flex items-start gap-3 px-4 py-3">
+                  <li key={row.questionId} className="flex items-start gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <dt className="flex flex-wrap items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-muted">
+                      <p className="flex flex-wrap items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-muted">
                         {row.label}
                         {badge && <StatusPill tone={badge.tone} size="sm" className="normal-case tracking-normal">{badge.label}</StatusPill>}
                         {row.source && row.source !== "user" && row.source !== "prefill" && row.value && (
@@ -145,16 +145,16 @@ export function ReviewPanel({
                             AI-suggested
                           </StatusPill>
                         )}
-                      </dt>
-                      <dd className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value ? <AnswerValue value={row.value} /> : <span className="text-muted">Not answered</span>}</dd>
+                      </p>
+                      <div className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value ? <AnswerValue value={row.value} /> : <span className="text-muted">Not answered</span>}</div>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row.questionId)} aria-label={`Edit ${row.label}`}>
                       <Pencil className="size-3.5" /> Edit
                     </Button>
-                  </div>
+                  </li>
                 );
               })}
-            </dl>
+            </ul>
           </details>
         ))}
       </section>

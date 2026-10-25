@@ -278,7 +278,7 @@ export function ConfigVersionHistory({
                   >
                     {status.active && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-success" />}
                     <div className="flex gap-3.5 p-4 sm:p-5">
-                      <div
+                      <div role="group"
                         className={cn(
                           "flex size-11 shrink-0 flex-col items-center justify-center rounded-xl border text-center shadow-soft",
                           TILE[status.tone],

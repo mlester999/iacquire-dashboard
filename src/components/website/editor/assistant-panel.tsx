@@ -168,7 +168,7 @@ export function AssistantPanel({
                 <div>
                   <button type="button" onClick={() => setPreview((v) => !v)} aria-expanded={preview} className="text-[12px] font-medium text-primary-ink hover:underline">{preview ? "Hide preview" : "Preview this page with the changes"}</button>
                   {preview && (
-                    <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-line" tabIndex={0} aria-label="Preview of the page with the suggested changes">
+                    <div role="region" className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-line" tabIndex={0} aria-label="Preview of the page with the suggested changes">
                       <ScaledPreview content={dry.doc} scope="assistant-pv" maxHeight={8000} pageSlug={pageSlug} />
                     </div>
                   )}

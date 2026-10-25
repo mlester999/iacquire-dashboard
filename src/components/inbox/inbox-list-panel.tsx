@@ -131,7 +131,7 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
             <OwnerPill item={c} />
             <StatusChips c={c} />
             {c.priority === "high" && !c.attention.length && <Badge tone="warning">High</Badge>}
-            {c.unread > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
+            {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
           </span>
           {attention && <span className="sr-only">{attention}.</span>}
         </span>

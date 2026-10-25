@@ -9,7 +9,7 @@ import path from "node:path";
 import { BASE, OUT, axe, check, finish, launch, metrics, newReport, open, shot, signedIn, watch } from "./qa-harness.mjs";
 
 const args = process.argv.slice(2);
-const stages = args.includes("--stage") ? args[args.indexOf("--stage") + 1].split(",").map(Number) : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const stages = args.includes("--stage") ? args[args.indexOf("--stage") + 1].split(",").map(Number) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const STATE = path.join(OUT, "requests-state.json");
 const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, "utf8")) : {};
 const save = () => fs.writeFileSync(STATE, JSON.stringify(state, null, 2));
@@ -179,6 +179,89 @@ try {
     await shot(admin, report, "req-analytics");
     const vio = (await axe(admin)).filter((v) => v.impact === "serious" || v.impact === "critical");
     check(report, "7: analytics has no serious/critical axe violations", vio.length === 0, JSON.stringify(vio));
+  }
+
+  if (stages.includes(8)) {
+    // ---- 8. Request a Change: the client asks, the team triages it.
+    const owner = await as("harbor:owner");
+    await open(owner, "/support/change");
+    check(report, "8: Request a Change is available once the Super Admin has switched it on", !/isn't switched on/.test(await main(owner)));
+    state.changeSubject = `QA ${stamp}: greet callers by first name`;
+    await owner.getByPlaceholder("For example: Make the voice agent greet callers by name").fill(state.changeSubject);
+    await owner.getByPlaceholder("Describe the change you have in mind…").fill("Please make the voice agent greet returning callers by their first name. QA data.");
+    await shot(owner, report, "req-change-form");
+    await owner.getByRole("button", { name: "Send change request" }).click();
+    await owner.getByText(/Your request has been sent|has been sent|received/i).first().waitFor({ timeout: 60_000 });
+    const sent = squash(await main(owner));
+    report.notes.push("change sent: " + sent.slice(0, 600));
+    check(report, "8: the change request is sent and given a reference", /[A-Z]{2,4}-\d{3,}/.test(sent), sent.slice(0, 300));
+    await owner.getByRole("link", { name: "View your request" }).first().click();
+    await owner.waitForURL(/\/support\/[0-9a-f-]{36}/, { timeout: 60_000 });
+    state.changeId = /\/support\/([0-9a-f-]{36})/.exec(owner.url())[1];
+    report.notes.push("client change page: " + squash(await main(owner)).slice(0, 900));
+    await shot(owner, report, "req-change-client");
+    save();
+  }
+
+  if (stages.includes(9)) {
+    // ---- 9. The team triages the change request.
+    const admin = await as("agency:super");
+    await open(admin, `/admin/support/${state.changeId}`);
+    const t = await main(admin);
+    report.notes.push("staff change detail: " + squash(t).slice(0, 1500));
+    const controls = await admin.evaluate(() => Array.from(document.querySelectorAll("main button, main textarea, main select, main input, main [role=tab]")).map((e) => `${e.tagName.toLowerCase()}:${e.getAttribute("role") ?? e.type ?? ""} "${(e.getAttribute("aria-label") || e.innerText || e.placeholder || e.name || "").trim().slice(0, 50)}"`));
+    report.notes.push("staff change controls: " + controls.join(" | "));
+    await shot(admin, report, "req-change-staff");
+    state.classNote = `Needs voice-agent rework ${stamp}; check quote with Sam`;
+    await admin.locator("#d-class").selectOption({ label: "Needs a quote" });
+    await admin.getByPlaceholder("Why you classified it this way.").fill(state.classNote);
+    await admin.getByRole("button", { name: "Save classification" }).click();
+    await admin.waitForTimeout(2500);
+    await open(admin, `/admin/support/${state.changeId}`);
+    const savedClass = await admin.locator("#d-class").inputValue();
+    const savedNote = await admin.getByPlaceholder("Why you classified it this way.").inputValue();
+    const after = squash(await main(admin));
+    report.notes.push("staff after classify: " + after.slice(after.indexOf("About this request"), after.indexOf("About this request") + 900));
+    check(report, "9: the classification and its reason are saved and read back after a reload", /quote/i.test(savedClass) && savedNote === state.classNote, `${savedClass} | ${savedNote}`);
+    await admin.getByRole("radio", { name: "Reply to client" }).click();
+    state.changeReply = `Thanks, we will send you a price for this, ${stamp}.`;
+    await admin.getByPlaceholder("Write a reply to the client…").fill(state.changeReply);
+    await admin.locator("select").first().selectOption({ label: "Then: waiting on client" });
+    await admin.getByRole("button", { name: "Send reply" }).click();
+    await admin.waitForTimeout(2500);
+    check(report, "9: the team replies and waits on the client", /Waiting on client/.test(squash(await main(admin))));
+    save();
+  }
+
+  if (stages.includes(10)) {
+    // ---- 10. The client sees the reply and the status, never the team's working label or the note about it.
+    const owner = await as("harbor:owner");
+    await open(owner, `/support/${state.changeId}`);
+    await owner.waitForFunction(() => /Change request/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 60_000 }).catch(() => {});
+    const t = squash(await main(owner));
+    report.notes.push("client sees change: " + t.slice(0, 900));
+    check(report, "10: the client reads the reply", t.includes(state.changeReply), t.slice(0, 300));
+    check(report, "10: the client sees it is waiting on them", /Waiting on you|Waiting on client|waiting/i.test(t));
+    check(report, "10: the client never reads the team's classification or the note about it", !t.includes(state.classNote) && !/Needs a quote/.test(t.replace(/needs a quote first/gi, "")), t.slice(0, 200));
+    const html = await (await owner.request.get(`${BASE}/support/${state.changeId}`)).text();
+    check(report, "10: nor is the note in the page's data", !html.includes(state.classNote) && !html.includes("Needs voice-agent rework"));
+    const list = await (await owner.request.get(`${BASE}/support/requests`)).text();
+    check(report, "10: nor in the list of requests", !list.includes(state.classNote));
+    await shot(owner, report, "req-change-client-final");
+    // The client answers the team in the same thread.
+    const box = owner.getByRole("textbox").last();
+    state.clientReply = `Yes please send the price ${stamp}`;
+    await box.fill(state.clientReply);
+    await owner.getByRole("button", { name: /Send/ }).last().click();
+    await owner.waitForTimeout(2500);
+    check(report, "10: the client's answer is added to the thread", (await main(owner)).includes(state.clientReply));
+    const m = await metrics(owner);
+    check(report, "10: no horizontal overflow at 1280", !m.overflow, JSON.stringify(m));
+    await owner.setViewportSize({ width: 375, height: 812 });
+    await open(owner, `/support/${state.changeId}`);
+    const pm = await metrics(owner);
+    check(report, "10: no horizontal overflow at 375", !pm.overflow, JSON.stringify(pm));
+    await shot(owner, report, "req-change-client-375");
   }
 } catch (e) {
   check(report, "scenario ran to the end", false, String(e).slice(0, 500));

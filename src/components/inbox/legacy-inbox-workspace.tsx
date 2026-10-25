@@ -196,7 +196,7 @@ export function LegacyInboxWorkspace(props: Props) {
                     <OwnerPill kind={c.ownerKind} name={c.ownerName} />
                     {c.escalation && ["awaiting_owner", "open"].includes(c.escalation.status) && <Badge tone={c.escalation.urgency === "urgent" ? "danger" : "warning"}>Needs a person</Badge>}
                     {c.priority === "urgent" && !c.escalation && <Badge tone="danger">Urgent</Badge>}
-                    {c.unread > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
+                    {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
                   </span>
                 </span>
               </button>

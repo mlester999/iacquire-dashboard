@@ -127,7 +127,7 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
           </div>
         )}
         {rev.state === "shown" && (
-          <div className="mt-4 space-y-1 text-[13px]" aria-label="Verified revenue summary">
+          <div role="group" className="mt-4 space-y-1 text-[13px]" aria-label="Verified revenue summary">
             <p><span className="font-medium text-ink">Verified revenue in total:</span> {fmt(rev.total)}. <span className="text-muted">Counted for leads created in this period, from payments received up to {asOfText(rev.asOf)}.</span></p>
             {(rev.unattributed.verifiedRevenue.length > 0 || rev.unattributed.recordedByHand.length > 0) && (
               <p>

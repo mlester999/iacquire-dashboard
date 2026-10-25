@@ -12,7 +12,7 @@ import type { OpsOverview } from "@/lib/aqi/ops/types";
 
 export function OpsOverviewSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading the operations overview" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div role="status" aria-busy="true" aria-label="Loading the operations overview" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-[132px] rounded-2xl" />)}
     </div>
   );

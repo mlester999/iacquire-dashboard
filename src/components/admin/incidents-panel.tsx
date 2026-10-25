@@ -41,7 +41,7 @@ function Timeline({ id, timeZone }: { id: string; timeZone: string }) {
     return () => { live = false; };
   }, [id]);
   if (error) return <StatusPill tone="danger" icon={<AlertTriangle className="size-3" aria-hidden />}>{error}</StatusPill>;
-  if (!events) return <div className="space-y-2" aria-busy="true" aria-label="Loading timeline"><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-64" /><Skeleton className="h-4 w-40" /></div>;
+  if (!events) return <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading timeline"><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-64" /><Skeleton className="h-4 w-40" /></div>;
   return (
     <ol className="ml-1 space-y-3 border-l border-line-strong pl-5">
       {events.map((e) => (

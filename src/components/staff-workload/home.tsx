@@ -93,7 +93,7 @@ export function PersonCard({ person, canTeam }: { person: PersonView; canTeam: b
 function Summary({ team }: { team: TeamWorkload }) {
   const unassigned = WORK_SOURCES.reduce((n, s) => n + team.unassigned.totals[s], 0);
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6" aria-label="Team at a glance">
+    <div role="group" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6" aria-label="Team at a glance">
       <StatTile label="People" value={team.summary.people} detail={`${team.summary.away} away`} />
       <StatTile label="Overdue items" value={team.summary.overdueItems} tone={team.summary.overdueItems ? "text-danger-ink" : "text-ink"} />
       <StatTile label="Unassigned" value={unassigned} detail={unassigned ? "work nobody owns" : "everything has an owner"} tone={unassigned ? "text-warning-ink" : "text-ink"} />
@@ -192,7 +192,7 @@ function ProjectHealth({ health }: { health: ProjectsHealth }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="mb-3 flex flex-wrap gap-2" aria-label="Projects by health">
+        <div role="group" className="mb-3 flex flex-wrap gap-2" aria-label="Projects by health">
           {(["off_track", "at_risk", "not_enough_data", "on_track"] as const).map((state) => (
             <Badge key={state} tone={state === "off_track" ? "danger" : state === "at_risk" ? "warning" : state === "on_track" ? "success" : "outline"}>
               {HEALTH_TEXT[state]}: {health.byState[state]}
