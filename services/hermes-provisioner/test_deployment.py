@@ -59,6 +59,24 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertNotIn("/var/run/docker.sock", stack)
         self.assertNotIn("privileged: true", stack)
 
+    def test_gateway_has_a_readonly_image_filesystem_and_narrow_runtime_access(self):
+        hermes = self.services["hermes-client"]
+        self.assertTrue(hermes["read_only"])
+        self.assertEqual(hermes["cap_drop"], ["ALL"])
+        self.assertEqual(set(hermes["cap_add"]), {"CHOWN", "KILL", "SETGID", "SETUID"})
+        self.assertIn("no-new-privileges:true", hermes["security_opt"])
+        self.assertEqual(hermes["environment"]["HERMES_UID"], "10000")
+        self.assertEqual(hermes["environment"]["PYTHONDONTWRITEBYTECODE"], "1")
+        self.assertEqual(
+            hermes["tmpfs"],
+            ["/run:rw,exec,nosuid,nodev,size=64m", "/tmp:rw,noexec,nosuid,nodev,size=128m"],
+        )
+
+        mounts = {mount.get("target"): mount for mount in hermes["volumes"] if isinstance(mount, dict)}
+        self.assertTrue(mounts["/opt/data/config.yaml"]["read_only"])
+        self.assertTrue(mounts["/run/secrets/hermes_api_key"]["read_only"])
+        self.assertNotIn("/docker/hermes-agent-wpwm/data", str(hermes["volumes"]))
+
     def test_worker_home_initializer_is_volume_scoped_networkless_and_sets_profile_permissions(self):
         initializer = self.services["init-worker-home"]
         self.assertEqual(initializer["network_mode"], "none")

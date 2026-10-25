@@ -17,23 +17,27 @@ services:
       HERMES_UID: "10000"
       GATEWAY_MULTIPLEX_PROFILES: "true"
       HERMES_DASHBOARD: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - hermes_home:/opt/data
       - client_profiles:/opt/data/profiles
       - type: bind
         source: ${HERMES_CLIENT_CONFIG_FILE:?Set a secret-free Hermes config file}
         target: /opt/data/config.yaml
+        read_only: true
       - type: bind
         source: ${HERMES_API_KEY_FILE:?Set the private API key file}
         target: /run/secrets/hermes_api_key
         read_only: true
+    read_only: true
+    tmpfs:
+      - /run:rw,exec,nosuid,nodev,size=64m
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
     networks:
       - client_egress
       - hermes_private
-    cap_drop:
-      - NET_RAW
-      - NET_ADMIN
-      - SYS_ADMIN
+    cap_drop: [ALL]
+    cap_add: [CHOWN, KILL, SETGID, SETUID]
     security_opt:
       - no-new-privileges:true
     mem_limit: 2g

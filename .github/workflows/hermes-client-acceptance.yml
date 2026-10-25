@@ -328,6 +328,17 @@ jobs:
           for network_name in network_names:
               network = json.loads(subprocess.check_output(["docker", "network", "inspect", network_name], text=True))[0]
               assert network["Internal"] is True
+          assert client["HostConfig"]["ReadonlyRootfs"] is True
+          assert "ALL" in {cap.removeprefix("CAP_") for cap in client["HostConfig"]["CapDrop"]}
+          assert {cap.removeprefix("CAP_") for cap in client["HostConfig"]["CapAdd"]} == {"CHOWN", "KILL", "SETGID", "SETUID"}
+          assert "no-new-privileges:true" in client["HostConfig"]["SecurityOpt"]
+          tmpfs = client["HostConfig"]["Tmpfs"]
+          assert "/run" in tmpfs and "/tmp" in tmpfs
+          assert "exec" in tmpfs["/run"].split(",")
+          assert "noexec" in tmpfs["/tmp"].split(",")
+          client_mounts = {mount["Destination"]: mount for mount in client["Mounts"]}
+          assert client_mounts["/opt/data/config.yaml"]["RW"] is False
+          assert client_mounts["/run/secrets/hermes_api_key"]["RW"] is False
           assert worker["Config"]["User"] == "10000:10000"
           assert worker["HostConfig"]["ReadonlyRootfs"] is True
           assert "ALL" in worker["HostConfig"]["CapDrop"]
@@ -342,7 +353,7 @@ jobs:
           assert model not in values
           for name in ("IACQUIRE_PROVISIONER_TOKEN=", "HERMES_PROVISIONER_BOOTSTRAP_API_KEY=", "OPENAI_API_KEY=", "DATABASE_URL="):
               assert name not in values
-          print("SECURITY_BOUNDARY_PASS: internal-only networks, non-root worker, read-only worker filesystem, no Docker socket, no host Hermes data bind, no published ports, no inline credentials")
+          print("SECURITY_BOUNDARY_PASS: read-only Hermes gateway image, four gateway capabilities, isolated s6 writable paths, non-root worker, read-only filesystems, internal-only acceptance networks, no Docker socket, no host Hermes data bind, no published ports, no inline credentials")
           PY
 
           deadline=$((SECONDS + 2100))
