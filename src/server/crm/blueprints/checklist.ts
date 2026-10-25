@@ -305,7 +305,7 @@ async function evidenceFor(db: Queryable, orgId: string, key: RequirementKey, n:
       if (!roles.length) return null;
       const agents = await q<{ role_key: string; display_name: string; enabled: boolean; paused: boolean; ready: boolean }>(
         `select role_key, display_name, enabled, mode = 'paused' as paused,
-                (enabled and status in ('online', 'busy') and hermes_base_url is not null and credential_id is not null) as ready
+                (enabled and status in ('online', 'busy') and hermes_base_url is not null and credential_id is not null and coalesce(last_health_ok, false)) as ready
          from agent_instances where org_id = $1 and role_key = any($2::text[])`,
         [orgId, roles],
       );
