@@ -68,11 +68,17 @@ function modelPreferences(raw: string): {
       if (rejectedFields.length) fallbackFields[role] = rejectedFields;
     }
   }
+  // Reserve every role template personality so an earlier model suggestion cannot take the
+  // approved default away from a later employee.
+  const templateOwners = new Map(
+    AGENT_ROLE_KEYS.map((role) => [recommendedSettings(role).personality.toLowerCase(), role] as const),
+  );
   const seen = new Set<string>();
   for (const role of AGENT_ROLE_KEYS) {
     const personality = out[role]?.personality.toLowerCase();
     if (!personality) continue;
-    if (!seen.has(personality)) {
+    const templateOwner = templateOwners.get(personality);
+    if (!seen.has(personality) && (!templateOwner || templateOwner === role)) {
       seen.add(personality);
       continue;
     }
@@ -81,7 +87,7 @@ function modelPreferences(raw: string): {
     // model suggestions for this role and restore its distinct approved role-template personality.
     const rolePersonality = recommendedSettings(role).personality;
     out[role] = { ...out[role]!, personality: rolePersonality };
-    fallbackFields[role] = [...new Set([...(fallbackFields[role] ?? []), "personality"] )];
+    fallbackFields[role] = [...new Set([...(fallbackFields[role] ?? []), "personality"])];
     seen.add(rolePersonality.toLowerCase());
   }
   return { suggestions: out, fallbackFields };

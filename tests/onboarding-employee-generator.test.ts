@@ -109,6 +109,29 @@ describe("one-onboarding employee generation", () => {
     expect(generated["lead_hunter"].settings.personality).toBe("Analytical researcher who values evidence and careful qualification.");
   });
 
+  it("keeps role personalities distinct when a suggestion matches a later role default", async () => {
+    const suggestions = Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [role, {
+      personality: `${role} is a careful and helpful professional.`,
+      characterTraits: "Careful, thoughtful and attentive.",
+      communicationStyle: "Explain useful details with clarity and restraint.",
+      responseBehavior: "Ask for missing facts and make uncertainty visible.",
+      operatingProcedures: "Use the approved role steps and confirm the relevant facts before reporting.",
+      proactiveResponsibilities: "Surface relevant work only when an authorized request or trigger exists.",
+      reportingBehavior: "Report verified findings with their limits and a clear next step.",
+      responsibilities: `Help the team with ${role.replaceAll("_", " ")} work using confirmed information.`,
+      goals: `Support the owner's selected goals through accurate ${role.replaceAll("_", " ")} work.`,
+    }]));
+    suggestions.operations_manager.personality = "Friendly scheduling partner who is attentive to details and people's time.";
+    suggestions.appointment_setter.personality = "Friendly scheduling partner who is attentive to details and people's time.";
+
+    const generated = await generateEmployeeSettings(data, [], async () => JSON.stringify(suggestions));
+
+    expect(new Set(AGENT_ROLE_KEYS.map((role) => generated[role].settings.personality.toLowerCase())).size).toBe(AGENT_ROLE_KEYS.length);
+    expect(generated.operations_manager.settings.personality).toBe("Calm, dependable coordinator who keeps the team focused on verified priorities.");
+    expect(generated.operations_manager.fallbackFields).toContain("personality");
+    expect(generated.appointment_setter.settings.personality).toBe("Friendly scheduling partner who is attentive to details and people's time.");
+  });
+
   it("provides only confirmed company and matching role answers alongside protected templates", async () => {
     let prompt = "";
     await generateEmployeeSettings(data, [], async (_system, user) => { prompt = user; return null; });
