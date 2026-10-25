@@ -13,7 +13,27 @@ import type { SurveyView } from "@/lib/support/surveys";
  * One question, asked once, inside the request it is about. The customer chooses a rating and whether the reply helped, may add a
  * sentence, and sends it themselves. Nothing is pre-selected and nothing is submitted automatically.
  */
-export function SupportSurveyCard({ survey }: { survey: SurveyView }) {
+function SurveyThanks() {
+  return (
+    <section aria-live="polite" className="rounded-2xl border border-success/25 bg-success-soft/60 p-5">
+      <p className="flex items-center gap-2 text-[14px] font-semibold text-success-ink"><CheckCircle2 className="size-4" aria-hidden /> Thank you — your answer was recorded.</p>
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-2">It stays with this request for the team to learn from. You can close this page.</p>
+    </section>
+  );
+}
+
+/**
+ * Where the question lives on a request page. Saving an answer makes the page read again, and a request whose question was answered no longer has one, so the card itself is
+ * gone by the time the answer comes back: the thank-you has to be held by something that stays. (A browser run found this: every unit test kept the card mounted, and the real
+ * page showed nothing at all after "Send my answer".)
+ */
+export function SupportSurveyArea({ survey }: { survey: SurveyView | null }) {
+  const [thanked, setThanked] = React.useState(false);
+  if (thanked) return <SurveyThanks />;
+  return survey ? <SupportSurveyCard survey={survey} onAnswered={() => setThanked(true)} /> : null;
+}
+
+export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; onAnswered?: () => void }) {
   const [rating, setRating] = React.useState(0);
   const [helpful, setHelpful] = React.useState<boolean | null>(null);
   const [comment, setComment] = React.useState("");
@@ -31,6 +51,7 @@ export function SupportSurveyCard({ survey }: { survey: SurveyView }) {
         return;
       }
       setDone(true);
+      onAnswered?.();
     } catch {
       toast.error("Your answer could not be sent. Check your connection and try again.");
     } finally {
@@ -38,14 +59,7 @@ export function SupportSurveyCard({ survey }: { survey: SurveyView }) {
     }
   }
 
-  if (done) {
-    return (
-      <section aria-live="polite" className="rounded-2xl border border-success/25 bg-success-soft/60 p-5">
-        <p className="flex items-center gap-2 text-[14px] font-semibold text-success-ink"><CheckCircle2 className="size-4" aria-hidden /> Thank you — your answer was recorded.</p>
-        <p className="mt-1 text-[13px] leading-relaxed text-ink-2">It stays with this request for the team to learn from. You can close this page.</p>
-      </section>
-    );
-  }
+  if (done) return <SurveyThanks />;
 
   return (
     <section aria-labelledby={`survey-${survey.id}`} className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/85 via-surface to-surface p-5 shadow-card sm:p-6">

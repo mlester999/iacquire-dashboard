@@ -1,4 +1,4 @@
-﻿import "server-only";
+import "server-only";
 import { withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import type { SessionUser } from "@/server/auth/service";

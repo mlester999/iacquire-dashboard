@@ -1,4 +1,4 @@
-﻿import "server-only";
+import "server-only";
 import type { Queryable } from "@/server/db";
 import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";

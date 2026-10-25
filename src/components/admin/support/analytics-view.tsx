@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, Clock3, Flame, HeartHandshake, Inbox, RotateCcw, Star, Timer, UserCheck, UserRound, Users } from "lucide-react";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { Columns, HBarList, StatTile } from "@/components/charts";

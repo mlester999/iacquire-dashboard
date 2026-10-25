@@ -10,7 +10,7 @@ import { Dialog } from "@/components/ui/overlays";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { AccentStrip, IconTile, Notice, type PanelTone } from "@/components/settings/panel";
 import { AttachmentPicker, type PickerState } from "@/components/support/attachment-picker";
-import { SupportSurveyCard } from "@/components/support/survey-card";
+import { SupportSurveyArea } from "@/components/support/survey-card";
 import { MessageList, Timeline, type PendingMessage } from "@/components/support/parts";
 import { markRequestReadAction, postMessageAction, reopenRequestAction } from "@/app/actions/support";
 import {
@@ -177,7 +177,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
         )}
       </Card>
 
-      {survey && <SupportSurveyCard survey={survey} />}
+      <SupportSurveyArea survey={survey} />
 
       {detail.linkedChange && (
         <Card className="p-5" role="region" aria-labelledby="linked-change-title">
