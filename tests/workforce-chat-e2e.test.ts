@@ -163,6 +163,39 @@ describe("six employee chat to native workflow", () => {
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
   });
 
+  it("records a clear refusal when a caller lacks an additional draft permission", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const base = ctxFor(owner, org, "owner");
+    const withoutReply = {
+      ...base,
+      can: (permission: Parameters<typeof base.can>[0]) => permission !== "inbox.reply" && base.can(permission),
+    };
+    const before = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+
+    const sent = await sendChatMessage(withoutReply, {
+      agentRole: "sales_assistant",
+      content: "Review our opportunities and prepare follow-ups for deals needing attention",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string; work_job_id: string | null }>(
+      "select content, work_job_id from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0];
+    expect(reply.content).toContain("does not have all required permissions");
+    expect(reply.content).toContain("No work was created");
+    expect(reply.work_job_id).toBeNull();
+    const after = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    expect(after).toBe(before);
+    await resetAgentMessageRateLimit(owner.id);
+  });
+
   it("hands explicitly named work to the correct employee with durable provenance", async () => {
     const requestStart = mock.requests.length;
     const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {

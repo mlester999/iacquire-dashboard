@@ -1662,13 +1662,13 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     if (!definition || !definition.allowedRoles.includes(input.agentRole)) {
       throw new AppError("forbidden", "This employee cannot run that review.");
     }
-    if (!ctx.can(definition.requiredPermission)) {
+    if (![definition.requiredPermission, ...(definition.additionalPermissions ?? [])].every((permission) => ctx.can(permission))) {
       const assistantMessageId = await persistChatAssistantMessage({
         orgId: ctx.org.orgId,
         userId: ctx.user.id,
         agentId: agent.id,
         conversationId: prepared.conversationId,
-        content: `Your workspace role does not have permission to start this ${definition.label.toLowerCase()}. No work was created.`,
+        content: `Your workspace role does not have all required permissions for ${definition.label.toLowerCase()}. No work was created.`,
       });
       return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
     }
