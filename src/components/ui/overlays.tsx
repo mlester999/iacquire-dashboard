@@ -371,12 +371,12 @@ export function Segmented<V extends string>({
 }) {
   const groupName = React.useId();
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5">
+    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex max-w-full overflow-x-auto rounded-xl border border-line bg-surface-2 p-0.5">
       {options.map((o) => (
         <label
           key={o.value}
           className={cn(
-            "relative inline-flex cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
+            "relative inline-flex shrink-0 cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
             size === "sm" ? "min-h-11 px-2.5 text-[13px] sm:min-h-7" : "min-h-11 px-3 text-[14px] sm:min-h-8",
           )}
         >

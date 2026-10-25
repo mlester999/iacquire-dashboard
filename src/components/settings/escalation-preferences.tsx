@@ -229,7 +229,7 @@ function TeamAuthorization({ team, run, busy }: { team: StaffProfile[]; busy: st
                       checked={on}
                       onChange={(e) => setDraft((d) => ({ ...d, [p.userId]: e.target.checked ? [...(d[p.userId] ?? []), cat] : (d[p.userId] ?? []).filter((x) => x !== cat) }))}
                     />
-                    <span aria-hidden className={cn("grid size-4 place-items-center rounded-full border", on ? "border-primary bg-primary text-white" : "border-line-strong")}>
+                    <span aria-hidden className={cn("grid size-4 place-items-center rounded-full border", on ? "border-primary bg-primary text-primary-on" : "border-line-strong")}>
                       {on && <Check className="size-2.5" strokeWidth={3.5} />}
                     </span>
                     {ESCALATION_LABELS[cat]}

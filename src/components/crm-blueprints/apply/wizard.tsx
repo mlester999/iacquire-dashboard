@@ -275,7 +275,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
                     can && "hover:bg-surface-2",
                   )}
                 >
-                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-[12px]", done ? "bg-success text-white" : current ? "bg-primary text-white" : "bg-surface-3 text-ink-2")}>
+                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-[12px]", done ? "bg-success text-white" : current ? "bg-primary text-primary-on" : "bg-surface-3 text-ink-2")}>
                     {done ? <Check className="size-3" aria-hidden /> : i + 1}
                   </span>
                   {s.label}

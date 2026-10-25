@@ -92,7 +92,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
         </div>
         <details className="group" open={filtersActive || undefined}>
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg text-[13px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <SlidersHorizontal className="size-3.5" aria-hidden /> Filters {filtersActive && <span className="rounded-full bg-primary px-1.5 text-[12px] text-white">on</span>}
+            <SlidersHorizontal className="size-3.5" aria-hidden /> Filters {filtersActive && <span className="rounded-full bg-primary px-1.5 text-[12px] text-primary-on">on</span>}
             <span className="ml-auto text-muted group-open:hidden">Show</span><span className="ml-auto hidden text-muted group-open:inline">Hide</span>
           </summary>
           <div className="mt-2.5 grid grid-cols-2 gap-2">
@@ -143,7 +143,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
                       <Icon className="size-3.5 text-muted" aria-label={REQUEST_TYPE_LABELS[t.requestType].label} />
                       <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{t.ref}</span>
                       {t.escalated && <Flame className="size-3.5 text-danger" aria-label="Escalated" />}
-                      {t.clientWaiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-px text-[12px] font-semibold text-white"><MessageSquarePlus className="size-2.5" aria-hidden /> Reply</span>}
+                      {t.clientWaiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-px text-[12px] font-semibold text-primary-on"><MessageSquarePlus className="size-2.5" aria-hidden /> Reply</span>}
                     </span>
                     <span className="text-[12px] text-muted" suppressHydrationWarning>{relativeTime(t.lastActivityAt)}</span>
                   </div>

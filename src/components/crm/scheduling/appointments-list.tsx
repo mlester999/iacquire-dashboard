@@ -140,7 +140,7 @@ export function AppointmentsList({
         ) : (
           <>
             <Card className="hidden overflow-hidden md:block">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" tabIndex={0}>
                 <table className="workspace-table w-full min-w-[820px] text-left text-[14px]">
                   <thead>
                     <tr>

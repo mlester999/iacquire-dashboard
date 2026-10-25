@@ -137,7 +137,7 @@ export function RequestWizard({
         <ol className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Steps">
           {STEPS.map((label, i) => (
             <li key={label} aria-current={i === step ? "step" : undefined} className={cn("flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-medium", i === step ? "border-primary/25 bg-primary-soft text-primary-ink" : i < step ? "border-success/20 bg-success-soft/40 text-success-ink" : "border-line bg-surface-2/50 text-muted")}>
-              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[12px]",i===step?"bg-primary text-white":i<step?"bg-success text-white":"bg-surface-3")}>{i<step?<Check className="size-3"/>:i+1}</span>{label}
+              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[12px]",i===step?"bg-primary text-primary-on":i<step?"bg-success text-white":"bg-surface-3")}>{i<step?<Check className="size-3"/>:i+1}</span>{label}
             </li>
           ))}
         </ol>

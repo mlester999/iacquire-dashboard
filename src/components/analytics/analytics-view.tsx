@@ -176,7 +176,7 @@ export function AnalyticsView({
             <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No leads were researched in this period.</p>
           )}
           {data.leads.bySource.length > 0 && (
-            <div className="scrollbar-thin overflow-x-auto">
+            <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
               <table className="w-full min-w-[420px] text-[14px]">
                 <caption className="pb-2 text-left text-[13px] font-semibold text-ink">Lead source performance</caption>
                 <thead className="text-left text-[12px] text-muted">

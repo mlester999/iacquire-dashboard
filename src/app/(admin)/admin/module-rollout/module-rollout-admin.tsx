@@ -24,7 +24,7 @@ function EnvList({ items }: { items: EnvSwitchState[] }) {
     <ul className="space-y-1.5 text-[13px]">
       {items.map((s) => (
         <li key={s.name} className="flex flex-wrap items-baseline gap-x-2">
-          <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink">{s.name}</code>
+          <code className="max-w-full break-all rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink">{s.name}</code>
           <span className="font-medium text-ink">{s.on === null ? "unknown" : s.on ? "On" : "Off"}</span>
           {!s.ok && <Badge tone="warning">{s.wantOn ? "Held while off" : "Blocking customers while on"}</Badge>}
           <span className="basis-full text-muted">{s.meaning}</span>

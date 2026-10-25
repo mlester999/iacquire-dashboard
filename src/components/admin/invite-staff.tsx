@@ -136,7 +136,7 @@ export function InviteStaff({ clients = [], roleDefaults }: { clients?: Array<{ 
               { key: "agency_staff", label: "Agency Staff", description: "Works with assigned clients only. No client access is granted until assignments are selected.", icon: Workflow },
             ] as const).map((item) => <label key={item.key} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${role === item.key ? "border-primary/35 bg-primary-soft" : "border-line bg-surface hover:bg-surface-2"}`}>
               <input type="radio" className="sr-only" name="staff-invitation-role" value={item.key} checked={role === item.key} onChange={() => changeRole(item.key)} />
-              <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${role === item.key ? "bg-primary text-white" : "bg-surface-2 text-muted"}`}><item.icon className="size-4" /></span>
+              <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${role === item.key ? "bg-primary text-primary-on" : "bg-surface-2 text-muted"}`}><item.icon className="size-4" /></span>
               <span><span className="block text-sm font-semibold text-ink">{item.label}</span><span className="mt-1 block text-[13px] leading-relaxed text-muted">{item.description}</span></span>
               {role === item.key && <CheckCircle2 className="ml-auto mt-1 size-4 shrink-0 text-primary" />}
             </label>)}

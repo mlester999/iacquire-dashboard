@@ -41,7 +41,7 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
       <nav aria-label="Clients" className="flex flex-wrap gap-2">
         {clients.map((c) => (
           <Link key={c.id} href={`/admin/website-studio/media?org=${c.id}`} aria-current={selected?.id === c.id ? "page" : undefined}
-            className={selected?.id === c.id ? "inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary py-1 pl-1.5 pr-4 text-[14px] font-medium text-white shadow-soft" : "inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-4 text-[14px] font-medium text-ink-2 transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink"}><AvatarTile name={c.name} size="sm" className="!rounded-full" /><span className="truncate" title={c.name}>{c.name}</span></Link>
+            className={selected?.id === c.id ? "inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary py-1 pl-1.5 pr-4 text-[14px] font-medium text-primary-on shadow-soft" : "inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-4 text-[14px] font-medium text-ink-2 transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink"}><AvatarTile name={c.name} size="sm" className="!rounded-full" /><span className="truncate" title={c.name}>{c.name}</span></Link>
         ))}
         {clients.length === 0 && <Card className="w-full"><EmptyState compact icon={<Images className="size-5" />} title="No clients assigned yet" description="Once you are assigned to a client, their image library appears here." /></Card>}
       </nav>

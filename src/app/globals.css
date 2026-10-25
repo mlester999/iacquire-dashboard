@@ -860,3 +860,16 @@ body[data-aqi-tutorial='on'] [data-aqi-target] {
   }
 }
 
+
+/* Screen-reader-only text inside a table cell stays inside the table. Positioned absolutely it is placed outside any box that scrolls the table sideways, and on a phone it widens the
+   whole page (found on /crm/reports/sources and /admin/crm). This rule is not in a layer, so it outranks Tailwind's .sr-only. */
+th .sr-only,
+td .sr-only {
+  position: relative;
+}
+
+/* A fieldset's default minimum width is its content's width, so one wide row inside it (a weekly hours table, a long label) stretches it past the screen on a phone and the shell clips
+   the right edge. Letting it shrink like any other block makes its children wrap or scroll instead. */
+fieldset {
+  min-inline-size: 0;
+}

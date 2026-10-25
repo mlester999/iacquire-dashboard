@@ -58,14 +58,14 @@ export function TeamManagement({ data, timeZone }: { data: AgencyTeamView; timeZ
         { label: "Invitations pending", value: data.invitations.length, note: "Awaiting account acceptance" },
         { label: "Clients assigned", value: data.coverage.assigned, note: `of ${data.coverage.total} client workspaces` },
         { label: "Role groups", value: new Set(data.members.map((item) => item.role)).size, note: "Current authorization roles" },
-      ].map((stat) => <div key={stat.label} className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><dt className="text-[12px] text-white/70">{stat.label}</dt><dd className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-white">{stat.value}</dd><p className="mt-1 text-[12px] text-white/55">{stat.note}</p></div>)}</dl>
+      ].map((stat) => <div key={stat.label} className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><dt className="text-[12px] text-white/70">{stat.label}</dt><dd className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-white">{stat.value}</dd><dd className="mt-1 text-[12px] text-white/55">{stat.note}</dd></div>)}</dl>
     </PageHero>
 
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <Card className="overflow-hidden">
         <div className="border-b border-line px-5 py-4"><h2 className="text-[16px] font-semibold text-ink">Your agency, connected</h2><p className="mt-1 text-[13px] text-muted">Roles define authority. Client scope separately limits which workspaces are available.</p></div>
         <div className="p-5">
-          <div className="mx-auto flex w-fit max-w-full items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft px-5 py-3"><span className="grid size-10 place-items-center rounded-xl bg-primary text-white"><ShieldCheck className="size-5" /></span><div><p className="text-sm font-semibold text-primary-ink">iAcquire agency</p><p className="text-xs text-muted">Owner-controlled team roles</p></div></div>
+          <div className="mx-auto flex w-fit max-w-full items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft px-5 py-3"><span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-on"><ShieldCheck className="size-5" /></span><div><p className="text-sm font-semibold text-primary-ink">iAcquire agency</p><p className="text-xs text-muted">Owner-controlled team roles</p></div></div>
           <div aria-hidden className="mx-auto h-7 w-px bg-line-strong" />
           <div className="grid gap-4 md:grid-cols-3">{ROLE_ORDER.map((role, index) => {
             const group = data.members.filter((item) => item.role === role);

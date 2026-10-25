@@ -441,7 +441,7 @@ function SwitchPanel({
       {sw.status === "cancelled" && <p className="text-[14px] text-ink-2">This switch was cancelled before the cutover. Nothing about ownership changed.</p>}
 
       {review && (
-        <div className="overflow-x-auto rounded-xl border border-line">
+        <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
           <table className="w-full min-w-[600px] text-[13px]">
             <caption className="px-3 py-2 text-left text-[14px] font-semibold text-ink">Records that need a look ({num(review.length)}{review.length >= 200 ? "+" : ""})</caption>
             <thead className="border-y border-line bg-surface-2/60 text-muted">

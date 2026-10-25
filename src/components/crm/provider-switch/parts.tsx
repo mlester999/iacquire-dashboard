@@ -54,7 +54,7 @@ export function Stepper({ current }: { current: WizardStepKey }) {
 /** Per capability: who owns it now and after, what each side holds, and what depends on it. */
 export function PreviewTable({ preview }: { preview: SwitchPreview }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-line">
+    <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
       <table className="w-full min-w-[760px] text-[14px]">
         <caption className="sr-only">What changes for each capability</caption>
         <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
@@ -108,7 +108,7 @@ export function StepsTable({ steps, timezone, onRetry, retry, busy, readRest = [
 }) {
   if (!steps.length) return <p className="rounded-xl border border-dashed border-line px-3 py-3 text-[14px] text-ink-2">Nothing is imported in this switch: it moves ownership only.</p>;
   return (
-    <div className="overflow-x-auto rounded-xl border border-line">
+    <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
       <table className="w-full min-w-[720px] text-[14px]">
         <caption className="sr-only">Migration steps</caption>
         <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
@@ -168,7 +168,7 @@ export function VerificationTable({ verification, timezone }: { verification: Sw
   return (
     <div className="space-y-3">
       {verification.steps.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-line">
+        <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
           <table className="w-full min-w-[760px] text-[14px]">
             <caption className="sr-only">Verification per step</caption>
             <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">

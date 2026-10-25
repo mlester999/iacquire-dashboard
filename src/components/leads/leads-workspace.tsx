@@ -316,7 +316,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </article>
         ))}
       </div>
-      <div className="scrollbar-thin hidden overflow-x-auto md:block">
+      <div className="scrollbar-thin hidden overflow-x-auto md:block" tabIndex={0}>
         <table className="workspace-table w-full min-w-[760px] text-left text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr>

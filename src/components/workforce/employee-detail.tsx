@@ -1178,7 +1178,7 @@ function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, proactiveRe
     <div className="space-y-4">
       {proactive}
       <Card className="overflow-hidden">
-        <div className="scrollbar-thin overflow-x-auto">
+        <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
           <table className="w-full min-w-[640px] text-left text-[14px]">
             <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><tr><th className="px-5 py-3 font-medium">Started</th><th className="px-3 py-3 font-medium">Type</th><th className="px-3 py-3 font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Tool steps</th><th className="px-5 py-3 text-right font-medium">Tokens</th></tr></thead>
             <tbody className="divide-y divide-line">

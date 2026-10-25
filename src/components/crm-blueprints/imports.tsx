@@ -66,7 +66,7 @@ export function ImportsHistory({ imports, canImport }: { imports: ImportSummary[
       ) : (
         <>
           <Card className="hidden overflow-hidden md:block">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0}>
               <table className="workspace-table w-full min-w-[820px] text-left text-[14px]">
                 <caption className="sr-only">Imports</caption>
                 <thead><tr><th scope="col" className="px-4 py-2.5">Source</th><th scope="col" className="px-4 py-2.5">Status</th><th scope="col" className="px-4 py-2.5">Conversion</th><th scope="col" className="px-4 py-2.5">When</th><th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th></tr></thead>

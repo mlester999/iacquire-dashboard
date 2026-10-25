@@ -44,7 +44,7 @@ function ProgressStepper({ status, before }: { status: ProjectStatus; before: Pr
         return (
           <li key={s} className="relative flex min-w-0 flex-1 flex-col items-center text-center" aria-label={PROJECT_STATUS_LABEL[s]} aria-current={active ? "step" : undefined}>
             {i > 0 && <span aria-hidden className={cn("absolute right-1/2 top-[11px] h-0.5 w-full", done || active ? "bg-primary" : "bg-line")} />}
-            <span className={cn("relative z-10 flex size-6 items-center justify-center rounded-full border-2 bg-surface text-[12px] font-semibold", done ? "border-primary bg-primary text-white" : active ? "border-primary text-primary" : "border-line text-faint")}>
+            <span className={cn("relative z-10 flex size-6 items-center justify-center rounded-full border-2 bg-surface text-[12px] font-semibold", done ? "border-primary bg-primary text-primary-on" : active ? "border-primary text-primary" : "border-line text-faint")}>
               {done ? <Check className="size-3.5" /> : i + 1}
             </span>
             <span className={cn("mt-1.5 hidden px-0.5 text-[12px] leading-tight sm:block", active ? "font-semibold text-ink" : done ? "text-ink-2" : "text-faint")}>{SHORT[s]}</span>

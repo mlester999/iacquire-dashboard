@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 const FLOOR_PX = 12;
 // React Flow's own attribution label in the Automation Studio canvas: third-party markup, not ours to resize.
 // The hidden preheader line of an email (display:none, 1px, transparent): text a mail client shows in its list preview, never on a page.
-const EXEMPT = new Set(["src/components/automation-studio/canvas/studio.css", "src/server/email-render.ts"]);
+// The stylesheet of the published client websites (two booking-widget labels at .72rem): the gallery screenshots are fingerprinted against it, so raising it means regenerating all 50 with
+// `npm run thumbnails:generate` (docs/roadmap/phases-3-to-7/blockers.md lists it); it is a client's site, not the application's own interface.
+const EXEMPT = new Set(["src/components/automation-studio/canvas/studio.css", "src/server/email-render.ts", "src/components/website/render/site.css"]);
 
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
   const full = path.join(dir, name);

@@ -58,7 +58,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
           </Link>
         )}
       </form>
-      <div className="relative scrollbar-thin mb-4 flex gap-1 overflow-x-auto">
+      <div className="relative scrollbar-thin mb-4 flex gap-1 overflow-x-auto lg:flex-wrap lg:overflow-visible">
         {tabs.map((t) => (
           <Link key={t.key} href={t.href} className={`shrink-0 rounded-xl px-3 py-1.5 text-[14px] font-medium transition ${t.active ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink"}`}>
             {t.label}

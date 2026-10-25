@@ -60,7 +60,7 @@ function Row({ entry, active, now }: { entry: RailEntry; active: boolean; now: n
           <span
             role="img"
             aria-label={unreadAria(entry.unread, entry.muted)}
-            className={cn("inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[12px] font-semibold tabular-nums", entry.muted ? "bg-surface-3 text-ink-2" : "bg-primary text-white")}
+            className={cn("inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[12px] font-semibold tabular-nums", entry.muted ? "bg-surface-3 text-ink-2" : "bg-primary text-primary-on")}
           >
             {entry.unread > 99 ? "99+" : entry.unread}
           </span>

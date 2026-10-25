@@ -56,7 +56,7 @@ export function AgencyWorkforceControls({
       <div className="flex flex-wrap gap-2">
         <Link
           href={`/admin/employees/open?role=${encodeURIComponent(slug)}`}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[13px] font-medium text-primary-on hover:bg-primary-strong"
         >
           <MessageSquare className="size-3.5" aria-hidden /> Chat
         </Link>

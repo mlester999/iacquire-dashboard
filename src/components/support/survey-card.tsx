@@ -65,7 +65,7 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
     <section aria-labelledby={`survey-${survey.id}`} className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/85 via-surface to-surface p-5 shadow-card sm:p-6">
       <div className="pointer-events-none absolute -right-10 -top-12 size-40 rounded-full bg-primary/10 blur-2xl" aria-hidden />
       <div className="relative flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-soft" aria-hidden><HeartHandshake className="size-5" /></span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-on shadow-soft" aria-hidden><HeartHandshake className="size-5" /></span>
         <div className="min-w-0">
           <h2 id={`survey-${survey.id}`} className="text-[17px] font-semibold tracking-tight text-ink">How did we do?</h2>
           <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-ink-2">This request is resolved. One quick answer helps the team know what worked and what to improve.</p>
@@ -78,7 +78,7 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
           {[1, 2, 3, 4, 5].map((n) => (
             <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={`${n} out of 5`} onClick={() => setRating(n)}
               className={cn("grid size-11 place-items-center rounded-xl border text-[14px] font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                rating >= n ? "border-primary/40 bg-primary text-white shadow-soft" : "border-line-strong bg-surface text-muted hover:border-primary/40 hover:text-primary-ink")}>
+                rating >= n ? "border-primary/40 bg-primary text-primary-on shadow-soft" : "border-line-strong bg-surface text-muted hover:border-primary/40 hover:text-primary-ink")}>
               <Star className={cn("size-4", rating >= n ? "fill-current" : "")} aria-hidden />
               <span className="sr-only">{n} out of 5</span>
             </button>
@@ -92,7 +92,7 @@ export function SupportSurveyCard({ survey, onAnswered }: { survey: SurveyView; 
           {([true, false] as const).map((v) => (
             <button key={String(v)} type="button" role="radio" aria-checked={helpful === v} onClick={() => setHelpful(v)}
               className={cn("min-h-10 rounded-xl border px-4 text-[14px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                helpful === v ? "border-primary bg-primary text-white shadow-soft" : "border-line-strong bg-surface text-ink-2 hover:border-primary/40 hover:text-ink")}>
+                helpful === v ? "border-primary bg-primary text-primary-on shadow-soft" : "border-line-strong bg-surface text-ink-2 hover:border-primary/40 hover:text-ink")}>
               {v ? "Yes, it helped" : "Not really"}
             </button>
           ))}

@@ -346,7 +346,7 @@ function PlanTable({ plan, timezone }: { plan: GhlMigrationPlan; timezone: strin
     <section aria-label="What GoHighLevel holds" className="space-y-2">
       <h4 className="text-[14px] font-semibold text-ink">In GoHighLevel now <span className="font-normal text-muted">· checked <RelativeTime iso={plan.checkedAt} timezone={timezone} /> with {plan.requests} read-only requests</span></h4>
       {plan.reason && <p className="text-[14px] text-warning-ink">{plan.reason}</p>}
-      <div className="overflow-x-auto rounded-xl border border-line">
+      <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
         <table className="w-full min-w-[640px] text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr><th scope="col" className="px-3 py-2 text-left font-medium">Step</th><th scope="col" className="px-3 py-2 text-right font-medium">In GoHighLevel</th><th scope="col" className="px-3 py-2 text-right font-medium">Already linked here</th><th scope="col" className="px-3 py-2 text-left font-medium">Notes</th></tr>
@@ -378,7 +378,7 @@ function ComparisonTable({ comparison }: { comparison: NonNullable<GhlMigrationS
   return (
     <section aria-label="Source and destination side by side" className="space-y-2">
       <h4 className="text-[14px] font-semibold text-ink">Side by side</h4>
-      <div className="overflow-x-auto rounded-xl border border-line">
+      <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
         <table className="w-full min-w-[760px] text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr>

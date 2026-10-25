@@ -425,7 +425,7 @@ function CallsDialog({ connection, timezone, onClose }: { connection: Connection
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={`Recent calls: ${connection.name}`} description="Where each call went and how it ended, for the last 30 days. What was sent and received isn’t kept." size="lg" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
       {error ? <p className="text-[14px] text-danger-ink" role="alert">{error}</p> : calls === null ? <p className="text-[14px] text-muted">Loading…</p> : calls.length === 0 ? <p className="text-[14px] text-muted">Nothing has been sent through this connection yet.</p> : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-[13px]">
             <caption className="sr-only">Recent calls</caption>
             <thead className="text-muted"><tr><th className="py-1.5 pr-3 font-medium">When</th><th className="pr-3 font-medium">What</th><th className="pr-3 font-medium">Result</th><th className="font-medium">Time</th></tr></thead>

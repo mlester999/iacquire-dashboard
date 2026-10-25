@@ -153,7 +153,7 @@ function OptionCard({ label, description, selected, onClick, role, disabled }: {
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center border-2 transition-colors",
           role === "radio" ? "rounded-full" : "rounded-md",
-          selected ? "border-primary bg-primary text-white" : "border-line-strong",
+          selected ? "border-primary bg-primary text-primary-on" : "border-line-strong",
         )}
       >
         {selected && <Check className="size-3" strokeWidth={3} />}

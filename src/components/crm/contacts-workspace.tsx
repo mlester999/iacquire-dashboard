@@ -307,7 +307,7 @@ export function ContactsWorkspace({
               ) : undefined}
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0}>
               <table className="w-full min-w-[720px] text-left text-[14px]">
                 <thead className="bg-surface-2/60 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">
                   <tr>

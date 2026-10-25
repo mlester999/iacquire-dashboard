@@ -81,7 +81,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
         <div role="group" aria-label="Template collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {TABS.map((t) => {
             const n = scope.filter(t.match).length;
-            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
+            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3 text-ink-2")}>{n}</span></button>;
           })}
         </div>
         <p role="status" className="text-[12px] text-muted">{list.length} template{list.length === 1 ? "" : "s"} <span className="text-faint">· counts match your filters</span></p>
@@ -100,7 +100,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                   </button>
                   <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
                     {t.featured && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink/85 px-2.5 text-[12px] font-semibold text-white shadow-soft backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
-                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[12px] font-semibold text-white shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
+                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[12px] font-semibold text-primary-on shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
                   </div>
                 </div>
                 <div className="flex flex-1 flex-col gap-3 p-5">
@@ -218,7 +218,7 @@ function EditDialog({ t, showUsage, onClose, onSaved }: { t: TemplateView; /** U
         <Row label="Industries">
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Industries">
             {INDUSTRY_FILTERS.map((i) => (
-              <button key={i.id} type="button" aria-pressed={industries.includes(i.id)} onClick={() => setIndustries((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} className={cn("h-10 rounded-full border px-3.5 text-[12px] font-medium transition-colors sm:h-8", industries.includes(i.id) ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2")}>{i.label}</button>
+              <button key={i.id} type="button" aria-pressed={industries.includes(i.id)} onClick={() => setIndustries((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} className={cn("h-10 rounded-full border px-3.5 text-[12px] font-medium transition-colors sm:h-8", industries.includes(i.id) ? "border-primary bg-primary text-primary-on" : "border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2")}>{i.label}</button>
             ))}
           </div>
         </Row>

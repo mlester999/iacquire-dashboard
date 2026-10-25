@@ -823,7 +823,7 @@ function ChatUnavailableDock({ meta, readiness, configured, canConfigure }: { me
 function UserBubble({ message, timeZone }: { message: ChatMessage; timeZone: string }) {
   return (
     <div className="group flex flex-col items-end">
-      <div className="max-w-[min(88%,44rem)] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-4 py-3 text-[14.5px] leading-relaxed text-white shadow-[0_8px_22px_-16px_rgba(44,91,255,.72)] sm:px-5">
+      <div className="max-w-[min(88%,44rem)] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-4 py-3 text-[14.5px] leading-relaxed text-primary-on shadow-[0_8px_22px_-16px_rgba(44,91,255,.72)] sm:px-5">
         {message.content}
       </div>
       <time className="mt-1.5 pr-1 text-[12px] tabular-nums text-faint transition-colors group-hover:text-muted" dateTime={message.created_at}>

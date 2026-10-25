@@ -148,7 +148,7 @@ export function OpportunitiesTable({
 
       {rows.length ? (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0}>
             <table className="w-full min-w-[860px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>

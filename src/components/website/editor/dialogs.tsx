@@ -245,7 +245,7 @@ export function VersionsDialog({
       </Dialog>
       {view && (
         <PreviewOverlay doc={view.content.content} resolveAsset={resolveAsset} onClose={() => setView(null)} title={`Version ${view.v.version}`} subtitle={`${SOURCE[view.v.source] ?? "Saved"} · ${relativeTime(view.v.createdAt)}`}
-          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:opacity-90"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
+          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-on hover:opacity-90"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
       )}
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)} size="sm" title={confirm ? `Restore version ${confirm.version}?` : "Restore"}
         description="It replaces your current draft. Your current draft is saved as its own version first, and your live site doesn't change until you publish."

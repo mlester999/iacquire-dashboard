@@ -133,8 +133,8 @@ export function MediaLibrary({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={assetUrl(a.id)} alt="" loading="lazy" className="size-full object-cover" />
                   {a.kind === "logo" && <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-px text-[12px] font-semibold uppercase tracking-wide text-white">Logo</span>}
-                  {isUsed && <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-px text-[12px] font-semibold text-white">In use</span>}
-                  {selectedId === a.id && <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-white"><Check className="size-3" aria-hidden /></span>}
+                  {isUsed && <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-px text-[12px] font-semibold text-primary-on">In use</span>}
+                  {selectedId === a.id && <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-on"><Check className="size-3" aria-hidden /></span>}
                 </button>
                 {!compact && (
                   <div className="space-y-1 p-1.5">

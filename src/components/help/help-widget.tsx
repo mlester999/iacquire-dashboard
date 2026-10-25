@@ -260,7 +260,7 @@ function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: stri
         {messages.map((m) => (
           <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
             {m.role === "user" ? (
-              <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-[14px] leading-relaxed text-white">{m.content}</div>
+              <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-[14px] leading-relaxed text-primary-on">{m.content}</div>
             ) : (
               <div className="max-w-[92%] space-y-2">
                 <div className="rounded-2xl rounded-tl-md border border-line bg-surface-2 px-4 py-3 text-ink">

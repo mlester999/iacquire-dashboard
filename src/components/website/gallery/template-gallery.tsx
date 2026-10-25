@@ -63,7 +63,7 @@ function Card({ card, frameBase, selected, view, onPreview, onSelect, chooseLabe
           </span>
         </button>
         {card.featured && <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-ink/85 px-2 py-1 text-[12px] font-semibold text-white backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
-        {selected && <span className="absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-primary text-white shadow-lg" role="img" aria-label="Selected"><Check className="size-4" /></span>}
+        {selected && <span className="absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-primary text-primary-on shadow-lg" role="img" aria-label="Selected"><Check className="size-4" /></span>}
       </div>
       <div className={cn("flex min-w-0 flex-1 flex-col gap-3 p-5", list && "sm:p-6")}>
         <div className="min-w-0">

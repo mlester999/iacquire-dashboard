@@ -344,7 +344,7 @@ export function ConfigTestDialog({
                       <Markdown>{message.content}</Markdown>
                     </div>
                   ) : (
-                    <p className="inline-block max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-3 py-2 text-left text-white">{message.content}</p>
+                    <p className="inline-block max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-3 py-2 text-left text-primary-on">{message.content}</p>
                   )}
                 </li>
               ))}

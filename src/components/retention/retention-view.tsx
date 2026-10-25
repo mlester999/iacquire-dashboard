@@ -167,7 +167,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                     </button>
                   ))}
                 </div>
-                <div className="scrollbar-thin hidden overflow-x-auto md:block">
+                <div className="scrollbar-thin hidden overflow-x-auto md:block" tabIndex={0}>
                   <table className="workspace-table w-full min-w-[640px] text-left text-[14px]">
                     <thead className="border-y border-line bg-surface-2/60 text-[12px] text-muted">
                       <tr>

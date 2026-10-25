@@ -165,7 +165,7 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
           {step === "map" && job && (
             <div className="mt-4 space-y-4">
               <p className="text-[14px] text-muted">{job.totalRows.toLocaleString("en-US")} rows. Match each column to a field. Columns set to “Don’t import” are left out.</p>
-              <div className="overflow-x-auto rounded-xl border border-line">
+              <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
                 <table className="w-full min-w-[640px] text-[14px]">
                   <thead className="bg-surface-2/60 text-[12px] text-muted">
                     <tr><th scope="col" className="px-3 py-2 text-left font-medium">Column in your file</th><th scope="col" className="px-3 py-2 text-left font-medium">Example</th><th scope="col" className="px-3 py-2 text-left font-medium">Import into</th></tr>

@@ -78,7 +78,7 @@ export function MessageList({
             <div className={cn("min-w-0 max-w-[88%]", own && "text-right")}>
               <div className={cn(
                 "inline-block max-w-full break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed",
-                m.internal ? "border border-dashed border-warning/50 bg-warning-soft/50" : own ? "bg-primary text-white dark:bg-primary/25 dark:text-ink dark:ring-1 dark:ring-inset dark:ring-primary/40" : "border border-line bg-surface shadow-soft",
+                m.internal ? "border border-dashed border-warning/50 bg-warning-soft/50" : own ? "bg-primary text-primary-on dark:bg-primary/25 dark:text-ink dark:ring-1 dark:ring-inset dark:ring-primary/40" : "border border-line bg-surface shadow-soft",
               )}>
                 {m.internal && (
                   <span className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">

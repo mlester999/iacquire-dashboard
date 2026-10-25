@@ -178,7 +178,7 @@ export function OptionCard({
         </span>
         {description && <span className="mt-1 block text-[13px] leading-relaxed text-muted">{description}</span>}
       </span>
-      <span aria-hidden className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border transition", selected ? "border-primary bg-primary text-white" : "border-line-strong bg-surface")}>
+      <span aria-hidden className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border transition", selected ? "border-primary bg-primary text-primary-on" : "border-line-strong bg-surface")}>
         {selected && <Check className="size-3" strokeWidth={3} />}
       </span>
     </button>

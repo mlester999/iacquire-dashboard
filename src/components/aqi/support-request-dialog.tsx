@@ -146,7 +146,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2"><span className="rounded-lg bg-surface px-2.5 py-1 font-mono text-[14px] font-semibold text-ink ring-1 ring-inset ring-line">{result.ref}</span><StatusPill status={result.status} tone="primary">Received</StatusPill></div>
                   {result.expectation && <p className="mt-3 text-[13px] text-ink-2">{result.expectation}</p>}
                 </div>
-                <div className="flex flex-wrap gap-2"><Link href={`/support/${result.id}`} className="inline-flex h-9 items-center rounded-xl bg-primary px-3.5 text-[13px] font-semibold text-white hover:brightness-110" onClick={onClose}>View your request</Link><Button variant="ghost" onClick={onClose}>Done</Button></div>
+                <div className="flex flex-wrap gap-2"><Link href={`/support/${result.id}`} className="inline-flex h-9 items-center rounded-xl bg-primary px-3.5 text-[13px] font-semibold text-primary-on hover:brightness-110" onClick={onClose}>View your request</Link><Button variant="ghost" onClick={onClose}>Done</Button></div>
               </div>
             )}
 

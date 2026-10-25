@@ -204,7 +204,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
         <>
           {/* Desktop table */}
           <Card className={cn("overflow-hidden", view === "table" ? "hidden md:block" : "hidden")}>
-            <div className="scrollbar-thin overflow-x-auto">
+            <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
               <table className="workspace-table w-full min-w-[960px] text-left text-[14px]">
                 <thead className="border-b border-line bg-surface-2/60">
                   <tr>

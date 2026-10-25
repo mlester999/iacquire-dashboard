@@ -48,7 +48,7 @@ export function ApplicationsTable({ applications, canApply, canPreview = false, 
   return (
     <>
       <Card className="hidden overflow-hidden md:block">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0}>
           <table className="workspace-table w-full min-w-[860px] text-left text-[14px]">
             <caption className="sr-only">{caption}</caption>
             <thead>

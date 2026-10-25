@@ -177,7 +177,7 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
             </div>
           </div>
         ) : (
-          <div className="scrollbar-thin overflow-x-auto">
+          <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
             <table className="workspace-table w-full min-w-[680px] text-left text-[14px]">
               <thead className="bg-surface-2/60 text-[12px] text-muted">
                 <tr>
