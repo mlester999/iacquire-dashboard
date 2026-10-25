@@ -32,7 +32,7 @@ export default async function OurWorkPage() {
         <Card className="grid overflow-hidden md:grid-cols-[1.1fr_1fr]">
           <ProjectMediaPlaceholder title="Selected stories, shared with care" technologies={["AI","Web"]} className="aspect-auto min-h-64"/>
           <div className="flex flex-col justify-center p-6 sm:p-8">
-            <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-primary">From the founder&apos;s workshop</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-primary">From the founder&apos;s workshop</p>
             <h2 className="mt-3 text-[23px] font-semibold leading-tight tracking-tight">Case studies are being prepared</h2>
             <p className="mt-3 text-sm leading-relaxed text-muted">Selected work will appear here once its story, media and sharing permissions have been reviewed. No case studies are available in this workspace yet.</p>
             <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4"><InfoChip icon={<Check />}>Review the story</InfoChip><InfoChip icon={<Check />}>Confirm permitted media</InfoChip><InfoChip icon={<Check />}>Share the work</InfoChip></div>

@@ -21,8 +21,8 @@ function Bubble({ item }: { item: ChatItem }) {
         ) : (
           <p className="whitespace-pre-wrap break-words">{item.content}{item.streaming && <span aria-hidden className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-current" />}</p>
         )}
-        {mine && item.nodeKey && <p className="mt-1 text-[11px] opacity-80">About the selected step</p>}
-        {!mine && item.status === "applied" && item.changes && item.changes.length > 0 && !item.streaming && <p className="mt-1.5 text-[11.5px] font-medium text-success-ink">Updated the canvas</p>}
+        {mine && item.nodeKey && <p className="mt-1 text-[12px] opacity-80">About the selected step</p>}
+        {!mine && item.status === "applied" && item.changes && item.changes.length > 0 && !item.streaming && <p className="mt-1.5 text-[12px] font-medium text-success-ink">Updated the canvas</p>}
         {item.notice?.code === "plan_required" && <Link href="/automation-studio" className="mt-1.5 inline-block text-[12px] font-medium underline">See what Automation Studio includes</Link>}
       </div>
     </div>

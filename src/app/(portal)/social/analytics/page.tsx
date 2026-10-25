@@ -138,7 +138,7 @@ export default async function SocialAnalyticsPage({ searchParams }: { searchPara
                           {p.metrics && k in p.metrics ? (
                             <>
                               {p.metrics[k]}
-                              {p.metricsAt && p.metricsState !== "current" ? <span className="block text-[11.5px] font-normal text-muted">as of {asOf(p.metricsAt)}</span> : null}
+                              {p.metricsAt && p.metricsState !== "current" ? <span className="block text-[12px] font-normal text-muted">as of {asOf(p.metricsAt)}</span> : null}
                             </>
                           ) : <span className="text-muted">No numbers</span>}
                         </td>

@@ -134,14 +134,14 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
             <div className="mt-1 flex flex-wrap items-center gap-2 border-t border-line pt-2.5">
               <Button type="button" size="sm" variant="soft" onClick={() => void suggest()} disabled={drafting}>{drafting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />} Suggest a reply</Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => void missing()}><Lightbulb className="size-3.5" aria-hidden /> What&apos;s missing?</Button>
-              <span className="text-[11.5px] text-muted">AI drafts are suggestions. Read, edit and send yourself.</span>
+              <span className="text-[12px] text-muted">AI drafts are suggestions. Read, edit and send yourself.</span>
             </div>
           )}
           {draft && (
             <div className="mt-2 rounded-xl border border-primary/20 bg-primary-soft/40 p-3.5" role="region" aria-label="Suggested reply">
               {"reason" in draft ? <p className="text-[13px] text-ink-2">{draft.reason}</p> : (
                 <>
-                  <p className="text-[11.5px] font-semibold uppercase tracking-wide text-primary-ink">Suggested reply (not sent)</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Suggested reply (not sent)</p>
                   <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink">{draft.text}</p>
                   {draft.warnings.length > 0 && (
                     <ul className="mt-2.5 space-y-1" aria-label="Check before sending">
@@ -188,7 +188,7 @@ export function ThreadPane({ detail, timeZone, onChanged, focusReply }: {
                 </Select>
               </>
             )}
-            <span className="hidden text-[11.5px] text-muted sm:inline">Ctrl or ⌘ + Enter to send</span>
+            <span className="hidden text-[12px] text-muted sm:inline">Ctrl or ⌘ + Enter to send</span>
             <Button type="button" className="ml-auto" variant={internal ? "secondary" : "brand"} size="sm" disabled={!body.trim() || files.busy || files.failed} onClick={() => void submit()}>
               <Send className="size-3.5" aria-hidden /> {files.busy ? "Uploading…" : internal ? "Add internal note" : "Send reply"}
             </Button>

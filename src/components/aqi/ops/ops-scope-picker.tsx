@@ -97,7 +97,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
             aria-label={`${SCOPE_TYPE_LABEL[scope.type]}: ${isPlatform ? "Entire platform" : scope.label}. Change investigation context`}
           >
             <span className="shrink-0">{ICON[scope.type]}</span>
-            <span className="min-w-0 truncate"><span className="text-[11.5px] font-normal">{SCOPE_TYPE_LABEL[scope.type]}: </span>{isPlatform ? "Entire platform" : scope.label}</span>
+            <span className="min-w-0 truncate"><span className="text-[12px] font-normal">{SCOPE_TYPE_LABEL[scope.type]}: </span>{isPlatform ? "Entire platform" : scope.label}</span>
             <ChevronsUpDown className="size-3.5 shrink-0 opacity-60" aria-hidden />
           </button>
         </PopoverTrigger>
@@ -112,7 +112,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <Input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, tickets, incidents, employees" className="pl-9" aria-label="Search for an investigation context" aria-controls={listId} />
         </div>
-        <p className="px-1 pb-1 pt-2 text-[11.5px] leading-snug text-muted">Selecting a client is an audited access to that workspace. AQi reads operational metadata only.</p>
+        <p className="px-1 pb-1 pt-2 text-[12px] leading-snug text-muted">Selecting a client is an audited access to that workspace. AQi reads operational metadata only.</p>
         <ul id={listId} className="scrollbar-thin max-h-72 overflow-y-auto" aria-label="Contexts" aria-busy={status === "loading"}>
           <li>
             <button type="button" onClick={() => void choose(null)} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] text-ink hover:bg-surface-2 sm:min-h-9">
@@ -123,7 +123,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
             <li key={`${o.type}-${o.id}`}>
               <button type="button" onClick={() => void choose(o)} disabled={choosing !== null} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 text-left hover:bg-surface-2 disabled:opacity-60 sm:min-h-9">
                 <span className="text-muted">{ICON[o.type]}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-[13px] text-ink">{o.label}</span><span className="block truncate text-[11.5px] text-muted">{SCOPE_TYPE_LABEL[o.type]}{o.detail ? ` · ${o.detail}` : ""}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-[13px] text-ink">{o.label}</span><span className="block truncate text-[12px] text-muted">{SCOPE_TYPE_LABEL[o.type]}{o.detail ? ` · ${o.detail}` : ""}</span></span>
                 {choosing === o.id ? <Loader2 className="size-4 animate-spin text-muted" aria-label="Opening" /> : scope.id === o.id ? <Check className="size-4 text-primary" aria-label="Selected" /> : null}
               </button>
             </li>

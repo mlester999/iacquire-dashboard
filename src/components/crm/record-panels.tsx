@@ -164,7 +164,7 @@ export function TaskList({ scope, tasks, showLinks = true, emptyText, onOpen }: 
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
                 {t.dueAt && <span className={cn(t.overdue && "font-semibold text-danger-ink")}>{t.overdue ? "Overdue · " : "Due "}{new Date(t.dueAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: scope.timezone })}</span>}
                 {t.assignee && <span>· {t.assignee.name}</span>}
-                {t.priority !== "normal" && <Badge tone={PRIORITY_TONE[t.priority]} className="h-5 px-2 text-[11px] capitalize">{t.priority}</Badge>}
+                {t.priority !== "normal" && <Badge tone={PRIORITY_TONE[t.priority]} className="h-5 px-2 text-[12px] capitalize">{t.priority}</Badge>}
                 {showLinks && t.contact && <Link href={`${scope.base}/contacts/${t.contact.id}`} className="hover:underline">· {t.contact.name}</Link>}
                 {showLinks && t.opportunity && <Link href={`${scope.base}/opportunities/${t.opportunity.id}`} className="hover:underline">· {t.opportunity.name}</Link>}
                 {t.comments > 0 && <span>· {t.comments} {t.comments === 1 ? "comment" : "comments"}</span>}

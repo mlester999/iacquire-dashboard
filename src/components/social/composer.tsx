@@ -173,8 +173,8 @@ export function PostComposer(p: ComposerProps) {
                           <span className="flex h-20 w-full items-center justify-center rounded-lg bg-surface-2 text-muted"><VideoIcon className="size-6" aria-hidden /></span>
                         )}
                         <span className="mt-1 block truncate text-ink-2">{m.filename}</span>
-                        {v && !v.ok && <span className="block text-[11px] text-danger-ink">Not for {PLATFORM_LABELS[platform]}</span>}
-                        {selected && <span className="absolute right-2 top-2 rounded bg-primary px-1.5 text-[10px] font-semibold text-primary-on">Chosen</span>}
+                        {v && !v.ok && <span className="block text-[12px] text-danger-ink">Not for {PLATFORM_LABELS[platform]}</span>}
+                        {selected && <span className="absolute right-2 top-2 rounded bg-primary px-1.5 text-[12px] font-semibold text-primary-on">Chosen</span>}
                       </label>
                     </li>
                   );
@@ -213,7 +213,7 @@ export function PostComposer(p: ComposerProps) {
             <PlatformMark platform={platform} className="size-8 text-[12px]" />
             <div className="min-w-0">
               <p className="truncate text-[13.5px] font-semibold text-ink">{account?.name ?? "No account"}</p>
-              <p className="text-[11.5px] text-muted">{PLATFORM_LABELS[platform]} · preview</p>
+              <p className="text-[12px] text-muted">{PLATFORM_LABELS[platform]} · preview</p>
             </div>
           </div>
           <div className="mt-3 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">
@@ -229,7 +229,7 @@ export function PostComposer(p: ComposerProps) {
             ? <img src={`/api/social/media/${chosen[0].id}`} alt={chosen[0].altText ?? chosen[0].filename} className="mt-3 max-h-72 w-full rounded-xl object-cover" />
             : <div className="mt-3 flex h-40 items-center justify-center rounded-xl bg-surface-2 text-muted"><VideoIcon className="size-8" aria-hidden /><span className="sr-only">Video</span></div>)}
           {link.trim() && platform === "facebook" && kind !== "image" && kind !== "video" && <p className="mt-3 truncate rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">{link.trim()}</p>}
-          {fold.hidden && <p className="mt-3 text-[11.5px] text-muted">The fold is approximate: it moves with the screen. Put the call to action above it.</p>}
+          {fold.hidden && <p className="mt-3 text-[12px] text-muted">The fold is approximate: it moves with the screen. Put the call to action above it.</p>}
         </div>
       </aside>
     </div>

@@ -125,9 +125,9 @@ export function SlotPicker({
                 active ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface hover:bg-surface-2 disabled:opacity-45",
               )}
             >
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted">{formatDay(d, { weekday: "short" })}</span>
+              <span className="text-[12px] font-medium uppercase tracking-wide text-muted">{formatDay(d, { weekday: "short" })}</span>
               <span className="text-[15px] font-semibold tabular-nums">{formatDay(d, { day: "numeric" })}</span>
-              <span className="text-[10.5px] tabular-nums text-faint" aria-hidden>{loading ? "…" : n || "–"}</span>
+              <span className="text-[12px] tabular-nums text-faint" aria-hidden>{loading ? "…" : n || "–"}</span>
             </button>
           );
         })}
@@ -163,7 +163,7 @@ export function SlotPicker({
                     <input type="radio" name={`${id}-slot`} value={s.start} checked={checked} onChange={() => onChange(s)} className="sr-only" />
                     <span className="text-[13.5px] font-semibold tabular-nums">{timeIn(s.start, timeZone)}</span>
                     {(current || host || s.remaining !== null || s.keepsHost === false) && (
-                      <span className={cn("max-w-full truncate text-[10.5px]", checked ? "text-surface/80" : "text-muted")}>
+                      <span className={cn("max-w-full truncate text-[12px]", checked ? "text-surface/80" : "text-muted")}>
                         {current ? "Current time" : s.keepsHost === false ? "Another host" : host ?? (s.remaining !== null ? `${s.remaining} ${s.remaining === 1 ? "place" : "places"} left` : "")}
                       </span>
                     )}

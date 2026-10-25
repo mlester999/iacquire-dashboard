@@ -105,7 +105,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
         <div className="rounded-xl border border-primary/30 bg-primary-soft p-3">
           <p className="text-[12.5px] font-medium text-primary-ink">New public link (shown once):</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-surface px-2.5 py-1.5">
-            <code className="min-w-0 flex-1 break-all text-[11.5px] text-ink">{rotated}</code>
+            <code className="min-w-0 flex-1 break-all text-[12px] text-ink">{rotated}</code>
             <CopyTextButton text={rotated} label="Copy" />
           </div>
         </div>
@@ -118,7 +118,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
           <p className="mt-1 text-[12px] text-success-ink">The client invitation and the setup-payment audit belong to the new workspace. {provisioned.inviteLink ? "Copy the client invitation link below." : "The invitation email was handed to the configured provider."}</p>
           {provisioned.inviteLink && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-success/30 bg-surface px-2.5 py-1.5">
-              <code className="min-w-0 flex-1 break-all text-[11.5px] text-ink">{provisioned.inviteLink}</code>
+              <code className="min-w-0 flex-1 break-all text-[12px] text-ink">{provisioned.inviteLink}</code>
               <CopyTextButton text={provisioned.inviteLink} label="Copy invite" />
             </div>
           )}

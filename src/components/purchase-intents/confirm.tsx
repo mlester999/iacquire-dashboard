@@ -39,7 +39,7 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
           <p className="mt-1">The next step is the payment.</p>
         </div>
         <PayOnline token={token} setupFeeCents={setupFeeCents} previous={previous} />
-        {checkout.reference && checkout.status === "pending" && <p className="text-[11.5px] text-muted">A checkout is already open for this purchase ({checkout.reference}). Pressing the button opens it again; you are not charged twice.</p>}
+        {checkout.reference && checkout.status === "pending" && <p className="text-[12px] text-muted">A checkout is already open for this purchase ({checkout.reference}). Pressing the button opens it again; you are not charged twice.</p>}
       </div>
     );
   }
@@ -57,7 +57,7 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
       <Button type="button" size="lg" variant="brand" onClick={() => void confirm()} loading={saving} disabled={saving}>
         {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null} Confirm and continue
       </Button>
-      <p className="text-[11.5px] leading-relaxed text-muted">No card is charged on this page. Confirming records your choice and the frozen price. Then you pay on the payment provider&apos;s own page, or iAcquire sends you another secure way to pay.</p>
+      <p className="text-[12px] leading-relaxed text-muted">No card is charged on this page. Confirming records your choice and the frozen price. Then you pay on the payment provider&apos;s own page, or iAcquire sends you another secure way to pay.</p>
     </div>
   );
 }

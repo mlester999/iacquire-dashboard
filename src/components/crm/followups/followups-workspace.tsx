@@ -274,7 +274,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
                 <ol className="space-y-2.5">
                   {preview.steps.map((s) => (
                     <li key={s.step} className="flex items-start gap-3">
-                      <span aria-hidden className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11.5px] font-semibold text-primary-ink">{s.step}</span>
+                      <span aria-hidden className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{s.step}</span>
                       <span className="min-w-0 text-[13px]">
                         <span className="block font-medium text-ink">Day {s.day}: {formatDateTime(s.sendAt, data.timezone)}</span>
                         {s.held && <span className="block text-[12px] text-muted">Due {formatDateTime(s.dueAt, data.timezone)}, held for {preview.businessHoursOnly ? "quiet or business hours" : "quiet hours"}</span>}

@@ -45,7 +45,7 @@ function ThemeMenuItems() {
           onClick={() => setTheme(o.v)}
           aria-pressed={theme === o.v}
           className={cn(
-            "flex flex-col items-center gap-1 rounded-lg py-2 text-[11.5px] text-muted transition hover:bg-surface-2",
+            "flex flex-col items-center gap-1 rounded-lg py-2 text-[12px] text-muted transition hover:bg-surface-2",
             theme === o.v && "bg-surface-2 text-ink ring-1 ring-line",
           )}
         >
@@ -141,7 +141,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <MenuItem key={m.id} onSelect={() => switchOrg(m.id)} disabled={m.id === shell.org.id}>
                     <Building2 className="size-4" />
                     <span className="flex-1 truncate">{m.name}</span>
-                    {m.id === shell.org.id && <span className="text-[11px] text-primary">Current</span>}
+                    {m.id === shell.org.id && <span className="text-[12px] text-primary">Current</span>}
                   </MenuItem>
                 ))}
               </>

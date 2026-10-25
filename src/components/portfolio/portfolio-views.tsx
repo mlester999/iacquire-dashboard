@@ -66,7 +66,7 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
               event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
             }} onClick={() => setFilter(c)} className={cn("relative inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}>
               {active && <motion.span layoutId="pf-filter" className="absolute inset-0 rounded-xl border border-line bg-surface shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
-              <span className="relative">{c === "All" ? c : categoryLabel(c)}</span><span className="relative rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{c === "All" ? projects.length : projects.filter((p) => p.categories.includes(c)).length}</span>
+              <span className="relative">{c === "All" ? c : categoryLabel(c)}</span><span className="relative rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{c === "All" ? projects.length : projects.filter((p) => p.categories.includes(c)).length}</span>
             </button>
           );
         })}
@@ -77,7 +77,7 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
             <motion.li key={p.id} className={cn("min-w-0",p.featured&&i===0&&"md:col-span-2")} layout={!reduce} initial={false} animate={{ opacity: 1, scale: 1 }} exit={reduce ? undefined : { opacity: 0, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
               <Link href={`/our-work/${p.slug}`} className="group block h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                 <Card className="flex h-full flex-col overflow-hidden transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
-                  <div className="relative"><Cover id={p.coverAssetId} alt={`${p.title} preview`} className={p.featured&&i===0?"aspect-auto h-60 sm:h-72":undefined}/>{p.featured&&<span className="absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full border border-white/15 bg-black/50 px-2.5 text-[11px] font-semibold text-amber-200 backdrop-blur-sm"><Star className="size-3 fill-current"/> Featured work</span>}</div>
+                  <div className="relative"><Cover id={p.coverAssetId} alt={`${p.title} preview`} className={p.featured&&i===0?"aspect-auto h-60 sm:h-72":undefined}/>{p.featured&&<span className="absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full border border-white/15 bg-black/50 px-2.5 text-[12px] font-semibold text-amber-200 backdrop-blur-sm"><Star className="size-3 fill-current"/> Featured work</span>}</div>
                   <div className="flex flex-1 flex-col p-5">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <StatusPill tone={portfolioTone(p.status)}>{p.statusLabel || PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill>

@@ -152,7 +152,7 @@ export function AssetWorkspace({
                     <button type="button" onClick={() => choose(item.id)} aria-current={active ? "true" : undefined} className="flex min-h-12 min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-medium text-ink">{item.name || <span className="text-faint">Untitled</span>}</span>
-                        {item.detail && <span className="block truncate text-[11.5px] text-muted">{item.detail}</span>}
+                        {item.detail && <span className="block truncate text-[12px] text-muted">{item.detail}</span>}
                       </span>
                       {item.badges}
                       <IssueDot issues={issuesOf(issues, item.id)} />
@@ -184,7 +184,7 @@ export function DetailHeader({ id, title, kind, onRemove, children }: { id: stri
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
       <div className="min-w-0">
-        <p className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{kind}</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">{kind}</p>
         <h3 className="mt-0.5 break-words text-[16px] font-semibold text-ink">{title || "Untitled"}</h3>
         <ReferenceId id={id} />
         {children}
@@ -202,7 +202,7 @@ export function ReferenceId({ id }: { id: string }) {
     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
       <Hash className="size-3.5" aria-hidden />
       <span>Reference</span>
-      <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2">{id}</code>
+      <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2">{id}</code>
       <span className="text-faint">· stays the same when renamed, so everything that uses it keeps working</span>
     </p>
   );
@@ -509,7 +509,7 @@ export function AddAssetDialog({ request, onClose, onCreate }: {
           </Field>
         )}
         <p className="text-[12.5px] text-muted" aria-live="polite">
-          {idPreview ? <>Reference: <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2">{idPreview}</code></> : "Type a name to see its reference."}
+          {idPreview ? <>Reference: <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2">{idPreview}</code></> : "Type a name to see its reference."}
         </p>
       </form>
     </Dialog>

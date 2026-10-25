@@ -152,7 +152,7 @@ function StarScale() {
           <label key={r.value} className={`${choiceClass} flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-center`}>
             <input type="radio" name="rating" value={r.value} className="sr-only" />
             <span className="text-[16px] font-semibold tabular-nums">{r.value}</span>
-            <span className="text-[11px] leading-tight text-muted sm:text-[11.5px]">{r.label}</span>
+            <span className="text-[12px] leading-tight text-muted sm:text-[12px]">{r.label}</span>
           </label>
         ))}
       </div>

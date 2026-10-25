@@ -161,12 +161,12 @@ export function AttachmentPicker({
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={item.progress} aria-label={`Uploading ${item.file.name}`}>
                       <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${Math.max(item.progress, 4)}%` }} />
                     </div>
-                    <p className="mt-1 text-[11.5px] text-muted">Uploading… {item.progress}%</p>
+                    <p className="mt-1 text-[12px] text-muted">Uploading… {item.progress}%</p>
                   </div>
                 ) : item.status === "ready" ? (
-                  <p className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] text-success-ink"><CheckCircle2 className="size-3" aria-hidden /> Ready · {formatBytes(item.file.size)}</p>
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-success-ink"><CheckCircle2 className="size-3" aria-hidden /> Ready · {formatBytes(item.file.size)}</p>
                 ) : (
-                  <p role="alert" className="mt-0.5 flex items-start gap-1 text-[11.5px] leading-snug text-danger-ink"><AlertCircle className="mt-px size-3 shrink-0" aria-hidden /> {item.error}</p>
+                  <p role="alert" className="mt-0.5 flex items-start gap-1 text-[12px] leading-snug text-danger-ink"><AlertCircle className="mt-px size-3 shrink-0" aria-hidden /> {item.error}</p>
                 )}
               </div>
               {item.status === "error" && !attachmentProblem(item.file, { maxMb }) && (

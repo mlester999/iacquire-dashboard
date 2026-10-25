@@ -37,7 +37,7 @@ export function PayOnline({ token, setupFeeCents, previous }: { token: string; s
         {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <CreditCard className="size-4" aria-hidden />}
         Pay {formatUsdCents(setupFeeCents)} securely online
       </Button>
-      <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-muted">
+      <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-muted">
         <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
         <span>
           You pay on PayMongo&apos;s own page; iAcquire never sees your card details. PayMongo charges in Philippine pesos, so the dollar price is converted at iAcquire&apos;s published rate and you see

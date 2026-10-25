@@ -194,7 +194,7 @@ export function AqiAdmin({
     <div className="module-stack space-y-6">
       <div className="flex flex-col justify-between gap-4 border-b border-line pb-5 sm:flex-row sm:items-end">
         <div>
-          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[.16em] text-primary-ink"><Sparkles className="size-3" /> Platform assistant</p>
+          <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.16em] text-primary-ink"><Sparkles className="size-3" /> Platform assistant</p>
           <h1 className="text-[27px] font-semibold tracking-[-0.045em] text-ink">AQi Management</h1>
           <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">Configure the assistant, its approved knowledge, suggestions and publishing. AQi is separate from AI employees and never inherits Hermes tools.</p>
         </div>
@@ -308,7 +308,7 @@ export function AqiAdmin({
                   <div className="flex items-start justify-between gap-2">
                     <button type="button" className="min-w-0 text-left" onClick={() => editKnowledge(entry)}>
                       <p className="truncate text-[13px] font-medium">{entry.title}</p>
-                      <p className="mt-0.5 text-[11px] text-muted">{entry.category} · {entry.routePrefix ?? "all pages"} · updated <span suppressHydrationWarning>{relativeTime(entry.updatedAt)}</span></p>
+                      <p className="mt-0.5 text-[12px] text-muted">{entry.category} · {entry.routePrefix ?? "all pages"} · updated <span suppressHydrationWarning>{relativeTime(entry.updatedAt)}</span></p>
                     </button>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <StatusPill size="sm" tone={entry.status === "published" ? "success" : entry.status === "archived" ? "neutral" : "warning"}>{entry.status}</StatusPill>
@@ -384,7 +384,7 @@ export function AqiAdmin({
             <CardContent className="space-y-2">
               {data.questions.map((question) => (
                 <div key={question.id} className="flex items-start justify-between gap-2 rounded-xl border border-line p-3">
-                  <div><p className="text-[13px]">{question.question}</p><p className="mt-0.5 text-[11px] text-muted">{question.scope}{question.role ? ` · ${question.role}` : ""}{question.routePrefix ? ` · ${question.routePrefix}` : ""} · order {question.sortOrder}</p></div>
+                  <div><p className="text-[13px]">{question.question}</p><p className="mt-0.5 text-[12px] text-muted">{question.scope}{question.role ? ` · ${question.role}` : ""}{question.routePrefix ? ` · ${question.routePrefix}` : ""} · order {question.sortOrder}</p></div>
                   <div className="flex shrink-0 gap-1"><StatusPill size="sm" tone={question.enabled ? "success" : "neutral"}>{question.enabled ? "on" : "off"}</StatusPill><button type="button" onClick={() => void deleteQuestion(question.id)} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink" aria-label={`Delete ${question.question}`}><Trash2 className="size-3.5" /></button></div>
                 </div>
               ))}
@@ -411,16 +411,16 @@ export function AqiAdmin({
             <CardHeader><CardTitle>Test the configured provider</CardTitle><CardDescription>This is a real provider generation test, not retrieval-only. It uses the same intent prompt, page context, published knowledge, link validation and citation rendering as a live AQi turn, with the configuration currently in this editor (including unsaved changes). It does not save a conversation.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
-                <div className="flex flex-wrap gap-1.5">{["hi", "hey", "hello", "what's up", "can you help me?", "Where are integrations?"].map((probe) => <button key={probe} type="button" onClick={() => setTestPrompt(probe)} className="rounded-full border border-line px-2 py-1 text-[10.5px] text-muted hover:bg-surface-2 hover:text-ink">{probe}</button>)}</div>
+                <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
+                <div className="flex flex-wrap gap-1.5">{["hi", "hey", "hello", "what's up", "can you help me?", "Where are integrations?"].map((probe) => <button key={probe} type="button" onClick={() => setTestPrompt(probe)} className="rounded-full border border-line px-2 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink">{probe}</button>)}</div>
               </div>
               <Field label="Test question" htmlFor="test-prompt"><Textarea id="test-prompt" rows={3} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} /></Field>
               <Button variant="brand" onClick={() => void testProvider()} loading={testing}><FlaskConical className="size-4" /> Run test</Button>
               {testResult && (testResult.ok ? (
                 <div className="rounded-xl border border-success/25 bg-success-soft p-3">
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-success-ink"><span>Real provider generation</span><span aria-hidden>·</span><span>intent: {testResult.intent}</span><span aria-hidden>·</span><span>{testResult.words} words</span></div>
+                  <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-success-ink"><span>Real provider generation</span><span aria-hidden>·</span><span>intent: {testResult.intent}</span><span aria-hidden>·</span><span>{testResult.words} words</span></div>
                   <div className="mt-2 text-ink"><Markdown>{testResult.text}</Markdown></div>
-                  {testResult.sources?.length ? <div className="mt-2 border-t border-success/20 pt-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Sources</p><ol className="mt-1 space-y-0.5">{testResult.sources.map((source, index) => <li key={source.id} className="text-[11px] text-ink-2">{index + 1}. {source.title} <span className="text-muted">· {source.category}</span></li>)}</ol></div> : <p className="mt-2 text-[10.5px] text-muted">No citations were returned for this answer.</p>}
+                  {testResult.sources?.length ? <div className="mt-2 border-t border-success/20 pt-2"><p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Sources</p><ol className="mt-1 space-y-0.5">{testResult.sources.map((source, index) => <li key={source.id} className="text-[12px] text-ink-2">{index + 1}. {source.title} <span className="text-muted">· {source.category}</span></li>)}</ol></div> : <p className="mt-2 text-[12px] text-muted">No citations were returned for this answer.</p>}
                 </div>
               ) : <div className="rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] text-danger-ink">{testResult.text}</div>)}
             </CardContent>
@@ -459,7 +459,7 @@ export function AqiAdmin({
           <CardContent className="space-y-2">
             {data.versions.map((version) => (
               <div key={version.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
-                <div><p className="text-[13px] font-medium">v{version.version} <StatusPill size="sm" tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</StatusPill></p><p className="mt-0.5 text-[11px] text-muted">{version.notes ?? "No note"} · <span suppressHydrationWarning>{formatDateTime(version.createdAt)}</span></p></div>
+                <div><p className="text-[13px] font-medium">v{version.version} <StatusPill size="sm" tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</StatusPill></p><p className="mt-0.5 text-[12px] text-muted">{version.notes ?? "No note"} · <span suppressHydrationWarning>{formatDateTime(version.createdAt)}</span></p></div>
                 {version.status !== "published" && <Button size="sm" variant="secondary" onClick={() => void publish(version.id)}><RotateCcw className="size-3.5" /> {version.status === "archived" ? "Restore" : "Publish"}</Button>}
               </div>
             ))}
@@ -490,7 +490,7 @@ export function AqiAdmin({
               </div>
               <Button variant="secondary" onClick={() => void savePrice()} loading={budgetBusy}><Save className="size-4" /> Save model price</Button>
               <div className="border-t border-line pt-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Configured prices</p>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Configured prices</p>
                 {data.prices.length === 0 ? <p className="mt-2 text-[12px] text-muted">No model prices configured. Budgeted calls stay blocked until a price is saved.</p> : (
                   <ul className="mt-2 space-y-1">
                     {data.prices.map((item) => <li key={item.model} className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[12px]"><span className="font-medium">{item.model}</span><span className="text-muted">${(item.inputMicrosPerMillion / 1_000_000).toFixed(4)} in · ${(item.outputMicrosPerMillion / 1_000_000).toFixed(4)} out {item.enabled ? "" : "· off"}</span></li>)}
@@ -546,5 +546,5 @@ export function AqiAdmin({
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <Card><CardContent className="pt-5"><p className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p><p className="mt-1 text-[24px] font-semibold tracking-tight text-ink">{value}</p><p className="mt-1 text-[11.5px] leading-relaxed text-muted">{detail}</p></CardContent></Card>;
+  return <Card><CardContent className="pt-5"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">{label}</p><p className="mt-1 text-[24px] font-semibold tracking-tight text-ink">{value}</p><p className="mt-1 text-[12px] leading-relaxed text-muted">{detail}</p></CardContent></Card>;
 }

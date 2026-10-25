@@ -37,13 +37,13 @@ function Chip({ p, tz, compact }: { p: PostView; tz: string; compact?: boolean }
       className={cn("block min-h-9 rounded-lg border border-line border-l-4 bg-surface px-2 py-1 text-left text-[12px] leading-snug hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary", STATUS_EDGE[p.status])}
     >
       <span className="flex items-center gap-1.5">
-        <PlatformMark platform={p.platform} className="size-5 text-[10px]" />
+        <PlatformMark platform={p.platform} className="size-5 text-[12px]" />
         <span className="font-medium text-ink">{at ? formatTime(at, tz) : "No time"}</span>
         <span className="sr-only">{platformName(p.platform)}, {STATUS_LABELS[p.status]}</span>
-        {p.origin === "ai" && <span className="rounded bg-violet-soft px-1 text-[10px] font-semibold text-violet-ink">AI</span>}
+        {p.origin === "ai" && <span className="rounded bg-violet-soft px-1 text-[12px] font-semibold text-violet-ink">AI</span>}
       </span>
       <span className={cn("mt-0.5 block text-ink-2", compact ? "truncate" : "line-clamp-2")}>{snippet(p)}</span>
-      {!compact && <span className="mt-1 block text-[11px] text-muted">{STATUS_LABELS[p.status]}</span>}
+      {!compact && <span className="mt-1 block text-[12px] text-muted">{STATUS_LABELS[p.status]}</span>}
     </Link>
   );
 }
@@ -137,7 +137,7 @@ export function CalendarView(props: CalendarProps) {
                           </div>
                           <div className="space-y-1">
                             {list.slice(0, 3).map((p) => <Chip key={p.id} p={p} tz={tz} compact />)}
-                            {list.length > 3 && <Link href={href({ view: "week", date: d })} className="block px-1 text-[11.5px] font-medium text-primary-ink underline">{list.length - 3} more</Link>}
+                            {list.length > 3 && <Link href={href({ view: "week", date: d })} className="block px-1 text-[12px] font-medium text-primary-ink underline">{list.length - 3} more</Link>}
                           </div>
                         </td>
                       );
@@ -189,7 +189,7 @@ function Agenda({ days, byDay, tz, empty, detailed }: { days: string[]; byDay: M
                     <span className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
                       <span className="font-medium text-ink">{formatWhen(p.publishedAt ?? p.scheduledAt ?? p.createdAt, tz)}</span>
                       <span>{p.accountName}</span>
-                      {p.origin === "ai" && <span className="rounded bg-violet-soft px-1 text-[10px] font-semibold text-violet-ink">AI draft</span>}
+                      {p.origin === "ai" && <span className="rounded bg-violet-soft px-1 text-[12px] font-semibold text-violet-ink">AI draft</span>}
                     </span>
                     <span className={cn("mt-0.5 block text-[13.5px] text-ink-2", detailed ? "line-clamp-2" : "truncate")}>{snippet(p)}</span>
                     {p.failureMessage && p.status === "failed" && <span className="mt-0.5 block text-[12px] text-danger-ink">{p.failureMessage}</span>}

@@ -179,7 +179,7 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
                 <button key={c.id} type="button" aria-pressed={on} onClick={() => setUrl({ collection: c.id })}
                   className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", on ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                   {c.id === "featured" && <Star className="size-3.5" aria-hidden />}{c.label}
-                  <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", on ? "bg-primary/10" : "bg-surface-3")}>{n}</span>
+                  <span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", on ? "bg-primary/10" : "bg-surface-3")}>{n}</span>
                 </button>
               );
             })}
@@ -233,14 +233,14 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
                 <Card className="flex h-full flex-col gap-3 rounded-[18px] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(s.industry)}</p>
+                      <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(s.industry)}</p>
                       <h3 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">{s.name}</h3>
                     </div>
                     <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
                   </div>
                   <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted">{s.description}</p>
                   <ModuleChips modules={s.modules} max={4} />
-                  <p className="text-[11.5px] text-muted">{s.totalAssets} {s.totalAssets === 1 ? "asset" : "assets"} · {s.requirements.length} setup {s.requirements.length === 1 ? "step" : "steps"} per client</p>
+                  <p className="text-[12px] text-muted">{s.totalAssets} {s.totalAssets === 1 ? "asset" : "assets"} · {s.requirements.length} setup {s.requirements.length === 1 ? "step" : "steps"} per client</p>
                   <div className="mt-auto border-t border-line pt-3">
                     {s.installedId ? (
                       <ButtonLink href={bpHref.detail(s.installedId)} size="sm" variant="secondary">In your library · Open</ButtonLink>
@@ -335,9 +335,9 @@ function BlueprintCard({ b, permissions, busy, forClient, applyHref, onPreview, 
     <Card className={cn("group flex h-full flex-col overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-md focus-within:border-primary/50 motion-reduce:transition-none", archived && "opacity-80")}>
       <article aria-labelledby={titleId} className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(b.industry)}{b.folderName ? ` · ${b.folderName}` : ""}</p>
+          <p className="min-w-0 truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(b.industry)}{b.folderName ? ` · ${b.folderName}` : ""}</p>
           <div className="flex shrink-0 items-center gap-1.5">
-            {b.featured && <span className="inline-flex items-center gap-1 rounded-full bg-inverse px-2 py-0.5 text-[10.5px] font-semibold text-bg"><Star className="size-3 fill-current" aria-hidden />Featured</span>}
+            {b.featured && <span className="inline-flex items-center gap-1 rounded-full bg-inverse px-2 py-0.5 text-[12px] font-semibold text-bg"><Star className="size-3 fill-current" aria-hidden />Featured</span>}
             <SourceBadge source={b.source} />
           </div>
         </div>
@@ -355,12 +355,12 @@ function BlueprintCard({ b, permissions, busy, forClient, applyHref, onPreview, 
         <ModuleChips modules={b.modules} max={5} />
         <div className="flex flex-wrap items-center gap-2">
           <CompatibilityBadge value={b.compatibility} notes={b.compatibilityNotes} />
-          {b.compatibilityNotes[0] && <span className="text-[11.5px] text-muted">{b.compatibilityNotes.slice(0, 2).join(" · ")}</span>}
+          {b.compatibilityNotes[0] && <span className="text-[12px] text-muted">{b.compatibilityNotes.slice(0, 2).join(" · ")}</span>}
         </div>
         {forClient && appliedHere !== null && (
           <p className="text-[12px] font-medium text-success-ink">{forClient.name} has version {appliedHere}{update ? `; version ${b.currentVersion} is available to review` : ""}.</p>
         )}
-        <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
+        <p className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
           <span>{b.appliedTo ? `Applied to ${b.appliedTo} ${b.appliedTo === 1 ? "client" : "clients"}` : "Not applied yet"}</span>
           <span>{b.totalAssets} {b.totalAssets === 1 ? "asset" : "assets"}</span>
           <When iso={b.updatedAt} prefix="Updated" />

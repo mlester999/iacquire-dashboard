@@ -64,9 +64,9 @@ export function AgendaList({
                     <span className="block truncate text-[12px] text-muted">
                       {a.type?.name ?? "Appointment"}{a.hosts.length ? ` · ${a.hosts.map((h) => h.name).join(", ")}` : ""}
                     </span>
-                    <StatusBadge status={a.status} className="mt-1 h-5 text-[11px] sm:hidden" />
+                    <StatusBadge status={a.status} className="mt-1 h-5 text-[12px] sm:hidden" />
                     {(a.location || a.meetingLink) && (
-                      <span className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-faint">
+                      <span className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-faint">
                         {a.meetingLink ? <Video className="size-3 shrink-0" aria-hidden /> : <MapPin className="size-3 shrink-0" aria-hidden />}
                         <span className="truncate">{a.location ?? "Video call"}</span>
                       </span>

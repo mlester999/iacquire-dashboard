@@ -30,7 +30,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-2.5 ring-1 ring-inset ring-line">
       <div className="min-w-0 flex-1">
-        <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{label}</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{label}</p>
         <p className="break-all font-mono text-[12.5px] text-ink">{value}</p>
       </div>
       <button type="button" onClick={() => void copy()} aria-label={`Copy ${label}`} className="grid size-10 shrink-0 place-items-center rounded-lg text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-9">

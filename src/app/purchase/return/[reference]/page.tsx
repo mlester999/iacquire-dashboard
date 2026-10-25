@@ -35,7 +35,7 @@ export default async function PurchaseReturnPage({ params, searchParams }: { par
             <Icon className={`mx-auto size-10 ${state ? TONE[state.tone] : TONE.neutral}`} aria-hidden />
             <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-ink">{state ? state.title : "Too many attempts"}</h1>
             <p role="status" className="mx-auto max-w-md text-[13.5px] leading-relaxed text-muted">{state ? state.body : "Wait a moment and refresh this page."}</p>
-            {state?.checkoutStatus && <p className="text-[11.5px] text-muted">Payment reference {reference}</p>}
+            {state?.checkoutStatus && <p className="text-[12px] text-muted">Payment reference {reference}</p>}
           </CardContent>
         </Card>
         <ReturnRefresh active={Boolean(state && state.tone === "neutral" && !(left && state.checkoutStatus !== null && state.checkoutStatus !== "paid"))} />

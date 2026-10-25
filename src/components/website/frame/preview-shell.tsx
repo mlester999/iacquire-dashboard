@@ -196,7 +196,7 @@ export function PreviewShell({ title, subtitle, src, onClose, actions, pages, pa
           }} />
         </div>
       </div>
-      <div className="flex shrink-0 justify-between gap-4 px-4 py-1.5 text-[11px] text-white/65"><span>{width}px viewport · {Math.round(scale * 100)}%</span><span id="preview-help">Scroll anywhere, or use Page Up, Page Down, Home and End · Esc to close</span></div>
+      <div className="flex shrink-0 justify-between gap-4 px-4 py-1.5 text-[12px] text-white/65"><span>{width}px viewport · {Math.round(scale * 100)}%</span><span id="preview-help">Scroll anywhere, or use Page Up, Page Down, Home and End · Esc to close</span></div>
     </dialog>, document.body,
   );
 }

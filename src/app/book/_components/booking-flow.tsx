@@ -209,7 +209,7 @@ export function BookingFlow({
               <li key={s} className="flex items-center gap-2" aria-current={step === s ? "step" : undefined}>
                 {i > 0 && <span aria-hidden className="h-px w-4 bg-line-strong" />}
                 <span className={cn("inline-flex items-center gap-1.5", step === s && "text-ink")}>
-                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full border text-[11px]", step === s ? "border-primary bg-primary text-white" : "border-line-strong")}>{i + 1}</span>
+                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full border text-[12px]", step === s ? "border-primary bg-primary text-white" : "border-line-strong")}>{i + 1}</span>
                   {s === "time" ? "Time" : s === "details" ? "Details" : "Confirm"}
                 </span>
               </li>

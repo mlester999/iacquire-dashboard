@@ -130,7 +130,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
             <div key={String(label)} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 text-[13.5px]",done?"border-success/15 bg-success-soft/35":"border-line bg-surface-2/50")}>
               {done ? <CheckCircle2 className="size-5 text-success" /> : <span className="size-5 shrink-0 rounded-full border-2 border-line-strong" />}
               <span className={done ? "text-ink" : "text-muted"}>{label}</span>
-              <span className="ml-auto text-[11.5px] text-muted">{done?"Recorded":"Pending"}</span>
+              <span className="ml-auto text-[12px] text-muted">{done?"Recorded":"Pending"}</span>
             </div>
           ))}
         </CardContent>
@@ -335,7 +335,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                       <PlayCircle className="size-3.5" /> {j.status === "requested" ? "Begin manual setup" : "Retry manual setup"}
                     </Button>
                   )}
-                  {j.status === "failed" && j.attempt_count < 3 && j.next_retry_at && new Date(j.next_retry_at) > new Date() && <span className="text-[11px] text-muted">Retry {relativeTime(j.next_retry_at)}</span>}
+                  {j.status === "failed" && j.attempt_count < 3 && j.next_retry_at && new Date(j.next_retry_at) > new Date() && <span className="text-[12px] text-muted">Retry {relativeTime(j.next_retry_at)}</span>}
                 </li>
               ))}
             </ul>
@@ -583,7 +583,7 @@ function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boole
                   <Badge tone={i.status === "connected" ? "success" : i.status === "error" ? "danger" : i.status === "pending" ? "warning" : "neutral"}>{sentenceCase(i.status)}</Badge>
                 </div>
                 {i.detail && <p className="mt-0.5 text-[12px] text-muted">{i.detail}</p>}
-                {i.last_checked_at && <p className="text-[11.5px] text-faint">Checked {relativeTime(i.last_checked_at)}</p>}
+                {i.last_checked_at && <p className="text-[12px] text-faint">Checked {relativeTime(i.last_checked_at)}</p>}
               </li>
             ))}
           </ul>
@@ -864,7 +864,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
                   <p className="truncate text-[12px] text-muted">{m.email}</p>
                 </div>
                 <Badge tone={m.status === "active" ? "primary" : "neutral"}>{sentenceCase(m.role)}</Badge>
-                <span className="hidden text-[11.5px] text-faint sm:block">{m.last_login_at ? `Seen ${relativeTime(m.last_login_at)}` : "Never signed in"}</span>
+                <span className="hidden text-[12px] text-faint sm:block">{m.last_login_at ? `Seen ${relativeTime(m.last_login_at)}` : "Never signed in"}</span>
               </li>
             ))}
             {data.invitations.map((i) => (

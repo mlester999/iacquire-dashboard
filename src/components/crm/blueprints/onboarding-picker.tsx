@@ -160,7 +160,7 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
   return (
     <div role="group" aria-label={title} className="space-y-2">
       <div className="px-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{title}</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{title}</p>
         {hint && <p className="mt-0.5 text-[12px] leading-relaxed text-faint">{hint}</p>}
       </div>
       {children}
@@ -176,7 +176,7 @@ function SetupRadio({ name, option, checked, onSelect, disabled, industry }: { n
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-[13px] font-medium text-ink">{it.name}</span>
-          {option.kind === "blueprint" && option.item.featured && <Badge tone="violet" className="h-5 px-2 text-[11px]">Featured</Badge>}
+          {option.kind === "blueprint" && option.item.featured && <Badge tone="violet" className="h-5 px-2 text-[12px]">Featured</Badge>}
         </span>
         <span className="mt-0.5 block text-[12px] text-muted">
           {BLUEPRINT_INDUSTRY_LABELS[it.industry]}
@@ -217,7 +217,7 @@ function SetupPreview({ option }: { option: Option | null }) {
       </div>
       {it.description && <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-muted">{it.description}</p>}
 
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">What it adds</p>
+      <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">What it adds</p>
       {it.modules.length ? (
         <ul className="mt-1.5 flex flex-wrap gap-1.5">
           {it.modules.map((m) => (
@@ -230,7 +230,7 @@ function SetupPreview({ option }: { option: Option | null }) {
         <p className="mt-1 text-[12.5px] text-muted">This Blueprint is empty.</p>
       )}
 
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Left to set up afterwards</p>
+      <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Left to set up afterwards</p>
       {reqs.length ? (
         <ul className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
           {reqs.slice(0, 8).map((r) => (

@@ -180,10 +180,10 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
       <details className="mt-4 text-[12px] text-muted">
         <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"><Keyboard className="size-3.5" aria-hidden /> Keyboard shortcuts</summary>
         <ul className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">/</kbd> search the queue</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">j</kbd> / <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">k</kbd> next / previous request</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">r</kbd> write a reply</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">Ctrl</kbd>/<kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">⌘</kbd> + <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">Enter</kbd> send</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">/</kbd> search the queue</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">j</kbd> / <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">k</kbd> next / previous request</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">r</kbd> write a reply</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">Ctrl</kbd>/<kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">⌘</kbd> + <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">Enter</kbd> send</li>
         </ul>
       </details>
     </div>

@@ -182,7 +182,7 @@ export function ContactsWorkspace({
           </ul>
           {[{ title: "Pinned", items: pinned }, { title: "Shared with the team", items: team }, { title: "My lists", items: mine }].filter((g) => g.items.length).map((g) => (
             <div key={g.title}>
-              <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{g.title}</p>
+              <p className="px-2.5 pb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-faint">{g.title}</p>
               <ul className="space-y-0.5">
                 {g.items.map((l) => {
                   const active = state.list === l.id;
@@ -191,7 +191,7 @@ export function ContactsWorkspace({
                       <Link href={hrefWith({ list: l.id, f: null, archived: null })} aria-current={active ? "page" : undefined}
                         className={cn("flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[13.5px] font-medium", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2")}>
                         <span className="truncate">{l.name}</span>
-                        {l.isDefault && <Badge tone="primary" className="h-5 px-1.5 text-[10px]">Default</Badge>}
+                        {l.isDefault && <Badge tone="primary" className="h-5 px-1.5 text-[12px]">Default</Badge>}
                       </Link>
                       <button type="button" onClick={() => run(`pin-${l.id}`, () => pinSmartListAction(scope.orgId, l.id, !l.pinned))} aria-label={l.pinned ? `Unpin ${l.name}` : `Pin ${l.name}`}
                         className="ml-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-faint opacity-0 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100">
@@ -309,7 +309,7 @@ export function ContactsWorkspace({
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-[13px]">
-                <thead className="bg-surface-2/60 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">
+                <thead className="bg-surface-2/60 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">
                   <tr>
                     <th scope="col" className="w-10 px-3 py-2.5">
                       <input type="checkbox" aria-label="Select all on this page" className="size-4 accent-[var(--primary)]" checked={selected.size === page.rows.length && page.rows.length > 0} onChange={toggleAll} />

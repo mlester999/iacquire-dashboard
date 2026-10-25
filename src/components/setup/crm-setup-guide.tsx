@@ -165,7 +165,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
                     s.key === current.key ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2",
                   )}
                 >
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-line text-[11px] tabular-nums">{i + 1}</span>
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-line text-[12px] tabular-nums">{i + 1}</span>
                   <span className="min-w-0 flex-1 truncate">{s.title}</span>
                   <StepDot status={s.status} />
                 </button>
@@ -177,7 +177,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
         <Card>
           <CardContent className="space-y-5 p-5 sm:p-6">
             <div id="crm-setup-step" tabIndex={-1} className="space-y-2 outline-none">
-              <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">Step {index + 1} of {steps.length}</p>
+              <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">Step {index + 1} of {steps.length}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">{current.title}</h3>
                 <StatusBadge status={current.status} />
@@ -186,7 +186,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
             </div>
 
             <div className="rounded-xl border border-line bg-surface-2 px-4 py-3" aria-live="polite">
-              <p className="text-[11.5px] font-medium text-muted">What we found</p>
+              <p className="text-[12px] font-medium text-muted">What we found</p>
               <p className="mt-1 text-[13.5px] leading-relaxed text-ink">{current.summary}</p>
               {current.next && <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">Next: {current.next}</p>}
             </div>
@@ -198,7 +198,7 @@ export function CrmSetupGuide({ scope, data }: { scope: CrmScope; data: CrmSetup
 
             {current.links.length > 0 && (
               <div>
-                <p className="mb-1.5 text-[11.5px] font-medium text-muted">Where to do it</p>
+                <p className="mb-1.5 text-[12px] font-medium text-muted">Where to do it</p>
                 <ul className="flex flex-wrap gap-2">
                   {current.links.map((l) => {
                     const href = hrefFor(l, scope);

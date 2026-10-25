@@ -129,10 +129,10 @@ export function RequestsList({ data, counts, query, seesAll, timeZone }: {
                     <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink-2 ring-1 ring-inset ring-line" aria-hidden><Icon className="size-4" /></span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-2 ring-1 ring-inset ring-line">{r.ref}</span>
+                        <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{r.ref}</span>
                         <StatusPill tone={tone(r.status)} size="sm">{label}</StatusPill>
                         <InfoChip>{REQUEST_TYPE_LABELS[r.requestType].label}</InfoChip>
-                        {r.hasUnreadReply && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-white"><MessageSquarePlus className="size-3" aria-hidden /> New reply</span>}
+                        {r.hasUnreadReply && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[12px] font-semibold text-white"><MessageSquarePlus className="size-3" aria-hidden /> New reply</span>}
                       </div>
                       <h2 className="mt-2 line-clamp-2 break-words text-[15px] font-semibold leading-snug tracking-tight text-ink group-hover:text-primary-ink" title={r.subject}>{r.subject}</h2>
                       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted">

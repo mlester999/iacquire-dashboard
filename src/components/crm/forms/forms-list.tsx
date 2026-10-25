@@ -86,7 +86,7 @@ export function FormsList({ scope, forms, canManage, contactsProblem, orgSlug, c
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <Link href={open(f.id)} className="block truncate text-[15px] font-semibold tracking-tight text-ink hover:underline">{f.name}</Link>
-                    <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted">/{f.key}</p>
+                    <p className="mt-0.5 truncate font-mono text-[12px] text-muted">/{f.key}</p>
                   </div>
                   <Menu>
                     <MenuTrigger asChild>
@@ -125,12 +125,12 @@ export function FormsList({ scope, forms, canManage, contactsProblem, orgSlug, c
                 <p className="mt-2 text-[12.5px] text-muted">{FORM_PURPOSE_LABELS[f.purpose]} · {f.questionCount} {f.questionCount === 1 ? "question" : "questions"}{f.publishedVersion ? ` · version ${f.publishedVersion}` : ""}</p>
                 {canSeeSubmissions && (
                   <dl className="mt-auto grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
-                    <div><dt className="text-[11px] text-muted">Last 7 days</dt><dd className="text-[15px] font-semibold tabular-nums text-ink">{f.submissions.last7Days}</dd></div>
-                    <div><dt className="text-[11px] text-muted">Waiting</dt><dd className="text-[15px] font-semibold tabular-nums text-ink">{f.submissions.waiting}</dd></div>
-                    <div><dt className="text-[11px] text-muted">Need a look</dt><dd className={f.submissions.failed ? "text-[15px] font-semibold tabular-nums text-danger-ink" : "text-[15px] font-semibold tabular-nums text-ink"}>{f.submissions.failed}</dd></div>
+                    <div><dt className="text-[12px] text-muted">Last 7 days</dt><dd className="text-[15px] font-semibold tabular-nums text-ink">{f.submissions.last7Days}</dd></div>
+                    <div><dt className="text-[12px] text-muted">Waiting</dt><dd className="text-[15px] font-semibold tabular-nums text-ink">{f.submissions.waiting}</dd></div>
+                    <div><dt className="text-[12px] text-muted">Need a look</dt><dd className={f.submissions.failed ? "text-[15px] font-semibold tabular-nums text-danger-ink" : "text-[15px] font-semibold tabular-nums text-ink"}>{f.submissions.failed}</dd></div>
                   </dl>
                 )}
-                {canSeeSubmissions && <p className="mt-2 text-center text-[11.5px] text-muted">{f.submissions.lastAt ? <>Last answer <RelativeTime iso={f.submissions.lastAt} timezone={scope.timezone} /></> : "No answers yet"}</p>}
+                {canSeeSubmissions && <p className="mt-2 text-center text-[12px] text-muted">{f.submissions.lastAt ? <>Last answer <RelativeTime iso={f.submissions.lastAt} timezone={scope.timezone} /></> : "No answers yet"}</p>}
               </Card>
             </li>
           ))}

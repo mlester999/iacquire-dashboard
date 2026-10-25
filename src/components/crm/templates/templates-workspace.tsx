@@ -160,7 +160,7 @@ export function TemplatesWorkspace(props: TemplatesWorkspaceProps) {
                     <div className="space-y-3">
                       {groups.map(([f, items]) => (
                         <div key={f || "none"}>
-                          {(groups.length > 1 || f) && <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{f || "No folder"}</p>}
+                          {(groups.length > 1 || f) && <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{f || "No folder"}</p>}
                           <Card className="divide-y divide-line overflow-hidden p-0">
                             {items.map((t) => (
                               <div key={t.id} className={cn("flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50", t.status === "archived" && "opacity-70")}>
@@ -173,7 +173,7 @@ export function TemplatesWorkspace(props: TemplatesWorkspaceProps) {
                                   </span>
                                   {t.subject && <span className="mt-1 block truncate text-[12.5px] font-medium text-ink-2"><TokenHighlight text={t.subject} /></span>}
                                   <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-relaxed text-muted"><TokenHighlight text={t.body} /></span>
-                                  <span className="mt-1 block text-[11.5px] text-faint" suppressHydrationWarning>
+                                  <span className="mt-1 block text-[12px] text-faint" suppressHydrationWarning>
                                     v{t.currentVersion}{t.status === "draft" && t.currentVersion > 1 ? " · not approved" : ""} · updated {relativeTime(t.updatedAt)}{t.versionCreatedByName ? ` by ${t.versionCreatedByName}` : ""}
                                   </span>
                                 </button>

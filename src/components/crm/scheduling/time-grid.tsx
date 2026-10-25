@@ -140,7 +140,7 @@ export function TimeGrid({
     <div className="scrollbar-thin overflow-x-auto">
       <div className={cn(days.length > 1 && "min-w-[680px]")}>
         <div className="grid border-b border-line" style={{ gridTemplateColumns: cols }}>
-          <div className="flex items-end justify-center pb-2 text-[10px] font-medium text-faint" aria-hidden>{zoneOffset(timeZone, zonedToInstant(days[0], 720, timeZone))}</div>
+          <div className="flex items-end justify-center pb-2 text-[12px] font-medium text-faint" aria-hidden>{zoneOffset(timeZone, zonedToInstant(days[0], 720, timeZone))}</div>
           {days.map((d) => {
             const isToday = d === today;
             return (
@@ -152,7 +152,7 @@ export function TimeGrid({
                     aria-label={`${formatDay(d, { weekday: "short" })} ${formatDay(d, { day: "numeric" })}, ${formatDay(d, { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}. Open this day.`}
                     className="inline-flex min-h-11 flex-col items-center justify-center rounded-xl px-2 hover:bg-surface-2 sm:min-h-0 sm:py-1"
                   >
-                    <span className={cn("text-[11px] font-medium uppercase tracking-wide", isToday ? "text-primary" : "text-muted")}>{formatDay(d, { weekday: "short" })}</span>{" "}
+                    <span className={cn("text-[12px] font-medium uppercase tracking-wide", isToday ? "text-primary" : "text-muted")}>{formatDay(d, { weekday: "short" })}</span>{" "}
                     <span className={cn("mt-0.5 inline-flex size-7 items-center justify-center rounded-full text-[14px] font-semibold tabular-nums", isToday ? "bg-primary text-primary-on" : "text-ink")}>{formatDay(d, { day: "numeric" })}</span>
                   </button>
                 ) : (
@@ -166,7 +166,7 @@ export function TimeGrid({
           <div ref={gridRef} className="relative grid" style={{ gridTemplateColumns: cols, height: 24 * HOUR_PX }}>
             <div className="relative" aria-hidden>
               {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-                <span key={h} className="absolute right-2 -translate-y-1/2 text-[10.5px] tabular-nums text-faint" style={{ top: h * HOUR_PX }}>{minuteLabel(h * 60)}</span>
+                <span key={h} className="absolute right-2 -translate-y-1/2 text-[12px] tabular-nums text-faint" style={{ top: h * HOUR_PX }}>{minuteLabel(h * 60)}</span>
               ))}
             </div>
             {days.map((d, di) => {
@@ -185,7 +185,7 @@ export function TimeGrid({
                     ))}
                     {busy?.[di].map((b) => (
                       <div key={`busy-${b.top}`} className="absolute inset-x-1 rounded-md border border-line-strong/60 bg-[repeating-linear-gradient(135deg,transparent_0_6px,var(--color-line-strong)_6px_8px)]" style={{ top: b.top * PX, height: Math.max(6, (b.bottom - b.top) * PX) }}>
-                        {(b.bottom - b.top) >= 30 && <span className="absolute left-1.5 top-1 rounded bg-surface/90 px-1 text-[10px] font-medium text-muted">Busy elsewhere</span>}
+                        {(b.bottom - b.top) >= 30 && <span className="absolute left-1.5 top-1 rounded bg-surface/90 px-1 text-[12px] font-medium text-muted">Busy elsewhere</span>}
                       </div>
                     ))}
                   </div>
@@ -230,17 +230,17 @@ export function TimeGrid({
                         )}
                         style={{ ...st.style, top: seg.top * PX + 1, height: h, left: `calc(${(seg.col / seg.cols) * 100}% + 2px)`, width: `calc(${100 / seg.cols}% - 4px)` }}
                       >
-                        <span className="flex items-center gap-1 text-[11px] font-semibold leading-tight">
+                        <span className="flex items-center gap-1 text-[12px] font-semibold leading-tight">
                           <StatusGlyph status={item.status} />
                           <span className="truncate">{name}</span>
                         </span>
-                        {h >= 34 && <>{" "}<span className="block truncate text-[10.5px] leading-tight text-ink-2/90 tabular-nums">{timeRangeIn(item.startAt, item.endAt, timeZone)}</span></>}
-                        {h >= 50 && item.type && <>{" "}<span className="block truncate text-[10.5px] leading-tight text-muted">{item.type.name}</span></>}
+                        {h >= 34 && <>{" "}<span className="block truncate text-[12px] leading-tight text-ink-2/90 tabular-nums">{timeRangeIn(item.startAt, item.endAt, timeZone)}</span></>}
+                        {h >= 50 && item.type && <>{" "}<span className="block truncate text-[12px] leading-tight text-muted">{item.type.name}</span></>}
                       </button>
                     );
                   })}
                   {ghost && ghost.day === di && (
-                    <div aria-hidden className="pointer-events-none absolute inset-x-1 z-10 rounded-lg border-2 border-dashed border-primary bg-primary-soft/60 px-1.5 py-1 text-[11px] font-semibold text-primary-ink" style={{ top: ghost.minute * PX, height: Math.max(20, ghost.duration * PX) }}>
+                    <div aria-hidden className="pointer-events-none absolute inset-x-1 z-10 rounded-lg border-2 border-dashed border-primary bg-primary-soft/60 px-1.5 py-1 text-[12px] font-semibold text-primary-ink" style={{ top: ghost.minute * PX, height: Math.max(20, ghost.duration * PX) }}>
                       {minuteLabel(ghost.minute)}
                     </div>
                   )}

@@ -213,7 +213,7 @@ export function ChatRail(props: ChatRailProps) {
         </Link>
         <div className="flex items-center gap-1">
           {shell.org.isDemo && (
-            <span className="rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink" title="Demo workspace with fictional sample data">
+            <span className="rounded-full bg-violet-soft px-2 py-0.5 text-[12px] font-medium text-violet-ink" title="Demo workspace with fictional sample data">
               Demo
             </span>
           )}
@@ -234,7 +234,7 @@ export function ChatRail(props: ChatRailProps) {
         {/* B. AI specialists: choosing one opens that employee's chat (and nothing else). */}
         <div className="flex shrink-0 items-baseline justify-between gap-2 px-6 pb-1.5 pt-3">
           <h2 className="workspace-nav-section">AI specialists</h2>
-          <span className="min-w-0 truncate text-[11px] text-[var(--nav-muted)]" title={shell.org.name}>
+          <span className="min-w-0 truncate text-[12px] text-[var(--nav-muted)]" title={shell.org.name}>
             {shell.org.name}
           </span>
         </div>
@@ -253,7 +253,7 @@ export function ChatRail(props: ChatRailProps) {
                 <AgentAvatar role={s.meta} size="sm" eager />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block truncate text-[13px] leading-tight", s.current ? "font-semibold" : "font-medium")}>{s.name}</span>
-                  <span className="mt-0.5 block truncate text-[11px] leading-tight text-[var(--nav-muted)] [@media(max-height:760px)]:hidden">{specialistCaption(s.status)}</span>
+                  <span className="mt-0.5 block truncate text-[12px] leading-tight text-[var(--nav-muted)] [@media(max-height:760px)]:hidden">{specialistCaption(s.status)}</span>
                 </span>
                 <span aria-hidden className="flex pr-1">
                   <StatusDot status={s.status} />
@@ -267,7 +267,7 @@ export function ChatRail(props: ChatRailProps) {
         {/* C. Conversations with the current employee only: histories are kept per employee. */}
         <div className="mx-3 mt-4 flex shrink-0 items-center justify-between gap-2 border-t border-[var(--nav-line)] px-3 pt-4">
           <h2 className="workspace-nav-section">Conversations</h2>
-          <span className="min-w-0 truncate text-[11px] text-[var(--nav-muted)]" title={`Chats with ${props.agentName}`}>
+          <span className="min-w-0 truncate text-[12px] text-[var(--nav-muted)]" title={`Chats with ${props.agentName}`}>
             {meta.shortName}
           </span>
         </div>
@@ -416,7 +416,7 @@ function ConversationList({ conversations, activeId, search, listState, onRetry,
         <div className={cn("transition-opacity", listState === "loading" && "opacity-60")}>
           {groups.map(([label, items]) => (
             <div key={label} className="mb-2">
-              <h3 className="px-3 pb-1 pt-2 text-[11px] font-medium text-[var(--nav-muted)]">{label}</h3>
+              <h3 className="px-3 pb-1 pt-2 text-[12px] font-medium text-[var(--nav-muted)]">{label}</h3>
               <ul className="space-y-0.5">
                 {items.map((c) => {
                   const active = c.id === activeId;
@@ -431,7 +431,7 @@ function ConversationList({ conversations, activeId, search, listState, onRetry,
                         className={cn("nav-row relative min-h-11 w-full gap-2 pl-3 pr-11 text-left text-[13px] transition-[background-color,box-shadow,color] duration-200 lg:min-h-9", active && "before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[#a8c0ff]")}
                       >
                         <span className={cn("min-w-0 flex-1 truncate", active && "font-semibold")}>{c.title}</span>
-                        <time dateTime={c.lastMessageAt} className="shrink-0 text-[11px] tabular-nums text-[var(--nav-muted)]">
+                        <time dateTime={c.lastMessageAt} className="shrink-0 text-[12px] tabular-nums text-[var(--nav-muted)]">
                           {compactRelativeTime(c.lastMessageAt, now, timeZone)}
                         </time>
                       </button>

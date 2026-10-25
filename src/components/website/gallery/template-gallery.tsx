@@ -25,8 +25,8 @@ import { TemplateThumb } from "./template-thumbnail";
 function Tags({ card, limit = 3 }: { card: GalleryCard; limit?: number }) {
   return (
     <ul className="flex flex-wrap gap-1" aria-label="Style">
-      <li className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-semibold", card.mode === "dark" ? "bg-ink text-surface" : "bg-surface-3 text-ink-2")}>{card.mode === "dark" ? "Dark" : "Light"}</li>
-      {card.tags.filter((t) => t !== "light" && t !== "dark").slice(0, limit - 1).map((t) => <li key={t} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-ink-2">{t}</li>)}
+      <li className={cn("rounded-full px-2 py-0.5 text-[12px] font-semibold", card.mode === "dark" ? "bg-ink text-surface" : "bg-surface-3 text-ink-2")}>{card.mode === "dark" ? "Dark" : "Light"}</li>
+      {card.tags.filter((t) => t !== "light" && t !== "dark").slice(0, limit - 1).map((t) => <li key={t} className="rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-medium capitalize text-ink-2">{t}</li>)}
     </ul>
   );
 }
@@ -62,12 +62,12 @@ function Card({ card, frameBase, selected, view, onPreview, onSelect, chooseLabe
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink shadow-lg"><Eye className="size-3.5" aria-hidden /> Preview</span>
           </span>
         </button>
-        {card.featured && <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-ink/85 px-2 py-1 text-[10.5px] font-semibold text-white backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
+        {card.featured && <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-ink/85 px-2 py-1 text-[12px] font-semibold text-white backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
         {selected && <span className="absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-primary text-white shadow-lg" role="img" aria-label="Selected"><Check className="size-4" /></span>}
       </div>
       <div className={cn("flex min-w-0 flex-1 flex-col gap-3 p-5", list && "sm:p-6")}>
         <div className="min-w-0">
-          <p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{card.familyName}</p>
+          <p className="truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{card.familyName}</p>
           <h2 className="mt-1 truncate text-[20px] font-semibold tracking-tight">{card.name}</h2>
         </div>
         <p className={cn("text-[13px] leading-relaxed text-muted", list ? "line-clamp-3" : "line-clamp-2")}>{card.description}</p>
@@ -140,7 +140,7 @@ export function TemplateGallery({ cards, frameBase, onChoose, chooseLabel = "Use
       <GalleryFilters cards={cards} value={filters} onChange={setFilters} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="group" aria-label="Template collection" className="flex rounded-xl border border-line bg-surface p-1">
-          {([{ id: "all", label: "All templates", count: scope.length }, { id: "featured", label: "Featured", count: featuredCount }] as const).map((item) => <button key={item.id} type="button" aria-pressed={collection === item.id} onClick={() => setCollection(item.id)} className={cn("inline-flex min-h-10 items-center gap-2 rounded-lg px-3.5 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-primary", collection === item.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{item.id === "featured" && <Star className="size-3.5" aria-hidden />}{item.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", collection === item.id ? "bg-primary/10" : "bg-surface-3")}>{item.count}</span></button>)}
+          {([{ id: "all", label: "All templates", count: scope.length }, { id: "featured", label: "Featured", count: featuredCount }] as const).map((item) => <button key={item.id} type="button" aria-pressed={collection === item.id} onClick={() => setCollection(item.id)} className={cn("inline-flex min-h-10 items-center gap-2 rounded-lg px-3.5 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-primary", collection === item.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{item.id === "featured" && <Star className="size-3.5" aria-hidden />}{item.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", collection === item.id ? "bg-primary/10" : "bg-surface-3")}>{item.count}</span></button>)}
         </div>
         <div className="flex items-center gap-3">
           <p className="text-[12px] text-muted" role="status">{list.length} design{list.length === 1 ? "" : "s"}</p>

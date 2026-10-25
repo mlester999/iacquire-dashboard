@@ -424,7 +424,7 @@ export function StudioWorkspace(props: WorkspaceProps) {
       <Dialog open={dialog === "history"} onOpenChange={(o) => !o && setDialog(null)} size="md" title="Version history" description="Published versions are what actually runs. Restoring one puts its content in your draft; nothing changes until you publish.">
         <div className="space-y-4">
           <section aria-label="Published versions">
-            <h3 className="pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-faint">Published</h3>
+            <h3 className="pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">Published</h3>
             {workflow.versions.length === 0 ? <p className="text-[13px] text-muted">Nothing is published yet.</p> : (
               <ul className="divide-y divide-line rounded-xl border border-line">
                 {workflow.versions.map((v) => (
@@ -437,7 +437,7 @@ export function StudioWorkspace(props: WorkspaceProps) {
             )}
           </section>
           <section aria-label="Recent changes to the draft">
-            <h3 className="pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-faint">Recent changes to the draft</h3>
+            <h3 className="pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">Recent changes to the draft</h3>
             {props.history.length === 0 ? <p className="text-[13px] text-muted">No changes yet.</p> : (
               <ol className="max-h-56 space-y-1 overflow-y-auto text-[12.5px]">
                 {[...props.history].reverse().slice(0, 25).map((h) => <li key={h.seq} className="flex gap-2 text-ink-2"><span className="w-14 shrink-0 text-faint">{h.source === "ai" ? "Builder" : "You"}</span><span className="min-w-0">{h.label}</span></li>)}

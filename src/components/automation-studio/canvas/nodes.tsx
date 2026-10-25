@@ -19,12 +19,12 @@ export function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData, 
       <div className="flex items-start gap-3">
         <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl brand-gradient text-white"><TriggerIcon /></span>
         <div className="min-w-0">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">When this happens</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">When this happens</p>
           <p className="truncate text-[13.5px] font-semibold text-ink" title={data.title}>{data.title}</p>
           {data.detail && <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">{data.detail}</p>}
         </div>
       </div>
-      {data.errors > 0 && data.firstProblem && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-danger-soft px-2 py-1.5 text-[11.5px] leading-snug text-danger-ink"><AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />{data.firstProblem}</p>}
+      {data.errors > 0 && data.firstProblem && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-danger-soft px-2 py-1.5 text-[12px] leading-snug text-danger-ink"><AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />{data.firstProblem}</p>}
       <Handle id="next" type="source" position={Position.Bottom} isConnectable={!data.readOnly} title="Connect the trigger to a step" />
     </div>
   );
@@ -49,7 +49,7 @@ export function StepNode({ data, selected }: NodeProps<Node<StepNodeData, "step"
       <div className="flex items-start gap-3">
         <span className={cn("inline-flex size-9 shrink-0 items-center justify-center rounded-xl", stepTone(data.kind))}><StepIcon kind={data.kind} /></span>
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
+          <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
             <span className="tabular-nums">{data.entry ? "First step" : `Step ${data.number}`}</span>
             <span aria-hidden>·</span>
             <span className="truncate">{kindLabel(data.kind)}</span>
@@ -60,10 +60,10 @@ export function StepNode({ data, selected }: NodeProps<Node<StepNodeData, "step"
       </div>
       {(problem || data.warnings > 0 || data.asksApproval || data.outside) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {problem && <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-medium text-danger-ink" title={data.firstProblem ?? undefined}><AlertTriangle className="size-3" aria-hidden />Needs attention</span>}
-          {!problem && data.warnings > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning-ink" title={data.firstProblem ?? undefined}><AlertTriangle className="size-3" aria-hidden />Heads up</span>}
-          {data.asksApproval && <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-2"><ShieldCheck className="size-3" aria-hidden />Asks first</span>}
-          {data.outside && <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-ink"><ExternalLink className="size-3" aria-hidden />Reaches out</span>}
+          {problem && <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-[12px] font-medium text-danger-ink" title={data.firstProblem ?? undefined}><AlertTriangle className="size-3" aria-hidden />Needs attention</span>}
+          {!problem && data.warnings > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[12px] font-medium text-warning-ink" title={data.firstProblem ?? undefined}><AlertTriangle className="size-3" aria-hidden />Heads up</span>}
+          {data.asksApproval && <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-medium text-ink-2"><ShieldCheck className="size-3" aria-hidden />Asks first</span>}
+          {data.outside && <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[12px] font-medium text-primary-ink"><ExternalLink className="size-3" aria-hidden />Reaches out</span>}
         </div>
       )}
       {!end && !branch && <Handle id="next" type="source" position={Position.Bottom} isConnectable={!data.readOnly} title={`Connect ${data.title} to the next step`} />}
@@ -91,7 +91,7 @@ function BranchOutput({ side, condition }: { side: "yes" | "no"; condition: stri
       data-branch-side={side}
       title={condition ? `${word}: ${condition}` : undefined}
       className={cn(
-        "absolute top-0 inline-flex h-5 -translate-x-1/2 items-center rounded-full px-2 text-[10.5px] font-bold uppercase tracking-wider",
+        "absolute top-0 inline-flex h-5 -translate-x-1/2 items-center rounded-full px-2 text-[12px] font-bold uppercase tracking-wider",
         side === "yes" ? "left-[24%] bg-success-soft text-success-ink" : "left-[76%] bg-surface-3 text-ink-2",
       )}
     >

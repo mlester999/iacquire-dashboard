@@ -53,7 +53,7 @@ export function StepPanel({ step, number, definition, options, issues, readOnly,
       <div className="flex items-start gap-3">
         <span className={cn("inline-flex size-10 shrink-0 items-center justify-center rounded-xl", stepTone(step.kind))}><StepIcon kind={step.kind} /></span>
         <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Step {number}</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Step {number}</p>
           <h3 className="text-[16px] font-semibold text-ink">{spec.label}</h3>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{spec.description}</p>
         </div>

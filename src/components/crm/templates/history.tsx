@@ -63,8 +63,8 @@ export function VersionHistory({
               className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12.5px] font-medium transition", x.version === v.version ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
             >
               v{x.version}
-              {x.version === approvedVersion && <span className="rounded-full bg-success-soft px-1.5 text-[10.5px] text-success-ink">approved</span>}
-              {x.version === currentVersion && x.version !== approvedVersion && <span className="rounded-full bg-surface-3 px-1.5 text-[10.5px] text-ink-2">current</span>}
+              {x.version === approvedVersion && <span className="rounded-full bg-success-soft px-1.5 text-[12px] text-success-ink">approved</span>}
+              {x.version === currentVersion && x.version !== approvedVersion && <span className="rounded-full bg-surface-3 px-1.5 text-[12px] text-ink-2">current</span>}
             </button>
           </li>
         ))}

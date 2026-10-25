@@ -105,7 +105,7 @@ const CHANNEL_TONE: Record<ConversationChannel, string> = { sms: "text-primary",
 function ChannelBadge({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
+    <span className={cn("inline-flex items-center gap-1 text-[12px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
       {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
@@ -489,7 +489,7 @@ export function InboxWorkspace(props: Props) {
             </div>
           </Sheet>
         )}
-        <p className="hidden text-[11.5px] text-faint xl:block">Shortcuts: <Kbd>/</Kbd> search · <Kbd>J</Kbd> <Kbd>K</Kbd> next and previous conversation · <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> send</p>
+        <p className="hidden text-[12px] text-faint xl:block">Shortcuts: <Kbd>/</Kbd> search · <Kbd>J</Kbd> <Kbd>K</Kbd> next and previous conversation · <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> send</p>
       </div>
     </InboxActions.Provider>
   );
@@ -1014,7 +1014,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
     if (m.direction === "internal") {
       return (
         <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[13px]">
-          <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
+          <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
           <p className="whitespace-pre-wrap">{m.body}</p>
         </div>
       );
@@ -1026,9 +1026,9 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
     return (
       <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div className={cn("max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", out ? (m.authorKind === "ai" ? "bg-violet-soft text-ink" : "bg-primary-soft text-ink") : "bg-surface-2", m.status === "draft" && "border border-dashed border-warning/60")}>
-          {out && <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-muted">{m.authorKind === "ai" || m.authorKind === "system" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : m.authorKind === "system" ? "Automatic notice" : (m.authorName ?? "Teammate")}</p>}
+          {out && <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-muted">{m.authorKind === "ai" || m.authorKind === "system" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : m.authorKind === "system" ? "Automatic notice" : (m.authorName ?? "Teammate")}</p>}
           <p className="whitespace-pre-wrap break-words">{m.body}</p>
-          <p className={cn("mt-1 flex flex-wrap items-center gap-x-2 text-[11px]", STATUS_STYLE[m.status])}>
+          <p className={cn("mt-1 flex flex-wrap items-center gap-x-2 text-[12px]", STATUS_STYLE[m.status])}>
             <span suppressHydrationWarning>{formatDateTime(m.createdAt, timeZone)}</span>
             {out && <StatusMark status={m.status} />}
             {out && (m.status === "blocked" || m.status === "failed" || m.status === "draft") && reason && <span>· {reason}</span>}
@@ -1046,7 +1046,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
               )}
             </div>
           )}
-          {m.retryOf && <p className="mt-1 text-[11px] text-muted">Sent again after an earlier attempt failed.</p>}
+          {m.retryOf && <p className="mt-1 text-[12px] text-muted">Sent again after an earlier attempt failed.</p>}
           {m.status === "draft" && m.authorKind === "ai" && perms.reply && (
             <div className="mt-2 flex gap-2">
               <Button
@@ -1083,7 +1083,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
   /** A change of hands, an AI pause, a resolve: said once, in place, between the messages it happened between. */
   function renderEvent(e: { id: string; at: string; text: string }) {
     return (
-      <div key={e.id} role="note" className="flex items-center gap-2 text-[11.5px] text-faint">
+      <div key={e.id} role="note" className="flex items-center gap-2 text-[12px] text-faint">
         <span aria-hidden className="h-px flex-1 bg-line" />
         <span className="max-w-[80%] text-center"><span className="text-muted">{e.text}</span> · <span suppressHydrationWarning>{formatDateTime(e.at, timeZone)}</span></span>
         <span aria-hidden className="h-px flex-1 bg-line" />
@@ -1133,7 +1133,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
                   <option value="">No outcome</option>
                   {CONVERSATION_OUTCOMES.map((o) => <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>)}
                 </Select>
-                <p className="mt-1.5 text-[11.5px] text-muted">A new message from the customer reopens it.</p>
+                <p className="mt-1.5 text-[12px] text-muted">A new message from the customer reopens it.</p>
                 <div className="mt-2 flex justify-end gap-2">
                   <Button size="sm" variant="ghost" onClick={() => setResolveOpen(false)}>Cancel</Button>
                   <Button size="sm" variant="brand" loading={busy === "state"} onClick={resolve}>Resolve</Button>
@@ -1216,7 +1216,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         </div>
         {suggestion && mode === "reply" && (
           <div role="region" aria-label="Suggested reply" className="mb-2 rounded-xl border border-violet/30 bg-violet-soft/50 p-3 text-[13px]">
-            <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-violet-ink"><Sparkles className="size-3.5" aria-hidden />AI suggestion · not sent · not verified</p>
+            <p className="flex items-center gap-1.5 text-[12px] font-semibold text-violet-ink"><Sparkles className="size-3.5" aria-hidden />AI suggestion · not sent · not verified</p>
             <p className="mt-1.5 whitespace-pre-wrap">{suggestion.text}</p>
             {suggestion.warnings.length > 0 && (
               <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[12px] text-warning-ink">{suggestion.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
@@ -1248,7 +1248,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         )}
         {/* On a phone the floating AQi launcher sits over the bottom-right corner: keep Send clear of it. */}
         <div className="mt-2 flex items-center justify-between gap-2 max-sm:pb-3">
-          <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? (c.channel === "web_chat" ? "Appears in the visitor's chat window" : `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender`) : "Visible to your team only"}</span>
+          <span className="text-[12px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? (c.channel === "web_chat" ? "Appears in the visitor's chat window" : `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender`) : "Visible to your team only"}</span>
           <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>
       </footer>
@@ -1276,7 +1276,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
 function DeliveryDetails({ events, timeZone, failed }: { events: InboxMessage["deliveryEvents"]; timeZone: string; failed: boolean }) {
   const last = events[events.length - 1];
   return (
-    <details className="group mt-1 text-[11px] text-muted" open={failed && Boolean(last?.detail || last?.rawStatus) ? true : undefined}>
+    <details className="group mt-1 text-[12px] text-muted" open={failed && Boolean(last?.detail || last?.rawStatus) ? true : undefined}>
       <summary className="inline-flex min-h-6 cursor-pointer list-none items-center gap-1 font-medium hover:text-ink [&::-webkit-details-marker]:hidden">
         Delivery details<span aria-hidden className="transition group-open:rotate-90">›</span>
       </summary>
@@ -1320,14 +1320,14 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
           {shown.map((r) => (
             <li key={r.id}>
               <button type="button" onClick={() => { focus.markPicked(); onPick(r.body); setOpen(false); setQ(""); }} className="w-full rounded-xl px-3 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
-                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[11px] text-faint">{r.folderName}</span>}</span>
+                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
                 <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted">{r.body}</span>
               </button>
             </li>
           ))}
           {!shown.length && <li className="px-3 py-3 text-center text-[12.5px] text-muted">No canned replies match.</li>}
         </ul>
-        <p className="mt-2 px-1 text-[11px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
+        <p className="mt-2 px-1 text-[12px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
       </PopoverContent>
     </Popover>
   );
@@ -1439,13 +1439,13 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
 
       <section className="rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[13px] font-semibold">What we know</h2>
-        <h3 className="mt-2 text-[11.5px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
+        <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
         <ul className="mt-1 space-y-1.5 text-[12.5px]">
           {confirmed.length ? confirmed.map((m) => (
             <li key={m.id} className="flex items-start justify-between gap-2"><span>{m.content}</span>{perms.editContacts && <button aria-label="Delete this note" onClick={() => run(`m${m.id}`, () => deleteMemoryAction(m.id), "Removed.")} className="text-muted hover:text-danger-ink"><XCircle className="size-3.5" /></button>}</li>
           )) : <li className="text-muted">Nothing confirmed yet.</li>}
         </ul>
-        <h3 className="mt-3 text-[11.5px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
+        <h3 className="mt-3 text-[12px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
         <ul className="mt-1 space-y-1.5 text-[12.5px]">
           {summaries.length ? summaries.map((m) => <li key={m.id} className="text-ink-2">{m.content}</li>) : <li className="text-muted">None.</li>}
         </ul>
@@ -1462,10 +1462,10 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
         <h2 className="text-[13px] font-semibold">Activity</h2>
         <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[12.5px]">
           {detail.timeline.length ? detail.timeline.slice(-8).map((t, i) => (
-            <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[11px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
+            <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[12px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
           )) : <li className="text-muted">No activity recorded yet.</li>}
         </ol>
-        <p className="mt-2 text-[11.5px] text-muted">Only real events are listed.</p>
+        <p className="mt-2 text-[12px] text-muted">Only real events are listed.</p>
       </section>
     </aside>
   );

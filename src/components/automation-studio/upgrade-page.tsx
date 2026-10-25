@@ -227,11 +227,11 @@ export function UpgradePage(p: UpgradeProps) {
             </p>
             <div className="mt-7"><Cta tone="stage" state={p.state} canRequest={p.canRequest} requestNote={p.requestNote} /></div>
             <div className="mt-auto pt-8">
-              <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-[var(--stage-muted)]">What happens when you request</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--stage-muted)]">What happens when you request</p>
               <ol className="mt-3 space-y-2.5 text-[13px] leading-snug text-[var(--stage-ink-2)]">
                 {["You review the plan’s scope and price on the Maintenance page.", "The workspace owner sends the request.", "iAcquire reviews it and activates the plan. Billing starts on the date they confirm."].map((t, i) => (
                   <li key={t} className="flex gap-3">
-                    <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--stage-line)] text-[10.5px] font-semibold tabular-nums text-[var(--stage-accent)]">{i + 1}</span>{t}
+                    <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--stage-line)] text-[12px] font-semibold tabular-nums text-[var(--stage-accent)]">{i + 1}</span>{t}
                   </li>
                 ))}
               </ol>
@@ -249,7 +249,7 @@ export function UpgradePage(p: UpgradeProps) {
                 </tr>
               </thead>
               <tbody>
-                <tr><th colSpan={3} scope="colgroup" className="px-4 pb-1 pt-4 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-faint sm:px-6">Stays exactly as it is</th></tr>
+                <tr><th colSpan={3} scope="colgroup" className="px-4 pb-1 pt-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-faint sm:px-6">Stays exactly as it is</th></tr>
                 {rows.now.map((t) => (
                   <tr key={t} className="border-b border-line last:border-0">
                     <th scope="row" className="px-4 py-3 font-normal leading-snug text-ink-2 sm:px-6">{t}</th>
@@ -257,7 +257,7 @@ export function UpgradePage(p: UpgradeProps) {
                     <td className="px-1 py-3 text-center"><Mark on label="With the plan" /></td>
                   </tr>
                 ))}
-                <tr><th colSpan={3} scope="colgroup" className="px-4 pb-1 pt-5 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-primary-ink sm:px-6">Added by the plan</th></tr>
+                <tr><th colSpan={3} scope="colgroup" className="px-4 pb-1 pt-5 text-[12px] font-semibold uppercase tracking-[0.12em] text-primary-ink sm:px-6">Added by the plan</th></tr>
                 {rows.plan.map((t) => (
                   <tr key={t} className="border-b border-line last:border-0">
                     <th scope="row" className="px-4 py-3 font-medium leading-snug text-ink sm:px-6">{t}</th>
@@ -290,7 +290,7 @@ export function UpgradePage(p: UpgradeProps) {
                 ].map(([n, t]) => (
                   <li key={t} className="rounded-xl border border-line bg-surface px-3 py-2">
                     <span className="block text-[16px] font-semibold leading-tight text-ink tabular-nums">{n}</span>
-                    <span className="block text-[11.5px] leading-snug text-muted">{t}</span>
+                    <span className="block text-[12px] leading-snug text-muted">{t}</span>
                   </li>
                 ))}
               </ul>

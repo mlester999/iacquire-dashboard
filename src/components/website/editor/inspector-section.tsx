@@ -141,7 +141,7 @@ export function AnimationEditor({ anim, onChange, stagger }: { anim: Anim | unde
           <Row label="Speed"><Seg label="Animation speed" value={a.speed} onChange={(v) => onChange({ ...a, speed: v })} options={[{ value: "fast", label: "Fast" }, { value: "normal", label: "Normal" }, { value: "slow", label: "Slow" }]} /></Row>
           <Row label="Delay"><NumberControl label="Animation delay" value={a.delay} min={0} max={1500} step={50} unit="ms" onChange={(v) => onChange({ ...a, delay: v })} /></Row>
           {stagger && <Toggle label="Stagger the items" hint="Items inside appear one after another." checked={a.stagger} onChange={(v) => onChange({ ...a, stagger: v })} />}
-          <p className="text-[11px] leading-relaxed text-muted">Plays once, when it scrolls into view. Skipped for visitors who ask their device for reduced motion.</p>
+          <p className="text-[12px] leading-relaxed text-muted">Plays once, when it scrolls into view. Skipped for visitors who ask their device for reduced motion.</p>
         </>
       )}
     </div>
@@ -187,8 +187,8 @@ export function SectionInspector({ sec, role, shared, patch, onColumns, readOnly
   const setLayout = (p: Partial<typeof l>, key = "layout") => patch((s) => ({ ...s, layout: { ...s.layout, ...p } }), `${key}:${sec.id}`);
   return (
     <>
-      {readOnlyNote && <p className="mx-4 mt-3 rounded-lg bg-surface-3 p-2.5 text-[11.5px] leading-relaxed text-muted">{readOnlyNote}</p>}
-      {shared && <p className="mx-4 mt-3 rounded-lg bg-primary-soft p-2.5 text-[11.5px] leading-relaxed text-primary-ink">This section is shared: a change here appears on every page that uses it, and nowhere else.</p>}
+      {readOnlyNote && <p className="mx-4 mt-3 rounded-lg bg-surface-3 p-2.5 text-[12px] leading-relaxed text-muted">{readOnlyNote}</p>}
+      {shared && <p className="mx-4 mt-3 rounded-lg bg-primary-soft p-2.5 text-[12px] leading-relaxed text-primary-ink">This section is shared: a change here appears on every page that uses it, and nowhere else.</p>}
       <Group title="Section">
         <Row label="Name" htmlFor={`sn-${sec.id}`}><TextControl id={`sn-${sec.id}`} value={sec.name} maxLength={40} placeholder="For your own reference" onChange={(e) => patch((s) => ({ ...s, name: e.target.value }), `name:${sec.id}`)} /></Row>
         <Row label="Colour mood" hint="Auto follows the site. Dark, Brand and Accent re-colour text and buttons inside so they stay readable."><Seg label="Colour mood" value={sec.tone} options={TONES.map((t) => ({ ...t }))} onChange={(v) => patch((s) => ({ ...s, tone: v }))} size="sm" /></Row>
@@ -210,7 +210,7 @@ export function SectionInspector({ sec, role, shared, patch, onColumns, readOnly
       </Group>
       <Group title="Layout">
         <Row label="Columns"><Seg label="Columns" value={String(Math.min(sec.columns.length, 4))} onChange={(v) => onColumns(Number(v))} options={["1", "2", "3", "4"].map((n) => ({ value: n, label: n }))} /></Row>
-        {sec.columns.length >= LIMITS.columnsPerSection && <p className="text-[11px] text-muted">A section holds up to {LIMITS.columnsPerSection} columns.</p>}
+        {sec.columns.length >= LIMITS.columnsPerSection && <p className="text-[12px] text-muted">A section holds up to {LIMITS.columnsPerSection} columns.</p>}
         <Row label="Content width"><Seg label="Content width" value={l.width} onChange={(v) => setLayout({ width: v })} options={[{ value: "narrow", label: "Narrow" }, { value: "regular", label: "Regular" }, { value: "wide", label: "Wide" }, { value: "full", label: "Full" }]} size="sm" /></Row>
         <Row label="Minimum height"><SelectControl label="Minimum height" value={l.minH} onChange={(v) => setLayout({ minH: v })} options={[{ value: "auto", label: "Fit the content" }, { value: "40", label: "40% of the screen" }, { value: "60", label: "60%" }, { value: "75", label: "75%" }, { value: "90", label: "90%" }, { value: "100", label: "Full screen" }]} /></Row>
         <Row label="Vertical alignment"><Seg label="Vertical alignment" value={l.valign} onChange={(v) => setLayout({ valign: v })} options={[{ value: "start", label: "Top" }, { value: "center", label: "Middle" }, { value: "end", label: "Bottom" }, { value: "stretch", label: "Stretch" }]} size="sm" /></Row>

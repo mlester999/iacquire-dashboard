@@ -227,7 +227,7 @@ export function CaptureDialog({ open, onOpenChange, clients, initialOrgId, initi
                           <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={pickable.length > 0 && on === pickable.length} disabled={!pickable.length}
                             ref={(el) => { if (el) el.indeterminate = on > 0 && on < pickable.length; }} onChange={(e) => toggleSection(g.section, e.target.checked)} />
                           <span className="flex-1 text-[13px] font-semibold text-ink">{sectionLabel(g.section)}</span>
-                          <span className="text-[11.5px] tabular-nums text-muted">{on}/{pickable.length}</span>
+                          <span className="text-[12px] tabular-nums text-muted">{on}/{pickable.length}</span>
                         </label>
                         <ul className="divide-y divide-line">
                           {g.items.map((c) => {

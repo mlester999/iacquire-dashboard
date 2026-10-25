@@ -97,10 +97,10 @@ export function CampaignSummary({ scope, campaign, filterOptions, listFilter }: 
         <h3 className="text-[15px] font-semibold text-ink">The message</h3>
         {campaign.message ? (
           <div className="mt-2 rounded-2xl border border-line bg-surface-2/60 p-3">
-            <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{campaign.message.name} · v{campaign.message.version} · exact wording</p>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{campaign.message.name} · v{campaign.message.version} · exact wording</p>
             {campaign.message.subject && <p className="text-[13px] font-medium text-ink">{campaign.message.subject}</p>}
             <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{campaign.message.body}</p>
-            <p className="mt-1.5 text-[11.5px] text-muted">Placeholders such as {"{{contact.first_name}}"} are filled in for each person; someone missing a detail it uses is left out.</p>
+            <p className="mt-1.5 text-[12px] text-muted">Placeholders such as {"{{contact.first_name}}"} are filled in for each person; someone missing a detail it uses is left out.</p>
           </div>
         ) : <p className="mt-2 text-[12.5px] text-muted">No message chosen.</p>}
       </Card>
@@ -175,7 +175,7 @@ export function DeliveryLog({ scope, campaign, page, filter }: { scope: CrmScope
           <EmptyState compact icon={<ListFilter className="size-5" />} title={filter === "all" ? "No recipients yet" : "Nobody here"} description={filter === "all" ? "Recipients are read from the Smart List when sending starts." : "No recipient has this outcome."} />
         ) : (
           <>
-            <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint md:grid">
+            <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-faint md:grid">
               <span>{canContacts ? "Contact" : "Recipient"}</span><span>Outcome</span><span>Detail</span><span>Updated</span>
             </div>
             <ul className="divide-y divide-line">

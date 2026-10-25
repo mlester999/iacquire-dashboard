@@ -131,7 +131,7 @@ export function NotificationTimestamp({
       title={absolute}
       aria-label={`${relative}, ${absolute}`}
       className={cn(
-        "inline-flex h-6 max-w-full shrink-0 items-center gap-1 rounded-md bg-surface-2/80 px-1.5 text-[11px] font-medium tabular-nums text-muted ring-1 ring-inset ring-line",
+        "inline-flex h-6 max-w-full shrink-0 items-center gap-1 rounded-md bg-surface-2/80 px-1.5 text-[12px] font-medium tabular-nums text-muted ring-1 ring-inset ring-line",
         className,
       )}
     >
@@ -147,7 +147,7 @@ export function NotificationCategoryChip({ kind, className }: { kind: string; cl
   return (
     <span
       className={cn(
-        "inline-flex h-5 min-w-0 max-w-full items-center gap-1.5 rounded-md bg-surface-2/70 px-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-muted ring-1 ring-inset ring-line",
+        "inline-flex h-5 min-w-0 max-w-full items-center gap-1.5 rounded-md bg-surface-2/70 px-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-muted ring-1 ring-inset ring-line",
         className,
       )}
     >

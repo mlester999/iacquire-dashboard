@@ -150,7 +150,7 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
                     <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ background: STAGE_COLORS[index % 4] }} />
                     <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2">
                       <p className="truncate text-[13px] font-semibold" title={stage.name}>{stage.name}</p>
-                      <span className="min-w-6 rounded-full bg-surface px-2 py-0.5 text-center text-[11.5px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">{items.length}</span>
+                      <span className="min-w-6 rounded-full bg-surface px-2 py-0.5 text-center text-[12px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">{items.length}</span>
                     </div>
                     <p className="px-2 pb-2.5 text-[12px] font-medium tabular-nums text-ink-2">{value ? formatCurrency(value) : <span className="font-normal text-muted">No value set</span>}</p>
                     <div className="space-y-2">
@@ -260,27 +260,27 @@ function OpportunitySheet({ opp, onClose, canNote, canTask, timeZone }: { opp: O
         <div className="space-y-6 p-5">
           <dl className="grid grid-cols-2 gap-3 text-[13px]">
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Status</dt>
+              <dt className="text-[12px] text-muted">Status</dt>
               <dd className="mt-1.5"><StatusPill tone={STATUS_TONE[opp.status] ?? "neutral"}>{sentenceCase(opp.status)}</StatusPill></dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Value</dt>
+              <dt className="text-[12px] text-muted">Value</dt>
               <dd className="mt-0.5 text-[18px] font-semibold tabular-nums">{opp.monetary_value ? formatCurrency(opp.monetary_value) : <span className="text-[13px] font-normal text-muted">Not set</span>}</dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Contact</dt>
+              <dt className="text-[12px] text-muted">Contact</dt>
               <dd className="mt-0.5 break-words font-medium">{opp.contact_label ?? "—"}</dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Source</dt>
+              <dt className="text-[12px] text-muted">Source</dt>
               <dd className="mt-0.5 break-words font-medium">{opp.source ? sentenceCase(opp.source) : "—"}</dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Owner</dt>
+              <dt className="text-[12px] text-muted">Owner</dt>
               <dd className="mt-1.5">{opp.assigned_to ? <InfoChip icon={<UserRound />}>{opp.assigned_to}</InfoChip> : <StatusPill tone="neutral" size="sm">Unassigned</StatusPill>}</dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
-              <dt className="text-[11.5px] text-muted">Updated</dt>
+              <dt className="text-[12px] text-muted">Updated</dt>
               <dd className="mt-0.5 font-medium">{opp.remote_updated_at ? formatDateTime(opp.remote_updated_at, timeZone) : "—"}</dd>
             </div>
           </dl>
@@ -343,7 +343,7 @@ function OpportunitySheet({ opp, onClose, canNote, canTask, timeZone }: { opp: O
                 {notes.map((n) => (
                   <li key={n.id} className={cn("rounded-xl border border-line p-3")}>
                     <p className="whitespace-pre-wrap text-[13px]">{n.body}</p>
-                    <p className="mt-1 text-[11.5px] text-faint">
+                    <p className="mt-1 text-[12px] text-faint">
                       {n.author ?? "Someone"} · {relativeTime(n.created_at)}
                     </p>
                   </li>

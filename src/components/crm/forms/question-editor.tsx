@@ -56,7 +56,7 @@ export function AddQuestionMenu({ onAdd, disabled, label = "Add question" }: { o
               <Icon className="mt-0.5 size-4 shrink-0 text-muted" />
               <span className="min-w-0">
                 <span className="block text-[13px] font-medium text-ink">{QUESTION_TYPE_LABELS[t]}</span>
-                <span className="block text-[11.5px] leading-snug text-muted">{QUESTION_TYPE_HINTS[t]}</span>
+                <span className="block text-[12px] leading-snug text-muted">{QUESTION_TYPE_HINTS[t]}</span>
               </span>
             </MenuItem>
           );
@@ -89,7 +89,7 @@ export function QuestionList({
               <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"><Icon className="size-3.5" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-medium text-ink">{q.label || <span className="text-faint">Untitled question</span>}{q.required && <span role="img" className="text-danger" aria-label="required"> *</span>}</span>
-                <span className="flex items-center gap-1.5 truncate text-[11.5px] text-muted">
+                <span className="flex items-center gap-1.5 truncate text-[12px] text-muted">
                   {QUESTION_TYPE_LABELS[q.type]}
                   {q.visibleWhen?.conditions.length ? <GitBranch className="size-3" aria-label="Shown only when a condition holds" /> : null}
                   {q.map ? <span className="truncate">· {targetLabel(q.map, fields)}</span> : null}
@@ -290,7 +290,7 @@ function ChoicesEditor({ q, onChange, readOnly }: { q: FormQuestion; onChange: (
         {opts.map((o, i) => (
           <li key={i} className="flex items-center gap-1.5">
             <Input aria-label={`Choice ${i + 1}`} value={o.label} maxLength={120} onChange={(e) => update(i, e.target.value)} className="flex-1" />
-            <span className="hidden max-w-[9rem] truncate font-mono text-[11px] text-faint sm:inline" title={`Stored as ${o.value}`}>{o.value}</span>
+            <span className="hidden max-w-[9rem] truncate font-mono text-[12px] text-faint sm:inline" title={`Stored as ${o.value}`}>{o.value}</span>
             {!readOnly && (
               <>
                 <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move choice ${i + 1} up`} className="inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 disabled:opacity-30"><ArrowUp className="size-3.5" /></button>

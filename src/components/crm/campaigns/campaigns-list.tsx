@@ -122,7 +122,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
         </Card>
       ) : (
         <Card className="overflow-hidden p-0">
-          <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_150px_140px_200px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint md:grid">
+          <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_150px_140px_200px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-faint md:grid">
             <span>Campaign</span><span>Status</span><span>When</span><span>Progress</span>
           </div>
           <ul className="divide-y divide-line">
@@ -150,7 +150,7 @@ export function CampaignsList({ scope, campaigns, canManage, initialFilter }: { 
                     {started ? (
                       <>
                         <ProgressBar value={pct} tone={c.status === "paused" ? "warning" : c.status === "completed" ? "success" : "primary"} label={`${c.name}: ${Math.round(pct)}% handled`} />
-                        <CountChips counts={c.counts} className="mt-1 text-[11.5px] tabular-nums text-muted" />
+                        <CountChips counts={c.counts} className="mt-1 text-[12px] tabular-nums text-muted" />
                       </>
                     ) : (
                       <p className="text-[12.5px] text-faint">Not started</p>

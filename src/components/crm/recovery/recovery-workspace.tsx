@@ -38,7 +38,7 @@ function Stat({ label, value, help }: { label: string; value: React.ReactNode; h
     <div className="rounded-2xl border border-line bg-surface p-4" title={help}>
       <p className="text-[12px] font-medium text-muted">{label}</p>
       <p className="mt-1 text-[22px] font-semibold tabular-nums text-ink">{value}</p>
-      {help && <p className="mt-0.5 text-[11.5px] leading-snug text-faint">{help}</p>}
+      {help && <p className="mt-0.5 text-[12px] leading-snug text-faint">{help}</p>}
     </div>
   );
 }

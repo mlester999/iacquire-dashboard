@@ -174,9 +174,9 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
         <div data-aqi-target="crm.workflows.list" className="space-y-5">
           {groups.map((g) => (
             <section key={g.id || "none"} aria-label={g.name || "No folder"}>
-              {(groups.length > 1 || g.name) && <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{g.name || "No folder"}</h3>}
+              {(groups.length > 1 || g.name) && <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{g.name || "No folder"}</h3>}
               <Card className="overflow-hidden p-0">
-                <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_104px_120px_84px_84px_44px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint md:grid">
+                <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_104px_120px_84px_84px_44px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-faint md:grid">
                   <span>Workflow</span><span>Status</span><span>Last run</span><span className="text-right">Runs today</span><span className="text-right">Failures</span><span />
                 </div>
                 <ul className="divide-y divide-line">
@@ -187,10 +187,10 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
                         <p className="mt-0.5 truncate text-[12.5px] text-muted">{w.triggerSummary}{w.stepCount ? ` · ${w.stepCount} ${w.stepCount === 1 ? "step" : "steps"}` : " · no steps yet"}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="md:hidden"><WorkflowStatusBadge status={w.status} /></span>
-                          {w.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+                          {w.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
                           {/* Every approval state that keeps it from running: needed, requested, declined, lapsed. */}
-                          {w.approval !== "not_needed" && w.approval !== "approved" && approvalBadge(w.approval, "h-5 px-2 text-[11px]")}
-                          {w.unpublishedChanges && w.publishedVersion && <Badge className="h-5 px-2 text-[11px]">Unpublished changes</Badge>}
+                          {w.approval !== "not_needed" && w.approval !== "approved" && approvalBadge(w.approval, "h-5 px-2 text-[12px]")}
+                          {w.unpublishedChanges && w.publishedVersion && <Badge className="h-5 px-2 text-[12px]">Unpublished changes</Badge>}
                         </div>
                       </div>
                       <div className="hidden md:block"><WorkflowStatusBadge status={w.status} /></div>
@@ -432,8 +432,8 @@ function TemplateCard({ t }: { t: WorkflowTemplateItem }) {
       </span>
       {t.sendsMessages && (
         <span className="mt-2 flex flex-wrap gap-1">
-          <Badge tone="primary" className="h-5 px-2 text-[11px]">{t.sendsMessages === "optional" ? "Can send a message" : "Sends a message"}</Badge>
-          <Badge tone="warning" className="h-5 px-2 text-[11px]"><ShieldAlert className="size-3" aria-hidden />Owner approves first</Badge>
+          <Badge tone="primary" className="h-5 px-2 text-[12px]">{t.sendsMessages === "optional" ? "Can send a message" : "Sends a message"}</Badge>
+          <Badge tone="warning" className="h-5 px-2 text-[12px]"><ShieldAlert className="size-3" aria-hidden />Owner approves first</Badge>
         </span>
       )}
     </span>

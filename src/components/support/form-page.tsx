@@ -111,9 +111,9 @@ export async function SupportFormPage({ kind, searchParams }: { kind: RequestTyp
                 {recent.items.map((r) => (
                   <li key={r.id}>
                     <Link href={`/support/${r.id}`} className="block rounded-lg py-2.5 hover:bg-surface-2/60 focus-visible:outline-2 focus-visible:outline-primary">
-                      <div className="flex items-center gap-2"><span className="font-mono text-[11px] text-muted">{r.ref}</span><StatusPill size="sm" status={r.status}>{statusLabelForClient(r.status, r.requestType, r.feedbackStage as FeedbackStage | null)}</StatusPill>{r.hasUnreadReply && <span role="img" className="size-2 rounded-full bg-primary" aria-label="New reply" />}</div>
+                      <div className="flex items-center gap-2"><span className="font-mono text-[12px] text-muted">{r.ref}</span><StatusPill size="sm" status={r.status}>{statusLabelForClient(r.status, r.requestType, r.feedbackStage as FeedbackStage | null)}</StatusPill>{r.hasUnreadReply && <span role="img" className="size-2 rounded-full bg-primary" aria-label="New reply" />}</div>
                       <p className="mt-1 line-clamp-1 text-[13px] font-medium text-ink">{r.subject}</p>
-                      <p className="text-[11.5px] text-muted"><span suppressHydrationWarning>{REQUEST_TYPE_LABELS[r.requestType].label} · {relativeTime(r.lastActivityAt)}</span></p>
+                      <p className="text-[12px] text-muted"><span suppressHydrationWarning>{REQUEST_TYPE_LABELS[r.requestType].label} · {relativeTime(r.lastActivityAt)}</span></p>
                     </Link>
                   </li>
                 ))}

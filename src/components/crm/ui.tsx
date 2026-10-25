@@ -51,7 +51,7 @@ export function useCrmAction() {
 const AVATAR_TONES = ["bg-[#e8eefe] text-[#2541b2]", "bg-[#e7f7ee] text-[#0b7a3b]", "bg-[#fff1e5] text-[#a1440c]", "bg-[#f1edff] text-[#5a3ee0]", "bg-[#fdecf3] text-[#a3245e]", "bg-[#e6f6f8] text-[#0b6672]"];
 export function Avatar({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
   const tone = AVATAR_TONES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % AVATAR_TONES.length];
-  const dims = { sm: "size-7 text-[11px]", md: "size-9 text-[12.5px]", lg: "size-14 text-[18px]" }[size];
+  const dims = { sm: "size-7 text-[12px]", md: "size-9 text-[12.5px]", lg: "size-14 text-[18px]" }[size];
   return <span aria-hidden className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold", dims, tone, className)}>{initialsOf(name || "?")}</span>;
 }
 

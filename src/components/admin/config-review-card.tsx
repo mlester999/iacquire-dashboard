@@ -74,30 +74,30 @@ export function ConfigReviewCard({
         <CardContent className="space-y-4">
           <dl className="grid gap-x-5 gap-y-3 rounded-xl border border-line bg-surface p-3.5 text-[12.5px] sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Client organization</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Client organization</dt>
               <dd className="mt-0.5 font-medium text-ink">{item.orgName}</dd>
             </div>
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">AI employee</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">AI employee</dt>
               <dd className="mt-0.5 font-medium text-ink">{item.agentName}</dd>
             </div>
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Proposed version</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Proposed version</dt>
               <dd className="mt-0.5 font-medium text-ink">v{item.version}</dd>
             </div>
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Submitted by</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Submitted by</dt>
               <dd className="mt-0.5 text-ink-2">
                 <UserRound className="mr-1 inline size-3.5 text-faint" aria-hidden />
                 {item.submittedBy}{item.submittedByRole ? ` · ${item.submittedByRole}` : ""}
               </dd>
             </div>
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Submitted</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Submitted</dt>
               <dd className="mt-0.5 text-ink-2">{formatDateTime(item.submittedAt, timeZone)}</dd>
             </div>
             <div>
-              <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Current applied configuration</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Current applied configuration</dt>
               <dd className="mt-0.5 text-ink-2">{item.appliedVersion ? `v${item.appliedVersion} remains active` : "No configuration is currently applied"}</dd>
             </div>
           </dl>
@@ -116,10 +116,10 @@ export function ConfigReviewCard({
                   <div className="min-w-0">
                     <p className="text-[13px] font-medium text-ink">
                       {reason.label}
-                      <span className="ml-2 text-[11px] font-normal uppercase tracking-wide text-warning-ink">{reason.severity === "block" ? "Blocked" : "Review required"}</span>
+                      <span className="ml-2 text-[12px] font-normal uppercase tracking-wide text-warning-ink">{reason.severity === "block" ? "Blocked" : "Review required"}</span>
                     </p>
                     <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{reason.detail}</p>
-                    {reason.field && <p className="mt-1 font-mono text-[11px] text-faint">{reason.field}</p>}
+                    {reason.field && <p className="mt-1 font-mono text-[12px] text-faint">{reason.field}</p>}
                     {reason.match && <p className="mt-1 break-words rounded-lg bg-surface px-2 py-1 text-[12px] text-ink-2">“{reason.match}”</p>}
                   </div>
                 </div>
@@ -158,14 +158,14 @@ export function ConfigReviewCard({
             <details className="group rounded-xl border border-line bg-surface">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[12.5px] font-medium text-ink-2">
                 <span className="flex items-center gap-2"><FileText className="size-4 text-faint" aria-hidden /> Compiled instruction evidence</span>
-                <span className="text-[11px] text-faint">Authorized reviewers only</span>
+                <span className="text-[12px] text-faint">Authorized reviewers only</span>
               </summary>
               <div className="border-t border-line p-3">
-                <p className="mb-2 text-[11.5px] leading-relaxed text-muted">
+                <p className="mb-2 text-[12px] leading-relaxed text-muted">
                   This is the exact instruction the employee would receive if this version were applied. Credential-like values are redacted.
                 </p>
-                <pre tabIndex={0} className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-2.5 font-mono text-[11px] leading-relaxed text-ink-2">{item.compiledInstructions}</pre>
-                {item.compiledInstructionsTruncated && <p className="mt-2 text-[11.5px] text-warning-ink">The preview is truncated for the browser. The full compiled instructions remain stored with the version.</p>}
+                <pre tabIndex={0} className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-2.5 font-mono text-[12px] leading-relaxed text-ink-2">{item.compiledInstructions}</pre>
+                {item.compiledInstructionsTruncated && <p className="mt-2 text-[12px] text-warning-ink">The preview is truncated for the browser. The full compiled instructions remain stored with the version.</p>}
               </div>
             </details>
           )}
@@ -223,7 +223,7 @@ export function ConfigReviewCard({
           )}
           <label htmlFor={`review-note-${item.id}`} className="flex flex-wrap items-baseline justify-between gap-2 text-[13px] font-medium text-ink-2">
             <span>Reason for the decision <span className="text-danger-ink">(required)</span></span>
-            <span className="text-[11.5px] font-normal text-faint">{note.length}/300</span>
+            <span className="text-[12px] font-normal text-faint">{note.length}/300</span>
           </label>
           <p id={`review-note-help-${item.id}`} className="text-[12px] leading-relaxed text-muted">
             Explain what you checked and why this decision is safe. At least 5 characters. The note is recorded in the audit trail.

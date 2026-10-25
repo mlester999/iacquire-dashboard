@@ -74,7 +74,7 @@ function StagesEditor({ pipeline }: { pipeline: PipelineAsset }) {
         {pipeline.stages.map((s, i) => (
           <li key={s.id} className="space-y-3 rounded-2xl border border-line p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Stage {i + 1} <code className="ml-1 font-mono text-[11px] normal-case tracking-normal text-faint">{s.id}</code></span>
+              <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Stage {i + 1} <code className="ml-1 font-mono text-[12px] normal-case tracking-normal text-faint">{s.id}</code></span>
               {!readOnly && (
                 <span className="flex items-center gap-1">
                   <Button variant="ghost" size="icon-sm" onClick={() => setStages(moveItem(pipeline.stages, i, -1))} disabled={i === 0} aria-label={`Move ${s.name} up`}><ArrowUp className="size-4" /></Button>

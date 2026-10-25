@@ -49,7 +49,7 @@ export function MultiPick({ id, label, options, value, onChange, empty, max }: {
               <input id={`${id}-${o.id}`} type="checkbox" className="size-4 accent-[var(--primary)]" checked={on} disabled={atMax} onChange={(e) => toggle(o.id, e.target.checked)} />
               {o.color && <i className="size-2.5 shrink-0 rounded-full" style={{ background: o.color }} aria-hidden />}
               <span className="min-w-0 flex-1 truncate text-ink-2">{o.label}</span>
-              {o.hint && <span className="shrink-0 text-[11.5px] text-faint">{o.hint}</span>}
+              {o.hint && <span className="shrink-0 text-[12px] text-faint">{o.hint}</span>}
             </label>
           );
         })}

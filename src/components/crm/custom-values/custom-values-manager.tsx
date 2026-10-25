@@ -179,7 +179,7 @@ function ValueRow({ scope, value: v, canManage, onEdit, onDelete }: { scope: Crm
             {v.missingRequired ? <Badge tone="danger"><AlertTriangle className="size-3" aria-hidden />Required, empty</Badge> : v.required ? <Badge tone="warning">Required</Badge> : null}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-ink-2">{v.token}</code>
+            <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink-2">{v.token}</code>
             <Button variant="ghost" size="icon-sm" aria-label={`Copy the token for ${v.label}`} onClick={() => copy(v.token, "Token")}><Copy className="size-3.5" /></Button>
           </div>
           <div className="mt-1.5 text-[13px]"><ValuePreview value={v} /></div>

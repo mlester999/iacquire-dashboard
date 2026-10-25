@@ -87,7 +87,7 @@ export function TasksWorkspace({
             <Link key={v.value} href={hrefWith({ view: v.value === "mine" ? null : v.value })} aria-current={active ? "page" : undefined}
               className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium sm:min-h-9", active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:text-ink")}>
               {v.label}
-              {n !== null && <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold", v.value === "overdue" && n > 0 ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
+              {n !== null && <span className={cn("rounded-full px-1.5 py-0.5 text-[12px] font-semibold", v.value === "overdue" && n > 0 ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
             </Link>
           );
         })}
@@ -130,7 +130,7 @@ export function TasksWorkspace({
             const items = tasks.filter((t) => t.status === status);
             return (
               <section key={status} className="rounded-2xl border border-line bg-surface-2/60" aria-label={STATUS_LABEL[status]}>
-                <h3 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-[13px] font-semibold text-ink">{STATUS_LABEL[status]}<span className="rounded-full bg-surface px-1.5 text-[11.5px] font-medium text-muted ring-1 ring-line">{items.length}</span></h3>
+                <h3 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-[13px] font-semibold text-ink">{STATUS_LABEL[status]}<span className="rounded-full bg-surface px-1.5 text-[12px] font-medium text-muted ring-1 ring-line">{items.length}</span></h3>
                 <ul className="space-y-2 p-2">
                   {items.map((t) => (
                     <li key={t.id} className="rounded-xl border border-line bg-surface p-3 shadow-soft">
@@ -261,7 +261,7 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
             {comments?.map((c) => (
               <li key={c.id} className={cn("rounded-xl px-3 py-2 text-[13px]", c.mine ? "bg-primary-soft/50" : "bg-surface-2")}>
                 <p className="whitespace-pre-wrap text-ink">{c.body}</p>
-                <p className="mt-1 text-[11.5px] text-muted">{c.author ?? "Teammate"} · <RelativeTime iso={c.createdAt} timezone={scope.timezone} /></p>
+                <p className="mt-1 text-[12px] text-muted">{c.author ?? "Teammate"} · <RelativeTime iso={c.createdAt} timezone={scope.timezone} /></p>
               </li>
             ))}
             {comments?.length === 0 && <li className="text-[13px] text-muted">No comments yet.</li>}

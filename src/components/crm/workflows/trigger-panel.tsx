@@ -75,7 +75,7 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
       <div className="flex items-start gap-3">
         <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-ink text-surface dark:bg-ink dark:text-bg"><Zap className="size-4" aria-hidden /></span>
         <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Trigger</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Trigger</p>
           <h3 className="text-[16px] font-semibold text-ink">{spec.label}</h3>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{spec.description}</p>
         </div>

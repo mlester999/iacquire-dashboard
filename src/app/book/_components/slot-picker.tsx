@@ -284,7 +284,7 @@ export function SlotPicker({
           <thead>
             <tr>
               {WEEKDAYS.map(([short, long]) => (
-                <th key={short} scope="col" abbr={long} className="pb-1 text-center text-[11.5px] font-medium uppercase tracking-wide text-muted">{short.slice(0, 2)}</th>
+                <th key={short} scope="col" abbr={long} className="pb-1 text-center text-[12px] font-medium uppercase tracking-wide text-muted">{short.slice(0, 2)}</th>
               ))}
             </tr>
           </thead>
@@ -378,8 +378,8 @@ export function SlotPicker({
                   >
                     {isSel && <Check className="size-4" aria-hidden />}
                     <span>{formatTime(s.start, timeZone)}</span>
-                    {isCurrent && <span className="text-[11.5px] font-normal">· current</span>}
-                    {!isCurrent && capacity > 1 && s.remaining !== null && <span className="text-[11.5px] font-normal text-muted">· {s.remaining} left</span>}
+                    {isCurrent && <span className="text-[12px] font-normal">· current</span>}
+                    {!isCurrent && capacity > 1 && s.remaining !== null && <span className="text-[12px] font-normal text-muted">· {s.remaining} left</span>}
                   </button>
                 </li>
               );

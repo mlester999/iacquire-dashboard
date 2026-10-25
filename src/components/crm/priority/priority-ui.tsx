@@ -111,7 +111,7 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
                     <span className={cn("mt-0.5 w-9 shrink-0 text-right text-[12px] font-semibold tabular-nums", f.points > 0 ? "text-success-ink" : f.points < 0 ? "text-danger-ink" : "text-muted")}>{sign(f.points)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="font-medium text-ink">{f.label}</span>
-                      {f.source === "ai" && <Badge tone="violet" className="ml-1.5 h-5 px-1.5 text-[10px]"><Sparkles className="size-3" aria-hidden />From their messages</Badge>}
+                      {f.source === "ai" && <Badge tone="violet" className="ml-1.5 h-5 px-1.5 text-[12px]"><Sparkles className="size-3" aria-hidden />From their messages</Badge>}
                       <span className="block text-[12.5px] text-muted">{f.detail}{f.evidence.length ? ` · ${f.evidence.length} record${f.evidence.length === 1 ? "" : "s"}` : ""}</span>
                     </span>
                   </li>
@@ -133,7 +133,7 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
             {a.nextAction?.label && (
               <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px]"><span className="font-medium text-ink">Suggested next step:</span> <span className="text-ink-2">{a.nextAction.label}</span></p>
             )}
-            <p className="text-[11.5px] leading-relaxed text-faint">
+            <p className="text-[12px] leading-relaxed text-faint">
               Scored by rules{a.aiPoints ? ` (${a.rulePoints} points) with signals read from their messages (${a.aiPoints} points)` : ""}. The language model never sets a score. Rules v{a.profileVersion}, engine {a.engineVersion}.
             </p>
           </>
@@ -145,7 +145,7 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
             <ul className="mt-2 space-y-1">
               {view.recent.map((r, i) => (
                 <li key={r.seq} className="flex items-center gap-2 text-muted">
-                  <PriorityBadge label={r.label} score={r.score} className="h-5 px-2 text-[11px]" />
+                  <PriorityBadge label={r.label} score={r.score} className="h-5 px-2 text-[12px]" />
                   <RelativeTime iso={r.at} timezone={scope.timezone} />
                   {i === 0 && <span className="text-faint">· latest</span>}
                 </li>

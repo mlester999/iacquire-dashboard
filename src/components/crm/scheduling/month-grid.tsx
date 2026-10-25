@@ -35,7 +35,7 @@ export function MonthGrid({
     <div>
       <div className="grid grid-cols-7 border-b border-line" aria-hidden>
         {days.slice(0, 7).map((d) => (
-          <p key={d} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <p key={d} className="py-2 text-center text-[12px] font-semibold uppercase tracking-wide text-muted">
             <span className="hidden sm:inline">{formatDay(d, { weekday: "short" })}</span>
             <span className="sm:hidden">{formatDay(d, { weekday: "narrow" })}</span>
           </p>
@@ -64,7 +64,7 @@ export function MonthGrid({
               </div>
               <div className="pointer-events-none relative mt-1 flex flex-wrap gap-0.5 sm:hidden" aria-hidden>
                 {list.slice(0, 4).map((a) => <i key={a.id} className={cn("size-1.5 rounded-full", a.status === "cancelled" && "opacity-40")} style={{ background: colorFor(a) }} />)}
-                {list.length > 4 && <span className="text-[9px] leading-none text-muted">+{list.length - 4}</span>}
+                {list.length > 4 && <span className="text-[12px] leading-none text-muted">+{list.length - 4}</span>}
               </div>
               <ul className="relative mt-1 hidden space-y-0.5 sm:block">
                 {list.slice(0, SHOWN).map((a) => {
@@ -75,7 +75,7 @@ export function MonthGrid({
                         type="button"
                         onClick={() => onOpen(a.id)}
                         aria-label={`${timeIn(a.startAt, timeZone)}, ${a.contact?.name ?? a.title}, ${STATUS_LABEL[a.status] ?? a.status}`}
-                        className={cn("flex w-full min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left text-[11.5px] hover:bg-surface-2", a.status === "cancelled" && "text-muted line-through opacity-70", a.status === "new" && "italic")}
+                        className={cn("flex w-full min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left text-[12px] hover:bg-surface-2", a.status === "cancelled" && "text-muted line-through opacity-70", a.status === "new" && "italic")}
                       >
                         <i aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ background: color }} />
                         <span className="shrink-0 tabular-nums text-muted">{timeIn(a.startAt, timeZone)}</span>
@@ -87,7 +87,7 @@ export function MonthGrid({
                 })}
                 {list.length > SHOWN && (
                   <li>
-                    <button type="button" onClick={() => onOpenDay(d)} className="w-full rounded-md px-1 py-0.5 text-left text-[11.5px] font-medium text-primary hover:bg-surface-2">
+                    <button type="button" onClick={() => onOpenDay(d)} className="w-full rounded-md px-1 py-0.5 text-left text-[12px] font-medium text-primary hover:bg-surface-2">
                       {list.length - SHOWN} more<span className="sr-only"> on {formatDay(d, { month: "long", day: "numeric" })}</span>
                     </button>
                   </li>

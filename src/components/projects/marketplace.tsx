@@ -124,7 +124,7 @@ export function Marketplace({
               >
                 {active && <motion.span layoutId="mk-filter" className="absolute inset-0 rounded-xl border border-line bg-surface shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
                 <span className="relative">
-                  {f.label} <span className="ml-1 text-[11.5px] tabular-nums text-faint">{counts(f.id)}</span>
+                  {f.label} <span className="ml-1 text-[12px] tabular-nums text-faint">{counts(f.id)}</span>
                 </span>
               </button>
             );
@@ -248,7 +248,7 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
         <div className="min-w-0">
           <p className="text-[20px] font-semibold tabular-nums tracking-tight">{formatPrice(s.price)}</p>
-          <p className="text-[11.5px] leading-snug text-muted">{priceCaption(s)}</p>
+          <p className="text-[12px] leading-snug text-muted">{priceCaption(s)}</p>
         </div>
         {delivery && (
           <p className="flex shrink-0 items-center gap-1 text-[12px] text-ink-2">
@@ -358,19 +358,19 @@ function ServiceDetail({ service: s, canRequest, onClose }: { service: ServiceVi
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl bg-surface-2 p-3.5">
-              <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">Price</p>
+              <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">Price</p>
               <p className="mt-1 text-[20px] font-semibold tabular-nums">{formatPrice(s.price)}</p>
-              <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{s.price?.note ?? priceCaption(s)}</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-muted">{s.price?.note ?? priceCaption(s)}</p>
             </div>
             <div className="rounded-xl bg-surface-2 p-3.5">
-              <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">Typical delivery</p>
+              <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">Typical delivery</p>
               <p className="mt-1 text-[20px] font-semibold">{delivery ?? "Scoped with you"}</p>
-              <p className="mt-0.5 text-[11.5px] text-muted">A written scope and timeline come before any work starts.</p>
+              <p className="mt-0.5 text-[12px] text-muted">A written scope and timeline come before any work starts.</p>
             </div>
             <div className="rounded-xl bg-surface-2 p-3.5">
-              <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">How it&apos;s billed</p>
+              <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">How it&apos;s billed</p>
               <p className="mt-1 text-[14px] font-semibold">Quoted first</p>
-              <p className="mt-0.5 text-[11.5px] text-muted">Requesting is free. Nothing is charged automatically.</p>
+              <p className="mt-0.5 text-[12px] text-muted">Requesting is free. Nothing is charged automatically.</p>
             </div>
           </div>
 

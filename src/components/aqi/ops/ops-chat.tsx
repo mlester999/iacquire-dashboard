@@ -55,7 +55,7 @@ function Evidence({ message }: { message: OpsMessage }) {
       <ol className="mt-2 space-y-1.5">
         {evidence.map((e) => (
           <li key={e.id} className="leading-relaxed">
-            <span className="mr-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink-2">{e.id}</span>
+            <span className="mr-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] font-semibold text-ink-2">{e.id}</span>
             <span className="font-medium text-ink-2">{e.label}</span> · {e.source} · retrieved <time dateTime={e.retrievedAt} suppressHydrationWarning>{new Date(e.retrievedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
           </li>
         ))}
@@ -74,7 +74,7 @@ function MessageView({ message, onRetry, onAsk, onPick, onRefresh, onOutcome, la
       <div className="flex justify-end">
         <div className="max-w-[88%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[14px] leading-relaxed text-surface dark:text-bg">
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
-          {message.scope && message.scope.type !== "platform" && <p className="mt-1 text-[11.5px] opacity-70">{SCOPE_TYPE_LABEL[message.scope.type]}: {message.scope.label}</p>}
+          {message.scope && message.scope.type !== "platform" && <p className="mt-1 text-[12px] opacity-70">{SCOPE_TYPE_LABEL[message.scope.type]}: {message.scope.label}</p>}
         </div>
       </div>
     );
@@ -181,7 +181,7 @@ function HistorySheet({ open, onOpenChange, currentId, onOpen, onDeleted }: { op
               <li key={c.id} className={cn("group flex items-center gap-1 rounded-xl border px-3 py-2", c.id === currentId ? "border-primary/40 bg-primary-soft/50" : "border-line bg-surface")}>
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { onOpen(c.id); onOpenChange(false); }}>
                   <span className="line-clamp-2 text-[13px] font-medium text-ink">{c.title}</span>
-                  <span className="block text-[11.5px] text-muted">{relativeTime(c.lastMessageAt)}</span>
+                  <span className="block text-[12px] text-muted">{relativeTime(c.lastMessageAt)}</span>
                 </button>
                 <button type="button" onClick={() => { setDeleteError(null); setTarget(c); }} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-danger-ink sm:size-8" aria-label={`Delete ${c.title}`}><Trash2 className="size-4" aria-hidden /></button>
               </li>
@@ -285,7 +285,7 @@ export function OpsChat({ chat, scope, onScopeChange, variant, pickerSignal, dra
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2.5 sm:px-4">
         <div className="min-w-0">
           <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">{chat.title ?? "New investigation"}</h2>
-          <p className="text-[11.5px] text-muted">Answers are built from recorded evidence with its source and time.</p>
+          <p className="text-[12px] text-muted">Answers are built from recorded evidence with its source and time.</p>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => { reset(); setInput(""); setNotice(null); }} disabled={sending || (!messages.length && !chat.conversationId)}><MessageSquarePlus className="size-4" aria-hidden />New</Button>
@@ -358,7 +358,7 @@ export function OpsChat({ chat, scope, onScopeChange, variant, pickerSignal, dra
             <Button type="submit" size="icon" disabled={!input.trim()} aria-label="Send"><SendHorizontal className="size-4" aria-hidden /></Button>
           )}
         </div>
-        <p id="ops-composer-hint" className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-muted">
+        <p id="ops-composer-hint" className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[12px] text-muted">
           <span>Enter to send, Shift+Enter for a new line</span>
           {input.length > MAX - 200 && <span className={input.length > MAX ? "text-danger-ink" : undefined}>{input.length}/{MAX}</span>}
           {notice && <span className="text-danger-ink" role="alert">{notice}</span>}

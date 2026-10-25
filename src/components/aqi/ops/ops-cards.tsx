@@ -74,7 +74,7 @@ function Chrome({ card, children, onRefresh }: { card: Exclude<OpsCard, { kind: 
       </header>
       <div className="px-4 pb-3.5 pt-2.5">{children}</div>
       {error && <p className="mx-4 mb-3 flex items-start gap-1.5 text-[12.5px] text-danger-ink" role="alert"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{error}</p>}
-      <footer className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-line px-4 py-2 text-[11.5px] text-muted">
+      <footer className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-line px-4 py-2 text-[12px] text-muted">
         <span>As of <time dateTime={card.asOf} suppressHydrationWarning>{time(card.asOf)}</time></span>
         <span aria-hidden>·</span>
         <span className="min-w-0 truncate" title={card.source}>{card.source}</span>
@@ -97,10 +97,10 @@ function MetricGrid({ metrics }: { metrics: OpsMetric[] }) {
     <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {metrics.map((m) => (
         <div key={m.label} className="min-w-0 rounded-xl border border-line bg-surface-2/50 px-3 py-2.5">
-          <dt className="text-[11.5px] font-medium text-muted">{m.label}</dt>
+          <dt className="text-[12px] font-medium text-muted">{m.label}</dt>
           <dd className="mt-0.5 text-[16px] font-semibold tabular-nums leading-tight text-ink">{m.value}</dd>
           {(m.detail || m.state) && (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] leading-snug text-muted">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] leading-snug text-muted">
               {m.state && <OpsStatePill state={m.state} size="sm" />}
               {m.detail && <span>{m.detail}</span>}
             </div>
@@ -267,7 +267,7 @@ function DataTable({ card }: { card: OpsTableCard }) {
       {card.rows.length ? (
         <div className="scrollbar-thin overflow-x-auto rounded-xl border border-line" role="region" aria-label={card.title} tabIndex={0}>
           <table className="min-w-full text-left text-[12.5px]">
-            <thead className="bg-surface-2 text-[11.5px] uppercase tracking-wide text-muted">
+            <thead className="bg-surface-2 text-[12px] uppercase tracking-wide text-muted">
               <tr>{card.columns.map((c) => <th key={c.key} scope="col" className={cn("whitespace-nowrap px-3 py-2 font-medium", c.align === "right" && "text-right")}>{c.label}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-line">

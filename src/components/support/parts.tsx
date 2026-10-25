@@ -23,7 +23,7 @@ export function AttachmentChips({ files, className }: { files: ThreadAttachment[
           >
             {isImageFile(f.filename) ? <FileImage className="size-3.5 shrink-0 text-muted" aria-hidden /> : <FileText className="size-3.5 shrink-0 text-muted" aria-hidden />}
             <span className="min-w-0 truncate font-medium">{f.filename}</span>
-            <span className="shrink-0 text-[11.5px] text-muted">{formatBytes(f.sizeBytes)}</span>
+            <span className="shrink-0 text-[12px] text-muted">{formatBytes(f.sizeBytes)}</span>
             {f.visibility === "internal" && <Lock className="size-3 shrink-0 text-warning-ink" aria-label="Team only" />}
             <Download className="size-3.5 shrink-0 text-faint" aria-hidden />
           </a>
@@ -83,13 +83,13 @@ export function MessageList({
                 {m.internal && (
                   <span className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <StatusPill tone="warning" size="sm" icon={<Lock className="size-3" aria-hidden />}>Internal note</StatusPill>
-                    <span className="text-[11.5px] font-medium text-warning-ink">Not visible to the client</span>
+                    <span className="text-[12px] font-medium text-warning-ink">Not visible to the client</span>
                   </span>
                 )}
                 {m.body}
               </div>
               <AttachmentChips files={m.attachments} className={cn(own && "justify-end")} />
-              <p className={cn("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted", own && "justify-end")}>
+              <p className={cn("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted", own && "justify-end")}>
                 <span className="min-w-0 max-w-full truncate font-medium text-ink-2" title={author}>{author}</span>
                 {viewer === "agency" && <StatusPill tone={m.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{m.authorKind === "agency" ? "iAcquire team" : "Client"}</StatusPill>}
                 <time dateTime={m.createdAt}>{formatDateTime(m.createdAt, timeZone)}</time>
@@ -109,9 +109,9 @@ export function MessageList({
           <AvatarTile name="You" className="!size-8 !rounded-[9px] opacity-60" />
           <div className="min-w-0 max-w-[88%] text-right">
             <div className={cn("inline-block max-w-full break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed", p.state === "failed" ? "border border-danger/40 bg-danger-soft/50" : "bg-primary/70 text-white opacity-80 dark:bg-primary/15 dark:text-ink", p.internal && "border border-dashed border-warning/50 bg-warning-soft/50 text-ink")}>{p.body}</div>
-            {p.files.length > 0 && <p className="mt-1 text-[11.5px] text-muted">{p.files.length} file{p.files.length === 1 ? "" : "s"} attached</p>}
+            {p.files.length > 0 && <p className="mt-1 text-[12px] text-muted">{p.files.length} file{p.files.length === 1 ? "" : "s"} attached</p>}
             {p.state === "sending" ? (
-              <p className="mt-1.5 inline-flex items-center justify-end gap-1.5 text-[11.5px] text-muted"><Loader2 className="size-3 animate-spin" aria-hidden /> Sending…</p>
+              <p className="mt-1.5 inline-flex items-center justify-end gap-1.5 text-[12px] text-muted"><Loader2 className="size-3 animate-spin" aria-hidden /> Sending…</p>
             ) : (
               <div className="mt-1.5 flex flex-wrap items-center justify-end gap-2 text-[12px] text-danger-ink" role="alert">
                 <span className="inline-flex items-center gap-1"><AlertCircle className="size-3.5" aria-hidden /> {p.error ?? "This message wasn't sent."}</span>

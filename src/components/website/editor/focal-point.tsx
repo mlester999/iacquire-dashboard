@@ -41,7 +41,7 @@ export function FocalPoint({ url, x, y, onChange, label = "Focal point" }: { url
           style={{ left: `${x}%`, top: `${y}%` }}
         />
       </div>
-      <p className="text-[11px] leading-relaxed text-muted">Click or drag to choose the part of the picture that should always stay in view. Now {x}% across, {y}% down.</p>
+      <p className="text-[12px] leading-relaxed text-muted">Click or drag to choose the part of the picture that should always stay in view. Now {x}% across, {y}% down.</p>
     </div>
   );
 }

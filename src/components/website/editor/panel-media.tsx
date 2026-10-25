@@ -101,12 +101,12 @@ export function MediaLibrary({
               <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={(e) => { void upload(Array.from(e.target.files ?? []), kind); e.target.value = ""; }} />
             </div>
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-[11.5px] font-medium text-ink-2">Upload as</span>
+              <span className="shrink-0 text-[12px] font-medium text-ink-2">Upload as</span>
               <div className="min-w-0 flex-1"><Seg label="Upload as" value={kind} onChange={setKind} options={[{ value: "image", label: "Photo" }, { value: "logo", label: "Logo" }]} size="sm" /></div>
             </div>
-            <p className="text-[11px] leading-relaxed text-muted">PNG, JPG or WebP up to 10 MB. Photos are compressed for fast loading. Logos keep their format, and a plain background can be removed where possible. Drop files anywhere here.</p>
+            <p className="text-[12px] leading-relaxed text-muted">PNG, JPG or WebP up to 10 MB. Photos are compressed for fast loading. Logos keep their format, and a plain background can be removed where possible. Drop files anywhere here.</p>
           </>
-        ) : <p className="rounded-lg bg-surface-3 p-2.5 text-[11.5px] text-muted">Only owners and managers can add images.</p>}
+        ) : <p className="rounded-lg bg-surface-3 p-2.5 text-[12px] text-muted">Only owners and managers can add images.</p>}
         {!compact && (
           <div className="space-y-2">
             <TextControl aria-label="Search images by description" placeholder="Search by description" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -132,14 +132,14 @@ export function MediaLibrary({
                 <button type="button" disabled={!onPick} onClick={() => onPick?.(a)} aria-label={onPick ? `Use image: ${a.altText || "untitled"}` : `Image: ${a.altText || "untitled"}`} aria-pressed={selectedId === a.id} className={cn("relative block aspect-square w-full overflow-hidden bg-surface-3", onPick && "cursor-pointer hover:opacity-90")}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={assetUrl(a.id)} alt="" loading="lazy" className="size-full object-cover" />
-                  {a.kind === "logo" && <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-white">Logo</span>}
-                  {isUsed && <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-px text-[9.5px] font-semibold text-white">In use</span>}
+                  {a.kind === "logo" && <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-px text-[12px] font-semibold uppercase tracking-wide text-white">Logo</span>}
+                  {isUsed && <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-px text-[12px] font-semibold text-white">In use</span>}
                   {selectedId === a.id && <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-white"><Check className="size-3" aria-hidden /></span>}
                 </button>
                 {!compact && (
                   <div className="space-y-1 p-1.5">
-                    <input aria-label="Description for screen readers" defaultValue={a.altText} maxLength={200} placeholder="Describe this image" onBlur={(e) => void saveAlt(a, e.target.value.trim())} className="h-7 w-full rounded-md border border-transparent bg-surface-2 px-1.5 text-[11.5px] hover:border-line focus:border-primary focus:outline-none" />
-                    <div className="flex items-center justify-between text-[11px] tabular-nums text-muted">
+                    <input aria-label="Description for screen readers" defaultValue={a.altText} maxLength={200} placeholder="Describe this image" onBlur={(e) => void saveAlt(a, e.target.value.trim())} className="h-7 w-full rounded-md border border-transparent bg-surface-2 px-1.5 text-[12px] hover:border-line focus:border-primary focus:outline-none" />
+                    <div className="flex items-center justify-between text-[12px] tabular-nums text-muted">
                       <span>{a.width && a.height ? `${a.width}×${a.height}` : ""}</span>
                       {confirm === a.id ? (
                         <span className="flex items-center gap-1"><button type="button" onClick={() => void remove(a)} className="min-h-8 rounded-md bg-danger px-2.5 py-1 font-medium text-white">Remove</button><button type="button" onClick={() => setConfirm(null)} className="min-h-8 rounded-md px-2.5 py-1 hover:bg-surface-3">Keep</button></span>
@@ -205,7 +205,7 @@ export function MediaPickerDialog({
                 <li key={s.key}>
                   <button type="button" onClick={() => setScene(s.key)} aria-pressed={scene === s.key} className={cn("block w-full overflow-hidden rounded-xl border-2 text-left", scene === s.key ? "border-primary" : "border-transparent hover:border-line-strong")}>
                     <span className="block aspect-[16/10] overflow-hidden bg-surface-3"><Art scene={s.key} tone={tone} seed={seed} className="size-full" /></span>
-                    <span className="flex items-center justify-between gap-1 px-1.5 py-1 text-[11px]"><span className="truncate font-medium">{s.label}</span>{s.kind === "illustration" && <span className="shrink-0 rounded bg-warning-soft px-1 text-[9.5px] font-semibold text-warning-ink">Illustration</span>}</span>
+                    <span className="flex items-center justify-between gap-1 px-1.5 py-1 text-[12px]"><span className="truncate font-medium">{s.label}</span>{s.kind === "illustration" && <span className="shrink-0 rounded bg-warning-soft px-1 text-[12px] font-semibold text-warning-ink">Illustration</span>}</span>
                   </button>
                 </li>
               ))}
@@ -214,7 +214,7 @@ export function MediaPickerDialog({
               <Row label="Mood"><Seg label="Artwork mood" value={tone} onChange={setTone} options={ART_TONES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }))} size="sm" /></Row>
               <Row label="Variation"><NumberControl label="Artwork variation" value={seed} min={0} max={99} onChange={setSeed} /></Row>
               <div className="overflow-hidden rounded-xl border border-line" style={{ ["--c-primary" as string]: design.colors.primary, ["--c-accent" as string]: design.colors.accent }}><div className="aspect-[16/10]"><Art scene={scene} tone={tone} seed={seed} className="size-full" /></div></div>
-              <p className="rounded-lg bg-warning-soft/60 p-2.5 text-[11.5px] leading-relaxed text-warning-ink">An “illustration” is drawn artwork standing in for a photograph. It&apos;s fine while you build, but you&apos;ll be asked to confirm it, or replace it with your own picture, before you publish. It is never allowed to stand in for photos of your work or your people.</p>
+              <p className="rounded-lg bg-warning-soft/60 p-2.5 text-[12px] leading-relaxed text-warning-ink">An “illustration” is drawn artwork standing in for a photograph. It&apos;s fine while you build, but you&apos;ll be asked to confirm it, or replace it with your own picture, before you publish. It is never allowed to stand in for photos of your work or your people.</p>
             </div>
           </div>
         )}

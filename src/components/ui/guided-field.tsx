@@ -36,7 +36,7 @@ function FieldHelp({ id, label, guidance }: { id: string; label: string; guidanc
         {guidance.info && <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{guidance.info}</p>}
         {guidance.example && (
           <div className="mt-3 rounded-xl border border-line bg-surface-2/70 p-2.5">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-faint">Example answer</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-faint">Example answer</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{guidance.example}</p>
           </div>
         )}
@@ -103,9 +103,9 @@ function FieldHeader({
         {guidance && <FieldHelp id={id} label={label} guidance={guidance} />}
       </div>
       {required ? (
-        <span className="text-[11.5px] font-medium text-danger-ink">Required</span>
+        <span className="text-[12px] font-medium text-danger-ink">Required</span>
       ) : optional ? (
-        <span className="text-[11.5px] text-faint">Optional</span>
+        <span className="text-[12px] text-faint">Optional</span>
       ) : null}
     </div>
   );
@@ -170,7 +170,7 @@ export function GuidedField({
       )}
       <FieldIssues id={id} issues={issues} />
       {showCount && (
-        <p id={countId} className={cn("text-right text-[11.5px]", remaining !== null && remaining < 20 ? "text-warning-ink" : "text-faint")}>
+        <p id={countId} className={cn("text-right text-[12px]", remaining !== null && remaining < 20 ? "text-warning-ink" : "text-faint")}>
           {remaining} characters left
         </p>
       )}
@@ -208,7 +208,7 @@ export function GuidedChoiceField({
           <span className="text-[13px] font-medium text-ink-2">{label}</span>
           <FieldHelp id={id} label={label} guidance={guidance} />
         </span>
-        {optional && <span className="text-[11.5px] text-faint">Optional</span>}
+        {optional && <span className="text-[12px] text-faint">Optional</span>}
       </legend>
       <p id={descriptionId} className="text-[12.5px] leading-relaxed text-muted">{guidance.description}</p>
       {children}
@@ -248,7 +248,7 @@ export function GuidedSwitch({
         <div className="min-w-0">
           <p id={labelId} className="text-[13px] font-medium text-ink">{label}</p>
           <p id={descriptionId} className="mt-1 text-[12px] leading-relaxed text-muted">{description}</p>
-          <p className="mt-1.5 text-[11.5px] font-medium text-faint" aria-hidden>{checked ? onLabel : offLabel}</p>
+          <p className="mt-1.5 text-[12px] font-medium text-faint" aria-hidden>{checked ? onLabel : offLabel}</p>
         </div>
         <button
           type="button"

@@ -54,7 +54,7 @@ export function TemplateGallery({ options, canBuild }: { options: EditorOptions;
           const ready = templateReadiness(t, options);
           return (
             <li key={t.key} className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-soft" data-template={t.key}>
-              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{t.category}</p>
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">{t.category}</p>
               <h3 className="mt-1 text-[15px] font-semibold text-ink">{t.name}</h3>
               <p className="mt-1 flex-1 text-[13px] leading-relaxed text-muted">{t.description}</p>
               <div className="mt-3 flex flex-wrap gap-1.5">

@@ -211,7 +211,7 @@ export function AppointmentDrawer({
                 <li key={h.id} className="relative text-[13px]">
                   <span className="absolute -left-[21px] top-1.5 size-2 rounded-full bg-line-strong" aria-hidden />
                   <p className="text-ink-2">{h.summary}</p>
-                  <p className="text-[11.5px] text-muted">{h.actor ? `${h.actor} · ` : ""}<RelativeTime iso={h.at} timezone={timeZone} /></p>
+                  <p className="text-[12px] text-muted">{h.actor ? `${h.actor} · ` : ""}<RelativeTime iso={h.at} timezone={timeZone} /></p>
                 </li>
               ))}
               {!d.history.length && <li className="text-[13px] text-muted">Booked <RelativeTime iso={d.createdAt} timezone={timeZone} />{d.createdBy ? ` by ${d.createdBy}` : ""}.</li>}

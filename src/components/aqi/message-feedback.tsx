@@ -70,23 +70,23 @@ export function AqiMessageFeedback({ message, status, onChange, onRetry }: {
         </button>
         {!reduced && reaction?.rating === -1 && <motion.span key={reaction.key} aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-full border border-danger-ink/30" initial={{ scale: 0.7, opacity: 0.6 }} animate={{ scale: 1.5, opacity: 0 }} transition={{ duration: 0.4 }} onAnimationComplete={() => setReaction(null)} />}
       </span>
-      <span role="status" aria-live="polite" className="ml-1 inline-flex min-h-6 items-center gap-1.5 text-[10.5px]">
+      <span role="status" aria-live="polite" className="ml-1 inline-flex min-h-6 items-center gap-1.5 text-[12px]">
         {!status?.error && rating !== null && <motion.span key={rating} initial={reduced ? false : { opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} className={rating === 1 ? "text-success-ink" : "text-muted"}>
           {rating === 1 ? "Glad that helped!" : "Thanks for telling us."}
         </motion.span>}
         {status?.pending && <span className="inline-flex items-center gap-1 text-faint"><span aria-hidden="true" className="size-1 rounded-full bg-current motion-safe:animate-pulse" /><span className="sr-only">Saving feedback</span></span>}
         {status?.error && <span className="text-danger-ink">Couldn&apos;t save feedback.</span>}
       </span>
-      {status?.error && <button type="button" onClick={() => onRetry(message)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[10.5px] font-medium text-primary hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"><RotateCcw className="size-3" />Retry feedback</button>}
-      {rating === -1 && !detailsOpen && !status?.error && <button type="button" onClick={() => { setDetailsOpen(true); setReason(""); setText(message.feedbackComment ?? ""); }} className="min-h-8 rounded-lg px-2 text-[10.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink">Add details</button>}
+      {status?.error && <button type="button" onClick={() => onRetry(message)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"><RotateCcw className="size-3" />Retry feedback</button>}
+      {rating === -1 && !detailsOpen && !status?.error && <button type="button" onClick={() => { setDetailsOpen(true); setReason(""); setText(message.feedbackComment ?? ""); }} className="min-h-8 rounded-lg px-2 text-[12px] font-medium text-muted hover:bg-surface-2 hover:text-ink">Add details</button>}
     </div>
     {detailsOpen && rating === -1 && <form id={detailsId} className="mt-2 w-full basis-full space-y-2 rounded-xl border border-line bg-surface-2/50 p-2.5" onSubmit={(event) => {
       event.preventDefault();
       onChange(message, -1, [reason, text.trim()].filter(Boolean).join(" — ").slice(0, 1000) || null);
       closeDetails();
     }}>
-      <p className="text-[11px] font-medium text-ink-2">What could I improve? <span className="font-normal text-muted">Optional</span></p>
-      <div className="flex flex-wrap gap-1">{REASONS.map((item) => <button key={item} type="button" aria-pressed={reason === item} onClick={() => setReason(reason === item ? "" : item)} className={cn("rounded-full border px-2 py-1 text-[10.5px] transition-colors", reason === item ? "border-primary/30 bg-primary-soft text-primary" : "border-line text-muted hover:bg-surface-2")}>{item}</button>)}</div>
+      <p className="text-[12px] font-medium text-ink-2">What could I improve? <span className="font-normal text-muted">Optional</span></p>
+      <div className="flex flex-wrap gap-1">{REASONS.map((item) => <button key={item} type="button" aria-pressed={reason === item} onClick={() => setReason(reason === item ? "" : item)} className={cn("rounded-full border px-2 py-1 text-[12px] transition-colors", reason === item ? "border-primary/30 bg-primary-soft text-primary" : "border-line text-muted hover:bg-surface-2")}>{item}</button>)}</div>
       <Textarea rows={2} maxLength={900} value={text} onChange={(event) => setText(event.target.value)} placeholder="Anything else? (optional)" aria-label="Feedback about this answer" className="min-h-12 text-[12px]" />
       <div className="flex gap-1.5"><Button type="submit" size="sm" variant="secondary" disabled={!reason && !text.trim()}>Send details</Button><Button type="button" size="sm" variant="ghost" onClick={closeDetails}>Skip</Button></div>
     </form>}

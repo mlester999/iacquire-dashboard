@@ -248,7 +248,7 @@ export function MenuItem({ className, destructive, ...props }: React.ComponentPr
 }
 
 export function MenuLabel({ className, ...props }: React.ComponentProps<typeof DM.Label>) {
-  return <DM.Label className={cn("px-2.5 pb-1 pt-2 text-[11.5px] font-medium uppercase tracking-wider text-faint", className)} {...props} />;
+  return <DM.Label className={cn("px-2.5 pb-1 pt-2 text-[12px] font-medium uppercase tracking-wider text-faint", className)} {...props} />;
 }
 
 export function MenuSeparator() {
@@ -340,7 +340,7 @@ export function Tabs({
             )}
             <span className="relative">{item.label}</span>
             {item.count !== undefined && (
-              <span className="relative rounded-full bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">{item.count}</span>
+              <span className="relative rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">{item.count}</span>
             )}
           </TB.Trigger>
         ))}

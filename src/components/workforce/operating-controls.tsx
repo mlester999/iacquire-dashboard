@@ -129,7 +129,7 @@ export function OperatingModeCard({
                     {option.icon}
                   </IconTile>
                   {option.label}
-                  {pending === option.value && <span className="text-[11px] font-normal text-muted">Saving…</span>}
+                  {pending === option.value && <span className="text-[12px] font-normal text-muted">Saving…</span>}
                   {selected && (
                     <StatusPill tone={option.value === "paused" ? "warning" : "primary"} size="sm" className="ml-auto">
                       Current

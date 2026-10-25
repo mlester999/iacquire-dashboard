@@ -66,7 +66,7 @@ export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone
   const visible = sections.filter((s) => (filter === "all" || filter === "missing" && !s.content.trim() || filter === "review" && s.held) && `${s.label} ${s.hint} ${s.content}`.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="module-stack space-y-6" data-aqi-target="knowledge.list">
-      <PageHero eyebrow="Your business memory" title="Give your AI team the context to get it right." description="Brief your employees as you would a trusted teammate. Keep approved business facts, preferences and private reference documents together." icon={<BookOpen />} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-xs font-semibold">{filled} of {sections.length} knowledge sections supplied</p><div className="mt-3"><CoverageBar label="Business knowledge completeness" parts={[{label:"Supplied",count:filled,color:"var(--primary)"},{label:"Missing",count:sections.length-filled,color:"var(--surface-3)"}]} /></div><p className="mt-3 text-[11px] text-muted">{lastApplied ? `Last applied ${relativeTime(lastApplied)}` : "No application timestamp recorded"}</p></div>} />
+      <PageHero eyebrow="Your business memory" title="Give your AI team the context to get it right." description="Brief your employees as you would a trusted teammate. Keep approved business facts, preferences and private reference documents together." icon={<BookOpen />} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-xs font-semibold">{filled} of {sections.length} knowledge sections supplied</p><div className="mt-3"><CoverageBar label="Business knowledge completeness" parts={[{label:"Supplied",count:filled,color:"var(--primary)"},{label:"Missing",count:sections.length-filled,color:"var(--surface-3)"}]} /></div><p className="mt-3 text-[12px] text-muted">{lastApplied ? `Last applied ${relativeTime(lastApplied)}` : "No application timestamp recorded"}</p></div>} />
       <DataToolbar><div className="relative w-full max-w-sm"><Search className="absolute left-3 top-3 size-4 text-muted" /><Input aria-label="Search business knowledge" placeholder="Find a section or business fact…" className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="flex flex-wrap gap-1">{[{key:"all",label:"All sections"},{key:"missing",label:"Needs information"},{key:"review",label:"In review"}].map((f) => <Button key={f.key} size="sm" variant={filter === f.key ? "soft" : "ghost"} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</Button>)}</div></DataToolbar>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
@@ -102,7 +102,7 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
             <ShieldAlert className="size-3" /> In review
           </Badge>
         ) : section.appliedAt ? (
-          <span className="hidden text-[11.5px] text-faint sm:block">Applied {relativeTime(section.appliedAt)}</span>
+          <span className="hidden text-[12px] text-faint sm:block">Applied {relativeTime(section.appliedAt)}</span>
         ) : null}
         <ChevronDown className={cn("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
@@ -245,10 +245,10 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium">{d.filename}</p>
-                  <p className="text-[11.5px] text-muted">
+                  <p className="text-[12px] text-muted">
                     {size(d.size_bytes)} · {documentStatus(d)} · {formatDateTime(d.created_at, timeZone)}
                   </p>
-                  {d.processing_detail && !["ready"].includes(d.status) && <p className="mt-0.5 text-[11px] text-faint">{d.processing_detail}</p>}
+                  {d.processing_detail && !["ready"].includes(d.status) && <p className="mt-0.5 text-[12px] text-faint">{d.processing_detail}</p>}
                 </div>
                 <a href={`/api/knowledge/documents/${d.id}`} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" aria-label={`Download ${d.filename}`}>
                   <Download className="size-4" />
@@ -266,7 +266,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                       else toast.warning("Still not searchable", { description: res.data.processingDetail ?? "Upload a text version if you need it used in conversations." });
                       router.refresh();
                     }}
-                    className="flex min-h-8 items-center rounded-lg px-2 text-[11.5px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
+                    className="flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
                   >
                     Retry
                   </button>
@@ -280,7 +280,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
             ))}
           </ul>
         )}
-        <p className="text-[11.5px] leading-relaxed text-faint">TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read by your AI team after extraction. Encrypted, scanned/image-only PDFs and damaged files remain downloadable but aren&apos;t used; OCR isn&apos;t supported.</p>
+        <p className="text-[12px] leading-relaxed text-faint">TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read by your AI team after extraction. Encrypted, scanned/image-only PDFs and damaged files remain downloadable but aren&apos;t used; OCR isn&apos;t supported.</p>
       </CardContent>
       <Dialog
         open={Boolean(confirm)}

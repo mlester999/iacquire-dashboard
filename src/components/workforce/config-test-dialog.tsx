@@ -246,7 +246,7 @@ export function ConfigTestDialog({
           <div className="flex flex-wrap items-center gap-2">
             <FlaskConical className="size-4 text-violet" aria-hidden />
             <p className="text-[13px] font-semibold">Isolated test session</p>
-            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[10.5px] font-medium text-muted">
+            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] font-medium text-muted">
               {activeVersion ? `Active v${activeVersion} stays unchanged` : "No active version yet"}
             </span>
           </div>
@@ -267,21 +267,21 @@ export function ConfigTestDialog({
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Draft version</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Draft version</p>
                 <p className="mt-1 text-[16px] font-semibold">v{summary.version}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">Would be the next version</p>
+                <p className="mt-0.5 text-[12px] text-muted">Would be the next version</p>
               </div>
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Knowledge included</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Knowledge included</p>
                 <p className="mt-1 text-[16px] font-semibold">{summary.knowledge.entries + summary.knowledge.documents}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">
+                <p className="mt-0.5 text-[12px] text-muted">
                   {summary.knowledge.entries} note{summary.knowledge.entries === 1 ? "" : "s"} · {summary.knowledge.documents} document{summary.knowledge.documents === 1 ? "" : "s"}
                 </p>
               </div>
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Provider</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Provider</p>
                 <p className="mt-1 text-[16px] font-semibold">{summary.connectionConfigured ? "Hermes Agent" : "Not connected"}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">{summary.connectionConfigured ? "Real test available" : "Review only"}</p>
+                <p className="mt-0.5 text-[12px] text-muted">{summary.connectionConfigured ? "Real test available" : "Review only"}</p>
               </div>
             </div>
 
@@ -338,7 +338,7 @@ export function ConfigTestDialog({
             <ol className="space-y-3">
               {messages.map((message) => (
                 <li key={message.id} className={cn("text-[13px]", message.role === "user" ? "text-right" : "text-left")}>
-                  <p className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">{message.role === "user" ? "You" : agentName}</p>
+                  <p className="mb-1 text-[12px] font-medium uppercase tracking-wide text-muted">{message.role === "user" ? "You" : agentName}</p>
                   {message.role === "assistant" ? (
                     <div className="inline-block max-w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-left">
                       <Markdown>{message.content}</Markdown>
@@ -382,7 +382,7 @@ export function ConfigTestDialog({
             className="border-0 bg-transparent focus:ring-0"
           />
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
-            <span className="text-[11px] text-muted">Enter to send · Shift+Enter for a new line</span>
+            <span className="text-[12px] text-muted">Enter to send · Shift+Enter for a new line</span>
             {running ? (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
                 <Square className="size-3.5 fill-current" aria-hidden /> Stop test
@@ -394,7 +394,7 @@ export function ConfigTestDialog({
             )}
           </div>
         </div>
-        <p className="text-[11.5px] leading-relaxed text-faint">
+        <p className="text-[12px] leading-relaxed text-faint">
           A test does not prove that a production employee is online. Connection health is checked separately, and live use stays gated by the employee&apos;s verified provider permissions.
         </p>
       </div>

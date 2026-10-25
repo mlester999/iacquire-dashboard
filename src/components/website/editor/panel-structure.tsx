@@ -32,7 +32,7 @@ export function PagesPanel({ doc, pageId, setPage, commit, announce, onAfterAdd 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between px-4 pb-2 pt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[.1em] text-muted">Pages · {doc.pages.length}</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Pages · {doc.pages.length}</p>
         <Button size="sm" variant="soft" className="!h-7 !px-2.5 !text-[12px]" disabled={atLimit} onClick={() => setAdding(true)}><Plus className="size-3.5" /> Add page</Button>
       </div>
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4" aria-label="Pages">
@@ -53,7 +53,7 @@ export function PagesPanel({ doc, pageId, setPage, commit, announce, onAfterAdd 
                     {home ? <Home className="size-3.5 shrink-0 text-primary" aria-label="Home page" /> : p.kind === "thanks" ? <Link2 className="size-3.5 shrink-0 text-muted" aria-label="Thank-you page" /> : p.kind === "landing" ? <LayoutPanelTop className="size-3.5 shrink-0 text-muted" aria-label="Landing page" /> : <FileText className="size-3.5 shrink-0 text-muted" aria-hidden />}
                     <span className="min-w-0 flex-1">
                       <span className={cn("block truncate text-[13px]", current ? "font-semibold text-primary-ink" : "font-medium text-ink")}>{p.title}</span>
-                      <span className="block truncate text-[11px] text-muted">/{home ? "" : p.slug}{!p.showInNav && " · hidden from menu"}</span>
+                      <span className="block truncate text-[12px] text-muted">/{home ? "" : p.slug}{!p.showInNav && " · hidden from menu"}</span>
                     </span>
                   </button>
                 )}
@@ -76,7 +76,7 @@ export function PagesPanel({ doc, pageId, setPage, commit, announce, onAfterAdd 
           );
         })}
       </ul>
-      <p className="border-t border-line px-4 py-2 text-[11px] leading-relaxed text-muted">Double-click a page to rename it. The menu follows the order shown here.</p>
+      <p className="border-t border-line px-4 py-2 text-[12px] leading-relaxed text-muted">Double-click a page to rename it. The menu follows the order shown here.</p>
       <AddPageDialog open={adding} onOpenChange={setAdding} doc={doc} onCreate={(title, kind, starter) => {
         const items = pageStarter(doc, starter, title);
         const added = addPage(doc, title, items, kind);
@@ -114,7 +114,7 @@ function AddPageDialog({ open, onOpenChange, doc, onCreate }: { open: boolean; o
       <div className="space-y-4">
         <Row label="Page name" htmlFor="np-title">
           <TextControl id="np-title" autoFocus value={title} maxLength={60} placeholder={starter === "thanks" ? "Thank you" : def.label} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") create(); }} />
-          {taken && <p className="text-[11px] text-muted">You already have a page with that name. The address will be made unique.</p>}
+          {taken && <p className="text-[12px] text-muted">You already have a page with that name. The address will be made unique.</p>}
         </Row>
         <div role="radiogroup" aria-label="Start from" className="grid gap-2 sm:grid-cols-2">
           {PAGE_STARTERS.map((s) => (
@@ -218,7 +218,7 @@ export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteCont
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <p className="px-4 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[.1em] text-muted">Layers</p>
+      <p className="px-4 pb-2 pt-3 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Layers</p>
       <ul ref={listRef} role="tree" aria-label="Everything on this page" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {rows.map((r, i) => {
           const on = r.id === selection;
@@ -255,7 +255,7 @@ export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteCont
           );
         })}
       </ul>
-      <p className="border-t border-line px-4 py-2 text-[11px] leading-relaxed text-muted">Arrow keys move between layers. Alt + ↑ ↓ reorders the selected one.</p>
+      <p className="border-t border-line px-4 py-2 text-[12px] leading-relaxed text-muted">Arrow keys move between layers. Alt + ↑ ↓ reorders the selected one.</p>
     </div>
   );
 }

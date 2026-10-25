@@ -192,7 +192,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
                       <input id={id} type="checkbox" className="size-4 accent-[var(--primary)]" checked={chosen.has(c)} disabled={already} onChange={() => toggle(c)} />
                       <span className="min-w-0 flex-1">
                         <span className="block font-medium text-ink">{CAPABILITY_LABELS[c]}</span>
-                        <span className="block text-[11.5px] text-muted">{already ? `Already ${ownerName(to)}` : to === "native" && SWITCH_IMPORT_ENTITY[c] ? "Records come across" : "Ownership only"}</span>
+                        <span className="block text-[12px] text-muted">{already ? `Already ${ownerName(to)}` : to === "native" && SWITCH_IMPORT_ENTITY[c] ? "Records come across" : "Ownership only"}</span>
                       </span>
                       <OwnerBadge owner={state.owners[c]} />
                     </label>

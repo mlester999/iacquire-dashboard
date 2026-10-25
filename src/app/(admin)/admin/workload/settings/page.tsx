@@ -84,8 +84,8 @@ export default async function WorkloadSettingsPage() {
                       <div key={row.path} className="flex items-baseline justify-between gap-3 py-1.5">
                         <dt className="min-w-0">
                           <span className="text-ink-2">{row.label}</span>
-                          {row.changed && <Badge tone="primary" className="ml-1.5 h-5 px-1.5 text-[10px]">changed</Badge>}
-                          {row.help && <span className="mt-0.5 block text-[11px] leading-snug text-muted">{row.help}</span>}
+                          {row.changed && <Badge tone="primary" className="ml-1.5 h-5 px-1.5 text-[12px]">changed</Badge>}
+                          {row.help && <span className="mt-0.5 block text-[12px] leading-snug text-muted">{row.help}</span>}
                         </dt>
                         <dd className="shrink-0 font-medium tabular-nums text-ink">{row.value}</dd>
                       </div>

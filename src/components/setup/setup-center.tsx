@@ -98,7 +98,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
       <section aria-label="Your setup journey" data-aqi-target="setup.journey" className="grid gap-3 sm:grid-cols-3">
         {[{label:"iAcquire preparation",tasks:data.tasks.filter(task=>task.section==="agency"&&!task.isActivation),description:"Our team builds and verifies your system."},{label:"Your contributions",tasks:data.tasks.filter(task=>task.section==="client"),description:"The few things that need your input."},{label:"Final agency review",tasks:data.tasks.filter(task=>task.isActivation),description:"Readiness and approval before activation."}].map((stage,index)=>{
           const complete=stage.tasks.filter(task=>task.status==="completed").length;
-          return <div key={stage.label} className="relative overflow-hidden rounded-2xl border border-line bg-surface p-4"><div className="flex items-center justify-between"><span className="font-mono text-[11px] text-muted">0{index+1}</span><span className="text-[11px] font-medium text-muted">{complete}/{stage.tasks.length} complete</span></div><h2 className="mt-3 text-[14px] font-semibold">{stage.label}</h2><p className="mt-1 text-[12px] leading-relaxed text-muted">{stage.description}</p><div role="img" className="mt-4 flex h-1.5 gap-1" aria-label={`${stage.label}: ${complete} of ${stage.tasks.length} complete`}>{stage.tasks.length?stage.tasks.map(task=><span key={task.id} className={cn("min-w-0 flex-1 rounded-full",task.status==="completed"?"bg-success":task.status==="blocked"?"bg-danger":task.status==="in_progress"?"bg-primary":"bg-surface-3")}/>):<span className="h-full w-full rounded-full bg-surface-3"/>}</div></div>;
+          return <div key={stage.label} className="relative overflow-hidden rounded-2xl border border-line bg-surface p-4"><div className="flex items-center justify-between"><span className="font-mono text-[12px] text-muted">0{index+1}</span><span className="text-[12px] font-medium text-muted">{complete}/{stage.tasks.length} complete</span></div><h2 className="mt-3 text-[14px] font-semibold">{stage.label}</h2><p className="mt-1 text-[12px] leading-relaxed text-muted">{stage.description}</p><div role="img" className="mt-4 flex h-1.5 gap-1" aria-label={`${stage.label}: ${complete} of ${stage.tasks.length} complete`}>{stage.tasks.length?stage.tasks.map(task=><span key={task.id} className={cn("min-w-0 flex-1 rounded-full",task.status==="completed"?"bg-success":task.status==="blocked"?"bg-danger":task.status==="in_progress"?"bg-primary":"bg-surface-3")}/>):<span className="h-full w-full rounded-full bg-surface-3"/>}</div></div>;
         })}
       </section>
 
@@ -259,7 +259,7 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="text-[15px] font-semibold leading-snug tracking-tight text-ink">{t.title}</h3>
             <StatusBadge status={t.status} audience="client" />
-            {!t.required && <InfoChip className="h-5 text-[11px]">Optional</InfoChip>}
+            {!t.required && <InfoChip className="h-5 text-[12px]">Optional</InfoChip>}
           </div>
           {t.description && <p className="mt-1 text-[13.5px] leading-relaxed text-muted">{t.description}</p>}
 

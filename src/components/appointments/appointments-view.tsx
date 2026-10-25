@@ -72,7 +72,7 @@ const statusLabel = (s: string) => STATUS_LABEL[s] ?? sentenceCase(s);
 function DateTile({ at, timeZone }: { at: string; timeZone: string }) {
   return (
     <div className="grid w-12 shrink-0 place-items-center rounded-xl bg-surface-2 py-1.5 text-center ring-1 ring-inset ring-line">
-      <p className="text-[10px] font-semibold uppercase leading-none tracking-wider text-muted">{new Date(at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
+      <p className="text-[12px] font-semibold uppercase leading-none tracking-wider text-muted">{new Date(at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
       <p className="mt-1 text-[18px] font-semibold leading-none tabular-nums text-ink">{new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone }).format(new Date(at))}</p>
     </div>
   );
@@ -168,7 +168,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
           </div>
           {view === "calendar" ? (
             <div className="p-3 sm:p-4">
-              <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[11.5px] font-medium text-faint">
+              <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[12px] font-medium text-faint">
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                   <span key={d}>
                     <span className="sm:hidden">{d[0]}</span>
@@ -184,21 +184,21 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                   const items = byDay.get(k) ?? [];
                   return (
                     <div key={i} className={cn("min-h-14 rounded-xl border p-1 sm:min-h-24 sm:p-1.5", k === todayKey ? "border-primary/40 bg-primary-soft/30" : "border-line bg-surface")}>
-                      <p className={cn("text-[11.5px] font-medium", k === todayKey ? "text-primary" : "text-muted")}>{d.getDate()}</p>
+                      <p className={cn("text-[12px] font-medium", k === todayKey ? "text-primary" : "text-muted")}>{d.getDate()}</p>
                       <div className="mt-0.5 space-y-0.5">
                         {items.slice(0, 2).map((a) => (
                           <button
                             key={a.id}
                             type="button"
                             onClick={() => setOpen(a)}
-                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium transition-colors sm:text-[11px]", CHIP_TONE[STATUS_TONE[a.status] ?? "neutral"])}
+                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[12px] font-medium transition-colors sm:text-[12px]", CHIP_TONE[STATUS_TONE[a.status] ?? "neutral"])}
                             title={`${a.title} · ${statusLabel(a.status)}`}
                           >
                             <span className="hidden sm:inline">{formatTime(a.start_at, timeZone)} </span>
                             {a.title}
                           </button>
                         ))}
-                        {items.length > 2 && <p className="px-1 text-[10.5px] text-muted">+{items.length - 2} more</p>}
+                        {items.length > 2 && <p className="px-1 text-[12px] text-muted">+{items.length - 2} more</p>}
                       </div>
                     </div>
                   );

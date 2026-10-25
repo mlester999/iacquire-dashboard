@@ -137,7 +137,7 @@ export function MessageRow(props: MessageRowProps) {
       className={cn("group relative flex gap-3 rounded-xl px-3 py-1 hover:bg-surface-2/60 focus-within:bg-surface-2/60", header && "mt-2", highlighted && "bg-warning-soft/60 ring-2 ring-warning/40")}
     >
       <div className="w-9 shrink-0 pt-0.5" aria-hidden={header ? undefined : true}>
-        {header ? <AvatarTile name={message.author.name} /> : <span className="hidden pt-1 text-[11px] text-faint group-hover:block">{formatTime(message.createdAt, timeZone)}</span>}
+        {header ? <AvatarTile name={message.author.name} /> : <span className="hidden pt-1 text-[12px] text-faint group-hover:block">{formatTime(message.createdAt, timeZone)}</span>}
       </div>
       <div className="min-w-0 flex-1">
         {header && (

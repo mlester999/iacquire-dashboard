@@ -61,7 +61,7 @@ export function FieldsManager({ scope, entity, fields, entities }: { scope: CrmS
                   {f.groupName && <span className="text-[12px] font-normal text-muted">in {f.groupName}</span>}
                 </p>
                 <p className="mt-0.5 truncate text-[12px] text-muted">
-                  <code className="rounded bg-surface-2 px-1 py-0.5 text-[11.5px]">{f.key}</code>
+                  <code className="rounded bg-surface-2 px-1 py-0.5 text-[12px]">{f.key}</code>
                   {f.options.length ? ` · ${f.options.map((o) => o.label).join(", ")}` : ""}
                   {` · ${f.valueCount.toLocaleString("en-US")} ${f.valueCount === 1 ? "record has" : "records have"} a value`}
                 </p>

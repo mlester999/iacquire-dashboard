@@ -19,7 +19,7 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
       </Link>
 
       <header className="space-y-3 border-l-2 border-primary/45 pl-4 sm:pl-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-primary">Founder project / Case study</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-primary">Founder project / Case study</p>
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={project.status === "built" ? "success" : "warning"}>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</StatusPill>
           {project.categories.map((c) => (
@@ -98,9 +98,9 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
               </div>
               {project.publishedOutcome && (
                 <div className="mt-4 border-t border-line pt-4">
-                  <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">What it delivers</p>
+                  <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">What it delivers</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{project.publishedOutcome}</p>
-                  <p className="mt-1.5 text-[11.5px] text-muted">As described by the founder. Not a measured result.</p>
+                  <p className="mt-1.5 text-[12px] text-muted">As described by the founder. Not a measured result.</p>
                 </div>
               )}
               {project.liveDemoUrl && (

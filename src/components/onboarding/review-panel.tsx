@@ -121,7 +121,7 @@ export function ReviewPanel({
           <details key={section.id} className="group overflow-hidden rounded-2xl border border-line bg-surface" open={section.rows.some((r) => (r.state === "outstanding" && r.required) || r.state === "needs_confirmation")}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-[14px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
               <span className="flex min-w-0 items-center gap-2.5">
-                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary-soft text-[11px] font-semibold text-primary">{section.id}</span>
+                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary-soft text-[12px] font-semibold text-primary">{section.id}</span>
                 <span className="truncate">{section.title}</span>
               </span>
               <span className="flex shrink-0 items-center gap-2">

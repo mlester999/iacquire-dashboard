@@ -134,7 +134,7 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
         ) : (
           <>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Applied</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Applied</p>
               {data.blueprints.length === 0 ? (
                 <p className="mt-1.5 text-[13px] text-muted">{ghl ? "None. This client's CRM configuration lives in GoHighLevel." : "No Blueprint applied. The client's CRM is set up by hand."}</p>
               ) : (
@@ -150,7 +150,7 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
                           </span>
                           {b.updateAvailable && (
                             <span className="mt-1 flex flex-wrap items-center gap-2 text-[12px]">
-                              <Badge tone="primary" className="h-5 px-2 text-[11px]">
+                              <Badge tone="primary" className="h-5 px-2 text-[12px]">
                                 {b.latestVersion !== null && b.latestVersion > b.version ? `Version ${b.latestVersion} available` : `Rest of version ${b.latestVersion ?? b.version} to apply`}
                               </Badge>
                               {(data.canApply || data.canPreview) && (
@@ -169,7 +169,7 @@ export function ClientBlueprintCardView({ data, timeZone }: { data: ClientBluepr
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Setup checklist</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Setup checklist</p>
               {data.checklist ? (
                 <div className="mt-1.5 space-y-2">
                   <p className="text-[13px] text-ink-2">{data.checklist.done} of {data.checklist.total} done</p>

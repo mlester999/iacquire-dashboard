@@ -409,7 +409,7 @@ export function TutorialStage() {
           }}
         >
           {active && step.advance === "click" && hit && (
-            <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-on shadow-soft motion-safe:animate-pulse">1</span>
+            <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-primary-on shadow-soft motion-safe:animate-pulse">1</span>
           )}
         </div>
       )}
@@ -453,18 +453,18 @@ export function TutorialStage() {
           <div className="flex shrink-0 items-center gap-2 px-3.5 pb-1 pt-3">
             <Sparkles className="size-3.5 shrink-0 text-primary" aria-hidden />
             <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-primary-ink">{tutorial.title}</p>
-            {state.preview && <span className="rounded-full bg-warning-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning-ink">Preview</span>}
+            {state.preview && <span className="rounded-full bg-warning-soft px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-warning-ink">Preview</span>}
             {active && (
               <button type="button" onClick={() => void tutorialActions.pause()} disabled={busy} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50" data-aqi-control="pause" aria-label="Pause walkthrough"><Pause className="size-3.5" /></button>
             )}
             <button type="button" onClick={() => (active || phase === "paused" ? pauseAndClose() : closeTutorial())} className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" data-aqi-control="close" aria-label="Close walkthrough"><X className="size-4" /></button>
           </div>
           <div className="flex shrink-0 items-center gap-2 px-3.5 pb-2">
-            <span className="text-[11px] font-semibold tabular-nums text-ink-2">Step {stepNumber} of {total}</span>
+            <span className="text-[12px] font-semibold tabular-nums text-ink-2">Step {stepNumber} of {total}</span>
             <span className="h-1 w-16 overflow-hidden rounded-full bg-surface-3" aria-hidden>
               <span className="block h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(stepNumber / total) * 100}%` }} />
             </span>
-            {state.verified && phase === "completed" && <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-success-ink"><ShieldCheck className="size-2.5" /> verified</span>}
+            {state.verified && phase === "completed" && <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-success-ink"><ShieldCheck className="size-2.5" /> verified</span>}
           </div>
 
           <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3.5 pb-3">
@@ -616,7 +616,7 @@ function StageBody({ phase, routeMismatch, routeLabel, stepNumber, step, state, 
       <h2 id={titleId} className={heading}>{step.title}</h2>
       <p id="aqi-tutorial-body" className={copy}>{step.body}</p>
       {waiting && !missing && (
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 text-[11px] font-medium text-ink-2" role="status">
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 text-[12px] font-medium text-ink-2" role="status">
           <Loader2 className="size-3 animate-spin text-primary" aria-hidden /> Looking for this control…
         </p>
       )}
@@ -631,7 +631,7 @@ function StageBody({ phase, routeMismatch, routeLabel, stepNumber, step, state, 
         </div>
       )}
       {step.advance === "click" && !missing && (
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary-soft px-2 py-1 text-[11px] font-medium text-primary-ink">
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary-soft px-2 py-1 text-[12px] font-medium text-primary-ink">
           <ArrowRight className="size-3" aria-hidden /> Select the highlighted control, or use Next.
         </p>
       )}
@@ -642,7 +642,7 @@ function StageBody({ phase, routeMismatch, routeLabel, stepNumber, step, state, 
 function CompletionCard({ verified, title, message, titleId }: { verified: boolean; title: string; message: string | null; titleId: string }) {
   return (
     <div role="status">
-      <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide", verified ? "bg-success-soft text-success-ink" : "bg-primary-soft text-primary-ink")}>
+      <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] font-semibold uppercase tracking-wide", verified ? "bg-success-soft text-success-ink" : "bg-primary-soft text-primary-ink")}>
         <Check className="size-3" aria-hidden /> {verified ? "Verified" : "Finished"}
       </span>
       <h2 id={titleId} className="mt-1.5 text-[15px] font-semibold tracking-tight text-ink">{verified ? "Action verified" : "Walkthrough finished"}</h2>

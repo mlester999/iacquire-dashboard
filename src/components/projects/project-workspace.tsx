@@ -44,10 +44,10 @@ function ProgressStepper({ status, before }: { status: ProjectStatus; before: Pr
         return (
           <li key={s} className="relative flex min-w-0 flex-1 flex-col items-center text-center" aria-label={PROJECT_STATUS_LABEL[s]} aria-current={active ? "step" : undefined}>
             {i > 0 && <span aria-hidden className={cn("absolute right-1/2 top-[11px] h-0.5 w-full", done || active ? "bg-primary" : "bg-line")} />}
-            <span className={cn("relative z-10 flex size-6 items-center justify-center rounded-full border-2 bg-surface text-[10px] font-semibold", done ? "border-primary bg-primary text-white" : active ? "border-primary text-primary" : "border-line text-faint")}>
+            <span className={cn("relative z-10 flex size-6 items-center justify-center rounded-full border-2 bg-surface text-[12px] font-semibold", done ? "border-primary bg-primary text-white" : active ? "border-primary text-primary" : "border-line text-faint")}>
               {done ? <Check className="size-3.5" /> : i + 1}
             </span>
-            <span className={cn("mt-1.5 hidden px-0.5 text-[11px] leading-tight sm:block", active ? "font-semibold text-ink" : done ? "text-ink-2" : "text-faint")}>{SHORT[s]}</span>
+            <span className={cn("mt-1.5 hidden px-0.5 text-[12px] leading-tight sm:block", active ? "font-semibold text-ink" : done ? "text-ink-2" : "text-faint")}>{SHORT[s]}</span>
           </li>
         );
       })}
@@ -84,7 +84,7 @@ export function ProjectWorkspace({
 
   return (
     <div className="space-y-5">
-      <PageHero tone="dark" eyebrow={`${r.ref} / Custom project`} title={r.title} description={<><span className="block">Requested {formatDate(r.submittedAt,timeZone)} · last activity {relativeTime(r.lastActivityAt)}</span><span className="mt-2 flex flex-wrap gap-2"><ProjectStatusBadge status={r.status}/>{r.serviceName&&<Badge tone="outline" className="border-white/20 text-slate-200">{r.serviceName}</Badge>}</span></>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-4"><p className="text-[10px] font-semibold uppercase tracking-[.12em] text-blue-200">Delivery milestones</p><p className="mt-2 text-[26px] font-semibold tabular-nums">{project.milestones.length?<>{project.milestones.filter(m=>m.status==="completed").length}<span className="ml-1 text-sm font-normal text-slate-300">/ {project.milestones.length} completed</span></>:<span className="text-[22px]">Not set yet</span>}</p><p className="mt-2 text-[11px] leading-relaxed text-slate-300">{awaiting.length?`${awaiting.length} milestone${awaiting.length===1?"":"s"} waiting for your review`:project.milestones.length?"Follow the details and decisions below.":"Milestones appear once your scope is agreed."}</p></div>}/>
+      <PageHero tone="dark" eyebrow={`${r.ref} / Custom project`} title={r.title} description={<><span className="block">Requested {formatDate(r.submittedAt,timeZone)} · last activity {relativeTime(r.lastActivityAt)}</span><span className="mt-2 flex flex-wrap gap-2"><ProjectStatusBadge status={r.status}/>{r.serviceName&&<Badge tone="outline" className="border-white/20 text-slate-200">{r.serviceName}</Badge>}</span></>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-4"><p className="text-[12px] font-semibold uppercase tracking-[.12em] text-blue-200">Delivery milestones</p><p className="mt-2 text-[26px] font-semibold tabular-nums">{project.milestones.length?<>{project.milestones.filter(m=>m.status==="completed").length}<span className="ml-1 text-sm font-normal text-slate-300">/ {project.milestones.length} completed</span></>:<span className="text-[22px]">Not set yet</span>}</p><p className="mt-2 text-[12px] leading-relaxed text-slate-300">{awaiting.length?`${awaiting.length} milestone${awaiting.length===1?"":"s"} waiting for your review`:project.milestones.length?"Follow the details and decisions below.":"Milestones appear once your scope is agreed."}</p></div>}/>
 
       {justSubmitted && (
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 rounded-2xl border border-success/25 bg-success-soft/70 p-4">
@@ -111,7 +111,7 @@ export function ProjectWorkspace({
           Current stage <ProjectStatusBadge status={r.status} />
         </p>
       </Card>
-      <nav aria-label="Project workspace sections" className="relative flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}{project.delivery&&<a href="#project-changes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Changes{project.changes.length>0&&<span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{project.changes.length}</span>}</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
+      <nav aria-label="Project workspace sections" className="relative flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}{project.delivery&&<a href="#project-changes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Changes{project.changes.length>0&&<span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.changes.length}</span>}</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-5">
@@ -228,11 +228,11 @@ function QuoteCard({ requestId, quote: q, timeZone, canAct, canApprove }: { requ
       <CardContent className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl bg-surface-2 p-4">
-            <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">One-time cost</p>
+            <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">One-time cost</p>
             <p className="mt-1 text-[28px] font-semibold tabular-nums tracking-tight">{formatMoney(q.oneTimeCents, q.currency)}</p>
           </div>
           <div className="rounded-xl bg-surface-2 p-4">
-            <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">Optional ongoing cost</p>
+            <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">Optional ongoing cost</p>
             {q.ongoingMonthlyCents ? (
               <>
                 <p className="mt-1 text-[22px] font-semibold tabular-nums">{formatMoney(q.ongoingMonthlyCents, q.currency)}/month</p>
@@ -574,7 +574,7 @@ function ThreadCard({ requestId, messages, canPost, timeZone }: { requestId: str
               <motion.li key={m.id} initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
                 {m.kind === "info_request" && <StatusPill size="sm" tone="warning" className="mb-2">Question from iAcquire</StatusPill>}
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                <p className="mt-1.5 text-[11.5px]">
+                <p className="mt-1.5 text-[12px]">
                   {m.authorKind === "agency" ? "iAcquire team" : m.authorKind === "system" ? "iAcquire" : (m.authorName ?? "You")} · {formatDateTime(m.createdAt, timeZone)}
                 </p>
               </motion.li>
@@ -616,7 +616,7 @@ function RequestCard({ project }: { project: ProjectDetail }) {
         <dl className="space-y-3">
           {rows.slice(0, open ? rows.length : 2).map((x) => (
             <div key={x.key}>
-              <dt className="text-[11.5px] font-medium text-muted">{x.label}</dt>
+              <dt className="text-[12px] font-medium text-muted">{x.label}</dt>
               <dd className={cn("mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2", !open && "line-clamp-3")}>{x.answer}</dd>
             </div>
           ))}
@@ -664,7 +664,7 @@ function FilesCard({ project, canUpload }: { project: ProjectDetail; canUpload: 
                   <FileText className="size-4 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{f.filename}</span>
-                    <span className="block text-[11px] text-faint">
+                    <span className="block text-[12px] text-faint">
                       {f.uploadedByKind === "agency" ? "From iAcquire" : "From you"} · {bytesLabel(f.sizeBytes)}
                     </span>
                   </span>
@@ -711,7 +711,7 @@ function SupportCard({ project, canOpen }: { project: ProjectDetail; canOpen: bo
               <li key={t.id}>
                 <Link href={`/support/${t.id}`} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] hover:bg-surface-3">
                   <span className="min-w-0 truncate">
-                    <span className="font-mono text-[11.5px] text-muted">{t.ref}</span> {t.subject.replace(`${project.request.ref}: `, "")}
+                    <span className="font-mono text-[12px] text-muted">{t.ref}</span> {t.subject.replace(`${project.request.ref}: `, "")}
                   </span>
                   <ArrowRight className="size-3.5 shrink-0 text-muted" />
                 </Link>

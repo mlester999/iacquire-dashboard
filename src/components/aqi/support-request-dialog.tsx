@@ -158,7 +158,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                   <Field label="This is a" htmlFor="aqi-support-type"><Select id="aqi-support-type" value={requestType} onChange={(e) => changeType(e.target.value as RequestType)} disabled={phase === "sending"}>{ASSISTANT_REQUEST_TYPES.map((t) => <option key={t} value={t}>{REQUEST_TYPE_LABELS[t].label}</option>)}</Select></Field>
                   <Field label="Topic" htmlFor="aqi-support-category"><Select id="aqi-support-category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={phase === "sending"}>{categories.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}</Select></Field>
                 </div>
-                <p className="-mt-1 text-[11.5px] text-muted">{draft.reason}</p>
+                <p className="-mt-1 text-[12px] text-muted">{draft.reason}</p>
                 <Field label="Description" htmlFor="aqi-support-description" hint={<span className="tabular-nums">{description.length.toLocaleString("en-US")} / 2,500</span>}>
                   <Textarea id="aqi-support-description" rows={5} maxLength={2500} value={description} onChange={(e) => setDescription(e.target.value)} disabled={phase === "sending"} />
                 </Field>
@@ -174,7 +174,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                         <ul className="mt-1.5 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-surface p-2.5 text-[12.5px] leading-relaxed" aria-label="Messages that would be shared">
                           {draft.excerpt.map((m, i) => <li key={i} className={cn("whitespace-pre-wrap break-words", m.role === "user" ? "text-ink" : "text-muted")}><strong className="font-medium">{m.role === "user" ? "Me" : "AQi"}:</strong> {m.text}</li>)}
                         </ul>
-                        <p className="mt-1.5 text-[11.5px] text-muted">Plus the page you were on: <code className="rounded bg-surface-3 px-1 text-ink-2">{draft.pageContext}</code>. Passwords and keys are removed.</p>
+                        <p className="mt-1.5 text-[12px] text-muted">Plus the page you were on: <code className="rounded bg-surface-3 px-1 text-ink-2">{draft.pageContext}</code>. Passwords and keys are removed.</p>
                       </div>
                       <label className="flex items-start gap-2.5 text-[12.5px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree to share these messages and this page with iAcquire support.</label>
                     </div>
@@ -184,7 +184,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                 <div>
                   <p className="mb-1.5 text-[13px] font-medium text-ink-2">Attach files <span className="text-[12px] font-normal text-faint">Optional</span></p>
                   <AttachmentPicker compact maxMb={draft.limits.maxMb} maxFiles={draft.limits.maxFiles} onChange={setFiles} disabled={phase === "sending"} />
-                  <p className="mt-1.5 text-[11.5px] text-muted">Files from your AQi chat are never copied. Add only what you want the team to see.</p>
+                  <p className="mt-1.5 text-[12px] text-muted">Files from your AQi chat are never copied. Add only what you want the team to see.</p>
                 </div>
 
                 {draft.expectation && <p className="flex items-start gap-2 text-[12.5px] text-ink-2"><Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />{draft.expectation}</p>}
@@ -194,7 +194,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                   <Button type="button" variant="ghost" onClick={onClose} disabled={phase === "sending"}>Cancel</Button>
                   {share && !consent && <span className="text-[12px] text-warning-ink">Tick the box above to share the conversation, or turn sharing off.</span>}
                 </div>
-                <p className="text-[10.5px] text-faint">AQi never claims a request exists until it is confirmed here. If something goes wrong you can also use the <Link href="/support" className="text-primary underline">Support page</Link>.</p>
+                <p className="text-[12px] text-faint">AQi never claims a request exists until it is confirmed here. If something goes wrong you can also use the <Link href="/support" className="text-primary underline">Support page</Link>.</p>
               </form>
             )}
           </motion.div>

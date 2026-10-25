@@ -263,8 +263,8 @@ export function ContactProfile({
                     <li key={i.id} className="flex items-center gap-2 text-[13px]">
                       {i.kind === "email" ? <Mail className="size-3.5 shrink-0 text-muted" /> : <Phone className="size-3.5 shrink-0 text-muted" />}
                       <span className="min-w-0 flex-1 truncate">{i.kind === "phone" ? formatPhone(i.value) : i.value}</span>
-                      {i.primary && <Badge className="h-5 px-1.5 text-[10px]">Primary</Badge>}
-                      {i.verified && <Badge tone="success" className="h-5 px-1.5 text-[10px]">Verified</Badge>}
+                      {i.primary && <Badge className="h-5 px-1.5 text-[12px]">Primary</Badge>}
+                      {i.verified && <Badge tone="success" className="h-5 px-1.5 text-[12px]">Verified</Badge>}
                       {canEdit && <button type="button" onClick={() => run(`rm-${i.id}`, () => removeIdentityAction(scope.orgId, detail.id, i.id), "Removed.")} className="inline-flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-danger-ink" aria-label={`Remove ${i.value}`}><X className="size-3.5" /></button>}
                     </li>
                   ))}
@@ -338,7 +338,7 @@ export function ContactProfile({
               </tbody>
             </table>
             {detail.suppressions.length > 0 && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-[12px] text-danger-ink">Opted out or suppressed: {detail.suppressions.map((s) => `${CHANNEL_LABEL[s.channel] ?? s.channel} (${s.reason.replace("_", " ")})`).join(", ")}. Nothing will be sent there.</p>}
-            <p className="mt-3 text-[11.5px] leading-relaxed text-faint">Consent is recorded from what the person actually agreed to. Having their details is not permission to market to them.</p>
+            <p className="mt-3 text-[12px] leading-relaxed text-faint">Consent is recorded from what the person actually agreed to. Having their details is not permission to market to them.</p>
           </SectionCard>
         </aside>
       </div>

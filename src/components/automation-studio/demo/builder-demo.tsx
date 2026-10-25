@@ -236,7 +236,7 @@ export function BuilderDemo() {
               className="demo-chat-scroll flex min-h-0 flex-1 flex-col overflow-y-auto touch-pan-y touch-pinch-zoom focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary @4xl:overflow-visible"
             >
               {/* On a phone the header is shortened to the label, so the conversation names what it's building, as a chat app dates a thread. */}
-              <p className="mx-auto mt-5 rounded-full bg-surface-2 px-3 py-1 text-[11.5px] font-medium text-muted @2xl:hidden">Welcome new leads · example draft</p>
+              <p className="mx-auto mt-5 rounded-full bg-surface-2 px-3 py-1 text-[12px] font-medium text-muted @2xl:hidden">Welcome new leads · example draft</p>
               <ul aria-label="Example conversation" className="mt-auto flex flex-col gap-4 p-4 sm:p-5 @4xl:mt-0 @4xl:flex-1">
                 {[0, 1].map((x) => {
                   const pair = [x * 2, x * 2 + 1];
@@ -253,14 +253,14 @@ export function BuilderDemo() {
                           <div key={i} className={cn("relative flex", mine ? "justify-end" : "justify-start", !on && !working(i) && "@max-4xl:hidden")}>
                             <div data-message={i} data-shown={on ? "true" : "false"} aria-hidden={!on} className={cn("max-w-[90%]", on ? "demo-rise" : "invisible @max-4xl:hidden")}>
                               {!mine && (
-                                <span aria-hidden className="mb-1.5 flex items-center gap-1.5 pl-1 text-[11.5px] font-semibold text-ink-2 @2xl:hidden">
+                                <span aria-hidden className="mb-1.5 flex items-center gap-1.5 pl-1 text-[12px] font-semibold text-ink-2 @2xl:hidden">
                                   <span className="inline-flex size-4 items-center justify-center rounded-md brand-gradient text-white"><Sparkles className="size-2.5" /></span>AI Automation Builder
                                 </span>
                               )}
                               <p className={cn("text-pretty rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-normal", mine ? "rounded-br-md bg-primary text-primary-on" : "rounded-bl-md border border-line bg-surface-2 text-ink")}>
                                 <span className="sr-only">{mine ? "You: " : "Builder: "}</span>{m.text}
                               </p>
-                              {!mine && <p className="mt-1 pl-1 text-[11.5px] font-medium text-success-ink">Updated the canvas</p>}
+                              {!mine && <p className="mt-1 pl-1 text-[12px] font-medium text-success-ink">Updated the canvas</p>}
                             </div>
                             {working(i) && (
                               <p role="status" className="demo-rise absolute left-0 top-0 inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] text-muted @max-4xl:static">
@@ -275,7 +275,7 @@ export function BuilderDemo() {
                 })}
                 <li className={cn("@4xl:mt-auto", !beat.next && "@max-4xl:hidden")}>
                   <div data-next={beat.next ? "shown" : "hidden"} aria-hidden={!beat.next} className={cn("rounded-2xl border border-line bg-surface p-3.5 shadow-soft", beat.next ? "demo-rise" : "invisible")}>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-ink">What happens next <span className="font-medium normal-case tracking-normal text-muted">· in your workspace</span></p>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-primary-ink">What happens next <span className="font-medium normal-case tracking-normal text-muted">· in your workspace</span></p>
                     <ol className="mt-3 space-y-2">
                       {NEXT_STEPS.map((s) => {
                         const Icon = NEXT_ICONS[s.key];
@@ -295,17 +295,17 @@ export function BuilderDemo() {
               The conversation appears here
             </p>
             <div aria-hidden className="mx-4 mb-4 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-faint sm:mx-5 sm:mb-5">
-              <Lock className="size-3.5 shrink-0" /><span className="min-w-0 truncate">Ask for a change…</span><span className="ml-auto shrink-0 text-[11.5px]">Needs the plan</span>
+              <Lock className="size-3.5 shrink-0" /><span className="min-w-0 truncate">Ask for a change…</span><span className="ml-auto shrink-0 text-[12px]">Needs the plan</span>
             </div>
           </div>
 
           <div data-panel="canvas" data-off={view !== "canvas" ? "" : undefined} className="demo-panel flex min-h-0 min-w-0 flex-col">
             <div className="hidden flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-4 py-2.5 sm:px-5 @4xl:flex">
-              <span className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Example</span>
+              <span className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[12px] font-semibold uppercase tracking-wider text-muted">Example</span>
               <span className="text-[12px] text-muted">Draft · not published</span>
               <ul aria-label="What the colours mean" className="ml-auto flex items-center gap-3">
                 {LEGEND.map((l) => (
-                  <li key={l.label} className="inline-flex items-center gap-1.5 text-[11.5px] text-muted"><span aria-hidden className={cn("size-2 rounded-full", l.swatch)} />{l.label}</li>
+                  <li key={l.label} className="inline-flex items-center gap-1.5 text-[12px] text-muted"><span aria-hidden className={cn("size-2 rounded-full", l.swatch)} />{l.label}</li>
                 ))}
               </ul>
             </div>
@@ -371,7 +371,7 @@ export function BuilderDemo() {
                       onClick={() => go(first, false)}
                       aria-current={now ? "step" : undefined}
                       className={cn(
-                        "group flex min-h-11 w-full flex-col justify-center gap-1.5 rounded-lg px-1 text-left text-[11.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary @sm:text-[12px] @2xl:min-h-9 @2xl:px-1.5 @2xl:pointer-coarse:min-h-11",
+                        "group flex min-h-11 w-full flex-col justify-center gap-1.5 rounded-lg px-1 text-left text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary @sm:text-[12px] @2xl:min-h-9 @2xl:px-1.5 @2xl:pointer-coarse:min-h-11",
                         now ? "text-ink" : "text-muted hover:text-ink",
                       )}
                     >

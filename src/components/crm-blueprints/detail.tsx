@@ -160,7 +160,7 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
               <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {b.modules.map((m) => (
                   <li key={m.section} className="rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
-                    <p className="text-[11.5px] font-medium text-muted">{SECTION_LABELS[m.section]}</p>
+                    <p className="text-[12px] font-medium text-muted">{SECTION_LABELS[m.section]}</p>
                     <p className="mt-1 text-[22px] font-semibold tabular-nums tracking-[-0.03em] text-ink">{m.count}</p>
                   </li>
                 ))}
@@ -180,7 +180,7 @@ function Overview({ b, shown, timeZone }: { b: BlueprintDetail; shown: Blueprint
             <ul className="mt-3 space-y-1.5 text-[12.5px] text-ink-2">
               {b.sourceLabel && <li>{b.sourceLabel}</li>}
               {b.provenance.sourceOrgName && <li>Captured from <span className="font-medium text-ink">{b.provenance.sourceOrgName}</span> (configuration only)</li>}
-              {b.provenance.starterKey && <li>iAcquire starter <code className="font-mono text-[11.5px]">{b.provenance.starterKey}</code></li>}
+              {b.provenance.starterKey && <li>iAcquire starter <code className="font-mono text-[12px]">{b.provenance.starterKey}</code></li>}
               {b.provenance.importId && <li><Link href={bpHref.importDetail(b.provenance.importId)} className="font-medium text-primary-ink hover:underline">Open the import report</Link></li>}
               <li className="text-muted">Created {formatDateTime(b.createdAt, timeZone)}</li>
             </ul>

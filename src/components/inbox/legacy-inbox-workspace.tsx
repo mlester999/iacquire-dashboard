@@ -86,7 +86,7 @@ const CHANNEL_TONE: Record<ConversationChannel, string> = { sms: "text-primary",
 function ChannelBadge({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
+    <span className={cn("inline-flex items-center gap-1 text-[12px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
       {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
@@ -188,7 +188,7 @@ export function LegacyInboxWorkspace(props: Props) {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
-                    <span className="shrink-0 text-[11px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
+                    <span className="shrink-0 text-[12px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
                   </span>
                   <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -196,7 +196,7 @@ export function LegacyInboxWorkspace(props: Props) {
                     <OwnerPill kind={c.ownerKind} name={c.ownerName} />
                     {c.escalation && ["awaiting_owner", "open"].includes(c.escalation.status) && <Badge tone={c.escalation.urgency === "urgent" ? "danger" : "warning"}>Needs a person</Badge>}
                     {c.priority === "urgent" && !c.escalation && <Badge tone="danger">Urgent</Badge>}
-                    {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
+                    {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
                   </span>
                 </span>
               </button>
@@ -237,9 +237,9 @@ export function LegacyInboxWorkspace(props: Props) {
 }
 
 function OwnerPill({ kind, name }: { kind: "ai" | "human" | "unassigned"; name: string | null }) {
-  if (kind === "ai") return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />AI</span>;
-  if (kind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{name?.split(" ")[0] ?? "Person"}</span>;
-  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-2">Unassigned</span>;
+  if (kind === "ai") return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />AI</span>;
+  if (kind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[12px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{name?.split(" ")[0] ?? "Person"}</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-medium text-ink-2">Unassigned</span>;
 }
 
 function EmptyThread({ hasList }: { hasList: boolean }) {
@@ -701,7 +701,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
     if (m.direction === "internal") {
       return (
         <div key={m.id} className="mx-auto max-w-[85%] rounded-xl border border-dashed border-warning/50 bg-warning-soft/40 px-3 py-2 text-[13px]">
-          <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
+          <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-warning-ink"><Lock className="size-3" aria-hidden />Internal note · {m.authorName ?? "System"} · only your team sees this</p>
           <p className="whitespace-pre-wrap">{m.body}</p>
         </div>
       );
@@ -711,9 +711,9 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
     return (
       <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div className={cn("max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", out ? (m.authorKind === "ai" ? "bg-violet-soft text-ink" : "bg-primary-soft text-ink") : "bg-surface-2", m.status === "draft" && "border border-dashed border-warning/60")}>
-          {out && <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-muted">{m.authorKind === "ai" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : (m.authorName ?? "Teammate")}</p>}
+          {out && <p className="mb-0.5 flex items-center gap-1 text-[12px] font-medium text-muted">{m.authorKind === "ai" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : (m.authorName ?? "Teammate")}</p>}
           <p className="whitespace-pre-wrap break-words">{m.body}</p>
-          <p className={cn("mt-1 flex flex-wrap items-center gap-x-2 text-[11px]", STATUS_STYLE[m.status])}>
+          <p className={cn("mt-1 flex flex-wrap items-center gap-x-2 text-[12px]", STATUS_STYLE[m.status])}>
             <span suppressHydrationWarning>{formatDateTime(m.createdAt, timeZone)}</span>
             {out && <StatusMark status={m.status} />}
             {out && (m.status === "blocked" || m.status === "failed" || m.status === "draft") && reason && <span>· {reason}</span>}
@@ -833,7 +833,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
           <p role="status" className="mt-2 flex items-start gap-1.5 text-[12px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />Replace {openGaps.join(", ")} before sending. These details aren&apos;t on the contact&apos;s record.</p>
         )}
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
+          <span className="text-[12px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
           <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>
       </footer>
@@ -845,7 +845,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
 function DeliveryDetails({ events, timeZone, failed }: { events: InboxMessage["deliveryEvents"]; timeZone: string; failed: boolean }) {
   const last = events[events.length - 1];
   return (
-    <details className="group mt-1 text-[11px] text-muted" open={failed && Boolean(last?.detail || last?.rawStatus) ? true : undefined}>
+    <details className="group mt-1 text-[12px] text-muted" open={failed && Boolean(last?.detail || last?.rawStatus) ? true : undefined}>
       <summary className="inline-flex min-h-6 cursor-pointer list-none items-center gap-1 font-medium hover:text-ink [&::-webkit-details-marker]:hidden">
         Delivery details<span aria-hidden className="transition group-open:rotate-90">›</span>
       </summary>
@@ -889,14 +889,14 @@ function CannedReplyPicker({ replies, onPick }: { replies: CannedReplyOption[]; 
           {shown.map((r) => (
             <li key={r.id}>
               <button type="button" onClick={() => { focus.markPicked(); onPick(r.body); setOpen(false); setQ(""); }} className="w-full rounded-xl px-3 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
-                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[11px] text-faint">{r.folderName}</span>}</span>
+                <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-medium text-ink">{r.name}</span>{r.folderName && <span className="shrink-0 text-[12px] text-faint">{r.folderName}</span>}</span>
                 <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted">{r.body}</span>
               </button>
             </li>
           ))}
           {!shown.length && <li className="px-3 py-3 text-center text-[12.5px] text-muted">No canned replies match.</li>}
         </ul>
-        <p className="mt-2 px-1 text-[11px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
+        <p className="mt-2 px-1 text-[12px] text-faint">Inserted with this contact&apos;s details. Check it before sending.</p>
       </PopoverContent>
     </Popover>
   );
@@ -1014,13 +1014,13 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
 
       <section className="rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[13px] font-semibold">What we know</h2>
-        <h3 className="mt-2 text-[11.5px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
+        <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-wider text-success-ink">Confirmed by your team</h3>
         <ul className="mt-1 space-y-1.5 text-[12.5px]">
           {confirmed.length ? confirmed.map((m) => (
             <li key={m.id} className="flex items-start justify-between gap-2"><span>{m.content}</span>{perms.editContacts && <button aria-label="Delete this note" onClick={() => run(`m${m.id}`, () => deleteMemoryAction(m.id), "Removed.")} className="text-muted hover:text-danger-ink"><XCircle className="size-3.5" /></button>}</li>
           )) : <li className="text-muted">Nothing confirmed yet.</li>}
         </ul>
-        <h3 className="mt-3 text-[11.5px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
+        <h3 className="mt-3 text-[12px] font-semibold uppercase tracking-wider text-violet-ink">AI-written summaries (not verified)</h3>
         <ul className="mt-1 space-y-1.5 text-[12.5px]">
           {summaries.length ? summaries.map((m) => <li key={m.id} className="text-ink-2">{m.content}</li>) : <li className="text-muted">None.</li>}
         </ul>
@@ -1037,10 +1037,10 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
         <h2 className="text-[13px] font-semibold">Activity</h2>
         <ol className="mt-2 space-y-2 border-l border-line pl-3 text-[12.5px]">
           {detail.timeline.length ? detail.timeline.slice(-8).map((t, i) => (
-            <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[11px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
+            <li key={`${t.at}-${i}`}><span className="block text-ink-2">{t.text}</span><span className="text-[12px] text-faint" suppressHydrationWarning>{formatDateTime(t.at, timeZone)}</span></li>
           )) : <li className="text-muted">No activity recorded yet.</li>}
         </ol>
-        <p className="mt-2 text-[11.5px] text-muted">Only real events are listed.</p>
+        <p className="mt-2 text-[12px] text-muted">Only real events are listed.</p>
       </section>
     </aside>
   );

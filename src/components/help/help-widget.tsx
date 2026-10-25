@@ -419,11 +419,11 @@ function RequestsView({ onNew, onNavigate }: { onNew: () => void; onNavigate: ()
         {rows?.map((t) => (
           <Link key={t.id} href={`/support/${t.id}`} onClick={onNavigate} className="block rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft transition hover:border-line-strong">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[11.5px] text-muted">{t.ref}</span>
-              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_TONE[t.status])}>{sentenceCase(t.status)}</span>
+              <span className="font-mono text-[12px] text-muted">{t.ref}</span>
+              <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", STATUS_TONE[t.status])}>{sentenceCase(t.status)}</span>
             </div>
             <p className="mt-1 truncate text-[13.5px] font-medium text-ink">{t.subject}</p>
-            <p className="mt-0.5 text-[11.5px] text-faint">Updated {relativeTime(t.lastMessageAt)}</p>
+            <p className="mt-0.5 text-[12px] text-faint">Updated {relativeTime(t.lastMessageAt)}</p>
           </Link>
         ))}
       </div>

@@ -147,7 +147,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                     )}
                   >
                     {k === "all" ? "All clients" : STATE[k].label}
-                    <span className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface text-muted ring-1 ring-inset ring-line")}>{count}</span>
+                    <span className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[12px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface text-muted ring-1 ring-inset ring-line")}>{count}</span>
                   </button>
                 );
               })}
@@ -241,7 +241,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                             <StatusPill tone={s.tone}>{s.label}</StatusPill>
                             {r.isDemo && <StatusPill tone="violet" size="sm" dot={false}>Demo</StatusPill>}
                           </div>
-                          <p className="mt-1.5 whitespace-nowrap text-[11.5px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Not onboarded yet"}</p>
+                          <p className="mt-1.5 whitespace-nowrap text-[12px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Not onboarded yet"}</p>
                         </td>
                         <td className="whitespace-nowrap px-2 py-4">
                           <span className="font-semibold tabular-nums text-ink">{r.setup.outstanding} <span className="font-normal text-muted">open</span></span>

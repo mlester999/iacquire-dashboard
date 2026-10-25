@@ -43,7 +43,7 @@ export function PanelTabs({ label, items, value, onChange, panels, idPrefix = "t
               className={cn("inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:h-9", selected ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}
             >
               {t.label}
-              {t.count !== undefined && t.count > 0 && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2"><span aria-hidden>{t.count}</span><span className="sr-only">, {t.count}</span></span>}
+              {t.count !== undefined && t.count > 0 && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2"><span aria-hidden>{t.count}</span><span className="sr-only">, {t.count}</span></span>}
             </button>
           );
         })}

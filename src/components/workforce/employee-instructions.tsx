@@ -32,17 +32,17 @@ export function EmployeeInstructions({
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Active configuration</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Active configuration</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{overview.active.version ? `v${overview.active.version}` : "Not set"}</p>
           <p className="mt-0.5 text-[12px] text-muted">{overview.active.appliedAt ? `Applied ${relativeTime(overview.active.appliedAt)}` : "No applied version"}</p>
         </div>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Knowledge in the prompt</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Knowledge in the prompt</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{overview.knowledge.characters.toLocaleString()}</p>
           <p className="mt-0.5 text-[12px] text-muted">{overview.knowledge.truncated ? "Budget reached — some sources shortened" : "Characters, within the knowledge budget"}</p>
         </div>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Protected policy</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Protected policy</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{overview.policyVersion}</p>
           <p className="mt-0.5 text-[12px] text-muted">Always sent last; never client-editable</p>
         </div>
@@ -86,7 +86,7 @@ export function EmployeeInstructions({
           <ol className="space-y-2.5">
             {overview.layers.map((layer, index) => (
               <li key={layer.key} className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3.5 sm:flex-row sm:items-start">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface text-[11px] font-semibold text-muted ring-1 ring-line">{String(index + 1).padStart(2, "0")}</span>
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface text-[12px] font-semibold text-muted ring-1 ring-line">{String(index + 1).padStart(2, "0")}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13px] font-semibold">{layer.label}</p>
@@ -114,7 +114,7 @@ export function EmployeeInstructions({
             <CopyTextButton text={overview.soul} label="Copy SOUL.md" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[11.5px] leading-relaxed text-ink-2">{overview.soul}</pre>
+            <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink-2">{overview.soul}</pre>
             <div className="rounded-xl border border-line p-3">
               <p className="text-[12px] font-semibold">Editing model</p>
               <p className="mt-1 text-[12px] leading-relaxed text-muted">
@@ -125,7 +125,7 @@ export function EmployeeInstructions({
               <details className="rounded-xl border border-line">
                 <summary className="cursor-pointer px-3 py-2 text-[12.5px] font-medium">View the exact applied instructions</summary>
                 <div className="border-t border-line p-3">
-                  <pre tabIndex={0} aria-label="Applied employee instructions" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted">{overview.active.compiledInstructions}</pre>
+                  <pre tabIndex={0} aria-label="Applied employee instructions" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-muted">{overview.active.compiledInstructions}</pre>
                   <div className="mt-2 flex justify-end"><CopyTextButton text={overview.active.compiledInstructions} label="Copy instructions" /></div>
                 </div>
               </details>
@@ -143,10 +143,10 @@ export function EmployeeInstructions({
             </CardHeader>
             <CardContent className="space-y-3 text-[12.5px]">
               <dl className="grid grid-cols-2 gap-3">
-                <div><dt className="text-[11px] uppercase tracking-wide text-muted">Conversations</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.conversations}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-muted">Messages</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.messages}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-muted">Memory scope</dt><dd className="mt-1 break-all font-mono text-[11px]">{overview.memory.scopeLabel}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-muted">Chat retention</dt><dd className="mt-1">{overview.memory.retentionDays ? `${overview.memory.retentionDays} days` : "Workspace default"}</dd></div>
+                <div><dt className="text-[12px] uppercase tracking-wide text-muted">Conversations</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.conversations}</dd></div>
+                <div><dt className="text-[12px] uppercase tracking-wide text-muted">Messages</dt><dd className="mt-1 text-[16px] font-semibold">{overview.memory.messages}</dd></div>
+                <div><dt className="text-[12px] uppercase tracking-wide text-muted">Memory scope</dt><dd className="mt-1 break-all font-mono text-[12px]">{overview.memory.scopeLabel}</dd></div>
+                <div><dt className="text-[12px] uppercase tracking-wide text-muted">Chat retention</dt><dd className="mt-1">{overview.memory.retentionDays ? `${overview.memory.retentionDays} days` : "Workspace default"}</dd></div>
               </dl>
               <p className="rounded-xl bg-surface-2 p-3 leading-relaxed text-muted">
                 Each conversation has its own saved history. Long-term memory is kept by Hermes inside this employee&apos;s own profile and is scoped to this workspace and role, so two clients never share it.
@@ -159,13 +159,13 @@ export function EmployeeInstructions({
                   <p className="mb-1.5 text-[12px] font-semibold">Recorded memory tool activity</p>
                   <ul className="space-y-1">
                     {overview.memory.hermesMemoryEvidence.map((item) => (
-                      <li key={`${item.tool}-${item.at.toISOString()}`} className="flex items-center justify-between gap-2 text-[11.5px] text-muted">
+                      <li key={`${item.tool}-${item.at.toISOString()}`} className="flex items-center justify-between gap-2 text-[12px] text-muted">
                         <span>{item.label}</span><time dateTime={item.at.toISOString()}>{formatDateTime(item.at, timeZone)}</time>
                       </li>
                     ))}
                   </ul>
                 </div>
-              ) : <p className="text-[11.5px] text-faint">No memory tool use has been recorded yet. That does not mean memory is absent; it means no completed call was recorded.</p>}
+              ) : <p className="text-[12px] text-faint">No memory tool use has been recorded yet. That does not mean memory is absent; it means no completed call was recorded.</p>}
             </CardContent>
           </Card>
 
@@ -178,20 +178,20 @@ export function EmployeeInstructions({
             </CardHeader>
             <CardContent className="space-y-3 text-[12.5px]">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Runs</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.runs}</p></div>
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Completed</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.completed}</p></div>
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Failed</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.failed}</p></div>
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Tokens</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.tokens.toLocaleString()}</p></div>
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Tool steps</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.toolCalls}</p></div>
-                <div><p className="text-[11px] uppercase tracking-wide text-muted">Avg. latency</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.averageLatencyMs !== null ? `${Math.round(overview.usage.averageLatencyMs / 1000)}s` : "—"}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Runs</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.runs}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Completed</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.completed}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Failed</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.failed}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Tokens</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.tokens.toLocaleString()}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Tool steps</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.toolCalls}</p></div>
+                <div><p className="text-[12px] uppercase tracking-wide text-muted">Avg. latency</p><p className="mt-0.5 text-[16px] font-semibold">{overview.usage.averageLatencyMs !== null ? `${Math.round(overview.usage.averageLatencyMs / 1000)}s` : "—"}</p></div>
               </div>
-              <p className="text-[11.5px] text-muted">
+              <p className="text-[12px] text-muted">
                 {overview.usage.lastRunAt ? `Last run ${relativeTime(overview.usage.lastRunAt)}. ` : "No run recorded yet. "}
                 Provider costs are not reported by Hermes, so no cost estimate is shown.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={onOpenKnowledge}><BookOpen className="size-3.5" aria-hidden /> Manage knowledge</Button>
-                <span className={cn("rounded-full border px-2 py-0.5 text-[11px]", overview.knowledge.truncated ? "border-warning/30 bg-warning-soft text-warning-ink" : "border-line bg-surface-2 text-muted")}>
+                <span className={cn("rounded-full border px-2 py-0.5 text-[12px]", overview.knowledge.truncated ? "border-warning/30 bg-warning-soft text-warning-ink" : "border-line bg-surface-2 text-muted")}>
                   {overview.knowledge.employeeNotes} employee notes · {overview.knowledge.companySections} company sections · {overview.knowledge.referenceDocuments} references
                 </span>
               </div>

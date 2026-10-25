@@ -14,5 +14,5 @@ const STATES={
   error:{label:"Connection error",Icon:XCircle,style:"border-danger/25 bg-danger-soft text-danger-ink",dot:"bg-danger"},
 } as const;
 export function IntegrationStatus({status,className,compact=false}:{status:IntegrationState;className?:string;compact?:boolean}){
-  const {Icon,style,label}=STATES[status];return <span className={cn("inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-4",style,className)}><Icon aria-hidden className={cn("size-3.5 shrink-0",status==="testing"&&"motion-safe:animate-spin")}/><span>{compact&&status==="connected"?"Verified":label}</span></span>;
+  const {Icon,style,label}=STATES[status];return <span className={cn("inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold leading-4",style,className)}><Icon aria-hidden className={cn("size-3.5 shrink-0",status==="testing"&&"motion-safe:animate-spin")}/><span>{compact&&status==="connected"?"Verified":label}</span></span>;
 }

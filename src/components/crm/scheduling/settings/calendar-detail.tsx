@@ -108,7 +108,7 @@ export function CalendarDetail({ scope, calendar, page, people, orgSlug, appUrl,
                     <li key={m.userId} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-surface py-0.5 pl-0.5 pr-2.5">
                       <Avatar name={m.name} size="sm" />
                       <span className="truncate text-[12.5px] text-ink-2">{m.name}</span>
-                      {calendar.assignment === "round_robin" && calendar.roundRobinMode === "priority" && <span className="text-[11.5px] tabular-nums text-faint">· {m.priority}</span>}
+                      {calendar.assignment === "round_robin" && calendar.roundRobinMode === "priority" && <span className="text-[12px] tabular-nums text-faint">· {m.priority}</span>}
                     </li>
                   ))}
                 </ul>

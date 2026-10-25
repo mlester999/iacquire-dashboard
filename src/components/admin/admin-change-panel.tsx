@@ -65,7 +65,7 @@ export function AdminChangePanel({ project: p }: { project: AgencyProjectDetail 
           <div className="border-t border-line pt-3">
             <h3 className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Added to the agreed scope</h3>
             <ul className="mt-2 space-y-1.5 text-[13px] text-ink-2">
-              {p.amendments.map((a) => <li key={a.id}><span className="font-mono text-[11.5px] text-muted">{a.changeRef}</span> {a.changeTitle} · {describeQuote({ additionalCents: a.addedCents, currency: a.currency, weeksMin: a.weeksMin, weeksMax: a.weeksMax })} · agreed {formatDate(a.agreedAt)}</li>)}
+              {p.amendments.map((a) => <li key={a.id}><span className="font-mono text-[12px] text-muted">{a.changeRef}</span> {a.changeTitle} · {describeQuote({ additionalCents: a.addedCents, currency: a.currency, weeksMin: a.weeksMin, weeksMax: a.weeksMax })} · agreed {formatDate(a.agreedAt)}</li>)}
             </ul>
           </div>
         )}
@@ -117,7 +117,7 @@ function ChangeRow({ project: p, change: c, currency, closed }: { project: Agenc
     <li id={`agency-change-${c.id}`} className="scroll-mt-24 rounded-2xl border border-line p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[14px] font-medium text-ink"><span className="mr-2 font-mono text-[11.5px] text-muted">{c.ref}</span>{c.title}</p>
+          <p className="text-[14px] font-medium text-ink"><span className="mr-2 font-mono text-[12px] text-muted">{c.ref}</span>{c.title}</p>
           <p className="mt-0.5 text-[12px] text-muted">Asked {formatDateTime(c.requestedAt)}{c.requestedByName ? ` by ${c.requestedByName}` : ""}{c.ticketId ? " · also filed as a Request a Change request" : ""}</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

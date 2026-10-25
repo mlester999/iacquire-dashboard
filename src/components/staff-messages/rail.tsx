@@ -60,7 +60,7 @@ function Row({ entry, active, now }: { entry: RailEntry; active: boolean; now: n
           <span
             role="img"
             aria-label={unreadAria(entry.unread, entry.muted)}
-            className={cn("inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", entry.muted ? "bg-surface-3 text-ink-2" : "bg-primary text-white")}
+            className={cn("inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[12px] font-semibold tabular-nums", entry.muted ? "bg-surface-3 text-ink-2" : "bg-primary text-white")}
           >
             {entry.unread > 99 ? "99+" : entry.unread}
           </span>
@@ -118,7 +118,7 @@ export function Rail({ entries, activeId, now, canChannels, onNew, onBrowse, onS
       <nav aria-label="Conversations" className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-2">
         {sections.map((section) => (
           <section key={section.key} aria-labelledby={`rail-${section.key}`}>
-            <h3 id={`rail-${section.key}`} className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[.08em] text-muted">
+            <h3 id={`rail-${section.key}`} className="px-3 pb-1 pt-3 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">
               {section.label}
             </h3>
             <ul className="space-y-0.5">

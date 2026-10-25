@@ -99,7 +99,7 @@ export function WebhookDialog({ scope, events, editing, onClose, onCreated }: { 
                           <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={picked.includes(e.type)} onChange={(ev) => set([e.type], ev.target.checked)} />
                           <span className="min-w-0">
                             {e.label}
-                            <span className="block font-mono text-[11.5px] text-muted">{e.type}</span>
+                            <span className="block font-mono text-[12px] text-muted">{e.type}</span>
                           </span>
                         </label>
                       </li>

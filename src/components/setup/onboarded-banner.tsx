@@ -49,7 +49,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     <section role="status" aria-label="Your six AI employees" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
           <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Meet your AI team</h2>
           <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
         </div>
@@ -60,7 +60,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
           const meta = AGENT_BY_KEY[row.role];
           return (
             <div key={row.role} className="rounded-2xl border border-line bg-surface-2/40 p-4">
-              <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[11px] font-semibold text-success-ink" : "text-[11px] font-semibold text-warning-ink"}>{row.label}</span></div>
+              <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[12px] font-semibold text-success-ink" : "text-[12px] font-semibold text-warning-ink"}>{row.label}</span></div>
               <p className="mt-2 min-h-12 text-[12px] leading-relaxed text-muted">{row.detail}</p>
               <Link href={row.ready ? `/chat/${meta.slug}` : `/employees/${meta.slug}`} className="mt-3 inline-block text-[12px] font-semibold text-primary hover:underline">{row.ready ? "Open chat" : "View employee"} →</Link>
             </div>

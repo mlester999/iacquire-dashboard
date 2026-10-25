@@ -45,7 +45,7 @@ export function StudioEdge({ id, source, sourceX, sourceY, targetX, targetY, sou
                     <MenuLabel>{group}</MenuLabel>
                     {items.map((k) => (
                       <MenuItem key={k.kind} onSelect={() => actions.insertOnEdge(k.kind, source === TRIGGER_ID ? TRIGGER_ID : source, data?.via ?? "next")}>
-                        <StepIcon kind={k.kind} /><span className="min-w-0"><span className="block truncate">{k.label}</span>{k.note && <span className="block truncate text-[11px] text-warning-ink">{k.note}</span>}</span>
+                        <StepIcon kind={k.kind} /><span className="min-w-0"><span className="block truncate">{k.label}</span>{k.note && <span className="block truncate text-[12px] text-warning-ink">{k.note}</span>}</span>
                       </MenuItem>
                     ))}
                   </React.Fragment>

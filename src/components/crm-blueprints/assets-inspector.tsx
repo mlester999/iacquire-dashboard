@@ -72,7 +72,7 @@ export function AssetsInspector({ draft, published, publishedVersion, initialAss
           {sections.map((s) => (
             <section key={s.section} aria-labelledby={`bp-asset-sec-${s.section}`} className="overflow-hidden rounded-2xl border border-line bg-surface">
               <h2 id={`bp-asset-sec-${s.section}`} className="flex items-center justify-between border-b border-line bg-surface-2 px-4 py-2.5 text-[13px] font-semibold text-ink">
-                {sectionLabel(s.section)}<span className="text-[11.5px] font-medium tabular-nums text-muted">{s.items.filter((v) => !v.parentId).length || s.items.length}</span>
+                {sectionLabel(s.section)}<span className="text-[12px] font-medium tabular-nums text-muted">{s.items.filter((v) => !v.parentId).length || s.items.length}</span>
               </h2>
               <ul className="divide-y divide-line">
                 {s.items.map((v) => <AssetRow key={v.id} v={v} onOpen={() => { setTrail([]); setOpenId(v.id); }} />)}
@@ -97,15 +97,15 @@ function AssetRow({ v, onOpen }: { v: AssetView; onOpen: () => void }) {
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="break-words text-[13.5px] font-medium text-ink">{v.name}</span>
-            {v.parentId && <span className="text-[11px] text-muted">{ASSET_TYPE_LABELS[v.type]}</span>}
-            {v.placeholder && <Badge tone="warning" className="h-5 text-[10.5px]">Name only</Badge>}
+            {v.parentId && <span className="text-[12px] text-muted">{ASSET_TYPE_LABELS[v.type]}</span>}
+            {v.placeholder && <Badge tone="warning" className="h-5 text-[12px]">Name only</Badge>}
           </span>
-          <span className="mt-0.5 block truncate font-mono text-[11px] text-muted">{v.id}</span>
+          <span className="mt-0.5 block truncate font-mono text-[12px] text-muted">{v.id}</span>
         </span>
-        <span className="hidden shrink-0 items-center gap-2 text-[11.5px] text-muted sm:flex">
+        <span className="hidden shrink-0 items-center gap-2 text-[12px] text-muted sm:flex">
           {v.dependsOn.length > 0 && <span className="inline-flex items-center gap-1" title="Depends on"><Link2 className="size-3" aria-hidden />{v.dependsOn.length}</span>}
           {v.slots.length > 0 && <span className="inline-flex items-center gap-1" title="Roles to map"><Users className="size-3" aria-hidden />{v.slots.length}</span>}
-          {v.requirements.length > 0 && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-2">{v.requirements.length} setup</span>}
+          {v.requirements.length > 0 && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-medium text-ink-2">{v.requirements.length} setup</span>}
         </span>
         <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
       </button>
@@ -125,7 +125,7 @@ function AssetDrawer({ v, index, onGo, onBack }: { v: AssetView; index: ReturnTy
           <li key={id}>
             {target ? (
               <button type="button" onClick={() => onGo(id)} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-primary-ink hover:bg-primary-soft sm:min-h-8">
-                <span className="truncate">{target.name}</span><span className="shrink-0 text-[11px] text-muted">{ASSET_TYPE_LABELS[target.type]}</span>
+                <span className="truncate">{target.name}</span><span className="shrink-0 text-[12px] text-muted">{ASSET_TYPE_LABELS[target.type]}</span>
               </button>
             ) : <span className="px-2 font-mono text-[12px] text-danger-ink">{id} (not in this version)</span>}
           </li>
@@ -154,7 +154,7 @@ function AssetDrawer({ v, index, onGo, onBack }: { v: AssetView; index: ReturnTy
       <section aria-labelledby="bp-drawer-slots">
         <h3 id="bp-drawer-slots" className="mb-1.5 text-[13px] font-semibold text-ink">Roles each client maps</h3>
         {v.slots.length ? (
-          <ul className="space-y-1 px-2 text-[13px] text-ink-2">{v.slots.map((s) => <li key={s}>{index.slotLabels.get(s) ?? slotLabel(s)} <span className="font-mono text-[11px] text-muted">{s}</span></li>)}</ul>
+          <ul className="space-y-1 px-2 text-[13px] text-ink-2">{v.slots.map((s) => <li key={s}>{index.slotLabels.get(s) ?? slotLabel(s)} <span className="font-mono text-[12px] text-muted">{s}</span></li>)}</ul>
         ) : <p className="px-2 text-[12.5px] text-muted">None. People and connections never travel in a Blueprint.</p>}
       </section>
       <section aria-labelledby="bp-drawer-reqs">

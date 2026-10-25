@@ -51,7 +51,7 @@ export function StatTile({ icon, label, value, detail, tone = "primary", classNa
       <div className="min-w-0">
         <p className="text-[12px] font-medium leading-snug text-muted">{label}</p>
         <p className="text-[19px] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-ink">{value}</p>
-        {detail && <div className="mt-0.5 text-[11.5px] text-muted">{detail}</div>}
+        {detail && <div className="mt-0.5 text-[12px] text-muted">{detail}</div>}
       </div>
     </div>
   );
@@ -103,7 +103,7 @@ export function HeroIdentity({ name, label, children, className }: { name: strin
     <div className={cn("flex items-center gap-3.5 rounded-2xl bg-surface/80 p-3.5 shadow-card ring-1 ring-inset ring-line sm:gap-4 sm:p-4", className)}>
       <AvatarTile name={name} size="lg" />
       <div className="flex min-w-0 flex-col items-start gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</span>
+        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</span>
         <div className="flex flex-wrap items-center gap-1.5">{children}</div>
       </div>
     </div>

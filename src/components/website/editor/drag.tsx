@@ -136,7 +136,7 @@ function DragGhost() {
         <GripVertical className="size-3.5 opacity-70" />
         <span className="max-w-[16rem] truncate">{active.label}</span>
       </div>
-      {invalid && target?.reason && <div className="mt-1 max-w-[16rem] rounded-md bg-danger-soft px-2 py-1 text-[11px] text-danger-ink shadow">{target.reason}</div>}
+      {invalid && target?.reason && <div className="mt-1 max-w-[16rem] rounded-md bg-danger-soft px-2 py-1 text-[12px] text-danger-ink shadow">{target.reason}</div>}
     </div>,
     document.body,
   );

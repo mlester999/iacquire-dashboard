@@ -230,7 +230,7 @@ export function ConfigVersionHistory({
           </StatusPill>
         )}
         <InfoChip icon={<Info aria-hidden />}>{versions.length} recorded</InfoChip>
-        <span className="ml-auto text-[11.5px] text-muted">
+        <span className="ml-auto text-[12px] text-muted">
           Latest change <NotificationTimestamp value={versions[0].created_at} timeZone={timeZone} now={now} className="ml-1 align-middle" />
         </span>
       </div>
@@ -285,7 +285,7 @@ export function ConfigVersionHistory({
                         )}
                         aria-label={`Version ${version.version}`}
                       >
-                        <span className="text-[8.5px] font-semibold uppercase leading-none tracking-[.14em] opacity-80">Ver</span>
+                        <span className="text-[12px] font-semibold uppercase leading-none tracking-[.14em] opacity-80">Ver</span>
                         <span className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums">{version.version}</span>
                       </div>
 
@@ -296,11 +296,11 @@ export function ConfigVersionHistory({
                             <StatusPill tone={status.tone} size="sm">
                               {statusLabel(version.status, isInternalWorkspace)}
                             </StatusPill>
-                            <Badge tone="outline" className="h-5 px-2 text-[11px]">
+                            <Badge tone="outline" className="h-5 px-2 text-[12px]">
                               {historySourceLabel(version.source, isInternalWorkspace)}
                             </Badge>
                             {version.version === draftVersion && (
-                              <Badge tone="primary" className="h-5 px-2 text-[11px]">
+                              <Badge tone="primary" className="h-5 px-2 text-[12px]">
                                 Editing now
                               </Badge>
                             )}
@@ -337,8 +337,8 @@ export function ConfigVersionHistory({
 
                         <div className="mt-3 rounded-xl border border-line/80 bg-surface-2/40 p-3">
                           <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Changes</p>
-                            {comparison && <span className="text-[10.5px] text-faint">{comparison}</span>}
+                            <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Changes</p>
+                            {comparison && <span className="text-[12px] text-faint">{comparison}</span>}
                           </div>
                           {isInitial ? (
                             <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">Initial configuration for this employee.</p>
@@ -353,7 +353,7 @@ export function ConfigVersionHistory({
                                 ))}
                               </ul>
                               {diffs.length > 4 && (
-                                <p className="mt-1.5 text-[11.5px] text-muted">
+                                <p className="mt-1.5 text-[12px] text-muted">
                                   +{diffs.length - 4} more {diffs.length - 4 === 1 ? "field" : "fields"}
                                 </p>
                               )}
@@ -385,7 +385,7 @@ export function ConfigVersionHistory({
                           </button>
                           <div className="flex flex-wrap items-center gap-2">
                             {riskCount > 0 && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-warning-ink">
+                              <span className="inline-flex items-center gap-1 text-[12px] text-warning-ink">
                                 <ShieldCheck className="size-3.5" aria-hidden /> {riskCount} safety {riskCount === 1 ? "flag" : "flags"}
                               </span>
                             )}
@@ -396,7 +396,7 @@ export function ConfigVersionHistory({
                             )}
                             {canEdit && onEdit && ["pending_agency_review", "rejected", "draft"].includes(version.status) && (
                               latestPendingVersion > version.version && version.status !== "pending_agency_review" ? (
-                                <span className="text-[11px] text-muted">A newer version is awaiting review. Revise that version instead.</span>
+                                <span className="text-[12px] text-muted">A newer version is awaiting review. Revise that version instead.</span>
                               ) : (
                                 <Button
                                   size="sm"
@@ -428,7 +428,7 @@ export function ConfigVersionHistory({
                           <div className="space-y-5 px-4 py-4 sm:px-5">
                             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                               <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Version record</p>
+                                <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Version record</p>
                                 <dl className="mt-2 grid gap-x-5 gap-y-2.5 sm:grid-cols-2">
                                   <Meta label="Created" value={formatDateTime(version.created_at, timeZone)} />
                                   <Meta label="Applied" value={version.applied_at ? formatDateTime(version.applied_at, timeZone) : "Not applied"} />
@@ -452,15 +452,15 @@ export function ConfigVersionHistory({
                                       <>
                                         {historySourceLabel(version.source, isInternalWorkspace)}
                                         {version.source && (
-                                          <code className="ml-1.5 rounded bg-surface-3 px-1 py-0.5 font-mono text-[10.5px] text-muted">{version.source}</code>
+                                          <code className="ml-1.5 rounded bg-surface-3 px-1 py-0.5 font-mono text-[12px] text-muted">{version.source}</code>
                                         )}
                                       </>
                                     }
                                   />
                                   <Meta label="Policy version" value={version.policy_version ?? "Not recorded"} />
                                   <div className="sm:col-span-2">
-                                    <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">Version ID</dt>
-                                    <dd className="mt-0.5 break-all font-mono text-[11px] text-muted">{version.id}</dd>
+                                    <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Version ID</dt>
+                                    <dd className="mt-0.5 break-all font-mono text-[12px] text-muted">{version.id}</dd>
                                   </div>
                                 </dl>
                               </div>
@@ -499,11 +499,11 @@ export function ConfigVersionHistory({
 
                             {isInitial && version.settings && (
                               <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Starting settings</p>
+                                <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Starting settings</p>
                                 <dl className="mt-2 grid gap-x-5 gap-y-2 rounded-xl border border-line bg-surface p-3.5 sm:grid-cols-2">
                                   {startingSettings(version.settings).map(([label, value]) => (
                                     <div key={label}>
-                                      <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
+                                      <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
                                       <dd className="mt-0.5 text-[12.5px] text-ink-2">{value}</dd>
                                     </div>
                                   ))}
@@ -514,8 +514,8 @@ export function ConfigVersionHistory({
                             {diffs.length > 0 && (
                               <div>
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                  <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Field-by-field</p>
-                                  {previousVersion && <span className="text-[10.5px] text-faint">v{previousVersion.version} → v{version.version}</span>}
+                                  <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Field-by-field</p>
+                                  {previousVersion && <span className="text-[12px] text-faint">v{previousVersion.version} → v{version.version}</span>}
                                 </div>
                                 <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
                                   {diffs.map((change) => (
@@ -523,13 +523,13 @@ export function ConfigVersionHistory({
                                       <p className="text-[12.5px] font-semibold text-ink">{change.label}</p>
                                       <div className="grid gap-2 sm:grid-cols-2">
                                         <div className="rounded-lg border border-line/70 bg-surface-2/40 p-2">
-                                          <p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-faint">Before</p>
+                                          <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-faint">Before</p>
                                           <p className="scrollbar-thin mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-muted">
                                             {diffValue(change, change.before)}
                                           </p>
                                         </div>
                                         <div className="rounded-lg border border-primary/15 bg-primary-soft/30 p-2">
-                                          <p className="text-[9.5px] font-semibold uppercase tracking-[.12em] text-primary-ink">After</p>
+                                          <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-primary-ink">After</p>
                                           <p className="scrollbar-thin mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-ink-2">
                                             {diffValue(change, change.after)}
                                           </p>
@@ -543,7 +543,7 @@ export function ConfigVersionHistory({
 
                             {version.change_request && (
                               <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Requested change</p>
+                                <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Requested change</p>
                                 <blockquote className="scrollbar-thin mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink-2">
                                   {version.change_request}
                                 </blockquote>
@@ -551,7 +551,7 @@ export function ConfigVersionHistory({
                             )}
 
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Recorded summary</p>
+                              <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Recorded summary</p>
                               <p className="scrollbar-thin mt-1.5 max-h-56 overflow-y-auto whitespace-pre-line break-words rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink-2">
                                 {version.summary || "No summary was recorded with this version."}
                               </p>
@@ -608,7 +608,7 @@ export function ConfigVersionHistory({
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[10.5px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
+      <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">{label}</dt>
       <dd className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">{value}</dd>
     </div>
   );

@@ -73,10 +73,10 @@ export function ImportsHistory({ imports, canImport }: { imports: ImportSummary[
                 <tbody>
                   {list.map((i) => (
                     <tr key={i.id} className="border-t border-line align-top">
-                      <td className="px-4 py-3"><p className="font-medium text-ink">{i.sourceLabel}</p><p className="text-[11.5px] text-muted">{IMPORT_KIND_LABEL[i.sourceKind]}</p></td>
+                      <td className="px-4 py-3"><p className="font-medium text-ink">{i.sourceLabel}</p><p className="text-[12px] text-muted">{IMPORT_KIND_LABEL[i.sourceKind]}</p></td>
                       <td className="px-4 py-3"><ImportStatusBadge status={i.status} /></td>
                       <td className="px-4 py-3 text-[12.5px] text-ink-2">{countsLine(i.counts)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={i.createdAt} />{i.createdBy ? <p className="text-[11.5px]">{i.createdBy}</p> : null}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={i.createdAt} />{i.createdBy ? <p className="text-[12px]">{i.createdBy}</p> : null}</td>
                       <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
                         {i.blueprintId && <ButtonLink href={bpHref.detail(i.blueprintId)} size="sm" variant="ghost">Blueprint</ButtonLink>}
                         <ButtonLink href={bpHref.importDetail(i.id)} size="sm" variant={i.status === "previewed" ? "soft" : "ghost"} aria-label={`${i.status === "previewed" ? "Review" : "Open"} the import from ${i.sourceLabel}`}>{i.status === "previewed" ? "Review" : "Report"}</ButtonLink>
@@ -231,7 +231,7 @@ export function ImportDetailView({ detail: d, canDesign, timeZone, preview }: { 
                               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={effective.has(e.id)} disabled={auto} onChange={(ev) => toggle(e.id, ev.target.checked)} />
                               <span className="min-w-0">
                                 <span className="block break-words text-[13px] text-ink">{e.name}</span>
-                                {auto && <span className="inline-flex items-center gap-1 text-[11.5px] text-primary-ink"><Link2 className="size-3" aria-hidden />Kept because a chosen item needs it</span>}
+                                {auto && <span className="inline-flex items-center gap-1 text-[12px] text-primary-ink"><Link2 className="size-3" aria-hidden />Kept because a chosen item needs it</span>}
                               </span>
                             </label>
                           </li>
@@ -285,7 +285,7 @@ function IssueBox({ tone, title, issues }: { tone: "danger" | "warning"; title: 
     <div className={cn("rounded-xl border px-4 py-3", tone === "danger" ? "border-danger/25 bg-danger-soft text-danger-ink" : "border-warning/30 bg-warning-soft text-warning-ink")}>
       <p className="text-[13px] font-semibold">{title}</p>
       <ul className="mt-1.5 space-y-1 text-[12.5px] leading-relaxed">
-        {shown.map((i, n) => <li key={`${i.path}-${i.code}-${n}`}>{i.message}{i.path ? <code className="ml-1 font-mono text-[11px] opacity-80">{i.path}</code> : null}</li>)}
+        {shown.map((i, n) => <li key={`${i.path}-${i.code}-${n}`}>{i.message}{i.path ? <code className="ml-1 font-mono text-[12px] opacity-80">{i.path}</code> : null}</li>)}
       </ul>
       {issues.length > shown.length && <button type="button" onClick={() => setAll(true)} className="mt-2 min-h-11 text-[12.5px] font-semibold underline sm:min-h-0">Show all {issues.length}</button>}
     </div>

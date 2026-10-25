@@ -78,9 +78,9 @@ export function PreviewOverlay({
         </div>
         <SelectControl<string> label="Page" value={page} onChange={(v) => { setPage(v); scroller.current?.scrollTo({ top: 0 }); }} options={doc.pages.map((p) => ({ value: p.slug, label: p.title }))} />
         <span className="flex-1" />
-        <span className="hidden text-[11.5px] text-white/55 md:inline">Sample behaviour: the enquiry form is switched off here.</span>
+        <span className="hidden text-[12px] text-white/55 md:inline">Sample behaviour: the enquiry form is switched off here.</span>
         {actions}
-        <button ref={closeRef} type="button" onClick={onClose} className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[12.5px] font-medium hover:bg-white/20"><X className="size-4" /> Close <kbd className="hidden rounded bg-white/15 px-1 text-[10px] sm:inline">Esc</kbd></button>
+        <button ref={closeRef} type="button" onClick={onClose} className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[12.5px] font-medium hover:bg-white/20"><X className="size-4" /> Close <kbd className="hidden rounded bg-white/15 px-1 text-[12px] sm:inline">Esc</kbd></button>
       </div>
       <div ref={scroller} className="min-h-0 flex-1 overflow-auto p-3 sm:p-6" onClick={onClick}>
         <div className="mx-auto overflow-hidden rounded-xl bg-white shadow-2xl" style={{ width }}>
@@ -201,7 +201,7 @@ export function VersionsDialog({
               <li key={v.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span aria-hidden className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink ring-1 ring-inset ring-line"><span className="text-[8.5px] font-medium uppercase leading-none tracking-wider text-muted">v</span>{v.version}</span>
+                    <span aria-hidden className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink ring-1 ring-inset ring-line"><span className="text-[12px] font-medium uppercase leading-none tracking-wider text-muted">v</span>{v.version}</span>
                     <div className="min-w-0 space-y-1.5">
                       <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold"><span>Version {v.version}</span>
                         <StatusPill size="sm" tone={SOURCE_TONE[v.source] ?? "neutral"}>{SOURCE[v.source] ?? "Saved"}</StatusPill>
@@ -232,7 +232,7 @@ export function VersionsDialog({
                           <StatusPill size="sm" tone="warning">{diff.diff.counts.changed} changed</StatusPill>
                           <StatusPill size="sm" tone="primary">{diff.diff.counts.moved} moved</StatusPill>
                         </div>
-                        <p className="mt-1.5 text-[11.5px] text-muted">Compared with your current draft, from this version&apos;s point of view.</p>
+                        <p className="mt-1.5 text-[12px] text-muted">Compared with your current draft, from this version&apos;s point of view.</p>
                         <ul className="mt-2 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-[12.5px] text-ink-2">{diff.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
                       </>
                     )}

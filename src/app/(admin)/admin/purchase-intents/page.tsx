@@ -54,11 +54,11 @@ export default async function PurchaseIntentsPage() {
                           <Badge tone={PURCHASE_STATUS_TONE[intent.status]}>{intent.statusText}</Badge>
                         </span>
                         <span className="mt-0.5 block truncate text-[12px] text-muted">{intent.buyerName} · {intent.buyerEmail}</span>
-                        <span className="mt-0.5 block text-[11.5px] text-muted">
+                        <span className="mt-0.5 block text-[12px] text-muted">
                           {formatUsdCents(intent.setupFeeCents)} setup{intent.maintenanceSelected ? ` + ${formatUsdCents(intent.maintenanceMonthlyCents)}/mo` : " · no maintenance plan"} · {intent.reference}
                         </span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-1 text-[11.5px] text-muted">
+                      <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted">
                         {new Date(intent.expiresAt).toLocaleDateString()}
                         <ArrowRight className="size-3.5 transition group-hover:translate-x-0.5" aria-hidden />
                       </span>

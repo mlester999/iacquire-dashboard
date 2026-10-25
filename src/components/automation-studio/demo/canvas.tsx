@@ -66,12 +66,12 @@ function NodeCard({ node, layout }: { node: DemoNode; layout: DemoLayout }) {
         {node.category === "trigger" ? <TriggerIcon /> : <StepIcon kind={node.kind} />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate font-semibold uppercase leading-4 tracking-wider text-faint", narrow ? "text-[10.5px]" : "text-[10px]")}>{node.meta}</p>
+        <p className={cn("truncate font-semibold uppercase leading-4 tracking-wider text-faint", narrow ? "text-[12px]" : "text-[12px]")}>{node.meta}</p>
         <p className={cn("truncate font-semibold leading-5 text-ink", narrow ? "text-[14px]" : "text-[13.5px]")}>{node.title}</p>
         <p className={cn("leading-snug text-muted", narrow ? "truncate text-[12px]" : "line-clamp-2 text-[12px]")} title={narrow ? node.summary : undefined}>{node.summary}</p>
       </div>
       {node.reachesOut && (
-        <span className="absolute -top-2.5 right-3 inline-flex items-center gap-1 rounded-full border border-surface bg-primary-soft px-2 py-px text-[10.5px] font-medium text-primary-ink">
+        <span className="absolute -top-2.5 right-3 inline-flex items-center gap-1 rounded-full border border-surface bg-primary-soft px-2 py-px text-[12px] font-medium text-primary-ink">
           <ExternalLink className="size-3" aria-hidden />Reaches out
         </span>
       )}
@@ -135,7 +135,7 @@ export function DemoCanvas({ beat, fresh, className }: { beat: Beat; fresh: { no
             <span
               key={`${id}-label`}
               aria-hidden
-              className={cn("demo-edge-label absolute left-0 top-0 rounded-full px-2 py-px text-[10.5px] font-semibold", edge.via === "yes" ? "bg-success-soft text-success-ink" : "bg-surface-3 text-ink-2")}
+              className={cn("demo-edge-label absolute left-0 top-0 rounded-full px-2 py-px text-[12px] font-semibold", edge.via === "yes" ? "bg-success-soft text-success-ink" : "bg-surface-3 text-ink-2")}
               data-fresh={fresh.edges.has(id) ? "" : undefined}
               style={{ transform: `translate(${p.label[0]}px, ${p.label[1]}px) translate(-50%, -50%)` }}
             >

@@ -1134,7 +1134,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                     <span className="grid size-9 place-items-center rounded-xl brand-gradient text-white"><LogoMark className="size-5" /></span>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-ink">{view === "history" ? "Conversations" : "AQi"} {view === "chat" && <span className="rounded-full bg-primary-soft px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-primary-ink">Platform guide</span>}</p>
+                    <p className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-ink">{view === "history" ? "Conversations" : "AQi"} {view === "chat" && <span className="rounded-full bg-primary-soft px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Platform guide</span>}</p>
                     {/* Identity stays fixed. Page awareness is a separate, reserved row below. */}
                     <p className="truncate text-[12px] text-muted">{view === "history" ? "Your private AQi history" : "Your iAcquireOS assistant"}</p>
                   </div>
@@ -1148,7 +1148,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                 </div>
                 {view === "chat" ? (
                   <div className="relative flex h-7 items-center px-4 pb-2">
-                    <span className={cn("inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-[10.5px] font-medium text-muted transition-opacity duration-200", contextLabel ? "opacity-100" : "opacity-0")} aria-hidden={contextLabel ? undefined : true}>
+                    <span className={cn("inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] font-medium text-muted transition-opacity duration-200", contextLabel ? "opacity-100" : "opacity-0")} aria-hidden={contextLabel ? undefined : true}>
                       <Eye className="size-3 shrink-0" aria-hidden /><span className="truncate">Viewing: {contextLabel ?? "—"}</span>
                     </span>
                   </div>
@@ -1159,14 +1159,14 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
               {view === "chat" && canSave && (
                 <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-warning-soft/50 px-3 py-2">
-                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-warning-ink">
+                  <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning-ink">
                     <span className="size-1.5 rounded-full bg-warning" aria-hidden /> Not saved yet
                   </p>
                   <div className="flex items-center gap-1">
                     <Button type="button" size="sm" variant="secondary" onClick={() => void saveConversation()} loading={saving}>
                       <Bookmark className="size-3.5" /> Save conversation
                     </Button>
-                    <button type="button" onClick={() => setDiscardOpen(true)} className="rounded-lg px-2 py-1 text-[11.5px] font-medium text-muted transition hover:bg-surface-2 hover:text-danger-ink" aria-label="Discard unsaved chat">
+                    <button type="button" onClick={() => setDiscardOpen(true)} className="rounded-lg px-2 py-1 text-[12px] font-medium text-muted transition hover:bg-surface-2 hover:text-danger-ink" aria-label="Discard unsaved chat">
                       Discard
                     </button>
                   </div>
@@ -1207,7 +1207,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                         <div className="mt-4">
                           {suggestions.length > 0 ? (
                             <div>
-                              <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
+                              <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
                               <div className="grid gap-2">
                                 {suggestions.map((suggestion) => (
                                   <button
@@ -1227,7 +1227,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                             </div>
                           ) : welcomeStatus === "loading" || welcomeStatus === "idle" ? (
                             <div aria-busy="true">
-                              <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
+                              <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
                               <div className="grid gap-2">
                                 {[0, 1, 2, 3].map((index) => <div key={index} className="skeleton h-[52px] rounded-xl" aria-hidden />)}
                               </div>
@@ -1237,15 +1237,15 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                             <div className="rounded-xl border border-dashed border-line-strong bg-surface px-3.5 py-3">
                               <p className="text-[12px] leading-relaxed text-muted">Ask about a feature, a page, or a task and I&apos;ll point you to the right place.</p>
                               {welcomeStatus === "error" && (
-                                <button type="button" onClick={() => void loadWelcome(pathname ?? "/", true)} className="mt-2 text-[11.5px] font-semibold text-primary hover:underline">Reload suggestions</button>
+                                <button type="button" onClick={() => void loadWelcome(pathname ?? "/", true)} className="mt-2 text-[12px] font-semibold text-primary hover:underline">Reload suggestions</button>
                               )}
                             </div>
                           )}
                         </div>
-                        <p className="mt-auto pt-5 text-center text-[11.5px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
+                        <p className="mt-auto pt-5 text-center text-[12px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
                         {guidanceTutorials.some((tutorial) => tutorial.slug === "getting-started") && (
                           <div className="mt-3 text-center">
-                            <button type="button" onClick={() => { setOpen(false); void startTutorial("getting-started", "library").then((started) => { if (!started) setOpen(true); }); }} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[11px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink">
+                            <button type="button" onClick={() => { setOpen(false); void startTutorial("getting-started", "library").then((started) => { if (!started) setOpen(true); }); }} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink">
                               <Sparkles className="size-3" /> Take a quick guided tour
                             </button>
                           </div>
@@ -1272,12 +1272,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                 <button key={attachment.id} type="button" onClick={() => setPreview(attachment)} className="group overflow-hidden rounded-xl border border-line bg-surface-2 text-left" aria-label={`Preview ${attachment.filename}`}>
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={attachment.url} alt={attachment.filename} className="h-24 w-full object-cover transition group-hover:scale-[1.02]" />
-                                  <span className="block truncate px-2 py-1 text-[10px] text-muted">{attachment.filename}</span>
+                                  <span className="block truncate px-2 py-1 text-[12px] text-muted">{attachment.filename}</span>
                                 </button>
                               ) : attachment.kind === "video" ? (
                                 <video key={attachment.id} src={attachment.url} controls preload="metadata" className="col-span-2 max-h-44 w-full rounded-xl border border-line bg-black" aria-label={attachment.filename} />
                               ) : (
-                                <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-2.5 py-2 text-[11.5px] text-ink-2 hover:bg-surface-3">
+                                <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-2.5 py-2 text-[12px] text-ink-2 hover:bg-surface-3">
                                   <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}</span><Download className="size-3.5 shrink-0 text-muted" />
                                 </a>
                               ))}
@@ -1285,8 +1285,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                           ) : null}
                                   {message.guide && message.status !== "streaming" && guidanceTutorials.some((tutorial) => tutorial.slug === message.guide!.slug) && (
                                     <div className="mt-2 rounded-xl border border-primary/25 bg-primary-soft/60 px-2.5 py-2">
-                                      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-ink"><Sparkles className="size-3" /> Guided walkthrough</p>
-                                      <p className="mt-1 text-[11.5px] leading-snug text-ink-2">I can show you “{message.guide.title}” in {message.guide.stepCount} steps.</p>
+                                      <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-primary-ink"><Sparkles className="size-3" /> Guided walkthrough</p>
+                                      <p className="mt-1 text-[12px] leading-snug text-ink-2">I can show you “{message.guide.title}” in {message.guide.stepCount} steps.</p>
                                       <Button
                                         type="button"
                                         size="sm"
@@ -1307,18 +1307,18 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                   )}
                                   {message.status !== "streaming" && message.content && (
                                     <div className="mt-2 flex flex-wrap items-center gap-0.5 border-t border-line/70 pt-1.5">
-                                      <button type="button" title="Copy response" onClick={() => void copyMessage(message)} className="flex min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={copiedId === message.id ? "Copied" : "Copy answer"} aria-live="polite">{copiedId === message.id ? <><Check className="size-3.5 text-success-ink" /><span className="text-[10px] text-success-ink">Copied!</span></> : <Copy className="size-3.5" />}</button>
+                                      <button type="button" title="Copy response" onClick={() => void copyMessage(message)} className="flex min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={copiedId === message.id ? "Copied" : "Copy answer"} aria-live="polite">{copiedId === message.id ? <><Check className="size-3.5 text-success-ink" /><span className="text-[12px] text-success-ink">Copied!</span></> : <Copy className="size-3.5" />}</button>
                                       <AqiMessageFeedback message={message} status={feedback.statuses[message.id]} onChange={feedback.change} onRetry={feedback.retry} />
                                     </div>
                                   )}
                                   {message.sources?.length ? (
                                     <div className="mt-2 border-t border-line/70 pt-1.5">
-                                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Sources</p>
+                                      <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">Sources</p>
                                       <ol className="mt-1 space-y-0.5">
                                         {message.sources.slice(0, 5).map((source, index) => (
                                           <li key={source.id}>
-                                            <button type="button" onClick={() => setSourcePreview({ ...source, index: index + 1 })} className="group inline-flex max-w-full items-start gap-1 text-left text-[10.5px] leading-snug text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
-                                              <span className="font-mono text-[9px] text-faint">{index + 1}.</span>
+                                            <button type="button" onClick={() => setSourcePreview({ ...source, index: index + 1 })} className="group inline-flex max-w-full items-start gap-1 text-left text-[12px] leading-snug text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                                              <span className="font-mono text-[12px] text-faint">{index + 1}.</span>
                                               <span className="truncate underline decoration-line underline-offset-2 group-hover:decoration-current">{source.title}</span>
                                               <span className="shrink-0 text-faint">· {source.category}</span>
                                             </button>
@@ -1327,12 +1327,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                       </ol>
                                     </div>
                                   ) : null}
-                                  {message.citationWarning && <p className="mt-1.5 text-[10.5px] leading-snug text-warning-ink">{message.citationWarning}</p>}
+                                  {message.citationWarning && <p className="mt-1.5 text-[12px] leading-snug text-warning-ink">{message.citationWarning}</p>}
                                   {message.status !== "streaming" && ((message.suggestedQuestions?.length ?? 0) > 0 || message.suggestSupport) && (
                                     <div className="mt-3 border-t border-line/70 pt-2.5">
                                       {message.suggestedQuestions?.length ? (
                                         <>
-                                          <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted"><Sparkles className="size-3 text-primary" aria-hidden /> Try asking next</p>
+                                          <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted"><Sparkles className="size-3 text-primary" aria-hidden /> Try asking next</p>
                                           <div className="grid gap-1.5">
                                             {message.suggestedQuestions.slice(0, 4).map((question) => (
                                               <button
@@ -1340,7 +1340,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                                 type="button"
                                                 onClick={() => { setSendingSuggestion(question); void send(question).finally(() => setSendingSuggestion(null)); }}
                                                 disabled={streaming || Boolean(sendingSuggestion) || uploadsBusy}
-                                                className="group flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface-2/60 px-2.5 py-2 text-left text-[11.5px] leading-snug text-ink-2 transition-[border-color,background-color] hover:border-primary/30 hover:bg-primary-soft/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                                className="group flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface-2/60 px-2.5 py-2 text-left text-[12px] leading-snug text-ink-2 transition-[border-color,background-color] hover:border-primary/30 hover:bg-primary-soft/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
                                               >
                                                 <span className="line-clamp-2">{question}</span>
                                                 {sendingSuggestion === question ? <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" aria-hidden /> : <ArrowUpRight className="size-3.5 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />}
@@ -1351,8 +1351,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                       ) : null}
                                       {message.suggestSupport && (
                                         <div className={cn("flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg bg-surface-2/70 px-2.5 py-2", message.suggestedQuestions?.length ? "mt-2" : "")}>
-                                          <span className="flex items-center gap-1.5 text-[11px] text-muted"><LifeBuoy className="size-3.5 shrink-0 text-primary" aria-hidden /> Need a person from iAcquire?</span>
-                                          <button type="button" onClick={() => { setSupportOpen(true); }} className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Prepare support request <ArrowUpRight className="size-3" aria-hidden /></button>
+                                          <span className="flex items-center gap-1.5 text-[12px] text-muted"><LifeBuoy className="size-3.5 shrink-0 text-primary" aria-hidden /> Need a person from iAcquire?</span>
+                                          <button type="button" onClick={() => { setSupportOpen(true); }} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Prepare support request <ArrowUpRight className="size-3" aria-hidden /></button>
                                         </div>
                                       )}
                                     </div>
@@ -1367,13 +1367,13 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                         <button key={attachment.id} type="button" onClick={() => setPreview(attachment)} className="group overflow-hidden rounded-xl border border-white/30 bg-white text-left" aria-label={`Preview ${attachment.filename}`}>
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={attachment.url} alt={attachment.filename} className="h-24 w-full object-cover transition group-hover:scale-[1.02]" />
-                                          <span className="block truncate px-2 py-1 text-[10px] text-ink">{attachment.filename}</span>
+                                          <span className="block truncate px-2 py-1 text-[12px] text-ink">{attachment.filename}</span>
                                         </button>
                                       ) : attachment.kind === "video" ? (
                                         <video key={attachment.id} src={attachment.url} controls preload="metadata" className="col-span-2 max-h-44 w-full rounded-xl border border-white/20 bg-black" aria-label={attachment.filename} />
                                       ) : (
-                                        <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-white/30 bg-white px-2.5 py-2 text-[11.5px] text-ink hover:bg-white/90">
-                                          <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}{attachment.extractionStatus !== "ready" ? <span className="ml-1 text-[9px] text-muted">· text unavailable</span> : null}</span><Download className="size-3.5 shrink-0 text-muted" />
+                                        <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-white/30 bg-white px-2.5 py-2 text-[12px] text-ink hover:bg-white/90">
+                                          <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}{attachment.extractionStatus !== "ready" ? <span className="ml-1 text-[12px] text-muted">· text unavailable</span> : null}</span><Download className="size-3.5 shrink-0 text-muted" />
                                         </a>
                                       ))}
                                     </div>
@@ -1390,12 +1390,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium leading-relaxed text-ink">{error}</p>
                                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                                  {canRetry && <button type="button" onClick={retry} className="inline-flex items-center gap-1 rounded-lg bg-surface px-2.5 py-1.5 text-[11.5px] font-semibold text-ink-2 shadow-sm ring-1 ring-line hover:bg-surface-2"><RotateCcw className="size-3" /> Try again</button>}
-                                  {health && !health.available && <button type="button" onClick={() => { clearError(); void loadHealth(true); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>}
-                                  {errorCode === "session_expired" ? <Link href="/login" className="text-[11.5px] font-semibold text-primary hover:underline">Sign in again</Link> : <Link href="/support" className="text-[11.5px] font-medium text-muted hover:text-ink">Contact support</Link>}
+                                  {canRetry && <button type="button" onClick={retry} className="inline-flex items-center gap-1 rounded-lg bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-ink-2 shadow-sm ring-1 ring-line hover:bg-surface-2"><RotateCcw className="size-3" /> Try again</button>}
+                                  {health && !health.available && <button type="button" onClick={() => { clearError(); void loadHealth(true); }} className="text-[12px] font-semibold text-primary hover:underline">Check again</button>}
+                                  {errorCode === "session_expired" ? <Link href="/login" className="text-[12px] font-semibold text-primary hover:underline">Sign in again</Link> : <Link href="/support" className="text-[12px] font-medium text-muted hover:text-ink">Contact support</Link>}
                                 </div>
                                 {errorDiagnostic && (
-                                  <details className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">
+                                  <details className="mt-2 border-t border-line pt-2 text-[12px] text-muted">
                                     <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
                                     <dl className="mt-1.5 grid gap-0.5">
                                       {errorDiagnostic.requestId && <div><dt className="inline text-faint">Request </dt><dd className="inline font-mono">{errorDiagnostic.requestId}</dd></div>}
@@ -1415,7 +1415,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
                   <div className="shrink-0 border-t border-line bg-surface px-3 pb-3 pt-2.5">
                     {health && !health.available && (
-                      <div role="status" className="mb-2 flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[11.5px] text-ink-2">
+                      <div role="status" className="mb-2 flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-2">
                         <LifeBuoy className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
                         <div className="min-w-0 flex-1">
                           <p className="leading-relaxed">{health.detail}</p>
@@ -1424,7 +1424,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                             <Link href="/support" className="font-medium text-muted hover:text-ink">Contact support</Link>
                           </div>
                           {health.diagnostic && (
-                            <details className="mt-1.5 border-t border-line pt-1.5 text-[10px] text-muted">
+                            <details className="mt-1.5 border-t border-line pt-1.5 text-[12px] text-muted">
                               <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
                               <p className="mt-1">Status: {health.diagnostic.connectionStatus ?? "no connection"} · Reason: {health.diagnostic.reason} · Provider: {health.diagnostic.provider ?? "unknown"} · Model: {health.diagnostic.model ?? "unknown"}</p>
                             </details>
@@ -1453,8 +1453,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                 <img src={item.url} alt="" className="size-8 rounded-lg object-cover" />
                               ) : item.kind === "video" && item.status === "ready" && item.url ? <video src={item.url} muted className="h-8 w-12 rounded-lg bg-black object-cover" aria-label={item.name} /> : item.kind === "video" ? <Film className="size-4 text-primary" /> : item.kind === "document" ? <FileText className="size-4 text-primary" /> : <ImageIcon className="size-4 text-primary" />}
                               <div className="min-w-0">
-                                <p className="max-w-32 truncate text-[10.5px] font-medium text-ink-2">{item.name}</p>
-                                {item.status === "uploading" ? <div className="mt-1 flex items-center gap-1 text-[9.5px] text-muted"><Loader2 className="size-2.5 animate-spin" /> {item.progress}%</div> : item.status === "failed" ? <button type="button" onClick={() => retryPending(item)} className="text-[9.5px] font-medium text-danger-ink underline">Retry upload</button> : <p className="text-[9.5px] text-muted">Ready</p>}
+                                <p className="max-w-32 truncate text-[12px] font-medium text-ink-2">{item.name}</p>
+                                {item.status === "uploading" ? <div className="mt-1 flex items-center gap-1 text-[12px] text-muted"><Loader2 className="size-2.5 animate-spin" /> {item.progress}%</div> : item.status === "failed" ? <button type="button" onClick={() => retryPending(item)} className="text-[12px] font-medium text-danger-ink underline">Retry upload</button> : <p className="text-[12px] text-muted">Ready</p>}
                               </div>
                               <button type="button" onClick={() => cancelPending(item)} aria-label={`Remove ${item.name}`} className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-surface text-muted hover:text-danger-ink"><X className="size-2.5" /></button>
                             </div>
@@ -1488,8 +1488,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                       <input ref={fileInputRef} type="file" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.csv,.mp4,.webm" onChange={(event) => { if (event.target.files) void addFiles(event.target.files); event.target.value = ""; }} />
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
-                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
-                      <button type="button" onClick={() => { setSupportOpen(true); }} className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-primary hover:underline"><LifeBuoy className="size-3" /> Get help</button>
+                      <p className="text-[12px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
+                      <button type="button" onClick={() => { setSupportOpen(true); }} className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-primary hover:underline"><LifeBuoy className="size-3" /> Get help</button>
                     </div>
                   </div>
                 </>
@@ -1508,7 +1508,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.18 }}
-            className={cn("pointer-events-none fixed left-1/2 z-[65] -translate-x-1/2 rounded-full bg-ink px-3 py-1.5 text-[11.5px] font-medium text-surface shadow-float sm:left-auto sm:right-10 sm:translate-x-0", view === "history" ? "bottom-8" : "bottom-28")}
+            className={cn("pointer-events-none fixed left-1/2 z-[65] -translate-x-1/2 rounded-full bg-ink px-3 py-1.5 text-[12px] font-medium text-surface shadow-float sm:left-auto sm:right-10 sm:translate-x-0", view === "history" ? "bottom-8" : "bottom-28")}
           >
             {notice}
           </motion.p>
@@ -1620,11 +1620,11 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSourcePreview(null)}>
             <motion.div role="dialog" aria-modal="true" aria-labelledby="aqi-source-title" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md rounded-2xl border border-line bg-surface p-4 shadow-float" onClick={(event) => event.stopPropagation()}>
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Source {sourcePreview.index}</p><h3 id="aqi-source-title" className="mt-1 text-[15px] font-semibold text-ink">{sourcePreview.title}</h3><p className="mt-0.5 text-[11px] text-muted">{sourcePreview.category}</p></div>
+                <div className="min-w-0"><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">Source {sourcePreview.index}</p><h3 id="aqi-source-title" className="mt-1 text-[15px] font-semibold text-ink">{sourcePreview.title}</h3><p className="mt-0.5 text-[12px] text-muted">{sourcePreview.category}</p></div>
                 <button type="button" onClick={() => setSourcePreview(null)} className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="Close source preview"><X className="size-4" /></button>
               </div>
               <p className="mt-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-2">{sourcePreview.snippet ?? "This approved source is available in the AQi knowledge library."}</p>
-              <p className="mt-3 border-t border-line pt-2 text-[10.5px] text-faint">Only approved, published knowledge is shown here.</p>
+              <p className="mt-3 border-t border-line pt-2 text-[12px] text-faint">Only approved, published knowledge is shown here.</p>
             </motion.div>
           </motion.div>
         )}
@@ -1697,7 +1697,7 @@ function HistoryView({
         {error ? (
           <div className="mx-1 my-3 rounded-xl border border-line bg-surface-2 px-4 py-4">
             <p className="text-[12.5px] font-medium text-ink">We couldn&apos;t load your conversations.</p>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">Please try again in a moment.</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">Please try again in a moment.</p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>Try again</Button>
           </div>
         ) : loading && conversations.length === 0 ? (
@@ -1708,7 +1708,7 @@ function HistoryView({
         ) : conversations.length === 0 ? (
           <div className="mx-1 my-3 rounded-xl border border-dashed border-line-strong px-4 py-5">
             <p className="text-[12.5px] font-medium text-ink">{trimmed ? "No conversations match your search" : "No saved conversations yet."}</p>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{trimmed ? "Try another title or clear your search." : "Start a chat and choose Save conversation to keep it here."}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">{trimmed ? "Try another title or clear your search." : "Start a chat and choose Save conversation to keep it here."}</p>
           </div>
         ) : (
           <>
@@ -1747,8 +1747,8 @@ function HistoryView({
                             <button type="button" onClick={onRenameCancel} disabled={renaming.saving} className="grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50" aria-label="Cancel rename"><X className="size-4" /></button>
                           </div>
                           {renaming.error
-                            ? <p role="alert" className="text-[10.5px] leading-relaxed text-danger-ink">{renaming.error}</p>
-                            : <p className="text-[10px] text-faint">Enter saves · Esc cancels</p>}
+                            ? <p role="alert" className="text-[12px] leading-relaxed text-danger-ink">{renaming.error}</p>
+                            : <p className="text-[12px] text-faint">Enter saves · Esc cancels</p>}
                         </form>
                       ) : (
                         <div className="flex items-start gap-1">
@@ -1762,7 +1762,7 @@ function HistoryView({
                               {active && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
                               <span className="line-clamp-2 break-words text-[12.5px] font-medium leading-snug text-ink">{conversation.title}</span>
                             </span>
-                            <span className="mt-0.5 block text-[10.5px] text-muted"><span suppressHydrationWarning>{relativeTime(conversation.lastMessageAt)}</span></span>
+                            <span className="mt-0.5 block text-[12px] text-muted"><span suppressHydrationWarning>{relativeTime(conversation.lastMessageAt)}</span></span>
                           </button>
                           <div className="flex shrink-0 items-center gap-0.5 pt-0.5 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                             <button type="button" onClick={() => onRenameStart(conversation)} title="Rename conversation" aria-label={`Rename ${conversation.title}`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-surface hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-7"><Pencil className="size-3.5" /></button>

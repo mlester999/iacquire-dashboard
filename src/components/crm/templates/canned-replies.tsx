@@ -65,7 +65,7 @@ export function CannedReplies({ scope, replies, folders, canManage, q, showArchi
                       {r.status === "archived" && <Badge>Archived</Badge>}
                     </span>
                     <span className="mt-1 line-clamp-2 block text-[12.5px] leading-relaxed text-muted"><TokenHighlight text={r.body} /></span>
-                    <span className="mt-1 block text-[11.5px] text-faint" suppressHydrationWarning>v{r.currentVersion} · updated {relativeTime(r.updatedAt)}</span>
+                    <span className="mt-1 block text-[12px] text-faint" suppressHydrationWarning>v{r.currentVersion} · updated {relativeTime(r.updatedAt)}</span>
                   </button>
                   {canManage && (
                     <Menu>

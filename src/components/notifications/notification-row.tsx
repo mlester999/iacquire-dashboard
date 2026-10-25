@@ -66,7 +66,7 @@ export function NotificationRow({
           <NotificationCategoryChip kind={item.kind} />
           <NotificationTimestamp value={item.created_at} timeZone={timeZone} now={now} />
           {item.link && (
-            <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] font-medium text-faint transition-colors group-hover:text-primary">
+            <span className="ml-auto inline-flex items-center gap-0.5 text-[12px] font-medium text-faint transition-colors group-hover:text-primary">
               Open <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
             </span>
           )}

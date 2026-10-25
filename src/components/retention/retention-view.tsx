@@ -158,7 +158,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                           </span>
                           {account.onboarding_progress !== null && (
                             <span className="mt-3 block">
-                              <span className="mb-1 flex justify-between text-[11px] text-muted"><span>Onboarding</span><span className="font-semibold tabular-nums text-ink-2">{account.onboarding_progress}%</span></span>
+                              <span className="mb-1 flex justify-between text-[12px] text-muted"><span>Onboarding</span><span className="font-semibold tabular-nums text-ink-2">{account.onboarding_progress}%</span></span>
                               <ProgressBar value={account.onboarding_progress} label={`${account.customer_name} onboarding`} />
                             </span>
                           )}
@@ -426,7 +426,7 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
                   <li key={h.id} className="relative">
                     <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-primary ring-4 ring-surface" />
                     <p className="text-[13px]">{h.event}</p>
-                    <p className="text-[11.5px] text-faint">{formatDate(h.occurred_at, timeZone)}</p>
+                    <p className="text-[12px] text-faint">{formatDate(h.occurred_at, timeZone)}</p>
                   </li>
                 ))}
               </ol>

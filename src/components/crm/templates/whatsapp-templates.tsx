@@ -68,7 +68,7 @@ export function WhatsappTemplates({ items, timeZone, q }: { items: WhatsappTempl
                     <p className="text-[12px] text-muted">Values: {t.variables.map((v) => `{{${v.position}}} ${v.label}`).join(", ")}</p>
                   )}
                   {whyNot && <p className={t.usable && t.status === "rejected" ? "text-[12.5px] text-danger-ink" : "text-[12.5px] text-muted"}>{whyNot}</p>}
-                  <p className="mt-auto text-[11.5px] text-faint">
+                  <p className="mt-auto text-[12px] text-faint">
                     {t.provider === "meta_whatsapp" ? "WhatsApp Business (Meta)" : "Through GoHighLevel"}
                     {t.checkedAt ? ` · checked ${formatDateTime(t.checkedAt, timeZone)}` : ""}
                   </p>

@@ -125,7 +125,7 @@ export function ProfileEditor({ userId, name, profile, timeOff, today, canManage
           </fieldset>
           <fieldset>
             <legend className="text-[12.5px] font-medium text-ink-2">Skills recorded by a manager</legend>
-            <p className="mt-0.5 text-[11.5px] leading-snug text-muted">Only recorded skills rank suggestions. Nothing is inferred from a person&apos;s work.</p>
+            <p className="mt-0.5 text-[12px] leading-snug text-muted">Only recorded skills rank suggestions. Nothing is inferred from a person&apos;s work.</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {SKILLS.map((skill) => (
                 <label key={skill} className="flex items-center justify-between gap-2 text-[12.5px] text-ink-2">

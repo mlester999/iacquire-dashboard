@@ -100,7 +100,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
       <Card className="relative overflow-hidden">
         <CardHeader className="relative flex-col rounded-t-2xl bg-[#10182a] p-5 text-white sm:flex-row sm:p-6">
           <div>
-            <p className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.16em] text-blue-300"><ShieldCheck className="size-4"/> Your system, cared for</p>
+            <p className="mb-3 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.16em] text-blue-300"><ShieldCheck className="size-4"/> Your system, cared for</p>
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-[21px] text-white">{plan?.name ?? "Managed maintenance"}</CardTitle>
               <StatusPill tone="violet">Optional</StatusPill>
@@ -111,7 +111,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
           {plan?.price && (
             <div className="shrink-0 sm:text-right">
               <p className="text-[30px] font-semibold tabular-nums tracking-tight">{formatPrice(plan.price)}</p>
-              <p className="mt-1 max-w-60 text-[11px] leading-relaxed text-slate-300">{plan.price.note ?? "Billed monthly once active"}</p>
+              <p className="mt-1 max-w-60 text-[12px] leading-relaxed text-slate-300">{plan.price.note ?? "Billed monthly once active"}</p>
             </div>
           )}
         </CardHeader>
@@ -134,7 +134,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
               {sub.paidThroughOn ? <Stat label="Paid through" value={formatDate(sub.paidThroughOn, timeZone)} /> : <Stat label={sub.status === "cancel_requested" ? "Cancellation requested" : "Next renewal"} value={sub.status === "cancel_requested" && sub.cancelRequestedAt ? formatDate(sub.cancelRequestedAt, timeZone) : sub.renewalOn ? formatDate(sub.renewalOn, timeZone) : "—"} />}
               {o.allowance && (
                 <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
-                  <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">Requests this month</p>
+                  <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">Requests this month</p>
                   <p className="mt-1 text-[18px] font-semibold tabular-nums">
                     {o.allowance.used} <span className="text-[13px] font-normal text-muted">of {o.allowance.total} used</span>
                   </p>
@@ -412,7 +412,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={cn("rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line")}>
-      <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">{label}</p>
+      <p className="text-[12px] font-medium uppercase tracking-[.08em] text-muted">{label}</p>
       <p className="mt-1 text-[18px] font-semibold tabular-nums">{value}</p>
     </div>
   );

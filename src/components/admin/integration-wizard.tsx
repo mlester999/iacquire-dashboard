@@ -853,8 +853,8 @@ export function ConnectionWizard({
           <ProgressBar value={((index + 1) / flow.length) * 100} label={`Step ${index + 1} of ${flow.length}`} />
           <ol className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Connection steps">
             {flow.map((s, i) => (
-              <li key={s.key} aria-current={i === index ? "step" : undefined} className={cn("flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-[10.5px] leading-tight transition-colors", i === index ? "border-primary/30 bg-primary-soft font-semibold text-primary-ink shadow-soft" : i < index ? "border-success/20 bg-success-soft/50 text-success-ink" : "border-line bg-surface-2/50 text-muted")}>
-                <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold",i===index?"bg-primary text-white":i<index?"bg-success text-white":"bg-surface-3 text-muted")} aria-hidden>{i<index?<CheckCircle2 className="size-3"/>:i+1}</span><span><span className="sr-only">{i < index ? "Completed: " : i === index ? "Current: " : "Upcoming: "}</span>{s.label}</span>
+              <li key={s.key} aria-current={i === index ? "step" : undefined} className={cn("flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-[12px] leading-tight transition-colors", i === index ? "border-primary/30 bg-primary-soft font-semibold text-primary-ink shadow-soft" : i < index ? "border-success/20 bg-success-soft/50 text-success-ink" : "border-line bg-surface-2/50 text-muted")}>
+                <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold",i===index?"bg-primary text-white":i<index?"bg-success text-white":"bg-surface-3 text-muted")} aria-hidden>{i<index?<CheckCircle2 className="size-3"/>:i+1}</span><span><span className="sr-only">{i < index ? "Completed: " : i === index ? "Current: " : "Upcoming: "}</span>{s.label}</span>
               </li>
             ))}
           </ol>

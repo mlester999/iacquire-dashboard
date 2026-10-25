@@ -35,7 +35,7 @@ export default async function ClientsPage() {
           rows.length > 0 ? (
             <div className="w-full rounded-2xl border border-line-strong bg-surface/85 p-4 shadow-card sm:p-5 lg:w-[340px]">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Pipeline at a glance</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted">Pipeline at a glance</p>
                 <p className="text-[12px] text-muted">
                   <strong className="text-[15px] font-semibold tabular-nums tracking-tight text-ink">{rows.length}</strong> {rows.length === 1 ? "client" : "clients"}
                 </p>

@@ -79,10 +79,10 @@ export function ChangeRequestsSection({ project, timeZone, canRequest, canApprov
             <ul className="mt-2 space-y-2">
               {project.amendments.map((a) => (
                 <li key={a.id} className="rounded-xl bg-surface-2 p-3 text-[13px]">
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-mono text-[11.5px] text-muted">{a.changeRef}</span><span className="font-medium text-ink">{a.changeTitle}</span>
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-mono text-[12px] text-muted">{a.changeRef}</span><span className="font-medium text-ink">{a.changeTitle}</span>
                     <span className="text-ink-2">{describeQuote({ additionalCents: a.addedCents, currency: a.currency, weeksMin: a.weeksMin, weeksMax: a.weeksMax })}</span></p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-muted">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
-                  <p className="mt-1 text-[11.5px] text-faint">Agreed {formatDate(a.agreedAt, timeZone)}</p>
+                  <p className="mt-1 text-[12px] text-faint">Agreed {formatDate(a.agreedAt, timeZone)}</p>
                 </li>
               ))}
             </ul>
@@ -159,7 +159,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
     <li id={`change-${c.id}`} className="scroll-mt-24 rounded-2xl border border-line p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[14px] font-medium text-ink"><span className="mr-2 font-mono text-[11.5px] text-muted">{c.ref}</span>{c.title}</p>
+          <p className="text-[14px] font-medium text-ink"><span className="mr-2 font-mono text-[12px] text-muted">{c.ref}</span>{c.title}</p>
           <p className="mt-0.5 text-[12px] text-muted">Asked {formatDate(c.requestedAt, timeZone)}{c.requestedByName ? ` by ${c.requestedByName}` : ""}</p>
         </div>
         <StatusPill tone={TONE[shown]}>{CHANGE_ORDER_STATUS_LABEL[shown]}</StatusPill>
@@ -194,7 +194,7 @@ function ChangeCard({ requestId, change: c, messages, timeZone, canRequest, canA
             <li key={m.id} className={cn("max-w-[94%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", m.authorKind === "client" ? "ml-auto bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>
               {m.kind === "info_request" && <StatusPill size="sm" tone="warning" className="mb-1.5">Question from iAcquire</StatusPill>}
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
-              <p className="mt-1 text-[11.5px]">{m.authorKind === "agency" ? "iAcquire team" : (m.authorName ?? "You")} · {formatDateTime(m.createdAt, timeZone)}</p>
+              <p className="mt-1 text-[12px]">{m.authorKind === "agency" ? "iAcquire team" : (m.authorName ?? "You")} · {formatDateTime(m.createdAt, timeZone)}</p>
             </li>
           ))}
         </ul>

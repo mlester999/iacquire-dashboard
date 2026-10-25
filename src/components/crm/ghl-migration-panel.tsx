@@ -391,7 +391,7 @@ function ComparisonTable({ comparison }: { comparison: NonNullable<GhlMigrationS
                 <td className="px-3 py-2 font-medium text-ink">{r.label}{r.truncated && <span className="ml-1 text-[12px] font-normal text-warning-ink">(stopped early)</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {r.sourceCount === null ? <span className="text-muted">not reported</span> : r.sourceCountKind === "at_least" ? `at least ${n(r.sourceCount)}` : n(r.sourceCount)}
-                  {r.sourceCountKind === "listed" && <span className="ml-1 text-[11.5px] text-muted">listed</span>}
+                  {r.sourceCountKind === "listed" && <span className="ml-1 text-[12px] text-muted">listed</span>}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{n(r.staged)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{n(r.destinationCount)}</td>

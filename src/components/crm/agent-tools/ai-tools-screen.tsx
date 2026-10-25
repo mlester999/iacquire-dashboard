@@ -181,7 +181,7 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
             if (!tools.length) return null;
             return (
               <div key={g.kind}>
-                <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-[0.06em] text-faint">{g.title}</p>
+                <p className="mb-1.5 text-[12px] font-medium uppercase tracking-[0.06em] text-faint">{g.title}</p>
                 <ul className="divide-y divide-line rounded-xl border border-line">
                   {tools.map((t) => {
                     const b = BEHAVIOUR[t.behaviour as Exclude<ToolBehaviour, "not_for_role">];

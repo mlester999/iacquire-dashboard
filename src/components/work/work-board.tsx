@@ -216,7 +216,7 @@ export function WorkBoard({
           <div className="space-y-2">
             {reviewActions.length > 0 ? (
               <>
-                <label htmlFor="work-review" className="block text-[11.5px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
+                <label htmlFor="work-review" className="block text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
                 <Select id="work-review" value={selected?.capability ?? ""} onChange={(event) => setSelectedCapability(event.target.value)} className="min-w-[16rem]">
                   {reviewActions.map((action) => (
                     <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
@@ -269,7 +269,7 @@ export function WorkBoard({
             {item.label}
           </Link>
         ))}
-        <span className="ml-auto text-[11.5px] text-muted">{jobs.length} item{jobs.length === 1 ? "" : "s"} in this view</span>
+        <span className="ml-auto text-[12px] text-muted">{jobs.length} item{jobs.length === 1 ? "" : "s"} in this view</span>
       </nav>
 
       {canManageSchedules && (
@@ -320,10 +320,10 @@ export function WorkBoard({
                   placeholder="Find 20 independent dental clinics in Singapore"
                   aria-describedby="lead-research-assignment-hint"
                 />
-                <p id="lead-research-assignment-hint" className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                <p id="lead-research-assignment-hint" className="mt-1 text-[12px] leading-relaxed text-muted">
                   The Lead Hunter will run exactly this assignment on the cadence, using public sources and the existing research gate. It never contacts a prospect. The schedule is saved paused, and the operator switch and the Lead Hunter&apos;s readiness are still required.
                 </p>
-                {!selectedScheduleAction?.available && <p className="mt-1 text-[11.5px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
+                {!selectedScheduleAction?.available && <p className="mt-1 text-[12px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
               </div>
             )}
             <div className="rounded-xl border border-line bg-surface-2/30 p-3">
@@ -332,7 +332,7 @@ export function WorkBoard({
                   <Switch checked={restrictHours} aria-label="Only run during business hours" onCheckedChange={setRestrictHours} />
                   Only run during business hours
                 </label>
-                <span className="text-[11px] text-muted">Evaluated in {timeZone}</span>
+                <span className="text-[12px] text-muted">Evaluated in {timeZone}</span>
               </div>
               {restrictHours && (
                 <div className="mt-3 space-y-2.5">
@@ -351,20 +351,20 @@ export function WorkBoard({
                           type="button"
                           aria-pressed={active}
                           onClick={() => setBusinessDays((current) => active ? current.filter((item) => item !== day) : [...current, day])}
-                          className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[11.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[11.5px] font-medium text-muted hover:bg-surface-2"}
+                          className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[12px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[12px] font-medium text-muted hover:bg-surface-2"}
                         >
                           {DAY_LABEL[day]}
                         </button>
                       );
                     })}
                   </div>
-                  <p className="text-[11px] leading-relaxed text-muted">Outside these hours a due schedule is postponed to the next opening; it does not create a job in the middle of the night.</p>
+                  <p className="text-[12px] leading-relaxed text-muted">Outside these hours a due schedule is postponed to the next opening; it does not create a job in the middle of the night.</p>
                 </div>
               )}
             </div>
             {!scheduleOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
+                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
               </p>
             )}
             {schedules.length === 0 ? (
@@ -381,8 +381,8 @@ export function WorkBoard({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
-                      {schedule.payload.prompt && <p className="mt-0.5 truncate text-[11.5px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
-                      <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
+                      {schedule.payload.prompt && <p className="mt-0.5 truncate text-[12px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
+                      <p className="mt-0.5 text-[12px] text-muted" suppressHydrationWarning>
                         {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
                         {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}
                         {Object.keys(schedule.businessHours).length ? " · business hours only" : " · any time"}
@@ -435,7 +435,7 @@ export function WorkBoard({
             </div>
             {!triggerOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
+                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
               </p>
             )}
             {triggers.length === 0 ? (
@@ -452,7 +452,7 @@ export function WorkBoard({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
-                      <p className="mt-0.5 text-[11.5px] text-muted">
+                      <p className="mt-0.5 text-[12px] text-muted">
                         {trigger.capabilityLabel} · {trigger.employeeName} · last event #{trigger.lastEventId}
                         {trigger.enabled && !triggerOperatorEnabled ? " · paused by operator" : ""}
                       </p>
@@ -502,7 +502,7 @@ export function WorkBoard({
                         <StatusPill tone={STATUS_TONE[job.status] ?? "neutral"} size="sm" dot={job.status === "running"}>
                           {job.statusLabel}
                         </StatusPill>
-                        <span className="text-[11.5px] text-muted">{job.employeeName}</span>
+                        <span className="text-[12px] text-muted">{job.employeeName}</span>
                         {job.capability === "proactive_review" && job.status === "completed" && <InfoChip icon={<ShieldCheck />}>Read-only review</InfoChip>}
                       </div>
                       <button
@@ -518,22 +518,22 @@ export function WorkBoard({
                       </button>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <InfoChip icon={<Clock3 />}><span suppressHydrationWarning>{formatDateTime(job.createdAt, timeZone)}</span></InfoChip>
-                        {job.latestEvent && <span className="text-[11.5px] text-faint" suppressHydrationWarning>Latest: {relativeTime(job.latestEvent.createdAt)}</span>}
+                        {job.latestEvent && <span className="text-[12px] text-faint" suppressHydrationWarning>Latest: {relativeTime(job.latestEvent.createdAt)}</span>}
                         {job.resultCount > 0 && <InfoChip icon={<CheckCircle2 />}>{job.resultCount} result{job.resultCount === 1 ? "" : "s"}</InfoChip>}
                         {job.failureMessage && job.status === "failed" && <InfoChip icon={<XCircle />}>Failure recorded</InfoChip>}
                       </div>
                       {job.latestEvent && (
-                        <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-faint" suppressHydrationWarning>
+                        <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-faint" suppressHydrationWarning>
                           Latest recorded: {job.latestEvent.message} · {relativeTime(job.latestEvent.createdAt)}
                         </p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/50 hover:underline">{job.capability === "lead_research" ? "Review" : "Open"} <ArrowRight className="size-3.5" aria-hidden /></Link>}
+                      {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/50 hover:underline">{job.capability === "lead_research" ? "Review" : "Open"} <ArrowRight className="size-3.5" aria-hidden /></Link>}
                       <button
                         type="button"
                         onClick={() => setExpanded(open ? null : job.id)}
-                        className="inline-flex min-h-8 items-center rounded-lg px-2 text-[11.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"
+                        className="inline-flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-muted hover:bg-surface-2 hover:text-ink"
                         aria-expanded={open}
                       >
                         {open ? "Hide activity" : "Activity"}

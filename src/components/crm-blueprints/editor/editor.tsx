@@ -213,7 +213,7 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
           </Link>
           <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">Blueprint editor</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">Blueprint editor</p>
               <h1 className="break-words text-[22px] font-semibold tracking-[-0.03em] text-ink">{content.blueprint.name || blueprint.name}</h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
                 <Badge tone={blueprint.status === "published" ? "success" : blueprint.status === "archived" ? "neutral" : "warning"}>{blueprint.status === "published" ? `Version ${blueprint.currentVersion} published` : blueprint.status === "archived" ? "Archived" : "Never published"}</Badge>
@@ -271,7 +271,7 @@ export function BlueprintEditor({ blueprint, canEdit, initialSection }: { bluepr
                       )}
                     >
                       <span className="flex-1 whitespace-nowrap">{NAV_LABELS[s]}</span>
-                      {count !== null && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{count}</span>}
+                      {count !== null && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{count}</span>}
                       {st.errors > 0 ? <span role="img" className="size-2 rounded-full bg-danger" aria-label={`${st.errors} to fix`} /> : st.warnings > 0 ? <span role="img" className="size-2 rounded-full bg-warning" aria-label={`${st.warnings} to check`} /> : null}
                     </button>
                   </li>

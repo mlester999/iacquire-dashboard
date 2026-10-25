@@ -24,7 +24,7 @@ function EnvList({ items }: { items: EnvSwitchState[] }) {
     <ul className="space-y-1.5 text-[12.5px]">
       {items.map((s) => (
         <li key={s.name} className="flex flex-wrap items-baseline gap-x-2">
-          <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-ink">{s.name}</code>
+          <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink">{s.name}</code>
           <span className="font-medium text-ink">{s.on === null ? "unknown" : s.on ? "On" : "Off"}</span>
           {!s.ok && <Badge tone="warning">{s.wantOn ? "Held while off" : "Blocking customers while on"}</Badge>}
           <span className="basis-full text-muted">{s.meaning}</span>
@@ -88,7 +88,7 @@ export function ModuleRolloutAdmin({ rows, truncated, env }: { rows: ModuleRollo
                   <p className="text-[12.5px] font-medium text-ink">Before it does anything</p>
                   <ul className="mt-1 space-y-1.5 text-[12.5px] leading-relaxed text-muted">
                     {m.needs.map((n) => (
-                      <li key={n.text} className="flex gap-2"><Badge tone="outline" className="mt-0.5 h-5 px-2 text-[11px]">{NEED_LABEL[n.kind]}</Badge><span className="min-w-0">{n.text}</span></li>
+                      <li key={n.text} className="flex gap-2"><Badge tone="outline" className="mt-0.5 h-5 px-2 text-[12px]">{NEED_LABEL[n.kind]}</Badge><span className="min-w-0">{n.text}</span></li>
                     ))}
                   </ul>
                 </div>

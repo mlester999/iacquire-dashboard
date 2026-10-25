@@ -153,7 +153,7 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
         <ol className="mt-3 space-y-2">
           {program.steps.map((s) => (
             <li key={s.key} className="rounded-xl bg-surface-2 px-3.5 py-2.5">
-              <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted"><Clock className="size-3" aria-hidden />{s.delayDays === 0 ? "Right away" : `${s.delayDays} day${s.delayDays === 1 ? "" : "s"} later`}</p>
+              <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Clock className="size-3" aria-hidden />{s.delayDays === 0 ? "Right away" : `${s.delayDays} day${s.delayDays === 1 ? "" : "s"} later`}</p>
               <p className="mt-1 text-[13.5px] leading-relaxed">{s.body}</p>
               {hasFeedbackLink(s.body) && <p className="mt-1 text-[12px] text-muted">Each customer gets their own private link here, once every 30 days at most.</p>}
             </li>
@@ -167,7 +167,7 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
 
         <dl className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6" aria-label="Last 30 days">
           {([["Enrolled", program.stats.enrolled30d, ""], ["Sent", program.stats.sent30d, ""], ["Delivered", program.stats.delivered30d, "success"], ["Replied", program.stats.replied30d, "success"], ["Held back", program.stats.held30d, "warning"], ["Stopped", program.stats.stopped30d, "neutral"]] as const).map(([label, n, tone]) => (
-            <div key={label} className={cn("flex flex-col rounded-xl px-2 py-2.5 ring-1 ring-inset", n > 0 && tone === "success" ? "bg-success-soft/60 ring-success/20" : n > 0 && tone === "warning" ? "bg-warning-soft/60 ring-warning/25" : "bg-surface-2/60 ring-line")}><dt className="order-2 mt-1 text-[11px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none tabular-nums">{n}</dd></div>
+            <div key={label} className={cn("flex flex-col rounded-xl px-2 py-2.5 ring-1 ring-inset", n > 0 && tone === "success" ? "bg-success-soft/60 ring-success/20" : n > 0 && tone === "warning" ? "bg-warning-soft/60 ring-warning/25" : "bg-surface-2/60 ring-line")}><dt className="order-2 mt-1 text-[12px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none tabular-nums">{n}</dd></div>
           ))}
         </dl>
 
@@ -218,7 +218,7 @@ function Lifecycle({ data }: { data: LifecycleOverview }) {
           {data.stages.map((s) => (
             <li key={s.stage} className={cn("rounded-xl border px-3 py-2.5", s.stage === "customer" || s.stage === "retention" ? "border-primary/30 bg-primary-soft/40" : "border-line bg-surface")}>
               <p className="text-[18px] font-semibold leading-none">{s.count}</p>
-              <p className="mt-1 text-[11.5px] leading-tight text-muted">{s.label}</p>
+              <p className="mt-1 text-[12px] leading-tight text-muted">{s.label}</p>
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden><div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((s.count / max) * 100)}%` }} /></div>
             </li>
           ))}

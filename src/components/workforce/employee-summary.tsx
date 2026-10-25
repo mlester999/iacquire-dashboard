@@ -38,9 +38,9 @@ export function ReadinessInline({ readiness, detail = false }: { readiness: Empl
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill tone={TONE_TO_STATUS[readiness.tone]} size="sm">{readiness.label}</StatusPill>
-        <span className="text-[11.5px] tabular-nums text-muted">{readiness.completed}/{readiness.total} requirements</span>
+        <span className="text-[12px] tabular-nums text-muted">{readiness.completed}/{readiness.total} requirements</span>
       </div>
-      {detail && <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{readiness.title}. {readiness.description}</p>}
+      {detail && <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{readiness.title}. {readiness.description}</p>}
     </div>
   );
 }
@@ -64,12 +64,12 @@ export function ReadinessMini({ readiness, dark = false }: { readiness: Employee
     <div className={cn("rounded-2xl border p-4", dark ? "border-white/10 bg-white/[.045]" : "border-line bg-surface-2/70")}>
       <div className="flex items-end justify-between gap-3">
         <div>
-          <p className={cn("text-[10px] font-semibold uppercase tracking-[.16em]", dark ? "text-white/60" : "text-muted")}>Activation readiness</p>
+          <p className={cn("text-[12px] font-semibold uppercase tracking-[.16em]", dark ? "text-white/60" : "text-muted")}>Activation readiness</p>
           <p className={cn("mt-1 text-[13px] font-semibold", dark ? "text-white" : "text-ink")}>
             {readiness.completed} of {readiness.total} requirements
           </p>
         </div>
-        <span className={cn("text-[11px] font-medium tabular-nums", dark ? "text-white/55" : "text-muted")}>{Math.round((readiness.completed / readiness.total) * 100)}%</span>
+        <span className={cn("text-[12px] font-medium tabular-nums", dark ? "text-white/55" : "text-muted")}>{Math.round((readiness.completed / readiness.total) * 100)}%</span>
       </div>
       <ProgressBar value={(readiness.completed / readiness.total) * 100} tone={readiness.tone === "danger" ? "danger" : readiness.tone === "success" ? "success" : readiness.tone === "warning" ? "warning" : "primary"} className="mt-3" label="Activation readiness" />
       <ol className="mt-3 space-y-2">
@@ -128,7 +128,7 @@ export function EmployeeProfileHero({
       )}
       <div className="relative grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-start">
         <div className="min-w-0">
-          <p className={cn("flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.17em]", dark ? "text-blue-200" : "text-primary-ink")}>
+          <p className={cn("flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.17em]", dark ? "text-blue-200" : "text-primary-ink")}>
             <Sparkles className="size-3.5" aria-hidden /> {eyebrow}
           </p>
           <div className="mt-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
@@ -184,7 +184,7 @@ export function ReadinessChecklist({
         <div className="rounded-2xl border border-line bg-surface-2/60 p-3.5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[12.5px] font-medium text-ink">{readiness.completed} of {readiness.total} complete</p>
-            <span className="text-[11px] tabular-nums text-muted">{Math.round((readiness.completed / readiness.total) * 100)}%</span>
+            <span className="text-[12px] tabular-nums text-muted">{Math.round((readiness.completed / readiness.total) * 100)}%</span>
           </div>
           <ProgressBar value={(readiness.completed / readiness.total) * 100} tone={readiness.tone === "danger" ? "danger" : readiness.tone === "success" ? "success" : readiness.tone === "warning" ? "warning" : "primary"} className="mt-2.5" label="Activation readiness" />
         </div>

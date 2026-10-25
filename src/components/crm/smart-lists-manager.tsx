@@ -52,7 +52,7 @@ export function SmartListsManager({ scope, lists, counts, options }: { scope: Cr
                         {l.visibility === "team" ? <Badge tone="neutral"><Users className="size-3" />Team</Badge> : null}
                       </div>
                       <p className="mt-0.5 truncate text-[12.5px] text-muted">{describeFilter(l.filter, catalog, options) || "Everyone"}</p>
-                      <p className="mt-0.5 text-[11.5px] text-faint">{l.mine ? "Yours" : `By ${l.ownerName ?? "a teammate"}`} · updated <RelativeTime iso={l.updatedAt} timezone={scope.timezone} />{l.lastUsedAt ? <> · you opened it <RelativeTime iso={l.lastUsedAt} timezone={scope.timezone} /></> : ""}</p>
+                      <p className="mt-0.5 text-[12px] text-faint">{l.mine ? "Yours" : `By ${l.ownerName ?? "a teammate"}`} · updated <RelativeTime iso={l.updatedAt} timezone={scope.timezone} />{l.lastUsedAt ? <> · you opened it <RelativeTime iso={l.lastUsedAt} timezone={scope.timezone} /></> : ""}</p>
                     </div>
                     <span className="text-[13px] font-medium tabular-nums text-ink-2">{counts[l.id] === null || counts[l.id] === undefined ? "—" : `${counts[l.id]!.toLocaleString("en-US")} ${counts[l.id] === 1 ? "contact" : "contacts"}`}</span>
                     {!scope.readOnly && (

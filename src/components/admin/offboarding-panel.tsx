@@ -182,8 +182,8 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
 
           {view && view.timeline.length > 0 && (
             <details className="group rounded-xl border border-line px-4 py-3 text-[13px]">
-              <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden"><History className="size-4 text-muted" aria-hidden /> History <InfoChip className="h-5 text-[11px]">{view.timeline.length}</InfoChip></summary>
-              <ol className="mt-3 space-y-3 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i} className="relative"><span aria-hidden className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" /><p className="text-ink-2">{t.detail ?? sentenceCase(t.kind)}</p><InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[11px]">{formatDateTime(t.at, "UTC")}</InfoChip></li>)}</ol>
+              <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden"><History className="size-4 text-muted" aria-hidden /> History <InfoChip className="h-5 text-[12px]">{view.timeline.length}</InfoChip></summary>
+              <ol className="mt-3 space-y-3 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i} className="relative"><span aria-hidden className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" /><p className="text-ink-2">{t.detail ?? sentenceCase(t.kind)}</p><InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[12px]">{formatDateTime(t.at, "UTC")}</InfoChip></li>)}</ol>
             </details>
           )}
         </CardContent>

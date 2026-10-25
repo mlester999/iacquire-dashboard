@@ -37,7 +37,7 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
   return (
     <section aria-labelledby="onboarding-stage-title" className="onboarding-stages p-4 sm:p-5 lg:px-7 lg:pb-6 lg:pt-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-[var(--stage-accent)] lg:text-[11px]">Built around you</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[.18em] text-[var(--stage-accent)] lg:text-[12px]">Built around you</p>
         {saveState}
       </div>
 

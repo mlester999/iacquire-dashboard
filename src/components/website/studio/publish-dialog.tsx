@@ -23,7 +23,7 @@ function IssueList({ items, tone }: { items: Issue[]; tone: "danger" | "warning"
           <Icon className={`mt-0.5 size-3.5 shrink-0 ${iconTone}`} aria-hidden />
           <div className="min-w-0">
             <p className="font-medium text-ink">{i.message}</p>
-            <p className="mt-0.5 inline-flex max-w-full rounded-md bg-surface/70 px-1.5 py-0.5 text-[11.5px] text-muted ring-1 ring-inset ring-line">{i.where}</p>
+            <p className="mt-0.5 inline-flex max-w-full rounded-md bg-surface/70 px-1.5 py-0.5 text-[12px] text-muted ring-1 ring-inset ring-line">{i.where}</p>
           </div>
         </li>
       ))}

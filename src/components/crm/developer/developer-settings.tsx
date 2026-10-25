@@ -80,7 +80,7 @@ export function DeveloperSettings({ scope, keys, subscriptions, scopes, events, 
                   Every delivery is a POST with an <span className="font-mono">iAcquire-Signature: t=…,v1=…</span> header: an HMAC-SHA256 of <span className="font-mono">{"<t>.<raw body>"}</span> keyed with the webhook&apos;s signing secret. Check it, refuse old timestamps, answer 2xx within 10 seconds, and ignore an <span className="font-mono">iAcquire-Event-Id</span> you have already processed.
                 </p>
                 <div className="relative">
-                  <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-surface-2 p-3 pr-12 text-[11.5px] leading-relaxed text-ink"><code>{VERIFY_SNIPPET}</code></pre>
+                  <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-surface-2 p-3 pr-12 text-[12px] leading-relaxed text-ink"><code>{VERIFY_SNIPPET}</code></pre>
                   <div className="absolute right-2 top-2"><CopyButton value={VERIFY_SNIPPET} label="Copy the verification code" size="icon-sm" variant="ghost" /></div>
                 </div>
               </div>

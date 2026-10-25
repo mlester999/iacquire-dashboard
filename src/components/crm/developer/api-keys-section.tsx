@@ -166,7 +166,7 @@ function CreateKeyDialog({ scope, scopes, expiryChoices, onClose, onCreated }: {
                 <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={picked.includes(s.scope)} onChange={(e) => toggle(s.scope, e.target.checked)} />
                 <span className="min-w-0">
                   <span className="font-medium text-ink">{s.label}</span>
-                  <span className="ml-1.5 font-mono text-[11.5px] text-muted">{s.scope}</span>
+                  <span className="ml-1.5 font-mono text-[12px] text-muted">{s.scope}</span>
                   <span className="block text-[12.5px] text-muted">{s.description}</span>
                 </span>
               </label>

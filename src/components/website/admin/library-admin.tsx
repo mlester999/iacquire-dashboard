@@ -81,7 +81,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
         <div role="group" aria-label="Template collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {TABS.map((t) => {
             const n = scope.filter(t.match).length;
-            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
+            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
           })}
         </div>
         <p role="status" className="text-[12px] text-muted">{list.length} template{list.length === 1 ? "" : "s"} <span className="text-faint">· counts match your filters</span></p>
@@ -99,20 +99,20 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                     <TemplateThumb card={t} frameBase={frameBase} priority={index < 3} draft={t.kind === "custom"} />
                   </button>
                   <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
-                    {t.featured && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink/85 px-2.5 text-[11px] font-semibold text-white shadow-soft backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
-                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[11px] font-semibold text-white shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
+                    {t.featured && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink/85 px-2.5 text-[12px] font-semibold text-white shadow-soft backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
+                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[12px] font-semibold text-white shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
                   </div>
                 </div>
                 <div className="flex flex-1 flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0"><p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted" title={t.familyName}>{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight" title={t.name}>{t.name}</h2></div>
+                    <div className="min-w-0"><p className="truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted" title={t.familyName}>{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight" title={t.name}>{t.name}</h2></div>
                     <StatusPill tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</StatusPill>
                   </div>
                   <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted" title={t.description || undefined}>{t.description || "No description yet."}</p>
                   {t.unpublishedChanges && <div><StatusPill tone="warning" size="sm">Changes awaiting publication</StatusPill></div>}
                   {(t.industries.length > 0 || t.tags.length > 0) && (
                     <ul className="flex flex-wrap gap-1.5" aria-label="Industries and tags">
-                      {t.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).map((x) => <li key={x} className="max-w-full"><span className="inline-flex h-6 max-w-full items-center rounded-lg bg-primary-soft px-2 text-[11.5px] font-medium text-primary-ink ring-1 ring-inset ring-primary/15"><span className="truncate">{x}</span></span></li>)}
+                      {t.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).map((x) => <li key={x} className="max-w-full"><span className="inline-flex h-6 max-w-full items-center rounded-lg bg-primary-soft px-2 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-primary/15"><span className="truncate">{x}</span></span></li>)}
                       {t.tags.slice(0, 3).map((x) => <li key={x} className="max-w-full"><InfoChip className="capitalize">{x}</InfoChip></li>)}
                     </ul>
                   )}
@@ -211,7 +211,7 @@ function EditDialog({ t, showUsage, onClose, onSaved }: { t: TemplateView; /** U
           <div><dt className="text-muted">Current version</dt><dd className="mt-1 font-medium">{t.version || "Unpublished"}</dd></div>
           {showUsage && <div><dt className="text-muted">Websites started from it</dt><dd className="mt-1 font-medium">{t.sitesUsing} <span className="font-normal text-muted">across all clients</span></dd></div>}
           <div><dt className="text-muted">Last updated</dt><dd className="mt-1 font-medium">{t.updatedAt ? relativeTime(t.updatedAt) : "Built-in collection"}{t.updatedByName ? ` by ${t.updatedByName}` : ""}</dd></div>
-          <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1.5"><code className="block break-all rounded-lg bg-surface px-2 py-1.5 font-mono text-[11px] text-ink-2 ring-1 ring-inset ring-line">{t.key}</code></dd></div>
+          <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1.5"><code className="block break-all rounded-lg bg-surface px-2 py-1.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{t.key}</code></dd></div>
         </dl>
         {t.kind === "custom" && <Row label="Name" htmlFor="ed-name"><TextControl id="ed-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></Row>}
         {t.kind === "custom" && <Row label="Short description" htmlFor="ed-desc"><AreaControl id="ed-desc" rows={2} value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} /></Row>}

@@ -554,7 +554,7 @@ export function ChatWorkspace(props: Props) {
             </span>
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-[15px] font-semibold tracking-tight text-ink sm:text-[17px]" title={employeeName}>{employeeName}</h1>
-              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px] text-muted">
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[12px] text-muted">
                 {showRole && <span className="hidden min-w-0 truncate sm:inline" title={meta.shortName}>{meta.shortName}</span>}
                 {showRole && <span className="hidden text-faint sm:inline" aria-hidden>·</span>}
                 <span role="status" aria-live="polite" aria-label={readiness.label} title={readiness.label} className="inline-flex min-w-0 items-center gap-1.5">
@@ -601,7 +601,7 @@ export function ChatWorkspace(props: Props) {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                       >
-                        {dayLabel && <div role="separator" aria-label={dayLabel} className="-mt-1 mb-1 flex items-center gap-3 text-[11px] text-faint"><span className="h-px flex-1 bg-line" /><span>{dayLabel}</span><span className="h-px flex-1 bg-line" /></div>}
+                        {dayLabel && <div role="separator" aria-label={dayLabel} className="-mt-1 mb-1 flex items-center gap-3 text-[12px] text-faint"><span className="h-px flex-1 bg-line" /><span>{dayLabel}</span><span className="h-px flex-1 bg-line" /></div>}
                         {m.role === "user" ? (
                           <UserBubble message={m} timeZone={timeZone} />
                         ) : (
@@ -742,7 +742,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
   const explanation = ready ? null : readiness.description;
   return (
     <div className="flex min-h-[52dvh] flex-col items-start justify-center py-6 text-left sm:py-10">
-      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
+      <p className="mb-5 text-[12px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
       <div className="flex w-full items-center justify-between gap-5">
         <div className="min-w-0">
           <h2 className="max-w-md text-[28px] font-semibold leading-[1.08] tracking-[-.035em] text-ink sm:text-[38px]">
@@ -769,7 +769,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
               whileHover={reduce ? undefined : { y: -2 }}
               className="flex items-center justify-between gap-4 rounded-xl border border-line bg-surface-2/60 p-4 text-left text-[14px] leading-snug text-ink-2 transition-colors hover:border-primary/30 hover:bg-primary-soft/30 hover:text-ink"
             >
-              <span className="flex items-center gap-3"><span className="font-mono text-[10px] text-muted">0{i + 1}</span>{p}</span><ArrowUpRight className="size-4 shrink-0 text-muted" />
+              <span className="flex items-center gap-3"><span className="font-mono text-[12px] text-muted">0{i + 1}</span>{p}</span><ArrowUpRight className="size-4 shrink-0 text-muted" />
             </motion.button>
           ))}
         </div>
@@ -777,13 +777,13 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
         <div className="mt-8 w-full max-w-2xl rounded-3xl border border-line bg-surface-2/70 p-5 text-left shadow-soft">
           <div className="flex items-center justify-between gap-3">
             <StatusPill tone={statusMeta.tone} size="sm">{statusMeta.label}</StatusPill>
-            <span className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Setup path</span>
+            <span className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Setup path</span>
           </div>
           <ol className="mt-4 space-y-2.5">
             {readiness.steps.map((step) => (
               <li key={step.label} className="flex items-start gap-3 rounded-xl border border-transparent px-2.5 py-2">
                 {step.state === "done" ? <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
-                <div><p className="text-[13px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{step.description}</p></div>
+                <div><p className="text-[13px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[12px] leading-relaxed text-muted">{step.description}</p></div>
               </li>
             ))}
           </ol>
@@ -826,7 +826,7 @@ function UserBubble({ message, timeZone }: { message: ChatMessage; timeZone: str
       <div className="max-w-[min(88%,44rem)] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-4 py-3 text-[14.5px] leading-relaxed text-white shadow-[0_8px_22px_-16px_rgba(44,91,255,.72)] sm:px-5">
         {message.content}
       </div>
-      <time className="mt-1.5 pr-1 text-[11px] tabular-nums text-faint transition-colors group-hover:text-muted" dateTime={message.created_at}>
+      <time className="mt-1.5 pr-1 text-[12px] tabular-nums text-faint transition-colors group-hover:text-muted" dateTime={message.created_at}>
         {formatChatTime(message.created_at, timeZone)}
       </time>
     </div>
@@ -924,10 +924,10 @@ function AssistantBubble({
                 </button>
               </Tooltip>
             )}
-            <time className="ml-1 text-[11px] tabular-nums" dateTime={message.created_at}>
+            <time className="ml-1 text-[12px] tabular-nums" dateTime={message.created_at}>
               {formatChatTime(message.created_at, timeZone)}
             </time>
-            {message.status === "cancelled" && <span className="ml-1 text-[11px]">· Stopped</span>}
+            {message.status === "cancelled" && <span className="ml-1 text-[12px]">· Stopped</span>}
           </div>
         )}
       </div>
@@ -959,7 +959,7 @@ function AssistantLoadingState({ meta, agentName, snapshotReview, phase, activit
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-medium leading-snug text-ink">{statusLabel}</p>
-        <p className="mt-1 truncate text-[11.5px] leading-snug text-muted">{detailLabel}</p>
+        <p className="mt-1 truncate text-[12px] leading-snug text-muted">{detailLabel}</p>
       </div>
       <span className="flex shrink-0 items-center gap-1.5 px-1" aria-hidden>
         {[0, 1, 2].map((index) => (
@@ -1047,7 +1047,7 @@ function Composer({
               </span>
             </Tooltip>
             <div className="flex items-center gap-2">
-              <span className="hidden text-[11.5px] text-faint sm:inline">{disabled?"Chat is unavailable until the employee is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
+              <span className="hidden text-[12px] text-faint sm:inline">{disabled?"Chat is unavailable until the employee is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
               {streaming ? (
                 <Button type="button" size="icon" variant="secondary" onClick={onStop} disabled={!canStop} aria-label="Stop generating" className="rounded-xl">
                   <Square className="size-3.5 fill-current" />
@@ -1060,7 +1060,7 @@ function Composer({
             </div>
           </div>
         </div>
-        <p className="mt-2 text-center text-[11px] text-faint">
+        <p className="mt-2 text-center text-[12px] text-faint">
           {operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI employees can make mistakes. Customer-facing actions always need your approval."}
         </p>
       </div>

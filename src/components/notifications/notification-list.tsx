@@ -247,9 +247,9 @@ export function NotificationList({
         <div>
           {groups.map((group) => (
             <section key={group.label} aria-label={group.label} className="[&:not(:first-child)>h3]:border-t">
-              <h3 className="flex items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:px-5">
+              <h3 className="flex items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted sm:px-5">
                 {group.label}
-                <span className="rounded-md bg-surface px-1.5 py-0.5 text-[11px] font-semibold tabular-nums tracking-normal text-ink-2 ring-1 ring-inset ring-line">
+                <span className="rounded-md bg-surface px-1.5 py-0.5 text-[12px] font-semibold tabular-nums tracking-normal text-ink-2 ring-1 ring-inset ring-line">
                   {group.items.length}
                 </span>
               </h3>
@@ -282,7 +282,7 @@ export function NotificationList({
                 {loadingOlder ? "Loading…" : "Load older notifications"}
               </Button>
             ) : (
-              <p className="flex items-center gap-1.5 text-[11.5px] text-faint">
+              <p className="flex items-center gap-1.5 text-[12px] text-faint">
                 <RefreshCw className="size-3" aria-hidden /> You&apos;re at the beginning of your notification history.
               </p>
             )}

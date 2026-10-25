@@ -149,7 +149,7 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
       <div className="min-w-0">
         <Input type="number" inputMode="numeric" min={1} max={43200} aria-label={`${kind === "first" ? "First response" : "Follow-up"} target for ${p} priority, in minutes`} disabled={!canEdit} placeholder="None" value={v}
           onChange={(e) => setForm((f) => ({ ...f, [kind]: { ...f[kind], [p]: e.target.value } }))} />
-        <p className="mt-1 h-4 truncate text-[11.5px] text-muted">{v && Number.isFinite(n) && n > 0 ? describeTarget(n, cfg) : "No target"}</p>
+        <p className="mt-1 h-4 truncate text-[12px] text-muted">{v && Number.isFinite(n) && n > 0 ? describeTarget(n, cfg) : "No target"}</p>
       </div>
     );
   };
@@ -174,7 +174,7 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
           <p className="mt-1 text-[12.5px] text-muted">In minutes of support time{form.businessHoursOnly ? " (opening hours only)" : " (around the clock)"}. Leave a priority empty for no target.</p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[520px] text-left text-[13px]"><caption className="sr-only">Response targets by priority</caption>
-              <thead><tr className="text-[11.5px] uppercase tracking-wide text-muted"><th scope="col" className="w-32 py-2 pr-3 font-medium">Priority</th><th scope="col" className="py-2 pr-3 font-medium">First reply</th><th scope="col" className="py-2 font-medium">Later replies</th></tr></thead>
+              <thead><tr className="text-[12px] uppercase tracking-wide text-muted"><th scope="col" className="w-32 py-2 pr-3 font-medium">Priority</th><th scope="col" className="py-2 pr-3 font-medium">First reply</th><th scope="col" className="py-2 font-medium">Later replies</th></tr></thead>
               <tbody className="divide-y divide-line">{PRIORITIES.map((p) => (<tr key={p}><th scope="row" className="py-3 pr-3 align-top font-medium text-ink">{sentenceCase(p)}</th><td className="py-3 pr-3 align-top"><TargetInput kind="first" p={p} /></td><td className="py-3 align-top"><TargetInput kind="follow" p={p} /></td></tr>))}</tbody>
             </table>
           </div>
@@ -235,7 +235,7 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
           </Notice>
           <div className="overflow-x-auto rounded-2xl border border-line">
             <table className="w-full min-w-[640px] text-left text-[13px]"><caption className="sr-only">How each support update is delivered</caption>
-              <thead className="bg-surface-2/60 text-[11.5px] uppercase tracking-wide text-muted"><tr><th scope="col" className="px-4 py-2.5 font-medium">Update</th><th scope="col" className="px-4 py-2.5 font-medium">Who is told</th><th scope="col" className="w-44 px-4 py-2.5 font-medium">Delivery</th></tr></thead>
+              <thead className="bg-surface-2/60 text-[12px] uppercase tracking-wide text-muted"><tr><th scope="col" className="px-4 py-2.5 font-medium">Update</th><th scope="col" className="px-4 py-2.5 font-medium">Who is told</th><th scope="col" className="w-44 px-4 py-2.5 font-medium">Delivery</th></tr></thead>
               <tbody className="divide-y divide-line">{SUPPORT_EVENTS.map((e) => (
                 <tr key={e}><th scope="row" className="px-4 py-3 align-top font-medium text-ink">{SUPPORT_EVENT_INFO[e].label}</th><td className="px-4 py-3 align-top text-muted">{SUPPORT_EVENT_INFO[e].recipients}</td>
                   <td className="px-4 py-3 align-top"><Select aria-label={`Delivery for: ${SUPPORT_EVENT_INFO[e].label}`} disabled={!canEdit || savingRule === e} value={modes[e]} onChange={(ev) => void changeRule(e, ev.target.value as DeliveryMode)}>{DELIVERY_MODES.map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}</Select></td></tr>

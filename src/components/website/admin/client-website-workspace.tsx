@@ -161,9 +161,9 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
               <ul className="space-y-3">
                 {[...open, ...done].map((c) => (
                   <li key={c.id} className={c.resolvedAt ? "rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line" : "rounded-xl bg-surface-2 p-3 ring-1 ring-inset ring-line-strong"}>
-                    <div className="flex items-center gap-2"><AvatarTile name={c.authorName ?? "Someone"} size="sm" /><span className="min-w-0 truncate text-[12.5px] font-semibold text-ink">{c.authorName ?? "Someone"}</span><StatusPill tone={c.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{c.authorKind === "agency" ? "iAcquire" : "Client"}</StatusPill><span className="ml-auto shrink-0 text-[11.5px] text-muted">{relativeTime(c.createdAt)}</span></div>
+                    <div className="flex items-center gap-2"><AvatarTile name={c.authorName ?? "Someone"} size="sm" /><span className="min-w-0 truncate text-[12.5px] font-semibold text-ink">{c.authorName ?? "Someone"}</span><StatusPill tone={c.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{c.authorKind === "agency" ? "iAcquire" : "Client"}</StatusPill><span className="ml-auto shrink-0 text-[12px] text-muted">{relativeTime(c.createdAt)}</span></div>
                     <p className={c.resolvedAt ? "mt-2 break-words text-[13px] leading-relaxed text-ink-2" : "mt-2 break-words text-[13px] leading-relaxed text-ink"}>{c.body}</p>
-                    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted">
+                    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
                       {c.resolvedAt ? <StatusPill tone="success" size="sm">Resolved</StatusPill> : <StatusPill tone="warning" size="sm">Open</StatusPill>}
                       <button type="button" onClick={() => void run(`r${c.id}`, () => resolveCommentAction(c.id, !c.resolvedAt, orgId), c.resolvedAt ? "Reopened." : "Marked resolved.")} className="inline-flex min-h-8 items-center font-medium text-primary-ink hover:underline">{c.resolvedAt ? "Reopen" : "Mark resolved"}</button>
                     </p>

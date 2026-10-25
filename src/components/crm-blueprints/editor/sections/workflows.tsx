@@ -180,7 +180,7 @@ function WorkflowBuilder({ workflow }: { workflow: WorkflowAsset }) {
           <span className="inline-flex items-center gap-1.5 font-medium text-success-ink"><CheckCircle2 className="size-4" aria-hidden />Complete</span>
         )}
         {issues.warnings > 0 && <span className="text-warning-ink">· {issues.warnings} {issues.warnings === 1 ? "warning" : "warnings"}</span>}
-        {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+        {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
       </div>
       {issues.general.length > 0 && <IssueNotes issues={issues.general.map((i) => ({ severity: i.level, code: i.code, path: i.path ?? "", message: i.message, assetId: workflow.id }))} />}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">

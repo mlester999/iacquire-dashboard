@@ -43,7 +43,7 @@ export function StatusBadge({ status, className, ...facts }: { status: PostStatu
 export function PlatformMark({ platform, className }: { platform: Platform; className?: string }) {
   const facebook = platform === "facebook";
   return (
-    <span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white", facebook ? "bg-[#1d4ed8]" : "bg-[#a21caf]", className)} aria-hidden>
+    <span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[12px] font-bold text-white", facebook ? "bg-[#1d4ed8]" : "bg-[#a21caf]", className)} aria-hidden>
       {facebook ? "f" : "IG"}
     </span>
   );

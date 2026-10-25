@@ -138,7 +138,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
               <li key={c.id}>
                 <span className="flex items-center justify-between gap-2"><span className="font-medium">{c.direction === "inbound" ? "Incoming" : "Outgoing"} · {sentenceCase(c.status.replace(/_/g, " "))}</span><span className="text-faint" suppressHydrationWarning>{c.startedAt ? relativeTime(c.startedAt) : ""}</span></span>
                 {c.summary && <span className="mt-0.5 line-clamp-2 block text-muted">{c.summary}</span>}
-                {(c.hasRecording || c.hasTranscript) && <span className="text-[11.5px] text-faint">{c.hasTranscript ? "Transcript" : "Recording"} on the call record</span>}
+                {(c.hasRecording || c.hasTranscript) && <span className="text-[12px] text-faint">{c.hasTranscript ? "Transcript" : "Recording"} on the call record</span>}
               </li>
             ))}
           </ul>
@@ -148,7 +148,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
         <SectionBody section={d.notes} empty="No notes on this customer." render={(items) => (
           <ul className="space-y-2 text-[12.5px]">
             {items.slice(0, 4).map((n) => (
-              <li key={n.id} className="rounded-lg bg-surface-2 p-2"><p className="line-clamp-4 whitespace-pre-wrap">{n.body}</p><p className="mt-1 text-[11px] text-faint" suppressHydrationWarning>{n.authorName ?? "Teammate"} · {relativeTime(n.createdAt)}{n.pinned ? " · pinned" : ""}</p></li>
+              <li key={n.id} className="rounded-lg bg-surface-2 p-2"><p className="line-clamp-4 whitespace-pre-wrap">{n.body}</p><p className="mt-1 text-[12px] text-faint" suppressHydrationWarning>{n.authorName ?? "Teammate"} · {relativeTime(n.createdAt)}{n.pinned ? " · pinned" : ""}</p></li>
             ))}
           </ul>
         )} />
@@ -176,7 +176,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
           <div className="flex justify-between gap-2"><dt className="text-muted">Asked for a person</dt><dd>{d.ai.handoffs}</dd></div>
           {d.ai.lastAiMessageAt && <div className="flex justify-between gap-2"><dt className="text-muted">Last AI message</dt><dd suppressHydrationWarning>{relativeTime(d.ai.lastAiMessageAt)}</dd></div>}
         </dl>
-        <p className="mt-2 text-[11.5px] text-muted">Counted from the conversation&apos;s own record.</p>
+        <p className="mt-2 text-[12px] text-muted">Counted from the conversation&apos;s own record.</p>
       </Card>
     </div>
   );
@@ -286,7 +286,7 @@ function QuickActions({ d, conversationId, onChanged }: { d: InboxCrmContext; co
           </Popover>
         )}
       </div>
-      <p className="mt-2 text-[11.5px] text-muted">These use your CRM permissions and appear on the customer&apos;s timeline.</p>
+      <p className="mt-2 text-[12px] text-muted">These use your CRM permissions and appear on the customer&apos;s timeline.</p>
     </section>
   );
 }

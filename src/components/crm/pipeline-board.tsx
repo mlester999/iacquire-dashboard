@@ -202,7 +202,7 @@ export function PipelineBoard({
                       {col.stage.kind === "won" && <CheckCircle2 className="size-3.5 text-success" aria-hidden />}
                       {col.stage.kind === "lost" && <CircleSlash className="size-3.5 text-muted" aria-hidden />}
                       <span className="truncate">{col.stage.name}</span>
-                      <span className="rounded-full bg-surface px-1.5 text-[11.5px] font-medium tabular-nums text-muted ring-1 ring-line">{col.count}</span>
+                      <span className="rounded-full bg-surface px-1.5 text-[12px] font-medium tabular-nums text-muted ring-1 ring-line">{col.count}</span>
                     </p>
                     <p className="mt-0.5 truncate text-[12px] text-muted">
                       {col.totals.length ? totalsText(col.totals) : "No value"}
@@ -282,7 +282,7 @@ function Metric({ label, value, sub }: { label: string; value: string; sub: stri
     <Card className="p-3.5">
       <p className="text-[12px] font-medium text-muted">{label}</p>
       <p className="mt-1 truncate text-[17px] font-semibold tracking-[-0.02em] text-ink tabular-nums">{value}</p>
-      <p className="mt-0.5 truncate text-[11.5px] text-faint">{sub}</p>
+      <p className="mt-0.5 truncate text-[12px] text-faint">{sub}</p>
     </Card>
   );
 }
@@ -345,19 +345,19 @@ function DealCard({
       )}
       {card.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {card.tags.slice(0, 3).map((t) => <TagChip key={t.id} name={t.name} color={t.color} className="h-5 text-[11px]" />)}
-          {card.tags.length > 3 && <span className="text-[11px] text-muted">+{card.tags.length - 3}</span>}
+          {card.tags.slice(0, 3).map((t) => <TagChip key={t.id} name={t.name} color={t.color} className="h-5 text-[12px]" />)}
+          {card.tags.length > 3 && <span className="text-[12px] text-muted">+{card.tags.length - 3}</span>}
         </div>
       )}
       <div className="mt-2.5 flex items-center justify-between gap-2">
         <span className="text-[13px] font-semibold tabular-nums text-ink">{card.value === null ? <span className="font-normal text-faint">No value</span> : money(card.value, card.currency)}</span>
-        <span className="flex items-center gap-2 text-[11.5px] text-muted">
+        <span className="flex items-center gap-2 text-[12px] text-muted">
           {card.openTasks > 0 && <span className="inline-flex items-center gap-0.5" title={`${card.openTasks} open ${card.openTasks === 1 ? "task" : "tasks"}`}><ListChecks className="size-3.5" aria-hidden />{card.openTasks}<span className="sr-only"> open tasks</span></span>}
           {card.expectedCloseDate && card.status === "open" && (
             <span className={cn("inline-flex items-center gap-0.5", overdue && "text-danger-ink")} title={`Expected close ${card.expectedCloseDate}`}><CalendarClock className="size-3.5" aria-hidden />{shortDate(card.expectedCloseDate)}</span>
           )}
           <span title="Days in this stage">{card.daysInStage}d</span>
-          {card.owner ? <span title={`Owner: ${card.owner.name}`}><Avatar name={card.owner.name} size="sm" className="size-6 text-[10px]" /></span> : <Badge tone="neutral" className="h-5 px-1.5 text-[10.5px]">Unassigned</Badge>}
+          {card.owner ? <span title={`Owner: ${card.owner.name}`}><Avatar name={card.owner.name} size="sm" className="size-6 text-[12px]" /></span> : <Badge tone="neutral" className="h-5 px-1.5 text-[12px]">Unassigned</Badge>}
         </span>
       </div>
     </li>

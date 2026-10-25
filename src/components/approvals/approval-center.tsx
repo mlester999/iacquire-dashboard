@@ -154,7 +154,7 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
 
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Human control, by design" title="Your team's ideas. Your final say." description="Review what your AI employees propose before customer-facing or CRM actions run. Every decision stays in the history; rejected or expired requests never execute." icon={<ShieldCheck className="size-4"/>} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Decision queue</p><p className="mt-2 text-[36px] font-semibold tracking-tight">{pending.length}<span className="ml-2 text-[13px] font-normal tracking-normal text-muted">awaiting review</span></p><div className="mt-3"><CoverageBar label="Approval request status" parts={[{label:"Pending",count:pending.length,color:"var(--warning)"},{label:"History",count:history.length,color:"var(--primary)"}]}/></div></div>}/>
+      <PageHero eyebrow="Human control, by design" title="Your team's ideas. Your final say." description="Review what your AI employees propose before customer-facing or CRM actions run. Every decision stays in the history; rejected or expired requests never execute." icon={<ShieldCheck className="size-4"/>} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Decision queue</p><p className="mt-2 text-[36px] font-semibold tracking-tight">{pending.length}<span className="ml-2 text-[13px] font-normal tracking-normal text-muted">awaiting review</span></p><div className="mt-3"><CoverageBar label="Approval request status" parts={[{label:"Pending",count:pending.length,color:"var(--warning)"},{label:"History",count:history.length,color:"var(--primary)"}]}/></div></div>}/>
       {!canDecide && (
         <p className="flex items-center gap-3 rounded-2xl bg-surface-2/80 p-3 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
           <IconTile tone="primary" size="sm">
@@ -373,7 +373,7 @@ function ApprovalSheet({ approval, onClose, timeZone }: { approval: Approval | n
                       <span className="text-muted"> · {e.actor_name ?? sentenceCase(e.actor_kind)}</span>
                     </p>
                     {e.note && <p className="text-[12.5px] text-muted">{e.note}</p>}
-                    <p className="text-[11.5px] text-faint">{formatDateTime(e.created_at, timeZone)}</p>
+                    <p className="text-[12px] text-faint">{formatDateTime(e.created_at, timeZone)}</p>
                   </li>
                 ))}
               </ol>

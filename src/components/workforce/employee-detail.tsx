@@ -195,7 +195,7 @@ export function EmployeeDetail(props: Props) {
             <InfoChip icon={<Sparkles />}>{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured"}</InfoChip>
             <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools${readiness.inventoryAttestationCurrent ? " · attested" : readiness.chatAvailable ? " · refresh before chat" : " · verification needed"}` : "Inventory not recorded"}</InfoChip>
             <InfoChip icon={<History />}><span suppressHydrationWarning>{agent.lastHealthCheckAt ? `Checked ${relativeTime(agent.lastHealthCheckAt)}` : "Never checked"}</span></InfoChip>
-            <span className="text-[11.5px] text-muted">{agent.assignedOrganization}</span>
+            <span className="text-[12px] text-muted">{agent.assignedOrganization}</span>
           </div>
         }
       />
@@ -249,7 +249,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
               <CardTitle>What {agent.displayName} handles</CardTitle>
               <CardDescription>Role-specific responsibilities and the boundaries that always apply.</CardDescription>
             </div>
-            <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{meta.shortName}</span>
+            <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{meta.shortName}</span>
           </CardHeader>
           <CardContent className="space-y-5">
             <p className="rounded-2xl border border-line bg-surface-2/60 p-4 text-[14px] leading-[1.75] text-ink-2">{agent.summary ?? `${meta.shortName} hasn't been configured yet. Use Configure to describe its responsibilities and goals.`}</p>
@@ -265,14 +265,14 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
             <div className="border-t border-line pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{operationsNotice ? "Configured role guidance" : "Tool permissions"}</p>
-                <span className="text-[11.5px] text-muted">{operationsNotice ? "Instruction-level entries" : "Granted by iAcquire"}</span>
+                <span className="text-[12px] text-muted">{operationsNotice ? "Instruction-level entries" : "Granted by iAcquire"}</span>
               </div>
               <ul className="mt-2.5 grid gap-2 sm:grid-cols-2">
                 {agent.defaultTools.map((t) => (
                   <li key={t} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[12.5px] text-ink-2"><Lock className="size-3.5 shrink-0 text-faint" /> {agentToolLabel(t)}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{operationsNotice ? "These labels do not represent callable services in the current Hermes chat runtime." : "Tools can be switched off in Configure; nobody can add new tools from this screen."}</p>
+              <p className="mt-2 text-[12px] leading-relaxed text-muted">{operationsNotice ? "These labels do not represent callable services in the current Hermes chat runtime." : "Tools can be switched off in Configure; nobody can add new tools from this screen."}</p>
             </div>
           </CardContent>
         </Card>
@@ -335,7 +335,7 @@ function ConfigSection({ id, step, title, description, children }: { id: string;
       <Card className="overflow-hidden">
         <CardHeader className="gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/15">{step}</span>
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/15">{step}</span>
             <div className="min-w-0"><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></div>
           </div>
         </CardHeader>
@@ -686,7 +686,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                         {selected && <Check className="size-4 text-primary" aria-hidden />}
                       </span>
                       <span className="mt-1 block text-[12px] leading-relaxed text-muted">{TONE_COPY[t].description}</span>
-                      <span className="mt-1.5 block text-[11.5px] italic leading-relaxed text-faint">“{TONE_COPY[t].example}”</span>
+                      <span className="mt-1.5 block text-[12px] italic leading-relaxed text-faint">“{TONE_COPY[t].example}”</span>
                     </button>
                   );
                 })}
@@ -727,7 +727,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                       >
                         <span>
                           <span className="block text-[12.5px] font-medium text-ink">{LENGTH_COPY[v].label}</span>
-                          <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted">{LENGTH_COPY[v].description}</span>
+                          <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">{LENGTH_COPY[v].description}</span>
                         </span>
                         {selected && <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />}
                       </button>
@@ -769,7 +769,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                     key={`${item.scope}:${item.key}`}
                     title={item.detail}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-medium",
                       item.state === "complete" ? "border-success/25 bg-success-soft text-success-ink" : "border-line-strong bg-surface text-muted",
                     )}
                   >
@@ -836,7 +836,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 </div>
                 <Badge tone="neutral">Fixed by iAcquire policy</Badge>
               </div>
-              <p className="mt-2.5 border-t border-line pt-2.5 text-[11.5px] leading-relaxed text-faint">
+              <p className="mt-2.5 border-t border-line pt-2.5 text-[12px] leading-relaxed text-faint">
                 This preference is recorded for compatibility but is not currently read by the runtime approval gate. Your employee&apos;s
                 operating mode and the platform&apos;s tool policy remain the enforced approval boundary. Editing the instructions cannot grant
                 new permissions.
@@ -874,14 +874,14 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 );
               })}
             </div>
-            <p className="rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Lock className="mr-1.5 inline size-3.5" /> {TOOL_BOUNDARY_NOTE}</p>
+            <p className="rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted"><Lock className="mr-1.5 inline size-3.5" /> {TOOL_BOUNDARY_NOTE}</p>
           </ConfigSection>
         </div>
 
         <aside className="order-first xl:order-last xl:sticky xl:top-24 xl:self-start">
           <Card className="overflow-hidden">
             <div className="border-b border-line bg-surface-2/60 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[.15em] text-muted">Publishing</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[.15em] text-muted">Publishing</p>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-[14px] font-semibold text-ink">{hasPendingReview || pending ? "Awaiting review" : displayedConfigVersion ? `Configuration v${displayedConfigVersion}` : "New configuration"}</p>
                 <span className={cn("size-2 rounded-full", dirty ? "bg-warning" : "bg-success")} aria-hidden />
@@ -898,19 +898,19 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
               {activeCheck.state === "ready" && decision === "auto_apply" && !result && (
                 <div className="rounded-xl border border-success/25 bg-success-soft/40 p-3">
                   <p className="text-[12px] font-semibold text-success-ink">Ready to save</p>
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-success-ink/90">Routine changes apply immediately after validation.</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-success-ink/90">Routine changes apply immediately after validation.</p>
                 </div>
               )}
               {activeCheck.state === "ready" && decision === "review_required" && !result && (
                 <div className="rounded-xl border border-warning/30 bg-warning-soft/40 p-3">
                   <p className="text-[12px] font-semibold text-warning-ink">Review required</p>
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-warning-ink/90">Your current configuration stays active while a reviewer decides.</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-warning-ink/90">Your current configuration stays active while a reviewer decides.</p>
                 </div>
               )}
               {activeCheck.state === "ready" && decision === "blocked" && !result && (
                 <div className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3">
                   <p className="text-[12px] font-semibold text-danger-ink">Change not allowed</p>
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-danger-ink/90">Fix the flagged fields before saving.</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-danger-ink/90">Fix the flagged fields before saving.</p>
                 </div>
               )}
 
@@ -918,7 +918,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
               <Button variant="secondary" className="w-full" onClick={() => setTesting(true)}><Sparkles className="size-4" /> Test this draft</Button>
               <Button variant="ghost" className="w-full" disabled={!dirty || saving} onClick={() => { setS(settings); setJustSaved(true); setResult(null); setCheck({ state: "idle" }); }}>Discard changes</Button>
               <Button variant="ghost" className="w-full justify-start" onClick={onOpenHistory}><History className="size-4" /> Version history</Button>
-              <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active employee.</p>
+              <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active employee.</p>
               <a href="#employee-readiness" className="inline-flex text-[12px] font-medium text-primary hover:underline">Review activation requirements</a>
             </CardContent>
           </Card>
@@ -929,7 +929,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] font-medium text-ink">{dirty ? "Unsaved changes" : pending ? "Waiting for review" : "All changes saved"}</p>
-            <p className="truncate text-[11px] text-muted">
+            <p className="truncate text-[12px] text-muted">
               {decision === "blocked" ? "Fix the flagged fields to continue" : decision === "review_required" ? "A reviewer must approve this change" : displayedConfigVersion ? `Active configuration v${displayedConfigVersion}` : "No active configuration"}
             </p>
           </div>
@@ -1032,7 +1032,7 @@ function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: ()
             <Textarea rows={4} maxLength={1000} value={text} onChange={(e) => { setText(e.target.value); setProposal(null); setCheck({ state: "idle" }); setApplyError(null); }} />
           </GuidedField>
           <div>
-            <p className="mb-1.5 text-[11.5px] font-medium text-muted">Try an example</p>
+            <p className="mb-1.5 text-[12px] font-medium text-muted">Try an example</p>
             <div className="flex flex-wrap gap-2">{examples.map((e) => <button key={e} type="button" onClick={() => { setText(e); setProposal(null); setCheck({ state: "idle" }); setApplyError(null); }} className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2 transition hover:border-primary/30 hover:text-ink">{e}</button>)}</div>
           </div>
           <Button variant="secondary" onClick={propose} loading={pending && !proposal} disabled={!text.trim()}><Sparkles className="size-4" /> Preview change</Button>
@@ -1133,7 +1133,7 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
           <ul className="mt-1.5 grid gap-1 text-[12px] text-ink-2 sm:grid-cols-2">
             {duty.watches.slice(0, 6).map((item) => <li key={item} className="flex gap-1.5"><span className="text-primary">•</span>{item}</li>)}
           </ul>
-          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{duty.approvalBoundary}</p>
+          <p className="mt-2 text-[12px] leading-relaxed text-muted">{duty.approvalBoundary}</p>
         </div>
         {reports.length === 0 ? (
           <p className="text-[12.5px] text-muted">No verified proactive report has been recorded for this employee yet. This view never fabricates one.</p>
@@ -1144,16 +1144,16 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
                 <Badge tone={report.severity === "critical" ? "danger" : report.severity === "warning" ? "warning" : "primary"}>{PROACTIVE_SEVERITY_LABELS[report.severity]}</Badge>
                 <div className="min-w-0 flex-1">
                   <Link href={`/work?report=${report.id}`} className="block truncate text-[12.5px] font-semibold text-ink hover:underline">{report.title}</Link>
-                  <span className="text-[11.5px] text-muted"><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span> · {report.findings.length} finding{report.findings.length === 1 ? "" : "s"}</span>
+                  <span className="text-[12px] text-muted"><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span> · {report.findings.length} finding{report.findings.length === 1 ? "" : "s"}</span>
                 </div>
-                <Link href={`/work?report=${report.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/50">
+                <Link href={`/work?report=${report.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/50">
                   Open <ArrowUpRight className="size-3.5" aria-hidden />
                 </Link>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[11.5px] leading-relaxed text-muted">
+        <p className="text-[12px] leading-relaxed text-muted">
           {watching
             ? "An authorized schedule or trigger is enabled for this employee. Reports appear only after a real job completes."
             : "No recurring job is authorized for this employee here. You can inspect or authorize monitoring on the AI Work Board."}

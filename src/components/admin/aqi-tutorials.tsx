@@ -225,7 +225,7 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
                 <span className="truncate text-[12.5px] font-semibold text-ink">{row.title}</span>
                 <StatusPill size="sm" tone={row.status === "published" ? "success" : row.status === "draft" ? "warning" : "neutral"}>{row.status}</StatusPill>
               </span>
-              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
+              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
                 <span>{row.category}</span><span aria-hidden>·</span><span>{row.versions.length} versions</span><span aria-hidden>·</span><span>{row.metrics.starts} starts</span>
               </span>
             </button>
@@ -261,19 +261,19 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
             <datalist id="aqi-routes">{AQI_ROUTES.map((route) => <option key={route.path} value={route.path}>{route.label}</option>)}</datalist>
 
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Target roles</p>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted">Target roles</p>
               <div className="flex flex-wrap gap-1.5">
                 {AQI_TUTORIAL_ROLES.map((role) => {
                   const checked = draft.roles.includes(role);
                   return (
-                    <label key={role} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-1 text-[10.5px]", checked ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line text-muted hover:bg-surface-2")}>
+                    <label key={role} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-1 text-[12px]", checked ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line text-muted hover:bg-surface-2")}>
                       <input type="checkbox" className="size-3" checked={checked} onChange={(e) => setDefinition("roles", e.target.checked ? [...draft.roles, role] : draft.roles.filter((item) => item !== role))} />
                       {tutorialRoleLabel(role)}
                     </label>
                   );
                 })}
               </div>
-              <p className="mt-1 text-[10.5px] text-muted">No roles means every role that can use all of the step targets.</p>
+              <p className="mt-1 text-[12px] text-muted">No roles means every role that can use all of the step targets.</p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -350,7 +350,7 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Steps ({draft.steps.length})</p>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Steps ({draft.steps.length})</p>
                 <Button size="sm" variant="secondary" onClick={addStep} disabled={draft.steps.length >= 12}><Plus className="size-3.5" /> Add step</Button>
               </div>
               {draft.steps.map((step, index) => {
@@ -358,7 +358,7 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
                 return (
                   <div key={`${step.key}-${index}`} className="rounded-xl border border-line p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-ink">Step {index + 1}</p>
+                      <p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Step {index + 1}</p>
                       <div className="flex gap-0.5">
                         <Button size="icon-sm" variant="ghost" aria-label="Move step up" disabled={index === 0} onClick={() => moveStep(index, -1)}><ArrowUp className="size-3.5" /></Button>
                         <Button size="icon-sm" variant="ghost" aria-label="Move step down" disabled={index === draft.steps.length - 1} onClick={() => moveStep(index, 1)}><ArrowDown className="size-3.5" /></Button>
@@ -396,8 +396,8 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
                         </Select>
                       </Field>
                     </div>
-                    <label className="mt-2 inline-flex items-center gap-2 text-[11.5px] text-ink-2"><input type="checkbox" checked={Boolean(step.optional)} onChange={(e) => setStep(index, { optional: e.target.checked })} /> Optional step (can be skipped)</label>
-                    {target && <p className="mt-1.5 text-[10.5px] text-muted">Target “{target.label}” · routes {target.routes.join(", ")}{target.permission ? ` · needs ${target.permission}` : ""}</p>}
+                    <label className="mt-2 inline-flex items-center gap-2 text-[12px] text-ink-2"><input type="checkbox" checked={Boolean(step.optional)} onChange={(e) => setStep(index, { optional: e.target.checked })} /> Optional step (can be skipped)</label>
+                    {target && <p className="mt-1.5 text-[12px] text-muted">Target “{target.label}” · routes {target.routes.join(", ")}{target.permission ? ` · needs ${target.permission}` : ""}</p>}
                   </div>
                 );
               })}
@@ -411,14 +411,14 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
                 <ul className="mt-1 list-disc space-y-0.5 pl-5">{validation.errors.map((error) => <li key={error}>{error}</li>)}{validation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
               </div>
             )}
-            {saveState === "saved" && <p className="text-[11.5px] text-success-ink">Saved as a draft. Preview it in the browser, then publish.</p>}
+            {saveState === "saved" && <p className="text-[12px] text-success-ink">Saved as a draft. Preview it in the browser, then publish.</p>}
 
             {selected && (
               <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
                 <Button size="sm" variant="secondary" onClick={() => void duplicate()} loading={busy === "duplicate"}><Copy className="size-3.5" /> Duplicate</Button>
                 <Button size="sm" variant="secondary" onClick={() => setShowVersions((value) => !value)}><History className="size-3.5" /> Versions ({selected.versions.length})</Button>
                 {selected.status !== "archived" && <Button size="sm" variant="ghost" onClick={() => void archive()} loading={busy === "archive"}><Archive className="size-3.5" /> Archive</Button>}
-                <span className="ml-auto text-[11px] text-muted">{selected.metrics.starts} starts · {selected.metrics.completions} completions · {selected.metrics.inProgress} in progress</span>
+                <span className="ml-auto text-[12px] text-muted">{selected.metrics.starts} starts · {selected.metrics.completions} completions · {selected.metrics.inProgress} in progress</span>
               </div>
             )}
             {showVersions && selected && (
@@ -427,7 +427,7 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
                   <div key={version.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-3 py-2">
                     <div className="min-w-0">
                       <p className="text-[12px] font-medium">v{version.version} <StatusPill size="sm" tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</StatusPill></p>
-                      <p className="mt-0.5 text-[10.5px] text-muted">{version.notes ?? "No note"} · {version.publishedAt ? `published ${formatDateTime(version.publishedAt)}` : `created ${formatDateTime(version.createdAt)}`}</p>
+                      <p className="mt-0.5 text-[12px] text-muted">{version.notes ?? "No note"} · {version.publishedAt ? `published ${formatDateTime(version.publishedAt)}` : `created ${formatDateTime(version.createdAt)}`}</p>
                     </div>
                     {version.definition && version.status !== "published" && (
                       <Button size="sm" variant="secondary" loading={busy === `rollback-${version.id}`} onClick={() => void rollback(version.id)}><RotateCcw className="size-3.5" /> {version.status === "archived" ? "Restore" : "Publish this version"}</Button>
@@ -456,17 +456,17 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
               <ul className="space-y-1.5">
                 {preview.steps.map((step) => (
                   <li key={`${step.index}-${step.key}`} className="flex flex-wrap items-center gap-2 rounded-xl border border-line px-3 py-2 text-[12px]">
-                    <span className="font-mono text-[10px] text-faint">{String(step.index + 1).padStart(2, "0")}</span>
+                    <span className="font-mono text-[12px] text-faint">{String(step.index + 1).padStart(2, "0")}</span>
                     <span className="min-w-0 flex-1 truncate font-medium">{step.title}</span>
-                    <span className={cn("rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold uppercase", step.targetExists && step.targetOnRoute ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-[12px] font-semibold uppercase", step.targetExists && step.targetOnRoute ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>
                       {step.targetExists ? (step.targetOnRoute ? "target ok" : "route mismatch") : "no target"}
                     </span>
-                    <span className={cn("rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold uppercase", step.roleCanUse ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{step.roleCanUse ? "role ok" : "role denied"}</span>
-                    {step.note && <span className="w-full text-[10.5px] text-muted">{step.note}</span>}
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-[12px] font-semibold uppercase", step.roleCanUse ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{step.roleCanUse ? "role ok" : "role denied"}</span>
+                    {step.note && <span className="w-full text-[12px] text-muted">{step.note}</span>}
                   </li>
                 ))}
               </ul>
-              <p className="text-[10.5px] text-muted">Completion: {preview.completion.kind === "finish" ? "finished by the person" : preview.completion.pattern} · {preview.completionValid ? "valid" : "invalid"}.</p>
+              <p className="text-[12px] text-muted">Completion: {preview.completion.kind === "finish" ? "finished by the person" : preview.completion.pattern} · {preview.completionValid ? "valid" : "invalid"}.</p>
             </CardContent>
           </Card>
         )}

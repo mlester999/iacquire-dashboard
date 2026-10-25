@@ -65,11 +65,11 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
 
       <section aria-label="Parties" className="mt-6 grid gap-5 sm:grid-cols-2">
         <div>
-          <h2 className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.1em] text-muted">From</h2>
+          <h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">From</h2>
           <Address name={i.business.name} lines={i.business.addressLines} extra={[...businessExtra, ...(i.business.email ? [i.business.email] : []), ...(i.business.phone ? [i.business.phone] : [])]} />
         </div>
         <div>
-          <h2 className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.1em] text-muted">Billed to</h2>
+          <h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Billed to</h2>
           {i.billTo.name || i.billTo.company || i.billTo.addressLines.length ? <Address name={i.billTo.name} lines={[...(i.billTo.company ? [i.billTo.company] : []), ...i.billTo.addressLines]} /> : <p className="text-[13.5px] text-muted">Customer details are not shown on this copy.</p>}
         </div>
       </section>
@@ -116,9 +116,9 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
 
       {(i.paymentInstructions || i.notes || i.terms || i.footerNote) && (
         <div className="mt-6 space-y-4 border-t border-line pt-5 text-[13.5px] leading-relaxed text-ink-2">
-          {i.paymentInstructions && <section><h2 className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.1em] text-muted">How to pay</h2><p className="whitespace-pre-wrap break-words">{i.paymentInstructions}</p></section>}
-          {i.notes && <section><h2 className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.1em] text-muted">Notes</h2><p className="whitespace-pre-wrap break-words">{i.notes}</p></section>}
-          {i.terms && <section><h2 className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.1em] text-muted">Terms</h2><p className="whitespace-pre-wrap break-words">{i.terms}</p></section>}
+          {i.paymentInstructions && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">How to pay</h2><p className="whitespace-pre-wrap break-words">{i.paymentInstructions}</p></section>}
+          {i.notes && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Notes</h2><p className="whitespace-pre-wrap break-words">{i.notes}</p></section>}
+          {i.terms && <section><h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[.1em] text-muted">Terms</h2><p className="whitespace-pre-wrap break-words">{i.terms}</p></section>}
           {i.footerNote && <p className="whitespace-pre-wrap break-words text-[12.5px] text-muted">{i.footerNote}</p>}
         </div>
       )}

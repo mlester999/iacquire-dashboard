@@ -29,7 +29,7 @@ export function SubmissionsPanel({ scope, page, status, hrefFor, canSee }: { sco
           return (
             <Link key={f} href={hrefFor({ status: f === "all" ? undefined : f })} aria-current={active ? "page" : undefined} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9", active ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
               {f === "all" ? "All" : SUBMISSION_STATUS_LABELS[f]}
-              <span className="rounded-full bg-surface-3 px-1.5 text-[11px] font-semibold tabular-nums text-ink-2">{n}</span>
+              <span className="rounded-full bg-surface-3 px-1.5 text-[12px] font-semibold tabular-nums text-ink-2">{n}</span>
             </Link>
           );
         })}
@@ -74,7 +74,7 @@ function SubmissionRow({ s, scope, canEdit }: { s: FormSubmissionView; scope: Cr
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               {visible.map((a) => (
                 <div key={a.key} className="min-w-0">
-                  <dt className="text-[11.5px] font-medium text-muted">{a.label}</dt>
+                  <dt className="text-[12px] font-medium text-muted">{a.label}</dt>
                   <dd className="mt-0.5 whitespace-pre-line break-words text-[13.5px] text-ink">{a.text || <span className="text-faint">No answer</span>}</dd>
                 </div>
               ))}

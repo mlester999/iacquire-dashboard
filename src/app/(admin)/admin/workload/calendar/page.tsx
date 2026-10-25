@@ -81,7 +81,7 @@ export default async function WorkloadCalendarPage() {
                     ) : (
                       <span className="font-medium text-ink">{entry.title}</span>
                     )}
-                    <span className="ml-2 text-[11.5px] text-muted">{entry.assigneeId ? names.get(entry.assigneeId) ?? "Someone" : "Unassigned"}</span>
+                    <span className="ml-2 text-[12px] text-muted">{entry.assigneeId ? names.get(entry.assigneeId) ?? "Someone" : "Unassigned"}</span>
                   </span>
                   <Badge tone="danger">{entry.day}</Badge>
                 </li>
@@ -113,7 +113,7 @@ export default async function WorkloadCalendarPage() {
                           entry.title
                         )}
                       </p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[10.5px] text-muted">
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-muted">
                         {entry.kind === "milestone" || entry.source === "milestone" ? (
                           <span className="inline-flex items-center gap-1">
                             <Milestone className="size-3" aria-hidden /> Milestone
@@ -128,7 +128,7 @@ export default async function WorkloadCalendarPage() {
                   ))}
                 </ul>
               ) : (
-                <p className="py-2 text-[11.5px] text-muted">Nothing due.</p>
+                <p className="py-2 text-[12px] text-muted">Nothing due.</p>
               )}
             </CardContent>
           </Card>
@@ -153,7 +153,7 @@ export default async function WorkloadCalendarPage() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[11.5px] text-muted">These cannot become overdue; the board and the person pages still count their points.</p>
+            <p className="mt-2 text-[12px] text-muted">These cannot become overdue; the board and the person pages still count their points.</p>
           </CardContent>
         </Card>
       )}

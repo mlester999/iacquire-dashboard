@@ -98,7 +98,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
                 )}
               </div>
             )}
-            <p className="text-[11.5px] text-muted">The label counts only work recorded in iAcquire. It is not a score of this person.</p>
+            <p className="text-[12px] text-muted">The label counts only work recorded in iAcquire. It is not a score of this person.</p>
           </CardContent>
         </Card>
         <Card>
@@ -107,7 +107,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
           </CardHeader>
           <CardContent>
             <OpenWorkList items={person.items} canAssign={data.caps.assign} />
-            {person.hiddenItems > 0 && <p className="mt-2 text-[11.5px] text-muted">{person.hiddenItems} more {person.hiddenItems === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
+            {person.hiddenItems > 0 && <p className="mt-2 text-[12px] text-muted">{person.hiddenItems} more {person.hiddenItems === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
             {person.items.length === 0 && <p className="mt-2 text-[12px] text-muted">No open work is visible to you for this person.</p>}
           </CardContent>
         </Card>
@@ -137,7 +137,7 @@ export default async function PersonWorkloadPage({ params }: { params: Promise<{
           ) : (
             <p className="text-[13px] text-muted">No time off recorded.</p>
           )}
-          {!data.timeOffDetail && <p className="mt-2 text-[11.5px] text-muted">The kind and note of time off are visible only to the person and to the workload manage permission.</p>}
+          {!data.timeOffDetail && <p className="mt-2 text-[12px] text-muted">The kind and note of time off are visible only to the person and to the workload manage permission.</p>}
         </CardContent>
       </Card>
     </div>

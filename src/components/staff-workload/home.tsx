@@ -40,7 +40,7 @@ export function OpenWorkList({ items, canAssign, showAssignee = false }: { items
                 {item.escalated && <Badge tone="danger">Escalated</Badge>}
                 {item.blocked && <Badge tone="warning">Blocked</Badge>}
                 {item.waitingOnClient && <Badge tone="outline">Waiting on client</Badge>}
-                {item.ref && <span className="text-[11.5px] tabular-nums text-muted">{item.ref}</span>}
+                {item.ref && <span className="text-[12px] tabular-nums text-muted">{item.ref}</span>}
               </div>
               <Link href={href} className="mt-1 block text-[13.5px] font-medium text-ink hover:text-primary hover:underline">
                 {item.title}
@@ -53,7 +53,7 @@ export function OpenWorkList({ items, canAssign, showAssignee = false }: { items
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <span className="rounded-lg border border-line bg-surface-2 px-2 py-1 text-[11.5px] tabular-nums text-ink-2">{formatPoints(item.points * 100)} pts</span>
+              <span className="rounded-lg border border-line bg-surface-2 px-2 py-1 text-[12px] tabular-nums text-ink-2">{formatPoints(item.points * 100)} pts</span>
               {canAssign && <AssignDialog source={item.source} itemId={item.itemId} title={item.title} orgName={item.orgName} assigneeId={item.assigneeId} />}
             </div>
           </li>
@@ -69,14 +69,14 @@ export function PersonCard({ person, canTeam }: { person: PersonView; canTeam: b
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-[14px] font-medium text-ink">{person.name}</p>
-          <p className="text-[11.5px] capitalize text-muted">{person.role.replaceAll("_", " ")}</p>
+          <p className="text-[12px] capitalize text-muted">{person.role.replaceAll("_", " ")}</p>
         </div>
         <LabelPill result={person.result} />
       </div>
       <div className="mt-3">
         <LoadMeter result={person.result} compact />
       </div>
-      {person.hiddenItems > 0 && <p className="mt-2 text-[11.5px] text-muted">{person.hiddenItems} more {person.hiddenItems === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
+      {person.hiddenItems > 0 && <p className="mt-2 text-[12px] text-muted">{person.hiddenItems} more {person.hiddenItems === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
     </>
   );
   return canTeam ? (
@@ -122,7 +122,7 @@ function Attention({ escalations, now }: { escalations: Escalations; now: number
                   {e.critical ? <Flame className="mt-0.5 size-4 shrink-0 text-danger-ink" aria-hidden /> : <Timer className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />}
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium text-ink group-hover:text-primary">{e.title}</span>
-                    <span className="mt-0.5 block text-[11.5px] text-muted">
+                    <span className="mt-0.5 block text-[12px] text-muted">
                       {e.orgName ? `${e.orgName} · ` : ""}
                       {e.kind.replaceAll("_", " ")} · {relativeTime(e.since, now)}
                     </span>
@@ -134,8 +134,8 @@ function Attention({ escalations, now }: { escalations: Escalations; now: number
         ) : (
           <p className="py-3 text-[13px] leading-relaxed text-muted">Nothing is escalated or past its response target. This is from the same records the Requests page uses, not a separate count.</p>
         )}
-        {escalations.hidden > 0 && <p className="mt-2 text-[11.5px] text-muted">{escalations.hidden} more {escalations.hidden === 1 ? "entry is" : "entries are"} counted but hidden from you.</p>}
-        {escalations.supportTargetsOff && <p className="mt-2 text-[11.5px] leading-relaxed text-muted">Support response targets are switched off, so no support request can show as overdue here.</p>}
+        {escalations.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{escalations.hidden} more {escalations.hidden === 1 ? "entry is" : "entries are"} counted but hidden from you.</p>}
+        {escalations.supportTargetsOff && <p className="mt-2 text-[12px] leading-relaxed text-muted">Support response targets are switched off, so no support request can show as overdue here.</p>}
       </CardContent>
     </Card>
   );
@@ -156,11 +156,11 @@ function Distribution({ team }: { team: TeamWorkload }) {
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-surface-2 px-3 py-2">
             <p className="text-[18px] font-semibold tabular-nums text-ink">{Math.round(totalPoints / 100)}</p>
-            <p className="text-[11.5px] text-muted">open points across the team</p>
+            <p className="text-[12px] text-muted">open points across the team</p>
           </div>
           <div className="rounded-xl bg-surface-2 px-3 py-2">
             <p className="text-[18px] font-semibold tabular-nums text-ink">{averageShare === null ? "—" : `${averageShare}%`}</p>
-            <p className="text-[11.5px] text-muted">average share of capacity</p>
+            <p className="text-[12px] text-muted">average share of capacity</p>
           </div>
         </div>
         <ul className="space-y-1.5" aria-label="People by label">
@@ -174,7 +174,7 @@ function Distribution({ team }: { team: TeamWorkload }) {
             </li>
           ))}
         </ul>
-        <p className="text-[11.5px] leading-relaxed text-muted">
+        <p className="text-[12px] leading-relaxed text-muted">
           {team.summary.noLabel ? `${team.summary.noLabel} ${team.summary.noLabel === 1 ? "person has" : "people have"} no capacity set, so no label. ` : ""}
           {team.unassigned.items.length ? `${team.unassigned.items.length} shown items have no owner.` : "Every shown item has an owner."} Open work above capacity is not moved automatically; a manager decides.
         </p>
@@ -209,20 +209,20 @@ function ProjectHealth({ health }: { health: ProjectsHealth }) {
                   </Link>
                   <Badge tone={p.health.state === "off_track" ? "danger" : p.health.state === "at_risk" ? "warning" : p.health.state === "on_track" ? "success" : "outline"}>{HEALTH_TEXT[p.health.state]}</Badge>
                 </div>
-                <p className="mt-0.5 text-[11.5px] text-muted">
+                <p className="mt-0.5 text-[12px] text-muted">
                   {p.orgName}
                   {p.assigneeName ? ` · ${p.assigneeName}` : " · unassigned"}
                   {p.health.progress ? ` · ${p.health.progress.done}/${p.health.progress.total} milestones` : ""}
                   {p.health.waiting === "client" ? " · waiting on the client" : p.health.waiting === "hold" ? " · on hold" : ""}
                 </p>
-                {p.health.reasons.length > 0 && <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{p.health.reasons[0]}</p>}
+                {p.health.reasons.length > 0 && <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{p.health.reasons[0]}</p>}
               </li>
             ))}
           </ul>
         ) : (
           <p className="py-3 text-[13px] text-muted">No open custom projects are visible to you.</p>
         )}
-        {health.hidden > 0 && <p className="mt-2 text-[11.5px] text-muted">{health.hidden} more {health.hidden === 1 ? "project is" : "projects are"} counted but hidden from you.</p>}
+        {health.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{health.hidden} more {health.hidden === 1 ? "project is" : "projects are"} counted but hidden from you.</p>}
       </CardContent>
     </Card>
   );
@@ -281,9 +281,9 @@ function TeamHome({ team, projects, escalations }: { team: TeamWorkload; project
           <CardContent>
             <OpenWorkList items={unassignedShown} canAssign={team.caps.assign} />
             {team.unassigned.items.length > unassignedShown.length && (
-              <p className="mt-2 text-[11.5px] text-muted">Showing {unassignedShown.length} of {team.unassigned.items.length} shown items; the board lists all of them.</p>
+              <p className="mt-2 text-[12px] text-muted">Showing {unassignedShown.length} of {team.unassigned.items.length} shown items; the board lists all of them.</p>
             )}
-            {team.unassigned.hidden > 0 && <p className="mt-2 text-[11.5px] text-muted">{team.unassigned.hidden} more {team.unassigned.hidden === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
+            {team.unassigned.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{team.unassigned.hidden} more {team.unassigned.hidden === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
           </CardContent>
         </Card>
       </div>
@@ -296,7 +296,7 @@ function TeamHome({ team, projects, escalations }: { team: TeamWorkload; project
           </CardHeader>
           <CardContent>
             <OpenWorkList items={team.orphaned.items.slice(0, 8)} canAssign={team.caps.assign} showAssignee />
-            {team.orphaned.hidden > 0 && <p className="mt-2 text-[11.5px] text-muted">{team.orphaned.hidden} more {team.orphaned.hidden === 1 ? "item is" : "items are"} hidden from you.</p>}
+            {team.orphaned.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{team.orphaned.hidden} more {team.orphaned.hidden === 1 ? "item is" : "items are"} hidden from you.</p>}
           </CardContent>
         </Card>
       )}
@@ -343,8 +343,8 @@ export function MyWorkloadView({ mine }: { mine: MyWorkload }) {
                 <li key={r}>· {r}</li>
               ))}
             </ul>
-            {me.result.quality.itemsWithoutDueDate > 0 && <p className="text-[11.5px] text-muted">{me.result.quality.itemsWithoutDueDate} open {me.result.quality.itemsWithoutDueDate === 1 ? "item has" : "items have"} no due date, so they cannot be overdue.</p>}
-            {me.result.quality.supportOverdueUnknown > 0 && <p className="text-[11.5px] text-muted">Support response targets are off, so {me.result.quality.supportOverdueUnknown} support {me.result.quality.supportOverdueUnknown === 1 ? "request" : "requests"} cannot show as overdue.</p>}
+            {me.result.quality.itemsWithoutDueDate > 0 && <p className="text-[12px] text-muted">{me.result.quality.itemsWithoutDueDate} open {me.result.quality.itemsWithoutDueDate === 1 ? "item has" : "items have"} no due date, so they cannot be overdue.</p>}
+            {me.result.quality.supportOverdueUnknown > 0 && <p className="text-[12px] text-muted">Support response targets are off, so {me.result.quality.supportOverdueUnknown} support {me.result.quality.supportOverdueUnknown === 1 ? "request" : "requests"} cannot show as overdue.</p>}
             {me.profile && (
               <div className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-muted">
                 <p>Capacity: {me.profile.capacityPoints ?? "not set"} points over the horizon{me.result.capacitySource === "default" ? " (team default)" : ""}.</p>
@@ -361,7 +361,7 @@ export function MyWorkloadView({ mine }: { mine: MyWorkload }) {
           </CardHeader>
           <CardContent>
             <OpenWorkList items={me.items} canAssign={false} />
-            {me.hiddenItems > 0 && <p className="mt-2 text-[11.5px] text-muted">{me.hiddenItems} more {me.hiddenItems === 1 ? "item is" : "items are"} counted but not shown to you.</p>}
+            {me.hiddenItems > 0 && <p className="mt-2 text-[12px] text-muted">{me.hiddenItems} more {me.hiddenItems === 1 ? "item is" : "items are"} counted but not shown to you.</p>}
           </CardContent>
         </Card>
       </div>

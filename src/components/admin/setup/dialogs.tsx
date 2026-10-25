@@ -108,7 +108,7 @@ function AddTaskInner({ open, onClose, orgId, snapshot, act, busy, onCreated }: 
           <fieldset className="space-y-2">
             <legend className="flex w-full items-center justify-between gap-2 text-[13px] font-medium text-ink-2">
               Prerequisites (optional)
-              {f.deps.length > 0 && <InfoChip className="h-5 text-[11px]">{f.deps.length} selected</InfoChip>}
+              {f.deps.length > 0 && <InfoChip className="h-5 text-[12px]">{f.deps.length} selected</InfoChip>}
             </legend>
             <div className="scrollbar-thin max-h-48 space-y-1.5 overflow-y-auto pr-1">
               {candidates.map((t) => (
@@ -161,7 +161,7 @@ function ServicesInner({ open, onClose, orgId, current, act, busy }: ServicesPro
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[13px] font-medium text-ink-2">Included in this client&apos;s package</p>
-          <InfoChip className="h-5 text-[11px]">{sel.length} of {SETUP_SERVICES.length} included</InfoChip>
+          <InfoChip className="h-5 text-[12px]">{sel.length} of {SETUP_SERVICES.length} included</InfoChip>
         </div>
         {SETUP_SERVICES.map((s) => (
           <CheckRow key={s.key} id={`svc-${s.key}`} label={s.label} hint={s.description} checked={sel.includes(s.key)} onChange={(v) => setSel(v ? [...sel, s.key] : sel.filter((x) => x !== s.key))} />

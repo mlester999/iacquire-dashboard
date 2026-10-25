@@ -123,17 +123,17 @@ export function AssistantPanel({
           <Button size="sm" variant="soft" loading={stage === "thinking"} disabled={readOnly || request.trim().length < 3 || stage === "applying"} onClick={() => void suggest()}>
             <Sparkles className="size-3.5" aria-hidden /> Suggest changes
           </Button>
-          <span className="text-[11px] text-muted" aria-hidden>{request.length}/{MAX_REQUEST}</span>
+          <span className="text-[12px] text-muted" aria-hidden>{request.length}/{MAX_REQUEST}</span>
         </div>
         {ai ? (
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 p-2 text-[11.5px] leading-relaxed text-ink-2">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 p-2 text-[12px] leading-relaxed text-ink-2">
             <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="mt-0.5 size-3.5 accent-[var(--primary)]" />
             <span>
               <strong className="font-medium text-ink">Use AI for open-ended requests.</strong> Only a short outline of this page (headings, section names, brand colours) is sent to the AI provider your agency connected. Never phone numbers, emails or customer details.
             </span>
           </label>
         ) : (
-          <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Built-in assistant. It handles everyday requests without sending anything anywhere. Editing by hand always works.</p>
+          <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Built-in assistant. It handles everyday requests without sending anything anywhere. Editing by hand always works.</p>
         )}
       </div>
 
@@ -143,10 +143,10 @@ export function AssistantPanel({
         {proposal && (
           <section aria-label="Suggested changes" className="space-y-3 rounded-xl border border-line bg-surface p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className={cn("rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide", proposal.plan.source === "ai" ? "bg-primary-soft text-primary-ink" : "bg-surface-3 text-ink-2")}>
+              <span className={cn("rounded-md px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide", proposal.plan.source === "ai" ? "bg-primary-soft text-primary-ink" : "bg-surface-3 text-ink-2")}>
                 {proposal.plan.source === "ai" ? "AI suggestion" : "Built-in assistant"}
               </span>
-              <span className="text-[11px] text-muted">Nothing has changed yet</span>
+              <span className="text-[12px] text-muted">Nothing has changed yet</span>
             </div>
             {proposal.note && <p className="rounded-lg bg-warning-soft p-2 text-[12px] leading-relaxed text-warning-ink">{proposal.note}</p>}
 
@@ -222,13 +222,13 @@ export function AssistantPanel({
 
         {(stage === "idle" || stage === "applied") && !proposal && (
           <div>
-            <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-wide text-muted">Try asking</p>
+            <p className="mb-1.5 text-[12px] font-medium uppercase tracking-wide text-muted">Try asking</p>
             <ul className="flex flex-wrap gap-1.5">
               {SUGGESTIONS.filter((s) => !s.includes("select a section") || selection).slice(0, 8).map((s) => (
                 <li key={s}><button type="button" disabled={readOnly} onClick={() => setRequest(s)} className="rounded-full border border-line bg-surface px-2.5 py-1 text-left text-[12px] text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50">{s}</button></li>
               ))}
             </ul>
-            <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
+            <p className="mt-3 text-[12px] leading-relaxed text-muted">
               {sections} section{sections === 1 ? "" : "s"} on this page. I never write testimonials, reviews, awards, prices or guarantees for you: those need your real details, so I add clearly marked placeholders that stop publishing until you replace them.
             </p>
           </div>

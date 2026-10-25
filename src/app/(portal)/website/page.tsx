@@ -32,7 +32,7 @@ export default async function WebsitePage() {
           ) : undefined}
         />
         <section aria-labelledby="website-style-intro" className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[.15em] text-muted">A starting point, made yours</p><h2 id="website-style-intro" className="mt-2 text-[20px] font-semibold tracking-tight">Find your visual direction</h2></div><InfoChip>{cards.length} designs to explore</InfoChip></div>
+          <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[12px] font-semibold uppercase tracking-[.15em] text-muted">A starting point, made yours</p><h2 id="website-style-intro" className="mt-2 text-[20px] font-semibold tracking-tight">Find your visual direction</h2></div><InfoChip>{cards.length} designs to explore</InfoChip></div>
           <div className="grid gap-4 md:grid-cols-3">{["meridian.estate","luxe.noir","care.haven"].map((key)=>{const card=cards.find((c)=>c.key===key);if(!card)return null;return <figure key={key} className="min-w-0 overflow-hidden rounded-[22px] border border-line bg-surface"><TemplateThumb card={card} frameBase="/frame/template" /><figcaption className="border-t border-line p-4"><p className="text-[14px] font-semibold">{card.familyName} · {card.name}</p><p className="mt-1 text-[12px] leading-relaxed text-muted">{card.description}</p><InfoChip className="mt-3">Sample content</InfoChip></figcaption></figure>;})}</div>
           <p className="text-[12px] leading-relaxed text-muted">These previews use sample content. Your private draft will use your company details, and publication stays under your control.</p>
         </section>

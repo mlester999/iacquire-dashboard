@@ -26,7 +26,7 @@ function IconTile({ children, tone = "primary" }: { children: React.ReactNode; t
 function Fact({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className={`min-w-0 rounded-xl bg-surface-2/70 px-3 py-2.5 ring-1 ring-inset ring-line ${wide ? "sm:col-span-2" : ""}`}>
-      <dt className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{label}</dt>
+      <dt className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{label}</dt>
       <dd className="mt-1 min-w-0 break-words text-[13.5px] font-medium text-ink">{children}</dd>
     </div>
   );
@@ -132,7 +132,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
                     <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-line"><Globe className="size-3.5" /></span>
                     <span className="min-w-0">
                       <span className="block truncate font-medium" title={d.hostname}>{d.hostname}</span>
-                      {d.isPrimary && <InfoChip className="mt-0.5 h-5 text-[10.5px]" icon={<Star />}>Main address</InfoChip>}
+                      {d.isPrimary && <InfoChip className="mt-0.5 h-5 text-[12px]" icon={<Star />}>Main address</InfoChip>}
                     </span>
                   </span>
                   <StatusPill tone={domainStatusTone(d)}>{domainStatusLabel(d)}</StatusPill>

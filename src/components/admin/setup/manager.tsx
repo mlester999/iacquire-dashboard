@@ -216,7 +216,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                       </div>
                       {c.detail && <p className="mt-1 text-[12px] leading-relaxed text-muted">{c.detail}</p>}
                       {!c.connectorImplemented && <p className="mt-1 text-[12px] text-warning-ink">No verified connector yet. Agency evidence can be recorded for review; activation stays blocked.</p>}
-                      {c.checkedAt && <p className="mt-1 text-[11.5px] text-faint">Checked <RelativeTime iso={c.checkedAt} timezone={timeZone} /></p>}
+                      {c.checkedAt && <p className="mt-1 text-[12px] text-faint">Checked <RelativeTime iso={c.checkedAt} timezone={timeZone} /></p>}
                     </li>
                   ))}
                 </ul>
@@ -282,7 +282,7 @@ export function SetupManager({ initial, orgId, timeZone, viewerIsSuper, preview 
                   {data.events.slice(0, 10).map((e) => (
                     <li key={e.id} className="text-[12.5px] leading-snug">
                       <p className="text-ink-2">{eventLabel(e, byId)}</p>
-                      <p className="mt-0.5 text-[11.5px] text-faint"><RelativeTime iso={e.at} timezone={timeZone} /></p>
+                      <p className="mt-0.5 text-[12px] text-faint"><RelativeTime iso={e.at} timezone={timeZone} /></p>
                     </li>
                   ))}
                 </ol>
@@ -362,12 +362,12 @@ function TaskRow({
             {t.serviceExcluded && <Badge tone="outline">{excludedLabel(t, services)}</Badge>}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
-            <StatusBadge status={t.status} className="h-5 px-2 text-[11px] sm:hidden" />
+            <StatusBadge status={t.status} className="h-5 px-2 text-[12px] sm:hidden" />
             <span>{MODE_LABEL[t.completionMode]}</span>
             {checkStatus && <span className={cn(checkStatus === "verified" ? "text-success-ink" : checkStatus === "attested" ? "text-violet-ink" : checkStatus === "failed" ? "text-danger-ink" : "text-faint")}>{CHECK_BADGE[checkStatus].label}</span>}
             {assignee ? (
               <span className="inline-flex items-center gap-1">
-                <span className="flex size-4 items-center justify-center rounded-full bg-primary-soft text-[8px] font-semibold text-primary-ink">{initialsOf(assignee)}</span>
+                <span className="flex size-4 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{initialsOf(assignee)}</span>
                 {assignee}
               </span>
             ) : (

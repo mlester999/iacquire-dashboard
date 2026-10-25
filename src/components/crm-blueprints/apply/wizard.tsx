@@ -245,7 +245,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
     <div className="space-y-5">
       <div>
         <Link href={blueprintHref(blueprint.id)} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Back to the Blueprint</Link>
-        <p className="mt-1 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">Apply to client</p>
+        <p className="mt-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">Apply to client</p>
         <h1 ref={headingRef} tabIndex={-1} className="break-words text-[22px] font-semibold tracking-[-0.03em] text-ink outline-none">
           {isUpdate && version && state?.appliedVersion !== version ? `Review update to version ${version}` : blueprint.name}
         </h1>
@@ -275,7 +275,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
                     can && "hover:bg-surface-2",
                   )}
                 >
-                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-[11px]", done ? "bg-success text-white" : current ? "bg-primary text-white" : "bg-surface-3 text-ink-2")}>
+                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-[12px]", done ? "bg-success text-white" : current ? "bg-primary text-white" : "bg-surface-3 text-ink-2")}>
                     {done ? <Check className="size-3" aria-hidden /> : i + 1}
                   </span>
                   {s.label}
@@ -331,7 +331,7 @@ export function ApplyWizard({ blueprint, versions, clients, updates, canApply, i
                   <label key={s} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2 has-[:checked]:border-primary/40 has-[:checked]:bg-primary-soft/40">
                     <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={on} onChange={(e) => setSections((cur) => (e.target.checked ? [...cur, s] : cur.filter((x) => x !== s)))} />
                     <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{SECTION_LABELS[s]}</span>
-                    {isUpdate && changed?.includes(s) && <Badge tone="primary" className="h-5 px-2 text-[11px]">Changed</Badge>}
+                    {isUpdate && changed?.includes(s) && <Badge tone="primary" className="h-5 px-2 text-[12px]">Changed</Badge>}
                     <span className="text-[12px] tabular-nums text-muted">{count}</span>
                   </label>
                 );
@@ -475,9 +475,9 @@ function ClientStep({ clients, blueprintId, latest, selected, onSelect, onNext }
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[13.5px] font-semibold text-ink">{c.name}</span>
-                        <Badge tone={c.crmMode === "native" ? "outline" : c.crmMode === "hybrid" ? "violet" : "neutral"} className="h-5 px-2 text-[11px]">{c.crmMode === "native" ? "iAcquire CRM" : c.crmMode === "hybrid" ? "Hybrid CRM" : "GoHighLevel CRM"}</Badge>
-                        {st.updateAvailable && <Badge tone="primary" className="h-5 px-2 text-[11px]">Update available: v{st.appliedVersion} → v{latest}</Badge>}
-                        {st.appliedVersion && !st.updateAvailable && <Badge tone="success" className="h-5 px-2 text-[11px]">Has v{st.appliedVersion}</Badge>}
+                        <Badge tone={c.crmMode === "native" ? "outline" : c.crmMode === "hybrid" ? "violet" : "neutral"} className="h-5 px-2 text-[12px]">{c.crmMode === "native" ? "iAcquire CRM" : c.crmMode === "hybrid" ? "Hybrid CRM" : "GoHighLevel CRM"}</Badge>
+                        {st.updateAvailable && <Badge tone="primary" className="h-5 px-2 text-[12px]">Update available: v{st.appliedVersion} → v{latest}</Badge>}
+                        {st.appliedVersion && !st.updateAvailable && <Badge tone="success" className="h-5 px-2 text-[12px]">Has v{st.appliedVersion}</Badge>}
                       </span>
                       {c.industry && <span className="mt-0.5 block text-[12px] text-muted">{c.industry}</span>}
                       {others.length > 0 && <span className="mt-1 block text-[12px] text-muted">Also applied: {others.map((b) => `${b.name} v${b.version}`).join(", ")}</span>}

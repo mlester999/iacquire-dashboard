@@ -340,7 +340,7 @@ export function TemplateEditor(props: TemplateEditorProps) {
                   aria-describedby="tpl-checks"
                   className="font-[inherit]"
                 />
-                <p className="text-right text-[11.5px] tabular-nums text-faint">{form.body.length.toLocaleString("en-US")} / {TEMPLATE_LIMITS.body.toLocaleString("en-US")}</p>
+                <p className="text-right text-[12px] tabular-nums text-faint">{form.body.length.toLocaleString("en-US")} / {TEMPLATE_LIMITS.body.toLocaleString("en-US")}</p>
               </div>
               {form.channel === "whatsapp" && (
                 <Field

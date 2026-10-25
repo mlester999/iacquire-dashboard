@@ -163,7 +163,7 @@ export function AgencyWebsitePanel({ orgId, data, timeZone }: { orgId: string; d
                     {(d.isPrimary || d.registrar) && (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         {d.isPrimary && <StatusPill tone="primary" size="sm" dot={false}>Main</StatusPill>}
-                        {d.registrar && <InfoChip className="h-5 text-[11px]">{d.registrar}{d.renewsAt ? `, renews ${formatDate(d.renewsAt, timeZone)}` : ""}</InfoChip>}
+                        {d.registrar && <InfoChip className="h-5 text-[12px]">{d.registrar}{d.renewsAt ? `, renews ${formatDate(d.renewsAt, timeZone)}` : ""}</InfoChip>}
                       </div>
                     )}
                   </div>

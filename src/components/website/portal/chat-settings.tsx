@@ -91,7 +91,7 @@ function Stats({ s }: { s: ChatWindowStats }) {
           <div key={label} className="rounded-xl border border-line bg-surface-2 p-3">
             <dt className="text-[12px] text-muted">{label}</dt>
             <dd className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{n}</dd>
-            {hint && <dd className="text-[11.5px] text-muted">{hint}</dd>}
+            {hint && <dd className="text-[12px] text-muted">{hint}</dd>}
           </div>
         ))}
       </dl>

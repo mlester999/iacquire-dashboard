@@ -109,7 +109,7 @@ export function ConnectionCard({ scope, connection: c, settings, renderedAt, onR
                       <label htmlFor={id} className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px] transition sm:min-h-10", on ? "border-primary/40 bg-primary-soft/50" : "border-line hover:bg-surface-2")}>
                         <input id={id} type="checkbox" className="size-4 accent-primary" checked={on} onChange={(e) => setConflictIds((prev) => (e.target.checked ? [...prev, cal.id] : prev.filter((x) => x !== cal.id)))} />
                         <span className="min-w-0 flex-1 truncate text-ink">{cal.name}</span>
-                        {cal.primary && <span className="inline-flex items-center gap-1 text-[11.5px] text-muted"><Star className="size-3" aria-hidden />Main</span>}
+                        {cal.primary && <span className="inline-flex items-center gap-1 text-[12px] text-muted"><Star className="size-3" aria-hidden />Main</span>}
                       </label>
                     </li>
                   );

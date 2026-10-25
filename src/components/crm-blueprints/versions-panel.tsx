@@ -70,7 +70,7 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
       <Card className="p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">Working draft</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">Working draft</p>
             <h2 className="mt-1 text-[16px] font-semibold text-ink">Revision {b.draftRevision}</h2>
             <p className="mt-1 text-[12.5px] text-muted"><When iso={b.draftUpdatedAt} prefix="Saved" timeZone={timeZone} />{b.draftUpdatedBy ? ` by ${b.draftUpdatedBy}` : ""}</p>
             <p className="mt-2 text-[13px] text-ink-2">
@@ -142,7 +142,7 @@ export function VersionsPanel({ blueprint: b, can, publishing, onPublishingChang
                       </div>
                       {v.changeSummary && <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{v.changeSummary}</p>}
                       {v.summaryLines.length > 0 && <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-muted">{v.summaryLines.map((l) => <li key={l}>{l}</li>)}</ul>}
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
                         <span>{total(v.counts)} assets</span>
                         <span>Format v{v.schemaVersion}</span>
                         <span className="inline-flex min-w-0 items-center gap-1">Digest <CopyValue value={v.digest} display={`${v.digest.slice(0, 12)}…`} label={`version ${v.version} digest`} /></span>
@@ -229,7 +229,7 @@ export function DiffView({ diff }: { diff: BlueprintDiff }) {
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {changes.map((c) => (
                 <li key={`${c.kind}-${c.id}`} className="px-4 py-2.5">
-                  <div className="flex flex-wrap items-center gap-2"><Badge tone={KIND_TONE[c.kind]}>{KIND_LABEL[c.kind]}</Badge><span className="text-[13px] font-medium text-ink">{c.name}</span><code className="font-mono text-[11px] text-muted">{c.id}</code></div>
+                  <div className="flex flex-wrap items-center gap-2"><Badge tone={KIND_TONE[c.kind]}>{KIND_LABEL[c.kind]}</Badge><span className="text-[13px] font-medium text-ink">{c.name}</span><code className="font-mono text-[12px] text-muted">{c.id}</code></div>
                   {c.fields.length > 0 && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[12px] text-muted">{c.fields.map((f) => <li key={f}>{f}</li>)}</ul>}
                 </li>
               ))}

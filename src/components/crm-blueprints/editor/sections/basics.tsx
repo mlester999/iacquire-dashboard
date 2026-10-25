@@ -363,7 +363,7 @@ function OptionsEditor({ options, onChange, readOnly }: { options: CustomFieldAs
 export function CustomValuesSection() {
   const { content, edit, readOnly, remove, issues } = useEditor();
   const add = useAdder("customValues");
-  const items = content.assets.customValues.map((v) => ({ id: v.id, name: v.label, detail: `{{custom_values.${v.key}}}`, badges: v.required && !v.value.trim() ? <Badge tone="warning" className="h-5 px-1.5 text-[11px]">to fill in</Badge> : undefined }));
+  const items = content.assets.customValues.map((v) => ({ id: v.id, name: v.label, detail: `{{custom_values.${v.key}}}`, badges: v.required && !v.value.trim() ? <Badge tone="warning" className="h-5 px-1.5 text-[12px]">to fill in</Badge> : undefined }));
   return (
     <>
       <AssetWorkspace

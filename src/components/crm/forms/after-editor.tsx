@@ -158,9 +158,9 @@ export function AfterEditor({
                   <Input id="fa-dealname" ref={nameRef} value={a.opportunity.name} maxLength={200} onChange={(e) => setActions({ opportunity: { ...a.opportunity!, name: e.target.value } })} />
                   {!readOnly && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {NAME_TOKENS.map((t) => <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="rounded-full border border-line bg-surface px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-surface-2">+ {t.label}</button>)}
+                      {NAME_TOKENS.map((t) => <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] text-ink-2 hover:bg-surface-2">+ {t.label}</button>)}
                       {draft.questions.filter((q) => q.type !== "hidden").slice(0, 8).map((q) => (
-                        <button key={q.key} type="button" onClick={() => insertToken(`{{answer.${q.key}}}`)} className="max-w-[12rem] truncate rounded-full border border-line bg-surface px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-surface-2">+ {q.label || q.key}</button>
+                        <button key={q.key} type="button" onClick={() => insertToken(`{{answer.${q.key}}}`)} className="max-w-[12rem] truncate rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] text-ink-2 hover:bg-surface-2">+ {q.label || q.key}</button>
                       ))}
                     </div>
                   )}

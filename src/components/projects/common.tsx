@@ -15,7 +15,7 @@ export function ProjectStatusBadge({ status, className }: { status: ProjectStatu
 }
 
 export function Chip({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center rounded-full bg-surface-2 px-2.5 py-0.5 text-[11.5px] ring-1 ring-inset ring-line font-medium text-ink-2", className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center rounded-full bg-surface-2 px-2.5 py-0.5 text-[12px] ring-1 ring-inset ring-line font-medium text-ink-2", className)}>{children}</span>;
 }
 
 /** Result shape returned by the portal's server actions. */

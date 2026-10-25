@@ -60,7 +60,7 @@ export default async function WorkloadBoardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="mb-3 flex flex-wrap gap-1.5 text-[11.5px] text-muted" aria-label="Unassigned by kind">
+            <ul className="mb-3 flex flex-wrap gap-1.5 text-[12px] text-muted" aria-label="Unassigned by kind">
               {WORK_SOURCES.map((source) => (
                 <li key={source} className="rounded-full border border-line bg-surface-2 px-2.5 py-1">
                   {team.unassigned.totals[source]} {SOURCE_PLURAL[source]}
@@ -68,8 +68,8 @@ export default async function WorkloadBoardPage() {
               ))}
             </ul>
             <OpenWorkList items={team.unassigned.items} canAssign={team.caps.assign} />
-            {team.unassigned.hidden > 0 && <p className="mt-2 text-[11.5px] text-muted">{team.unassigned.hidden} more {team.unassigned.hidden === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
-            {!team.caps.assign && <p className="mt-2 text-[11.5px] text-muted">Your role can see the board but not give work to others.</p>}
+            {team.unassigned.hidden > 0 && <p className="mt-2 text-[12px] text-muted">{team.unassigned.hidden} more {team.unassigned.hidden === 1 ? "item is" : "items are"} counted but hidden from you.</p>}
+            {!team.caps.assign && <p className="mt-2 text-[12px] text-muted">Your role can see the board but not give work to others.</p>}
           </CardContent>
         </Card>
         <Card>

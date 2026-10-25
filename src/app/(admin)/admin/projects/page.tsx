@@ -84,7 +84,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                     <AvatarTile name={p.orgName} />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap">
-                        <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted ring-1 ring-inset ring-line">{p.ref}</span>
+                        <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-muted ring-1 ring-inset ring-line">{p.ref}</span>
                         <span className="min-w-0 basis-full text-[14px] font-semibold leading-snug text-ink md:basis-auto md:truncate" title={p.title}>{p.title}</span>
                       </span>
                       <span className="mt-1.5 flex flex-wrap items-center gap-1.5">

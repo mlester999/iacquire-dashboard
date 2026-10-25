@@ -187,7 +187,7 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
               const ready = starterReadiness(s, options);
               return (
                 <li key={s.id} className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-soft">
-                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{s.category}</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">{s.category}</p>
                   <h3 className="mt-1 text-[15px] font-semibold text-ink">{s.title}</h3>
                   <p className="mt-1 flex-1 text-[13px] leading-relaxed text-muted">{s.description}</p>
                   <p className={cn("mt-3 text-[12px]", ready.ready ? "text-success-ink" : "text-warning-ink")}>{ready.ready ? "Your workspace has what this needs." : `Needs ${ready.missing.join(" and ")} first.`}</p>

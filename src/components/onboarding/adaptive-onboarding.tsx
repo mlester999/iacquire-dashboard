@@ -409,7 +409,7 @@ export function AdaptiveOnboarding({
               >
                 <header className="mb-4">
                   {/* The section is named in the progress panel above; the card only says whether this question can be skipped. */}
-                  {!isReview && <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
+                  {!isReview && <p className="mb-2 text-[12px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
                   <h1 id="onboarding-title" ref={headingRef} tabIndex={-1} className="text-[23px] font-semibold leading-tight tracking-[-0.025em] outline-none sm:text-[28px]">
                     {question.title}
                   </h1>
@@ -560,7 +560,7 @@ export function AdaptiveOnboarding({
 /** Sits on the navy progress panel, so it uses that panel's colours rather than the theme tokens. */
 function SaveBadge({ state, onRetry }: { state: PipelineState; onRetry: () => void }) {
   return (
-    <span role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-[var(--stage-muted)] lg:text-[12px]">
+    <span role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--stage-muted)] lg:text-[12px]">
       {state.status === "saving" ? (
         <>
           <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden /> Saving…

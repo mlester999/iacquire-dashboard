@@ -66,7 +66,7 @@ export interface ListPanelProps {
 function ChannelMark({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
+    <span className={cn("inline-flex items-center gap-1 text-[12px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
       {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
@@ -82,11 +82,11 @@ export function employeeShortName(agent: { name: string; roleKey: string }): str
 export function OwnerPill({ item }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused"> }) {
   if (item.ownerKind === "ai") {
     const label = item.aiAgent ? employeeShortName(item.aiAgent) : "AI";
-    if (item.aiPaused) return <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning-ink"><PauseCircle className="size-3" aria-hidden />{label} · paused</span>;
-    return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />{label}</span>;
+    if (item.aiPaused) return <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[12px] font-medium text-warning-ink"><PauseCircle className="size-3" aria-hidden />{label} · paused</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />{label}</span>;
   }
-  if (item.ownerKind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{item.ownerName?.split(" ")[0] ?? "Person"}</span>;
-  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-2">Unassigned</span>;
+  if (item.ownerKind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[12px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{item.ownerName?.split(" ")[0] ?? "Person"}</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-medium text-ink-2">Unassigned</span>;
 }
 
 /** The chips that say why a row matters. Each is a fact from the database (see ATTENTION_LABELS), never a guess. */
@@ -97,7 +97,7 @@ function StatusChips({ c }: { c: ConversationListItem }) {
   if (c.attention.includes("urgent") && !c.attention.includes("needs_person")) chips.push(<Badge key="u" tone="danger">Urgent</Badge>);
   if (c.attention.includes("awaiting_reply")) chips.push(<Badge key="a" tone="warning"><Clock className="size-3" aria-hidden />Awaiting reply</Badge>);
   if (c.missedCallOpen) chips.push(<Badge key="mc" tone="warning"><PhoneMissed className="size-3" aria-hidden />Missed call</Badge>);
-  if (c.lead && (c.lead.label === "hot" || c.lead.label === "warm")) chips.push(<PriorityBadge key="lead" label={c.lead.label} source={c.lead.source} className="h-5 px-2 text-[11px]" />);
+  if (c.lead && (c.lead.label === "hot" || c.lead.label === "warm")) chips.push(<PriorityBadge key="lead" label={c.lead.label} source={c.lead.source} className="h-5 px-2 text-[12px]" />);
   if (c.waitingOnCustomer && !chips.length) chips.push(<Badge key="w" tone="outline">Waiting on customer</Badge>);
   if (c.archivedAt) chips.push(<Badge key="x" tone="outline"><Archive className="size-3" aria-hidden />Archived</Badge>);
   else if (c.status === "closed") chips.push(<Badge key="r" tone="success"><Check className="size-3" aria-hidden />{c.outcome ? OUTCOME_LABELS[c.outcome] : "Resolved"}</Badge>);
@@ -123,7 +123,7 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
             <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
-            <span className="shrink-0 text-[11px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
+            <span className="shrink-0 text-[12px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
           </span>
           <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -131,7 +131,7 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
             <OwnerPill item={c} />
             <StatusChips c={c} />
             {c.priority === "high" && !c.attention.length && <Badge tone="warning">High</Badge>}
-            {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
+            {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
           </span>
           {attention && <span className="sr-only">{attention}.</span>}
         </span>
@@ -164,7 +164,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       {count(v) !== null && count(v)! > 0 && (
         <>
           <span className="sr-only"> </span>
-          <span className={cn("rounded-full px-1.5 text-[11px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
+          <span className={cn("rounded-full px-1.5 text-[12px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
         </>
       )}
     </button>
@@ -199,7 +199,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
             <MenuItem key={v} onSelect={() => onChange(v)} aria-label={INBOX_VIEW_LABELS[v]}>
               <span className="flex w-full items-center justify-between gap-3">
                 <span className="flex items-center gap-2">{view === v ? <Check className="size-3.5" aria-hidden /> : <span className="size-3.5" aria-hidden />}{INBOX_VIEW_LABELS[v]}</span>
-                {count(v) !== null && <span className="text-[11.5px] tabular-nums text-faint">{count(v)}</span>}
+                {count(v) !== null && <span className="text-[12px] tabular-nums text-faint">{count(v)}</span>}
               </span>
             </MenuItem>
           ))}
@@ -231,7 +231,7 @@ export function BulkBar({ selected, perms, team, onClear, onDone }: { selected: 
         <p className="text-[13px] font-semibold" aria-live="polite">{selected.length} selected</p>
         <button onClick={onClear} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink"><X className="size-3.5" aria-hidden />Clear</button>
       </div>
-      <p className="text-[11.5px] text-muted">Nothing here sends a message to a customer.</p>
+      <p className="text-[12px] text-muted">Nothing here sends a message to a customer.</p>
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" variant="secondary" loading={busy === "read"} disabled={!selected.length} onClick={() => run("read", { kind: "mark_read" }, "Marked read")}><CheckCheck className="size-3.5" aria-hidden />Mark read</Button>
         {perms.reply && (
@@ -323,7 +323,7 @@ export function InboxListPanel(p: ListPanelProps) {
       </form>
 
       <ViewTabs view={p.view} counts={p.counts} onChange={(v) => { setChecked(new Set()); p.onChange({ view: v }); }} />
-      <p className="-mt-1 text-[11.5px] text-muted" id="inbox-view-help">{INBOX_VIEW_HELP[p.view]}</p>
+      <p className="-mt-1 text-[12px] text-muted" id="inbox-view-help">{INBOX_VIEW_HELP[p.view]}</p>
 
       <div className="grid grid-cols-2 gap-2">
         <div>

@@ -274,7 +274,7 @@ function AddTemplateSource({ preview }: { preview?: boolean }) {
               <li key={s.scope}>
                 <label className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-surface-2 sm:min-h-9">
                   <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={scopes.includes(s.scope)} onChange={(e) => setScopes((x) => (e.target.checked ? [...x, s.scope] : x.filter((y) => y !== s.scope)))} />
-                  <span className="min-w-0"><span className="block text-[12.5px] text-ink">{s.label}</span><code className="block truncate font-mono text-[10.5px] text-muted">{s.scope}</code></span>
+                  <span className="min-w-0"><span className="block text-[12.5px] text-ink">{s.label}</span><code className="block truncate font-mono text-[12px] text-muted">{s.scope}</code></span>
                 </label>
               </li>
             ))}

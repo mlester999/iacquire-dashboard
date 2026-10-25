@@ -216,7 +216,7 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
         <div className="rounded-xl bg-surface-2/70 p-3 text-[12px] leading-relaxed text-muted">
           <p className="mb-1 font-medium text-ink-2">Provider webhook</p>
           <p className="flex items-center gap-1.5">
-            <code className="min-w-0 truncate rounded bg-surface px-1.5 py-0.5 font-mono text-[11.5px] text-ink">{webhook.url}</code>
+            <code className="min-w-0 truncate rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-ink">{webhook.url}</code>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Copy webhook address" onClick={() => void navigator.clipboard?.writeText(webhook.url)}><Copy className="size-3.5" /></Button>
           </p>
           <p className="mt-1">{webhook.note}</p>

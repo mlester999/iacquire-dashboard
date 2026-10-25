@@ -261,8 +261,8 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             {chosenTemplate && message && (
               <div className="-mt-2 rounded-2xl border border-line bg-surface-2/60 p-3">
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Exact wording · v{message.version}</p>
-                  {message.whatsappTemplate && <Badge className="h-5 px-2 text-[11px]">WhatsApp template “{message.whatsappTemplate.name}”</Badge>}
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Exact wording · v{message.version}</p>
+                  {message.whatsappTemplate && <Badge className="h-5 px-2 text-[12px]">WhatsApp template “{message.whatsappTemplate.name}”</Badge>}
                 </div>
                 {message.subject && <p className="text-[13px] font-medium text-ink">{message.subject}</p>}
                 <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{message.body}</p>

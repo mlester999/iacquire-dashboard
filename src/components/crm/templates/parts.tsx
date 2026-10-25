@@ -144,7 +144,7 @@ export function TokenPicker({ onPick, disabled, label = "Insert token" }: { onPi
             {TEMPLATE_TOKENS.filter((t) => t.group === g).map((t) => (
               <MenuItem key={t.key} onSelect={() => { focus.markPicked(); onPick(t.key); }} className="flex-col items-start gap-0.5">
                 <span className="text-[13px] text-ink">{t.label}</span>
-                <span className="font-mono text-[11px] text-muted">{tokenText(t.key)}</span>
+                <span className="font-mono text-[12px] text-muted">{tokenText(t.key)}</span>
               </MenuItem>
             ))}
           </React.Fragment>
@@ -159,8 +159,8 @@ export function TokenPicker({ onPick, disabled, label = "Insert token" }: { onPi
               return (
                 <MenuItem key={key} onSelect={() => { focus.markPicked(); onPick(key); }} className="flex-col items-start gap-0.5">
                   <span className="text-[13px] text-ink">{v.label}{v.group ? <span className="text-muted"> · {v.group}</span> : null}</span>
-                  <span className="break-all font-mono text-[11px] text-muted">{tokenText(key)}</span>
-                  {emptyRequired && <span className="text-[11px] text-warning-ink">Required and still empty: messages using it are held until it&apos;s filled in.</span>}
+                  <span className="break-all font-mono text-[12px] text-muted">{tokenText(key)}</span>
+                  {emptyRequired && <span className="text-[12px] text-warning-ink">Required and still empty: messages using it are held until it&apos;s filled in.</span>}
                 </MenuItem>
               );
             })}

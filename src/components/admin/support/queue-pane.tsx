@@ -81,7 +81,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
               <Link key={v.value} href={queueHref(query, { view: v.value, page: 1, ticket: "" })} aria-current={active ? "page" : undefined} title={v.hint}
                 className={cn("inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-[12.5px] font-medium transition", active ? "bg-ink text-surface shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                 {v.label}
-                {n !== undefined && n > 0 && <span className={cn("rounded-md px-1.5 py-px text-[11px] font-semibold tabular-nums", active ? "bg-surface/20" : v.value === "overdue" || v.value === "escalated" ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
+                {n !== undefined && n > 0 && <span className={cn("rounded-md px-1.5 py-px text-[12px] font-semibold tabular-nums", active ? "bg-surface/20" : v.value === "overdue" || v.value === "escalated" ? "bg-danger-soft text-danger-ink" : "bg-surface-3 text-ink-2")}>{n}</span>}
               </Link>
             );
           })}
@@ -92,7 +92,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
         </div>
         <details className="group" open={filtersActive || undefined}>
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg text-[12.5px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <SlidersHorizontal className="size-3.5" aria-hidden /> Filters {filtersActive && <span className="rounded-full bg-primary px-1.5 text-[10.5px] text-white">on</span>}
+            <SlidersHorizontal className="size-3.5" aria-hidden /> Filters {filtersActive && <span className="rounded-full bg-primary px-1.5 text-[12px] text-white">on</span>}
             <span className="ml-auto text-muted group-open:hidden">Show</span><span className="ml-auto hidden text-muted group-open:inline">Hide</span>
           </summary>
           <div className="mt-2.5 grid grid-cols-2 gap-2">
@@ -141,11 +141,11 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5">
                       <Icon className="size-3.5 text-muted" aria-label={REQUEST_TYPE_LABELS[t.requestType].label} />
-                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-inset ring-line">{t.ref}</span>
+                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{t.ref}</span>
                       {t.escalated && <Flame className="size-3.5 text-danger" aria-label="Escalated" />}
-                      {t.clientWaiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-white"><MessageSquarePlus className="size-2.5" aria-hidden /> Reply</span>}
+                      {t.clientWaiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-px text-[12px] font-semibold text-white"><MessageSquarePlus className="size-2.5" aria-hidden /> Reply</span>}
                     </span>
-                    <span className="text-[11px] text-muted" suppressHydrationWarning>{relativeTime(t.lastActivityAt)}</span>
+                    <span className="text-[12px] text-muted" suppressHydrationWarning>{relativeTime(t.lastActivityAt)}</span>
                   </div>
                   <div className="flex items-start gap-3">
                     <AvatarTile name={t.orgName} size="sm" className="mt-0.5" />
@@ -160,8 +160,8 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
                     {(t.sla.state === "overdue" || t.sla.state === "approaching") && (
                       <StatusPill tone={slaTone} size="sm" icon={t.sla.state === "overdue" ? <AlertTriangle className="size-3" aria-hidden /> : <CalendarClock className="size-3" aria-hidden />}>{SLA_STATE_LABELS[t.sla.state]}</StatusPill>
                     )}
-                    <span className="ml-auto inline-flex min-w-0 max-w-full items-center gap-1 text-[11.5px] font-medium text-ink-2" title={t.assignedToName ? `Assigned to ${t.assignedToName}` : "Unassigned"}>
-                      {t.assignedToName ? <><AvatarTile name={t.assignedToName} size="sm" className="!size-5 !rounded-full !text-[8px]" /><span className="truncate">{t.assignedToName.split(" ")[0]}</span></> : <><UserRound className="size-3.5 text-muted" aria-hidden />Unassigned</>}
+                    <span className="ml-auto inline-flex min-w-0 max-w-full items-center gap-1 text-[12px] font-medium text-ink-2" title={t.assignedToName ? `Assigned to ${t.assignedToName}` : "Unassigned"}>
+                      {t.assignedToName ? <><AvatarTile name={t.assignedToName} size="sm" className="!size-5 !rounded-full !text-[12px]" /><span className="truncate">{t.assignedToName.split(" ")[0]}</span></> : <><UserRound className="size-3.5 text-muted" aria-hidden />Unassigned</>}
                     </span>
                   </div>
                 </Link>

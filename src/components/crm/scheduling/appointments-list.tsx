@@ -190,7 +190,7 @@ export function AppointmentsList({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-start justify-between gap-2">
                         <span className={cn("truncate text-[14px] font-medium text-ink", a.status === "cancelled" && "line-through")}>{a.contact?.name ?? a.title}</span>
-                        <StatusBadge status={a.status} className="h-5 text-[11px]" />
+                        <StatusBadge status={a.status} className="h-5 text-[12px]" />
                       </span>
                       <span className="block text-[12.5px] tabular-nums text-ink-2">{dateTimeIn(a.startAt, tz)}</span>
                       <span className="block truncate text-[12px] text-muted">{a.type?.name ?? "Appointment"}{a.hosts.length ? ` · ${a.hosts.map((h) => h.name).join(", ")}` : ""}</span>

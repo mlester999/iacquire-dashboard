@@ -44,7 +44,7 @@ export function SettingsNav({ permissions, features = [] }: { permissions: Permi
       <ul ref={scroller} className="relative flex gap-1 rounded-2xl border border-line bg-surface p-2 shadow-soft lg:flex-col lg:gap-0.5 lg:p-2.5">
         {groups.map((group, gi) => (
           <React.Fragment key={group}>
-            <li aria-hidden className={cn("hidden px-3 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[.14em] text-faint lg:block", gi > 0 && "mt-1.5 border-t border-line pt-3.5")}>
+            <li aria-hidden className={cn("hidden px-3 pb-1 pt-2 text-[12px] font-semibold uppercase tracking-[.14em] text-faint lg:block", gi > 0 && "mt-1.5 border-t border-line pt-3.5")}>
               {group}
             </li>
             {items

@@ -150,7 +150,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
           <IconTile icon={<MessageSquare />} tone={tone(t.status)} size="lg" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <InfoChip className="font-mono text-[11px] tracking-tight">{t.ref}</InfoChip>
+              <InfoChip className="font-mono text-[12px] tracking-tight">{t.ref}</InfoChip>
               <StatusPill tone={tone(t.status)}>{statusText}</StatusPill>
               <InfoChip icon={<Wrench aria-hidden />}>{REQUEST_TYPE_LABELS[t.requestType].label}</InfoChip>
               <InfoChip icon={<Tag aria-hidden />}>{categoryLabel(t.category)}</InfoChip>
@@ -194,7 +194,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
       <section aria-labelledby="conv-title" className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 id="conv-title" className="text-[17px] font-semibold tracking-tight text-ink">Conversation</h2>
-          <span className="text-[11.5px] text-muted" aria-live="off">{live === "live" ? "Updates automatically" : "Paused while this tab is hidden"}</span>
+          <span className="text-[12px] text-muted" aria-live="off">{live === "live" ? "Updates automatically" : "Paused while this tab is hidden"}</span>
         </div>
         {detail.messages.length === 0 && pending.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line-strong bg-surface">
@@ -215,7 +215,7 @@ export function RequestDetailView({ initial, timeZone, survey = null }: { initia
               <AttachmentPicker key={pickerKey} compact maxMb={detail.maxAttachmentMb} maxFiles={detail.maxAttachments} onChange={setFiles} label="Add files" />
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11.5px] text-muted">Press Ctrl or ⌘ + Enter to send</p>
+              <p className="text-[12px] text-muted">Press Ctrl or ⌘ + Enter to send</p>
               <Button type="button" variant="brand" size="sm" disabled={!body.trim() || files.busy || files.failed} onClick={() => void submit()}>
                 <Send className="size-3.5" aria-hidden /> {files.busy ? "Uploading files…" : done ? "Reopen and send" : "Send reply"}
               </Button>

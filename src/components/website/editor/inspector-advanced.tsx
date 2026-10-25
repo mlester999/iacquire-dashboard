@@ -41,12 +41,12 @@ export function AdvancedGroup({ doc, id, onReplaceSection }: { doc: SiteContent;
   };
   return (
     <Group title="Advanced (agency)" defaultOpen={false}>
-      <p className="text-[11.5px] leading-relaxed text-muted">Id <code className="rounded bg-surface-3 px-1">{id}</code>. For moving structure between sites and templates.</p>
+      <p className="text-[12px] leading-relaxed text-muted">Id <code className="rounded bg-surface-3 px-1">{id}</code>. For moving structure between sites and templates.</p>
       <Button size="sm" variant="secondary" onClick={() => void copy()}>Copy as JSON</Button>
       {section && (
         <div className="space-y-1.5">
           <AreaControl aria-label="Section JSON to paste" rows={5} value={text} placeholder="Paste a section copied with “Copy as JSON”" onChange={(e) => { setText(e.target.value); setError(null); }} />
-          {error && <p role="alert" className="text-[11.5px] text-danger-ink">{error}</p>}
+          {error && <p role="alert" className="text-[12px] text-danger-ink">{error}</p>}
           <Button size="sm" variant="soft" disabled={!text.trim()} onClick={replace}>Replace this section</Button>
         </div>
       )}

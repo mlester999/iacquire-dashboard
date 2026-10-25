@@ -33,7 +33,7 @@ const TABS: Array<{ value: Tab; label: string }> = [
 ];
 
 const dollars = (micros: number) => signedUsd(micros);
-const TH = "px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted";
+const TH = "px-3 py-2.5 text-[12px] font-semibold uppercase tracking-wider text-muted";
 const PROVIDER_LABEL: Record<string, string> = { ghl: "GoHighLevel", llm: "AI model", n8n: "n8n", research: "Research", enrichment: "Enrichment", internal: "Internal", paymongo: "PayMongo" };
 const providerLabel = (p: string) => PROVIDER_LABEL[p] ?? sentenceCase(p);
 /** Machine event names such as "checkout_session.payment.paid" read as a sentence. */
@@ -55,7 +55,7 @@ function Line({ label, value, note, strong, negative, indent }: { label: React.R
 function SectionRow({ children }: { children: React.ReactNode }) {
   return (
     <tr>
-      <th colSpan={2} scope="colgroup" className="bg-surface-2 px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted sm:px-5">
+      <th colSpan={2} scope="colgroup" className="bg-surface-2 px-4 py-2 text-left text-[12px] font-semibold uppercase tracking-wider text-muted sm:px-5">
         {children}
       </th>
     </tr>
@@ -392,7 +392,7 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
         <Card>
           <CardHeader><div><CardTitle>Payment notifications that need a look</CardTitle><CardDescription>Events PayMongo sent that were rejected, failed to process or aren&apos;t handled automatically. Check each against PayMongo.</CardDescription></div></CardHeader>
           <CardContent className="px-0 pb-0">
-            <ul className="divide-y divide-line">{overview.unmatchedEvents.map((e) => <li key={e.id} className="management-row flex flex-wrap items-start gap-x-3 gap-y-2 px-5 py-3.5"><div className="min-w-0 flex-1 basis-60"><div className="flex flex-wrap items-center gap-2"><p className="text-[13.5px] font-medium">{readableEvent(e.eventType)}</p><InfoChip className="bg-transparent font-mono text-[10.5px] text-muted">{e.eventType}</InfoChip></div><p className="mt-1 text-[12px] leading-relaxed text-muted">{e.detail ?? "No detail recorded."}</p></div><div className="flex items-center gap-3"><StatusPill tone={OUTCOME_TONE[e.outcome as keyof typeof OUTCOME_TONE] ?? "neutral"} size="sm">{sentenceCase(e.outcome)}</StatusPill><time dateTime={e.receivedAt} className="whitespace-nowrap text-[12px] text-muted">{formatDateTime(e.receivedAt, "UTC")}</time></div></li>)}</ul>
+            <ul className="divide-y divide-line">{overview.unmatchedEvents.map((e) => <li key={e.id} className="management-row flex flex-wrap items-start gap-x-3 gap-y-2 px-5 py-3.5"><div className="min-w-0 flex-1 basis-60"><div className="flex flex-wrap items-center gap-2"><p className="text-[13.5px] font-medium">{readableEvent(e.eventType)}</p><InfoChip className="bg-transparent font-mono text-[12px] text-muted">{e.eventType}</InfoChip></div><p className="mt-1 text-[12px] leading-relaxed text-muted">{e.detail ?? "No detail recorded."}</p></div><div className="flex items-center gap-3"><StatusPill tone={OUTCOME_TONE[e.outcome as keyof typeof OUTCOME_TONE] ?? "neutral"} size="sm">{sentenceCase(e.outcome)}</StatusPill><time dateTime={e.receivedAt} className="whitespace-nowrap text-[12px] text-muted">{formatDateTime(e.receivedAt, "UTC")}</time></div></li>)}</ul>
           </CardContent>
         </Card>
       )}

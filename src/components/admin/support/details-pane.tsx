@@ -114,7 +114,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
               {t.assignedToId && !detail.assignable.some((a) => a.id === t.assignedToId) && <option value={t.assignedToId}>{t.assignedToName ?? "Someone"}</option>}
               {detail.assignable.map((a) => <option key={a.id} value={a.id}>{a.name}{a.id === meId ? " (you)" : ""} · {a.openAssigned} open</option>)}
             </Select>
-            <p className="text-[11.5px] text-muted">The number is how many active requests each person already has.</p>
+            <p className="text-[12px] text-muted">The number is how many active requests each person already has.</p>
           </div>
         </div>
 
@@ -190,7 +190,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
               <option value="">Not looked at yet</option>
               {CHANGE_CLASSIFICATIONS.map((c) => <option key={c} value={c}>{CHANGE_CLASSIFICATION_LABELS[c].label}</option>)}
             </Select>
-            {classification && <p className="text-[11.5px] leading-relaxed text-muted">{CHANGE_CLASSIFICATION_LABELS[classification as ChangeClassification].hint}</p>}
+            {classification && <p className="text-[12px] leading-relaxed text-muted">{CHANGE_CLASSIFICATION_LABELS[classification as ChangeClassification].hint}</p>}
           </div>
           <div className="mt-3 space-y-1.5">
             <Label htmlFor="d-class-note">Note for the team <span className="text-[12px] font-normal text-faint">Optional</span></Label>
@@ -223,7 +223,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
         {detail.recent.length > 0 && (
           <details className="mt-3 group"><summary className="cursor-pointer text-[12.5px] font-medium text-ink-2 hover:text-ink">Recent from this client ({detail.recent.length})</summary>
             <ul className="mt-2 space-y-1.5">{detail.recent.map((r) => (
-              <li key={r.id} className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${r.id}`} className="font-mono text-[11.5px] text-primary-ink hover:underline">{r.ref}</Link><span className="min-w-0 flex-1 truncate text-ink-2">{r.subject}</span><StatusPill status={r.status} size="sm" /></li>))}
+              <li key={r.id} className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${r.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{r.ref}</Link><span className="min-w-0 flex-1 truncate text-ink-2">{r.subject}</span><StatusPill status={r.status} size="sm" /></li>))}
             </ul>
           </details>
         )}
@@ -233,7 +233,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
         {similar && ("reason" in similar ? <p className="mt-2 text-[12.5px] text-danger-ink">{similar.reason}</p> : similar.length === 0 ? <p className="mt-2 text-[12.5px] text-muted">No similar requests from this client.</p> : (
           <ul className="mt-3 space-y-2.5" aria-label="Possible duplicates">{similar.map((s) => (
             <li key={s.id} className="rounded-xl border border-line bg-surface-2/60 p-2.5">
-              <p className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${s.id}`} className="font-mono text-[11.5px] text-primary-ink hover:underline">{s.ref}</Link><span className="min-w-0 flex-1 truncate font-medium text-ink" title={s.subject}>{s.subject}</span><span className="text-[11px] text-muted">{Math.round(s.score * 100)}% alike</span></p>
+              <p className="flex items-center gap-2 text-[12.5px]"><Link href={`/admin/support?ticket=${s.id}`} className="font-mono text-[12px] text-primary-ink hover:underline">{s.ref}</Link><span className="min-w-0 flex-1 truncate font-medium text-ink" title={s.subject}>{s.subject}</span><span className="text-[12px] text-muted">{Math.round(s.score * 100)}% alike</span></p>
               {canWrite && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Button size="sm" variant="ghost" onClick={() => void act(`link-${s.id}`, () => linkAction(t.id, s.id, "related"), "Linked").then(() => setSimilar((list) => (Array.isArray(list) ? list.filter((x) => x.id !== s.id) : list)))}>Link as related</Button>
@@ -253,13 +253,13 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
           <Button size="sm" variant="secondary" loading={busy === "adv"} disabled={!canWrite} onClick={async () => { setBusy("adv"); const res = await adviseAction(t.id); setBusy(null); if (res.ok) setAdvice(res.data); else toast.error(res.error); }}>Priority &amp; escalation advice</Button>
         </div>
         {summary && ("reason" in summary ? <p className="mt-3 text-[12.5px] text-ink-2">{summary.reason}</p> : (
-          <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-primary-ink">Summary · {formatDateTime(summary.at, timeZone)}</p><p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{summary.text}</p></div>
+          <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-3"><p className="text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Summary · {formatDateTime(summary.at, timeZone)}</p><p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{summary.text}</p></div>
         ))}
         {advice && (
           <div className="mt-3 rounded-xl border border-line bg-surface-2/60 p-3" role="status">
             <p className="text-[12.5px] font-semibold text-ink">{advice.recommend ? "Worth a closer look" : "Nothing alarming"} · consider <strong>{advice.suggestedPriority}</strong> priority</p>
             {advice.reasons.length > 0 ? <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[12.5px] text-ink-2">{advice.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <p className="mt-1 text-[12.5px] text-muted">No signals found in this request.</p>}
-            <p className="mt-2 text-[11.5px] text-muted">This is a prompt for your judgement; it doesn&apos;t change anything.</p>
+            <p className="mt-2 text-[12px] text-muted">This is a prompt for your judgement; it doesn&apos;t change anything.</p>
           </div>
         )}
       </Card>
@@ -267,7 +267,7 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
       {detail.looseAttachments.length > 0 && (
         <Card className="p-4">
           <h3 className="text-[13.5px] font-semibold text-ink">Files added to the request</h3>
-          <ul className="mt-2 space-y-1.5">{detail.looseAttachments.map((a) => <li key={a.id}><a className="text-[13px] font-medium text-primary-ink hover:underline" href={`/api/support/attachments/${a.id}`}>{a.filename}</a>{a.visibility === "internal" && <span className="ml-2 text-[11px] text-warning-ink">team only</span>}</li>)}</ul>
+          <ul className="mt-2 space-y-1.5">{detail.looseAttachments.map((a) => <li key={a.id}><a className="text-[13px] font-medium text-primary-ink hover:underline" href={`/api/support/attachments/${a.id}`}>{a.filename}</a>{a.visibility === "internal" && <span className="ml-2 text-[12px] text-warning-ink">team only</span>}</li>)}</ul>
         </Card>
       )}
 

@@ -54,7 +54,7 @@ export function ProposalList({ rows, today, tz, can, empty }: { rows: ProposalSu
                 <span className="text-[12.5px] font-medium tabular-nums text-muted">{p.number}</span>
                 <StatusBadge status={p.status} />
                 {p.origin === "ai" && <AiBadge />}
-                {p.requiresSignature && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">Needs a signature</span>}
+                {p.requiresSignature && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">Needs a signature</span>}
               </span>
               <span className="mt-1.5 block break-words text-[15px] font-semibold text-ink">{p.title}</span>
               <span className="mt-0.5 block break-words text-[13px] text-ink-2">{customer || "No customer chosen yet"}</span>

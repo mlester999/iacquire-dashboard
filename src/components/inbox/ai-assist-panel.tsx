@@ -59,15 +59,15 @@ export function AiAssistPanel({ conversationId, newestInboundId, canUse }: { con
           <p className="whitespace-pre-wrap leading-relaxed text-ink-2">{state.data.summary}</p>
           {state.data.nextSteps.length > 0 && (
             <div>
-              <h3 className="text-[11.5px] font-semibold uppercase tracking-wider text-muted">Suggested next steps</h3>
+              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted">Suggested next steps</h3>
               <ul className="mt-1 list-disc space-y-1 pl-4 text-ink-2">{state.data.nextSteps.map((s) => <li key={s}>{s}</li>)}</ul>
             </div>
           )}
           {state.data.reviewReason && (
             <div className="rounded-lg border border-warning/30 bg-warning-soft/50 p-2.5">
-              <h3 className="text-[11.5px] font-semibold uppercase tracking-wider text-warning-ink">Why a person may want to look</h3>
+              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-warning-ink">Why a person may want to look</h3>
               <p className="mt-0.5 text-ink-2">{state.data.reviewReason}</p>
-              <p className="mt-1 text-[11.5px] text-muted">This is the AI&apos;s opinion, not a fact about the customer.</p>
+              <p className="mt-1 text-[12px] text-muted">This is the AI&apos;s opinion, not a fact about the customer.</p>
             </div>
           )}
         </div>

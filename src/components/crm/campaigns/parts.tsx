@@ -117,7 +117,7 @@ export const handedOver = (c: CampaignCounts) => c.sent + c.delivered + c.unsubs
 
 export function Fingerprint({ hash }: { hash: string | null | undefined }) {
   if (!hash) return null;
-  return <span className="font-mono text-[11.5px] text-muted" title={hash}>#{hash.slice(0, 10)}</span>;
+  return <span className="font-mono text-[12px] text-muted" title={hash}>#{hash.slice(0, 10)}</span>;
 }
 
 /** Counts as a compact, readable row (each with its label), for lists and summaries. */

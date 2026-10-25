@@ -173,14 +173,14 @@ export function AreaChart({
               {ticks.map((t) => (
                 <g key={t}>
                   <line x1={pad.l} x2={pad.l + w} y1={y(t)} y2={y(t)} stroke="var(--grid)" strokeWidth={1} />
-                  <text x={pad.l - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-[var(--faint)] text-[11px] tabular-nums">
+                  <text x={pad.l - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-[var(--faint)] text-[12px] tabular-nums">
                     {formatNumber(t, { compact: true })}
                   </text>
                 </g>
               ))}
               {data.map((d, i) =>
                 i === data.length - 1 || (i % labelStep === 0 && data.length - 1 - i >= labelStep * 0.75) ? (
-                  <text key={d.x} x={x(i)} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[11px]">
+                  <text key={d.x} x={x(i)} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[12px]">
                     {formatX(d.x)}
                   </text>
                 ) : null,
@@ -258,7 +258,7 @@ export function Funnel({ stages, unavailableLabel = "Not connected" }: { stages:
             <div className="mb-1.5 flex items-center justify-between gap-3 text-[13px]">
               <span className="min-w-0 truncate font-medium text-ink-2">{s.label}</span>
               <span className="flex shrink-0 items-center gap-2 tabular-nums text-ink">
-                {rate !== null && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted ring-1 ring-inset ring-line">{Math.round(rate * 100)}% of previous</span>}
+                {rate !== null && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[12px] font-medium text-muted ring-1 ring-inset ring-line">{Math.round(rate * 100)}% of previous</span>}
                 {s.value === null ? <StatusPill tone="neutral" size="sm">{unavailableLabel}</StatusPill> : <span className="font-semibold">{formatNumber(s.value)}</span>}
               </span>
             </div>
@@ -342,7 +342,7 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
           {[0, max / 2, max].map((t) => (
             <g key={t}>
               <line x1={pad.l} x2={pad.l + w} y1={pad.t + h - (t / max) * h} y2={pad.t + h - (t / max) * h} stroke="var(--grid)" />
-              <text x={pad.l - 6} y={pad.t + h - (t / max) * h} dy="0.32em" textAnchor="end" className="fill-[var(--faint)] text-[11px] tabular-nums">
+              <text x={pad.l - 6} y={pad.t + h - (t / max) * h} dy="0.32em" textAnchor="end" className="fill-[var(--faint)] text-[12px] tabular-nums">
                 {formatNumber(t, { compact: true })}
               </text>
             </g>
@@ -363,7 +363,7 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
                   />
                 )}
                 {i % labelEvery === 0 && (
-                  <text x={cx} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[11px]">
+                  <text x={cx} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[12px]">
                     {d.x}
                   </text>
                 )}

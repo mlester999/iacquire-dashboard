@@ -79,7 +79,7 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
               <li key={it.stepKey} className="rounded-2xl border border-line p-3">
                 <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-ink">
                   <Icon className="size-4 text-muted" aria-hidden />Step {it.stepNumber}: {it.title}
-                  {it.asksFirst && <Badge tone="warning" className="h-5 px-2 text-[11px] font-medium">Also asks a person each time</Badge>}
+                  {it.asksFirst && <Badge tone="warning" className="h-5 px-2 text-[12px] font-medium">Also asks a person each time</Badge>}
                 </p>
                 <dl className="mt-2 grid gap-x-3 gap-y-1 text-[12.5px] sm:grid-cols-[max-content_minmax(0,1fr)]">
                   {it.lines.map((l) => (
@@ -91,10 +91,10 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
                 </dl>
                 {it.message && (
                   <div className="mt-2 rounded-xl bg-surface-2 p-3">
-                    <p className="mb-1 text-[11.5px] font-semibold uppercase tracking-wider text-faint">Exact wording</p>
+                    <p className="mb-1 text-[12px] font-semibold uppercase tracking-wider text-faint">Exact wording</p>
                     {it.message.subject && <p className="text-[13px] font-medium text-ink">{it.message.subject}</p>}
                     <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{it.message.body}</p>
-                    <p className="mt-1.5 text-[11.5px] text-muted">Placeholders like {"{{contact.first_name}}"} are filled in for each contact. A message missing a value isn&apos;t sent.</p>
+                    <p className="mt-1.5 text-[12px] text-muted">Placeholders like {"{{contact.first_name}}"} are filled in for each contact. A message missing a value isn&apos;t sent.</p>
                   </div>
                 )}
                 {it.warning && <p className="mt-2 flex gap-1.5 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{it.warning}</p>}

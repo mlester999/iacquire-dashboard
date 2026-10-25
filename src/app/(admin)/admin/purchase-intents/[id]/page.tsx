@@ -44,7 +44,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
         </div>
         <div className="rounded-xl border border-line bg-surface px-4 py-3 text-right shadow-soft">
           <p className="text-[18px] font-semibold tabular-nums text-ink">{formatUsdCents(intent.setupFeeCents)}</p>
-          <p className="text-[11.5px] text-muted">setup fee{intent.maintenanceSelected ? ` + ${formatUsdCents(intent.maintenanceMonthlyCents)}/mo` : " · maintenance not selected"}</p>
+          <p className="text-[12px] text-muted">setup fee{intent.maintenanceSelected ? ` + ${formatUsdCents(intent.maintenanceMonthlyCents)}/mo` : " · maintenance not selected"}</p>
         </div>
       </div>
 
@@ -68,11 +68,11 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-[15px]">Buyer and product</CardTitle></CardHeader>
             <CardContent className="grid gap-3 text-[13px] sm:grid-cols-2">
-              <p className="flex min-w-0 items-start gap-2"><UserRound className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[11.5px] text-muted">Buyer</span>{intent.buyerName}</span></p>
-              <p className="flex min-w-0 items-start gap-2"><Mail className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-all"><span className="block text-[11.5px] text-muted">Email</span>{intent.buyerEmail}</span></p>
-              <p className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[11.5px] text-muted">Industry and time zone</span>{intent.industry || "Not given"} · {intent.timezone}</span></p>
-              <p className="flex min-w-0 items-start gap-2"><ReceiptText className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[11.5px] text-muted">Frozen product</span>{intent.productVersion} · {intent.currency}</span></p>
-              {intent.website && <p className="min-w-0 break-all sm:col-span-2"><span className="block text-[11.5px] text-muted">Website</span><a href={intent.website} target="_blank" rel="noreferrer" className="text-primary hover:underline">{intent.website}</a></p>}
+              <p className="flex min-w-0 items-start gap-2"><UserRound className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[12px] text-muted">Buyer</span>{intent.buyerName}</span></p>
+              <p className="flex min-w-0 items-start gap-2"><Mail className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-all"><span className="block text-[12px] text-muted">Email</span>{intent.buyerEmail}</span></p>
+              <p className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[12px] text-muted">Industry and time zone</span>{intent.industry || "Not given"} · {intent.timezone}</span></p>
+              <p className="flex min-w-0 items-start gap-2"><ReceiptText className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden /><span className="min-w-0 break-words"><span className="block text-[12px] text-muted">Frozen product</span>{intent.productVersion} · {intent.currency}</span></p>
+              {intent.website && <p className="min-w-0 break-all sm:col-span-2"><span className="block text-[12px] text-muted">Website</span><a href={intent.website} target="_blank" rel="noreferrer" className="text-primary hover:underline">{intent.website}</a></p>}
             </CardContent>
           </Card>
 
@@ -81,13 +81,13 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
             <CardContent className="space-y-3">
               {intent.paymentReference ? (
                 <dl className="grid grid-cols-1 gap-2 text-[13px] sm:grid-cols-2">
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Amount</dt><dd className="font-medium text-ink">{formatUsdCents(intent.paymentAmountCents ?? intent.setupFeeCents)}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Method</dt><dd>{intent.paymentMethod?.replaceAll("_", " ")}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Evidence</dt><dd>{intent.paymentSource === "provider" ? "Confirmed by the payment provider's signed notice" : "Recorded by a Super Admin from the bank or a dashboard"}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Workspace</dt><dd>{intent.clientOrgId ? (intent.autoProvision ? "Created automatically after the verified payment" : "Created by a Super Admin") : intent.status === "cancelled" ? "Not created: the purchase was closed" : intent.autoProvision ? "Will be created automatically once nothing holds the payment" : "A Super Admin creates it"}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Reference</dt><dd className="break-all">{intent.paymentReference}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Paid on</dt><dd>{intent.paymentPaidOn}</dd></div>
-                  <div className="min-w-0 sm:col-span-2"><dt className="text-[11.5px] text-muted">What was checked</dt><dd className="break-words leading-relaxed">{intent.paymentNote}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Amount</dt><dd className="font-medium text-ink">{formatUsdCents(intent.paymentAmountCents ?? intent.setupFeeCents)}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Method</dt><dd>{intent.paymentMethod?.replaceAll("_", " ")}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Evidence</dt><dd>{intent.paymentSource === "provider" ? "Confirmed by the payment provider's signed notice" : "Recorded by a Super Admin from the bank or a dashboard"}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Workspace</dt><dd>{intent.clientOrgId ? (intent.autoProvision ? "Created automatically after the verified payment" : "Created by a Super Admin") : intent.status === "cancelled" ? "Not created: the purchase was closed" : intent.autoProvision ? "Will be created automatically once nothing holds the payment" : "A Super Admin creates it"}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Reference</dt><dd className="break-all">{intent.paymentReference}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Paid on</dt><dd>{intent.paymentPaidOn}</dd></div>
+                  <div className="min-w-0 sm:col-span-2"><dt className="text-[12px] text-muted">What was checked</dt><dd className="break-words leading-relaxed">{intent.paymentNote}</dd></div>
                 </dl>
               ) : (
                 <p className="text-[13px] leading-relaxed text-muted">The buyer has not confirmed, or the payment has not been verified. Record the payment only after you have checked the money in the bank, PayPal or PayMongo account.</p>
@@ -105,8 +105,8 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                     <li key={c.id} className="flex flex-wrap items-start justify-between gap-2 py-2.5 first:pt-0 last:pb-0 text-[13px]">
                       <span className="min-w-0">
                         <span className="block break-all font-medium text-ink">{c.reference}</span>
-                        <span className="block text-[11.5px] text-muted">{formatUsdCents(c.usdAmountCents)} asked as {c.chargedCurrency} {(c.chargedAmountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} · {c.livemode ? "live" : "test mode"} · opened {when(c.createdAt)}</span>
-                        {c.failureReason && <span className="block text-[11.5px] text-muted">{c.failureReason}</span>}
+                        <span className="block text-[12px] text-muted">{formatUsdCents(c.usdAmountCents)} asked as {c.chargedCurrency} {(c.chargedAmountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} · {c.livemode ? "live" : "test mode"} · opened {when(c.createdAt)}</span>
+                        {c.failureReason && <span className="block text-[12px] text-muted">{c.failureReason}</span>}
                       </span>
                       <Badge tone={c.status === "paid" ? "success" : c.status === "pending" || c.status === "creating" ? "primary" : c.status === "failed" || c.status === "cancelled" || c.status === "expired" ? "neutral" : "warning"}>{CHECKOUT_STATUS_TEXT[c.status]}</Badge>
                     </li>
@@ -115,7 +115,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
               ) : (
                 <p className="text-[13px] leading-relaxed text-muted">No online checkout was opened. The buyer sees a Pay button only when online checkout is switched on and the provider is connected.</p>
               )}
-              <p className="mt-3 border-t border-line pt-3 text-[11.5px] leading-relaxed text-muted">A checkout becomes paid only when PayMongo&apos;s signed notice matches the reference, mode, currency and amount stored here. The buyer returning to the site proves nothing.</p>
+              <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">A checkout becomes paid only when PayMongo&apos;s signed notice matches the reference, mode, currency and amount stored here. The buyer returning to the site proves nothing.</p>
             </CardContent>
           </Card>
         </div>
@@ -130,7 +130,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                     <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", i === events.length - 1 ? "bg-primary" : "bg-line-strong")} aria-hidden />
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
-                      <p className="text-[11.5px] text-muted">{when(event.createdAt)} · {event.actorKind}</p>
+                      <p className="text-[12px] text-muted">{when(event.createdAt)} · {event.actorKind}</p>
                     </div>
                   </li>
                 ))}
@@ -138,7 +138,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
             ) : (
               <p className="text-[13px] text-muted">No timeline entries yet.</p>
             )}
-            <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-muted">
+            <p className="mt-4 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
               The public link is stored only as a hash. The buyer confirming it creates no account and takes no payment; the workspace is created only after the payment is verified, by the provider&apos;s signed confirmation or by a Super Admin from the bank.
             </p>
           </CardContent>

@@ -56,8 +56,8 @@ export function VersionsList({ versions, timezone, onView, approvalsHref }: { ve
                 {v.approval === "approved" && v.approvedAt ? ` · approved ${formatDateTime(v.approvedAt, timezone)}${v.approvedByName ? ` by ${v.approvedByName}` : ""}` : ""}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {v.effects.length ? v.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>) : <span className="text-[12px] text-faint">Changes CRM records only</span>}
-                <span className="font-mono text-[11px] text-faint" title="Content fingerprint: approvals apply to exactly this content">#{v.contentHash.slice(0, 10)}</span>
+                {v.effects.length ? v.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>) : <span className="text-[12px] text-faint">Changes CRM records only</span>}
+                <span className="font-mono text-[12px] text-faint" title="Content fingerprint: approvals apply to exactly this content">#{v.contentHash.slice(0, 10)}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">

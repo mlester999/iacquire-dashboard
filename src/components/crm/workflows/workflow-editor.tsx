@@ -486,7 +486,7 @@ function ValidationBar({ errors, warnings, effects, unreachable }: { errors: num
       )}
       {warnings > 0 && <span className="text-warning-ink">· {warnings} {warnings === 1 ? "warning" : "warnings"}</span>}
       {unreachable > 0 && <span className="text-muted">· {unreachable} disconnected</span>}
-      {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+      {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
     </div>
   );
 }

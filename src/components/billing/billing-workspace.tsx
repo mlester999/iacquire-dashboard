@@ -255,7 +255,7 @@ export function BillingWorkspace({
                         <div className="min-w-0 flex-1">
                           <p className="break-words text-[13.5px] font-medium leading-snug text-ink">{p.description}</p>
                           <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
-                            <InfoChip className="font-mono text-[11px]">{p.referenceNumber}</InfoChip>
+                            <InfoChip className="font-mono text-[12px]">{p.referenceNumber}</InfoChip>
                             <time dateTime={p.paidAt ?? p.createdAt}>{formatDateTime(p.paidAt ?? p.createdAt, timeZone)}</time>
                           </p>
                         </div>
@@ -301,7 +301,7 @@ export function BillingWorkspace({
               <div className="overflow-hidden rounded-2xl border border-line">
                 <table className="w-full text-left text-[13px]">
                   <caption className="sr-only">Published unit rates</caption>
-                  <thead className="bg-surface-2 text-[11px] uppercase tracking-[.08em] text-muted">
+                  <thead className="bg-surface-2 text-[12px] uppercase tracking-[.08em] text-muted">
                     <tr>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Unit</th>
                       <th scope="col" className="px-4 py-2.5 text-right font-semibold">Your rate</th>
@@ -393,7 +393,7 @@ function HeroNotice({ icon, children }: { icon: React.ReactNode; children: React
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-2xl bg-[var(--control-room-raised)]/70 p-3 ring-1 ring-inset ring-current/10">
-      <dt className="hero-description text-[11.5px]">{label}</dt>
+      <dt className="hero-description text-[12px]">{label}</dt>
       <dd className="mt-1 truncate text-[15px] font-semibold tabular-nums sm:text-[16px]">{value}</dd>
     </div>
   );

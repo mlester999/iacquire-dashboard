@@ -58,7 +58,7 @@ export function ChannelHealthBar({ channels, status, lastSyncAt }: { channels: C
                   </div>
                   <p className="mt-1 text-muted">{c.detail}</p>
                   {(c.state === "connected" || c.state === "needs_attention" || c.state === "paused") && (
-                    <p className="mt-1 text-[11.5px] text-faint" suppressHydrationWarning>
+                    <p className="mt-1 text-[12px] text-faint" suppressHydrationWarning>
                       {c.inbound7d} received in 7 days{c.lastInboundAt ? `, last ${relativeTime(c.lastInboundAt)}` : ""}
                       {c.sent24h ? ` · ${c.sent24h} sent today, ${c.failed24h} failed` : ""}
                     </p>

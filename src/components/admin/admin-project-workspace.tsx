@@ -91,14 +91,14 @@ function HeaderCard({ project: p, currentUserId }: { project: AgencyProjectDetai
       <CardContent className="grid gap-5 pt-5 lg:grid-cols-[1fr_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-muted ring-1 ring-inset ring-line">{r.ref}</span>
+            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-muted ring-1 ring-inset ring-line">{r.ref}</span>
             <StatusPill tone={PROJECT_STATUS_TONE[r.status]}>{PROJECT_STATUS_LABEL[r.status]}</StatusPill>
             {r.serviceName && <InfoChip>{r.serviceName}</InfoChip>}
           </div>
           <h1 className="mt-2 text-[24px] font-semibold leading-tight tracking-[-0.02em]">{r.title}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <Link href={`/admin/clients/${r.orgId}`} className="inline-flex h-7 items-center gap-2 rounded-lg bg-surface pl-1 pr-2.5 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-line hover:bg-primary-soft">
-              <AvatarTile name={p.orgName} size="sm" className="!size-5 !rounded-md !text-[8.5px]" />
+              <AvatarTile name={p.orgName} size="sm" className="!size-5 !rounded-md !text-[12px]" />
               {p.orgName}
             </Link>
             {p.createdByName && <InfoChip icon={<UserRound />}>Requested by {p.createdByName}</InfoChip>}
@@ -178,7 +178,7 @@ function TasksCard({ project: p }: { project: AgencyProjectDetail }) {
             <li key={t.id} className="flex items-start gap-2 rounded-xl bg-warning-soft/50 p-3 text-[13px]">
               <span className="min-w-0 flex-1">
                 {t.title}
-                <span className="block text-[11.5px] text-muted">{t.dueAt ? `Due ${formatDate(t.dueAt)}` : "No due date"}</span>
+                <span className="block text-[12px] text-muted">{t.dueAt ? `Due ${formatDate(t.dueAt)}` : "No due date"}</span>
               </span>
               <Button
                 size="sm"
@@ -212,14 +212,14 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
             .filter((x) => x.answer)
             .map((x) => (
               <div key={x.key}>
-                <dt className="text-[11.5px] font-medium text-muted">{x.label}</dt>
+                <dt className="text-[12px] font-medium text-muted">{x.label}</dt>
                 <dd className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{/^\d{4}-\d{2}-\d{2}$/.test(x.answer ?? "") ? formatDate(x.answer as string) : x.answer}</dd>
               </div>
             ))}
         </dl>
         {p.suggestedServices.length > 0 && (
           <div className="border-t border-line pt-3">
-            <p className="text-[11.5px] font-medium text-muted">Matching published services</p>
+            <p className="text-[12px] font-medium text-muted">Matching published services</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {p.suggestedServices.map((s) => (
                 <Badge key={s.id} tone="outline">
@@ -227,7 +227,7 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
                 </Badge>
               ))}
             </div>
-            <p className="mt-1.5 text-[11.5px] text-faint">Keyword matches only. Review fit before quoting.</p>
+            <p className="mt-1.5 text-[12px] text-faint">Keyword matches only. Review fit before quoting.</p>
           </div>
         )}
         {(r.budgetRange || r.preferredDeadline) && (
@@ -298,13 +298,13 @@ function Conversation({ project: p, closed }: { project: AgencyProjectDetail; cl
             {p.messages.map((m) => (
               <li key={m.id} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed", m.internal ? "border border-dashed border-warning/50 bg-warning-soft/40" : m.authorKind === "client" ? "bg-primary-soft text-primary-ink" : "ml-auto bg-surface-2 text-ink-2")}>
                 {m.internal && (
-                  <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[.08em] text-warning-ink">
+                  <p className="mb-1 flex items-center gap-1 text-[12px] font-semibold uppercase tracking-[.08em] text-warning-ink">
                     <Lock className="size-3" /> Internal note
                   </p>
                 )}
-                {m.kind === "info_request" && <p className="mb-1 text-[11px] font-semibold uppercase tracking-[.08em] text-warning-ink">Information requested</p>}
+                {m.kind === "info_request" && <p className="mb-1 text-[12px] font-semibold uppercase tracking-[.08em] text-warning-ink">Information requested</p>}
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                <p className="mt-1.5 text-[11.5px]">
+                <p className="mt-1.5 text-[12px]">
                   {m.authorKind === "client" ? (m.authorName ?? "Client") : m.authorKind === "system" ? "System" : (m.authorName ?? "iAcquire")} · {formatDateTime(m.createdAt)}
                 </p>
               </li>
@@ -514,7 +514,7 @@ function QuoteRow({ q, requestId, live }: { q: QuoteView; requestId: string; liv
           {q.ongoingMonthlyCents ? ` + ${formatMoney(q.ongoingMonthlyCents, q.currency)}/mo` : ""}
         </span>
         <StatusPill tone={q.status === "accepted" ? "success" : q.status === "sent" ? "warning" : q.status === "declined" ? "danger" : "neutral"}>{QUOTE_STATUS_LABEL[q.status] ?? q.status}</StatusPill>
-        {q.firstViewedAt && live && <span className="text-[11.5px] text-muted">viewed {relativeTime(q.firstViewedAt)}</span>}
+        {q.firstViewedAt && live && <span className="text-[12px] text-muted">viewed {relativeTime(q.firstViewedAt)}</span>}
         {(live || q.status === "draft") && (
           <Button
             size="sm"
@@ -764,7 +764,7 @@ function FilesPanel({ project: p, closed }: { project: AgencyProjectDetail; clos
                   <FileText className="size-4 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{f.filename}</span>
-                    <span className="block text-[11px] text-faint">
+                    <span className="block text-[12px] text-faint">
                       {f.uploadedByKind === "client" ? "Client" : "Agency"} · {f.kind}
                       {f.visibility === "internal" ? " · internal" : ""} · {bytesLabel(f.sizeBytes)}
                     </span>
@@ -789,7 +789,7 @@ function FilesPanel({ project: p, closed }: { project: AgencyProjectDetail; clos
               </Select>
             </div>
             <input ref={ref} type="file" aria-label="Upload a file" accept=".pdf,.docx,.png,.jpg,.jpeg,.txt,.md,.csv" disabled={busy} onChange={(e) => void upload(e.target.files?.[0])} className="block w-full min-w-0 text-[12px] file:mr-3 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-ink" />
-            <p className="text-[11.5px] text-faint">Up to 10 MB. Stored privately.</p>
+            <p className="text-[12px] text-faint">Up to 10 MB. Stored privately.</p>
           </div>
         )}
       </CardContent>

@@ -34,7 +34,7 @@ export function LoadMeter({ result, compact = false }: { result: WorkloadResult;
         <span className="tabular-nums text-muted">{percentText(percent)}</span>
       </div>
       <ProgressBar value={percent ?? 0} tone={loadTone(percent)} label={`${percentText(percent)} of capacity`} />
-      <p className="text-[11.5px] text-muted">
+      <p className="text-[12px] text-muted">
         {result.items} open {result.items === 1 ? "item" : "items"}
         {result.overdue > 0 ? ` · ${result.overdue} overdue` : ""}
         {result.escalated > 0 ? ` · ${result.escalated} escalated` : ""}
@@ -46,7 +46,7 @@ export function LoadMeter({ result, compact = false }: { result: WorkloadResult;
 
 export function SourceBadge({ source }: { source: WorkSource }) {
   return (
-    <Badge tone="outline" className="h-5 px-2 text-[11px]">
+    <Badge tone="outline" className="h-5 px-2 text-[12px]">
       {SOURCE_SHORT[source]}
     </Badge>
   );
@@ -58,7 +58,7 @@ export function StatTile({ label, value, detail, tone = "text-ink" }: { label: s
     <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-soft">
       <p className={cn("text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums", tone)}>{value}</p>
       <p className="mt-1 text-[12.5px] font-medium text-ink-2">{label}</p>
-      {detail && <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{detail}</p>}
+      {detail && <p className="mt-0.5 text-[12px] leading-snug text-muted">{detail}</p>}
     </div>
   );
 }

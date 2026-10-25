@@ -71,9 +71,9 @@ export function ApplicationsTable({ applications, canApply, canPreview = false, 
                     <span className="tabular-nums">v{a.version}</span>
                     {updateAvailable(a) && <Badge tone="primary" className="ml-2">{updateLabel(a)}</Badge>}
                   </td>
-                  <td className="px-4 py-3"><ApplicationStatusBadge status={a.status} /><p className="mt-1 text-[11.5px] text-muted">{MODE_LABEL[a.mode]} · {STRATEGY_LABEL[a.strategy]}</p></td>
+                  <td className="px-4 py-3"><ApplicationStatusBadge status={a.status} /><p className="mt-1 text-[12px] text-muted">{MODE_LABEL[a.mode]} · {STRATEGY_LABEL[a.strategy]}</p></td>
                   <td className="px-4 py-3 text-[12.5px] text-ink-2">{countsLine(a.counts)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={a.createdAt} /><p className="text-[11.5px]">{a.requestedBy ?? "Agency"}{a.requestedVia === "onboarding" ? " · onboarding" : ""}</p></td>
+                  <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted"><When iso={a.createdAt} /><p className="text-[12px]">{a.requestedBy ?? "Agency"}{a.requestedVia === "onboarding" ? " · onboarding" : ""}</p></td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">
                       {canApply && updateAvailable(a) && <ButtonLink href={bpHref.apply(a.blueprintId, a.orgId)} size="sm" variant="soft" aria-label={`Review the update of ${a.blueprintName} for ${a.orgName}`}>Review update</ButtonLink>}
@@ -134,7 +134,7 @@ export function UpdateCandidates({ blueprintId, candidates, canApply, canPreview
                 <p className="text-[12px] text-muted">Last applied <When iso={c.lastAppliedAt} /></p>
                 {c.changedSections.length > 0 && (
                   <ul className="flex flex-wrap gap-1.5" aria-label="Changed in the newer version">
-                    {ASSET_SECTIONS.filter((s) => c.changedSections.includes(s)).map((s) => <li key={s} className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">{sectionLabel(s)}</li>)}
+                    {ASSET_SECTIONS.filter((s) => c.changedSections.includes(s)).map((s) => <li key={s} className="rounded-full bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-ink-2">{sectionLabel(s)}</li>)}
                   </ul>
                 )}
                 <div className="mt-auto pt-2">
@@ -292,7 +292,7 @@ export function ApplicationDetailView({ application: a, canApply, canPreview = f
                 <li key={i.assetId} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="break-words text-[13.5px] font-medium text-ink">{i.name}</p>
-                    <p className="text-[11.5px] text-muted">{sectionLabel(i.section)} · <code className="font-mono">{i.assetId}</code></p>
+                    <p className="text-[12px] text-muted">{sectionLabel(i.section)} · <code className="font-mono">{i.assetId}</code></p>
                     {i.message && <p className="mt-1 text-[12.5px] text-ink-2">{i.message}</p>}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-1.5"><PlanActionBadge action={i.action} /><Badge tone={OUTCOME_TONE[i.outcome]}>{OUTCOME_LABEL[i.outcome]}</Badge></div>

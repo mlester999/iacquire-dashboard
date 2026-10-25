@@ -120,7 +120,7 @@ const SOURCE_ICON: Record<BlueprintSource, React.ComponentType<{ className?: str
 export function SourceBadge({ source, className }: { source: BlueprintSource; className?: string }) {
   const Icon = SOURCE_ICON[source] ?? Boxes;
   return (
-    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-[11.5px] font-medium text-ink-2", source === "ghl_import" && "border-violet/25 bg-violet-soft text-violet-ink", className)}>
+    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-[12px] font-medium text-ink-2", source === "ghl_import" && "border-violet/25 bg-violet-soft text-violet-ink", className)}>
       <Icon className="size-3.5" aria-hidden />
       {BLUEPRINT_SOURCE_LABELS[source] ?? source}
     </span>
@@ -206,7 +206,7 @@ export function CopyValue({ value, label, display, className }: { value: string;
   };
   return (
     <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}>
-      <code className="min-w-0 truncate rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2" title={value}>{display ?? value}</code>
+      <code className="min-w-0 truncate rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2" title={value}>{display ?? value}</code>
       <button type="button" onClick={() => void copy()} aria-label={`Copy ${label}`} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-7">
         {copied ? <Check className="size-3.5 text-success-ink" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
       </button>
@@ -222,11 +222,11 @@ export function ModuleChips({ modules, max = 6, className }: { modules: Array<{ 
   return (
     <ul className={cn("flex flex-wrap gap-1.5", className)} aria-label="CRM modules">
       {shown.map((m) => (
-        <li key={m.section} className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-2 px-2 text-[11px] font-medium text-ink-2">
+        <li key={m.section} className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-2 px-2 text-[12px] font-medium text-ink-2">
           {m.label}<span className="tabular-nums text-muted">{formatNumber(m.count)}</span>
         </li>
       ))}
-      {rest > 0 && <li className="inline-flex h-6 items-center rounded-full border border-dashed border-line-strong px-2 text-[11px] font-medium text-muted">+{rest} more</li>}
+      {rest > 0 && <li className="inline-flex h-6 items-center rounded-full border border-dashed border-line-strong px-2 text-[12px] font-medium text-muted">+{rest} more</li>}
     </ul>
   );
 }
@@ -251,9 +251,9 @@ export function StatTile({ label, value, hint, tone = "neutral" }: { label: stri
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
       <span className={cn("absolute inset-y-3 left-0 w-[3px] rounded-r-full", accent)} aria-hidden />
-      <dt className="text-[11.5px] font-medium leading-snug text-muted">{label}</dt>
+      <dt className="text-[12px] font-medium leading-snug text-muted">{label}</dt>
       <dd className="mt-1 text-[22px] font-semibold leading-tight tracking-[-0.03em] tabular-nums text-ink">{value}</dd>
-      {hint && <dd className="mt-0.5 text-[11.5px] leading-snug text-muted">{hint}</dd>}
+      {hint && <dd className="mt-0.5 text-[12px] leading-snug text-muted">{hint}</dd>}
     </div>
   );
 }
@@ -292,8 +292,8 @@ export function RequirementList({ details, keys, assetNames, emptyText = "Nothin
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <p className="text-[13.5px] font-semibold text-ink">{info.label}</p>
-                <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-ink-2">{KIND_LABEL[info.kind]}</span>
-                {!compact && <span className="text-[11.5px] text-muted">{OWNER_LABEL[info.owner]}</span>}
+                <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-ink-2">{KIND_LABEL[info.kind]}</span>
+                {!compact && <span className="text-[12px] text-muted">{OWNER_LABEL[info.owner]}</span>}
               </div>
               {!compact && <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{info.description}</p>}
               {names.length > 0 && <p className="mt-1 text-[12px] text-ink-2"><span className="text-muted">For: </span>{names.slice(0, 6).join(", ")}{names.length > 6 ? ` and ${names.length - 6} more` : ""}</p>}
@@ -354,7 +354,7 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="break-words text-[13.5px] font-semibold text-ink">{item.name}</p>
-                  <p className="mt-0.5 text-[11.5px] text-muted">{sentence(item.sourceKind)}{item.assetType && item.assetId ? <> · <code className="font-mono text-[11px]">{item.assetId}</code></> : null}</p>
+                  <p className="mt-0.5 text-[12px] text-muted">{sentence(item.sourceKind)}{item.assetType && item.assetId ? <> · <code className="font-mono text-[12px]">{item.assetId}</code></> : null}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                   {item.placeholder && <Badge tone="outline">Name only</Badge>}
@@ -364,8 +364,8 @@ export function CompatItems({ report, id }: { report: CompatReport; id: string }
               {item.notes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12.5px] leading-relaxed text-ink-2">{item.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
               {(item.requirements.length > 0 || item.missingDependencies.length > 0) && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {item.requirements.map((k) => REQUIREMENT_INFO[k] && <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">{REQUIREMENT_INFO[k].label}</span>)}
-                  {item.missingDependencies.map((d) => <span key={d} className="rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-medium text-danger-ink">Missing: <code className="font-mono">{d}</code></span>)}
+                  {item.requirements.map((k) => REQUIREMENT_INFO[k] && <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-ink-2">{REQUIREMENT_INFO[k].label}</span>)}
+                  {item.missingDependencies.map((d) => <span key={d} className="rounded-full bg-danger-soft px-2 py-0.5 text-[12px] font-medium text-danger-ink">Missing: <code className="font-mono">{d}</code></span>)}
                 </div>
               )}
             </li>
@@ -386,7 +386,7 @@ function StatusChip({ active, onClick, label, count, disabled }: { active: boole
     <button type="button" aria-pressed={active} disabled={disabled && !active} onClick={onClick}
       className={cn("inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-45 sm:min-h-8",
         active ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
-      {label}<span className="rounded-full bg-surface-3 px-1.5 text-[10.5px] tabular-nums text-ink-2">{count}</span>
+      {label}<span className="rounded-full bg-surface-3 px-1.5 text-[12px] tabular-nums text-ink-2">{count}</span>
     </button>
   );
 }

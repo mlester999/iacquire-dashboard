@@ -77,17 +77,17 @@ export function EmployeeKnowledge({
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Included next conversation</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Included next conversation</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{data.retrieval.includedEntryIds.length + data.retrieval.includedDocumentIds.length}</p>
           <p className="mt-0.5 text-[12px] text-muted">employee notes and reference files</p>
         </div>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Employee notes</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Employee notes</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{data.entries.filter((e) => e.status === "approved").length}</p>
           <p className="mt-0.5 text-[12px] text-muted">approved and versioned</p>
         </div>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Instruction size</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Instruction size</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{data.retrieval.characters.toLocaleString()}</p>
           <p className="mt-0.5 text-[12px] text-muted">characters of knowledge context</p>
         </div>
@@ -133,7 +133,7 @@ export function EmployeeKnowledge({
                           {entry.status === "approved" ? (included ? "In next run" : "Not included") : entry.status === "pending_agency_review" ? "In review" : "Not used"}
                         </Badge>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-faint">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
                         <span>v{entry.version}</span>
                         <span>Updated {formatDateTime(entry.updated_at, timeZone)}</span>
                         {entry.last_used_at && <span className="text-success-ink">Used {relativeTime(entry.last_used_at)}</span>}
@@ -212,7 +212,7 @@ export function EmployeeKnowledge({
               </p>
             )}
             <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">For this employee</p>
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted">For this employee</p>
               {assigned.length === 0 ? <p className="text-[12.5px] text-muted">No documents assigned only to this employee.</p> : (
                 <ul className="divide-y divide-line">
                   {assigned.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} />)}
@@ -220,14 +220,14 @@ export function EmployeeKnowledge({
               )}
             </div>
             <div>
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared with every employee</p>
+              <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared with every employee</p>
               {shared.length === 0 ? <p className="text-[12.5px] text-muted">No shared documents yet. <Link href="/knowledge" className="text-primary hover:underline">Open Knowledge Center</Link>.</p> : (
                 <ul className="divide-y divide-line">
                   {shared.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} shared />)}
                 </ul>
               )}
             </div>
-            <p className="text-[11.5px] leading-relaxed text-faint">
+            <p className="text-[12px] leading-relaxed text-faint">
               TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read after extraction. Encrypted, scanned/image-only PDFs and damaged files stay downloadable but are not used; OCR isn&apos;t supported. A document is never shown as used until it is included in the run instructions.
             </p>
           </CardContent>
@@ -303,14 +303,14 @@ function DocumentRow({
       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2"><FileText className="size-4" aria-hidden /></span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12.5px] font-medium">{doc.filename}</p>
-        <p className="text-[11.5px] text-muted">{size(doc.size_bytes)} · {state.detail}</p>
+        <p className="text-[12px] text-muted">{size(doc.size_bytes)} · {state.detail}</p>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <Badge tone={state.tone}>{state.label}</Badge>
           {doc.extraction_method === "pdf" && <Badge tone="neutral">PDF text</Badge>}
           {doc.extraction_method === "docx" && <Badge tone="neutral">Word text</Badge>}
           {included && <Badge tone="success">In next run</Badge>}
           {shared && <Badge tone="neutral">Shared</Badge>}
-          <span className="text-[11px] text-faint">{formatDateTime(doc.created_at, timeZone)}</span>
+          <span className="text-[12px] text-faint">{formatDateTime(doc.created_at, timeZone)}</span>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -330,7 +330,7 @@ function DocumentRow({
               else toast.warning("Still not searchable", { description: res.data.processingDetail ?? "Upload a text version if you need it used in conversations." });
               onChanged();
             }}
-            className="flex min-h-8 items-center rounded-lg px-2 text-[11.5px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
+            className="flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
           >
             Retry
           </button>
@@ -347,7 +347,7 @@ function DocumentRow({
               toast.success(shared ? "Document assigned to this employee" : "Document returned to the shared library");
               onChanged();
             }}
-            className="flex min-h-8 items-center rounded-lg px-2 text-[11.5px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
+            className="flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
           >
             {shared ? "Assign" : "Share"}
           </button>

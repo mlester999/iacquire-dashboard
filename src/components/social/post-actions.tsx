@@ -87,8 +87,8 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
     <section aria-label="Status and actions" className="space-y-4 rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={s} providerPostId={post.providerPostId} liveBlocked={liveBlocked} testAccount={testAccount} />
-        {post.origin === "ai" && <span className="rounded bg-violet-soft px-1.5 py-0.5 text-[11px] font-semibold text-violet-ink">AI-written draft</span>}
-        {testAccount && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">Test account: nothing is posted anywhere</span>}
+        {post.origin === "ai" && <span className="rounded bg-violet-soft px-1.5 py-0.5 text-[12px] font-semibold text-violet-ink">AI-written draft</span>}
+        {testAccount && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">Test account: nothing is posted anywhere</span>}
         <span className="text-[12.5px] text-muted">Version {post.version}</span>
       </div>
       <p className="text-[13.5px] text-ink-2">{statusExplain(s, { providerPostId: post.providerPostId, liveBlocked, testAccount })}</p>

@@ -193,7 +193,7 @@ function ChecklistGroup({ title, items, scope }: { title: string; items: Checkli
   if (!items.length) return null;
   return (
     <section aria-label={title}>
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+      <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">
         {title} <span className="font-normal">({items.length})</span>
       </h3>
       <ul className="space-y-2">

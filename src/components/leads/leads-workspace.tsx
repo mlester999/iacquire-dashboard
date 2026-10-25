@@ -139,7 +139,7 @@ export function LeadsWorkspace(props: {
           <ButtonLink href="/api/leads/export" variant="secondary" prefetch={false}>
             <Download className="size-4" /> Export CSV
           </ButtonLink>
-        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[13px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
+        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[13px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
       <HunterBanner ready={props.hunterReady} status={props.hunterStatus} />
       <div data-aqi-target="leads.tabs">
       <Tabs
@@ -391,7 +391,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
             <div className="text-center">
               <p className="text-[32px] font-semibold leading-none tracking-tight tabular-nums">{lead.score ?? "—"}</p>
-              <p className="mt-1 text-[11.5px] text-muted">of 100</p>
+              <p className="mt-1 text-[12px] text-muted">of 100</p>
             </div>
             <p className="text-[12.5px] leading-relaxed text-muted">A research-priority score from cited evidence. It is not a measure of interest or consent.</p>
           </div>
@@ -417,7 +417,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
             <div>
               <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Lead Hunter’s fit notes</p>
               <p className="text-[13.5px] leading-relaxed">{lead.qualification_summary}</p>
-              <p className="mt-1 text-[11.5px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
+              <p className="mt-1 text-[12px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
             </div>
           )}
           {lead.buying_signals.length > 0 && (
@@ -446,7 +446,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                       {e.url} <ExternalLink className="size-3 shrink-0" />
                     </a>
                     {e.summary && <p className="mt-1 text-[12.5px] text-muted">{e.summary}</p>}
-                    {e.observed_at && <p className="mt-0.5 text-[11.5px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
+                    {e.observed_at && <p className="mt-0.5 text-[12px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
                   </li>
                 ))}
               </ul>
@@ -458,7 +458,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
               <dd className="mt-1.5">
                 {lead.duplicate_status === "no_match" ? <StatusPill tone="success" size="sm">No match</StatusPill> : <StatusPill tone="warning" size="sm">{sentenceCase(lead.duplicate_status)}</StatusPill>}
                 {Boolean(lead.duplicate_matches?.length) && (
-                  <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-warning-ink">
+                  <ul className="mt-1.5 space-y-0.5 text-[12px] text-warning-ink">
                     {lead.duplicate_matches!.slice(0, 3).map((match) => (
                       <li key={`${match.kind}:${match.id}`}>
                         {match.kind === "crm_company" ? "CRM company" : "Existing lead"}: {match.label}

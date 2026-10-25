@@ -227,7 +227,7 @@ export function FilterTabs<V extends string>({ value, onChange, options, label, 
             className={cn("inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-200 sm:h-9", active ? "bg-ink text-surface shadow-soft" : "text-ink-2 hover:bg-surface-3/70")}
           >
             {o.label}
-            {o.count !== undefined && <span className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface text-muted ring-1 ring-inset ring-line")}>{o.count}</span>}
+            {o.count !== undefined && <span className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[12px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface text-muted ring-1 ring-inset ring-line")}>{o.count}</span>}
           </button>
         );
       })}

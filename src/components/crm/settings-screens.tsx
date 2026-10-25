@@ -140,7 +140,7 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
                   const perms = DELEGABLE_PERMISSIONS.filter((p) => DELEGABLE_PERMISSION_INFO[p].group === g);
                   return (
                     <section key={g}>
-                      <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-faint">{g}</h3>
+                      <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-faint">{g}</h3>
                       <ul className="divide-y divide-line rounded-xl border border-line">
                         {perms.map((p: DelegablePermission) => {
                           const override = person.overrides[p];
@@ -149,7 +149,7 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
                             <li key={p} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
                               <span className="min-w-0">
                                 <span className={cn("block", on ? "text-ink" : "text-muted")}>{DELEGABLE_PERMISSION_INFO[p].label}</span>
-                                {override && <span className="text-[11.5px] text-primary-ink">{override === "grant" ? "Granted to this person" : "Withdrawn for this person"}</span>}
+                                {override && <span className="text-[12px] text-primary-ink">{override === "grant" ? "Granted to this person" : "Withdrawn for this person"}</span>}
                               </span>
                               {canManage && person.editable ? (
                                 <Menu>
