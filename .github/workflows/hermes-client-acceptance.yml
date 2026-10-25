@@ -402,11 +402,17 @@ jobs:
           import json, re, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
           if result.get("result") != "SANDBOX_PASS":
+              result_kind = result.get("result")
+              print("SANDBOX_ACCEPTANCE_RESULT: " + (result_kind if result_kind in {"SANDBOX_PASS", "SANDBOX_FAIL"} else "unknown"))
+              known_fields = ("result", "failure", "workerFailureCode", "modelCalls", "modelChatCalls", "modelAuthenticationFailures", "auditEventsObserved")
+              print("SANDBOX_ACCEPTANCE_FIELDS: " + ",".join(field for field in known_fields if field in result))
               failure = result.get("failure")
               if isinstance(failure, str) and re.fullmatch(r"[a-z0-9_]{1,80}", failure):
                   print("SANDBOX_ACCEPTANCE_FAILURE_CODE: " + failure)
+              elif failure is None:
+                  print("SANDBOX_ACCEPTANCE_FAILURE_CODE: missing")
               else:
-                  print("SANDBOX_ACCEPTANCE_FAILURE_CODE: unknown")
+                  print("SANDBOX_ACCEPTANCE_FAILURE_CODE: invalid")
               worker_failure = result.get("workerFailureCode")
               if isinstance(worker_failure, str) and re.fullmatch(r"[a-z0-9_]{1,80}", worker_failure):
                   print("SANDBOX_WORKER_FAILURE_CODE: " + worker_failure)
