@@ -12,8 +12,8 @@
 
 ## Production changes that would require approval
 
-1. Promote the reviewed portal code at the exact candidate SHA above.
-2. Apply these currently unapplied migrations, in dependency order: `0084_restricted_hermes_provisioner`, `0087_workforce_local_recurrence`, `0088_workforce_chat_schedule_previews`, `0089_workforce_chat_booking_previews`, `0090_workforce_appointment_changes`. The hosted ledger last reported `0086_lead_scoring`; no migration is to be replayed.
+1. Apply these schema expansions only after the full backup/restore rehearsal and migration plan are approved, in dependency order: `0084_restricted_hermes_provisioner`, `0087_workforce_local_recurrence`, `0088_workforce_chat_schedule_previews`, `0089_workforce_chat_booking_previews`, `0090_workforce_appointment_changes`. The hosted ledger last reported `0086_lead_scoring`; no migration is to be replayed. Verify the final ledger and new columns before promotion. These changes add nullable columns or widen a check constraint, so the current application remains compatible during the migration step.
+2. Promote the reviewed portal code at the exact candidate product-code SHA above only after the migration verification succeeds.
 3. In a separate protected operation, use the actual authenticated Super Admin session and guarded `createConfigVersion` path to apply one `recommendedSettings(role)` config to each existing target profile. The prepared role scopes are:
    - **Appointment Setter:** use connected-calendar availability, approved meeting types/hours, confirm time zone, and prepare booking or change requests for approval; never invent slots or confirmations.
    - **Sales Assistant:** prepare follow-up, discovery and proposal drafts; use only approved offers/prices and do not send messages.
