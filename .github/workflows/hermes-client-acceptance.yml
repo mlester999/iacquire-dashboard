@@ -302,7 +302,7 @@ jobs:
                 | grep -Eo 'ConnectionRefusedError|TimeoutError|PermissionError|FileNotFoundError|ModuleNotFoundError|ImportError|Connection refused|Read-only file system|Permission denied|No such file or directory|Address already in use|HTTP Error [0-9]{3}' \
                 | sort -u | paste -sd, - || true)"
               echo "CLIENT_HEALTH_FAILURE_CODES=${health_codes:-unclassified}"
-              runtime_codes="$(docker logs "$client_id" 2>&1 \
+              runtime_codes="$(docker logs "$client_id" 2>&1 | python3 -c 'import sys; text = sys.stdin.read().lower(); rules = (("api_key_secret_unavailable", "api_key_secret_unavailable"), ("api_key_secret_invalid", "api_key_secret_invalid"), ("permission_denied", "permission denied"), ("operation_not_permitted", "operation not permitted"), ("missing_file", "no such file or directory"), ("read_only_write", "read-only file system"), ("address_in_use", "address already in use"), ("connection_refused", "connection refused"), ("timeout", "timed out"), ("python_traceback", "traceback (most recent call last)"), ("configuration_error", "invalid config")); codes = sorted({code for code, phrase in rules if phrase in text}); print(",".join(codes[:8]) if codes else ("no_runtime_output" if not text.strip() else ("unclassified_runtime_error" if any(term in text for term in ("error", "fatal", "exception", "failed")) else "runtime_output_without_error_marker")))')"
                 | grep -Eo 'Hermes client runtime stopped: [a-z0-9_]+' \
                 | sort -u | paste -sd, - || true)"
               echo "CLIENT_RUNTIME_FAILURE_CODES=${runtime_codes:-none}"
