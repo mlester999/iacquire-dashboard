@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, KeyRound, Link2, Loader2, RefreshCcw, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, KeyRound, Link2, Loader2, RefreshCcw, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/primitives";
 import { CopyTextButton } from "@/components/ui/copy-button";
-import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, rotatePurchaseLinkAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
+import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, releasePurchaseHoldAction, rotatePurchaseLinkAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
 import { MANUAL_METHOD_LABEL, MANUAL_PAYMENT_METHODS, centsToDollarText, type ManualPaymentMethod } from "@/lib/billing-clearance";
 import type { PurchaseIntentView } from "@/server/purchase-intents/service";
 
@@ -22,6 +22,10 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   const [provisioned, setProvisioned] = React.useState<{ orgId: string; inviteLink: string | null } | null>(null);
   const [showPayment, setShowPayment] = React.useState(false);
   const [showCancel, setShowCancel] = React.useState(false);
+  const [showRelease, setShowRelease] = React.useState(false);
+  const [releaseNote, setReleaseNote] = React.useState("");
+  // A verified payment that the provider reported as refunded or disputed is closed without a workspace, not "cancelled": the money record stays and the wording says so.
+  const closesPaid = intent.status === "payment_verified";
   const [amount, setAmount] = React.useState(centsToDollarText(intent.setupFeeCents));
   const [method, setMethod] = React.useState<ManualPaymentMethod>("bank_transfer");
   const [externalReference, setExternalReference] = React.useState("");
@@ -79,8 +83,18 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
     event.preventDefault();
     const ok = await run("cancel", () => cancelPurchaseIntentAction({ id: intent.id, reason }));
     if (!ok) return;
-    toast.success("Purchase cancelled.");
+    toast.success(closesPaid ? "Purchase closed without a workspace." : "Purchase cancelled.");
     setShowCancel(false);
+    router.refresh();
+  };
+
+  const release = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const ok = await run("release", () => releasePurchaseHoldAction({ id: intent.id, note: releaseNote }));
+    if (!ok) return;
+    toast.success("The hold was released.");
+    setShowRelease(false);
+    setReleaseNote("");
     router.refresh();
   };
 
@@ -126,9 +140,14 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
             <RefreshCcw className="size-3.5" aria-hidden /> Issue a new link
           </Button>
         )}
+        {intent.can.release && (
+          <Button type="button" size="sm" variant="secondary" onClick={() => { setShowRelease((v) => !v); setShowCancel(false); }} disabled={busy !== null}>
+            <ShieldCheck className="size-3.5" aria-hidden /> Release the hold
+          </Button>
+        )}
         {intent.can.cancel && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => setShowCancel((v) => !v)} disabled={busy !== null}>
-            <AlertTriangle className="size-3.5" aria-hidden /> Cancel
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setShowCancel((v) => !v); setShowRelease(false); }} disabled={busy !== null}>
+            <AlertTriangle className="size-3.5" aria-hidden /> {closesPaid ? "Close without a workspace" : "Cancel"}
           </Button>
         )}
         {intent.clientOrgId && (
@@ -169,14 +188,32 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
         </form>
       )}
 
-      {showCancel && (
-        <form onSubmit={cancel} className="space-y-2 rounded-xl border border-danger/30 bg-danger-soft p-3">
-          <Label htmlFor="pi-cancel-reason">Why is it being cancelled?</Label>
-          <Textarea id="pi-cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} minLength={10} maxLength={500} className="mt-1" required />
-          <Button type="submit" size="sm" variant="danger" loading={busy === "cancel"} disabled={busy !== null}>Cancel the purchase</Button>
+      {showRelease && (
+        <form onSubmit={release} className="space-y-2 rounded-xl border border-line bg-surface-2 p-3">
+          <p className="text-[12.5px] leading-relaxed text-ink-2">
+            {intent.status === "payment_verified"
+              ? "Release the hold only after you checked with the payment provider that this payment stands. The payment will count again and the workspace can be created."
+              : "Release the hold only after you checked with the payment provider. The buyer will be able to pay again from their link."}
+          </p>
+          <Label htmlFor="pi-release-note">What did you check with the provider?</Label>
+          <Textarea id="pi-release-note" value={releaseNote} onChange={(e) => setReleaseNote(e.target.value)} rows={2} minLength={10} maxLength={1000} className="mt-1" placeholder="e.g. The refund notice was for another payment; PayMongo shows this one as paid" required />
+          <Button type="submit" size="sm" loading={busy === "release"} disabled={busy !== null}>Release the hold</Button>
         </form>
       )}
-      {busy && busy !== "verify" && busy !== "cancel" && busy !== "rotate" && busy !== "provision" && (
+
+      {showCancel && (
+        <form onSubmit={cancel} className="space-y-2 rounded-xl border border-danger/30 bg-danger-soft p-3">
+          {closesPaid && (
+            <p className="text-[12.5px] leading-relaxed text-danger-ink">
+              Use this when the money was refunded or lost to a dispute. No workspace is created, the payment record stays on this purchase, and any open checkout is closed. This cannot be undone.
+            </p>
+          )}
+          <Label htmlFor="pi-cancel-reason">{closesPaid ? "Why is it being closed?" : "Why is it being cancelled?"}</Label>
+          <Textarea id="pi-cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} minLength={10} maxLength={500} className="mt-1" required />
+          <Button type="submit" size="sm" variant="danger" loading={busy === "cancel"} disabled={busy !== null}>{closesPaid ? "Close the purchase" : "Cancel the purchase"}</Button>
+        </form>
+      )}
+      {busy && busy !== "verify" && busy !== "cancel" && busy !== "rotate" && busy !== "provision" && busy !== "release" && (
         <p className="flex items-center gap-2 text-[12px] text-muted" role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Working…</p>
       )}
     </div>

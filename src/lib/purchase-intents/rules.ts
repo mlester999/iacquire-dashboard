@@ -41,6 +41,7 @@ export const PURCHASE_EVENT_TEXT: Record<string, string> = {
   payment_held: "The provider reported a refund or dispute: provisioning is on hold",
   provision_failed: "Creating the workspace did not finish",
   provision_retried: "Creating the workspace was tried again",
+  hold_released: "A person checked with the provider and released the hold",
 };
 
 /** An online checkout, as the buyer's page and the Super Admin's page tell it. "paid" is only ever set by the provider's signed notice, never by the buyer's return to the site. */
@@ -70,7 +71,7 @@ export interface CheckoutGateInput {
   status: PurchaseStatus;
   expiresAt: string;
   /** The provider said a refund or dispute happened, or an amount did not match. */
-  hold: "refunded" | "disputed" | "mismatch" | null;
+  hold: PaymentHold | null;
   /** A checkout of this intent was already paid (the signed notice arrived). */
   hasPaidCheckout: boolean;
   checkoutsSoFar: number;
@@ -188,14 +189,31 @@ export function canProvision(state: PurchaseState, clientOrgId: string | null, n
   return no("The buyer has not confirmed the purchase yet.");
 }
 
-/** The buyer has not paid, so an invitation can be withdrawn; a verified payment needs the refund path, not a cancel. */
-export function canCancel(state: PurchaseState, now: Date): PurchaseTransition {
+/**
+ * The buyer has not paid, so an invitation can be withdrawn. A verified payment is never quietly cancelled: it can be closed without a workspace only while the provider has
+ * reported a refund, a dispute or a mismatch for it (the hold), because then the money is already in question and nothing was created from it. The payment record stays on the purchase.
+ */
+export function canCancel(state: PurchaseState, now: Date, hold: PaymentHold | null = null): PurchaseTransition {
   const status = effectiveStatus(state, now);
   if (status === "invited" || status === "started") return yes();
-  if (status === "payment_verified") return no("The payment is verified. Record a refund if the purchase must be stopped.");
+  if (status === "payment_verified") return hold ? yes() : no("The payment is verified. Record a refund if the purchase must be stopped.");
   if (status === "provisioned") return no("A workspace already exists. Use the client offboarding path.");
   return no("There is nothing open to cancel.");
 }
+
+export type PaymentHold = "refunded" | "disputed" | "mismatch";
+
+/** A person who checked with the provider may release a hold while the purchase is open: the buyer may pay again, or the verified payment may become a workspace. */
+export function canReleaseHold(state: PurchaseState, hold: PaymentHold | null, now: Date): PurchaseTransition {
+  const status = effectiveStatus(state, now);
+  if (!hold) return no("This purchase is not on hold.");
+  if (status === "started" || status === "payment_verified") return yes();
+  if (status === "provisioned") return no("A workspace already exists; the hold no longer stops anything.");
+  return no("This purchase is closed, so there is nothing to release.");
+}
+
+/** What the buyer's page says while a verified payment waits on a hold. */
+export const HELD_BUYER_TEXT = "Your payment needs a person to look at it. iAcquire will contact you at the email address on your purchase. Nothing more is charged.";
 
 /** A fresh link can be issued while the purchase is still open (a lost email, an expired link that has not been used). */
 export function canRotateLink(state: PurchaseState, now: Date): PurchaseTransition {

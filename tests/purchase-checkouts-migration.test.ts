@@ -98,6 +98,33 @@ describe("the purchase checkout schema", () => {
     });
   });
 
+  it("lets a purchase closed after its payment keep the payment record, while a verified or provisioned one still needs it", async () => {
+    const { created } = await seedIntent();
+    await rolledBack(async (db) => {
+      await db.query(
+        "update purchase_intents set status = 'cancelled', cancelled_at = now(), payment_reference = 'pay_closed', payment_at = now(), payment_method = 'paymongo', payment_paid_on = current_date, payment_note = 'Confirmed by the provider.', payment_amount_cents = 149900 where id = $1",
+        [created.id],
+      );
+      const kept = await db.query<{ status: string; payment_reference: string }>("select status, payment_reference from purchase_intents where id = $1", [created.id]);
+      expect(kept.rows[0]).toEqual({ status: "cancelled", payment_reference: "pay_closed" });
+    });
+    await rolledBack(async (db) => {
+      await refused(db, () => db.query("update purchase_intents set status = 'payment_verified' where id = $1", [created.id]), /purchase_intents_payment_evidence_check/);
+      await refused(db, () => db.query("update purchase_intents set status = 'provisioned' where id = $1", [created.id]));
+    });
+  });
+
+  it("refuses the rollback while a purchase closed after its payment exists", async () => {
+    const { created } = await seedIntent();
+    await rolledBack(async (db) => {
+      await db.query(
+        "update purchase_intents set status = 'cancelled', cancelled_at = now(), payment_reference = 'pay_closed2', payment_at = now(), payment_method = 'paymongo', payment_paid_on = current_date, payment_note = 'Confirmed by the provider.', payment_amount_cents = 149900 where id = $1",
+        [created.id],
+      );
+      await refused(db, () => runDown(db), /closed after its payment was verified/);
+    });
+  });
+
   it("refuses the rollback while a checkout, an online-paid purchase or a maintenance period payment exists, and removes the schema when none does", async () => {
     const { agencyId, created } = await seedIntent();
     await rolledBack(async (db) => {
@@ -124,6 +151,11 @@ describe("the purchase checkout schema", () => {
       expect(left.rows).toEqual([]);
       const cols = await db.query<{ column_name: string }>("select column_name from information_schema.columns where table_name = 'purchase_intents' and column_name in ('auto_provision', 'payment_source', 'payment_hold')");
       expect(cols.rows).toEqual([]);
+      // 0101's own evidence rule is back, and 0103's looser one is gone.
+      const rules = await db.query<{ conname: string; def: string }>("select conname, pg_get_constraintdef(oid) as def from pg_constraint where conrelid = 'public.purchase_intents'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%payment_reference IS NOT NULL%'");
+      expect(rules.rows).toHaveLength(1);
+      expect(rules.rows[0].conname).not.toBe("purchase_intents_payment_evidence_check");
+      expect(rules.rows[0].def).toMatch(/\) = \(payment_reference IS NOT NULL\)/);
       throw new Done();
     })).rejects.toBeInstanceOf(Done);
     expect((await rows("select 1 from purchase_intent_checkouts limit 1")).length).toBe(0);

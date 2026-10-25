@@ -110,7 +110,24 @@ alter table purchase_intents add constraint purchase_intents_source_check check 
 alter table purchase_intent_events drop constraint purchase_intent_events_kind_check;
 alter table purchase_intent_events add constraint purchase_intent_events_kind_check check (kind in (
   'created', 'link_rotated', 'started', 'payment_verified', 'workspace_created', 'provisioned', 'cancelled', 'expired',
-  'checkout_started', 'checkout_failed', 'checkout_expired', 'payment_received', 'payment_mismatch', 'payment_held', 'provision_failed', 'provision_retried'));
+  'checkout_started', 'checkout_failed', 'checkout_expired', 'payment_received', 'payment_mismatch', 'payment_held', 'provision_failed', 'provision_retried', 'hold_released'));
+
+-- A verified payment that the provider later reports as refunded or disputed (the hold) may be CLOSED without a workspace, and the money record stays on the purchase. 0101's rule said
+-- a purchase has payment evidence exactly when it is verified or provisioned; a closed one is neither and still has it, so the rule becomes "verified or provisioned needs evidence".
+-- The old rule has no name, so it is found by what it says.
+do $$
+declare
+  old_rule text;
+begin
+  for old_rule in
+    select conname from pg_constraint
+     where conrelid = 'public.purchase_intents'::regclass and contype = 'c'
+       and pg_get_constraintdef(oid) like '%payment_reference IS NOT NULL%' and pg_get_constraintdef(oid) like '%payment_verified%' and pg_get_constraintdef(oid) like '%provisioned%'
+  loop
+    execute format('alter table purchase_intents drop constraint %I', old_rule);
+  end loop;
+end $$;
+alter table purchase_intents add constraint purchase_intents_payment_evidence_check check (status not in ('payment_verified', 'provisioned') or payment_reference is not null);
 
 -- ---------------------------------------------------------------------------
 -- Webhook ledger, maintenance periods and the switch

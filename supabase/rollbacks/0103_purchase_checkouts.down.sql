@@ -13,8 +13,11 @@ begin
   if exists (select 1 from payments where maintenance_subscription_id is not null) then
     raise exception 'Rollback refused: a payment names the maintenance plan period it covers. Export it deliberately first.';
   end if;
-  if exists (select 1 from purchase_intent_events where kind in ('checkout_started', 'checkout_failed', 'checkout_expired', 'payment_received', 'payment_mismatch', 'payment_held', 'provision_failed', 'provision_retried')) then
+  if exists (select 1 from purchase_intent_events where kind in ('checkout_started', 'checkout_failed', 'checkout_expired', 'payment_received', 'payment_mismatch', 'payment_held', 'provision_failed', 'provision_retried', 'hold_released')) then
     raise exception 'Rollback refused: the purchase timeline holds online-checkout events. Export them deliberately first.';
+  end if;
+  if exists (select 1 from purchase_intents where status = 'cancelled' and payment_reference is not null) then
+    raise exception 'Rollback refused: a purchase was closed after its payment was verified, and 0101 cannot hold a cancelled purchase with payment evidence. Export it deliberately first.';
   end if;
 end $$;
 
@@ -34,6 +37,10 @@ alter table payment_webhook_events drop column purchase_checkout_id;
 alter table purchase_intent_events drop constraint purchase_intent_events_kind_check;
 alter table purchase_intent_events add constraint purchase_intent_events_kind_check check (kind in (
   'created', 'link_rotated', 'started', 'payment_verified', 'workspace_created', 'provisioned', 'cancelled', 'expired'));
+
+-- 0101's own rule again. It had no name; left unnamed it is given the first free "purchase_intents_check<n>" name, which is the one it had.
+alter table purchase_intents drop constraint purchase_intents_payment_evidence_check;
+alter table purchase_intents add check ((status = 'payment_verified' or status = 'provisioned') = (payment_reference is not null));
 
 alter table purchase_intents drop constraint purchase_intents_source_check;
 alter table purchase_intents drop constraint purchase_intents_checkout_fk;

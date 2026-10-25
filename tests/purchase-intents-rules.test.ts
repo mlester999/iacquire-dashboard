@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  canBuyerStart, canCancel, canProvision, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, priceSnapshot,
+  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, priceSnapshot,
   PURCHASE_LINK_DAYS,
 } from "@/lib/purchase-intents/rules";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
@@ -61,9 +61,24 @@ describe("what a buyer and the team may do", () => {
     expect(canCancel(state("invited"), NOW).ok).toBe(true);
     expect(canCancel(state("started"), NOW).ok).toBe(true);
     expect(canCancel(state("payment_verified"), NOW).ok).toBe(false);
+    // A verified payment can be closed without a workspace only while the provider's report holds it.
+    for (const hold of ["refunded", "disputed", "mismatch"] as const) expect(canCancel(state("payment_verified"), NOW, hold).ok, hold).toBe(true);
+    expect(canCancel(state("provisioned"), NOW, "refunded").ok).toBe(false);
+    expect(canCancel(state("cancelled"), NOW, "refunded").ok).toBe(false);
     expect(canCancel(state("provisioned"), NOW).ok).toBe(false);
     expect(canRotateLink(state("expired", -1), NOW).ok).toBe(true);
     expect(canRotateLink(state("cancelled"), NOW).ok).toBe(false);
     expect(canRotateLink(state("provisioned"), NOW).ok).toBe(false);
+  });
+
+  it("lets a person release a hold only while the purchase is open, and never when there is none", () => {
+    expect(canReleaseHold(state("payment_verified"), null, NOW).ok).toBe(false);
+    for (const hold of ["refunded", "disputed", "mismatch"] as const) {
+      expect(canReleaseHold(state("payment_verified"), hold, NOW).ok, `verified ${hold}`).toBe(true);
+      expect(canReleaseHold(state("started"), hold, NOW).ok, `started ${hold}`).toBe(true);
+      expect(canReleaseHold(state("provisioned"), hold, NOW).ok, `provisioned ${hold}`).toBe(false);
+      expect(canReleaseHold(state("cancelled"), hold, NOW).ok, `cancelled ${hold}`).toBe(false);
+      expect(canReleaseHold(state("expired", -1), hold, NOW).ok, `expired ${hold}`).toBe(false);
+    }
   });
 });

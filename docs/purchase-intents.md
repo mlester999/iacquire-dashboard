@@ -24,7 +24,7 @@ A purchase intent is the verified path from an invited buyer to a client workspa
 5. If the inviting Super Admin allowed it, the workspace is created now, under that person's permissions **read again at that moment** (a person's decision does not outlive their access). Otherwise a Super Admin presses "Create client workspace".
 6. **By hand:** a Super Admin checks the money in the bank, PayPal or PayMongo dashboard and records the evidence; recording it closes any online checkout that is open so the buyer cannot pay twice. The amount must be exactly the frozen setup fee.
 
-The statuses are `invited`, `started`, `payment_verified`, `provisioned`, `cancelled` and `expired`. An open link past its day reads as expired even before a job writes that word. A verified payment is never cancelled through this screen; use the refund path. The online checkouts have their own statuses: `creating`, `pending`, `paid`, `failed`, `cancelled`, `expired`, `mismatch`, `refunded`, `disputed`.
+The statuses are `invited`, `started`, `payment_verified`, `provisioned`, `cancelled` and `expired`. An open link past its day reads as expired even before a job writes that word. A verified payment is never cancelled quietly: with no hold it needs the refund path; with a hold it can be closed without a workspace (below), which reads "Closed after payment". The online checkouts have their own statuses: `creating`, `pending`, `paid`, `failed`, `cancelled`, `expired`, `mismatch`, `refunded`, `disputed`.
 
 ## What happens when it does not go to plan
 
@@ -35,14 +35,17 @@ The statuses are `invited`, `started`, `payment_verified`, `provisioned`, `cance
 | The same signed notice arrives twice | Acknowledged and ignored; the event ledger makes retries and replays harmless |
 | The paid amount or currency differs from what we stored | The checkout becomes `mismatch`, the purchase is put on hold, the team gets a critical notification, nothing is created |
 | The mode (test or live) differs | Rejected |
-| A refund or dispute is reported **before** the workspace exists | The checkout becomes `refunded` or `disputed`, the purchase is put on hold, the team is told, nothing is created or removed |
+| A refund or dispute is reported **before** the workspace exists | The checkout becomes `refunded` or `disputed`, the purchase is put on hold, the team is told, nothing is created or removed; a Super Admin then releases the hold or closes the purchase (below) |
 | A refund or dispute is reported **after** the workspace exists | Reported on the workspace's own payment row (the payments screen shows "PayMongo reported a refund … nothing was changed automatically"); the workspace and the purchase do not change |
 | Someone pays a checkout for a purchase that was already paid by hand, already provisioned, or cancelled | The payment is recorded on the checkout as a duplicate or late payment and the team is told to refund it in PayMongo; nothing new is created |
 | Creating the workspace fails after a verified payment | The reason is written on the purchase and in its timeline, the team is told, "Create client workspace" finishes the same workspace (it never makes a second one), and the renewal sweep retries up to six times |
 | The Super Admin who allowed automatic creation is no longer active, or lost the permissions | Nothing is created; the purchase waits for a person |
 | A checkout nobody finished | Closed unpaid after 48 hours by the sweep; a payment that arrives for it later is still recorded, because the money is real whenever it comes |
 
-A held purchase currently has no "release the hold" or "close it" button: a person resolves it with the provider and, if the workspace should be made, records the payment by hand. That is a known gap, listed in `docs/roadmap/phases-3-to-7/blockers.md`.
+**Resolving a hold.** A held purchase shows its reason in words and gives a Super Admin two ways out, each needing the person's own words and an audit row:
+
+* **Release the hold** (needs the same billing and client-creation permissions as creating the workspace, because it re-enables that): "What did you check with the provider?" at least 10 characters. The hold is cleared; the checkout that paid goes back from `refunded` or `disputed` to `paid` (the person judged the report not to apply, and the workspace adopts that checkout as its evidence); a purchase that was never verified (a mismatch) lets the buyer try again; a verified online payment that the inviting Super Admin allowed to provision itself carries on at once, under that person's re-read permissions. The timeline says a person released the hold; the note is in the audit record, which only agency code reads.
+* **Close without a workspace** (only while a hold exists on a verified payment): "Why is it being closed?" at least 10 characters. No workspace is created, the payment record stays on the purchase (migration 0103 relaxes 0101's rule to "verified or provisioned needs evidence"), any open checkout is closed, the status reads "Closed after payment", and the buyer's address may be invited again. A verified payment with **no** hold is still never cancelled quietly: use the refund path.
 
 ## Separation from prospects and clients
 

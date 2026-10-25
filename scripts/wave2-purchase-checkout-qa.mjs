@@ -14,7 +14,7 @@ import { BASE, OUT, axe, check, finish, launch, metrics, newReport, open, public
 
 const SIM = "http://127.0.0.1:3281";
 const args = process.argv.slice(2);
-const stages = args.includes("--stage") ? args[args.indexOf("--stage") + 1].split(",").map(Number) : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const stages = args.includes("--stage") ? args[args.indexOf("--stage") + 1].split(",").map(Number) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const STATE = path.join(OUT, "checkout-state.json");
 const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, "utf8")) : {};
 const save = () => fs.writeFileSync(STATE, JSON.stringify(state, null, 2));
@@ -216,7 +216,7 @@ try {
     await open(a, state.B.intentPath);
     const t = await body(a);
     check(report, "4: the intent says 'Payment verified' with no workspace yet", /Payment verified/.test(t) && !/Open the client workspace/.test(t), t.slice(0, 300));
-    check(report, "4: it says the Super Admin creates the workspace", /Created by a Super Admin/.test(t));
+    check(report, "4: it says a Super Admin creates the workspace", /A Super Admin creates it/.test(t));
     const create = a.getByRole("button", { name: /Create client workspace/ });
     check(report, "4: the 'Create client workspace' button is offered", (await create.count()) === 1);
     await create.click();
@@ -367,6 +367,52 @@ try {
     const text = await waitForText(page, /bailey\./, { tries: 8 });
     check(report, "9: the capture mailbox holds the workspace invitation for the automatically provisioned buyer", /alderplumbing/.test(text.toLowerCase().replace(/\s+/g, "")) || /bailey\.[a-z0-9]+\.alderplumbing/.test(text), text.slice(0, 300));
     await context.close();
+  }
+  if (stages.includes(10)) {
+    // ---- 10. A person resolves the holds stage 5 left: C (a dispute) is released after checking, then its workspace is created; D (a refund) is closed without a workspace.
+    const a = await admin();
+    await open(a, state.C.intentPath);
+    check(report, "10: the held purchase explains how to resolve it", /Check it in PayMongo, then release the hold/.test(await body(a)) && /close the purchase if the money is gone/.test(await body(a)), (await body(a)).slice(0, 400));
+    await a.getByRole("button", { name: /Release the hold/ }).click();
+    const note = a.getByLabel("What did you check with the provider?");
+    await note.waitFor({ timeout: 30_000 });
+    check(report, "10: a note is required before the hold can be released", (await a.getByRole("button", { name: "Release the hold" }).last().evaluate((b) => b.closest("form")?.checkValidity())) === false);
+    const vio = (await axe(a)).filter((v) => v.impact === "serious" || v.impact === "critical");
+    check(report, "10: the release form has no serious/critical axe violations", vio.length === 0, JSON.stringify(vio));
+    await shot(a, report, "checkout-admin-release-form");
+    await note.fill("QA: PayMongo shows the dispute was withdrawn and the payment stands.");
+    await a.getByRole("button", { name: "Release the hold" }).last().click();
+    await a.getByRole("button", { name: /Create client workspace/ }).waitFor({ timeout: 60_000 });
+    let t = await body(a);
+    check(report, "10: after releasing, the hold alert is gone and the workspace can be created", !/On hold\./.test(t) && /released the hold/.test(t), t.slice(0, 300));
+    await a.getByRole("button", { name: /Create client workspace/ }).click();
+    await a.getByRole("link", { name: /Open the client workspace/ }).waitFor({ timeout: 90_000 });
+    await open(a, state.C.intentPath);
+    t = await body(a);
+    check(report, "10: the released purchase became a workspace, created by a Super Admin from the provider's evidence", /Workspace created/.test(t) && /Confirmed by the payment provider's signed notice/.test(t), t.slice(0, 300));
+
+    await open(a, state.D.intentPath);
+    await a.getByRole("button", { name: /Close without a workspace/ }).click();
+    await a.getByLabel("Why is it being closed?").waitFor({ timeout: 30_000 });
+    t = await body(a);
+    check(report, "10: closing says no workspace is created, the payment record stays, and it cannot be undone", /No workspace is created/.test(t) && /payment record stays on this purchase/.test(t) && /cannot be undone/.test(t), t.slice(0, 300));
+    await a.getByLabel("Why is it being closed?").fill("QA: the refund was confirmed in PayMongo, so the purchase is closed.");
+    await a.getByRole("button", { name: "Close the purchase" }).click();
+    await a.getByText("Closed after payment").first().waitFor({ timeout: 60_000 });
+    t = await body(a);
+    check(report, "10: the purchase reads 'Closed after payment', keeps the payment evidence and offers nothing more", /Closed after payment/.test(t) && /Confirmed by the payment provider's signed notice/.test(t) && (await a.getByRole("button", { name: /Create client workspace|Release the hold|Close without a workspace/ }).count()) === 0, t.slice(0, 300));
+    check(report, "10: it says no workspace was created and the timeline says the purchase was closed after its payment", /Not created: the purchase was closed/.test(t) && /Purchase closed without a workspace after its payment/.test(t), t.slice(0, 300));
+    await shot(a, report, "checkout-admin-closed-after-payment");
+    // The buyer's own link says the purchase was cancelled; the return page still tells them a person will look at the refund.
+    const { context, page } = await buyer();
+    await open(page, state.D.link);
+    check(report, "10: the buyer's link says the purchase was cancelled and offers no payment", /This purchase was cancelled/.test(await body(page)) && !/securely online/.test(await body(page)));
+    await open(page, `/purchase/return/${state.D.reference}`);
+    check(report, "10: the buyer's return page still says a person will look at the refund", /needs a person to look at it/.test(await body(page)));
+    await context.close();
+    // The same address can be invited again.
+    const again = await invite(a, { company: `Closed Co Again ${stamp}`, auto: false });
+    check(report, "10: a closed purchase does not block a new invitation for a new company", Boolean(again.link));
   }
 } catch (error) {
   report.pageErrors.push(`script: ${error instanceof Error ? error.stack?.slice(0, 600) : String(error)}`);

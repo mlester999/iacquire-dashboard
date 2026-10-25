@@ -50,7 +50,11 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
 
       {intent.holdText && (
         <p role="alert" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> <span><strong>On hold.</strong> {intent.holdText}</span>
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>
+            <strong>On hold.</strong> {intent.holdText}
+            {(intent.can.release || intent.can.cancel) && <span className="mt-1 block text-[12.5px]">Check it in PayMongo, then release the hold if the payment stands{intent.can.cancel && intent.status === "payment_verified" ? ", or close the purchase if the money is gone" : ""}.</span>}
+          </span>
         </p>
       )}
       {intent.lastProvisionError && intent.status === "payment_verified" && (
@@ -80,7 +84,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                   <div className="min-w-0"><dt className="text-[11.5px] text-muted">Amount</dt><dd className="font-medium text-ink">{formatUsdCents(intent.paymentAmountCents ?? intent.setupFeeCents)}</dd></div>
                   <div className="min-w-0"><dt className="text-[11.5px] text-muted">Method</dt><dd>{intent.paymentMethod?.replaceAll("_", " ")}</dd></div>
                   <div className="min-w-0"><dt className="text-[11.5px] text-muted">Evidence</dt><dd>{intent.paymentSource === "provider" ? "Confirmed by the payment provider's signed notice" : "Recorded by a Super Admin from the bank or a dashboard"}</dd></div>
-                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Workspace</dt><dd>{intent.autoProvision ? "Created automatically after the verified payment" : "Created by a Super Admin"}</dd></div>
+                  <div className="min-w-0"><dt className="text-[11.5px] text-muted">Workspace</dt><dd>{intent.clientOrgId ? (intent.autoProvision ? "Created automatically after the verified payment" : "Created by a Super Admin") : intent.status === "cancelled" ? "Not created: the purchase was closed" : intent.autoProvision ? "Will be created automatically once nothing holds the payment" : "A Super Admin creates it"}</dd></div>
                   <div className="min-w-0"><dt className="text-[11.5px] text-muted">Reference</dt><dd className="break-all">{intent.paymentReference}</dd></div>
                   <div className="min-w-0"><dt className="text-[11.5px] text-muted">Paid on</dt><dd>{intent.paymentPaidOn}</dd></div>
                   <div className="min-w-0 sm:col-span-2"><dt className="text-[11.5px] text-muted">What was checked</dt><dd className="break-words leading-relaxed">{intent.paymentNote}</dd></div>
@@ -125,7 +129,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                   <li key={event.id} className="flex gap-3">
                     <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", i === events.length - 1 ? "bg-primary" : "bg-line-strong")} aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-[13px] font-medium text-ink">{PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
+                      <p className="text-[13px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
                       <p className="text-[11.5px] text-muted">{when(event.createdAt)} · {event.actorKind}</p>
                     </div>
                   </li>

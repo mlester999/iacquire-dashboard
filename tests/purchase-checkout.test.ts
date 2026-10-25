@@ -12,7 +12,7 @@ import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { handlePaymongoWebhook } from "@/server/billing/payments";
 import {
-  cancelPurchaseIntent, createPurchaseIntent, getPublicPurchase, listPurchaseIntentEvents, provisionPurchaseIntent, startPurchase, verifyPurchasePayment,
+  cancelPurchaseIntent, createPurchaseIntent, getPublicPurchase, listPurchaseIntentEvents, provisionPurchaseIntent, releasePurchaseHold, startPurchase, verifyPurchasePayment,
 } from "@/server/purchase-intents/service";
 import { getCheckoutReturn, listIntentCheckouts, provisionPaidIntent, runPurchaseCheckoutSweep, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
 import { agencyUser } from "./support/fixtures";
@@ -360,6 +360,113 @@ describe("money that arrives when the purchase is not waiting for it", () => {
     expect(await deliver(paid({ checkoutId: o.checkoutId, reference: o.reference, paymentId: "pay_late" }))).toMatchObject({ outcome: "processed" });
     expect(await intentRow(c.id)).toMatchObject({ status: "payment_verified", payment_source: "provider" });
     expect(await checkoutRow(o.reference)).toMatchObject({ status: "paid" });
+  });
+});
+
+describe("a person resolves a hold", () => {
+  const refundedAfterPaying = async (w: Awaited<ReturnType<typeof world>>, over: { autoProvision?: boolean } = {}) => {
+    const c = await make(w, over);
+    const o = await open(c.token);
+    const paymentId = `pay_${uid()}`;
+    await deliver(paid({ checkoutId: o.checkoutId, reference: o.reference, paymentId }));
+    return { c, o, paymentId };
+  };
+
+  it("releases a hold only for a Super Admin who may also create the workspace, with a note, and only while there is a hold", async () => {
+    const w = await world();
+    const { c, o, paymentId } = await refundedAfterPaying(w);
+    // No hold yet: nothing to release.
+    await expect(releasePurchaseHold(w.superSession, c.id, "Checked PayMongo: the payment is paid in full.", { now: NOW })).rejects.toMatchObject({ code: "conflict" });
+    await deliver(paymongoRefundEvent({ paymentId, amount: FULL_PHP }));
+    expect(await intentRow(c.id)).toMatchObject({ status: "payment_verified", payment_hold: "refunded" });
+    expect(await checkoutRow(o.reference)).toMatchObject({ status: "refunded" });
+    expect((await getPublicPurchase(c.token, { now: NOW }))?.problem).toMatch(/needs a person to look at it/);
+
+    await expect(releasePurchaseHold(w.managerSession, c.id, "Checked PayMongo: the payment is paid in full.", { now: NOW })).rejects.toMatchObject({ code: "forbidden" });
+    await expect(releasePurchaseHold(w.superSession, c.id, "too short", { now: NOW })).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(releasePurchaseHold(w.superSession, "not-an-id", "Checked PayMongo: the payment is paid in full.", { now: NOW })).rejects.toMatchObject({ code: "not_found" });
+    expect((await intentRow(c.id)).payment_hold).toBe("refunded");
+
+    const view = await releasePurchaseHold(w.superSession, c.id, "Checked PayMongo: the refund notice was for another payment.", { now: NOW });
+    expect(view).toMatchObject({ status: "payment_verified", paymentHold: null });
+    expect(view.can).toMatchObject({ release: false, provision: true });
+    // The person judged the report not to apply, so the checkout that paid is "paid" again (otherwise the workspace could not adopt it as evidence).
+    expect(await checkoutRow(o.reference)).toMatchObject({ status: "paid" });
+    expect((await listPurchaseIntentEvents(w.superSession, c.id)).map((e) => e.kind)).toContain("hold_released");
+    // What the person checked is in the audit record, which only agency code reads, not on the timeline.
+    const audit = await rows<{ metadata: { whatWasChecked: string; hold: string } }>("select metadata from audit_logs where action = 'purchase_intent.hold_released' and target_id = $1", [c.id]);
+    expect(audit[0].metadata).toMatchObject({ hold: "refunded", whatWasChecked: expect.stringContaining("another payment") });
+    expect((await listPurchaseIntentEvents(w.superSession, c.id)).every((e) => !JSON.stringify(e.detail).includes("another payment"))).toBe(true);
+    // The workspace can now be made, once.
+    const made = await provisionPurchaseIntent(w.superSession, c.id, { now: NOW });
+    expect(made.intent.status).toBe("provisioned");
+    await expect(releasePurchaseHold(w.superSession, c.id, "Checked PayMongo: the payment is paid in full.", { now: NOW })).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("lets a purchase the provider paid and the inviter allowed carry on by itself once the hold is released", async () => {
+    const w = await world();
+    const c = await make(w, { autoProvision: true });
+    const o = await open(c.token);
+    // The provider's refund report arrives while the workspace is still waiting (here forced by putting the hold on directly, as a late report for a waiting purchase would).
+    const checkoutId = (await checkoutRow(o.reference)).id;
+    await withSystem((db) => db.query("update purchase_intent_checkouts set status = 'paid', paid_at = now(), provider_payment_id = 'pay_auto_hold' where reference_number = $1", [o.reference]));
+    await withSystem((db) => db.query("update purchase_intents set status = 'payment_verified', payment_at = now(), payment_method = 'paymongo', payment_reference = 'pay_auto_hold', payment_paid_on = current_date, payment_note = 'Confirmed by the payment provider''s signed notice for checkout x.', payment_amount_cents = setup_fee_cents, payment_source = 'provider', payment_checkout_id = $2, payment_hold = 'disputed' where id = $1", [c.id, checkoutId]));
+    expect(await provisionPaidIntent(c.id)).toBe("waiting_for_a_person");
+    const view = await releasePurchaseHold(w.superSession, c.id, "Checked PayMongo: the dispute was withdrawn by the cardholder.", { now: NOW });
+    expect(view.status).toBe("provisioned");
+    expect(view.clientOrgId).not.toBeNull();
+  });
+
+  it("lets a buyer whose payment did not match pay again once a person has looked at it", async () => {
+    const w = await world();
+    const c = await make(w);
+    const o = await open(c.token);
+    await deliver(paid({ checkoutId: o.checkoutId, reference: o.reference, amount: FULL_PHP - 100 }));
+    expect(await intentRow(c.id)).toMatchObject({ status: "started", payment_hold: "mismatch" });
+    expect(await checkoutRow(o.reference)).toMatchObject({ status: "mismatch" });
+    expect((await getPublicPurchase(c.token, { now: NOW }))?.checkout.offered).toBe(false);
+    await expect(startPurchaseCheckout(c.token, { ip: "198.51.100.200" }, { fetch: mockCheckoutFetch("cs_after_mismatch").impl as never, now: NOW })).rejects.toMatchObject({ code: "conflict" });
+    await releasePurchaseHold(w.superSession, c.id, "Checked PayMongo: the short payment was refunded in full to the buyer.", { now: NOW });
+    expect((await getPublicPurchase(c.token, { now: NOW }))?.checkout.offered).toBe(true);
+    const again = await open(c.token, "cs_after_mismatch_2");
+    expect(again.resumed).toBe(false);
+    expect((await withSystem((db) => listIntentCheckouts(db, c.id))).map((x) => x.status)).toEqual(["pending", "mismatch"]);
+  });
+
+  it("closes a refunded or disputed purchase without a workspace, keeps the payment record, closes any open checkout and frees the buyer's address", async () => {
+    const w = await world();
+    const { c, paymentId } = await refundedAfterPaying(w);
+    // A verified payment with no hold is still never cancelled quietly.
+    const other = await refundedAfterPaying(w);
+    await expect(cancelPurchaseIntent(w.superSession, other.c.id, "Buyer changed their mind about it.", { now: NOW })).rejects.toMatchObject({ code: "conflict" });
+
+    await deliver(paymongoDisputeEvent({ paymentId }));
+    expect(await intentRow(c.id)).toMatchObject({ status: "payment_verified", payment_hold: "disputed" });
+    await expect(cancelPurchaseIntent(w.managerSession, c.id, "The cardholder won the dispute.", { now: NOW })).rejects.toMatchObject({ code: "forbidden" });
+    const closed = await cancelPurchaseIntent(w.superSession, c.id, "The cardholder won the dispute, so the payment is gone.", { now: NOW });
+    expect(closed).toMatchObject({ status: "cancelled", statusText: "Closed after payment", clientOrgId: null });
+    expect(closed.paymentReference).toBe(paymentId);
+    expect(closed.can).toMatchObject({ provision: false, release: false, cancel: false });
+    const stored = await rows<{ status: string; cancelled_at: Date | null; payment_reference: string | null; payment_hold: string | null }>("select status, cancelled_at, payment_reference, payment_hold from purchase_intents where id = $1", [c.id]);
+    expect(stored[0]).toMatchObject({ status: "cancelled", payment_reference: paymentId, payment_hold: "disputed" });
+    expect(stored[0].cancelled_at).not.toBeNull();
+    const events = await listPurchaseIntentEvents(w.superSession, c.id);
+    expect(events.find((e) => e.kind === "cancelled")?.detail).toMatchObject({ afterPayment: true, hold: "disputed" });
+    await expect(provisionPurchaseIntent(w.superSession, c.id, { now: NOW })).rejects.toMatchObject({ code: "conflict" });
+    // The same address may be invited again: a closed purchase is not an open one.
+    const email2 = (await rows<{ buyer_email: string }>("select buyer_email from purchase_intents where id = $1", [c.id]))[0].buyer_email;
+    const again = await createPurchaseIntent(w.superSession, { buyerName: "Bailey Buyer", buyerEmail: email2, company: `Buyer Again ${uid()}`, industry: "", website: "", timezone: "America/Chicago", maintenanceSelected: false, autoProvision: false }, { now: NOW });
+    expect(again.id).not.toBe(c.id);
+  });
+
+  it("closes the open online checkout of a purchase that is cancelled before payment, and a payment that still arrives is one to refund", async () => {
+    const w = await world();
+    const c = await make(w);
+    const o = await open(c.token);
+    await cancelPurchaseIntent(w.superSession, c.id, "Buyer asked us to stop the purchase.", { now: NOW });
+    expect(await checkoutRow(o.reference)).toMatchObject({ status: "cancelled" });
+    await expect(startPurchaseCheckout(c.token, { ip: "198.51.100.201" }, { now: NOW })).rejects.toMatchObject({ code: "conflict" });
+    expect((await withSystem((db) => listIntentCheckouts(db, c.id))).map((x) => x.status)).toEqual(["cancelled"]);
   });
 });
 

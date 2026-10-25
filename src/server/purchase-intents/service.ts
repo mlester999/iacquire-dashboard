@@ -12,7 +12,7 @@ import { recordProviderSetupPayment, type AdoptedCheckout } from "@/server/billi
 import { checkoutAvailability } from "@/server/purchase-intents/availability";
 import type { SessionUser } from "@/server/auth/service";
 import {
-  canBuyerStart, canCancel, canProvision, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, provisionHoldText, PURCHASE_LINK_DAYS, PURCHASE_STATUS_TEXT, PURCHASE_STATUS_TONE,
+  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, HELD_BUYER_TEXT, provisionHoldText, PURCHASE_LINK_DAYS, PURCHASE_STATUS_TEXT, PURCHASE_STATUS_TONE,
   priceSnapshot, setupFeeMicros, type CheckoutStatus, type PriceSnapshot, type PurchaseStatus,
 } from "@/lib/purchase-intents/rules";
 import { hashPurchaseToken, looksLikePurchaseToken, newPurchaseReference, newPurchaseToken } from "@/server/purchase-intents/tokens";
@@ -124,7 +124,7 @@ export interface PurchaseIntentView {
   provisionAttempts: number;
   lastProvisionError: string | null;
   createdAt: string;
-  can: { start: boolean; verify: boolean; provision: boolean; cancel: boolean; rotate: boolean };
+  can: { start: boolean; verify: boolean; provision: boolean; cancel: boolean; rotate: boolean; release: boolean };
 }
 
 export interface PublicPurchaseView {
@@ -211,7 +211,8 @@ function toView(row: IntentRow, now: Date): PurchaseIntentView {
     productVersion: row.product_version,
     status,
     storedStatus: row.status as PurchaseStatus,
-    statusText: PURCHASE_STATUS_TEXT[status],
+    // A purchase closed after its payment was verified (refunded or disputed) is not an ordinary cancellation: the money record is still on it.
+    statusText: status === "cancelled" && row.payment_reference ? "Closed after payment" : PURCHASE_STATUS_TEXT[status],
     statusTone: PURCHASE_STATUS_TONE[status],
     expiresAt: new Date(row.expires_at).toISOString(),
     startedAt: iso(row.started_at),
@@ -236,15 +237,17 @@ function toView(row: IntentRow, now: Date): PurchaseIntentView {
       start: canBuyerStart(state, now).ok,
       verify: canVerifyPayment(state, now).ok,
       provision: canProvision(state, row.client_org_id, now, row.payment_hold).ok,
-      cancel: canCancel(state, now).ok,
+      cancel: canCancel(state, now, row.payment_hold).ok,
       rotate: canRotateLink(state, now).ok,
+      release: canReleaseHold(state, row.payment_hold, now).ok,
     },
   };
 }
 
-const publicProblem = (status: PurchaseStatus, payOnline = false): string | null =>
+const publicProblem = (status: PurchaseStatus, payOnline = false, held = false): string | null =>
   status === "expired" ? "This purchase link has expired. Ask iAcquire for a new one."
     : status === "cancelled" ? "This purchase was cancelled."
+      : held && (status === "started" || status === "payment_verified") ? HELD_BUYER_TEXT
       : status === "started" ? (payOnline ? null : "Your purchase is confirmed. iAcquire will verify the payment and send your workspace invitation.")
         : status === "payment_verified" ? "Your payment is confirmed. iAcquire is creating your workspace and will email your invitation."
           : status === "provisioned" ? "Your workspace is ready. Check the email address on this purchase for your invitation."
@@ -266,7 +269,7 @@ function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["check
     statusText: PURCHASE_STATUS_TEXT[status],
     expiresAt: new Date(row.expires_at).toISOString(),
     canConfirm: status === "invited",
-    problem: publicProblem(status, checkout.offered),
+    problem: publicProblem(status, checkout.offered, row.payment_hold !== null),
     checkout,
   };
 }
@@ -570,7 +573,10 @@ export async function setPurchaseCheckoutEnabled(user: SessionUser, enabled: boo
   });
 }
 
-/** Withdraws an unpaid invitation. A verified payment must go through the refund path instead, never a quiet cancel. */
+/**
+ * Withdraws an unpaid invitation, or closes a verified payment WITHOUT a workspace while the provider's refund, dispute or mismatch report holds it. A verified payment with no hold
+ * must go through the refund path instead, never a quiet cancel. Closing keeps the payment record on the purchase and any open online checkout is closed so the buyer cannot pay it.
+ */
 export async function cancelPurchaseIntent(user: SessionUser, id: unknown, reason: string, opts: { now?: Date } = {}): Promise<PurchaseIntentView> {
   if (!isId(id)) throw new AppError("not_found", "That purchase was not found.");
   const why = reason.trim();
@@ -581,14 +587,56 @@ export async function cancelPurchaseIntent(user: SessionUser, id: unknown, reaso
     const agency = requireManage(actor);
     const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2 for update`, [id, agency])).rows[0];
     if (!row) throw new AppError("not_found", "That purchase was not found.");
-    const allowed = canCancel({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now);
+    const allowed = canCancel({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now, row.payment_hold);
     if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "This purchase cannot be cancelled.");
+    const afterPayment = row.status === "payment_verified";
+    // An online checkout that is still open is closed here. The provider's own page stays payable until it expires (this application cannot withdraw it), so a payment that still
+    // arrives is recorded as one to refund (applyCheckoutPaid), exactly as for a purchase cancelled before payment.
+    await db.query("update purchase_intent_checkouts set status = 'cancelled', failure_reason = 'The purchase was cancelled' where intent_id = $1 and status in ('creating', 'pending')", [id]);
     await db.query("update purchase_intents set status = 'cancelled', cancelled_at = $2 where id = $1", [id, now.toISOString()]);
-    await addEvent(db, row.id, agency, "cancelled", { reason: why }, user.id, "user");
-    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.cancelled", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference } }, db);
+    await addEvent(db, row.id, agency, "cancelled", { reason: why, afterPayment, hold: row.payment_hold }, user.id, "user");
+    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: afterPayment ? "purchase_intent.closed_after_payment" : "purchase_intent.cancelled", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, afterPayment, hold: row.payment_hold } }, db);
     const fresh = (await db.query<IntentRow>(`${SELECT} where id = $1`, [id])).rows[0];
     return toView(fresh, now);
   });
+}
+
+/**
+ * A Super Admin who checked with the provider releases a hold the provider's report put on a purchase: a mismatch or refund on a purchase that was never verified lets the buyer
+ * try again; a verified payment may then become a workspace (by a person, or by itself when the inviting Super Admin allowed it). It needs the same permissions as creating the
+ * workspace, because it re-enables that. The note is the person's own words about what they checked; the timeline records only that the hold was released and which hold it was.
+ */
+export async function releasePurchaseHold(user: SessionUser, id: unknown, note: string, opts: { now?: Date } = {}): Promise<PurchaseIntentView> {
+  if (!isId(id)) throw new AppError("not_found", "That purchase was not found.");
+  const checked = note.trim();
+  if (checked.length < 10) throw new AppError("invalid_input", "Say what you checked with the payment provider.");
+  if (checked.length > 1000) throw new AppError("invalid_input", "Keep the note under 1,000 characters.");
+  const now = opts.now ?? new Date();
+  const released = await withSystem(async (db) => {
+    const actor = await actorFor(db, user);
+    const agency = requireProvision(actor);
+    const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2 for update`, [id, agency])).rows[0];
+    if (!row) throw new AppError("not_found", "That purchase was not found.");
+    const allowed = canReleaseHold({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, row.payment_hold, now);
+    if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "This hold cannot be released.");
+    await db.query("update purchase_intents set payment_hold = null where id = $1 and payment_hold is not null", [id]);
+    // The provider's refund or dispute report moved the checkout that paid this purchase out of "paid". A person who checked and released the hold has judged that the payment
+    // stands, so the checkout is "paid" again; without it the workspace could not adopt the payment as evidence.
+    const restored = row.payment_checkout_id
+      ? (await db.query("update purchase_intent_checkouts set status = 'paid' where id = $1 and status in ('refunded', 'disputed')", [row.payment_checkout_id])).rowCount ?? 0
+      : 0;
+    await addEvent(db, row.id, agency, "hold_released", { hold: row.payment_hold, checkoutRestoredToPaid: restored > 0 }, user.id, "user");
+    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.hold_released", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, hold: row.payment_hold, whatWasChecked: checked } }, db);
+    return { row, fresh: (await db.query<IntentRow>(`${SELECT} where id = $1`, [id])).rows[0] };
+  });
+  // A verified online payment that the inviting Super Admin allowed to provision itself carries on now, under that person's re-read permissions (it never throws for a business reason).
+  if (released.fresh.auto_provision && released.fresh.payment_source === "provider" && released.fresh.status === "payment_verified") {
+    // checkout.ts imports this file, so the import is made here, when it is needed.
+    const { provisionPaidIntent } = await import("@/server/purchase-intents/checkout");
+    await provisionPaidIntent(released.fresh.id, { now });
+  }
+  const after = await withSystem((db) => db.query<IntentRow>(`${SELECT} where id = $1`, [id]));
+  return toView(after.rows[0], now);
 }
 
 /** Issues a fresh link (the old one stops working) while the purchase is still open. Returns the raw token once. */

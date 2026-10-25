@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import {
-  cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
+  cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, releasePurchaseHold, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
   createPurchaseIntentSchema, purchasePaymentSchema,
 } from "@/server/purchase-intents/service";
 import { startPurchaseCheckout } from "@/server/purchase-intents/checkout";
@@ -74,6 +74,17 @@ export async function cancelPurchaseIntentAction(input: { id: string; reason: st
     const view = await cancelPurchaseIntent(session, uuid.parse(input.id), input.reason);
     revalidatePath("/admin/purchase-intents");
     revalidatePath(`/admin/purchase-intents/${view.id}`);
+    return view;
+  });
+}
+
+/** A Super Admin who checked with the provider releases the hold a refund, dispute or mismatch report put on a purchase. The note says what they checked. */
+export async function releasePurchaseHoldAction(input: { id: string; note: string }) {
+  return act(async (session) => {
+    const view = await releasePurchaseHold(session, uuid.parse(input.id), z.string({ error: "Say what you checked with the payment provider." }).parse(input.note));
+    revalidatePath("/admin/purchase-intents");
+    revalidatePath(`/admin/purchase-intents/${view.id}`);
+    revalidatePath("/admin/clients");
     return view;
   });
 }
