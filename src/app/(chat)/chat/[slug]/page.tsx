@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { requireOrgContext } from "@/server/tenancy/context";
+import { requireWorkforceContext } from "@/server/workforce/workspace-access";
 import { getAgentByRole, listConfigVersions, refreshAgentHealthIfStale } from "@/server/workforce/service";
 import { getConversation, listConversations } from "@/server/chat/service";
 import { isChannelActive } from "@/server/chat/hub";
@@ -19,7 +19,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
   const [{ slug }, { c, q }] = await Promise.all([params, searchParams]);
   const meta = AGENT_BY_SLUG[slug];
   if (!meta) notFound();
-  const ctx = await requireOrgContext("agents.use");
+  const ctx = await requireWorkforceContext("agents.use");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
   const internalVerification = ctx.org.kind === "agency"

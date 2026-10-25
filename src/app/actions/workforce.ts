@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withSystem, withUser } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
@@ -17,7 +18,7 @@ import { generateEmployeeSettings } from "@/server/onboarding/employee-generator
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 
 async function resolve(role: string) {
-  const ctx = await requireOrgContextOrThrow("agents.configure");
+  const ctx = await requireWorkforceContextOrThrow("agents.configure");
   if (!isAgentRoleKey(role)) throw new AppError("not_found", "Unknown employee.");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, role);
   if (!agent) throw new AppError("not_found", "Unknown employee.");
@@ -158,6 +159,7 @@ export async function rollbackAction(role: string, versionId: string) {
 export async function requestSetupAction() {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
+    if (ctx.org.kind !== "client") throw new AppError("forbidden", "Setup requests are available only in client workspaces.");
     const n = await withSystem((db) => requestProvisioning(db, ctx.org.orgId, ctx.user.id));
     revalidatePath("/employees");
     return { ok: true as const, data: { requested: n } };

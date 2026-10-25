@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { deleteSchedule, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
@@ -18,7 +18,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export async function startReviewAction(capability: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     const definition = capabilityDefinition(capability);
     if (!definition || !definition.workBoardAction) throw new AppError("invalid_input", "That review is not available from the work board.");
     const role = definition.allowedRoles[0];
@@ -48,7 +48,7 @@ export async function saveScheduleAction(
     if (expectedExistingSchedule && (!UUID.test(expectedExistingSchedule.id) || !Number.isFinite(Date.parse(expectedExistingSchedule.updatedAt)))) {
       throw new AppError("invalid_input", "The schedule version is invalid. Refresh and try again.");
     }
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours, payload, recurrenceRule, expectedExistingSchedule });
     revalidatePath("/work");
     revalidatePath("/work/calendar");
@@ -61,7 +61,7 @@ export async function saveScheduleAction(
 export async function setScheduleEnabledAction(scheduleId: string, enabled: boolean) {
   try {
     if (!UUID.test(scheduleId)) throw new AppError("not_found", "Schedule not found.");
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     await setScheduleEnabled(ctx, scheduleId, enabled);
     revalidatePath("/work");
     revalidatePath("/work/calendar");
@@ -74,7 +74,7 @@ export async function setScheduleEnabledAction(scheduleId: string, enabled: bool
 export async function createFindingTaskAction(jobId: string, findingKey: string) {
   try {
     if (!UUID.test(jobId)) throw new AppError("not_found", "Work job not found.");
-    const ctx = await requireOrgContextOrThrow("tasks.manage");
+    const ctx = await requireWorkforceContextOrThrow("tasks.manage");
     const result = await createFindingTask(ctx, { jobId, findingKey: findingKey.slice(0, 80) });
     revalidatePath("/work");
     revalidatePath("/crm/tasks");
@@ -87,7 +87,7 @@ export async function createFindingTaskAction(jobId: string, findingKey: string)
 export async function acknowledgeReportAction(reportId: string) {
   try {
     if (!UUID.test(reportId)) throw new AppError("not_found", "Report not found.");
-    const ctx = await requireOrgContextOrThrow("activity.view");
+    const ctx = await requireWorkforceContextOrThrow("activity.view");
     const result = await acknowledgeProactiveReport(ctx, reportId);
     revalidatePath("/work");
     return { ok: true as const, data: result };
@@ -98,7 +98,7 @@ export async function acknowledgeReportAction(reportId: string) {
 
 export async function saveTriggerAction(eventType: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     const saved = await saveTrigger(ctx, { eventType, enabled: false });
     revalidatePath("/work");
     return { ok: true as const, data: saved };
@@ -110,7 +110,7 @@ export async function saveTriggerAction(eventType: string) {
 export async function setTriggerEnabledAction(triggerId: string, enabled: boolean) {
   try {
     if (!UUID.test(triggerId)) throw new AppError("not_found", "Trigger not found.");
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     await setTriggerEnabled(ctx, triggerId, enabled);
     revalidatePath("/work");
     return { ok: true as const };
@@ -122,7 +122,7 @@ export async function setTriggerEnabledAction(triggerId: string, enabled: boolea
 export async function deleteTriggerAction(triggerId: string) {
   try {
     if (!UUID.test(triggerId)) throw new AppError("not_found", "Trigger not found.");
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     await deleteTrigger(ctx, triggerId);
     revalidatePath("/work");
     return { ok: true as const };
@@ -134,7 +134,7 @@ export async function deleteTriggerAction(triggerId: string) {
 export async function deleteScheduleAction(scheduleId: string) {
   try {
     if (!UUID.test(scheduleId)) throw new AppError("not_found", "Schedule not found.");
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     await deleteSchedule(ctx, scheduleId);
     revalidatePath("/work");
     return { ok: true as const };

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { toPublicError } from "@/server/errors";
 import { runConfigPreview } from "@/server/workforce/preview";
 import type { ConfigPreviewEvent, PreviewMessage } from "@/lib/workforce-types";
@@ -19,7 +19,7 @@ function frame(event: ConfigPreviewEvent) {
 export async function POST(req: Request) {
   try {
     await assertSameOrigin();
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     const body = (await req.json().catch(() => null)) as
       | { role?: unknown; settings?: unknown; messages?: unknown }
       | null;

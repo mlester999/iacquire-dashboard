@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { deleteConversation, getConversation, listConversations, renameConversation } from "@/server/chat/service";
 import { getAgentByRole, createConfigVersion, editableSettings } from "@/server/workforce/service";
 import { withSystem } from "@/server/db";
@@ -12,7 +12,7 @@ import { configAttribution } from "@/lib/config-review";
 
 export async function searchConversationsAction(role: string, query: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     if (!isAgentRoleKey(role)) throw new AppError("not_found", "Unknown employee.");
     const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, role);
     if (!agent) throw new AppError("not_found", "Unknown employee.");
@@ -25,7 +25,7 @@ export async function searchConversationsAction(role: string, query: string) {
 
 export async function loadConversationAction(conversationId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     const data = await getConversation(ctx, conversationId);
     if (!data) throw new AppError("not_found", "Conversation not found.");
     return {
@@ -45,7 +45,7 @@ export async function loadConversationAction(conversationId: string) {
 /** Loads one older page of a conversation the signed-in user is allowed to read. */
 export async function loadOlderMessagesAction(conversationId: string, before: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     if (!/^\d{4}-\d{2}-\d{2}T/.test(before) || Number.isNaN(Date.parse(before))) throw new AppError("invalid_input", "That message page is invalid.");
     const data = await getConversation(ctx, conversationId, before);
     if (!data) throw new AppError("not_found", "Conversation not found.");
@@ -63,7 +63,7 @@ export async function loadOlderMessagesAction(conversationId: string, before: st
 
 export async function renameConversationAction(conversationId: string, title: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     await renameConversation(ctx, conversationId, title);
     return { ok: true as const };
   } catch (err) {
@@ -73,7 +73,7 @@ export async function renameConversationAction(conversationId: string, title: st
 
 export async function deleteConversationAction(conversationId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     await deleteConversation(ctx, conversationId);
     return { ok: true as const };
   } catch (err) {
@@ -84,7 +84,7 @@ export async function deleteConversationAction(conversationId: string) {
 /** Quick reply-length preference from the chat header. Creates and applies a new config version. */
 export async function setReplyLengthAction(role: string, length: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const ctx = await requireWorkforceContextOrThrow("agents.configure");
     if (!isAgentRoleKey(role) || !REPLY_LENGTHS.includes(length as ReplyLength)) throw new AppError("invalid_input", "Unknown option.");
     const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, role);
     if (!agent) throw new AppError("not_found", "Unknown employee.");

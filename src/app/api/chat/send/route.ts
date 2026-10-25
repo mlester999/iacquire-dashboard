@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/server/auth/session";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { sendChatMessage } from "@/server/chat/service";
 import { sseStream } from "@/server/chat/hub";
 import { toPublicError } from "@/server/errors";
@@ -22,7 +22,7 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   try {
     await assertSameOrigin();
-    const ctx = await requireOrgContextOrThrow("agents.use");
+    const ctx = await requireWorkforceContextOrThrow("agents.use");
     const parsed = bodySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid request.", code: "invalid_input" }, { status: 400 });
     const result = await sendChatMessage(ctx, {

@@ -1,7 +1,7 @@
 import { WorkforceCalendar } from "@/components/work/workforce-calendar";
 import { calendarDateKeyAt, getWorkforceCalendarRange } from "@/lib/workforce-calendar-view";
 import type { AgentRoleKey } from "@/lib/agents";
-import { requireOrgContext } from "@/server/tenancy/context";
+import { requireWorkforceContext } from "@/server/workforce/workspace-access";
 import { getWorkforceCalendarData } from "@/server/workforce/calendar";
 import { listAgents } from "@/server/workforce/service";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Schedules & Calendar" };
 
 export default async function WorkforceCalendarPage() {
-  const ctx = await requireOrgContext();
+  const ctx = await requireWorkforceContext();
   const now = new Date();
   const initialDateKey = calendarDateKeyAt(now, ctx.org.timezone);
   const range = getWorkforceCalendarRange(initialDateKey, "month");

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { toPublicError } from "@/server/errors";
 import { getWorkforceCalendarData } from "@/server/workforce/calendar";
 
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const ctx = await requireOrgContextOrThrow();
+    const ctx = await requireWorkforceContextOrThrow();
     const calendar = await getWorkforceCalendarData(ctx, { from, to });
     return NextResponse.json({ calendar }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err) {

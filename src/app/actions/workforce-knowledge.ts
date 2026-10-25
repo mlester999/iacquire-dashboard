@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { actionError } from "@/server/errors";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import {
   archiveEmployeeKnowledgeEntry,
   assignKnowledgeDocument,
@@ -21,7 +21,7 @@ export async function saveEmployeeKnowledgeEntryAction(
   input: { id?: string | null; title: string; content: string },
 ) {
   try {
-    const ctx = await requireOrgContextOrThrow("knowledge.edit");
+    const ctx = await requireWorkforceContextOrThrow("knowledge.edit");
     const res = await saveEmployeeKnowledgeEntry(ctx, agentId, input);
     revalidateEmployee();
     return { ok: true as const, data: res };
@@ -32,7 +32,7 @@ export async function saveEmployeeKnowledgeEntryAction(
 
 export async function archiveEmployeeKnowledgeEntryAction(agentId: string, entryId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("knowledge.edit");
+    const ctx = await requireWorkforceContextOrThrow("knowledge.edit");
     await archiveEmployeeKnowledgeEntry(ctx, agentId, entryId);
     revalidateEmployee();
     return { ok: true as const };
@@ -43,7 +43,7 @@ export async function archiveEmployeeKnowledgeEntryAction(agentId: string, entry
 
 export async function assignKnowledgeDocumentAction(agentId: string, documentId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("knowledge.edit");
+    const ctx = await requireWorkforceContextOrThrow("knowledge.edit");
     await assignKnowledgeDocument(ctx, agentId, documentId);
     revalidateEmployee();
     return { ok: true as const };
@@ -54,7 +54,7 @@ export async function assignKnowledgeDocumentAction(agentId: string, documentId:
 
 export async function unassignKnowledgeDocumentAction(agentId: string, documentId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("knowledge.edit");
+    const ctx = await requireWorkforceContextOrThrow("knowledge.edit");
     await unassignKnowledgeDocument(ctx, agentId, documentId);
     revalidateEmployee();
     return { ok: true as const };
@@ -65,7 +65,7 @@ export async function unassignKnowledgeDocumentAction(agentId: string, documentI
 
 export async function reprocessKnowledgeDocumentAction(documentId: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("knowledge.edit");
+    const ctx = await requireWorkforceContextOrThrow("knowledge.edit");
     const result = await reprocessKnowledgeDocument(ctx, documentId);
     revalidateEmployee();
     return { ok: true as const, data: result };
