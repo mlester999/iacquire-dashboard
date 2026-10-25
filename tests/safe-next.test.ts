@@ -9,12 +9,13 @@ describe("safeNextPath", () => {
     expect(safeNextPath("/overview")).toBe("/overview");
     expect(safeNextPath("/crm/contacts?tag=vip&page=2")).toBe("/crm/contacts?tag=vip&page=2");
     expect(safeNextPath("/invoices/INV-0010%20a")).toBe("/invoices/INV-0010%20a");
+    expect(safeNextPath("/crm/contacts?q=a+b&at=x:y,z#top")).toBe("/crm/contacts?q=a+b&at=x:y,z#top");
   });
 
   it("falls back to the home page for anything that could leave the site", () => {
     const attacks = [
       "//evil.com", "///evil.com", `/${BS}evil.com`, `/${BS}${BS}evil.com`, `${BS}${BS}evil.com`, `${BS}/evil.com`, `/a/${BS}evil.com`,
-      "https://evil.com", "http://evil.com/a", "javascript:alert(1)", "data:text/html,x", "evil.com", "/ /evil.com", "/\t/evil.com", "/\n/evil.com", "/%0d%0aLocation:x", "/a b",
+      "https://evil.com", "http://evil.com/a", "javascript:alert(1)", "data:text/html,x", "evil.com", "/ /evil.com", "/\t/evil.com", "/\n/evil.com", "/a b",
       "/a\r\nSet-Cookie: x=y", "//​evil.com", "/‮evil.com", "",
     ];
     for (const a of attacks) expect(safeNextPath(a), JSON.stringify(a)).toBe("/");

@@ -233,6 +233,9 @@ export async function respondToConversation(orgId: string, conversationId: strin
     if (pre.skip === "usage_limit" && "agentId" in pre) {
       const capEmails: OutgoingEmail[] = [];
       await withSystem(async (db) => {
+        // One note and one escalation per conversation per day: every further message from the same customer must not add another note, another open case and another email.
+        const already = await db.query("select 1 from conversation_messages where org_id = $1 and conversation_id = $2 and status_detail = 'ai_usage_limit' and created_at > now() - interval '1 day' limit 1", [orgId, conversationId]);
+        if (already.rows.length > 0) return;
         await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_usage_limit')", [orgId, conversationId, pre.agentId, "The AI employee did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself."]);
         const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: "This workspace has reached its monthly limit on AI replies, so the AI employee did not answer. Please reply.", sourceMessageId: pre.inboundMessageId, agentId: pre.agentId, now: deps.now });
         capEmails.push(...esc.emails);
