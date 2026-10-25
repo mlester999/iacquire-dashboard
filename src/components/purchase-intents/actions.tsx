@@ -10,6 +10,7 @@ import { CopyTextButton } from "@/components/ui/copy-button";
 import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, releasePurchaseHoldAction, rotatePurchaseLinkAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
 import { MANUAL_METHOD_LABEL, MANUAL_PAYMENT_METHODS, centsToDollarText, type ManualPaymentMethod } from "@/lib/billing-clearance";
 import type { PurchaseIntentView } from "@/server/purchase-intents/service";
+import { localDayIso } from "@/lib/local-day";
 
 // What a Super Admin can do on one purchase intent. Every button calls a server action that re-reads the payment evidence and permissions; this component only
 // chooses which controls to show.
@@ -29,7 +30,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   const [amount, setAmount] = React.useState(centsToDollarText(intent.setupFeeCents));
   const [method, setMethod] = React.useState<ManualPaymentMethod>("bank_transfer");
   const [externalReference, setExternalReference] = React.useState("");
-  const [paidOn, setPaidOn] = React.useState(new Date().toISOString().slice(0, 10));
+  const [paidOn, setPaidOn] = React.useState(() => localDayIso());
   const [note, setNote] = React.useState("");
   const [reason, setReason] = React.useState("");
 

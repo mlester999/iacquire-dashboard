@@ -22,6 +22,7 @@ import type { AgencyPaymentView, PaymentClientOption } from "@/server/billing/pa
 import type { FinancialReport } from "@/server/billing/finance";
 import type { AgencyBillingOverview } from "@/server/billing/service";
 import type { UnitRateRow } from "@/server/billing/rates";
+import { localDayIso } from "@/lib/local-day";
 
 type Tab = "statement" | "entries" | "payments" | "rates" | "clients";
 const TABS: Array<{ value: Tab; label: string }> = [
@@ -161,7 +162,7 @@ function EntryForm({ clients, onDone }: { clients: Array<{ orgId: string; name: 
   const [kind, setKind] = React.useState<EntryKind>("overhead");
   const [category, setCategory] = React.useState(CATEGORIES.overhead[0]);
   const [amount, setAmount] = React.useState("");
-  const [date, setDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = React.useState(() => localDayIso());
   const [orgId, setOrgId] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [busy, setBusy] = React.useState(false);

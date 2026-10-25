@@ -15,6 +15,7 @@ import { MAINTENANCE_STATUS_LABEL, formatMoney } from "@/lib/projects";
 import type { listAgencyMaintenance } from "@/server/maintenance/service";
 import { formatDate } from "@/lib/utils";
 import { PlanLifecycle } from "@/components/admin/plan-lifecycle";
+import { localDayIso } from "@/lib/local-day";
 
 type AgencyData = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 /** The plan's money side is optional here so sample data without it still draws; the real listing always has it. */
@@ -67,9 +68,9 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
 function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
-  const [start, setStart] = React.useState(new Date().toISOString().slice(0, 10));
+  const [start, setStart] = React.useState(() => localDayIso());
   // A plan starts only once a person has checked the payment in their own billing records and says what period it pays for (a month by default).
-  const [through, setThrough] = React.useState(() => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 31); return d.toISOString().slice(0, 10); });
+  const [through, setThrough] = React.useState(() => localDayIso(new Date(), 31));
   const [paymentConfirmed, setPaymentConfirmed] = React.useState(false);
   const done = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     const ok = await run(key, fn as never, msg);

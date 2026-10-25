@@ -14,13 +14,14 @@ import { createProjectRequestAction } from "@/app/actions/projects";
 import { newIdempotencyKey } from "@/lib/support/content";
 import { BUDGET_BANDS, formatDelivery, formatPrice, suggestServices, type ServiceView } from "@/lib/projects";
 import { cn, sentenceCase } from "@/lib/utils";
+import { localDayIso } from "@/lib/local-day";
 
 const STEPS = ["The idea", "How it works today", "Your tools", "Optional details", "Review"] as const;
 const COMMON_TOOLS = ["GoHighLevel", "n8n", "Make.com", "Zapier", "Google Sheets", "Airtable", "Notion", "Slack", "ClickUp", "Shopify", "Stripe", "HubSpot", "Google Calendar", "Gmail", "QuickBooks", "WordPress"];
 const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT = ".pdf,.docx,.png,.jpg,.jpeg,.txt,.md,.csv";
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => localDayIso();
 
 export function RequestWizard({
   services,
