@@ -2,13 +2,27 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as claimRoute } from "@/app/api/internal/hermes-provisioner/claim/route";
 import { POST as completeRoute } from "@/app/api/internal/hermes-provisioner/complete/route";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { createConfigVersion, decideHeldVersion } from "@/server/workforce/service";
-import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+
+const llm = vi.hoisted(() => ({
+  config: null as object | null,
+  reply: { ok: true, text: "{}" } as { ok: boolean; text?: string; status?: number },
+  calls: 0,
+}));
+
+vi.mock("@/server/llm/client", () => ({
+  resolveLlmConfig: async () => llm.config,
+  llmComplete: async () => {
+    llm.calls += 1;
+    return llm.reply;
+  },
+}));
 
 type RouteHandler = (request: Request) => Promise<Response>;
 
@@ -33,6 +47,20 @@ interface ClaimedJob {
 }
 
 const sha256 = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
+
+function generatedPreferences(role: AgentRoleKey) {
+  return {
+    personality: `Synthetic AI-personalized ${role} employee who works carefully and reliably.`,
+    characterTraits: `Careful, accurate, and focused on ${role} responsibilities.`,
+    communicationStyle: `Use clear, calm language suited to the ${role} role.`,
+    responseBehavior: "Separate confirmed details from uncertainty and ask when facts are missing.",
+    operatingProcedures: "Follow confirmed business details and protected role procedures before acting.",
+    proactiveResponsibilities: "Surface work only when an authorized request, schedule, or trigger exists.",
+    reportingBehavior: "Report verified findings, limitations, and a useful next step.",
+    responsibilities: `Support the ${role} function using only approved company context.`,
+    goals: `Help the owner reach selected goals through accurate ${role} work.`,
+  };
+}
 
 async function postJson(handler: RouteHandler, body: unknown, token?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -107,9 +135,15 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
   afterEach(() => {
     vi.unstubAllEnvs();
     resetEnvCache();
+    llm.config = null;
+    llm.reply = { ok: true, text: "{}" };
+    llm.calls = 0;
   });
 
   it("runs real onboarding through authorized claim, profile callbacks, recovery, idempotency, and config sync", async () => {
+    llm.config = { baseUrl: "https://llm.example.test/v1", format: "openai", model: "test-model", apiKey: "test-only", source: "portal" };
+    llm.reply = { ok: true, text: JSON.stringify(Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [role, generatedPreferences(role)]))) };
+
     const gatewayId = randomUUID();
     const workerToken = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
     vi.stubEnv("HERMES_PROVISIONER_ENABLED", "true");
@@ -130,14 +164,63 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "Austin property owners",
     );
     const tenants = [tenantA, tenantB];
+    expect(llm.calls).toBe(2);
+
+    const reviewer = await createUser({ platformRole: "agency_super_admin" });
+    const audienceAgentId = await agentId(tenantA.org.id, "lead_hunter");
+    const originalAudienceConfig = await withSystem((db) => db.query<{ settings: unknown }>(
+      "select v.settings from agent_instances a join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id where a.id=$1 and a.org_id=$2",
+      [audienceAgentId, tenantA.org.id],
+    ));
+    expect(originalAudienceConfig.rows).toHaveLength(1);
+    const manualAudience = agentSettingsSchema.parse({
+      ...agentSettingsSchema.parse(originalAudienceConfig.rows[0].settings),
+      targetCustomers: "Owner-approved independent roof specialists",
+    });
+    const manualAudienceVersion = await withSystem((db) => createConfigVersion(db, {
+      orgId: tenantA.org.id,
+      agentId: audienceAgentId,
+      settings: manualAudience,
+      source: "client_edit",
+      actorKind: "user",
+      userId: tenantA.owner.id,
+      apply: true,
+    }));
+    if (manualAudienceVersion.status === "pending_agency_review") {
+      await withSystem((db) => decideHeldVersion(db, {
+        orgId: tenantA.org.id,
+        versionId: manualAudienceVersion.versionId,
+        approve: true,
+        agencyUserId: reviewer.id,
+        decisionNote: "Reviewed the synthetic owner audience preference.",
+      }));
+    }
+
+    const refreshedAnswers = await saveOnboardingStep(tenantA.ctx, {
+      answers: {
+        "b.ideal_customer": { value: "Austin property managers" },
+        "f.review": { value: true },
+      },
+      currentQuestionId: "f.review",
+    });
+    expect(refreshedAnswers.rejected).toEqual({});
+    expect((await submitOnboarding(tenantA.ctx)).employees).toHaveLength(6);
+    expect(llm.calls).toBe(2);
+
+    const latestAudienceConfig = await withSystem((db) => db.query<{ settings: unknown; source: string }>(
+      "select v.settings,v.source from agent_config_versions v where v.agent_instance_id=$1 and v.org_id=$2 order by v.version desc limit 1",
+      [audienceAgentId, tenantA.org.id],
+    ));
+    expect(latestAudienceConfig.rows).toHaveLength(1);
+    expect(latestAudienceConfig.rows[0].source).toBe("onboarding");
+    expect(agentSettingsSchema.parse(latestAudienceConfig.rows[0].settings).targetCustomers)
+      .toBe("Owner-approved independent roof specialists");
 
     const pending = await withSystem((db) => db.query<{ id: string; org_id: string }>(
       "select v.id,v.org_id from agent_config_versions v " +
       "where (v.org_id=$1 or v.org_id=$2) and v.status='pending_agency_review' and v.source='onboarding'",
       [tenantA.org.id, tenantB.org.id],
     ));
-    expect(pending.rows.length).toBeGreaterThan(0);
-    const reviewer = await createUser({ platformRole: "agency_super_admin" });
     for (const version of pending.rows) {
       await withSystem((db) => decideHeldVersion(db, {
         orgId: version.org_id,
@@ -153,6 +236,34 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "values ($1,'Synthetic route test runtime','development',$2,'multiplexed_profiles','connected','restricted_service_verified',now())",
       [gatewayId, "https://client-" + gatewayId.replaceAll("-", "") + ".hermes.test"],
     ));
+
+    const generatedConfigs = await withSystem((db) => db.query<{
+      org_id: string;
+      role_key: AgentRoleKey;
+      settings: unknown;
+      compiled_instructions: string;
+    }>(
+      "select a.org_id,a.role_key,v.settings,v.compiled_instructions from agent_instances a " +
+      "join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id " +
+      "where a.org_id=$1 or a.org_id=$2 order by a.org_id,a.role_key",
+      [tenantA.org.id, tenantB.org.id],
+    ));
+    expect(generatedConfigs.rows).toHaveLength(12);
+    for (const row of generatedConfigs.rows) {
+      const settings = agentSettingsSchema.parse(row.settings);
+      const expected = generatedPreferences(row.role_key);
+      for (const field of [
+        "personality", "characterTraits", "communicationStyle", "responseBehavior", "operatingProcedures",
+        "proactiveResponsibilities", "reportingBehavior", "responsibilities", "goals",
+      ] as const) {
+        expect(settings[field]).toBe(expected[field]);
+      }
+      expect(row.compiled_instructions).toContain(settings.personality);
+      expect(row.compiled_instructions).toContain(row.org_id === tenantA.org.id ? tenantA.org.name : tenantB.org.name);
+      if (row.org_id === tenantA.org.id && row.role_key === "lead_hunter") {
+        expect(settings.targetCustomers).toBe("Owner-approved independent roof specialists");
+      }
+    }
 
     const unauthorized = await postJson(claimRoute, { gatewayId });
     expect(unauthorized.status).toBe(401);
