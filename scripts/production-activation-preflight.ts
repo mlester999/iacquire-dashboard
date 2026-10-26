@@ -104,6 +104,11 @@ const TARGETS: Array<{
       "agent_instances.health_alerted_at",
     ],
   },
+  {
+    version: "0113_demo_registration_requests",
+    tables: ["demo_registration_requests"],
+    columns: [],
+  },
 ];
 
 const REQUIRED_FUNCTIONS = ["app.touch_updated_at", "app.has_permission", "app.current_user_id", "app.permitted_orgs"];
@@ -496,7 +501,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     readOnly: true,
-    target: "0077–0081, 0084, 0105–0109",
+    target: "0077–0081, 0084, 0105–0109, 0113",
     appliedTargets,
     pendingTargets,
     pendingOtherLocalMigrations: pendingOther,

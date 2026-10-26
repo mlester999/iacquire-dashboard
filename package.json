@@ -13,6 +13,7 @@
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "demo:e2e:staging": "node scripts/staging-demo-e2e.mjs",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/seed.ts",
     "db:migrate:local": "node --env-file-if-exists=.env --env-file-if-exists=.env.development --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/migrate.ts",

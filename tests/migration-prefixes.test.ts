@@ -52,6 +52,20 @@ describe("migration file numbers", () => {
     expect(MIGRATION_PREREQUISITES["0109_employee_health_probe"]).toEqual(["0059_hermes_tool_inventory", "0060_rls_initplan"]);
   });
 
+  it("keeps the signed demo registration above the demo funnel and outside every prefix used by another branch", () => {
+    expect(MIGRATION_PREREQUISITES["0113_demo_registration_requests"]).toEqual(["0100_demo_funnel"]);
+    const files = listMigrationFiles();
+    expect(files.filter((f) => f.startsWith("0113_"))).toEqual(["0113_demo_registration_requests.sql"]);
+    // 0105–0109 belong to the workforce migrations on this branch. 0110–0112 are reserved by the release-candidate branch (and absent here); the demo migration must not
+    // reuse any of those prefixes, because the Supabase CLI ledger keys on the prefix and would skip the second file.
+    for (const taken of ["0105", "0106", "0107", "0108", "0109"]) {
+      expect(files.some((f) => f.startsWith(`${taken}_`)), `${taken} is already used`).toBe(true);
+    }
+    for (const reserved of ["0110", "0111", "0112"]) {
+      expect(files.some((f) => f.startsWith(`${reserved}_`)), `${reserved} is reserved on the RC branch`).toBe(false);
+    }
+  });
+
   it("notices a shared number (the check itself works)", () => {
     expect(duplicates(["0082_client_employee_provisioning.sql", "0082_unified_inbox.sql", "0083_other.sql"])).toEqual(["0082: 0082_client_employee_provisioning.sql, 0082_unified_inbox.sql"]);
   });

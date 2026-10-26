@@ -9,7 +9,7 @@ authentication system, no client workspace and no demo clock at registration.
 - Verification link: `https://iacquire.online/demo/verify?token=…` (page). The button on that page POSTs to `/api/public/demo/verify`; only that POST consumes the link.
 - Demo room: `https://iacquire.online/demo/room`
 - Super Admin: `/admin/prospects` and `/admin/prospects/<id>`
-- Migration: `0105_demo_registration_requests.sql` (+ rollback)
+- Migration: `0113_demo_registration_requests.sql` (+ rollback)
 
 ## What was already there, and what this adds
 
@@ -18,7 +18,7 @@ authentication system, no client workspace and no demo clock at registration.
 | Demo prospect registration | Existing browser form at `/demo` → `registerProspect` | A signed server-to-server route that calls the same service |
 | Email verification | Existing one-use, hash-only link (48 h default), capture outbox, `/dev/mailbox` | Branded link now also produced for marketing registrations; same template |
 | Demo sessions | Existing `iaq_demo` cookie, hash-only, 7 days | Unchanged |
-| Access expiry | Existing 24-hour window from the explicit confirm | A database guard (`0105`) makes `verified_at` immutable and refuses shortening except a deliberate early end |
+| Access expiry | Existing 24-hour window from the explicit confirm | A database guard (`0113`) makes `verified_at` immutable and refuses shortening except a deliberate early end |
 | Message quota | Existing 10-message allowance, atomic reservation, idempotency key | Unchanged; tested through the signed path |
 | Four-step demo room | Existing guided tour, chat and CTAs | Unchanged |
 | Demo & Prospects Super Admin | Existing `/admin/prospects` list and detail, extension controls | Unchanged; fields verified; "Create purchase invitation" link added |
@@ -124,7 +124,7 @@ Every answer is JSON, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`,
 3. **Opening the link (GET) changes nothing.** It reads whether the link is good and shows one button. A mail scanner that follows links cannot consume it.
 4. Pressing the button POSTs the token in the body to `/api/public/demo/verify` (same-site form). That transaction locks the link, uses it once, writes `verified_at = now` and
    `window_ends_at = verified_at + 24 hours` from the copied settings, and starts the prospect's own `iaq_demo` session cookie.
-5. The clock is never reset by refresh, login, a repeat verification, a resend, a new device, an extension or a conversion. Migration `0105` adds a database trigger that refuses
+5. The clock is never reset by refresh, login, a repeat verification, a resend, a new device, an extension or a conversion. Migration `0113` adds a database trigger that refuses
    any change to `verified_at`, any null window, and any shortening of `window_ends_at` while the demo is still active. A Super Admin's early end keeps the prospect's
    expired/consultation/purchase status and is allowed.
 6. Link expiry (`DEMO_VERIFICATION_TTL_HOURS`, 48 by default) and demo expiry (24 h from first entry) are independent. A link that expires before use leaves the prospect
@@ -191,6 +191,60 @@ above, with a production secret generated in the host and the Resend sender veri
 
 Only `IACQUIREOS_BACKEND_SIGNING_SECRET` needs filling in beyond the two origins; `DEMO_REGISTRATION_MODE`, the two rate-limit values and the timeout stay as they are.
 
+### Vercel projects — complete checklist
+
+Two Vercel projects, two environments. The shared secret is the **same value in both projects**, but it is set only in the server scope: never `NEXT_PUBLIC_*`, never
+"Automatically expose System Environment Variables". Existing database, Supabase, scheduler and provider variables are unchanged and are not repeated here.
+
+| Variable | Landing project | Backend project | Production | Staging | Local |
+| --- | --- | --- | --- | --- | --- |
+| `NEXT_PUBLIC_SITE_URL` | set (public) | — | `https://www.iacquire.online` | `https://staging.iacquire.online` (or the Vercel preview URL) | `http://localhost:3000` |
+| `NEXT_PUBLIC_APP_ORIGIN` | set (public) | — | `https://iacquire.online` | `https://staging.iacquire.online` | `http://localhost:3100` |
+| `IACQUIREOS_DEMO_REGISTER_URL` | set (server use) | — | `https://iacquire.online/api/public/demo/register` | `https://staging.iacquire.online/api/public/demo/register` | `http://localhost:3100/api/public/demo/register` |
+| `IACQUIREOS_BACKEND_SIGNING_SECRET` | **set, Sensitive** | — | `<32+ random chars>` | a different staging secret | a local-only secret |
+| `DEMO_REGISTRATION_MODE` | set | — | `backend` | `backend` | `backend` |
+| `DEMO_RATE_LIMIT_MAX` | set | — | `5` | `5` | `5` |
+| `DEMO_RATE_LIMIT_WINDOW_MS` | set | — | `60000` | `60000` | `60000` |
+| `DEMO_REGISTRATION_TIMEOUT_MS` | set | — | `8000` | `8000` | `8000` |
+| `APP_URL` | — | set | `https://iacquire.online` | `https://staging.iacquire.online` | `http://localhost:3100` |
+| `DEMO_ENABLED` | — | set | `true` only after approval | `true` | `true` |
+| `DEMO_PUBLIC_DISABLED` | — | set | `false` | `false` | `false` |
+| `DEMO_REGISTRATION_ENABLED` | — | set | `true` only after approval | `true` | `true` |
+| `DEMO_REGISTRATION_SIGNING_SECRET` | — | **set, Sensitive** | same value as the landing project | same staging value | same local value |
+| `DEMO_REGISTRATION_ALLOWED_ORIGINS` | — | set | `https://www.iacquire.online` | the staging marketing origin | empty (server-to-server) |
+| `DEMO_REGISTRATION_MAX_SKEW_SECONDS` | — | set | `300` | `300` | `300` |
+| `DEMO_VERIFICATION_TTL_HOURS` | — | set | `48` | `48` | `48` |
+| `EMAIL_PROVIDER` | — | set | `resend` after domain verification | `capture` until the staging domain is verified | `capture` |
+| `EMAIL_FROM` | — | set | `iAcquire <no-reply@iacquire.online>` | the verified staging sender | `iAcquire <no-reply@example.test>` |
+| `RESEND_API_KEY` | — | **set, Sensitive** | production key | staging key | empty |
+
+Vercel notes: set each variable for the Production, Preview and Development scopes deliberately (a Preview deployment must not point at the production backend). Mark the two
+secrets as **Sensitive**; a Vercel "Sensitive" value cannot be read back after saving, so store the generated value in the password manager first. Redeploy after changing any
+value; Vercel does not hot-reload environment variables. `NEXT_PUBLIC_*` values are visible in the browser bundle — never put a secret there.
+
+### Resend sender-domain requirements
+
+The email service is the existing `src/server/email.ts` (Resend over HTTPS, `EMAIL_PROVIDER=resend`). Before a single real prospect email may be sent:
+
+1. **Use a dedicated sending subdomain**, for example `mail.iacquire.online` or `send.iacquire.online`, not the root domain. Keeps the root's reputation separate and makes the
+   records auditable. `EMAIL_FROM` must use that exact subdomain.
+2. **Add the records Resend shows for that domain**, typically:
+   - `MX  send.<domain>  10  feedback-smtp.<region>.amazonses.com` (bounce/complaint return path),
+   - `TXT send.<domain>  v=spf1 include:amazonses.com ~all` (SPF),
+   - `TXT resend._domainkey.<domain>  p=<the DKIM public key from the dashboard>` (DKIM),
+   - `TXT _dmarc.<domain>  v=DMARC1; p=none; rua=mailto:dmarc@iacquire.online` (start at `p=none`, then tighten).
+   Use the **exact** host, priority and values in the Resend dashboard for the chosen region; do not copy a generic value from a blog.
+3. **Verify the domain in Resend** until it reads `verified`, and confirm the DKIM selector resolves (`dig TXT resend._domainkey.<domain>`).
+4. **API key:** a sending-only key, stored as `RESEND_API_KEY` in the backend Vercel project (Sensitive), never in the landing project. A restricted key limits the blast radius
+   if the backend is compromised.
+5. **From/reply-to:** `EMAIL_FROM` must match the verified domain exactly (`iAcquire <no-reply@mail.iacquire.online>`). Do not use `onboarding@resend.dev`, a personal address, or
+   an unverified root-domain sender in production.
+6. **Test before launch:** send to a controlled mailbox, inspect `Authentication-Results` for `spf=pass`, `dkim=pass`, `dmarc=pass`, and check the link host is
+   `https://iacquire.online` (not a Vercel preview host). Then run the staging E2E below.
+7. **Webhook (optional):** `/api/webhooks/resend` is only needed for delivery/bounce events; then set `RESEND_WEBHOOK_SECRET` (`whsec_…`). Sending does not require it.
+8. **Until all of the above is verified**, keep `EMAIL_PROVIDER=capture` in staging and production. A captured email is stored in `email_outbox`; the E2E can read it, and no
+   prospect receives anything.
+
 ### iAcquireOS
 
 ```dotenv
@@ -216,23 +270,143 @@ EMAIL_FROM=iAcquire <no-reply@iacquire.online>
 RESEND_API_KEY=<server-only Resend key>
 ```
 
-Sender-domain requirement: the `EMAIL_FROM` domain (`iacquire.online`) must be verified in Resend with SPF and DKIM, and DMARC should be published. Until that is verified, keep
-`EMAIL_PROVIDER=capture` and do not promise deliverability.
+Sender-domain requirement: see **Resend sender-domain requirements** above. Until the domain is verified, keep `EMAIL_PROVIDER=capture` and do not promise deliverability.
 
 The Super Admin's own demo settings must also be on, with `windowHours = 24`, `messageLimit = 10` and a `consultationUrl`: `/admin/prospects/settings`.
+
+## Migration reconciliation (2026-10-26)
+
+The demo migration was first written as `0105_demo_registration_requests`. That number is not safe: the AI Workforce work on the integration candidates uses `0105`–`0109`,
+and the release-candidate branch also carries `0110`–`0112`. More importantly, numbers alone are not the contract. The runner records only the **four-digit prefix** in the
+Supabase CLI ledger (`supabase_migrations.schema_migrations`) and treats a local file as applied when its prefix is present, so two files sharing a prefix let the second be
+skipped silently. `tests/migration-prefixes.test.ts` fails on a duplicate prefix for exactly that reason. The demo migration is therefore **`0113`**, a prefix unused on every
+local branch and tag at the time of the audit.
+
+| Evidence (local git only; no hosted database was queried) | Result |
+| --- | --- |
+| `feat/external-demo-registration` before reconciliation | 99 migration files, last `0105_demo_registration_requests` |
+| `codex/iacquire-release-reconcile` (candidate base) | 104 migration files, last `0109_employee_health_probe` |
+| `integrate/phases-3-7-workforce` / tag `rc-2026-10-26` | 107 migration files, last `0112_client_content_policy` |
+| `0100`–`0109` on the candidate vs the RC branch | byte-identical (same git blob SHA for every file) |
+| `0110`–`0112` | only on the RC branch; **not** part of this candidate |
+| `0113` | unused on every ref before this change |
+| Production ledger, as recorded in `docs/ai-employee-execution-foundation.md` on the candidate | 98 entries through `0104_customer_reply_usage`; `0084` and `0105`–`0109` pending; `0110`–`0113` absent |
+| Checksums stored by the ledger | **none**: the runner stores versions only, so file identity is a git-blob audit, not a database checksum |
+
+Content hashes (SHA-256) of the files that matter here, read from the refs with `git show`:
+
+| File | SHA-256 |
+| --- | --- |
+| `0100_demo_funnel.sql` | `9c45a4225c3de485a66d7113fcb129d3a9e128917126559ae883abe82e3a8b4a` |
+| `0105_workforce_local_recurrence.sql` | `f20dd5b96107ada7d100fa66469d1e5de7b33249b99e035b5358bcfd8d3a04bb` |
+| `0109_employee_health_probe.sql` | `d2099c82007007d00ffc468159d40657197824edf4a578b3e57f2265e9be9ee0` |
+| `0113_demo_registration_requests.sql` | `2807e1c38066f79cdd7c9e4b904a3f6d8b96f361279aa83d9b7f9f87609e1edb` |
+| old `0105_demo_registration_requests.sql` (on `feat/…`) | `2807e1c38066f79cdd7c9e4b904a3f6d8b96f361279aa83d9b7f9f87609e1edb` (identical: renumber only) |
+| `0110`–`0112` (RC branch only) | `53087c55…`, `acec921e…`, `61d6958b…` |
+
+Consequences: `0100_demo_funnel` is already in the recorded production ledger; `0113` is the only new file this candidate adds on that line. If the RC branch's `0110`–`0112`
+are later brought in, they must be reviewed and applied as their own step; they do not collide with `0113`. Do not apply `0105`–`0109` from this candidate unless the workforce
+release is approved, and never apply a second file with an already-used prefix.
 
 ## Required migrations
 
 | Migration | Needed for | Applied to a hosted database? |
 | --- | --- | --- |
-| `0100_demo_funnel.sql` | The demo itself (existing) | **No** (as recorded in the repository) |
-| `0105_demo_registration_requests.sql` | The replay ledger and the first-access guard | **No** |
+| `0100_demo_funnel.sql` | The demo itself (existing) | **Yes, per the recorded ledger** (through `0104`); not re-queried here |
+| `0113_demo_registration_requests.sql` | The replay ledger and the first-access guard | **No** |
 
-`0105` is additive: one server-only table (`request_id_hash`, `body_sha256`, `received_at`, `completed_at`; RLS on, no grant, no policy), one index, one trigger function
-(`app.demo_first_access_guard`) and its trigger. Rollback: `supabase/rollbacks/0105_demo_registration_requests.down.sql`. It refuses while the ledger holds rows; switch
+`0113` is additive: one server-only table (`request_id_hash`, `body_sha256`, `received_at`, `completed_at`; RLS on, no grant, no policy), one index, one trigger function
+(`app.demo_first_access_guard`) and its trigger. Rollback: `supabase/rollbacks/0113_demo_registration_requests.down.sql`. It refuses while the ledger holds rows; switch
 `DEMO_REGISTRATION_ENABLED` off and let the 24-hour sweep clear them first.
 
 Run `node scripts/rehearse-combined-migrations.mjs` on a scratch database before applying anything. Do not apply a hosted migration without approval.
+
+## Staging deployment and E2E
+
+Nothing in this section has been performed against a hosted database or a real provider; it is the approved sequence for when staging access is granted.
+
+### 1. Read the ledger before changing anything (read-only)
+
+```sql
+-- The application ledger (full versions)
+select version, applied_at from public.schema_migrations order by version;
+
+-- The Supabase CLI ledger, if the project has one (prefix-only versions)
+select version, name from supabase_migrations.schema_migrations order by version;
+```
+
+Expected baseline, from the candidate's own recorded production preflight: 98 application rows through `0104_customer_reply_usage`; `0084`, `0105`–`0109` pending; `0110`–`0112`
+absent; `0113` absent. If the CLI ledger already contains `0113`, **stop**: a prefix with no recorded file means a manual migration used that number.
+
+### 2. Deploy the candidate with the demo still closed
+
+Deploy the reconciliation commit to a Vercel **Preview/Staging** project with `DEMO_REGISTRATION_ENABLED=false` and `DEMO_ENABLED=false`. The new route then answers `503`, and
+nothing can send email while the schema is being applied.
+
+### 3. Apply the migrations one at a time
+
+The candidate carries the workforce migrations too. In order, on staging only, with a verified backup and approval:
+
+```bash
+npm run db:migrate -- --dry-run
+npm run db:migrate -- --only 0084_restricted_hermes_provisioner
+npm run db:migrate -- --only 0105_workforce_local_recurrence
+npm run db:migrate -- --only 0106_workforce_chat_schedule_previews
+npm run db:migrate -- --only 0107_workforce_chat_booking_previews
+npm run db:migrate -- --only 0108_workforce_appointment_changes
+npm run db:migrate -- --only 0109_employee_health_probe
+npm run db:migrate -- --only 0113_demo_registration_requests
+```
+
+After each step, check `select version from public.schema_migrations order by version` and the CLI ledger prefix, then run the read-only preflight
+(`node --env-file=.env --conditions=react-server --import tsx scripts/production-activation-preflight.ts --live`) and confirm no `prefixCollisions`. Do **not** apply `0110`–`0112`
+from this candidate; they exist only on the release-candidate branch and need their own review.
+
+`0084` is included in this candidate even though production does not have it. Its rollback refuses while active Hermes provisioning jobs exist; the combined rehearsal on the
+candidate (and on its base commit, without `0113`) reports the same 0084-related D/E/F failures. That is a pre-existing release-gate issue with the candidate's 0084/ledger
+expectations, not a defect in `0113`; it must be resolved before any production apply.
+
+### 4. Turn on the demo, still without live email
+
+1. `/admin/prospects/settings`: demo on, AI chat on only if a model is connected, `windowHours=24`, `messageLimit=10`, an approved `consultationUrl`.
+2. Set `EMAIL_PROVIDER=capture`, `DEMO_ENABLED=true`, `DEMO_REGISTRATION_ENABLED=true`, the staging secret and the staging marketing origin, then redeploy.
+3. Run the E2E below.
+
+### 5. The safe staging E2E
+
+`scripts/staging-demo-e2e.mjs` (also `npm run demo:e2e:staging`) drives the real staging app and covers registration → captured email → GET twice → explicit first entry →
+exactly-24-hour timestamps → ten messages → server-side expiry → cleanup.
+
+```bash
+E2E_CONFIRM=staging \
+E2E_ALLOWED_HOSTS=staging.iacquire.online \
+E2E_BASE_URL=https://staging.iacquire.online \
+IACQUIREOS_E2E_SIGNING_SECRET=<the staging shared secret> \
+E2E_EMAIL_DELIVERY=capture \
+E2E_EMAIL_SOURCE=db \
+E2E_DATABASE_URL=<staging read/write URL, used only for the synthetic prospect> \
+E2E_AI_MESSAGES=allow \
+node scripts/staging-demo-e2e.mjs --allow-db-write --cleanup --report .data/e2e/staging-demo.json
+```
+
+What it asserts:
+
+| Step | Assertion |
+| --- | --- |
+| 1 | the landing page's own route (`--via-landing https://…/api/demo-register`) or the backend accepts the signed registration; `202 {"ok":true}` |
+| 2 | a `demo_link` email exists for the synthetic `@example.test` address and carries a 43-character token |
+| 3 | two GETs of `/demo/verify?token=…` both show the button; the database still says `unverified`, `verified_at` and `window_ends_at` null |
+| 4 | the explicit POST returns a session cookie; the room is open with `messagesLeft=10`; `window_ends_at - verified_at = 86,400,000 ms` |
+| 5 | ten messages are accepted, the eleventh is `limit_reached`, and `messages_used=10` (needs `E2E_AI_MESSAGES=allow`; this calls the real staging model and costs money) |
+| 6 | after a scoped update of that one synthetic prospect to an ended window, `/history` reads `ended` and a message is refused `window_ended` |
+| 7 | `--cleanup` removes only that address's `demo_prospects` row (cascades) and its `demo_link` outbox rows |
+
+Safety rails, enforced before the first request: production hosts are refused outright; the host must be in `E2E_ALLOWED_HOSTS`; `E2E_CONFIRM=staging`; the secret must be 32+
+characters; live email needs `E2E_EMAIL_DELIVERY=live` **and** `E2E_ALLOW_LIVE_EMAIL=true`; every database write needs `--allow-db-write`; tokens, cookies, the secret and full
+links are never printed; the address is always `@example.test`; a dry run (`--dry-run`) prints the plan without contacting anything.
+
+`--allow-db-write` moves the clock only for that synthetic prospect, using the documented early-end state (`status='expired'`, `window_ends_at` in the past) — not a backdoor in
+the application. It cannot be used without the staging database URL, and it never touches another row.
 
 ## Landing-page patch
 
@@ -320,8 +494,9 @@ available on the edge runtime. Never expose the secret through a `NEXT_PUBLIC_*`
 Run from the repository root:
 
 ```
-npx vitest run tests/demo-                          # 19 files, 484 tests
+npx vitest run tests/demo-                          # 19 files, 486 tests
 npx vitest run tests/demo-external-registration.test.ts tests/demo-registration-migration.test.ts
+npx vitest run tests/migration-prefixes.test.ts
 npx tsc --noEmit
 ```
 
@@ -340,12 +515,25 @@ works; rollback refuses with rows and otherwise drops exactly the ledger, trigge
 
 The full demo suite (`tests/demo-*`, 486 tests) still passes, including the existing browser-form registration, chat, generator, retention, jobs, admin, isolation and page tests.
 
-Migration rehearsal: `node scripts/rehearse-combined-migrations.mjs` passed sections A–F on the 99-file chain (0001..0105, 22954 final schema facts, 28 rollbacks from 0077,
-0105 applied and rolled back with the 8,036 earlier rows unchanged). After the first-access trigger was adjusted to keep a Super Admin's early end working for consultation and
-purchase statuses, sections B, C and D were re-run against the final `0105` file: **all passed in 203 s** (fresh-chain equality at every step, rollback to the exact prior schema,
-forward again).
+Migration rehearsal on the reconciliation branch (`reconcile/external-demo-registration`, 105 files, 0001..0113, gaps 0053, 0073–0076, 0110–0112): the chain has **no duplicate
+number** (105 files, every number used once). What each section showed:
+
+- **A** failed one stale expectation: it expects 80 files at `0086`, and this candidate's `0084` makes 81.
+- **B and C passed**: the fresh chain applies all 105 files in order; after each of the 34 steps from 0077 the schema equals the fresh chain (674,188 facts compared).
+- **D** failed on the candidate's pre-existing `0084` rollback guard (“finish or cancel active Hermes provisioning jobs”), which then cascades into 19 later comparisons. The
+  **identical 20 failures** occur on the base commit `0534ccb9` without `0113`.
+- **E** failed on its “0084 is reserved/absent” scenarios because `0084` is a normal file in this candidate; the **identical 5 failures** occur on the base.
+- **F** failed its “ledger at `0086` has 80 rows” expectation (81 here); the **identical 2 failures** occur on the base.
+- **`0113` itself is clean**: applied in 5 ms, one new table with RLS and no grants, the schema equals the fresh chain, rolled back in 799 ms to exactly the schema recorded before
+  it, and all 8,036 earlier rows unchanged. The ledger then reads 105 rows ending `0113_demo_registration_requests`.
+
+Those D/E/F failures are a release-gate problem with the candidate's `0084`/ledger expectations, not a defect introduced by the demo migration; they must be resolved before
+any production apply. The renumbering itself is content-preserving: the SHA-256 of `0113_demo_registration_requests.sql` is identical to the old `0105_demo_registration_requests.sql`.
 
 ### Browser QA (isolated app, capturing email, made-up model)
+
+These runs were made on `feat/external-demo-registration` at `c1f300d2`. They were **not re-run on the reconciliation commit** (`reconcile/external-demo-registration`), whose only
+difference in the demo area is the migration number and the 253-commit integration base; re-running desktop and mobile QA is an explicit outstanding gate below.
 
 - Desktop: `node scripts/wave2-demo-qa.mjs` at 1280 px drove settings → request → captured email → link twice (a scanner opens it) → button → room → ten messages and the refusal → return → CTAs → Super Admin → extension → early end → reopen → consultation held → not a fit. It recorded **34 of 36 checks passing**, 0 page errors, 0 server errors and 0 external requests, with 12 screenshots in `.data/wave2-qa/`.
   - The two checks that did not pass are harness false negatives, not funnel failures: the transcript check lost its panel to a Next.js Fast Refresh full reload, while `readTranscriptAction` returned 200 and the next check (a "read the conversation" timeline line) passed; the "not a fit" check inspected only the first 300 characters of the page (navigation), while `declineProspectAction` returned 200 and the status was written. Both checks should be tightened before they are quoted as a gate.
@@ -355,14 +543,18 @@ forward again).
 ### Not tested here
 
 - A real Resend send, SPF/DKIM/DMARC, and a real prospect address. The capturing outbox is what the tests read.
-- Applying `0105` (or `0100`) to the hosted database. Only the embedded Postgres used by the suite ran it.
+- Applying `0113` to the hosted database. Only the embedded Postgres used by the suite ran it; `0100` is recorded as already applied through `0104`, not re-queried here.
+- The staging E2E (`scripts/staging-demo-e2e.mjs`): written and dry-run checked, never run against staging (no staging access or approval).
+- Browser QA on the reconciliation commit (the earlier desktop/mobile evidence is from `c1f300d2`).
 - A browser talking to the *signed marketing endpoint* through the real landing page: the landing page does not exist in this workspace. The browser runs above drive
   `/demo`, the emailed link and the room, which are the screens the signed registration sends a prospect to; they are unchanged by this work.
 - Production rate-limit behavior under real multi-connection load; the suite runs one embedded connection.
 
 ## Not production-ready until
 
-1. `0100` and `0105` are reviewed and applied to the hosted database (with approval and a rehearsal).
-2. Resend's sender domain for `iacquire.online` is verified and a test message reaches a controlled inbox.
-3. Both hosts hold the same generated secret, `DEMO_REGISTRATION_ENABLED=true`, and `APP_URL=https://iacquire.online`.
-4. The landing page's server route is deployed and a staging end-to-end run (landing form → signed call → captured email → confirm → room) is recorded.
+1. The candidate's pre-existing `0084`/rehearsal failures (sections A, D, E, F) are resolved or explicitly waived; this is independent of `0113` but blocks the release gate.
+2. `0113` is reviewed and applied to staging, then production, after the approved sequence (with a verified backup and `--dry-run`). `0100` is already in the recorded ledger.
+3. Resend's sending subdomain is verified (SPF, DKIM, DMARC) and a test message reaches a controlled inbox.
+4. Both Vercel projects hold the same generated secret, `DEMO_REGISTRATION_ENABLED=true`, and `APP_URL=https://iacquire.online`.
+5. The landing page's server route is deployed and the staging E2E (`scripts/staging-demo-e2e.mjs`) passes at least once, including the ten-message and expiry steps.
+6. Desktop and mobile browser QA is re-run on the reconciliation commit.

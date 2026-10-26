@@ -280,7 +280,7 @@ describe("the rollback", () => {
     withSystem(async (db) => {
       await before(db);
       for (const stmt of statements(down)) await db.query(stmt);
-      // 0100's own tables are gone; 0105's replay ledger belongs to a later migration and is not 0100's to remove.
+      // 0100's own tables are gone; 0113's replay ledger belongs to a later migration and is not 0100's to remove.
       const gone = await db.query<{ n: number }>("select count(*)::int as n from pg_class where relname like 'demo\\_%' and relkind = 'r' and relname <> 'demo_registration_requests'");
       const permissions = await db.query<{ n: number }>("select count(*)::int as n from role_permissions where permission like 'agency.prospects.%'");
       const kinds = await db.query<{ def: string }>("select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'notifications_kind_check'");

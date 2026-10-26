@@ -2,7 +2,7 @@
 
 Status: **data, rules and services built and tested locally (stage D1)**. The public pages (`/demo`, `/demo/verify`, `/demo/room`), the public API, the AI chat generator with its checks and metering, and the agency screens (`/admin/prospects`) are the next stages and do not exist yet. Nothing here has run against a real email provider, a real language model, a hosted database or a real visitor, and the demo is **off**: the deployment switch `DEMO_ENABLED` and the Super Admin's own switch in the demo settings both default to off. Every number below is a **proposal** for the founder to confirm.
 
-> The public pages, API, chat and Super Admin screens exist in this checkout; the paragraph above is kept as the original stage note. The signed registration door from the separate marketing website is documented in [demo-external-registration.md](demo-external-registration.md) (route, HMAC contract, environment, migration `0105`).
+> The public pages, API, chat and Super Admin screens exist in this checkout; the paragraph above is kept as the original stage note. The signed registration door from the separate marketing website is documented in [demo-external-registration.md](demo-external-registration.md) (route, HMAC contract, environment, migration `0113`).
 
 ## What it is for
 

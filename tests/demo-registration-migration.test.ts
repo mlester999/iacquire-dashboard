@@ -1,4 +1,4 @@
-// Migration 0105: the replay ledger of the signed marketing registration, and the database rule that a demo's first access is written once. Each rollback case runs inside a
+// Migration 0113: the replay ledger of the signed marketing registration, and the database rule that a demo's first access is written once. Each rollback case runs inside a
 // transaction that is always rolled back.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -6,8 +6,8 @@ import { withSystem } from "@/server/db";
 import { rows } from "./support/demo";
 
 class Done extends Error {}
-const up = readFileSync("supabase/migrations/0105_demo_registration_requests.sql", "utf8");
-const down = readFileSync("supabase/rollbacks/0105_demo_registration_requests.down.sql", "utf8");
+const up = readFileSync("supabase/migrations/0113_demo_registration_requests.sql", "utf8");
+const down = readFileSync("supabase/rollbacks/0113_demo_registration_requests.down.sql", "utf8");
 
 /** Splits a script into statements, keeping `$$ ... $$` bodies whole (the test driver runs one statement per call). */
 function statements(sql: string): string[] {
