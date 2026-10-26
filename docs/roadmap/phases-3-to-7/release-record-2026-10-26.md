@@ -83,3 +83,19 @@ The founder chose to **squash**: the release was pushed as **one commit on top o
 * The commit SHAs quoted in these documents (`0747ac3d`, `fa27b5bd`, `2a987079`, `ee70fe92`, and the rest) refer to the **local** history and do not exist on the remote.
 * `git blame` and `git bisect` on `master` see this release as one change (about 357 files, +16,900 and -800 lines against `b82b241b`).
 * The squashed tree is the tree of `ee70fe92` plus this section and the notes in `handoff.md` and `final-report.md`. Relative to the code gated at `fa27b5bd` it differs only in documents and in the line endings of `src/server/workforce/provisioning.ts` (identical content ignoring CR, rebuilt from master's own bytes so its diff against master is six lines; re-checked with `tsc` and the eight provisioning and tool-policy test files).
+
+## 9. Deployment result (written after the push, 2026-10-27)
+
+Vercel builds production from `master`. This section was added in a second, documents-only commit, which starts one more deployment of the same code.
+
+| Item | Result |
+| --- | --- |
+| `master` | `84be1241`, the squash commit, pushed 2026-10-27 07:33 (+08) as a plain fast-forward from `b82b241b` |
+| Production deployment | `dpl_41qQCBx5BCTPa5wazn3bkXvtnuBf` (`iacquire-dashboard-hwpgd8h9v`), created 07:33:28 (+08), build 3 min 56 s, **Ready**. Its build log opens with "Cloning github.com/mlester999/iacquire-dashboard (Branch: master, Commit: 84be124)" and reports "Compiled successfully in 92s" |
+| The deployment it replaced (the way back for the code) | `iacquire-dashboard-h2110tnsc`, built from `master` at `b82b241`, Ready. Revert to it with `vercel rollback iacquire-dashboard-h2110tnsc-mlester999s-projects.vercel.app` (or from the Vercel dashboard) if the new code misbehaves; the schema stays and is compatible with both |
+| `GET /api/health` | HTTP 200, `{"status":"ok","database":"ok","scheduler":"never_ran"}`, before the push, while the new build was running and after it was Ready |
+| Smoke checks (public, no session) | `/login` 200; `/` and `/purchase` 307 to sign-in; **`/dev/billing-preview` 404** (the development-only routes are blocked in production); an unknown route 404; the security headers are present (a nonce-based content security policy, HSTS, `X-Frame-Options: DENY`, `nosniff`, a referrer policy) |
+| Runtime log sample | 20 seconds from the new deployment: 24 lines, none an error |
+| Scheduler | `vercel.json` has no cron; the tick needs both `CRON_SECRET` and `SCHEDULER_ENABLED=true`, and this release set neither: health still says `never_ran` |
+
+**Not verified on production:** no signed-in session, purchase, payment, credit note or employee screen was exercised there (no production credentials were used and none of it is switched on); those paths were driven only in the isolated QA app against stand-ins. The next real check of the new code is the first internal test workspace, module by module, with the scheduler off.
