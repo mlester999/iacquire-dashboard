@@ -77,6 +77,57 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertTrue(mounts["/run/secrets/hermes_api_key"]["read_only"])
         self.assertNotIn("/docker/hermes-agent-wpwm/data", str(hermes["volumes"]))
 
+    def test_client_home_allows_bootstrap_path_search_without_extra_capabilities(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertRegex(
+            dockerfile,
+            r"(?m)^RUN install -d -o 10000 -g 10000 -m 0711 /opt/data && \\\n\s+test \"\$\(stat -c '%u:%g:%a' /opt/data\)\" = \"10000:10000:711\"$",
+        )
+        hermes = self.services["hermes-client"]
+        self.assertEqual(hermes["cap_drop"], ["ALL"])
+        self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
+        self.assertTrue(
+            next(
+                mount["read_only"]
+                for mount in hermes["volumes"]
+                if isinstance(mount, dict) and mount.get("target") == "/opt/data/config.yaml"
+            )
+        )
+
+    def test_startup_failure_probe_is_readonly_and_limits_output_to_home_metadata(self):
+        workflow = (
+            ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("--network none --user 10000:10000 --cap-drop=ALL", workflow)
+        self.assertIn('CLIENT_CONFIG_SOURCE=present:', workflow)
+        self.assertIn('CLIENT_HOME_OWNER_MODE="', workflow)
+        self.assertIn('CLIENT_CONFIG_VISIBLE=yes', workflow)
+        self.assertIn('CLIENT_CONFIG_READABLE=yes', workflow)
+        self.assertIn('^CLIENT_HOME_OWNER_MODE=([0-9:]+|unknown)$', workflow)
+        self.assertIn('^CLIENT_CONFIG_(VISIBLE|READABLE)=(yes|no)$', workflow)
+        self.assertIn(
+            'probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"',
+            workflow,
+        )
+        self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
+
+    def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
+        hermes = self.services["hermes-client"]
+        self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
+        workflow = (
+            ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'sudo chown 0:10000 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"',
+            workflow,
+        )
+        self.assertIn(
+            'sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"',
+            workflow,
+        )
+        self.assertIn('"0:10000:440"', workflow)
+        self.assertIn('"10000:10000:400"', workflow)
+
     def test_worker_home_initializer_is_volume_scoped_networkless_and_sets_profile_permissions(self):
         initializer = self.services["init-worker-home"]
         self.assertEqual(initializer["network_mode"], "none")
@@ -91,6 +142,33 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         command = " ".join(initializer["command"])
         self.assertRegex(command, r"chown 10000:10000 [^;]*/opt/data/profiles")
         self.assertRegex(command, r"chmod 0700 [^;]*/opt/data/profiles")
+        self.assertIn("touch /opt/data/config.yaml", command)
+        self.assertIn("chmod 0600 /opt/data/config.yaml", command)
+
+    def test_hermes_home_initializer_prepares_readonly_config_bind_target_safely(self):
+        initializer = self.services["init-hermes-home"]
+        self.assertEqual(initializer["network_mode"], "none")
+        self.assertEqual(initializer["user"], "10000:10000")
+        self.assertTrue(initializer["read_only"])
+        self.assertEqual(initializer["cap_drop"], ["ALL"])
+        self.assertIn("no-new-privileges:true", initializer["security_opt"])
+        self.assertEqual(
+            {
+                mount.get("source") if isinstance(mount, dict) else mount.split(":", 1)[0]
+                for mount in initializer["volumes"]
+            },
+            {"hermes_home"},
+        )
+        command = " ".join(initializer["command"])
+        self.assertIn("chmod 0711 /opt/data", command)
+        self.assertIn("if [ -L /opt/data/config.yaml ]; then exit 1; fi", command)
+        self.assertIn("if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi", command)
+        self.assertIn("touch /opt/data/config.yaml", command)
+        self.assertIn("chmod 0600 /opt/data/config.yaml", command)
+        self.assertEqual(
+            self.services["hermes-client"]["depends_on"]["init-hermes-home"]["condition"],
+            "service_completed_successfully",
+        )
 
     def test_model_provider_secret_is_mounted_only_into_the_worker(self):
         def targets(service):

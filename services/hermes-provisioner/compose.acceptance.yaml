@@ -1,7 +1,12 @@
 services:
+  init-hermes-home:
+    pull_policy: never
+
   hermes-client:
     pull_policy: never
     depends_on:
+      init-hermes-home:
+        condition: service_completed_successfully
       init-worker-home:
         condition: service_completed_successfully
 

@@ -119,9 +119,10 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
             --env PYTHONDONTWRITEBYTECODE=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/repository/services/hermes-provisioner,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/.github/workflows,target=/repository/.github/workflows,readonly" \
             --workdir /repository/services/hermes-provisioner --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
-            test_worker test_deployment test_acceptance_harness test_portal_security_boundary >"$test_log" 2>&1; then
+            test_worker test_deployment test_acceptance_harness test_portal_security_boundary test_runtime_diagnostics >"$test_log" 2>&1; then
             summary="$(grep -E '^Ran [0-9]+ tests? ' "$test_log" | tail -n1 | sed -E 's/ in .*//')"
             [[ -n "$summary" ]]
             echo "CANDIDATE_COMPATIBILITY_PASS: $summary"
@@ -233,19 +234,25 @@ jobs:
             container_persistent: false
           YAML
 
-          sudo chown "10000:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          sudo chmod 0400 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          for private_file in "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"; do
-            [[ "$(stat -c '%u:%g:%a' "$private_file")" == "10000:10000:400" ]]
+          # The Hermes client starts as UID 0 with DAC_OVERRIDE dropped; UID 10000 workers
+          # also read the API key and client config. Give only those files root ownership
+          # and group 10000 read access, then keep worker-only files owner-readable.
+          sudo chown 0:10000 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"
+          sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"
+          for client_file in "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"; do
+            [[ "$(stat -c '%u:%g:%a' "$client_file")" == "0:10000:440" ]]
+          done
+
+          sudo chown 10000:10000 "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"
+          sudo chmod 0400 "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"
+          for worker_file in "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"; do
+            [[ "$(stat -c '%u:%g:%a' "$worker_file")" == "10000:10000:400" ]]
           done
 
           cat > "$temp_dir/compose.env" <<EOF
@@ -297,6 +304,25 @@ jobs:
           if ! "${compose_base[@]}" up --no-build -d; then
             echo "CLIENT_RUNTIME_START_FAILURE: Compose could not start the candidate gateway."
             "${compose_base[@]}" ps --all || true
+            if [[ -f "$HERMES_ACCEPTANCE_DIR/client-config.yaml" ]]; then
+              echo "CLIENT_CONFIG_SOURCE=present:$(stat -c '%u:%g:%a' "$HERMES_ACCEPTANCE_DIR/client-config.yaml")"
+            else
+              echo "CLIENT_CONFIG_SOURCE=missing"
+            fi
+            home_volume="${HERMES_ACCEPTANCE_PROJECT}_hermes_home"
+            probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"
+            home_probe="$(docker run --rm --network none --user 10000:10000 --cap-drop=ALL \
+              --security-opt no-new-privileges:true --read-only \
+              --mount "type=volume,source=$home_volume,target=/opt/data,readonly" \
+              --mount "type=bind,source=$HERMES_ACCEPTANCE_DIR/client-config.yaml,target=/opt/data/config.yaml,readonly" \
+              --entrypoint /bin/sh "$probe_image" -c '
+                printf "CLIENT_HOME_OWNER_MODE="
+                stat -c "%u:%g:%a" /opt/data 2>/dev/null || printf "unknown\n"
+                if [ -f /opt/data/config.yaml ]; then echo "CLIENT_CONFIG_VISIBLE=yes"; else echo "CLIENT_CONFIG_VISIBLE=no"; fi
+                if [ -r /opt/data/config.yaml ]; then echo "CLIENT_CONFIG_READABLE=yes"; else echo "CLIENT_CONFIG_READABLE=no"; fi
+              ' 2>/dev/null || true)"
+            printf '%s\n' "$home_probe" | grep -E '^CLIENT_HOME_OWNER_MODE=([0-9:]+|unknown)$|^CLIENT_CONFIG_(VISIBLE|READABLE)=(yes|no)$' || \
+              echo "CLIENT_HOME_PROBE=unavailable"
             client_id="$("${compose_base[@]}" ps --all -q hermes-client | head -n 1)"
             if [[ -n "$client_id" ]]; then
               docker inspect -f 'CLIENT_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTS={{.RestartCount}} HEALTH={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} HEALTH_FAILURES={{if .State.Health}}{{.State.Health.FailingStreak}}{{else}}0{{end}}' "$client_id"
@@ -304,7 +330,10 @@ jobs:
                 | grep -Eo 'ConnectionRefusedError|TimeoutError|PermissionError|FileNotFoundError|ModuleNotFoundError|ImportError|Connection refused|Read-only file system|Permission denied|No such file or directory|Address already in use|HTTP Error [0-9]{3}' \
                 | sort -u | paste -sd, - || true)"
               echo "CLIENT_HEALTH_FAILURE_CODES=${health_codes:-unclassified}"
-              runtime_codes="$(docker logs "$client_id" 2>&1 | python3 -c 'import sys; text = sys.stdin.read().lower(); rules = (("api_key_secret_unavailable", "api_key_secret_unavailable"), ("api_key_secret_invalid", "api_key_secret_invalid"), ("permission_denied", "permission denied"), ("operation_not_permitted", "operation not permitted"), ("missing_file", "no such file or directory"), ("read_only_write", "read-only file system"), ("address_in_use", "address already in use"), ("connection_refused", "connection refused"), ("timeout", "timed out"), ("python_traceback", "traceback (most recent call last)"), ("configuration_error", "invalid config")); codes = sorted({code for code, phrase in rules if phrase in text}); print(",".join(codes[:8]) if codes else ("no_runtime_output" if not text.strip() else ("unclassified_runtime_error" if any(term in text for term in ("error", "fatal", "exception", "failed")) else "runtime_output_without_error_marker")))')"
+              runtime_codes="$(
+                docker logs "$client_id" 2>&1 |
+                  python3 services/hermes-provisioner/safe_runtime_diagnostics.py
+              )"
               echo "CLIENT_RUNTIME_FAILURE_CODES=${runtime_codes:-none}"
               exception_types="$(docker logs "$client_id" 2>&1 | python3 -c 'import re, sys; pattern = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Exit|Failure))(?=\s*(?::|$))"); types = sorted({match.group(1) for line in sys.stdin for match in pattern.finditer(line)}); print(",".join(types[:8]))')"
               echo "CLIENT_EXCEPTION_TYPES=${exception_types:-none}"
