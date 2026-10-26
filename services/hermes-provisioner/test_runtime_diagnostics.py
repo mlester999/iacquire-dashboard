@@ -28,6 +28,17 @@ class SafeRuntimeDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("client-42", ",".join(codes))
         self.assertNotIn("/opt/data/profiles", ",".join(codes))
 
+    def test_classifies_safe_run_subtree_without_echoing_full_path(self):
+        codes = classify_runtime_log(
+            "printf: cannot create '/run/s6/container_environment/KEY': "
+            "Permission denied"
+        )
+
+        self.assertIn("permission_denied_path_run", codes)
+        self.assertIn("permission_denied_path_run_s6", codes)
+        self.assertIn("permission_denied_path_run_s6_container_environment", codes)
+        self.assertNotIn("/run/s6/container_environment/KEY", ",".join(codes))
+
     def test_preserves_runtime_secret_codes_without_echoing_other_log_text(self):
         codes = classify_runtime_log(
             "Hermes client runtime stopped: api_key_secret_unavailable\n"
