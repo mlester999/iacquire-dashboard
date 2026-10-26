@@ -49,11 +49,35 @@ It is **not** iAcquire's own billing. iAcquire's charges to its clients (the set
 
 `draft` -> `pending_approval` -> `issued` -> `void`. Only a draft can be edited. Issuing assigns the number from the workspace's counter inside the issuing transaction, freezes the customer's and the business's details and fixes a content hash; from then on the amounts, dates and wording cannot change (the database refuses it too). An approval is of one exact version. The number is a label, not a claim: no jurisdiction's tax-invoice numbering rule is promised, and what the owner chose as a prefix is what is printed.
 
-Whether an invoice is paid is **never** decided where it is edited: it is decided in `src/server/invoices/apply.ts` from payment and refund rows (`unpaid`, `partially_paid`, `paid`, `disputed`), and the database refuses an invoice whose paid and refunded amounts and payment status are not what its rows add up to. Money is integers in the currency's minor unit with one rounding per line and per-currency exponents; no floating point touches an amount, and currencies are never added together or converted.
+Whether an invoice is paid is **never** decided where it is edited: it is decided in `src/server/invoices/apply.ts` from payment and refund rows (`unpaid`, `partially_paid`, `paid`, `disputed`, and `credited` once credit notes exist, see below), and the database refuses an invoice whose paid, refunded and credited amounts and payment status are not what its rows add up to. Money is integers in the currency's minor unit with one rounding per line and per-currency exponents; no floating point touches an amount, and currencies are never added together or converted.
 
 Permissions (`src/lib/permissions.ts`): view and create, owner, manager, sales rep; approve, send, record a payment received outside the product and void, owner and manager; record a refund and write off, the owner; settings and connecting the payment account, the owner. **Agency staff have none of them**: an invoice holds a customer's details and the client's finances.
 
 An invoice with a payment cannot be voided. A card number or a key typed into free text (a note, payment instructions, the evidence of a payment) is refused. A privacy request blanks the frozen customer details of an issued invoice and keeps the invoice itself, its number, amounts and payments, because keeping them is the business's own legal question.
+
+## Credit notes
+
+Status as of 2026-10-26: **built and tested locally on embedded Postgres, not applied to any hosted database** (migration `0111_customer_credit_notes.sql`, rollback beside it). **The wording of the document and the tax treatment of a credit are not approved by counsel, and no jurisdiction's credit-note or tax-adjustment rule is promised.** A founder and counsel decision is still needed before a client relies on it for tax purposes.
+
+A credit note takes money off what a customer still owes on **one** issued invoice. It is **not** a payment and **not** a refund:
+
+* it never counts as money received, as verified revenue, or as a reason to close a deal (revenue is the money that arrived: `src/lib/invoices/revenue.ts` is unchanged and a test proves a credit leaves it exactly as it was);
+* it can only reduce the **unpaid** part (amount <= the invoice's balance when it is issued), so a balance never goes negative and nothing is owed back. Handing money back stays a refund of a payment;
+* once **issued** it is immutable: it cannot be edited, cancelled, voided or deleted (the application and the database both refuse). A mistake is corrected by a new invoice. A reversal is deliberately not offered in this release.
+
+**Life:** `draft` -> `pending_approval` -> `issued`, or `cancelled` before issue (with a reason). Writing and sending for approval need `invoices.credit` (owner and manager); approving and issuing need `invoices.approve`, and **the author cannot approve their own unless they are the business owner**, so a credit always has a second pair of eyes. An approval names the exact version read; a stale version issues nothing. A reviewer can send a note back with words and the author is told.
+
+**Numbering:** from its own counter (`customer_invoice_settings.credit_number_prefix`, default `CN-`, and `next_credit_number`), taken inside the issuing transaction, never reused, one sequence per workspace. The customer's and the business's details are copied from the invoice at issue and a content hash fixes what was approved.
+
+**What it does to the invoice:** `customer_invoices.credited_minor` is the sum of the issued notes (written only together with the note: a deferred database check keeps the two equal at commit). `balance_minor` is now total less credited less paid (never below zero) and `overpaid_minor` is what was paid beyond the total less the credit; both are the same columns as before for an invoice with no credit, so overdue, reminders, receivables, the customer's page and checkout amounts read them unchanged. The payment status is `paid` only when some money arrived and nothing is left to pay once the credit is taken off, and **`credited`** when the whole invoice was credited and nothing was paid, so a credit alone never announces a payment or closes a deal. An invoice with an issued credit note cannot be voided.
+
+**When it is refused:** the invoice is not issued, is a test invoice, is written off, has a payment under dispute, owes nothing, or a customer may be paying it (a payment waiting for review or an open checkout), because what they pay would no longer be what is owed.
+
+**Visibility:** the invoice page lists the notes with their states and a document view for an issued one (`/invoices/<id>/credit-notes/<id>`, printable); the customer's page shows each issued note (number, amount) and the amount still due, never the reason or a draft; a fully credited invoice says "credited in full. Nothing is due". The history and the audit log record create, send, return, cancel and issue. The offboarding export carries the notes (`invoices/credit-notes.json`).
+
+**Rollback** (`supabase/rollbacks/0111_customer_credit_notes.down.sql`) is refused while any credit note is issued; otherwise it puts the 0093 arithmetic, checks and guard back. **Not built:** reversing an issued credit, a customer-facing send of the document (the customer's invoice link carries the credit), credit against more than one invoice, and tax-return reporting of credits.
+
+Tests: `tests/invoices-credit-notes-rules.test.ts`, `invoices-credit-notes.test.ts` (23, embedded Postgres), `invoices-credit-notes-migration.test.ts`, `invoices-credit-notes-ui.test.tsx`.
 
 ## Sending the invoice to the customer
 

@@ -5,6 +5,7 @@ import { AppError } from "@/server/errors";
 import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, newCardId, num, plural } from "@/server/aqi/ops/tools/helpers";
 import type { OpsHealthState, OpsTableCard, OpsWorkspaceCard, OpsScopePickerCard } from "@/lib/aqi/ops/types";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 const SUPER = ["agency_super_admin"] as const;
 
@@ -185,7 +186,7 @@ export const workspaceSummary = defineReadTool({
       metric("Workspace status", org.status, `Created ${ageHours(org.created_at, ctx.now)} hours ago`),
       metric("Setup state", f.setup_state ? f.setup_state.replace(/_/g, " ") : "Not started", f.setup_state ? `${required} open required task${required === 1 ? "" : "s"} shown` : "No Setup Center record", f.setup_state ? undefined : "unknown"),
       metric("Integrations", `${connections.filter((c) => ["connected", "permission_limited"].includes(c.status)).length} of ${connections.length} healthy`, connections.length ? undefined : "No connections recorded", connections.length ? undefined : "not_configured"),
-      metric("AI Employees", `${agents.filter((a) => ["online", "busy"].includes(a.status)).length} of ${agents.filter((a) => a.enabled).length} online`, "From their last health check"),
+      metric("AI Employees", `${agents.filter((a) => isRuntimeOnline(a.status)).length} of ${agents.filter((a) => a.enabled).length} online`, "From their last health check"),
       metric("Pending approvals", f.approvals_pending),
       metric("Open incidents", f.incidents_open, undefined, f.incidents_open ? "degraded" : undefined),
       metric("Open support requests", f.tickets_open),

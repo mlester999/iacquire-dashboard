@@ -21,7 +21,7 @@ export type PaymentKind = "setup_fee" | "credit_topup" | "maintenance" | "custom
 
 const CHARGE_CURRENCY = "PHP";
 
-interface PaymentRow {
+export interface PaymentRow {
   id: string;
   org_id: string;
   kind: PaymentKind;
@@ -37,6 +37,7 @@ interface PaymentRow {
   refunded_micros: string;
   maintenance_subscription_id: string | null;
   covers_months: number | null;
+  maintenance_agreement_id?: string | null;
 }
 
 function newReference() {
@@ -188,7 +189,15 @@ export async function handleProviderWebhook(adapter: PaymentProviderAdapter, inp
   if (!event) return { httpStatus: 400, outcome: "rejected", detail: "Unrecognized payload." };
   // The signature's mode and the payload's mode must agree, or the event is not trusted.
   if (event.livemode !== sig.livemode) return { httpStatus: 400, outcome: "rejected", detail: "Event mode does not match its signature." };
+  return recordAndApply(adapter, event);
+}
 
+/**
+ * Records one provider FACT in the receipt ledger and applies it. The caller has established the fact: a delivery whose signature verified (handleProviderWebhook), or the provider's
+ * authenticated answer to a call this server made itself (a PayPal capture, a read-back). Nothing a browser sent ever reaches here. The ledger makes a fact applied twice harmless,
+ * whichever door it came through.
+ */
+export async function recordAndApply(adapter: Pick<PaymentProviderAdapter, "expectedLivemode">, event: NormalizedPaymentEvent): Promise<WebhookOutcome> {
   // A purchase intent's paid notice may ask for its workspace to be created. That runs after the notice is committed, in its own transactions, so a failure there can never undo
   // the record that the money arrived (it is retried by a person or the recovery sweep).
   let followUp: { intentId: string } | undefined;
@@ -209,7 +218,11 @@ export async function handleProviderWebhook(adapter: PaymentProviderAdapter, inp
     else if (event.kind === "other") result = { outcome: "ignored", detail: "Event type is not used." };
     else if (event.kind === "payment_paid") result = await applyPaid(db, event);
     else if (event.kind === "payment_refunded" || event.kind === "payment_disputed") result = await applyReported(db, event);
-    else result = await applyFailed(db, event);
+    else if (event.kind === "agreement_status" || event.kind === "agreement_charge" || event.kind === "agreement_payment_failed") {
+      // The automatic monthly payment (PayPal Subscriptions): its own rules, in src/server/maintenance/agreement.ts, applied inside this same receipt transaction.
+      const agreement = await import("@/server/maintenance/agreement");
+      result = event.kind === "agreement_status" ? await agreement.applyAgreementStatus(db, event) : event.kind === "agreement_charge" ? await agreement.applyAgreementCharge(db, event) : await agreement.applyAgreementPaymentFailed(db, event);
+    } else result = await applyFailed(db, event);
 
     await db.query("update payment_webhook_events set outcome = $2, detail = $3, payment_id = $4, purchase_checkout_id = $5, processed_at = now() where id = $1", [receiptId, result.outcome, result.detail?.slice(0, 300) ?? null, result.paymentId ?? null, result.purchaseCheckoutId ?? null]);
     followUp = result.followUp;
@@ -296,12 +309,12 @@ async function applyPaid(db: Queryable, event: NormalizedPaymentEvent): Promise<
 }
 
 /**
- * A provider-verified maintenance payment: moves the plan's paid-through day forward by the months the checkout covered, through the SAME transition a payment recorded by hand
+ * Returns whether the plan took the payment. A provider-verified maintenance payment: moves the plan's paid-through day forward by the months the checkout covered, through the SAME transition a payment recorded by hand
  * uses (activate a requested plan, renew an active one, bring a past-due or expired one back). The checkout named the plan and the months when it was opened and the amount was
  * checked against it, so the notice chooses nothing. If the plan cannot take the payment (it was cancelled, or its core system is not activated yet) the money stays recorded
  * on the payment and a person is told: a payment is never silently dropped and a plan is never changed against its own rules.
  */
-async function applyMaintenancePeriod(db: Queryable, payment: PaymentRow): Promise<void> {
+export async function applyMaintenancePeriod(db: Queryable, payment: PaymentRow): Promise<boolean> {
   const plan = (await db.query<{ id: string; org_id: string; status: string; paid_through_on: string | null }>(
     "select id, org_id, status, to_char(paid_through_on, 'YYYY-MM-DD') as paid_through_on from maintenance_subscriptions where id = $1 and org_id = $2 for update", [payment.maintenance_subscription_id, payment.org_id],
   )).rows[0];
@@ -314,10 +327,16 @@ async function applyMaintenancePeriod(db: Queryable, payment: PaymentRow): Promi
       link: `/admin/clients/${payment.org_id}?tab=billing`, dedupeKey: `maintenance-unapplied:${payment.id}`,
     });
   };
-  if (!plan) return unresolved("the plan it was meant for no longer exists.");
+  if (!plan) {
+    await unresolved("the plan it was meant for no longer exists.");
+    return false;
+  }
   try {
     const through = nextPaidThrough({ status: plan.status, paidThroughOn: plan.paid_through_on, today, months: payment.covers_months as number });
-    if (!through) return await unresolved("the new paid-through day could not be worked out.");
+    if (!through) {
+      await unresolved("the new paid-through day could not be worked out.");
+      return false;
+    }
     await applyVerifiedPayment(db, {
       subscription: plan,
       mode: plan.status === "requested" ? "activate" : "renew",
@@ -326,9 +345,11 @@ async function applyMaintenancePeriod(db: Queryable, payment: PaymentRow): Promi
       paymentId: payment.id,
       billingStartOn: today,
     });
+    return true;
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
     await unresolved(`the plan refused it (${error.message.replace(/\.$/, "")}).`);
+    return false;
   }
 }
 
@@ -358,16 +379,19 @@ async function applyFailed(db: Queryable, event: NormalizedPaymentEvent): Promis
 
 const REPORTED_KIND_LABEL: Record<string, string> = { setup_fee: "setup fee", credit_topup: "service credits", maintenance: "maintenance plan", custom_project: "custom project", domain: "domain", other: "payment" };
 
+const PROVIDER_NAME: Record<string, string> = { paymongo: "PayMongo", paypal: "PayPal" };
+
 /** What a provider's refund notice says happened, from its own status word (never assumed when the payload carried none). */
-function refundSentence(refund: NonNullable<NormalizedPaymentEvent["refund"]>): string {
+function refundSentence(refund: NonNullable<NormalizedPaymentEvent["refund"]>, provider: string): string {
+  const name = PROVIDER_NAME[provider] ?? "The payment provider";
   const amount = refund.amountMinor !== null && refund.currency !== null && isCurrency(refund.currency) && Number.isSafeInteger(refund.amountMinor) && refund.amountMinor > 0
     ? ` of ${formatMinor(refund.amountMinor, refund.currency, "code")}`
     : "";
   switch (refund.status) {
-    case "succeeded": return `PayMongo reports a refund${amount}.`;
-    case "pending": return `PayMongo reports a refund${amount} that is still being processed.`;
-    case "failed": return `PayMongo reports a refund${amount} that could not be completed.`;
-    default: return `PayMongo sent a refund notice${amount}.`;
+    case "succeeded": return `${name} reports a refund${amount}.`;
+    case "pending": return `${name} reports a refund${amount} that is still being processed.`;
+    case "failed": return `${name} reports a refund${amount} that could not be completed.`;
+    default: return `${name} sent a refund notice${amount}.`;
   }
 }
 
@@ -380,6 +404,7 @@ function refundSentence(refund: NonNullable<NormalizedPaymentEvent["refund"]>): 
 async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Promise<ApplyResult> {
   const dispute = event.kind === "payment_disputed";
   const what = dispute ? "dispute" : "refund";
+  const providerName = PROVIDER_NAME[event.provider] ?? "The payment provider";
   const providerPaymentId = event.providerPaymentId ?? null;
   const payment = providerPaymentId
     ? (await db.query<PaymentRow>("select * from payments where provider = $1 and provider_payment_id = $2 for update", [event.provider, providerPaymentId])).rows[0]
@@ -392,8 +417,8 @@ async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Prom
     await notifyAgency(db, null, {
       kind: "billing_reconciliation",
       severity: "warning",
-      title: `PayMongo reported a ${what} that could not be matched`,
-      body: `Event ${event.type}. It names no payment we have a record of, so nothing was changed. Check it in PayMongo.`,
+      title: `${providerName} reported a ${what} that could not be matched`,
+      body: `Event ${event.type}. It names no payment we have a record of, so nothing was changed. Check it in ${providerName}.`,
       link: "/admin/billing?tab=rates",
       dedupeKey: `provider-notice-unmatched:${event.provider}:${event.id}`,
     });
@@ -402,14 +427,14 @@ async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Prom
   if (payment.livemode !== event.livemode) return { outcome: "rejected", detail: "Payment mode mismatch.", paymentId: payment.id };
 
   const kindLabel = REPORTED_KIND_LABEL[payment.kind] ?? "payment";
-  const sentence = dispute ? "PayMongo reports a dispute on this payment." : refundSentence(event.refund ?? { id: null, amountMinor: null, currency: null, status: null });
+  const sentence = dispute ? `${providerName} reports a dispute on this payment.` : refundSentence(event.refund ?? { id: null, amountMinor: null, currency: null, status: null }, event.provider);
   const advice = dispute
-    ? "Nothing was changed: the payment still counts as received until you record what happened. Respond to the dispute in PayMongo. Access and AI employees are not affected."
+    ? `Nothing was changed: the payment still counts as received until you record what happened. Respond to the dispute in ${providerName}. Access and AI employees are not affected.`
     : "Nothing was changed. If this refund is not recorded yet, record it on the payment; if you already recorded it, nothing more is needed. Access and AI employees are not affected.";
   await notifyAgency(db, payment.org_id, {
     kind: "billing_reconciliation",
     severity: dispute ? "critical" : "warning",
-    title: dispute ? "A payment is disputed at PayMongo" : "PayMongo reports a refund",
+    title: dispute ? `A payment is disputed at ${providerName}` : `${providerName} reports a refund`,
     body: `${payment.reference_number} (${kindLabel}). ${sentence} ${advice}`,
     link: `/admin/clients/${payment.org_id}?tab=billing`,
     dedupeKey: `provider-${what}:${event.provider}:${event.id}`,
@@ -418,6 +443,12 @@ async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Prom
     orgId: payment.org_id, actorKind: "system", action: dispute ? "billing.provider_dispute_reported" : "billing.provider_refund_reported", targetType: "payment", targetId: payment.id, result: "success",
     metadata: { reference: payment.reference_number, event: event.type, ...(!dispute && event.refund ? { status: event.refund.status, amountMinor: event.refund.amountMinor, currency: event.refund.currency } : {}) },
   }, db);
+  // A charge of an automatic monthly payment: its agreement is held, so a further charge is recorded but not added to the plan until a person has looked. The notice still changes
+  // nothing that was already paid, and a refund that did not go through is not a refund.
+  if (payment.maintenance_agreement_id && !(event.refund && event.refund.status === "failed")) {
+    const { holdAgreementAfterNotice } = await import("@/server/maintenance/agreement");
+    await holdAgreementAfterNotice(db, payment.maintenance_agreement_id, dispute ? "disputed" : "refunded", { paymentId: payment.id, reference: payment.reference_number });
+  }
   return { outcome: "processed", detail: `${sentence} Recorded for a person to act on; nothing was changed.`, paymentId: payment.id };
 }
 

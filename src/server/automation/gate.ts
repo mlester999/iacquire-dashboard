@@ -1,6 +1,7 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { RUNTIME_ONLINE_STATUSES } from "@/lib/employee-runtime";
 
 /**
  * What an AI employee is about to do.
@@ -29,7 +30,7 @@ export type GateDecision =
   | { decision: "needs_approval"; mode: AgentMode; detail: string }
   | { decision: "blocked"; reason: BlockReason; detail: string };
 
-const READY_STATUSES = new Set(["online", "busy"]);
+const READY_STATUSES: ReadonlySet<string> = new Set(RUNTIME_ONLINE_STATUSES);
 // Which pause scopes stop which kind of action.
 const STOPPED_BY: Record<AutomationScope, Array<"messaging" | "outbound" | "agency">> = {
   reply: ["messaging", "agency"],

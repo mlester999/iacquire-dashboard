@@ -3,6 +3,9 @@ import { createHash } from "node:crypto";
 import { withServiceRole, withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
+import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
+import type { ReadinessExtras } from "@/lib/workforce-readiness";
+import { announceHealthObservation, recordHealthObservation, type HealthObservation } from "@/server/workforce/health-alerts";
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
@@ -56,6 +59,8 @@ export interface AgentInstanceRow {
   tool_inventory_expires_at: Date | null;
   active_run: boolean;
   credential_ready: boolean;
+  /** Role prerequisites, the probe's record and workspace suspension, for the shared readiness model (src/server/workforce/readiness-facts.ts). */
+  readiness_extras?: ReadinessExtras;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -119,12 +124,21 @@ async function attachCredentialReadiness(agents: AgentInstanceRow[]): Promise<Ag
   return agents.map((agent) => ({ ...agent, credential_ready: stateById.get(agent.id) === true }));
 }
 
+async function attachReadinessExtras(agents: AgentInstanceRow[]): Promise<AgentInstanceRow[]> {
+  if (!agents.length) return agents;
+  const byOrg = new Map<string, AgentInstanceRow[]>();
+  for (const agent of agents) byOrg.set(agent.org_id, [...(byOrg.get(agent.org_id) ?? []), agent]);
+  const extras = new Map<string, ReadinessExtras>();
+  for (const [orgId, rows] of byOrg) for (const [id, value] of await readinessExtrasFor(orgId, rows)) extras.set(id, value);
+  return agents.map((agent) => ({ ...agent, readiness_extras: extras.get(agent.id) }));
+}
+
 export async function listAgents(userId: string, orgId: string): Promise<AgentInstanceRow[]> {
   const agents = await withUser(userId, async (db) => {
     const { rows } = await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 order by r.sort_order`, [orgId]);
     return rows;
   });
-  return attachCredentialReadiness(agents);
+  return attachReadinessExtras(await attachCredentialReadiness(agents));
 }
 
 export async function getAgentByRole(userId: string, orgId: string, role: AgentRoleKey): Promise<AgentInstanceRow | null> {
@@ -132,7 +146,7 @@ export async function getAgentByRole(userId: string, orgId: string, role: AgentR
     const { rows } = await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 and a.role_key = $2`, [orgId, role]);
     return rows[0] ?? null;
   });
-  return agent ? (await attachCredentialReadiness([agent]))[0] : null;
+  return agent ? (await attachReadinessExtras(await attachCredentialReadiness([agent])))[0] : null;
 }
 
 export async function listConfigVersions(userId: string, agentId: string) {
@@ -874,9 +888,9 @@ export async function toolInventorySchemaReady(db: Queryable): Promise<boolean> 
 }
 
 export async function loadConnection(db: Queryable, agentId: string): Promise<HermesConnection | null> {
-  const { rows } = await db.query<{ org_id:string; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
-    `select a.org_id,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
-     from agent_instances a left join integration_credentials c on c.id = a.credential_id
+  const { rows } = await db.query<{ org_id:string; role_key: AgentRoleKey; org_kind: "agency" | "client"; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
+    `select a.org_id,a.role_key,o.kind as org_kind,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
+     from agent_instances a join organizations o on o.id = a.org_id left join integration_credentials c on c.id = a.credential_id
      where a.id = $1`,
     [agentId],
   );
@@ -887,7 +901,7 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
   if (!apiKey) return null;
   const access = await loadHermesAccessCredentials(db, r.hermes_gateway_id);
   const expectedToolInventoryDigest = await loadPersistedInventoryDigest(db, agentId);
-  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, expectedToolInventoryDigest, ...(access ?? {}) };
+  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, expectedToolInventoryDigest, roleKey: r.role_key, orgKind: r.org_kind, ...(access ?? {}) };
 }
 
 /** Server-only profile connection for a trusted service check. Credentials are never serialized to a client. */
@@ -1000,6 +1014,10 @@ export interface HealthResult {
   ok: boolean;
   status: AgentStatus;
   detail: string;
+  /** What this check added to the employee's run of consecutive failures (null before migration 0109). */
+  observation?: HealthObservation | null;
+  /** Whether this check raised the outage alert or announced the recovery. */
+  announced?: { alerted: boolean; recovered: boolean };
 }
 
 const HEALTH_DETAIL: Record<string, string> = {
@@ -1050,7 +1068,21 @@ async function assertCanRunHealthCheck(db: Queryable, agentOrgId: string, actor:
 export async function runHealthCheck(
   agentId: string,
   actor: { userId: string | null; kind: "agency" | "system" | "user" },
-  opts: { skipSetupSync?: boolean } = {},
+  opts: {
+    skipSetupSync?: boolean;
+    /**
+     * The scheduled probe (src/server/workforce/health-probe.ts). It is quiet: no "online / offline" notice for each flip (the probe alerts once per outage instead), and no audit
+     * row for a pass that changes nothing, so a probe every few minutes does not fill the audit log.
+     */
+    scheduled?: boolean;
+    /**
+     * False for an attempt the probe will retry in the same breath: the failure is still recorded as the employee's status, but it does not add to the run of consecutive
+     * failures (one probe is one observation, however many tries it took). A passing check always resets the run.
+     */
+    countFailure?: boolean;
+    /** The probe's clock for the time it stamps on the observation (the real clock when omitted). */
+    now?: Date;
+  } = {},
 ): Promise<HealthResult> {
   const { conn, orgId, enabled, hasConfig, profileConfigCurrent, previousInventoryDigest } = await withSystem(async (db) => {
     const { rows } = await db.query<{
@@ -1172,6 +1204,8 @@ export async function runHealthCheck(
       detail: `${result.detail} Migration 0059 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
     };
   }
+  let observation: HealthObservation | null = null;
+  let announced = { alerted: false, recovered: false };
   await withSystem(async (db) => {
     const { rows } = await db.query<{ status: AgentStatus }>("select status from agent_instances where id = $1", [agentId]);
     const previous = rows[0]?.status;
@@ -1215,7 +1249,8 @@ export async function runHealthCheck(
        do update set status = excluded.status, detail = excluded.detail, last_checked_at = now(), updated_at = now()`,
       [orgId, result.ok ? "connected" : conn ? "error" : "not_configured", result.detail],
     );
-    if (previous && previous !== result.status && (previous === "online" || result.status === "online")) {
+    if (result.ok || opts.countFailure !== false) observation = await recordHealthObservation(db, { agentId, ok: result.ok, source: opts.scheduled ? "scheduled" : "manual", now: opts.now });
+    if (!opts.scheduled && previous && previous !== result.status && (previous === "online" || result.status === "online")) {
       const { rows: a } = await db.query<{ role_key: AgentRoleKey }>("select role_key from agent_instances where id = $1", [agentId]);
       const meta = a[0] ? AGENT_BY_KEY[a[0].role_key] : null;
       if (meta) {
@@ -1228,7 +1263,12 @@ export async function runHealthCheck(
         });
       }
     }
-    await recordAudit(
+    if (observation) {
+      const role = (await db.query<{ role_key: AgentRoleKey }>("select role_key from agent_instances where id = $1", [agentId])).rows[0]?.role_key;
+      if (role) announced = await announceHealthObservation(db, { orgId, agentId, role, observation, detail: result.detail });
+    }
+    // A scheduled pass that leaves the employee exactly as it was is not worth an audit row.
+    if (!(opts.scheduled && result.ok && previous === result.status)) await recordAudit(
       {
         orgId,
         actorUserId: actor.userId,
@@ -1259,7 +1299,7 @@ export async function runHealthCheck(
       if (process.env.NODE_ENV !== "test") console.error("[iacquire] setup sync after health check failed");
     }
   }
-  return result;
+  return { ...result, observation, announced };
 }
 
 /** Marks an employee offline after a live failure, without waiting for the next health check. */

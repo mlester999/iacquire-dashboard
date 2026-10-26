@@ -36,6 +36,7 @@ import { describeMissing, renderMessage, renderTemplate } from "@/lib/messaging/
 import { normalizeContentType } from "@/lib/automation-studio/outbound";
 import { slackText, type OutboundCall } from "@/server/automation-studio/outbound";
 import { LEAD_STATUS_LABELS, type LeadStatus } from "@/lib/crm/types";
+import { RUNTIME_ONLINE_STATUSES } from "@/lib/employee-runtime";
 
 /**
  * One executor per step kind. Each runs inside the step's own transaction (the runner opens it), calls the existing CRM services with
@@ -76,7 +77,7 @@ const blocked = (reason: string, detail: string, extra: Record<string, unknown> 
 const would = (detail: string, extra: Record<string, unknown> = {}): StepOutcome => ({ type: "done", status: "skipped", result: { dryRun: true, outcome: "would_run", detail, ...extra } });
 const wouldSkip = (detail: string, extra: Record<string, unknown> = {}): StepOutcome => ({ type: "done", status: "skipped", result: { dryRun: true, outcome: "would_skip", detail, ...extra } });
 /** The employee statuses the automation gate counts as having passed the connection check. */
-const AGENT_READY = new Set(["online", "busy"]);
+const AGENT_READY: ReadonlySet<string> = new Set(RUNTIME_ONLINE_STATUSES);
 
 interface ContactRow {
   id: string;

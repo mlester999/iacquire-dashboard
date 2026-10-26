@@ -10,6 +10,7 @@ import { relativeTime, sentenceCase } from "@/lib/utils";
 import { MetricCard, SectionLabel } from "@/components/ui/workspace";
 import { buildClientCrmCards, type ClientCardStatus } from "@/lib/integrations/client-tools";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 export const metadata = { title: "Integrations" };
 
@@ -39,7 +40,7 @@ export default async function IntegrationsPage() {
       [ctx.org.orgId],
     )).rows;
     const agents = (await db.query<{ online: number; total: number }>(
-      "select count(*) filter (where status in ('online','busy'))::int as online, count(*) filter (where enabled)::int as total from agent_instances where org_id = $1",
+      `select count(*) filter (where ${runtimeReadySql("agent_instances")})::int as online, count(*) filter (where enabled)::int as total from agent_instances where org_id = $1`,
       [ctx.org.orgId],
     )).rows[0];
     const mapping = (await db.query<{ location_name: string | null; status: string; verified_at: Date | null }>(

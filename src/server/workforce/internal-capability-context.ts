@@ -4,6 +4,7 @@ import { recordAudit } from "@/server/audit";
 import type { Queryable } from "@/server/db";
 import { immutablePolicy } from "@/server/workforce/policy";
 import { z } from "zod";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 const MAX_RECORDS = 8;
 const INTERNAL_AGENCY_POLICY = immutablePolicy("iAcquire", "agency");
@@ -154,7 +155,7 @@ async function loadOperationsManagerContext({ db, input }: InternalContextAdapte
 
   if (
     gate.org_kind !== "agency" || gate.org_status !== "active" || gate.role_key !== "operations_manager"
-    || !gate.enabled || !["online", "busy"].includes(gate.agent_status)
+    || !gate.enabled || !isRuntimeOnline(gate.agent_status)
     || gate.mode !== "approval_required" || gate.hermes_profile !== expectedProfile
     || gate.config_status !== "applied"
   ) {

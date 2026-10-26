@@ -13,6 +13,7 @@ import { deriveEmployeeReadiness, internalAcknowledgementIsCurrent, internalIden
 import { AGENT_BY_SLUG, AGENCY_HERMES_PROFILE_IDS, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { formatDateTime, sentenceCase } from "@/lib/utils";
+import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -157,6 +158,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
     );
   }
   const { agent, runs, pendingApprovals, knowledge, identityCurrent, acknowledgementCurrent } = data;
+  const extras = (await readinessExtrasFor(agent.org_id, [{ id: agent.id, role_key: meta.key }])).get(agent.id);
   const readiness = deriveEmployeeReadiness({
     displayName: agent.display_name,
     enabled: agent.enabled,
@@ -175,6 +177,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
     acknowledgementCurrent,
     isAgencyEmployee: true,
     taskExecuting: agent.active_run,
+    extras,
     evaluatedAt: readinessClockNow(),
   });
   const bundle = await getProvisioningBundle(agent.id);

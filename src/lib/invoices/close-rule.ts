@@ -18,7 +18,7 @@ export interface CloseRuleFacts {
   /** A person marked this invoice as the one that closes its deal. */
   closesDeal: boolean;
   invoiceStatus: "draft" | "pending_approval" | "issued" | "void";
-  paymentStatus: "unpaid" | "partially_paid" | "paid" | "disputed";
+  paymentStatus: "unpaid" | "partially_paid" | "paid" | "disputed" | "credited";
   hasDispute: boolean;
   /** The linked deal's state, or null when the invoice has no deal. */
   dealStatus: "open" | "won" | "lost" | null;

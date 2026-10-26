@@ -132,7 +132,7 @@ function DragGhost() {
   const invalid = target ? !target.valid : false;
   return createPortal(
     <div aria-hidden className="pointer-events-none fixed z-[200]" style={{ left: point.x + 14, top: point.y + 14 }}>
-      <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium shadow-lg ${invalid ? "bg-danger text-white" : "bg-ink text-surface"}`}>
+      <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium shadow-lg ${invalid ? "bg-[#c6363c] text-white" : "bg-ink text-surface"}`}>
         <GripVertical className="size-3.5 opacity-70" />
         <span className="max-w-[16rem] truncate">{active.label}</span>
       </div>

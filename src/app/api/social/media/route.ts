@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { toPublicError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { uploadMedia } from "@/server/social/media";
@@ -15,9 +16,9 @@ export async function POST(request: Request) {
     await assertSameOrigin();
     // uploadMedia checks the workspace kind and the person's permission itself, in that order, each with its own plain message.
     const ctx = await requireOrgContextOrThrow();
-    const declared = Number(request.headers.get("content-length") ?? 0);
-    if (declared > MEDIA_MAX_BYTES + 1_000_000) return NextResponse.json({ error: "Choose a file up to 50 MB." }, { status: 413 });
-    const form = await request.formData();
+    // Read with a ceiling as it arrives; the declared length is a fast path, not the limit.
+    const form = await readBoundedFormData(request, MEDIA_MAX_BYTES + 1_000_000);
+    if (!form) return NextResponse.json({ error: "Choose a file up to 50 MB." }, { status: 413 });
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a file to add." }, { status: 400 });
     if (file.size > MEDIA_MAX_BYTES) return NextResponse.json({ error: "Choose a file up to 50 MB." }, { status: 413 });

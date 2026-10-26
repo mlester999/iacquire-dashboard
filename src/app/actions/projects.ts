@@ -9,6 +9,7 @@ import { createProjectRequest, decideQuote, markQuoteViewed, postClientMessage, 
 import {
   createMaintenanceRequest, requestMaintenanceCancellation, requestMaintenanceEnrollment, maintenanceRequestSchema, startMaintenancePayment,
 } from "@/server/maintenance/service";
+import { cancelAgreementAsOwner, completeAgreementReturn, startMaintenanceAgreement } from "@/server/maintenance/agreement-service";
 import type { z } from "zod";
 
 export async function createProjectRequestAction(input: ProjectRequestInput) {
@@ -70,6 +71,38 @@ export async function startMaintenancePaymentAction(months: number) {
     const started = await startMaintenancePayment(ctx, months);
     revalidatePath("/maintenance");
     return { checkoutUrl: started.checkoutUrl, reference: started.referenceNumber };
+  });
+}
+
+/**
+ * The owner asks to pay the plan monthly and automatically through PayPal. Nothing is sent from the browser but the request itself: the amount is the plan's own price, proved equal to
+ * PayPal's plan first. Returns PayPal's page for the owner to approve; the plan changes only when PayPal confirms a charge.
+ */
+export async function startMaintenanceAgreementAction() {
+  return guard(async () => {
+    const ctx = await requireOrgContextOrThrow("maintenance.view");
+    const started = await startMaintenanceAgreement(ctx);
+    revalidatePath("/maintenance");
+    return { approvalUrl: started.approvalUrl };
+  });
+}
+
+/** The owner stops the automatic payment. The plan itself is unchanged. */
+export async function stopMaintenanceAgreementAction() {
+  return guard(async () => {
+    const ctx = await requireOrgContextOrThrow("maintenance.view");
+    await cancelAgreementAsOwner(ctx);
+    revalidatePath("/maintenance");
+  });
+}
+
+/** The owner is back from PayPal's page: PayPal's own record is read and applied. The browser contributes only the agreement's reference. */
+export async function completeAgreementReturnAction(reference: string) {
+  return guard(async () => {
+    const ctx = await requireOrgContextOrThrow("maintenance.view");
+    const out = await completeAgreementReturn(ctx, String(reference));
+    revalidatePath("/maintenance");
+    return { status: out?.status ?? null };
   });
 }
 

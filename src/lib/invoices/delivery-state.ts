@@ -12,7 +12,7 @@ export { maskAddress, channelLabel } from "@/lib/proposals/delivery-state";
 export type { DeliveryDescription, DeliveryFacts, DeliveryVerdict };
 
 /** The reasons a change to the invoice stops a queued message with (stored on the delivery, and on the message as its blocked reason). */
-export type InvoiceWithdrawReason = "invoice_voided" | "invoice_paid" | "invoice_disputed" | "invoice_written_off" | "invoice_link_replaced" | "privacy_request";
+export type InvoiceWithdrawReason = "invoice_voided" | "invoice_paid" | "invoice_disputed" | "invoice_written_off" | "invoice_credited" | "invoice_link_replaced" | "privacy_request";
 
 /** Why a message was stopped by the invoice's own changes. */
 export const INVOICE_WITHDRAWN_REASON_TEXT: Record<InvoiceWithdrawReason, string> = {
@@ -20,6 +20,7 @@ export const INVOICE_WITHDRAWN_REASON_TEXT: Record<InvoiceWithdrawReason, string
   invoice_paid: "The invoice was paid before the message went out, so it was stopped.",
   invoice_disputed: "A payment on the invoice was disputed before the message went out, so it was stopped.",
   invoice_written_off: "The invoice was written off before the message went out, so it was stopped.",
+  invoice_credited: "The invoice was credited in full before the message went out, so nothing is owed and it was stopped.",
   invoice_link_replaced: "The customer's link was replaced before the message went out, so the message was stopped.",
   privacy_request: "The customer asked for their data to be erased, so the message was stopped.",
 };

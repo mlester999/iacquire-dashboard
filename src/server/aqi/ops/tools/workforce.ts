@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { readSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { CONTENT_WITHHELD_NOTICE, contentSessionScope } from "@/server/admin/client-content-policy";
 import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, minutesBetween, newCardId, plural } from "@/server/aqi/ops/tools/helpers";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
@@ -205,6 +206,10 @@ export const workforceRuns = defineReadTool({
         order by r.started_at desc limit $3`,
       [orgId, agentId, args.limit],
     ));
+    // Founder decision D70 (off by default): this tool reads with trusted server access, so it asks the question the database asks for the person's own reads. A run's error text is
+    // withheld unless the rule is off or this person has an active support session on the client; its error class, status, tools and timings are not content and stay.
+    const readable = (await readSystem((db) => contentSessionScope(db, ctx.user.id))).permits(orgId);
+    for (const r of rows) if (!readable && r.error_message) r.error_message = CONTENT_WITHHELD_NOTICE;
     const lastSuccess = rows.find((r) => r.status === "completed");
     const failures = rows.filter((r) => ["failed", "timeout", "interrupted"].includes(r.status));
     const card: OpsTimelineCard = {
@@ -255,6 +260,11 @@ export const workforceApprovals = defineReadTool({
         order by q.created_at limit $3`,
       [orgId, ctx.user.id, args.limit],
     ));
+    // Founder decision D70 (off by default): an approval's title is the client's content. Withheld for a client this person has no support session on while the rule is on; the kind,
+    // risk, age and count are not content and stay.
+    const scope = await readSystem((db) => contentSessionScope(db, ctx.user.id));
+    let withheld = 0;
+    for (const r of rows) if (!scope.permits(r.org_id)) { r.title = CONTENT_WITHHELD_NOTICE; withheld += 1; }
     const total = rows[0] ? Number(rows[0].total) : 0;
     const table: OpsTableCard = {
       id: newCardId(), kind: "table", title: "Approvals waiting for a decision", asOf: new Date().toISOString(), source: "Approval queue (approval_requests)", refresh: { toolId: "workforce.approvals", args },
@@ -271,6 +281,7 @@ export const workforceApprovals = defineReadTool({
       data: { total, approvals: rows.map((r) => ({ client: r.org, employee: r.employee, kind: r.kind, title: r.title, risk: r.risk, waitingHours: ageHours(r.created_at, ctx.now), expiresAt: iso(r.expires_at) })) },
       cards: [metrics, table],
       evidence: { label: "Pending approvals", source: "approval_requests", href: "/admin/employees/clients" },
+      ...(withheld ? { unavailable: [`${plural(withheld, "approval title")} withheld: the stricter staff-access rule is on and there is no support session on that client.`] } : {}),
     };
   },
 });

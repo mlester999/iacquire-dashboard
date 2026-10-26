@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { sameSiteRequest } from "@/server/security/same-site";
 import { AppError } from "@/server/errors";
@@ -18,9 +19,9 @@ export async function POST(req: Request) {
   try {
     if (!sameSiteRequest(req)) throw new AppError("forbidden", "Cross-site requests are not allowed.");
     const user = await requireAgencyOrThrow();
-    // Refuse a body that is plainly too large before reading any of it (the service checks the file itself as well).
-    if (Number(req.headers.get("content-length") ?? 0) > MAX_ATTACHMENT_BYTES + 65_536) throw new AppError("invalid_input", `Files can be up to ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);
-    const form = await req.formData();
+    // Read with a ceiling as it arrives; the declared length below is a fast path, not the limit (the service checks the file itself as well).
+    const form = await readBoundedFormData(req, MAX_ATTACHMENT_BYTES + 65_536);
+    if (!form) throw new AppError("invalid_input", `Files can be up to ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);
     const file = form.get("file");
     if (!(file instanceof File)) throw new AppError("invalid_input", "Choose a file to attach.");
     if (file.size > MAX_ATTACHMENT_BYTES) throw new AppError("invalid_input", `Files can be up to ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);

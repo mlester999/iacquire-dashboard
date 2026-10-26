@@ -13,6 +13,8 @@ import { uid } from "./support/fixtures";
 
 class Done extends Error {}
 const down = readFileSync("supabase/rollbacks/0093_customer_invoices_payments.down.sql", "utf8");
+// 0111 (credit notes) hangs a table and a column off the invoices, so its rollback runs first, as an operator would roll back: newest first.
+const down111 = readFileSync("supabase/rollbacks/0111_customer_credit_notes.down.sql", "utf8");
 
 /** Splits a script into statements, keeping `$$ ... $$` bodies whole (the test driver runs one statement per call). */
 function statements(sql: string): string[] {
@@ -60,7 +62,7 @@ async function rolledBack(fn: (db: Db) => Promise<void>) {
 const quoted = (def: string) => [...def.matchAll(/'([A-Za-z0-9_]+)'::text/g)].map((m) => m[1]);
 const TABLES = ["customer_invoice_settings", "customer_payment_connections", "customer_invoices", "customer_invoice_lines", "customer_invoice_events", "customer_invoice_reminders", "customer_invoice_deliveries", "customer_payment_attempts", "customer_payments", "customer_refunds", "customer_payment_events"];
 /** Children before parents, so everything but the settings can be deleted. */
-const CLEAR_ORDER = ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
+const CLEAR_ORDER = ["customer_credit_notes", "customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
 
 describe("permissions, scope and kinds", () => {
   it("seeds the invoices permissions for exactly the roles the matrix names, and for no agency role", async () => {
@@ -672,6 +674,7 @@ describe("the rollback", () => {
         for (const t of CLEAR_ORDER) await db.query(`delete from ${t}`);
         const conv = (await db.query<{ id: string }>("insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'unassigned') returning id", [io.orgId, contact])).rows[0].id;
         await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, failed_at, failure_kind, scope) values ($1, $2, 'outbound', 'human', 'x', 'failed', now(), 'rejected', 'billing')", [io.orgId, conv]);
+        for (const stmt of statements(down111)) await db.query(stmt);
         for (const stmt of statements(down)) await db.query(stmt);
         throw new Done();
       }),
@@ -693,6 +696,7 @@ describe("the rollback", () => {
       await db.query("select set_config('iaq.purge', 'on', true)");
       for (const t of CLEAR_ORDER) await db.query(`delete from ${t}`);
       await db.query("delete from notifications where kind like 'invoice_%' or kind in ('payment_connection_attention', 'payment_review_needed')");
+      for (const stmt of statements(down111)) await db.query(stmt);
       for (const stmt of statements(down)) await db.query(stmt);
       scopesAfter = quoted(await def(db, "conversation_messages_scope_check", "conversation_messages"));
       kindsAfter = quoted(await def(db, "notifications_kind_check", "notifications"));

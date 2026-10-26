@@ -35,6 +35,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
     acknowledgementCurrent: agent.full_capabilities_acknowledged,
     isAgencyEmployee: true,
     taskExecuting: agent.active_run,
+    extras: agent.readiness_extras,
     evaluatedAt,
   });
   const mapped = agents.filter((agent) => agent.hermes_profile).length;

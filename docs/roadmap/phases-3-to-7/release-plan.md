@@ -1,6 +1,8 @@
 # Release plan for `feat/phases-3-7`
 
-Written 2026-10-25. **Nothing here has been done.** No push, merge, deploy, hosted migration, scheduler start, module switch-on, provider call or real customer message has happened for this branch; every step below needs the founder's approval in its own right (`blockers.md` lists the approvals and who owns them). The branch is `feat/phases-3-7` in `.data/wt-phases-3-7`; the exact head and the gate results at that head are in the final report (`final-report.md`) and in the last section of `verification-evidence.md`.
+> **Status, 2026-10-26 night:** steps 1 to 4 of section 1 and the hosted-database steps of section 4 were carried out for the **release candidate** on the founder's instruction (merge with the moved `origin/master`, gates, migrations 0110 to 0112, push). What was actually done, found and verified is in `release-record-2026-10-26.md`. The scheduler, every module, every provider switch and everything in sections 5 to 7 remain as this plan describes: off, and not started. The migration table below is the 2026-10-25 plan for 0087 to 0104; those migrations were applied to production earlier on 2026-10-26 by other work, not by this plan.
+
+Written 2026-10-25. **Nothing here had been done when it was written.** No push, merge, deploy, hosted migration, scheduler start, module switch-on, provider call or real customer message has happened for this branch; every step below needs the founder's approval in its own right (`blockers.md` lists the approvals and who owns them). The branch is `feat/phases-3-7` in `.data/wt-phases-3-7`; the exact head and the gate results at that head are in the final report (`final-report.md`) and in the last section of `verification-evidence.md`.
 
 The point of this file is that someone who has never seen the work can take it from "local commits" to "dormant in production" to "switched on for one workspace" without guessing. Read `handoff.md` for the QA recipe and `blockers.md` for what each provider needs.
 
@@ -8,7 +10,7 @@ The point of this file is that someone who has never seen the work can take it f
 
 * The branch was cut from `origin/master` `36bf78c` (the released Phase 2) and is a descendant of it. When this was written `origin/master` still pointed at `36bf78c`; **fetch and check again before anything else**. If it has moved, merge it into the branch in a clean worktree, re-run the gates (section 3) and the migration rehearsal, and only then continue.
 * The founder's **main checkout is not a safe place to merge.** Its local `master` is `22c68c2a`, 31 commits *behind* `origin/master`, and its working tree carries uncommitted AI Workforce work (changes to `capability-dispatch.ts`, `jobs.ts`, `work-runner.ts`, `schedules.ts`, `triggers.ts`, `chat/service.ts`, `leads/service.ts` and others, plus untracked files such as `supabase/migrations/0081_ai_work_job_rls_hardening.sql`). The branch also edits several of those files (job pause gate, `leads/service.ts`), so a merge there would mix two people's unfinished changes.
-* **That untracked migration collides with a number already in production.** `0081` is the Unified Inbox migration that was applied to production on 2026-10-22. The AI Workforce hardening file must be renumbered above the highest number that will exist when it lands (this branch uses 0087 to 0104; the next free number is **0105**), and `tests/workforce-migration-renumber.test.ts` in that work will need the same renumbering. That is the other work's task; it is recorded here because it will fail at the first hosted run if it is missed.
+* **CORRECTION (2026-10-26, integration branch `integrate/phases-3-7-workforce`): there is no 0081 collision.** The untracked `0081_ai_work_job_rls_hardening.sql` in the main checkout is byte-identical (blob `a4a9131`) to the file already committed on `origin/master` (commit `cbbc9ee`), and production applied it on 2026-10-22 with 0082 and 0083 (the Unified Inbox is `0083_unified_inbox`, not 0081). The earlier statement here was wrong. The real collision was `0087` to `0090`: the concurrent AI Workforce branch (`codex/iacquire-workforce-completion`) used those numbers for four different, unapplied files; they were renumbered to `0105` to `0108` on the integration branch. See `integration-2026-10-26.md`.
 * `node_modules` in the main checkout was found half-deleted on 2026-10-25 and has not been repaired from here (`npm install` there is the founder's call). This worktree has its own copy.
 
 **Recommended path, each step on approval:**
@@ -42,6 +44,14 @@ Eighteen migrations, 0087 to 0104, each with a rollback in `supabase/rollbacks/`
 | 0102 | onboarding_snapshot | Frozen onboarding answers |
 | 0103 | purchase_checkouts | Online checkout per purchase, payment hold, the evidence rule |
 | 0104 | customer_reply_usage | `customer_reply` usage kind and the optional monthly reply cap |
+| 0105 | workforce_local_recurrence | AI employee schedules' local recurrence (renumbered from the collided 0087) |
+| 0106 | workforce_chat_schedule_previews | Chat schedule previews (from 0088) |
+| 0107 | workforce_chat_booking_previews | Chat booking previews (from 0089) |
+| 0108 | workforce_appointment_changes | Approved appointment changes (from 0090) |
+| 0109 | employee_health_probe | The probe log; rolled back first because it reads the workspace-permission function |
+| 0110 | maintenance_agreements | PayPal subscription agreements and verified charges |
+| 0111 | customer_credit_notes | Credit notes on customer invoices; refuses a rollback while one is issued |
+| 0112 | client_content_policy | The **flagged, off-by-default** D70 staff-access switch; refuses a rollback while it is on |
 
 Migrations 0087 to 0102 were rehearsed as a set (up, down, up, with data seeded per migration and an exact-schema comparison after each rollback); 0103 and 0104 were added to the same rehearsal afterwards (`scripts/rehearse-combined-migrations.mjs`, sections A to F; the last pass covered 98 files). The rehearsal runs on embedded PostgreSQL 18.3; production is reported as 17.11. **No migration has run on a hosted database.**
 
@@ -54,7 +64,7 @@ Run at the exact head to be pushed, through `node scripts/run-locked.mjs` (a sec
 1. Full suite: `node scripts/run-locked.mjs test -- node node_modules/vitest/vitest.mjs run --reporter=dot` (a slow host needs the 120 s per-test ceiling already set in `vitest.config.ts`). A worker-start timeout can mark the run failed while every test passes: rerun the file, then the suite.
 2. `tsc -p tsconfig.clean.json --noEmit` and `tsc -p tsconfig.scripts.json --noEmit`.
 3. `eslint .`
-4. Clean build: `node scripts/build-clean.mjs --webpack` (the default Turbopack build cannot resolve `next` through a junctioned `node_modules`).
+4. Clean build: `node scripts/build-clean.mjs` (the default Turbopack build a deployment uses) **and** `node scripts/build-clean.mjs --webpack`. Both pass at this head; the webpack failure recorded until 2026-10-26 was a compile error from a `node:crypto` import in a client component, fixed in `b2bff4c3`, and is not a memory problem. Measurements: `docs/production-build-and-bundler.md`.
 5. `node scripts/rehearse-combined-migrations.mjs` (all sections).
 6. The browser journeys: `scripts/wave2-purchase-checkout-qa.mjs`, `scripts/wave2-maintenance-payment-qa.mjs`, the page sweep (`scripts/wave2-page-sweep.mjs`) for portal and admin at 375, 390, 768, 1280 and 1440 px in light and dark, with the simulated PayMongo (`scripts/paymongo-sim.mjs`).
 7. `python -I scripts/eol-scan.py <base> WORKTREE` (line endings).

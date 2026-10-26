@@ -11,7 +11,7 @@ export interface EmployeeCardStatus {
 }
 
 /** Stages that already say something more specific than "Setup required": a change waiting for review, or an employee that is switched off. */
-const KEEPS_OWN_WORDING: ReadonlySet<EmployeeReadiness["stage"]> = new Set(["review", "disabled"]);
+const KEEPS_OWN_WORDING: ReadonlySet<EmployeeReadiness["stage"]> = new Set(["review", "disabled", "suspended", "degraded", "incomplete"]);
 
 export function employeeCardStatus(
   readiness: Pick<EmployeeReadiness, "label" | "title" | "stage" | "chatAvailable">,

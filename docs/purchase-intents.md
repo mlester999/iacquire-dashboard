@@ -63,6 +63,7 @@ The statuses are `invited`, `started`, `payment_verified`, `provisioned`, `cance
 * Writes: trusted server code only. Every admin action re-reads the signed-in person's active role and permissions; the service refuses managers for creating intents or recording payment, and requires the client-creation and billing permissions to provision.
 * Audit: each transition writes a `purchase_intent_events` row and an `audit_logs` row. The timeline holds ids, fixed words, amounts and methods, never the raw token or the buyer's free-text note. The timeline table is append-only.
 * The simulated PayMongo (`PAYMONGO_API_BASE`) is refused in production, for any address that is not this machine's, and with any key that is not a test key (`src/server/env.ts`), and the isolated QA environment refuses every other PayMongo setting.
+* The simulated PayPal (`PAYPAL_API_BASE`, `scripts/paypal-sim.mjs`) is refused in production, for any address that is not this machine's, for the live environment, and for a client id that is not the simulator's made-up one (`src/server/env.ts`); the isolated QA environment refuses every other PayPal setting (`tests/paypal-simulator-guard.test.ts`). It changes where the server's PayPal API calls go and nothing else: the approval links stay ordinary `https://www.sandbox.paypal.com` addresses that the application checks as it would in production, and the browser run answers those from the simulator itself (`scripts/wave3-paypal-qa.mjs`), passing nothing to the network.
 
 ## Migrations and rollback
 

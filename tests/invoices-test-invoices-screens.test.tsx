@@ -224,7 +224,7 @@ describe("the invoice form", () => {
 
 const view = (over: Partial<InvoiceView> = {}): InvoiceView => ({
   id: "11111111-1111-4111-8111-111111111111", number: "TEST-0001", status: "issued", paymentStatus: "unpaid", currency: "PHP", taxInclusive: false, contactId: "c1", contactName: "Maria Santos", companyId: null, companyName: null,
-  opportunityId: null, opportunityName: null, subtotalMinor: 150000, taxMinor: 0, totalMinor: 150000, paidMinor: 0, refundedMinor: 0, balanceMinor: 150000, overpaidMinor: 0, issueOn: "2026-10-23", dueOn: "2026-11-06",
+  opportunityId: null, opportunityName: null, subtotalMinor: 150000, taxMinor: 0, totalMinor: 150000, paidMinor: 0, refundedMinor: 0, creditedMinor: 0, balanceMinor: 150000, overpaidMinor: 0, issueOn: "2026-10-23", dueOn: "2026-11-06",
   billTo: {}, billFrom: {}, paymentInstructions: null, notes: null, terms: null, version: 1, approvedVersion: 1, approvedByName: null, approvedAt: null, closesDeal: false, isTest: true, writtenOffAt: null, writeOffReason: null,
   issuedAt: "2026-10-23T12:00:00.000Z", voidedAt: null, voidReason: null, firstViewedAt: null, createdBy: "u1", createdByName: "Owner", createdVia: "manual", sourceProposalId: null, sourceProposalVersion: null, createdAt: "2026-10-23T12:00:00.000Z",
   updatedAt: "2026-10-23T12:00:00.000Z", overdue: false, daysOverdue: 0, ...over,
@@ -245,7 +245,7 @@ describe("the TEST label", () => {
   });
 
   it("is on the invoice page with a sentence that says what a test invoice is kept out of", () => {
-    const detail: InvoiceFullDetail = { invoice: view(), lines: [], payments: [], refunds: [], events: [], reminders: [], deliveries: [], source: null, closeRule: "none" };
+    const detail: InvoiceFullDetail = { invoice: view(), lines: [], payments: [], refunds: [], events: [], reminders: [], deliveries: [], source: null, creditNotes: [], closeRule: "none" };
     const out = text(<InvoiceSummary detail={detail} tz="UTC" />);
     expect(out).toContain("Test invoice");
     expect(out).toContain("This is a test invoice: nothing is owed on it and no money moves.");
@@ -254,7 +254,7 @@ describe("the TEST label", () => {
   });
 
   it("says a test invoice is never reminded about, instead of describing reminders it will never have", () => {
-    const detail: InvoiceFullDetail = { invoice: view(), lines: [], payments: [], refunds: [], events: [], reminders: [], deliveries: [], source: null, closeRule: "none" };
+    const detail: InvoiceFullDetail = { invoice: view(), lines: [], payments: [], refunds: [], events: [], reminders: [], deliveries: [], source: null, creditNotes: [], closeRule: "none" };
     const out = text(<RemindersList detail={detail} tz="UTC" />);
     expect(out).toContain("A test invoice is never reminded about: nothing is owed on it, so no customer is asked to pay it.");
     expect(out).not.toContain("Reminders go out only after the owner has authorized");
@@ -262,7 +262,7 @@ describe("the TEST label", () => {
   });
 
   it("is said on the list's totals without adding a test invoice to any figure", () => {
-    const summary: ReceivablesSummary = { byCurrency: [{ currency: "PHP", outstandingMinor: 150000, overdueMinor: 0, openCount: 1, overdueCount: 0, netReceivedMinor: 0 }], drafts: 0, pendingApproval: 0, testInvoices: 2 };
+    const summary: ReceivablesSummary = { byCurrency: [{ currency: "PHP", outstandingMinor: 150000, overdueMinor: 0, openCount: 1, overdueCount: 0, netReceivedMinor: 0, creditedMinor: 0 }], drafts: 0, pendingApproval: 0, testInvoices: 2 };
     const out = text(<ReceivablesCards summary={summary} />);
     expect(out).toContain("2 test invoices are kept apart: nothing is owed on a test invoice, so it is never counted here.");
     expect(out).not.toContain("Paid in test mode");
@@ -285,7 +285,7 @@ describe("the TEST label", () => {
 const publicInvoice = (over: Partial<PublicInvoice> = {}): PublicInvoice => ({
   business: { name: "Harbor Home Services", brandColor: null, addressLines: [], taxLabel: null, taxId: null, email: null, phone: null }, number: "TEST-0001", issueOn: "2026-10-23", dueOn: "2026-11-06", currency: "PHP",
   taxInclusive: false, billTo: { name: "Maria Santos", company: null, addressLines: [] }, lines: [{ position: 1, description: "Service call", quantity: "1", unitPriceMinor: 150000, discountMinor: 0, taxRateBps: null, amountMinor: 150000 }],
-  subtotalMinor: 150000, taxMinor: 0, totalMinor: 150000, paidMinor: 0, balanceMinor: 150000, paymentStatus: "unpaid", overdue: false, paymentInstructions: null, notes: null, terms: null, footerNote: null,
+  subtotalMinor: 150000, taxMinor: 0, totalMinor: 150000, paidMinor: 0, creditedMinor: 0, credits: [], balanceMinor: 150000, paymentStatus: "unpaid", overdue: false, paymentInstructions: null, notes: null, terms: null, footerNote: null,
   hasPendingPayment: false, canPayOnline: false, isTest: true, banner: { kind: "test", tone: "info" }, ...over,
 });
 

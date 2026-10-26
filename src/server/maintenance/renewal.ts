@@ -73,6 +73,10 @@ async function handlePlan(id: string, today: string, now: Date, autoPastDue: boo
     const step = renewalStep({ status: s.status, paidThroughOn: s.paid_through_on, today, autoPastDue });
     const through = s.paid_through_on as string;
     if (step.kind === "none") return ["none"];
+    // A plan with an automatic payment open: PayPal is the one collecting, and its own failure report (not a missing record) is what starts the grace period.
+    const auto = (await db.query<{ status: string; failed_payments: number }>(
+      "select status, failed_payments from maintenance_agreements where subscription_id = $1 and status in ('active', 'suspended') limit 1", [s.id],
+    )).rows[0];
 
     if (step.kind === "notice") {
       const key = `renewal-due:${s.id}:${through}:${step.level}`;
@@ -81,7 +85,9 @@ async function handlePlan(id: string, today: string, now: Date, autoPastDue: boo
         kind: "billing_renewal_due",
         severity: step.level === 1 ? "warning" : "info",
         title: `${s.org_name}'s maintenance plan is paid through ${through}`,
-        body: `That is ${when}. Check whether the next payment has arrived and record it so the plan carries on. The portal does not detect payments by itself.`,
+        body: auto
+          ? `That is ${when}. Their automatic PayPal payment is ${auto.status === "active" ? "on, so PayPal should collect the next period; nothing needs recording unless it fails" : "paused, so the next period will not be collected unless they fix it or pay another way"}.`
+          : `That is ${when}. Check whether the next payment has arrived and record it so the plan carries on. The portal does not detect payments by itself.`,
         link: ADMIN_LINK,
         dedupeKey: key,
       });
@@ -89,7 +95,9 @@ async function handlePlan(id: string, today: string, now: Date, autoPastDue: boo
         kind: "billing_renewal_due",
         severity: step.level === 1 ? "warning" : "info",
         title: `Your maintenance plan is paid through ${through}`,
-        body: `That is ${when}. Payment for the next period is arranged with iAcquire, who record it once it has arrived. Automation Studio keeps working while the plan is active.`,
+        body: auto
+          ? `That is ${when}. ${auto.status === "active" ? "PayPal will collect the next month automatically; the plan is extended only when PayPal confirms the charge." : "Your automatic payment is paused. Update your payment method with PayPal, or pay for the plan online, to carry on."} Automation Studio keeps working while the plan is active.`
+          : `That is ${when}. Payment for the next period is arranged with iAcquire, who record it once it has arrived. Automation Studio keeps working while the plan is active.`,
         link: CLIENT_LINK,
         dedupeKey: key,
       });
@@ -108,15 +116,20 @@ async function handlePlan(id: string, today: string, now: Date, autoPastDue: boo
       link: ADMIN_LINK,
       dedupeKey: `renewal-overdue:${s.id}:${through}`,
     });
-    if (step.markPastDue) {
+    // PayPal itself reported a failed charge for the agreement and the period it was meant to pay has now ended: that is a reported fact, so the grace period starts without the
+    // team's "mark past due automatically" switch. A plan with no such report keeps the old rule exactly.
+    const reportedFailure = Boolean(auto && auto.failed_payments > 0);
+    if (step.markPastDue || reportedFailure) {
       const { graceEndsAt } = await applyPaymentFailed(db, {
-        subscription: s, actor: { kind: "system", userId: null }, graceDays: env().STUDIO_PAYMENT_GRACE_DAYS, now, cause: "not_recorded", paidThroughOn: through,
+        subscription: s, actor: { kind: "system", userId: null }, graceDays: env().STUDIO_PAYMENT_GRACE_DAYS, now, cause: reportedFailure ? "failed" : "not_recorded", paidThroughOn: through,
       });
       await notifyAgency(db, s.org_id, {
         kind: "billing_renewal_due",
         severity: "warning",
         title: `${s.org_name}'s maintenance plan was marked past due automatically`,
-        body: `No payment was recorded after ${through}. Automation Studio keeps working until ${graceEndsAt.toISOString().slice(0, 10)}. Recording a payment before then brings the plan back to active; nothing was paused or deleted.`,
+        body: reportedFailure
+          ? `PayPal reported that the automatic payment failed and the plan's paid period ended on ${through}. Automation Studio keeps working until ${graceEndsAt.toISOString().slice(0, 10)}. A confirmed charge or a recorded payment before then brings the plan back to active; nothing was paused or deleted.`
+          : `No payment was recorded after ${through}. Automation Studio keeps working until ${graceEndsAt.toISOString().slice(0, 10)}. Recording a payment before then brings the plan back to active; nothing was paused or deleted.`,
         link: ADMIN_LINK,
         dedupeKey: `renewal-auto:${s.id}:${through}`,
       });

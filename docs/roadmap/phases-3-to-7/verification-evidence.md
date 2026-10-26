@@ -244,3 +244,44 @@ An earlier full run at `cd8919a3` had one failure, a test that asserted the dupl
 **Environment found along the way:** the QA app started while `node_modules` was still a junction kept loading the main checkout's packages (every page then answered 5xx); the disk was full during a sweep (`ENOSPC` on the dev build cache, now cleared between batches); three parallel browsers starved a 23 GB machine. Recorded in the memory notes and `handoff.md`.
 
 **Not run:** any real provider, hosted database, scheduler tick, staging deploy, human screen-reader pass, load test.
+
+## 2026-10-26 evening: the verification session
+
+Everything below ran in `.data/wt-release-candidate` against stand-ins; nothing reached a real provider, a hosted database or a customer. Logs are in the git-ignored `tmp/`.
+
+### The gate chain run after the last code change (`bash tmp/gates-final3.sh`, one heavy job at a time)
+
+The tree these ran on differs from the commit that carries this file only in the figures in the documents. Nothing in `src/`, `tests/`, `scripts/` or `supabase/` changed between the chain and the commit.
+
+| Gate | Result | Log |
+| --- | --- | --- |
+| `tsc -p tsconfig.clean.json` | passed (exit 0, 110 s) | `tmp/final3-tsc-clean.log` |
+| `tsc -p tsconfig.scripts.json` | passed (exit 0, 25 s) | `tmp/final3-tsc-scripts.log` |
+| `eslint .` | passed (exit 0, 197 s) | `tmp/final3-eslint.log` |
+| `vitest run` | 690 files, 10918 tests: 10917 passed, 1 skipped, 0 failed (1,105 s) | `tmp/final3-suite.log` |
+| `node scripts/build-clean.mjs` (Turbopack) | passed (147 s, peak 5057 MB) | `tmp/final3-turbopack.log` |
+| `node scripts/build-clean.mjs --webpack` | passed (416 s, peak 7885 MB, 8 GB cap set by the script) | `tmp/final3-webpack.log` |
+| `node scripts/rehearse-combined-migrations.mjs` | passed (287 s; 23,302 schema facts equal the fresh chain after the last apply) | `tmp/final3-rehearsal.log` |
+
+The chain before it, kept in `tmp/prev-gates/` (run before the AI employee sweep's three fixes): `tsc` clean config **failed** with two typing errors in two new test files (exit 2, 69 s), fixed and re-run clean (78 s, `tmp/final4-tsc-clean.log`); `tsc` scripts 15 s, ESLint 160 s, the suite 689 files / 10912 passed / 1 skipped (887 s), Turbopack 116 s, Webpack 320 s, rehearsal 244 s, all exit 0.
+
+Earlier chains of the session, kept because they found things: the first (`tmp/final-*.log`) showed the typing errors above, one failing calendar-month test (a time bomb that fails from about the 25th of every month) and a Webpack out-of-memory at the default heap (exit 134, 248 s, heap 4,050 MB); the second (`tmp/final2-*.log`) showed the capped Webpack compile succeeding in 5.7 minutes and then failing to write `.tsbuildinfo` because the disk was full (`ENOSPC`).
+
+### Browser passes (isolated QA app on loopback, stand-in PayPal, real Chromium)
+
+| Pass | Script | Result |
+| --- | --- | --- |
+| PayPal purchase checkout, stages 1 to 7 | `scripts/wave3-paypal-qa.mjs` | 21 + 35 checks, 0 failed (`tmp/final-paypal-qa.log`, `final-paypal-qa2.log`) |
+| PayPal monthly subscription, stages 8 to 10 | same | 38 of 38 (`tmp/final-paypal-qa4.log`), after the failure-dating fix |
+| Credit notes (7 stages) and the staff-access switch (2 stages) through the signed-in portal | `scripts/wave3-credit-policy-qa.mjs` | 48 of 48; the switch's stages re-run after the hydration fix, 12 of 12, 0 console errors |
+| The new screens in the development preview, 13 views, 375 and 1280 px, light and dark | `scripts/billing-preview-qa.mjs` | 268 of 268, 0 console, page or server errors, 0 external requests |
+| The AI employee screens: owner and manager (`/employees`, six pages each) and Super Admin (agency, client-employee, policy and review pages, a client's detail), 375 and 1280 px, light and dark, read-only | `scripts/wave3-employee-readiness-qa.mjs` | **627 of 627** (`tmp/final-employee-qa3.log`), 0 console, page or server errors, 0 external requests. The first run (`tmp/final-employee-qa.log`) failed 26 of 543 and found three defects, fixed: inline links underlined only on hover, the danger button at 3.91:1, a "Current" pill overflowing its card (the last found by eye, then added to the script) |
+
+The PayPal pass was run in three segments because the Next development server restarted itself near its memory threshold twice. Every segment's log is kept; no stage was skipped.
+
+### Measured performance
+`tests/perf/release-candidate.perf.test.ts` (`CRM_PERF=1`): see `docs/performance-cost-reliability-2026-10-26.md`.
+
+## 2026-10-26 night: the release (merge with master, production migrations)
+
+The procedure, every command and every result are in `release-record-2026-10-26.md`. In short: the merge with the moved `origin/master` (8 real conflicts against the right base, 116 against git's own), a final gate chain at `fa27b5bd` (693 files, 10,961 passed, 1 skipped, 0 failed; both builds; rehearsal sections A to G), a verified and test-restored backup of the production database, the real migration runner applied to the restored copy, a permission-function fingerprint identical before and after (`5854c8df…`, taken on the copy and on production), migrations 0110, 0111 and 0112 applied to production one at a time, 20 read-only post-checks passing, and `/api/health` answering ok with the scheduler never run.

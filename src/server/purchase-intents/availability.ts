@@ -1,6 +1,11 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { paymongoStatus } from "@/server/billing/paymongo";
+import { paypalStatus } from "@/server/billing/providers/paypal";
+
+export type CheckoutProvider = "paymongo" | "paypal";
+export const CHECKOUT_PROVIDERS: readonly CheckoutProvider[] = ["paymongo", "paypal"];
+export const PROVIDER_LABEL: Record<CheckoutProvider, string> = { paymongo: "PayMongo", paypal: "PayPal" };
 
 /**
  * Whether a buyer can be sent to an online checkout right now, and what an attempt would be charged. Every condition is one the Super Admin or the deployment controls, so the
@@ -31,10 +36,11 @@ export interface CheckoutAvailability {
 }
 
 /**
- * Whether the payment provider can take and CONFIRM a payment right now (keys, webhook secret, an exchange rate, and the live review for a live key), independent of any one product's
- * switch. The maintenance plan's online payment uses this directly; a purchase checkout adds its own switch on top (checkoutAvailability).
+ * Whether the payment provider can take and CONFIRM a payment right now (keys, webhook secret, an exchange rate for PayMongo, and the live review for a live key), independent of any
+ * one product's switch. The maintenance plan's online payment uses this directly; a purchase checkout adds its own switch on top (checkoutAvailability). PayMongo is the default;
+ * PayPal charges the US-dollar price as it is, so it needs no exchange rate.
  */
-export async function providerReadiness(db: Queryable): Promise<CheckoutAvailability> {
+export async function providerReadiness(db: Queryable, provider: CheckoutProvider = "paymongo"): Promise<CheckoutAvailability> {
   const row = (await db.query<{ purchase_checkout_enabled: boolean; usd_php_rate: string | null; fx_source: string | null; fx_updated_at: Date | null; live_payments_review_at: Date | null }>(
     "select purchase_checkout_enabled, usd_php_rate, fx_source, fx_updated_at, live_payments_review_at from agency_billing_settings limit 1",
   )).rows[0];
@@ -45,6 +51,15 @@ export async function providerReadiness(db: Queryable): Promise<CheckoutAvailabi
     fxUpdatedAt: row?.fx_updated_at ?? null,
     liveReviewedAt: row?.live_payments_review_at ?? null,
   };
+  if (provider === "paypal") {
+    const paypal = paypalStatus();
+    const livePaypal = paypal.livemode;
+    const noPaypal = (reason: string): CheckoutAvailability => ({ available: false, reason, livemode: livePaypal, settings });
+    if (!paypal.configured) return noPaypal("PayPal is not connected yet (client ID or secret missing).");
+    if (!paypal.webhookConfigured) return noPaypal("The PayPal webhook id is not set, so a payment could not be confirmed.");
+    if (livePaypal === true && !settings.liveReviewedAt) return noPaypal("Live payments are switched off until iAcquire confirms the payment and tax review.");
+    return { available: true, reason: null, livemode: livePaypal, settings };
+  }
   const status = paymongoStatus();
   const livemode = status.livemode;
   const no = (reason: string): CheckoutAvailability => ({ available: false, reason, livemode, settings });
@@ -56,8 +71,18 @@ export async function providerReadiness(db: Queryable): Promise<CheckoutAvailabi
 }
 
 /** A buyer may be sent to a purchase checkout only when the Super Admin switched purchase checkouts on AND the provider is ready. */
-export async function checkoutAvailability(db: Queryable): Promise<CheckoutAvailability> {
-  const readiness = await providerReadiness(db);
+export async function checkoutAvailability(db: Queryable, provider: CheckoutProvider = "paymongo"): Promise<CheckoutAvailability> {
+  const readiness = await providerReadiness(db, provider);
   if (!readiness.settings.enabled) return { ...readiness, available: false, reason: "Online checkout for purchases is switched off in the billing settings." };
   return readiness;
+}
+
+/** Every provider a buyer could pay with right now (the switch is on and that provider is ready), in the order they are offered. */
+export async function availableCheckoutProviders(db: Queryable): Promise<Array<{ provider: CheckoutProvider; label: string; availability: CheckoutAvailability }>> {
+  const out: Array<{ provider: CheckoutProvider; label: string; availability: CheckoutAvailability }> = [];
+  for (const provider of CHECKOUT_PROVIDERS) {
+    const availability = await checkoutAvailability(db, provider);
+    if (availability.available) out.push({ provider, label: PROVIDER_LABEL[provider], availability });
+  }
+  return out;
 }

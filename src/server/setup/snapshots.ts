@@ -41,6 +41,7 @@ import {
   type SetupService,
   type TaskStatus,
 } from "@/lib/setup";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 // ---------------------------------------------------------------------------
 // Client portal
@@ -478,7 +479,7 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
               i.id as instance_id, i.state, i.services, i.responsible_user_id, ru.full_name as responsible_name,
               contact.contact_name, contact.contact_email,
               p.total, p.completed, p.waiting, p.blocked, p.outstanding, p.blockers, p.last_task_at,
-              (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled and a.status in ('online', 'busy') and a.last_health_check_at is not null and a.last_health_ok = true) as agents_online,
+              (select count(*)::int from agent_instances a where a.org_id = o.id and ${runtimeReadySql("a")}) as agents_online,
               (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled) as agents_enabled,
               (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled and a.status in ('error', 'offline')) as agents_failing,
               (select g.status from ghl_location_mappings g where g.org_id = o.id) as ghl_status,

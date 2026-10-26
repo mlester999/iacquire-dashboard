@@ -14,6 +14,7 @@ import {
   type OpsMetricsCard,
   type OpsTimelineCard,
 } from "@/lib/aqi/ops/types";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 const SUPER = ["agency_super_admin"] as const;
 
@@ -63,7 +64,7 @@ export async function collectPlatformHealth(now: Date): Promise<PlatformHealthRe
            (select count(*) from email_outbox where status = 'failed' and created_at > now() - interval '1 day')::int as email_failed,
            (select count(*) from agent_instances a join organizations o on o.id = a.org_id where a.enabled and o.status <> 'archived')::int as agents_total,
            (select count(*) from agent_instances a join organizations o on o.id = a.org_id where a.enabled and o.status <> 'archived' and a.status in ('error', 'offline'))::int as agents_down,
-           (select count(*) from agent_instances a join organizations o on o.id = a.org_id where a.enabled and o.status <> 'archived' and a.status in ('online', 'busy'))::int as agents_online,
+           (select count(*) from agent_instances a join organizations o on o.id = a.org_id where a.enabled and o.status <> 'archived' and ${runtimeReadySql("a")})::int as agents_online,
            (select count(*) from integration_connections where status in ('error', 'needs_attention'))::int as integrations_bad,
            (select count(*) from integration_connections)::int as integrations_total,
            (select status from integration_connections where org_id is null and provider = 'llm' order by updated_at desc limit 1) as llm_status,

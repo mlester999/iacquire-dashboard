@@ -11,7 +11,7 @@ import {
   cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, releasePurchaseHold, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
   createPurchaseIntentSchema, purchasePaymentSchema,
 } from "@/server/purchase-intents/service";
-import { startPurchaseCheckout } from "@/server/purchase-intents/checkout";
+import { completePaypalPurchaseReturn, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
 
 // Server actions for purchase intents. The admin ones start from a signed-in agency account and the service re-reads the permission from the database. The public one is
 // the buyer confirming a link: it takes only the token, is rate-limited by address, and creates no account and no payment. A token never appears in a log or an audit row.
@@ -107,12 +107,24 @@ export async function startPurchaseAction(rawToken: string) {
  * The buyer presses Pay: opens (or resumes) the one hosted checkout for the frozen fee and hands back the provider's page. Only the token is taken from the browser: the amount, the
  * currency and the buyer are all the purchase's own. Nothing is charged here.
  */
-export async function startPurchaseCheckoutAction(rawToken: string) {
+export async function startPurchaseCheckoutAction(rawToken: string, rawProvider?: string) {
   return guard(async () => {
     const value = token.parse(rawToken);
-    const started = await startPurchaseCheckout(value, { ip: await clientIp() });
+    const provider = z.enum(["paymongo", "paypal"]).default("paymongo").parse(rawProvider ?? "paymongo");
+    const started = await startPurchaseCheckout(value, { ip: await clientIp(), provider });
     revalidatePath(`/purchase/${value}`, "page");
     return { checkoutUrl: started.checkoutUrl, reference: started.reference, resumed: started.resumed };
+  });
+}
+
+/**
+ * The buyer is back from PayPal's page: this server takes the payment the buyer approved and records what PayPal itself reports. Only the checkout's reference is taken from the
+ * browser (it names a row of ours; the PayPal order id is the one we stored), and it answers with a state, never with a claim that a payment was received.
+ */
+export async function completePaypalReturnAction(rawReference: string) {
+  return guard(async () => {
+    const reference = z.string().regex(/^IAQ-[A-Z0-9]{8,40}$/, { error: "That payment reference is not valid." }).parse(rawReference);
+    return completePaypalPurchaseReturn(reference, { ip: await clientIp() });
   });
 }
 

@@ -23,6 +23,7 @@
 //      again and compared with C.
 //   E. The reserved 0084 (restricted Hermes provisioner, from codex/client-ai-onboarding) before, between and after: the final schema is identical, and 0084 also
 //      applies cleanly on top of the populated head.
+//   G. The same hosted procedure from the production ledger as it really is today (105 rows; only 0110 to 0112 pending, applied around the already-applied 0113).
 //   F. The hosted procedure of the release docs, as far as embedded Postgres can: a database whose ledger ends at 0086 (80 rows), a backup that is restored and
 //      checked, a dry run that lists the pending versions, then each pending migration applied alone (the runner's prerequisite and ledger rules mirrored) with a
 //      full check after each.
@@ -56,12 +57,16 @@ const wanted = arg("--sections") ? new Set(arg("--sections").split(",").map((s) 
 const wants = (...keys) => !wanted || keys.some((k) => wanted.has(k));
 const EXT = { citext, pg_trgm, btree_gist };
 
-const files = fs.readdirSync(MIGRATIONS).filter((f) => FILE.test(f)).sort();
+const allFiles = fs.readdirSync(MIGRATIONS).filter((f) => FILE.test(f)).sort();
+// 0084 (restricted Hermes provisioner) is unapplied in production although 0085 and 0086 are. Sections A to E rehearse the chain WITHOUT it and put it in at five different
+// places (E); section F uses the whole tree, because the hosted procedure has to apply it out of order. (Until this tree carried it, E read it from the other branches.)
+const RESERVED_0084 = allFiles.filter((f) => f.startsWith("0084_"));
+let files = allFiles.filter((f) => !f.startsWith("0084_"));
 const name = (f) => f.replace(/\.sql$/, "");
 const prefix = (f) => f.slice(0, f.indexOf("_"));
 const numOf = (f) => Number(prefix(f));
 const BASELINE = files.filter((f) => numOf(f) < 77);
-const HISTORY = files.filter((f) => numOf(f) >= 77);
+let HISTORY = files.filter((f) => numOf(f) >= 77);
 const HEAD = files[files.length - 1];
 if (!BASELINE.length || !HISTORY.length) throw new Error("This checkout has no migrations on both sides of 0077.");
 
@@ -173,7 +178,7 @@ const FINGERPRINT = `
   union all select 'role_setting', coalesce(r.rolname, '*') || ':' || s.setconfig::text from pg_db_role_setting s left join pg_roles r on r.oid = s.setrole
   union all select 'type', t.typname || ':' || t.typtype::text || ':' || coalesce((select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e where e.enumtypid = t.oid), '') from pg_type t where t.typnamespace in ('public'::regnamespace, 'app'::regnamespace) and t.typtype in ('e', 'd')
   union all select 'extension', extname from pg_extension
-  union all select 'comment', 'public.' || c.relname || '.' || d.objsubid::text || ':' || d.description from pg_description d join pg_class c on c.oid = d.objoid and d.classoid = 'pg_class'::regclass where c.relnamespace = 'public'::regnamespace
+  union all select 'comment', 'public.' || c.relname || '.' || (case when d.objsubid = 0 then '' else coalesce((select a.attname::text from pg_attribute a where a.attrelid = c.oid and a.attnum = d.objsubid), d.objsubid::text) end) || ':' || d.description from pg_description d join pg_class c on c.oid = d.objoid and d.classoid = 'pg_class'::regclass where c.relnamespace = 'public'::regnamespace
   union all select 'sequence', n.nspname || '.' || c.relname || ':' || format_type(s.seqtypid, null) || ':' || s.seqstart || ':' || s.seqincrement || ':' || s.seqmax || ':' || s.seqcycle::text from pg_sequence s join pg_class c on c.oid = s.seqrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'app')
   union all select 'role_permission', role || ':' || permission from role_permissions`;
 // Allow-lists that migrations rewrite are compared as SETS (the database prints the same constraint as an IN list or an array literal, in any order).
@@ -1271,6 +1276,70 @@ CLEAN["0102_onboarding_snapshot"] = {
   },
 };
 
+// Automatic monthly payment agreements. Workspace a and b each have an OPEN PayPal agreement on the maintenance plan 0099's seed made (or one made here when that seed did not run),
+// one charge PayPal reported for it and the payment row that charge became, so the rollback has to refuse while an agreement is open (a subscription that can still charge a client is
+// never left without a record). The clean-up removes the charges, unlinks and removes the payments and removes the agreements; the columns and tables go with the rollback.
+SEEDS["0110_maintenance_agreements"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    let plan = (await db.query("select id from maintenance_subscriptions where org_id = $1 limit 1", [org])).rows[0]?.id;
+    if (!plan) {
+      plan = (await one(db, `insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_at, billing_start_on)
+        values ($1, 'active', 29900, 4, 'seed-0110', $2, now(), current_date) returning id`, [org, owner])).id;
+    }
+    const agreement = (await one(db, `insert into maintenance_agreements (org_id, subscription_id, reference_number, provider_agreement_id, status, livemode, amount_minor, currency, requested_by, next_billing_at)
+      values ($1, $2, $3, $4, 'active', false, 29900, 'USD', $5, now() + interval '30 days') returning id`, [org, plan, `IAQ-SEED110${key.toUpperCase()}A`, `I-SEED0110${key.toUpperCase()}`, owner])).id;
+    const payment = (await one(db, `insert into payments (org_id, kind, status, description, usd_amount_micros, charged_currency, charged_amount_minor, provider, livemode, reference_number, provider_payment_id,
+        paid_at, maintenance_subscription_id, covers_months, maintenance_agreement_id)
+      values ($1, 'maintenance', 'paid', 'Seed automatic payment', 299000000, 'USD', 29900, 'paypal', false, $2, $3, now(), $4, 1, $5) returning id`, [org, `IAQ-SEED110${key.toUpperCase()}P`, `SALE-SEED0110${key.toUpperCase()}`, plan, agreement])).id;
+    await db.query(`insert into maintenance_agreement_charges (org_id, agreement_id, payment_id, provider_charge_id, amount_minor, currency, outcome, applied_at)
+      values ($1, $2, $3, $4, 29900, 'USD', 'applied', now())`, [org, agreement, payment, `SALE-SEED0110${key.toUpperCase()}`]);
+  });
+};
+CLEAN["0110_maintenance_agreements"] = {
+  guard: async (db) => {
+    await db.query("delete from maintenance_agreement_charges");
+    await db.query("update payments set maintenance_agreement_id = null where maintenance_agreement_id is not null");
+    await db.query("delete from payments where provider = 'paypal' and reference_number like 'IAQ-SEED110%'");
+    await db.query("delete from maintenance_agreements");
+    await db.query("delete from maintenance_subscriptions where terms_version = 'seed-0110'");
+  },
+};
+
+// Credit notes. Workspace a and b each get an invoice of their own (100.00, issued) with one ISSUED credit note (30.00, which moves the invoice's credited amount in the same
+// transaction: the database keeps the two equal at commit) and one draft, so the rollback has to refuse (an issued credit note is a commercial record). The invoice is the seed's
+// own, not one of 0093's: changing an earlier invoice would change its updated_at, and the rehearsal insists every earlier row is untouched. The clean-up removes the notes, the lines
+// and the invoice for the length of the removal (a purge declares itself).
+SEEDS["0111_customer_credit_notes"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    const number = `SEED111-${key.toUpperCase()}-0001`;
+    const inv = (await one(db, "insert into customer_invoices (org_id, currency, subtotal_minor, tax_minor, total_minor, due_on, created_by) values ($1, 'PHP', 10000, 0, 10000, '2026-12-01', $2) returning id", [org, owner])).id;
+    await db.query(`insert into customer_invoice_lines (org_id, invoice_id, position, description, quantity_milli, unit_price_minor, gross_minor, discount_minor, net_minor, tax_minor, total_minor, ex_tax_minor)
+      values ($1, $2, 1, 'Seed line', 1000, 10000, 10000, 0, 10000, 0, 10000, 10000)`, [org, inv]);
+    await db.query(`update customer_invoices set status = 'issued', number = $3, issue_on = '2026-11-01', due_on = '2026-12-01', content_hash = repeat('a', 64), approved_version = 1, approved_by = $4, approved_at = now(),
+      issued_at = now(), issued_by = $4, public_token_hash = md5($1::text) || md5($2::text || 'c') where id = $1 and org_id = $2`, [inv, org, number, owner]);
+    await db.transaction(async (tx) => {
+      const issued = (await tx.query("insert into customer_credit_notes (org_id, invoice_id, currency, amount_minor, reason, created_by) values ($1, $2, 'PHP', 3000, 'Seed credit for a late visit', $3) returning id", [org, inv, owner])).rows[0].id;
+      await tx.query(
+        `update customer_credit_notes set status = 'issued', number = $3, content_hash = repeat('e', 64), approved_version = 1, approved_by = $4, approved_at = now(), issued_at = now(), issued_by = $4,
+           bill_to = '{}'::jsonb, bill_from = '{}'::jsonb where id = $1 and org_id = $2`,
+        [issued, org, `CN-SEED-${key.toUpperCase()}-0001`, owner],
+      );
+      await tx.query("update customer_invoices set credited_minor = 3000 where id = $1 and org_id = $2", [inv, org]);
+      await tx.query("insert into customer_credit_notes (org_id, invoice_id, currency, amount_minor, reason, created_by) values ($1, $2, 'PHP', 1000, 'Seed draft credit', $3)", [org, inv, owner]);
+    });
+  });
+};
+CLEAN["0111_customer_credit_notes"] = {
+  guard: async (db) => {
+    await db.transaction(async (tx) => {
+      await tx.query("select set_config('iaq.purge', 'on', true)");
+      await tx.query("delete from customer_credit_notes");
+      await tx.query("delete from customer_invoice_lines where invoice_id in (select id from customer_invoices where number like 'SEED111-%')");
+      await tx.query("delete from customer_invoices where number like 'SEED111-%'");
+    });
+  },
+};
+
 // Tenant isolation across the whole populated database: through the application role, the owner of workspace A sees rows of workspace A only, the owner of B rows of
 // B only, a signed-in stranger and a request with no user see none. Every public table with an org_id column that the role can read and that holds rows is swept.
 async function isolationSweep(db, ctx) {
@@ -1396,7 +1465,7 @@ async function runA() {
   const rbStem = new Set(rollbacks.map((f) => f.replace(/\.down\.sql$/, "")));
   const missing = HISTORY.filter((f) => !rbStem.has(name(f)));
   for (const f of missing) fail("A", `${name(f)} has no rollback in supabase/rollbacks`);
-  const orphan = rollbacks.filter((f) => numOf(f) >= 77 && !files.includes(f.replace(/\.down\.sql$/, ".sql")));
+  const orphan = rollbacks.filter((f) => numOf(f) >= 77 && !allFiles.includes(f.replace(/\.down\.sql$/, ".sql")));
   for (const f of orphan) fail("A", `rollback ${f} has no migration of that name`);
   const rbDupes = [...new Set(rollbacks.map(numOf))].filter((n) => rollbacks.filter((f) => numOf(f) === n).length > 1);
   for (const n of rbDupes) fail("A", `rollback number ${pad(n)} is used twice`);
@@ -1422,7 +1491,8 @@ async function runA() {
   const block = src.slice(src.indexOf("export const MIGRATION_PREREQUISITES"), src.indexOf("};", src.indexOf("export const MIGRATION_PREREQUISITES")));
   const prereq = {};
   for (const m of block.matchAll(/"(\d{4}_[a-z0-9_]+)":\s*\[([^\]]*)\]/g)) prereq[m[1]] = [...m[2].matchAll(/"(\d{4}_[a-z0-9_]+)"/g)].map((x) => x[1]);
-  const order = files.map(name);
+  // The prerequisites are checked against the whole tree, 0084 included (the chain of A to D leaves it out, see RESERVED_0084).
+  const order = allFiles.map(name);
   for (const [v, reqs] of Object.entries(prereq)) {
     if (!order.includes(v)) fail("A", `MIGRATION_PREREQUISITES names ${v}, which has no file`);
     for (const r of reqs) {
@@ -1773,6 +1843,10 @@ async function runE() {
   const t0 = Date.now();
   const fresh = await freshChain();
   const candidates = [];
+  for (const f of RESERVED_0084) {
+    const full = path.join(MIGRATIONS, f);
+    candidates.push({ ref: "this checkout", file: f, sql: fs.readFileSync(full, "utf8"), blob: (git(["hash-object", full]) ?? "").trim() });
+  }
   for (const ref of ["codex/client-ai-onboarding", "codex/hermes-gha-acceptance"]) {
     const listing = git(["ls-tree", "--name-only", ref, "supabase/migrations/"]);
     const file = listing?.split("\n").map((l) => path.basename(l)).find((l) => l.startsWith("0084_"));
@@ -1877,14 +1951,18 @@ async function runE() {
 // ============================================================================================================================================
 // F. The hosted procedure, as far as embedded Postgres can go
 // ============================================================================================================================================
-async function runF() {
-  section("F", "The hosted procedure from a ledger at 0086: backup, dry run, one at a time, verify");
+async function runHosted(key, cfg) {
+  section(key, cfg.title);
   const t0 = Date.now();
+  // F rehearses the whole tree: 0084 is part of it here, and pending in production.
+  files = allFiles;
+  HISTORY = files.filter((f) => numOf(f) >= 77);
+  if (cfg.resetFresh) freshMemo = null;
   const fresh = await freshChain();
   // The runner's rules, mirrored from src/server/db/index.ts (appliedVersions, runMigrations, selectMigrationFiles) and scripts/migrate.ts (--only, --through, --dry-run).
   const src = fs.readFileSync(path.join(root, "src", "server", "db", "index.ts"), "utf8");
   for (const marker of ["insert into schema_migrations (version) values ('${version}');", "if (applied.has(version)) continue;", "Cannot apply ${version} before ${missingPrerequisites.join(\", \")}.", "supabase_migrations.schema_migrations", "execScript", "Unknown migration version(s): ${unknown.join"]) {
-    if (!src.includes(marker)) fail("F", `the runner source no longer contains "${marker}": the mirror in this script is out of date`);
+    if (!src.includes(marker)) fail(key, `the runner source no longer contains "${marker}": the mirror in this script is out of date`);
   }
   const block = src.slice(src.indexOf("export const MIGRATION_PREREQUISITES"), src.indexOf("};", src.indexOf("export const MIGRATION_PREREQUISITES")));
   const prereq = {};
@@ -1928,28 +2006,32 @@ async function runF() {
     }
     return ran;
   };
-  const prodHead = "0086_lead_scoring";
+  const prodHead = cfg.prodHead;
+  // Versions numbered below the head that production does NOT have: 0084 (restricted Hermes provisioner) was reserved for an unmerged branch while 0085 and 0086 were
+  // applied, so it is pending although it sorts before the head. The rebuilt baseline leaves it out, exactly as the hosted ledger does (80 rows).
+  const prodLacks = new Set(files.map(name).filter((v) => cfg.lacks(v)));
+  const expectedRows = cfg.rows(files.length);
   if (!files.map(name).includes(prodHead)) {
-    fail("F", `${prodHead} is not in this checkout`);
+    fail(key, `${prodHead} is not in this checkout`);
     return;
   }
   // Production as the docs describe it: rebuilt with --through, populated.
   const db = await newDb();
-  const rebuilt = await runnerApply(db, scope(prodHead));
-  const pendingNow = files.map(name).filter((v) => v > prodHead);
-  finding("F", `rebuilt production's state with the runner (--through ${prodHead}): ${rebuilt.length} migrations applied, ledger ${(await applied(db)).size} rows (the docs record 80 at 0086), ${pendingNow.length} pending: ${pendingNow.join(", ")}`);
-  if ((await applied(db)).size !== 80) fail("F", `the ledger at ${prodHead} has ${(await applied(db)).size} rows, the release docs say 80`);
+  const rebuilt = await runnerApply(db, scope(prodHead).filter((v) => !prodLacks.has(v)));
+  const pendingNow = files.map(name).filter((v) => v > prodHead || prodLacks.has(v));
+  finding(key, `rebuilt production's state with the runner (--through ${prodHead}): ${rebuilt.length} migrations applied, ledger ${(await applied(db)).size} rows (${cfg.recorded}), ${pendingNow.length} pending: ${pendingNow.join(", ")}`);
+  if ((await applied(db)).size !== expectedRows) fail(key, `the ledger at ${prodHead} has ${(await applied(db)).size} rows, expected ${expectedRows} (${cfg.recorded})`);
   const ctx = await seedBaseline(db, Math.max(0.3, scale * 0.3));
-  for (const f of files.filter((x) => numOf(x) >= 77 && name(x) <= prodHead)) if (SEEDS[name(f)]) await SEEDS[name(f)](db, ctx);
+  for (const f of files.filter((x) => numOf(x) >= 77 && name(x) <= prodHead && !prodLacks.has(name(x)))) if (SEEDS[name(f)]) await SEEDS[name(f)](db, ctx);
   let cur = await capture(db, ctx);
-  finding("F", `populated like a workspace in use: ${rowsIn(cur.snap)} rows in ${[...cur.snap.values()].filter((s) => s.n > 0).length} tables (scale ${Math.max(0.3, scale * 0.3)})`);
+  finding(key, `populated like a workspace in use: ${rowsIn(cur.snap)} rows in ${[...cur.snap.values()].filter((s) => s.n > 0).length} tables (scale ${Math.max(0.3, scale * 0.3)})`);
   // Read-only look first.
   const noRls = (await q(db, "select relname from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity and relname <> 'schema_migrations' order by 1")).map((r) => r.relname);
-  if (noRls.length) fail("F", `before applying, public tables without row-level security: ${noRls.join(", ")}`);
+  if (noRls.length) fail(key, `before applying, public tables without row-level security: ${noRls.join(", ")}`);
   const trgm = (await q(db, "select 1 from pg_extension where extname = 'pg_trgm'")).length > 0;
   const cli = (await one(db, "select to_regclass('supabase_migrations.schema_migrations')::text as t")).t;
-  finding("F", `read-only look: ledger ${cur.ledger.length} rows ending ${cur.ledger[cur.ledger.length - 1]}; pg_trgm ${trgm ? "installed" : "MISSING"}; Supabase CLI ledger ${cli ? "present" : "absent (as on production)"}; every public table has row-level security (${(await listTables(db)).length} tables)`);
-  if (!trgm) fail("F", "pg_trgm is not installed in the production-like database");
+  finding(key, `read-only look: ledger ${cur.ledger.length} rows ending ${cur.ledger[cur.ledger.length - 1]}; pg_trgm ${trgm ? "installed" : "MISSING"}; Supabase CLI ledger ${cli ? "present" : "absent (as on production)"}; every public table has row-level security (${(await listTables(db)).length} tables)`);
+  if (!trgm) fail(key, "pg_trgm is not installed in the production-like database");
   // Backup, verified by restoring it.
   const tb = Date.now();
   const backup = await db.dumpDataDir("gzip");
@@ -1959,23 +2041,23 @@ async function runF() {
   const copyBad = await verifyWhole(copy, cur.snap);
   const dCopy = diff(cur.fp, await fingerprint(copy));
   await copy.close();
-  if (JSON.stringify(ledgerCopy) !== JSON.stringify(cur.ledger)) fail("F", "the restored backup has a different ledger");
-  for (const m of copyBad) fail("F", `the restored backup differs from the source: ${m}`);
-  if (!same(dCopy)) fail("F", `the restored backup has a different schema: ${showDiff(dCopy)}`);
-  if (!copyBad.length && same(dCopy)) finding("F", `backup (embedded stand-in for pg_dump + pg_restore --list): ${(backup.size / 1048576).toFixed(1)} MB gzip data directory taken in ${Date.now() - tb} ms, restored into a second database: ledger ${ledgerCopy.length} rows, ${rowsIn(snapCopy)} rows in ${[...snapCopy.values()].filter((s) => s.n > 0).length} tables and ${cur.fp.size} schema facts all identical to the source`);
+  if (JSON.stringify(ledgerCopy) !== JSON.stringify(cur.ledger)) fail(key, "the restored backup has a different ledger");
+  for (const m of copyBad) fail(key, `the restored backup differs from the source: ${m}`);
+  if (!same(dCopy)) fail(key, `the restored backup has a different schema: ${showDiff(dCopy)}`);
+  if (!copyBad.length && same(dCopy)) finding(key, `backup (embedded stand-in for pg_dump + pg_restore --list): ${(backup.size / 1048576).toFixed(1)} MB gzip data directory taken in ${Date.now() - tb} ms, restored into a second database: ledger ${ledgerCopy.length} rows, ${rowsIn(snapCopy)} rows in ${[...snapCopy.values()].filter((s) => s.n > 0).length} tables and ${cur.fp.size} schema facts all identical to the source`);
   // Dry run.
   const dry = await pending(db, undefined);
-  if (JSON.stringify(dry) !== JSON.stringify(pendingNow)) fail("F", `the dry run lists ${dry.join(", ")}; expected ${pendingNow.join(", ")}`);
-  finding("F", `dry run: "Would apply, in this order: ${dry.join(", ")}" (nothing applied)`);
+  if (JSON.stringify(dry) !== JSON.stringify(pendingNow)) fail(key, `the dry run lists ${dry.join(", ")}; expected ${pendingNow.join(", ")}`);
+  finding(key, `dry run: "Would apply, in this order: ${dry.join(", ")}" (nothing applied)`);
   const dryOnly = await pending(db, [...pendingNow]);
-  if (JSON.stringify(dryOnly) !== JSON.stringify(pendingNow)) fail("F", "--only with the three pending versions does not list them in order");
+  if (JSON.stringify(dryOnly) !== JSON.stringify(pendingNow)) fail(key, "--only with the three pending versions does not list them in order");
   // The runner's guards on the same database.
   const guard = async (label, fn, expect) => {
     try {
       await fn();
-      fail("F", `${label}: expected an error`);
+      fail(key, `${label}: expected an error`);
     } catch (e) {
-      if (!expect.test(e.message)) fail("F", `${label}: expected ${expect}, got "${clip(e.message, 160)}"`);
+      if (!expect.test(e.message)) fail(key, `${label}: expected ${expect}, got "${clip(e.message, 160)}"`);
     }
   };
   await guard("--only with an unknown version", () => pending(db, ["0099_nothing"]), /Unknown migration version/);
@@ -1985,10 +2067,12 @@ async function runF() {
     have.delete("0049_aqi_attachments");
     return (prereq["0089_social_media_manager"] ?? []).filter((r) => !have.has(r));
   })();
-  if (!missingPrereq.includes("0049_aqi_attachments")) fail("F", "0089 does not require 0049 in the runner's prerequisite list");
+  if (!missingPrereq.includes("0049_aqi_attachments")) fail(key, "0089 does not require 0049 in the runner's prerequisite list");
+  if (cfg.legacyChecks) {
   const rangeEnd = scope("0087_website_chat").filter((v) => !cur.ledger.includes(v));
-  if (JSON.stringify(rangeEnd) !== JSON.stringify(["0087_website_chat"])) fail("F", `--through 0087 from the 0086 ledger lists ${rangeEnd.join(", ")}`);
-  finding("F", "the runner's own refusals hold on this database: an unknown version and a version named twice are refused before anything is applied, and --through 0087 from the 0086 ledger lists exactly 0087_website_chat");
+  const expectedRange = [...prodLacks, "0087_website_chat"].sort();
+  if (JSON.stringify(rangeEnd) !== JSON.stringify(expectedRange)) fail(key, `--through 0087 from the 0086 ledger lists ${rangeEnd.join(", ")}; expected ${expectedRange.join(", ")}`);
+  finding(key, `the runner's own refusals hold on this database: an unknown version and a version named twice are refused before anything is applied, and --through 0087 from the 0086 ledger lists exactly ${expectedRange.join(" and ")} (0084 is pending although it sorts below the head)`);
   // A ledger that lacks a prerequisite: through 0064, 0065 (support requests) is not in. The runner must refuse 0083, 0085, 0089 and 0094, which all extend
   // notifications_kind_check from the live constraint and would otherwise be overwritten by 0065's copied list, and must apply nothing.
   {
@@ -2000,59 +2084,65 @@ async function runF() {
       if (!files.map(name).includes(v)) continue;
       try {
         await runnerApply(early, [v]);
-        fail("F", `from a ledger through 0064 the runner applied ${v} although 0065 is not in it`);
+        fail(key, `from a ledger through 0064 the runner applied ${v} although 0065 is not in it`);
       } catch (e) {
-        if (!/^Cannot apply .* before /.test(e.message)) fail("F", `from a ledger through 0064, ${v} failed for another reason: ${clip(e.message, 160)}`);
+        if (!/^Cannot apply .* before /.test(e.message)) fail(key, `from a ledger through 0064, ${v} failed for another reason: ${clip(e.message, 160)}`);
         else refused.push(v.slice(0, 4));
       }
     }
     const afterRows = (await applied(early)).size;
     await early.close();
-    if (afterRows !== before) fail("F", `a refused migration changed the ledger (${before} to ${afterRows} rows)`);
-    else finding("F", `from a ledger through 0064 (0065 not in it) the runner refuses ${refused.join(", ")} with "Cannot apply ... before ...", before applying anything (ledger stays at ${before} rows)`);
+    if (afterRows !== before) fail(key, `a refused migration changed the ledger (${before} to ${afterRows} rows)`);
+    else finding(key, `from a ledger through 0064 (0065 not in it) the runner refuses ${refused.join(", ")} with "Cannot apply ... before ...", before applying anything (ledger stays at ${before} rows)`);
+  }
+  } else {
+    finding(key, `the runner's own refusals hold on this database: an unknown version and a version named twice are refused before anything is applied`);
   }
   // One at a time, a full check after each.
   let sawProblem = false;
   for (const v of pendingNow) {
     const before = cur;
     const ran = await runnerApply(db, [v]);
-    if (JSON.stringify(ran) !== JSON.stringify([v])) fail("F", `--only ${v} applied ${ran.join(", ") || "nothing"}`);
+    if (JSON.stringify(ran) !== JSON.stringify([v])) fail(key, `--only ${v} applied ${ran.join(", ") || "nothing"}`);
     const after = await capture(db, ctx, { skipProbe: true });
     after.probe = await probe(db, ctx, before.probeTables.filter((x) => after.tables.has(x)));
     const problems = [];
     const growable = insertTargets(files.find((f) => name(f) === v));
     const rowsChanged = await verifyWhole(db, before.snap, growable);
     for (const m of rowsChanged) problems.push(`earlier data: ${m}`);
-    if (after.ledger.length !== before.ledger.length + 1 || after.ledger[after.ledger.length - 1] !== v) problems.push(`ledger is ${after.ledger.length} rows ending ${after.ledger[after.ledger.length - 1]}`);
+    // A version that sorts below the head (0084) is added in the middle of the ledger, so it is looked for, not expected last.
+    if (after.ledger.length !== before.ledger.length + 1 || !after.ledger.includes(v) || (!prodLacks.has(v) && after.ledger[after.ledger.length - 1] !== v)) problems.push(`ledger is ${after.ledger.length} rows ending ${after.ledger[after.ledger.length - 1]}`);
     for (const k of subsetOf(before.kinds, after.kinds)) problems.push(`notification kind lost: ${k}`);
     for (const d of probeDiff(before.probe, after.probe, growable)) problems.push(d);
-    const objects = await checkNewObjects(db, "F", v, before, after);
+    const objects = await checkNewObjects(db, key, v, before, after);
     const unprotected = (await q(db, "select relname from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity and relname <> 'schema_migrations'")).map((r) => r.relname);
     if (unprotected.length) problems.push(`public tables without row-level security: ${unprotected.join(", ")}`);
+    // Applied out of order, 0084 meets a database whose 0085 and 0086 already extended notifications_kind_check, so its intermediate schema is not a point on the fresh chain;
+    // the end state is compared below, and section E proves the final schema does not depend on where 0084 lands.
     const dd = diff(fresh.fpBy.get(v), after.fp);
-    if (!same(dd)) problems.push(`schema differs from the fresh chain: ${showDiff(dd, 500)}`);
-    for (const p of problems) fail("F", `${v}: ${p}`);
+    if (!prodLacks.has(v) && !same(dd)) problems.push(`schema differs from the fresh chain: ${showDiff(dd, 500)}`);
+    for (const p of problems) fail(key, `${v}: ${p}`);
     if (problems.length || objects.problems.length) sawProblem = true;
-    finding("F", `--only ${v}: ledger ${after.ledger.length} rows ending ${v}; ${rowsIn(before.snap)} earlier rows in ${before.snap.size} tables unchanged; ${objects.fresh.length} new tables (${objects.fresh.join(", ")}) with row-level security, empty, select-only for the application role; no public table without row-level security; the application role sees the same rows; the schema equals the fresh chain at this point`);
+    finding(key, `--only ${v}: ledger ${after.ledger.length} rows ending ${v}; ${rowsIn(before.snap)} earlier rows in ${before.snap.size} tables unchanged; ${objects.fresh.length} new tables (${objects.fresh.join(", ")}) with row-level security, empty, select-only for the application role; no public table without row-level security; the application role sees the same rows; the schema equals the fresh chain at this point`);
     cur = after;
   }
   const finalDiff = diff(fresh.final, cur.fp);
-  if (!same(finalDiff)) fail("F", `the end state differs from the fresh chain: ${showDiff(finalDiff)}`);
+  if (!same(finalDiff)) fail(key, `the end state differs from the fresh chain: ${showDiff(finalDiff)}`);
   const last = await pending(db, undefined);
-  if (last.length) fail("F", `after the last migration the dry run still lists ${last.join(", ")}`);
-  finding("F", `final: dry run says "Nothing pending in this scope."; ledger ${cur.ledger.length} rows (${files.length} files); schema equals the fresh chain (${fresh.final.size} facts)${sawProblem ? "" : "; every check after every step passed"}`);
+  if (last.length) fail(key, `after the last migration the dry run still lists ${last.join(", ")}`);
+  finding(key, `final: dry run says "Nothing pending in this scope."; ledger ${cur.ledger.length} rows (${files.length} files); schema equals the fresh chain (${fresh.final.size} facts)${sawProblem ? "" : "; every check after every step passed"}`);
   // The CLI ledger hazard: a hosted project that has supabase_migrations.schema_migrations treats a file as applied when its NUMBER is in it.
   {
     const hazard = await newDb();
-    await runnerApply(hazard, scope(prodHead));
+    await runnerApply(hazard, scope(prodHead).filter((v) => !prodLacks.has(v)));
     await hazard.exec("create schema supabase_migrations; create table supabase_migrations.schema_migrations (version text primary key, name text)");
-    for (const f of files.filter((x) => name(x) <= prodHead)) await hazard.query("insert into supabase_migrations.schema_migrations (version, name) values ($1, $2)", [prefix(f), name(f).replace(/^\d+_/, "")]);
+    for (const f of files.filter((x) => name(x) <= prodHead && !prodLacks.has(name(x)))) await hazard.query("insert into supabase_migrations.schema_migrations (version, name) values ($1, $2)", [prefix(f), name(f).replace(/^\d+_/, "")]);
     const p = await pending(hazard, undefined);
-    if (JSON.stringify(p) !== JSON.stringify(pendingNow)) fail("F", `with a Supabase CLI ledger the dry run lists ${p.join(", ")}`);
+    if (JSON.stringify(p) !== JSON.stringify(pendingNow)) fail(key, `with a Supabase CLI ledger the dry run lists ${p.join(", ")}`);
     const ranHazard = await runnerApply(hazard, [pendingNow[0]]);
     const cliRows = (await q(hazard, "select version from supabase_migrations.schema_migrations order by version")).map((r) => r.version);
-    if (JSON.stringify(ranHazard) !== JSON.stringify([pendingNow[0]]) || !cliRows.includes(prefix(files.find((f) => name(f) === pendingNow[0])))) fail("F", "with a Supabase CLI ledger the first pending migration was not applied and recorded by number");
-    else finding("F", `with a Supabase CLI ledger present (hosted projects have one), the dry run still lists the same ${p.length} versions and --only ${pendingNow[0]} records itself there by number as well (${cliRows.length} rows)`);
+    if (JSON.stringify(ranHazard) !== JSON.stringify([pendingNow[0]]) || !cliRows.includes(prefix(files.find((f) => name(f) === pendingNow[0])))) fail(key, "with a Supabase CLI ledger the first pending migration was not applied and recorded by number");
+    else finding(key, `with a Supabase CLI ledger present (hosted projects have one), the dry run still lists the same ${p.length} versions and --only ${pendingNow[0]} records itself there by number as well (${cliRows.length} rows)`);
     await hazard.close();
   }
   // Rolling back by restoring: the backup is the way back for a migration defect, and it is exactly the state before.
@@ -2061,11 +2151,38 @@ async function runF() {
     const rd = diff(cur.fp, await fingerprint(restored));
     const rl = (await q(restored, "select version from schema_migrations order by version")).map((r) => r.version);
     await restored.close();
-    if (rl.length !== 80 || rl[rl.length - 1] !== prodHead) fail("F", `the backup restores to a ledger of ${rl.length} rows ending ${rl[rl.length - 1]}`);
-    else finding("F", `after the three applies, restoring the backup returns the database to ledger ${rl.length} rows ending ${rl[rl.length - 1]} and the ${rd.onlyBefore.length} schema facts the three migrations added are gone again (the way back if a migration, not the application, is at fault)`);
+    if (rl.length !== expectedRows || rl[rl.length - 1] !== prodHead) fail(key, `the backup restores to a ledger of ${rl.length} rows ending ${rl[rl.length - 1]}`);
+    else finding(key, `after the ${pendingNow.length} applies, restoring the backup returns the database to ledger ${rl.length} rows ending ${rl[rl.length - 1]} and the ${rd.onlyBefore.length} schema facts the applied migrations added are gone again (the way back if a migration, not the application, is at fault)`);
   }
   await db.close();
-  result.sections.F.ms = Date.now() - t0;
+  result.sections[key].ms = Date.now() - t0;
+}
+
+// F: production as the 2026-10-22 release docs recorded it (ledger through 0086 without 0084, 80 rows, 27 versions pending).
+async function runF() {
+  return runHosted("F", {
+    title: "The hosted procedure from a ledger at 0086: backup, dry run, one at a time, verify",
+    prodHead: "0086_lead_scoring",
+    lacks: (v) => v.startsWith("0084_"),
+    rows: () => 80,
+    recorded: "the docs record 80 at 0086",
+    resetFresh: true,
+    legacyChecks: true,
+  });
+}
+
+// G: production as it was read from the hosted ledger on 2026-10-26: 105 rows, everything applied except 0110, 0111 and 0112 (0084, 0087 to 0109 and 0113 are in). This is the release that
+// is actually pending, applied out of order around 0113 exactly as the runner will do it, with the same backup, dry run and per-step checks as F.
+async function runG() {
+  return runHosted("G", {
+    title: "The hosted procedure from the 2026-10-26 production ledger (105 rows, 0110 to 0112 pending): backup, dry run, one at a time, verify",
+    prodHead: "0113_demo_registration_requests",
+    lacks: (v) => ["0110_maintenance_agreements", "0111_customer_credit_notes", "0112_client_content_policy"].includes(v),
+    rows: (n) => n - 3,
+    recorded: "the hosted ledger read on 2026-10-26 had 105 rows",
+    resetFresh: false,
+    legacyChecks: false,
+  });
 }
 
 // ============================================================================================================================================
@@ -2078,6 +2195,7 @@ if (wants("B", "C", "D")) await runBCD();
 if (wants("E")) await runE();
 if (state.popDb) await state.popDb.close();
 if (wants("F")) await runF();
+if (wants("G")) await runG();
 
 for (const [key, s] of Object.entries(result.sections)) {
   console.log(`\n${key}. ${s.title}: ${s.failures.length ? "FAIL" : "ok"}${s.ms ? ` (${(s.ms / 1000).toFixed(1)} s)` : ""}`);

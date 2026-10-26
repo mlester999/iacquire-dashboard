@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { submitRequest } from "@/server/support/service";
 import { createOpsRun, type OpsRun, type OpsToolOutcome } from "@/server/aqi/ops/executor";
@@ -282,5 +282,62 @@ describe("AI Employee status derivation", () => {
     expect(employees.find((e) => e.role === "lead_hunter")?.evidence).toMatch(/approval/);
     expect(employees.every((e) => e.state !== "scheduled")).toBe(true);
     expect((outcome.data as { notes: string[] }).notes.join(" ")).toMatch(/not reported/);
+  });
+});
+
+// Founder decision D70 (open): the stricter staff-access rule is OFF by default and then nothing above changes. With it on, these two tools read with trusted server access, so they ask the
+// question the database asks for a person's own reads: an approval's title and a run's error text are the client's content and need an active support session on that client.
+describe("the staff-access switch (D70) and the Operations tools", () => {
+  const setSwitch = (on: boolean) => withSystem((db) => db.query(
+    "insert into agency_policy_switches (key, enabled, changed_at, note) values ('client_content_needs_support_session', $1, now(), 'test') on conflict (key) do update set enabled = excluded.enabled", [on]));
+  afterEach(async () => {
+    await setSwitch(false);
+    await withSystem((db) => db.query("delete from crm_support_sessions where user_id = $1", [w.agency.superAdmin.id]));
+  });
+
+  it("withholds an approval's title and a run's error text without a session, keeps everything that is not content, and gives them back inside a session", async () => {
+    const tenant = await resolveOpsScope(w.agency.superAdmin, { type: "tenant", id: w.org.id });
+    await setSwitch(true);
+
+    const approvals = await runTool(tenant, "workforce.approvals");
+    expect(JSON.stringify(approvals.outcome)).not.toContain("Send outreach to 40 leads");
+    expect(JSON.stringify(approvals.outcome.data)).toContain("Hidden until you open a support session");
+    expect(JSON.stringify(approvals.outcome.data)).toContain('"kind":"outreach"');
+    expect(JSON.stringify(approvals.outcome.data)).toContain('"risk":"high"');
+    expect(approvals.outcome.unavailable?.join(" ")).toMatch(/withheld/);
+    const runs = await runTool(tenant, "workforce.runs");
+    expect(JSON.stringify(runs.outcome)).not.toContain("CRM tool returned 500");
+    expect(JSON.stringify(runs.outcome.data)).toContain("tool_error");
+    expect(JSON.stringify(runs.outcome.data)).toContain("Hidden until you open a support session");
+
+    // A session on ANOTHER client unlocks nothing here.
+    await withSystem((db) => db.query("insert into crm_support_sessions (org_id, user_id, mode, reason, expires_at) values ($1, $2, 'read', 'Looking into a request', now() + interval '30 minutes')", [w.otherOrg.id, w.agency.superAdmin.id]));
+    expect(JSON.stringify((await runTool(tenant, "workforce.approvals")).outcome)).not.toContain("Send outreach to 40 leads");
+
+    // A session on this client gives both back.
+    await withSystem((db) => db.query("insert into crm_support_sessions (org_id, user_id, mode, reason, expires_at) values ($1, $2, 'read', 'Looking into a request', now() + interval '30 minutes')", [w.org.id, w.agency.superAdmin.id]));
+    expect(JSON.stringify((await runTool(tenant, "workforce.approvals")).outcome.data)).toContain("Send outreach to 40 leads");
+    expect(JSON.stringify((await runTool(tenant, "workforce.runs")).outcome.data)).toContain("CRM tool returned 500");
+  });
+
+  it("an ended or expired session unlocks nothing, and the platform-wide list hides a title only for the clients it has no session on", async () => {
+    await setSwitch(true);
+    await withSystem(async (db) => {
+      await db.query("insert into crm_support_sessions (org_id, user_id, mode, reason, started_at, expires_at) values ($1, $2, 'read', 'Looking into a request', now() - interval '2 hours', now() - interval '5 minutes')", [w.org.id, w.agency.superAdmin.id]);
+      await db.query("insert into crm_support_sessions (org_id, user_id, mode, reason, expires_at, ended_at) values ($1, $2, 'read', 'Looking into a request', now() + interval '30 minutes', now())", [w.org.id, w.agency.superAdmin.id]);
+    });
+    const tenant = await resolveOpsScope(w.agency.superAdmin, { type: "tenant", id: w.org.id });
+    expect(JSON.stringify((await runTool(tenant, "workforce.approvals")).outcome)).not.toContain("Send outreach to 40 leads");
+    const platform = await runTool(PLATFORM_SCOPE, "workforce.approvals");
+    expect(JSON.stringify(platform.outcome)).not.toContain("Send outreach to 40 leads");
+    await withSystem((db) => db.query("insert into crm_support_sessions (org_id, user_id, mode, reason, expires_at) values ($1, $2, 'write', 'Fixing a request', now() + interval '30 minutes')", [w.org.id, w.agency.superAdmin.id]));
+    expect(JSON.stringify((await runTool(PLATFORM_SCOPE, "workforce.approvals")).outcome.data)).toContain("Send outreach to 40 leads");
+  });
+
+  it("changes nothing while the rule is off", async () => {
+    const tenant = await resolveOpsScope(w.agency.superAdmin, { type: "tenant", id: w.org.id });
+    expect(JSON.stringify((await runTool(tenant, "workforce.approvals")).outcome.data)).toContain("Send outreach to 40 leads");
+    expect(JSON.stringify((await runTool(tenant, "workforce.runs")).outcome.data)).toContain("CRM tool returned 500");
+    expect((await runTool(tenant, "workforce.approvals")).outcome.unavailable?.join(" ") ?? "").not.toMatch(/withheld/);
   });
 });

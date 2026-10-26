@@ -93,6 +93,13 @@ export function eventSentence(kind: string, d: Detail): string {
     case "overdue": return "The invoice became overdue.";
     case "voided": return `Voided${str(d.reason) ? `: ${str(d.reason)}` : "."}`;
     case "written_off": return `Written off${str(d.reason) ? `: ${str(d.reason)}` : "."}`;
+    case "credit_note_created": return `A credit note was drafted${amount ? ` for ${amount}` : ""}. Nothing is taken off the invoice until it is approved and issued.`;
+    case "credit_note_edited": return `A draft credit note was edited${amount ? ` (${amount})` : ""}.`;
+    case "credit_note_submitted": return "A credit note was sent for approval.";
+    case "credit_note_withdrawn": return "A credit note was taken back to a draft.";
+    case "credit_note_returned": return `A credit note was sent back${str(d.note) ? `: ${str(d.note)}` : "."}`;
+    case "credit_note_cancelled": return `A credit note was cancelled before it was issued${str(d.reason) ? `: ${str(d.reason)}` : "."}`;
+    case "credit_note_issued": return `Credit note ${str(d.number) || "issued"}${amount ? ` for ${amount}` : ""} was issued.${str(d.owed) && str(d.currency) ? ` ${str(d.currency)} ${str(d.owed)} is still owed.` : ""}`;
     case "reminder_queued": return "A reminder was handed to the message queue.";
     case "reminder_blocked": return `A reminder was blocked${str(d.why) ? `: ${str(d.why)}` : "."}`;
     case "reminder_not_sent": return "A reminder was not sent.";

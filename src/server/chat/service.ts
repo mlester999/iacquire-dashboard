@@ -52,6 +52,7 @@ import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
+import { enforceAgentAction } from "@/server/workforce/action-policy";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -633,6 +634,16 @@ function bookingResultReply(result: BookingResult, pending: PendingChatBooking):
   return `The calendar could not complete that booking: ${chatSafeText(result.reason.slice(0, 500))}. No appointment was confirmed.`;
 }
 
+/** Whether the employee's role (read from its row) may take this chat action. A refusal is recorded by the policy; nothing is thrown into the conversation. */
+async function chatActionAllowed(ctx: OrgContext, agentId: string, actionId: string): Promise<boolean> {
+  try {
+    await enforceAgentAction({ orgId: ctx.org.orgId, agentId, actionId, actorUserId: ctx.user.id, actorKind: "user" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function handleChatBookingIntent(
   ctx: OrgContext,
   input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatBookingIntent },
@@ -648,6 +659,8 @@ async function handleChatBookingIntent(
     return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
   };
 
+  // The parser already limits this to the Appointment Setter; the policy table decides again here, from the employee's own database row, and records a refusal.
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:booking_request"))) return reply("This employee's role can't prepare appointment requests. No booking was made.");
   if (input.intent.kind === "none") return reply("I couldn't prepare that appointment request. No booking was made.");
   if (input.intent.kind === "clarification") return reply(input.intent.message);
   if (!appointmentBookingPermissionsAllowed(ctx)) {
@@ -907,6 +920,7 @@ async function handleChatAppointmentChangeIntent(
     return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
   };
 
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:appointment_change"))) return reply("This employee's role can't prepare appointment changes. No appointment was changed.");
   if (input.intent.kind === "none") return reply("I couldn't identify one exact appointment change request. No appointment was changed.");
   if (input.intent.kind === "clarification") return reply(input.intent.message);
   if (!appointmentChangePermissionsAllowed(ctx)) {

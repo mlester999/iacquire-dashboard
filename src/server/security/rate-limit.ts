@@ -196,4 +196,6 @@ export const RATE_LIMITS = {
   purchaseCheckoutByIp: { name: "purchase:checkout:ip", limit: 12, windowSeconds: 3600 },
   purchaseCheckoutByIntent: { name: "purchase:checkout:intent", limit: 8, windowSeconds: 3600 },
   purchaseReturnByIp: { name: "purchase:return:ip", limit: 120, windowSeconds: 900 },
+  // PayPal webhook deliveries: each one that reaches the check costs iAcquire two calls to PayPal, whoever sent it, so the per-address rule is checked before PayPal is asked.
+  paypalWebhookByIp: { name: "paypal:webhook:ip", limit: 300, windowSeconds: 60 },
 } satisfies Record<string, RateLimitRule>;

@@ -2,6 +2,7 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import type { ConnectionFacts } from "@/lib/onboarding/engine";
 import { installState } from "@/lib/webchat/rules";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 /**
  * What the workspace is really connected to, read from its own rows, for the review at the end of the questionnaire. Nothing is inferred: a connection is reported only
@@ -14,7 +15,7 @@ import { installState } from "@/lib/webchat/rules";
 export async function connectionFacts(db: Queryable, orgId: string): Promise<ConnectionFacts> {
   const one = async (sql: string) => (await db.query<{ n: string }>(sql, [orgId])).rows[0]?.n ?? "0";
   const crm = Number(await one("select count(*) as n from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null"));
-  const online = Number(await one("select count(*) as n from agent_instances where org_id = $1 and enabled and status in ('online', 'busy')"));
+  const online = Number(await one(`select count(*) as n from agent_instances where org_id = $1 and ${runtimeReadySql("agent_instances")}`));
   const total = Number(await one("select count(*) as n from agent_instances where org_id = $1 and enabled"));
   const mapped = Number(await one("select count(*) as n from automation_template_mappings where org_id = $1 and status = 'verified'"));
   const calendars = Number(await one("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'"));

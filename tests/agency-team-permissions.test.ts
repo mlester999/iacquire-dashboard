@@ -12,6 +12,7 @@ import { loadAgencyPermissionOverrides, loadAgencyPermissions, loadAgencyRolePer
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
 import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, PERMISSION_MATRIX } from "@/lib/permissions";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
+import { makeRuntimeReady } from "./support/runtime-ready";
 
 async function canAccess(userId: string, orgId: string) {
   return withSystem(async (db) => (await db.query<{ allowed: boolean }>(
@@ -178,11 +179,13 @@ describe("agency manager and staff access", () => {
     const unassignedClient = await createOrg({ name: "Out-of-scope dashboard client" });
     await withSystem(async (db) => {
       await db.query("insert into staff_assignments (org_id,user_id,assigned_by) values ($1,$2,$3)", [client.id, staff.id, owner.id]);
-      await db.query("update agent_instances set enabled=true,status='online' where id=(select id from agent_instances where org_id=$1 order by role_key limit 1)", [client.id]);
-      await db.query("update agent_instances set enabled=true,status='online' where id=(select id from agent_instances where org_id=$1 order by role_key limit 1)", [unassignedClient.id]);
       await db.query("insert into support_tickets (org_id,created_by,subject,priority) values ($1,$2,'Permission test ticket','urgent')", [client.id, staff.id]);
       await db.query("insert into support_tickets (org_id,created_by,subject,priority) values ($1,$2,'Out-of-scope permission test ticket','urgent')", [unassignedClient.id, staff.id]);
     });
+    // An employee counts as online only in the recorded runtime-ready state (src/lib/employee-runtime.ts), not because a status says so.
+    const firstAgent = async (orgId: string) => (await withSystem((db) => db.query<{ id: string }>("select id from agent_instances where org_id = $1 order by role_key limit 1", [orgId]))).rows[0].id;
+    await makeRuntimeReady(await firstAgent(client.id), client.id, owner.id);
+    await makeRuntimeReady(await firstAgent(unassignedClient.id), unassignedClient.id, owner.id);
     const session = agencyUser(staff, "agency_staff");
 
     const visible = await getAdminOverview(session);

@@ -68,6 +68,18 @@ const schema = z.object({
   // QA ONLY: the address of a simulated PayMongo on THIS machine (scripts/paymongo-sim.mjs), so a browser run can take a purchase from the buyer's Pay button to a signed confirmation
   // without any real provider. It is refused everywhere that is not development or test, for any address that is not this machine's, and for a key that is not a test key.
   PAYMONGO_API_BASE: z.preprocess(blankToUndefined, z.string().url().optional()),
+  // PayPal for iAcquire's OWN purchases and plan payments (server-only). The client ID and secret open a PayPal REST app; the webhook id is the id of the webhook registered for
+  // /api/webhooks/paypal (a delivery is verified by asking PayPal, with that id). The environment decides test or live: PayPal events do not say, so the app's environment is the only
+  // thing that ties a delivery to a mode, and a live app also needs the review flag in the portal. Nothing here touches the customer-payments connections below.
+  PAYPAL_CLIENT_ID: z.preprocess(blankToUndefined, z.string().min(8).max(200).optional()),
+  PAYPAL_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().min(8).max(300).optional()),
+  PAYPAL_WEBHOOK_ID: z.preprocess(blankToUndefined, z.string().min(8).max(120).optional()),
+  PAYPAL_ENVIRONMENT: z.preprocess(blankToUndefined, z.enum(["sandbox", "live"]).default("sandbox")),
+  PAYPAL_MAINTENANCE_PLAN_ID: z.preprocess(blankToUndefined, z.string().regex(/^P-[A-Za-z0-9]{6,80}$/, "A PayPal billing plan id looks like P-1AB23456CD789012E").optional()),
+  // QA ONLY: the address of a simulated PayPal on THIS machine (scripts/paypal-sim.mjs), so a browser run can take a purchase or a monthly agreement from the buyer's button to a
+  // confirmed notice without any real provider. It is refused everywhere that is not development or test, for any address that is not this machine's, for the live environment, and
+  // for credentials that are not the simulator's made-up ones (their client id starts with "qa-sim-").
+  PAYPAL_API_BASE: z.preprocess(blankToUndefined, z.string().url().optional()),
   // Customer payments: the business's OWN PayMongo (or PayPal) account, used to collect on invoices it sends to its customers. Nothing here touches iAcquire's own billing above.
   // CUSTOMER_PAYMENTS_WRITES_ENABLED is the master switch for any call to a real payment provider (checking a pasted key, starting a checkout, reading a payment back); off,
   // only the simulated provider works, and a received PayMongo webhook is still recorded because money that arrived is recorded whatever a switch says. A PayPal delivery can
@@ -242,6 +254,14 @@ export function env(): Env {
     if (value.NODE_ENV === "production") throw new Error("PAYMONGO_API_BASE (a simulated PayMongo) is refused in production.");
     if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) throw new Error("PAYMONGO_API_BASE may only name this machine (127.0.0.1, localhost or ::1).");
     if (value.PAYMONGO_SECRET_KEY && !value.PAYMONGO_SECRET_KEY.startsWith("sk_test_")) throw new Error("A simulated PayMongo (PAYMONGO_API_BASE) is only used with a test key.");
+  }
+  if (value.PAYPAL_API_BASE) {
+    let host = "";
+    try { host = new URL(value.PAYPAL_API_BASE).hostname; } catch { host = ""; }
+    if (value.NODE_ENV === "production") throw new Error("PAYPAL_API_BASE (a simulated PayPal) is refused in production.");
+    if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) throw new Error("PAYPAL_API_BASE may only name this machine (127.0.0.1, localhost or ::1).");
+    if (value.PAYPAL_ENVIRONMENT === "live") throw new Error("A simulated PayPal (PAYPAL_API_BASE) is never used with the live environment.");
+    if (value.PAYPAL_CLIENT_ID && !value.PAYPAL_CLIENT_ID.startsWith("qa-sim-")) throw new Error("A simulated PayPal (PAYPAL_API_BASE) is only used with the simulator's made-up client id.");
   }
   // Development must never reach a hosted database by accident. The sample `.env` historically pointed `npm run dev` and the
   // maintenance scripts at the production Supabase project; one manual test could then change real client data. Local PGlite is

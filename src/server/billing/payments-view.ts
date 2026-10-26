@@ -64,12 +64,12 @@ const toView = (r: Row): AgencyPaymentView => ({
   createdAt: new Date(r.created_at).toISOString(), clearedSetup: r.cleared_setup, providerNotices: [],
 });
 
-/** Adds the refunds and disputes PayMongo reported for each payment (read from the event ledger). */
+/** Adds the refunds, disputes and reversals the payment provider (PayMongo or PayPal) reported for each payment (read from the event ledger). */
 async function withProviderNotices(db: Queryable, views: AgencyPaymentView[]): Promise<AgencyPaymentView[]> {
   if (!views.length) return views;
   const { rows } = await db.query<{ payment_id: string; event_type: string; detail: string | null; received_at: Date }>(
     `select payment_id, event_type, detail, received_at from payment_webhook_events
-      where payment_id = any($1::uuid[]) and event_type ~* '(refund|dispute|chargeback)' and outcome = 'processed' order by received_at desc, id`,
+      where payment_id = any($1::uuid[]) and event_type ~* '(refund|dispute|chargeback|revers)' and outcome = 'processed' order by received_at desc, id`,
     [views.map((v) => v.id)],
   );
   const byPayment = new Map<string, AgencyPaymentView["providerNotices"]>();

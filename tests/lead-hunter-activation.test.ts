@@ -79,6 +79,7 @@ beforeAll(async () => {
   });
   admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
   agencyOrgId = await ensureAgencyWorkforceRegistry(admin);
+  // A durable job is re-authorized for its requester when a worker claims it (work-runner requesterGate), as the agency owner who really asks for research is a member of the agency workspace.
   await addMember(agencyOrgId, admin.id, "owner");
   await withSystem(async (db) => {
     await db.query("insert into usage_limits (org_id) values ($1) on conflict (org_id) do nothing", [agencyOrgId]);

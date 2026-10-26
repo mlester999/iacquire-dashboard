@@ -15,13 +15,15 @@ import { MAINTENANCE_STATUS_LABEL, formatMoney } from "@/lib/projects";
 import type { listAgencyMaintenance } from "@/server/maintenance/service";
 import { formatDate } from "@/lib/utils";
 import { PlanLifecycle } from "@/components/admin/plan-lifecycle";
+import { AgreementBlock } from "@/components/admin/agreement-block";
+import { RecurringBillingSwitch, type RecurringBillingState } from "@/components/admin/recurring-billing-switch";
 import { localDayIso } from "@/lib/local-day";
 
 type AgencyData = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 /** The plan's money side is optional here so sample data without it still draws; the real listing always has it. */
-type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle" | "blockedBy"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"]; blockedBy?: AgencyData["subscriptions"][number]["blockedBy"] }> };
+type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle" | "blockedBy" | "agreement"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"]; blockedBy?: AgencyData["subscriptions"][number]["blockedBy"]; agreement?: AgencyData["subscriptions"][number]["agreement"] }>; recurring?: { state: RecurringBillingState; canManage: boolean } };
 
-export function MaintenanceAdmin({ subscriptions, requests }: Data) {
+export function MaintenanceAdmin({ subscriptions, requests, recurring }: Data) {
   const [planFilter,setPlanFilter]=React.useState("all");const [requestFilter,setRequestFilter]=React.useState("all");
   const active=subscriptions.filter(s=>["active","past_due","cancel_requested"].includes(s.status));const pending=subscriptions.filter(s=>s.status==="requested");const defects=requests.filter(r=>r.kind==="core_defect");
   const plans=subscriptions.filter(s=>planFilter==="all"||planFilter==="active"&&active.includes(s)||planFilter==="requested"&&s.status==="requested"||planFilter==="cancel_requested"&&s.status==="cancel_requested"||planFilter==="past_due"&&s.status==="past_due"||planFilter==="expired"&&s.status==="expired");
@@ -30,6 +32,7 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
     <div className="space-y-6">
       <PageHero tone="dark" eyebrow="Client care / Managed maintenance" title={active.length?"Keep every client system in good shape.":"Built to last. Supported with care."} icon={<ShieldCheck className="size-5"/>} description={active.length?`${active.length} active plan${active.length===1?"":"s"}, ${pending.length} enrollment request${pending.length===1?"":"s"} and ${requests.length} open maintenance item${requests.length===1?"":"s"}.`:"No plans are currently active. Optional managed maintenance keeps existing integrations and AI systems cared for after delivery."} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-semibold uppercase tracking-[.14em] text-blue-200">Optional managed plan</p><p className="mt-2 text-[35px] font-semibold tracking-tight">$299<span className="text-sm font-normal text-slate-300">/month</span></p><p className="mt-2 text-xs leading-relaxed text-slate-300">Monitoring, troubleshooting, reasonable adjustments and AI optimization.</p><p className="mt-3 border-t border-white/10 pt-3 text-[12px] text-slate-400">Enrollment and activation are explicit. Payment collection is not inferred.</p></div>} action={<ButtonLink href="/admin/clients" variant="secondary">View client accounts <ArrowRight className="size-4"/></ButtonLink>}/>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Active plans" value={active.length} detail="Recorded maintenance agreements" tone="green" icon={<Activity className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Pending enrollment" value={pending.length} detail="Awaiting agency activation" tone="amber" icon={<Clock3 className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Open maintenance items" value={requests.length} detail="Focused changes and corrections" tone="blue" icon={<Wrench className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Core defect reports" value={defects.length} detail="No charge · outside allowance" tone="neutral" icon={<ShieldCheck className="size-4"/>}/></div>
+      {recurring && <RecurringBillingSwitch initial={recurring.state} canManage={recurring.canManage} />}
       <section aria-label="Client maintenance plans">
         <SectionLabel title="Client maintenance plans" count={subscriptions.length} description="Activation, agreements and renewals in one place." action={<div className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">{[{id:"all",label:"All plans"},{id:"active",label:"Active"},{id:"requested",label:"Pending"},{id:"cancel_requested",label:"Cancellation"},{id:"past_due",label:"Past due"},{id:"expired",label:"Expired"}].map(f=><button key={f.id} onClick={()=>setPlanFilter(f.id)} aria-pressed={planFilter===f.id} className={cn("min-h-8 rounded-lg px-2.5 text-xs font-medium",planFilter===f.id?"bg-surface text-ink shadow-soft":"text-muted")}>{f.label}</button>)}</div>}/>
         {subscriptions.length === 0 ? (
@@ -110,6 +113,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
         ) : null}
         {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[14px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
         {s.lifecycle && ["active", "past_due", "cancel_requested", "expired"].includes(s.status) && <PlanLifecycle subscriptionId={s.id} status={s.status} info={s.lifecycle} />}
+        {["requested", "active", "past_due", "cancel_requested", "expired"].includes(s.status) && <AgreementBlock agreement={s.agreement ?? null} />}
         {!s.eligible && s.status === "requested" && (
           <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink ring-1 ring-inset ring-warning/25">
             <CalendarClock className="size-4 shrink-0" />

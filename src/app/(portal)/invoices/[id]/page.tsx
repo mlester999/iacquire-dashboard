@@ -14,6 +14,8 @@ import { sendSectionFor } from "@/lib/invoices/delivery-ui";
 import { InvoiceSummary, LinesTable, RemindersList, SourceNote, Timeline } from "@/components/invoices/invoice-sections";
 import { InvoiceDeliveryList, SendInvoiceToCustomer } from "@/components/invoices/delivery-send";
 import { PaymentsPanel } from "@/components/invoices/payments-panel";
+import { CreditNotesPanel } from "@/components/invoices/credit-notes-panel";
+import { creditBlockedReason } from "@/lib/invoices/credit-notes";
 
 export const metadata = { title: "Invoice" };
 
@@ -58,6 +60,13 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       {(send.show || detail.deliveries.length > 0) && <InvoiceDeliveryList deliveries={detail.deliveries} tz={tz} />}
       <LinesTable detail={detail} />
       {(detail.payments.length > 0 || i.status === "issued") && <PaymentsPanel payments={detail.payments} refunds={detail.refunds} currency={i.currency} canRefund={ctx.can("invoices.refund")} isTest={i.isTest} tz={tz} />}
+      {(detail.creditNotes.length > 0 || (i.status === "issued" && !i.isTest && ctx.can("invoices.credit"))) && (
+        <CreditNotesPanel
+          invoiceId={i.id} currency={i.currency} notes={detail.creditNotes} tz={tz} currentUserId={ctx.user.id} isOwner={ctx.role === "owner"}
+          canCredit={ctx.can("invoices.credit")} canApprove={ctx.can("invoices.approve")} owedMinor={i.balanceMinor}
+          blockedReason={creditBlockedReason({ invoiceStatus: i.status, isTest: i.isTest, writtenOff: i.writtenOffAt !== null, paymentStatus: i.paymentStatus, balanceMinor: i.balanceMinor, hasOpenPayment: detail.payments.some((p) => p.status === "pending" || p.status === "needs_review") })}
+        />
+      )}
       <RemindersList detail={detail} tz={tz} />
       <Timeline detail={detail} tz={tz} />
     </div>

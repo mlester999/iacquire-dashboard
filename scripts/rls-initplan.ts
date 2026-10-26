@@ -208,6 +208,27 @@ export const PINNED: Record<(typeof PROOF_HELPERS)[number] | (typeof STATEMENT_H
   user_has_agency_permission: "6ba1cfd1df55c93e",
 };
 
+/**
+ * Proof helpers that a LATER migration has lawfully redefined, with the migration, why, and the test that re-proves the equivalence 0060 established. PINNED above
+ * stays at the definitions **as of 0060**, because the generator runs on the state just before that migration and 0060 is applied in production and never edited.
+ * The live-database guard test pins the current fingerprints in `REVISED_PINNED` instead, so a change here is a reviewed decision in two places rather than a drifted
+ * fingerprint that fails with no explanation.
+ */
+export const PROOF_HELPER_REVISIONS: Record<string, { migration: string; why: string; provedBy: string; fingerprint: string }> = {
+  has_permission: {
+    migration: "0112_client_content_policy",
+    why: "Founder decision D70 (flagged, off by default): while the agency policy switch is on, approvals.view, activity.view, knowledge.view and leads.view also need an active support session. Off, the function answers exactly as before.",
+    provedBy: "tests/client-content-policy.test.ts",
+    fingerprint: "bc7c1999671d92e9",
+  },
+  permitted_orgs: {
+    migration: "0112_client_content_policy",
+    why: "The statement-level twin of has_permission, changed in the same migration with the same gate and session lists, so the two keep answering the same question.",
+    provedBy: "tests/client-content-policy.test.ts",
+    fingerprint: "b56ac9e295ba75f6",
+  },
+};
+
 /** One app-schema function as pg_proc stores it. `normalized` is prosrc with whitespace runs collapsed, computed by the server. */
 export interface HelperDefinition {
   name: string;

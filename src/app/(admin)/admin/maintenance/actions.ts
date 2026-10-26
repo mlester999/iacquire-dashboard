@@ -6,6 +6,7 @@ import { guard } from "@/server/action-guard";
 import { AppError } from "@/server/errors";
 import { activateMaintenance, resolveMaintenanceSubscription, updateMaintenanceRequest } from "@/server/maintenance/service";
 import { expireSubscription, recordPaymentFailed, recordVerifiedPayment } from "@/server/automation-studio/lifecycle";
+import { cancelAgreementAsAgency, releaseAgreementHold, setRecurringBillingEnabled } from "@/server/maintenance/agreement-service";
 
 const refresh = () => {
   revalidatePath("/admin/maintenance");
@@ -53,6 +54,29 @@ export async function recordVerifiedPaymentAction(id: string, paidThroughOn: str
 export async function expireSubscriptionAction(id: string) {
   return guard(async () => {
     const out = await expireSubscription(await requireAgencyOrThrow(), id);
+    refresh();
+    return out;
+  });
+}
+
+// The optional automatic monthly payment (a PayPal subscription). The team can stop a client's, release the hold a refund or a dispute put on it (saying why), and a Super Admin opens or
+// closes the whole feature. None of these records a payment or extends a plan by itself: a hold's release applies charges PayPal already confirmed, through the usual transition.
+export async function releaseAgreementHoldAction(agreementId: string, note: string) {
+  return guard(async () => {
+    const out = await releaseAgreementHold(await requireAgencyOrThrow(), agreementId, note);
+    refresh();
+    return out;
+  });
+}
+export async function stopAgreementAction(agreementId: string) {
+  return guard(async () => {
+    await cancelAgreementAsAgency(await requireAgencyOrThrow(), agreementId);
+    refresh();
+  });
+}
+export async function setRecurringBillingAction(enabled: boolean) {
+  return guard(async () => {
+    const out = await setRecurringBillingEnabled(await requireAgencyOrThrow(), enabled === true);
     refresh();
     return out;
   });

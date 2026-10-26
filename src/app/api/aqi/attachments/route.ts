@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { resolveAqiViewer } from "@/server/aqi/access";
 import { getPublishedAqiConfig } from "@/server/aqi/service";
 import { uploadAqiAttachment } from "@/server/aqi/attachments";
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
     const viewer = await resolveAqiViewer();
     superAdmin = viewer.user.platformRole === "agency_super_admin";
     if (!viewer.org) throw new AppError("forbidden", "Attachments are available inside a client workspace.");
-    const form = await request.formData();
+    // Read with a ceiling as it arrives: this route had no length check at all, so a chunked request was held whole in memory before the 50 MB rule was applied below.
+    const form = await readBoundedFormData(request, 50 * 1024 * 1024 + 1_000_000);
+    if (!form) return NextResponse.json({ error: "This file is too large. Please choose a smaller file." }, { status: 413 });
     const file = form.get("file");
     const conversationId = String(form.get("conversationId") ?? "").trim() || null;
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a file to attach." }, { status: 400 });

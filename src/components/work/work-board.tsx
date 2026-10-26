@@ -260,7 +260,7 @@ export function WorkBoard({
           <div className="space-y-2">
             {reviewActions.length > 0 ? (
               <>
-                <label htmlFor="work-review" className="block text-[11.5px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
+                <label htmlFor="work-review" className="block text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
                 <Select id="work-review" value={selected?.capability ?? ""} onChange={(event) => setSelectedCapability(event.target.value)} className="min-w-[16rem]">
                   {reviewActions.map((action) => (
                     <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
@@ -345,25 +345,25 @@ export function WorkBoard({
               </Button>
               {editingSchedule && <Button variant="ghost" onClick={cancelScheduleEdit} disabled={scheduleBusy !== null}><X className="size-3.5" aria-hidden />Cancel edit</Button>}
             </div>
-            {editingSchedule && <p className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[11.5px] leading-relaxed text-warning-ink">Saving this edit pauses the schedule. Re-enable it after reviewing the updated local time and recurrence.</p>}
+            {editingSchedule && <p className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">Saving this edit pauses the schedule. Re-enable it after reviewing the updated local time and recurrence.</p>}
             {scheduleCadence !== "hourly" && (
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface-2/30 p-3">
                 <label className="block text-[12px] font-medium text-ink-2">
                   Local run time · {timeZone}
-                  <input type="time" aria-label="Schedule local run time" value={scheduleLocalTime} onChange={(event) => setScheduleLocalTime(event.target.value)} className="mt-1 block h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                  <input type="time" aria-label="Schedule local run time" value={scheduleLocalTime} onChange={(event) => setScheduleLocalTime(event.target.value)} className="mt-1 block h-9 rounded-lg border border-line bg-surface px-2 text-[14px]" />
                 </label>
                 {scheduleCadence === "weekly" && <div className="min-w-0 flex-1">
                   <p className="mb-1 text-[12px] font-medium text-ink-2">Run on</p>
                   <div className="flex flex-wrap gap-1" role="group" aria-label="Schedule weekdays">
                     {WEEKDAY_ORDER.map((day) => {
                       const active = scheduleWeekdays.includes(day);
-                      return <button key={day} type="button" aria-pressed={active} onClick={() => setScheduleWeekdays((current) => active ? current.filter((item) => item !== day) : [...current, day])} className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[11.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[11.5px] font-medium text-ink-2 hover:bg-surface-2"}>{DAY_LABEL[day]}</button>;
+                      return <button key={day} type="button" aria-pressed={active} onClick={() => setScheduleWeekdays((current) => active ? current.filter((item) => item !== day) : [...current, day])} className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[12px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[12px] font-medium text-ink-2 hover:bg-surface-2"}>{DAY_LABEL[day]}</button>;
                     })}
                   </div>
                 </div>}
               </div>
             )}
-            {unsupportedBusinessHours && <p role="alert" className="rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-[11.5px] leading-relaxed text-danger-ink">This saved schedule uses different or multiple daily business-hour windows. It is unchanged; this editor will not overwrite hours it cannot preserve.</p>}
+            {unsupportedBusinessHours && <p role="alert" className="rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-[12px] leading-relaxed text-danger-ink">This saved schedule uses different or multiple daily business-hour windows. It is unchanged; this editor will not overwrite hours it cannot preserve.</p>}
             {schedulingLeadResearch && (
               <div className="rounded-xl border border-line bg-surface-2/30 p-3">
                 <label className="block text-[12px] font-medium text-ink-2" htmlFor="lead-research-assignment">
@@ -378,10 +378,10 @@ export function WorkBoard({
                   placeholder="Find 20 independent dental clinics in Singapore"
                   aria-describedby="lead-research-assignment-hint"
                 />
-                <p id="lead-research-assignment-hint" className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                <p id="lead-research-assignment-hint" className="mt-1 text-[12px] leading-relaxed text-muted">
                   The Lead Hunter will run exactly this assignment on the cadence, using public sources and the existing research gate. It never contacts a prospect. The schedule is saved paused, and the operator switch and the Lead Hunter&apos;s readiness are still required.
                 </p>
-                {!selectedScheduleAction?.available && <p className="mt-1 text-[11.5px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
+                {!selectedScheduleAction?.available && <p className="mt-1 text-[12px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
               </div>
             )}
             <div className="rounded-xl border border-line bg-surface-2/30 p-3">
@@ -390,7 +390,7 @@ export function WorkBoard({
                   <Switch checked={restrictHours} aria-label="Only run during business hours" onCheckedChange={setRestrictHours} />
                   Only run during business hours
                 </label>
-                <span className="text-[11px] text-muted">Evaluated in {timeZone}</span>
+                <span className="text-[12px] text-muted">Evaluated in {timeZone}</span>
               </div>
               {restrictHours && (
                 <div className="mt-3 space-y-2.5">
@@ -409,20 +409,20 @@ export function WorkBoard({
                           type="button"
                           aria-pressed={active}
                           onClick={() => setBusinessDays((current) => active ? current.filter((item) => item !== day) : [...current, day])}
-                          className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[11.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[11.5px] font-medium text-muted hover:bg-surface-2"}
+                          className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[12px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[12px] font-medium text-muted hover:bg-surface-2"}
                         >
                           {DAY_LABEL[day]}
                         </button>
                       );
                     })}
                   </div>
-                  <p className="text-[11px] leading-relaxed text-muted">Outside these hours a due schedule is postponed to the next opening; it does not create a job in the middle of the night.</p>
+                  <p className="text-[12px] leading-relaxed text-muted">Outside these hours a due schedule is postponed to the next opening; it does not create a job in the middle of the night.</p>
                 </div>
               )}
             </div>
             {!scheduleOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
+                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
               </p>
             )}
             {schedules.length === 0 ? (
@@ -438,9 +438,9 @@ export function WorkBoard({
                       aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
-                      {schedule.payload.prompt && <p className="mt-0.5 truncate text-[11.5px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
-                      <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
+                      <p className="truncate text-[13px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
+                      {schedule.payload.prompt && <p className="mt-0.5 truncate text-[12px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
+                      <p className="mt-0.5 text-[12px] text-muted" suppressHydrationWarning>
                         {schedule.recurrenceRule
                           ? schedule.recurrenceRule.kind === "daily"
                             ? `Daily · ${schedule.recurrenceRule.localTime} · ${schedule.timezone}`
@@ -502,7 +502,7 @@ export function WorkBoard({
             </div>
             {!triggerOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
+                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
               </p>
             )}
             {triggers.length === 0 ? (
@@ -519,7 +519,7 @@ export function WorkBoard({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
-                      <p className="mt-0.5 text-[11.5px] text-muted">
+                      <p className="mt-0.5 text-[12px] text-muted">
                         {trigger.capabilityLabel} · {trigger.employeeName} · last event #{trigger.lastEventId}
                         {trigger.enabled && !triggerOperatorEnabled ? " · paused by operator" : ""}
                       </p>

@@ -1,3 +1,4 @@
+import * as React from "react";
 import { CircleAlert, CircleCheck, Clock3, Info } from "lucide-react";
 import { formatBps } from "@/lib/invoices/lines";
 import { formatDay, money } from "@/lib/invoices/labels";
@@ -19,6 +20,7 @@ export function bannerText(kind: InvoiceBannerKind, i: Pick<PublicInvoice, "bala
   switch (kind) {
     case "test": return "This is a test invoice: nothing is owed and no money moves.";
     case "paid": return "Paid in full. Thank you.";
+    case "credited": return "This invoice was credited in full. Nothing is due.";
     case "partly_paid": return `Partly paid. ${money(i.balanceMinor, i.currency)} is still due.`;
     case "under_review": return "A payment on this invoice is being reviewed. You do not need to pay again.";
     case "pending": return "A payment is being processed by your payment provider. Please do not pay again.";
@@ -110,6 +112,7 @@ export function InvoiceDocument({ invoice: i }: { invoice: PublicInvoice }) {
         <dt className="text-muted">Subtotal{i.taxInclusive ? " (before tax)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.subtotalMinor, i.currency)}</dd>
         {i.taxMinor > 0 && <><dt className="text-muted">{i.business.taxLabel ?? "Tax"}{i.taxInclusive ? " (included)" : ""}</dt><dd className="text-right tabular-nums text-ink">{money(i.taxMinor, i.currency)}</dd></>}
         <dt className="border-t border-line-strong pt-1.5 font-semibold text-ink">Total</dt><dd className="border-t border-line-strong pt-1.5 text-right text-[15px] font-semibold tabular-nums text-ink">{money(i.totalMinor, i.currency)}</dd>
+        {i.credits.map((c) => <React.Fragment key={c.number}><dt className="text-muted">Credit note {c.number}</dt><dd className="text-right tabular-nums text-ink">{"\u2212"}{money(c.amountMinor, i.currency)}</dd></React.Fragment>)}
         {i.paidMinor > 0 && <><dt className="text-muted">Paid</dt><dd className="text-right tabular-nums text-ink">{money(i.paidMinor, i.currency)}</dd></>}
         <dt className="font-semibold text-ink">Balance due</dt><dd className="text-right text-[15px] font-semibold tabular-nums text-ink">{money(i.balanceMinor, i.currency)}</dd>
       </dl>

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/primitives";
 import { RequestSetupButton } from "@/components/workforce/request-setup";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
 import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
-import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { deriveEmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { employeeCardStatus } from "@/lib/onboarding/employee-status";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,7 @@ type Employee = {
   tool_inventory_expires_at?: string | Date | null;
   tool_inventory_tool_count?: number | null;
   active_run?: boolean;
+  readiness_extras?: ReadinessExtras;
 };
 
 const MODE_LABEL = { autonomous: "Autonomous", approval_required: "Approval required", paused: "Paused" } as const;
@@ -56,12 +57,14 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
     inventoryExpiresAt: a.tool_inventory_expires_at ? new Date(a.tool_inventory_expires_at).toISOString() : null,
     inventoryToolCount: a.tool_inventory_tool_count ?? null,
     taskExecuting: a.active_run ?? false,
+    extras: a.readiness_extras,
     evaluatedAt,
     paymentCleared,
   });
-  const ready = agents.filter((a) => readinessFor(a).chatAvailable);
+  const ready = agents.filter((a) => readinessFor(a).workReady);
+  // "Request setup" is about the runtime (a profile to create), so it counts employees that cannot chat yet, not those waiting on a calendar or a pipeline.
   const preparing = agents.filter((a) => a.enabled && !readinessFor(a).chatAvailable);
-  const visible = agents.filter((a) => (filter === "all" || filter === "ready" && readinessFor(a).chatAvailable || filter === "setup" && a.enabled && !readinessFor(a).chatAvailable || filter === "disabled" && !a.enabled) && `${a.display_name} ${AGENT_BY_KEY[a.role_key].name}`.toLowerCase().includes(query.toLowerCase()));
+  const visible = agents.filter((a) => (filter === "all" || filter === "ready" && readinessFor(a).workReady || filter === "setup" && a.enabled && !readinessFor(a).workReady || filter === "disabled" && !a.enabled) && `${a.display_name} ${AGENT_BY_KEY[a.role_key].name}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="space-y-6">

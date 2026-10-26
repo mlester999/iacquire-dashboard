@@ -21,8 +21,12 @@ export interface NormalizedPaymentEvent {
   /** The provider's own event name, kept for the ledger and the alarms. */
   type: string;
   /** A refund or dispute is reported, never applied: it is recorded, a person is told, and nothing is revoked (see applyReported in payments.ts). */
-  kind: "payment_paid" | "payment_failed" | "payment_refunded" | "payment_disputed" | "other";
+  kind: "payment_paid" | "payment_failed" | "payment_refunded" | "payment_disputed" | "agreement_status" | "agreement_charge" | "agreement_payment_failed" | "other";
   livemode: boolean;
+  /** When the provider dated the event (ISO), for ordering news about one agreement. Null when the payload carried no usable time. */
+  occurredAt?: string | null;
+  /** The automatic-payment agreement (the provider's subscription) an agreement event is about: its provider id, the status word it reported, and what it said about the next charge and the failures so far. */
+  agreement?: { id: string; status: string | null; nextBillingAt: string | null; failedPayments: number | null; custom: string | null } | null;
   /** The provider's checkout or order id that OUR stored payment row names. */
   checkoutId: string | null;
   /** The reference we sent, as the provider echoes it back. */

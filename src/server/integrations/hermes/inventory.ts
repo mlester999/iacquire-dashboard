@@ -14,6 +14,8 @@ import {
   PORTAL_SAFE_TOOLSETS,
 } from "@/server/integrations/hermes/tool-policy";
 import { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
+import { requiredRuntimeToolsFor, roleToolEnforcement, runtimeToolsFor, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
+import type { AgentRoleKey } from "@/lib/agents";
 export { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
 
 /**
@@ -107,6 +109,11 @@ export class ToolInventoryError extends HermesError {
 
 export interface VerifyToolInventoryOptions {
   /**
+   * The employee's role when its tool exposure must match the role policy (a client employee, with WORKFORCE_ROLE_TOOL_ENFORCEMENT=enforce). Taken from the connection's database
+   * row by default; passing it here is for tests. Absent, the shared reviewed set applies, as it always has.
+   */
+  role?: AgentRoleKey | null;
+  /**
    * Persisted digest from the last verified health check. A mismatch blocks the operation, and a `run`
    * with no digest is refused because there would be nothing to compare the live catalog against.
    */
@@ -160,8 +167,15 @@ function failure(code: ToolInventoryFailureCode, profile: string | null, reason:
   throw new ToolInventoryError({ code, profile, reason, ...extra });
 }
 
-function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void {
-  const safe = new Set<string>(PORTAL_SAFE_TOOLSETS);
+/** The role whose narrower tool policy applies to this connection, or null for the shared reviewed set. */
+function policyRoleOf(conn: HermesConnection, options: VerifyToolInventoryOptions): AgentRoleKey | null {
+  if (roleToolEnforcement() !== "enforce") return null;
+  if (options.role !== undefined) return options.role;
+  return conn.orgKind === "client" ? conn.roleKey ?? null : null;
+}
+
+function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: AgentRoleKey | null = null): void {
+  const safe = new Set<string>(role ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS);
   if (!catalog.complete) {
     failure(
       "inventory_incomplete",
@@ -253,7 +267,8 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void 
 
   // getToolCatalog already rejects a repeated tool name, so each reviewed name appears at most once here.
   const names = catalog.tools.map((tool) => tool.name);
-  const reviewed = new Set([...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS]);
+  const required = role ? requiredRuntimeToolsFor(role) : REQUIRED_INVENTORY_TOOLS;
+  const reviewed = new Set(role ? runtimeToolsFor(role) : [...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS]);
   const unreviewedTools = catalog.tools.filter((tool) => !reviewed.has(tool.name));
   if (unreviewedTools.length) {
     failure(
@@ -264,12 +279,12 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void 
     );
   }
 
-  const missingTools = REQUIRED_INVENTORY_TOOLS.filter((name) => !names.includes(name));
+  const missingTools = required.filter((name) => !names.includes(name));
   if (missingTools.length) {
     failure(
       "inventory_incomplete",
       profile,
-      `The effective inventory is missing required reviewed tool${missingTools.length === 1 ? "" : "s"}: ${missingTools.join(", ")}. Every employee profile must expose ${REQUIRED_INVENTORY_TOOLS.join(", ")} (vision_analyze is optional). Live runs stay blocked.`,
+      `The effective inventory is missing required reviewed tool${missingTools.length === 1 ? "" : "s"}: ${missingTools.join(", ")}. Every employee profile must expose ${required.join(", ")} (vision_analyze is optional). Live runs stay blocked.`,
       { tools: missingTools },
     );
   }
@@ -344,6 +359,7 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
     failure("contract_unavailable", profile, "The gateway does not expose GET /v1/tools (complete tool catalog) in its authenticated capabilities response.");
   }
   const now = options.now ?? new Date();
+  const policyRole = policyRoleOf(conn, options);
   const reads = Math.max(1, Math.min(3, options.stabilityReads ?? 1));
   let first: ToolInventorySnapshot | null = null;
   for (let index = 0; index < reads; index++) {
@@ -384,7 +400,7 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
     if (catalog.contract !== TOOL_INVENTORY_CONTRACT) {
       failure("inventory_incomplete", profile, `The gateway did not identify the supported tool-catalog contract (${TOOL_INVENTORY_CONTRACT}).`);
     }
-    assertCatalogPolicy(catalog, profile);
+    assertCatalogPolicy(catalog, profile, policyRole);
     const digest = toolCatalogDigest(catalog, profile);
     verifySignature(catalog, profile, challenge, digest, conn.apiKey);
     const snapshot = buildSnapshot(catalog, profile, challenge, now, caps.contract);

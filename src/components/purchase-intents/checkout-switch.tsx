@@ -9,7 +9,7 @@ import { setPurchaseCheckoutEnabledAction } from "@/app/actions/purchase-intents
 
 // Whether buyers may be sent to PayMongo from their purchase link. Off until a Super Admin turns it on; even then nothing is offered unless the provider is connected, an exchange rate is
 // set and (for live keys) the payment review is confirmed, and the reason is said here in words. Closing it never touches a checkout that is already open.
-export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boolean; available: boolean; reason: string | null; livemode: boolean | null }; canManage: boolean }) {
+export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boolean; available: boolean; reason: string | null; livemode: boolean | null; providers: Array<{ id: string; label: string; available: boolean; reason: string | null; livemode: boolean | null }> }; canManage: boolean }) {
   const [state, setState] = React.useState(initial);
   const [busy, setBusy] = React.useState(false);
   const toggle = async (next: boolean) => {
@@ -29,7 +29,7 @@ export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boo
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><CreditCard className="size-4 text-primary" aria-hidden /> Online checkout</h2>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
-            Lets a buyer who confirmed their purchase pay the setup fee on PayMongo&apos;s page. A payment counts only when PayMongo&apos;s signed confirmation arrives.
+            Lets a buyer who confirmed their purchase pay the setup fee on the payment provider&apos;s own page (PayMongo, PayPal). A payment counts only when the provider&apos;s verified confirmation arrives.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -38,6 +38,15 @@ export function CheckoutSwitch({ initial, canManage }: { initial: { enabled: boo
         </div>
       </div>
       {state.reason && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-ink-2">{state.reason}</p>}
+      <ul className="mt-3 space-y-1.5" aria-label="Payment providers">
+        {state.providers.map((p) => (
+          <li key={p.id} className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2">
+            <Badge tone={p.available ? "success" : "neutral"}>{p.available ? (p.livemode ? "Ready (live)" : "Ready (test mode)") : "Not ready"}</Badge>
+            <span className="font-medium text-ink">{p.label}</span>
+            {!p.available && p.reason ? <span className="text-muted">{p.reason}</span> : null}
+          </li>
+        ))}
+      </ul>
       {!canManage && <p className="mt-2 text-[12px] text-muted">Only a Super Admin with the billing and client-creation permissions can change this.</p>}
     </section>
   );

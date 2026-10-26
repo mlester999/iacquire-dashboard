@@ -3,7 +3,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles } from "@/server/notifications";
 import { formatMinor, taxPortion, toDecimalString, type CurrencyCode } from "@/lib/money";
-import { derivePaymentStatus, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
+import { balanceMinor, derivePaymentStatus, overpaidMinor, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
 import { REFUND_MATCH_DAYS } from "@/lib/invoices/refund-match";
 import type { DisputeOutcome } from "@/lib/invoices/payment-events";
 import { addInvoiceEvent, toMinor, type InvoiceActorKind } from "@/server/invoices/core";
@@ -42,19 +42,20 @@ interface LockedInvoice {
   taxMinor: number;
   paidMinor: number;
   refundedMinor: number;
+  creditedMinor: number;
   paymentStatus: InvoicePaymentStatus;
   number: string | null;
   isTest: boolean;
 }
 
 async function lockInvoice(db: Queryable, orgId: string, invoiceId: string): Promise<LockedInvoice> {
-  const { rows } = await db.query<{ id: string; status: InvoiceStatus; currency: CurrencyCode; total_minor: string; tax_minor: string; paid_minor: string; refunded_minor: string; payment_status: InvoicePaymentStatus; number: string | null; is_test: boolean }>(
-    "select id, status, currency, total_minor::text as total_minor, tax_minor::text as tax_minor, paid_minor::text as paid_minor, refunded_minor::text as refunded_minor, payment_status, number, is_test from customer_invoices where id = $1 and org_id = $2 for update",
+  const { rows } = await db.query<{ id: string; status: InvoiceStatus; currency: CurrencyCode; total_minor: string; tax_minor: string; paid_minor: string; refunded_minor: string; credited_minor: string; payment_status: InvoicePaymentStatus; number: string | null; is_test: boolean }>(
+    "select id, status, currency, total_minor::text as total_minor, tax_minor::text as tax_minor, paid_minor::text as paid_minor, refunded_minor::text as refunded_minor, credited_minor::text as credited_minor, payment_status, number, is_test from customer_invoices where id = $1 and org_id = $2 for update",
     [invoiceId, orgId],
   );
   const r = rows[0];
   if (!r) throw new AppError("not_found", "That invoice was not found.");
-  return { id: r.id, status: r.status, currency: r.currency, totalMinor: toMinor(r.total_minor), taxMinor: toMinor(r.tax_minor), paidMinor: toMinor(r.paid_minor), refundedMinor: toMinor(r.refunded_minor), paymentStatus: r.payment_status, number: r.number, isTest: r.is_test };
+  return { id: r.id, status: r.status, currency: r.currency, totalMinor: toMinor(r.total_minor), taxMinor: toMinor(r.tax_minor), paidMinor: toMinor(r.paid_minor), refundedMinor: toMinor(r.refunded_minor), creditedMinor: toMinor(r.credited_minor), paymentStatus: r.payment_status, number: r.number, isTest: r.is_test };
 }
 
 export interface InvoiceTotals {
@@ -63,6 +64,8 @@ export interface InvoiceTotals {
   totalMinor: number;
   paidMinor: number;
   refundedMinor: number;
+  /** The issued credit notes: taken off what is owed, not money received. */
+  creditedMinor: number;
   balanceMinor: number;
   overpaidMinor: number;
   paymentStatus: InvoicePaymentStatus;
@@ -70,8 +73,8 @@ export interface InvoiceTotals {
 }
 
 const totalsOf = (i: LockedInvoice): InvoiceTotals => ({
-  status: i.status, currency: i.currency, totalMinor: i.totalMinor, paidMinor: i.paidMinor, refundedMinor: i.refundedMinor, balanceMinor: Math.max(i.totalMinor - i.paidMinor, 0),
-  overpaidMinor: Math.max(i.paidMinor - i.totalMinor, 0), paymentStatus: i.paymentStatus, number: i.number,
+  status: i.status, currency: i.currency, totalMinor: i.totalMinor, paidMinor: i.paidMinor, refundedMinor: i.refundedMinor, creditedMinor: i.creditedMinor,
+  balanceMinor: balanceMinor(i.totalMinor, i.paidMinor, i.creditedMinor), overpaidMinor: overpaidMinor(i.totalMinor, i.paidMinor, i.creditedMinor), paymentStatus: i.paymentStatus, number: i.number,
 });
 
 /**
@@ -81,19 +84,21 @@ const totalsOf = (i: LockedInvoice): InvoiceTotals => ({
 export async function recomputeInvoice(db: Queryable, orgId: string, invoiceId: string): Promise<InvoiceTotals> {
   const inv = await lockInvoice(db, orgId, invoiceId);
   if (inv.status !== "issued") return totalsOf(inv);
-  const { rows } = await db.query<{ paid: string; refunded: string; disputed: boolean }>(
+  const { rows } = await db.query<{ paid: string; refunded: string; credited: string; disputed: boolean }>(
     `select coalesce((select sum(amount_minor) from customer_payments where invoice_id = $1 and org_id = $2 and status in ${COUNTED_SQL}), 0)::text as paid,
             coalesce((select sum(amount_minor) from customer_refunds where invoice_id = $1 and org_id = $2 and status = 'succeeded'), 0)::text as refunded,
+            coalesce((select sum(amount_minor) from customer_credit_notes where invoice_id = $1 and org_id = $2 and status = 'issued'), 0)::text as credited,
             exists (select 1 from customer_payments where invoice_id = $1 and org_id = $2 and status = 'disputed') as disputed`,
     [invoiceId, orgId],
   );
   const paid = toMinor(rows[0].paid);
   const refunded = toMinor(rows[0].refunded);
-  const paymentStatus = derivePaymentStatus({ totalMinor: inv.totalMinor, paidMinor: paid, hasDispute: rows[0].disputed });
-  if (paid !== inv.paidMinor || refunded !== inv.refundedMinor || paymentStatus !== inv.paymentStatus) {
-    await db.query("update customer_invoices set paid_minor = $3, refunded_minor = $4, payment_status = $5 where id = $1 and org_id = $2", [invoiceId, orgId, paid, refunded, paymentStatus]);
+  const credited = toMinor(rows[0].credited);
+  const paymentStatus = derivePaymentStatus({ totalMinor: inv.totalMinor, paidMinor: paid, creditedMinor: credited, hasDispute: rows[0].disputed });
+  if (paid !== inv.paidMinor || refunded !== inv.refundedMinor || credited !== inv.creditedMinor || paymentStatus !== inv.paymentStatus) {
+    await db.query("update customer_invoices set paid_minor = $3, refunded_minor = $4, credited_minor = $6, payment_status = $5 where id = $1 and org_id = $2", [invoiceId, orgId, paid, refunded, paymentStatus, credited]);
   }
-  return totalsOf({ ...inv, paidMinor: paid, refundedMinor: refunded, paymentStatus });
+  return totalsOf({ ...inv, paidMinor: paid, refundedMinor: refunded, creditedMinor: credited, paymentStatus });
 }
 
 interface PaymentRow {
@@ -188,7 +193,7 @@ export async function applyPaymentInTx(db: Queryable, input: ApplyPaymentInput):
     status = "needs_review";
   }
   // The tax in this payment, in proportion to the invoice's tax, taken once from the part that settles the invoice (money beyond the balance is not tax).
-  const applicable = Math.min(input.amountMinor, Math.max(inv.totalMinor - inv.paidMinor, 0));
+  const applicable = Math.min(input.amountMinor, balanceMinor(inv.totalMinor, inv.paidMinor, inv.creditedMinor));
   const taxPart = taxPortion(applicable, inv.taxMinor, inv.totalMinor);
 
   const ins = await db.query<{ id: string }>(
@@ -225,7 +230,7 @@ export async function applyPaymentInTx(db: Queryable, input: ApplyPaymentInput):
       await stopReminders(db, input.orgId, "paid", input.invoiceId);
       await withdrawInvoiceDeliveriesInTx(db, input.orgId, input.invoiceId, "invoice_paid");
     }
-    if (after.overpaidMinor > Math.max(inv.paidMinor - inv.totalMinor, 0)) {
+    if (after.overpaidMinor > overpaidMinor(inv.totalMinor, inv.paidMinor, inv.creditedMinor)) {
       await addInvoiceEvent(db, input.orgId, input.invoiceId, "overpaid", input.actor, { paymentId, overpaid: toDecimalString(after.overpaidMinor, inv.currency), currency: inv.currency });
       await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
         kind: "payment_review_needed", severity: "warning", title: `${label} was paid more than it was for`, body: `${money(after.overpaidMinor, inv.currency)} more than the invoice total was received. Nothing was refunded; decide what to do with the difference.`,

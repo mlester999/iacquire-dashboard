@@ -70,8 +70,8 @@ describe("the rollbacks take their module's workspace switch with them", () => {
     let left: string[] = [];
     await expect(withSystem(async (db) => {
       await switchEverythingOn(db, w);
-      // Newest first: 0093's invoices point at proposals, so it must go before 0091 can drop them.
-      for (const name of ["0093_customer_invoices_payments", "0092_esign"]) {
+      // Newest first: 0093's invoices point at proposals, so it must go before 0091 can drop them, and 0111's credit notes point at the invoices, so they go before 0093.
+      for (const name of ["0111_customer_credit_notes", "0093_customer_invoices_payments", "0092_esign"]) {
         for (const stmt of statements(script(name))) await db.query(stmt);
       }
       for (const stmt of statements(script("0091_proposals"))) await db.query(stmt);
@@ -99,7 +99,7 @@ describe("the rollbacks take their module's workspace switch with them", () => {
     await expect(withSystem(async (db) => {
       await switchEverythingOn(db, w);
       // The order an operator rolls back in: newest first. 0095 and 0093 were already correct; 0094, 0092 and 0091 are the ones that left their rows.
-      for (const name of ["0095_external_reviews", "0094_reputation_followthrough", "0093_customer_invoices_payments", "0092_esign", "0091_proposals"]) {
+      for (const name of ["0111_customer_credit_notes", "0095_external_reviews", "0094_reputation_followthrough", "0093_customer_invoices_payments", "0092_esign", "0091_proposals"]) {
         for (const stmt of statements(script(name))) await db.query(stmt);
       }
       left = await switches(db, w.org.id);

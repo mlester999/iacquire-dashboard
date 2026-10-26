@@ -10,6 +10,9 @@ import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 import { listHeldConfigReviewsForOrg } from "@/server/workforce/reviews";
 import { listClientPayments, type AgencyPaymentView } from "@/server/billing/payments-view";
+import { runtimeReadySql } from "@/lib/employee-runtime";
+import { clientContentAccess } from "@/server/admin/client-content-policy";
+import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
 
 export interface TenantDetail {
   access: {
@@ -73,6 +76,11 @@ export interface TenantDetail {
   }>;
   heldVersions: ReviewVersionView[];
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
+  /**
+   * Whether this reader may see the four kinds of content the founder's D70 rule guards, and how much of it was withheld for that reason. The screens read with
+   * trusted server access, so row-level security cannot answer for them; this is the same question asked directly (see docs/staff-access-privacy.md).
+   */
+  contentAccess: { sessionRequired: boolean; hasSession: boolean; permitted: boolean; heldKnowledgeHidden: number; runDetailsHidden: number };
   provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; config_version: number | null; status: string; detail: string | null; created_at: Date; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null }>;
   ghl: { location_id: string; location_name: string | null; pipeline_id: string | null; calendar_ids: string[]; status: string; verified_at: Date | null; has_credential: boolean } | null;
   integrations: Array<{ provider: string; status: string; detail: string | null; last_checked_at: Date | null }>;
@@ -201,6 +209,12 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
        where r.org_id = $1 and r.status in ('failed', 'timeout', 'interrupted') order by r.finished_at desc nulls last limit 10`,
       [orgId],
     );
+    // Founder decision D70: while the stricter rule is on, a held knowledge entry's text and a failed run's error text are content, and this reader bypasses
+    // row-level security. It withholds them unless the person has an active support session on this client (the same condition the database applies), and keeps
+    // the counts so the screen can say what it is not showing instead of looking empty.
+    const contentAccess = access.workforce ? await clientContentAccess(db, user.id, orgId) : { sessionRequired: false, hasSession: false, permitted: true };
+    const heldKnowledgeHidden = !contentAccess.permitted ? heldKnowledge.rows.length : 0;
+    const hiddenRunDetails = !contentAccess.permitted ? failedRuns.rows.filter((r) => r.error_message).length : 0;
     return {
       access,
       org: org[0],
@@ -208,9 +222,10 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       invitations: access.team ? invitations.rows : [],
       agents: access.workforce ? agents.rows : [],
       heldVersions,
-      heldKnowledge: access.workforce
+      heldKnowledge: access.workforce && contentAccess.permitted
         ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
         : [],
+      contentAccess: { ...contentAccess, heldKnowledgeHidden, runDetailsHidden: hiddenRunDetails },
       provisioning: access.workforce ? provisioning.rows : [],
       ghl: access.integrations ? ghl.rows[0] ?? null : null,
       integrations: access.integrations ? integrations.rows : [],
@@ -219,7 +234,9 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       payments: clientPayments,
       usage: await usageSummary(db, orgId),
       staff: access.team ? staff.rows : [],
-      failedRuns: access.workforce ? failedRuns.rows : [],
+      failedRuns: access.workforce
+        ? failedRuns.rows.map((r) => (contentAccess.permitted ? r : { ...r, error_message: r.error_message ? "Hidden until you open a support session on this client." : null }))
+        : [],
     };
   });
 }
@@ -258,7 +275,7 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
     return {
       clients: await n(`select count(*)::int as n from organizations o where ${scope}`),
       activeClients: await n(`select count(*)::int as n from organizations o where ${scope} and o.status = 'active'`),
-      agentsOnline: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('online','busy')`) : 0,
+      agentsOnline: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and ${runtimeReadySql("a")}`) : 0,
       agentsEnabled: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled`) : 0,
       openTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress','waiting_for_client')") : 0,
       urgentTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress') and priority in ('high','urgent')") : 0,
@@ -373,6 +390,7 @@ export async function listAgencyAgents(user: SessionUser) {
         and (c.credential_reference_id is null or (r.id is not null and r.revoked_at is null))`,
     [credentialIds],
   ))).rows.map((credential) => credential.id));
+  const extras = await readinessExtrasFor(agencyId, rows);
   return rows.map(({ credential_id, ...agent }) => {
     const credentialReady = credential_id !== null && activeCredentialIds.has(credential_id);
     const identityEvidence = {
@@ -407,6 +425,7 @@ export async function listAgencyAgents(user: SessionUser) {
       identity_current,
       full_capabilities_acknowledged,
       has_credential: credentialReady,
+      readiness_extras: extras.get(agent.id),
     };
   });
 }

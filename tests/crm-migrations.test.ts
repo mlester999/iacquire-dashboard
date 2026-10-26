@@ -77,6 +77,13 @@ const CRM_MIGRATION_NAMES = [
   // Onboarding completion: a snapshot column on onboarding_responses, the 'onboarding' origin of a draft calendar and one optional step in the default checklist; its rollback
   // refuses while a snapshot, a calendar drafted from onboarding answers or a media storage step a person worked on exists (none does here). Rolled back before 0100.
   "0102_onboarding_snapshot.sql",
+  // The optional automatic maintenance payment: two tables that point at payments (0099's unique key on id and workspace) and at the plan, a column on payments and a switch; its rollback refuses while an
+  // agreement is open (none is here). It is rolled back before 0099, which cannot drop the key while a charge points at it.
+  // The AI employee health probe: a table whose read policy uses the workspace-permission function that an earlier rollback of this chain drops, so it is rolled back first.
+  "0109_employee_health_probe.sql",
+  "0110_maintenance_agreements.sql",
+  // Credit notes on customer invoices: a table that points at 0093's invoices, a new invoice column, two replaced checks and the guard function; its rollback refuses while a credit note is issued (none is here).
+  "0111_customer_credit_notes.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

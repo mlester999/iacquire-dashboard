@@ -1,5 +1,6 @@
 import "server-only";
 import { providerRequest } from "@/server/calendars/adapters/http";
+import { env } from "@/server/env";
 import { isCurrency, parseAmount, toDecimalString, type CurrencyCode } from "@/lib/money";
 import { paypalModeOf, PROVIDER_CURRENCIES } from "@/lib/invoices/connection-rules";
 import { emptyEvent, looksLikeOurReference, type DisputeOutcome, type NormalizedEvent } from "@/lib/invoices/payment-events";
@@ -49,8 +50,49 @@ export interface PaypalResponse {
 /** The one place this adapter touches the network: a test hands in its own. */
 export type PaypalHttp = (req: PaypalRequest) => Promise<PaypalResponse>;
 
+/**
+ * The origin of a simulated PayPal on this machine (scripts/paypal-sim.mjs), or null. env() only lets PAYPAL_API_BASE through in development and test, for this machine's own
+ * address, in the sandbox environment and with the simulator's made-up client id (src/server/env.ts), so a production server can never have one.
+ */
+export function simulatedPaypalOrigin(): string | null {
+  const base = env().PAYPAL_API_BASE;
+  if (!base || env().NODE_ENV === "production") return null;
+  try {
+    return new URL(base).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The simulator's answer, over plain HTTP on this machine, with the same time limit, size cap and refusal to follow a redirect as the real call. */
+async function simulatedPaypalCall(origin: string, req: PaypalRequest, headers: Record<string, string>): Promise<PaypalResponse> {
+  let res: Response;
+  let text = "";
+  try {
+    res = await fetch(`${origin}${req.path}`, { method: req.method, headers: { Accept: "application/json", ...headers }, body: req.body, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    text = (await res.text()).slice(0, 1_000_000);
+  } catch {
+    throw new ProviderCallError("unreachable", "The simulated PayPal could not be reached.");
+  }
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json };
+}
+
 /** The real network call: PayPal's two fixed origins only, no redirects, the secret in a header and never in a URL, a time limit and a size cap. */
 export const paypalHttp: PaypalHttp = async (req) => {
+  const simulated = simulatedPaypalOrigin();
+  if (simulated && req.environment === "sandbox") {
+    const sent: Record<string, string> = { ...(req.headers ?? {}) };
+    if (req.contentType) sent["Content-Type"] = req.contentType;
+    if (req.bearer) sent.Authorization = `Bearer ${req.bearer}`;
+    else if (req.basic) sent.Authorization = `Basic ${Buffer.from(`${req.basic.id}:${req.basic.secret}`).toString("base64")}`;
+    return simulatedPaypalCall(simulated, req, sent);
+  }
   const origin = ORIGINS[req.environment];
   const headers: Record<string, string> = { ...(req.headers ?? {}) };
   if (req.contentType) headers["Content-Type"] = req.contentType;
@@ -96,6 +138,11 @@ function failFor(res: PaypalResponse): ProviderCallError {
   if (res.status === 429 || res.status >= 500) return new ProviderCallError("unreachable", "PayPal is busy or having trouble right now. Try again in a few minutes.", res.status);
   return new ProviderCallError("rejected", refusal(res), res.status);
 }
+
+/** The refusal for an answer that was not a success, for the other PayPal modules (the plan's subscriptions) that make their own calls over the same HTTP layer. */
+export const paypalFailureFor = failFor;
+/** The sentence PayPal gave for a refusal, cleaned for a person. */
+export const paypalRefusalText = refusal;
 
 const environmentOf = (c: ProviderCredentials): "sandbox" | "live" | null => (c.settings?.environment === "live" ? "live" : c.settings?.environment === "sandbox" ? "sandbox" : null);
 

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { PERMISSION_MATRIX } from "@/lib/permissions";
@@ -12,8 +12,6 @@ class Done extends Error {}
 const down = readFileSync("supabase/rollbacks/0091_proposals.down.sql", "utf8");
 // 0092's tables hang off proposals, so a real rollback takes 0092 out first.
 const downEsign = readFileSync("supabase/rollbacks/0092_esign.down.sql", "utf8");
-// So do 0093's invoices (an invoice made from a proposal points at it), and they come out first, newest first like every other rollback.
-const downInvoices = readFileSync("supabase/rollbacks/0093_customer_invoices_payments.down.sql", "utf8");
 const INVOICE_TABLES = ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
 
 /** Splits a script into statements, keeping `$$ ... $$` bodies whole (the test driver runs one statement per call). */
@@ -35,9 +33,18 @@ function statements(sql: string): string[] {
 }
 
 type Db = { query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> };
+// A rollback runs newest first. Everything numbered after 0091 is taken out before it, and the list is discovered from the rollback files rather than written by
+// hand: a migration added later that points at proposals (0111's credit notes point at 0093's invoices, which point at 0091) would otherwise turn this test's
+// precondition message into a foreign-key error from the database, which looks like a broken rollback instead of a missing step in the test.
+const LATER_ROLLBACKS = readdirSync("supabase/rollbacks")
+  .filter((file) => file.endsWith(".down.sql"))
+  .map((file) => ({ file, version: Number.parseInt(file.slice(0, 4), 10) }))
+  .filter((entry) => Number.isInteger(entry.version) && entry.version > 91)
+  .sort((a, b) => b.version - a.version);
 const runDown = async (db: Db) => {
-  for (const stmt of statements(downInvoices)) await db.query(stmt);
-  for (const stmt of statements(downEsign)) await db.query(stmt);
+  for (const { file } of LATER_ROLLBACKS) {
+    for (const stmt of statements(readFileSync(`supabase/rollbacks/${file}`, "utf8"))) await db.query(stmt);
+  }
   for (const stmt of statements(down)) await db.query(stmt);
 };
 

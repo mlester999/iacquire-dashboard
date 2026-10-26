@@ -57,6 +57,27 @@ describe("the Payments tab", () => {
     expect(waiting.getAttribute("href")).toBe("/admin/clients/o2?tab=billing");
   });
 
+  it("attributes a refund, a dispute or a reversal to the provider that reported it, never to another one", () => {
+    const at = "2026-10-26T04:00:00.000Z";
+    ui({
+      payments: [
+        payment({ id: "pp", provider: "paypal", method: "paypal", kind: "setup_fee", providerNotices: [{ type: "PAYMENT.CAPTURE.REFUNDED", detail: null, receivedAt: at }] }),
+        payment({ id: "pm", provider: "paymongo", method: "card", kind: "credit_topup", providerNotices: [{ type: "payment.dispute.created", detail: null, receivedAt: at }] }),
+        payment({ id: "pr", provider: "paypal", method: "paypal", kind: "setup_fee", providerNotices: [{ type: "PAYMENT.SALE.REVERSED", detail: null, receivedAt: at }] }),
+        payment({ id: "px", provider: "stripe", method: null, kind: "setup_fee", providerNotices: [{ type: "charge.refunded", detail: null, receivedAt: at }] }),
+      ],
+    });
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("PayPal reported a refund");
+    expect(text).toContain("PayMongo reported a dispute");
+    expect(text).toContain("PayPal reported a reversal");
+    expect(text).toContain("The payment provider reported a refund");
+    expect(text).not.toContain("PayMongo reported a refund");
+    expect(screen.getAllByLabelText("Reported by PayPal")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Reported by PayMongo")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Reported by the payment provider")).toHaveLength(1);
+  });
+
   it("offers a Super Admin the controls, and only the controls that apply", () => {
     ui();
     expect(screen.getByRole("button", { name: /Record a payment/ })).toBeTruthy();

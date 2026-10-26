@@ -22,6 +22,9 @@ import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import { createPaymentCheckout } from "@/server/billing/payments";
 import { providerReadiness } from "@/server/purchase-intents/availability";
 import type { FetchLike } from "@/server/billing/paymongo";
+import type { SubscriptionsDeps } from "@/server/billing/providers/paypal-subscriptions";
+import { agreementForPlan, agreementsForPlans, recurringAvailability, type AgreementView } from "@/server/maintenance/agreement-read";
+import { isTerminalAgreement } from "@/lib/maintenance-agreement";
 import { noticeCancelled, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import { iso } from "@/server/projects/shared";
 
@@ -65,6 +68,10 @@ export interface MaintenanceOverview {
   requests: MaintenanceRequestView[];
   /** Whether the owner can pay the plan online right now: the provider can take and confirm a payment and the plan is in a state that can take one. */
   payOnline?: { offered: boolean };
+  /** The optional automatic monthly payment (a PayPal subscription) behind the plan, or null when the plan is paid by hand or online each period. */
+  agreement?: AgreementView | null;
+  /** Whether the owner can set up automatic payments right now: PayPal and the Super Admin's switch are ready, the plan can take a payment, and none is open already. */
+  recurring?: { offered: boolean };
 }
 
 type SubRow = {
@@ -160,8 +167,12 @@ export async function getMaintenanceOverview(ctx: OrgContext): Promise<Maintenan
   // not started needs its core system activated and its setup fee confirmed, which eligibility already says.
   const ready = (await withSystem((db) => providerReadiness(db))).available;
   const payableState = sub ? (sub.status === "requested" ? elig.eligible : ["active", "past_due", "cancel_requested", "expired"].includes(sub.status)) : false;
+  const agreement = sub ? await withSystem((db) => agreementForPlan(db, sub.id, { withApproval: ctx.can("maintenance.manage_plan") })) : null;
+  const recurringReady = (await withSystem((db) => recurringAvailability(db))).available;
   return {
     payOnline: { offered: ready && payableState },
+    agreement,
+    recurring: { offered: recurringReady && payableState && sub?.status !== "cancel_requested" && !(agreement && !isTerminalAgreement(agreement.status)) },
     eligible: elig.eligible,
     eligibilityNote: elig.note,
     plan,
@@ -236,12 +247,14 @@ export async function startMaintenancePayment(ctx: OrgContext, months: number, d
   return checkout;
 }
 
-export async function requestMaintenanceCancellation(ctx: OrgContext, note?: string) {
+export async function requestMaintenanceCancellation(ctx: OrgContext, note?: string, deps: { paypal?: SubscriptionsDeps } = {}) {
   if (!ctx.can("maintenance.manage_plan")) throw new AppError("forbidden", "Only a workspace owner can change the maintenance plan.");
   const clean = (note ?? "").trim().slice(0, 1000) || null;
+  let planId = null as string | null;
   await withSystem(async (db) => {
     const s = (await db.query<{ id: string; status: string }>("select id, status from maintenance_subscriptions where org_id = $1 and status in ('requested','active','past_due') for update", [ctx.org.orgId])).rows[0];
     if (!s) throw new AppError("not_found", "There's no plan to cancel.");
+    planId = s.id;
     if (s.status === "requested" || s.status === "past_due") {
       // Never activated, or already unpaid (it would expire when its grace period ends): nothing more will be billed, so end it outright.
       await db.query("update maintenance_subscriptions set status = 'cancelled', cancelled_at = now(), cancel_note = $2, cancel_requested_by = $3, cancel_requested_at = now() where id = $1", [s.id, clean, ctx.user.id]);
@@ -253,6 +266,11 @@ export async function requestMaintenanceCancellation(ctx: OrgContext, note?: str
     await notifyAgency(db, ctx.org.orgId, { kind: "maintenance_update", severity: "warning", title: `${ctx.org.name} ${s.status === "active" ? "requested to cancel" : "withdrew"} managed maintenance`, link: "/admin/maintenance" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "maintenance.cancellation_requested", targetType: "maintenance_subscription", targetId: s.id, result: "success" }, db);
   });
+  // The client asked to stop, so nothing more may be collected automatically for the plan. This runs after the plan's own change is committed and never undoes it.
+  if (planId) {
+    const { stopAgreementForEndedPlan } = await import("@/server/maintenance/agreement-service");
+    await stopAgreementForEndedPlan(planId, "The workspace owner asked to cancel the plan", deps);
+  }
 }
 
 export const maintenanceRequestSchema = z.object({
@@ -376,9 +394,10 @@ export async function listAgencyMaintenance(user: SessionUser) {
     )).rows;
     // The paid-through day is the agency's own day, so "ended N days ago" is counted in the agency's time zone.
     const today = await agencyToday(db);
+    const agreements = await agreementsForPlans(db, subs.map((s) => s.id));
     return {
       subscriptions: subs.map((s) => ({
-        ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" && s.cleared === true,
+        ...toSub(s), agreement: agreements.get(s.id) ?? null, orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" && s.cleared === true,
         // Which of the two conditions holds the plan back, so the agency is sent to the right place (the setup, or the client's billing tab).
         blockedBy: s.state !== "activated" ? ("setup" as const) : s.cleared !== true ? ("setup_payment" as const) : null,
         // What the agency needs to run the plan: where the money side stands (as recorded by people, never detected) and what a lapse would touch.
@@ -427,7 +446,7 @@ export async function activateMaintenance(user: SessionUser, subscriptionId: str
   });
 }
 
-export async function resolveMaintenanceSubscription(user: SessionUser, subscriptionId: string, action: "decline" | "confirm_cancellation") {
+export async function resolveMaintenanceSubscription(user: SessionUser, subscriptionId: string, action: "decline" | "confirm_cancellation", deps: { paypal?: SubscriptionsDeps } = {}) {
   assertManage(user);
   await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
@@ -446,6 +465,9 @@ export async function resolveMaintenanceSubscription(user: SessionUser, subscrip
     }
     await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: `maintenance.${action}`, targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", ...(action === "confirm_cancellation" ? { metadata: { pausedWorkflows } } : {}) }, db);
   });
+  // A plan that ended collects nothing more. Idempotent: an agreement the owner's request already stopped is not touched again.
+  const { stopAgreementForEndedPlan } = await import("@/server/maintenance/agreement-service");
+  await stopAgreementForEndedPlan(subscriptionId, action === "decline" ? "The plan request was declined" : "The plan's cancellation was confirmed", deps);
 }
 
 export async function updateMaintenanceRequest(user: SessionUser, requestId: string, changes: { status?: "open" | "in_progress" | "waiting_for_client" | "completed" | "declined"; resolutionNote?: string; waiveAllowance?: boolean; internalNotes?: string }) {

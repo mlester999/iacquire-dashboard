@@ -87,7 +87,7 @@ export interface InvoiceBannerFacts {
   isTest?: boolean;
 }
 
-export type InvoiceBannerKind = "test" | "paid" | "partly_paid" | "under_review" | "pending" | "overdue" | "pay_online" | "pay_other_way";
+export type InvoiceBannerKind = "test" | "paid" | "credited" | "partly_paid" | "under_review" | "pending" | "overdue" | "pay_online" | "pay_other_way";
 
 export interface InvoiceBanner {
   kind: InvoiceBannerKind;
@@ -99,6 +99,8 @@ export function invoiceBanner(f: InvoiceBannerFacts): InvoiceBanner {
   // A test invoice is never "overdue" or "pay online": nothing is owed on it, and a test is the first thing anybody who opens it should read.
   if (f.isTest) return { kind: "test", tone: "info" };
   if (f.paymentStatus === "paid") return { kind: "paid", tone: "ok" };
+  // Credited in full: nothing is due, and it is not said to be paid because nothing was.
+  if (f.paymentStatus === "credited") return { kind: "credited", tone: "ok" };
   if (f.paymentStatus === "disputed") return { kind: "under_review", tone: "wait" };
   if (f.hasPendingPayment) return { kind: "pending", tone: "wait" };
   if (f.paymentStatus === "partially_paid") return { kind: "partly_paid", tone: "info" };

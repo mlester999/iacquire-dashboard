@@ -8,6 +8,7 @@ import { requirementDetails } from "@/lib/crm/blueprints/requirements";
 import { ENVELOPE_KEYS } from "@/lib/crm/blueprints/package";
 import { REQUIREMENT_INFO, REQUIREMENT_KEYS, type AssetSection, type BlueprintContent, type RequirementKey } from "@/lib/crm/blueprints/types";
 import type { ChecklistItem, ChecklistStatus, SetupChecklist } from "@/lib/crm/blueprints/views";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 // The setup checklist after a Blueprint: exactly what this workspace must still connect, map, fill in, rebuild, verify or approve, each
 // with the evidence found. The requirements come from the live applications (what their Blueprints need) plus open needs in the data itself
@@ -305,7 +306,7 @@ async function evidenceFor(db: Queryable, orgId: string, key: RequirementKey, n:
       if (!roles.length) return null;
       const agents = await q<{ role_key: string; display_name: string; enabled: boolean; paused: boolean; ready: boolean }>(
         `select role_key, display_name, enabled, mode = 'paused' as paused,
-                (enabled and status in ('online', 'busy') and hermes_base_url is not null and credential_id is not null and coalesce(last_health_ok, false)) as ready
+                (${runtimeReadySql("agent_instances")} and hermes_base_url is not null) as ready
          from agent_instances where org_id = $1 and role_key = any($2::text[])`,
         [orgId, roles],
       );

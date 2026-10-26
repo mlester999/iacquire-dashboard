@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 import { AlertCircle, ArrowRight, Check, Circle, CircleDot, ShieldCheck, Sparkles } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { ButtonLink } from "@/components/ui/button";
@@ -206,6 +207,29 @@ export function ReadinessChecklist({
             </li>
           ))}
         </ol>
+        {readiness.requirements.some((r) => !r.met) ? (
+          <div className="rounded-2xl border border-line bg-surface-2/60 p-3.5">
+            <p className="text-[14px] font-medium text-ink">What this role still needs</p>
+            <ul className="mt-2 space-y-2.5">
+              {readiness.requirements.filter((r) => !r.met).map((r) => (
+                <li key={r.key} className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-[12px] leading-relaxed text-muted">
+                    <span className="font-medium text-ink">{r.label}</span>
+                    <span className="ml-1.5 rounded-full border border-line px-1.5 py-px text-[12px] text-muted">{r.blocking ? "required" : "helpful"}</span>
+                    <span className="mt-0.5 block">{r.detail}</span>
+                  </p>
+                  {r.fixHref ? <Link href={r.fixHref} className="shrink-0 text-[12px] font-medium text-primary hover:underline">Open</Link> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {readiness.health && readiness.health.lastProbeAt ? (
+          <p className="text-[12px] leading-relaxed text-muted" data-testid="health-record">
+            Automatic connection checks: {readiness.health.consecutiveFailures === 0 ? "passing" : `${readiness.health.consecutiveFailures} failed in a row`}
+            {readiness.health.lastHealthyAt ? ` · last healthy ${new Date(readiness.health.lastHealthyAt).toISOString().slice(0, 16).replace("T", " ")} UTC` : " · never seen healthy"}.
+          </p>
+        ) : null}
         {!readiness.completed && action ? <div className="pt-1">{action}</div> : null}
       </CardContent>
     </Card>

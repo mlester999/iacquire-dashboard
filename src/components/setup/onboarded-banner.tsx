@@ -32,7 +32,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
       inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
       inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
       inventoryToolCount: agent.tool_inventory_tool_count, credentialCurrent: agent.credential_ready,
-      paymentCleared,
+      paymentCleared, extras: agent.readiness_extras,
     });
     if (readiness.chatAvailable) return { role, label: "Ready", detail: "Verified for authorized chat. Connected workflows depend on their own setup.", ready: true };
     if (paymentCleared === false && !job) return { role, label: "Waiting for setup payment", detail: `${PAYMENT_REQUIRED_SENTENCE}.`, ready: false };

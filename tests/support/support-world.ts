@@ -63,8 +63,8 @@ export async function countRows(sql: string, params: unknown[] = []) {
 
 /** Notifications in a person's list, optionally of one kind. */
 export async function notificationsFor(userId: string, kind?: string) {
-  return withSystem(async (db) => (await db.query<{ kind: string; title: string; body: string | null; link: string | null; dedupe_key: string | null }>(
-    "select kind, title, body, link, dedupe_key from notifications where user_id = $1 and ($2::text is null or kind = $2) order by created_at", [userId, kind ?? null],
+  return withSystem(async (db) => (await db.query<{ kind: string; title: string; body: string | null; link: string | null; dedupe_key: string | null; severity: string }>(
+    "select kind, title, body, link, dedupe_key, severity from notifications where user_id = $1 and ($2::text is null or kind = $2) order by created_at", [userId, kind ?? null],
   )).rows);
 }
 

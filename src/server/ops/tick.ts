@@ -50,6 +50,7 @@ import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
 import { runMaintenanceRenewalSweep } from "@/server/maintenance/renewal";
+import { runAgreementReconcile } from "@/server/maintenance/agreement-service";
 import { runPurchaseCheckoutSweep } from "@/server/purchase-intents/checkout";
 import { RENEWAL_SWEEP_BUDGET_MS } from "@/lib/billing-renewal";
 import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
@@ -60,6 +61,7 @@ import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
+import { runHealthProbe } from "@/server/workforce/health-probe";
 import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
 import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
@@ -220,6 +222,13 @@ export const JOBS: ScheduledJob[] = [
     const p = await runPurchaseCheckoutSweep();
     return r.noticed + r.overdue + r.pastDue + r.checkoutsExpired + p.closedUnpaid + p.givenUp + p.recovered;
   } },
+  // The optional automatic monthly payment (a PayPal subscription): reads PayPal's own record of each open agreement hourly, so a status or a charge whose signed notice never arrived
+  // still lands, an approval nobody gave is closed, and one approved after it was closed is cancelled. It calls only PayPal's read endpoints and its cancel endpoint, charges no one, and
+  // does nothing at all until PayPal is connected and an agreement exists (which needs the Super Admin's switch, off by default).
+  { name: "maintenanceAgreementReconcile", everyMinutes: 60, run: async () => {
+    const r = await runAgreementReconcile();
+    return r.checked + r.charges + r.abandoned + r.cancelledLate;
+  } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", everyMinutes: 180, run: async () => (await syncAllWhatsappTemplates()).synced },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
@@ -261,6 +270,9 @@ export const JOBS: ScheduledJob[] = [
     const r = await runProactiveBriefings();
     return r.generated + r.suppressed + r.held + r.failed;
   } },
+  // The AI-employee health probe: an authenticated, read-only look (GET only, no model tokens, no run, nothing to a customer) at each connected employee's Hermes profile, so an
+  // outage is seen by the platform first. Off unless WORKFORCE_HEALTH_PROBE_ENABLED=true; it spends at most its time budget per tick (src/server/workforce/health-probe.ts).
+  { name: "aiHealthProbe", everyMinutes: 5, run: async () => (await runHealthProbe()).probed },
   // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
   // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
   // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. It spends at most RECONCILE_BUDGET_MS waiting on providers (the tick is cut off at

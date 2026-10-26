@@ -11,6 +11,7 @@ import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { eligibleStaff, getOwnerProfile, type EligibleStaff } from "@/server/staff/service";
 import { DEFAULT_URGENCY, ESCALATION_LABELS, type EscalationCategory, type EscalationUrgency } from "@/lib/escalation";
 import type { OrgContext } from "@/server/tenancy/context";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 export type OwnerKind = "ai" | "human" | "unassigned";
 
@@ -369,7 +370,7 @@ export async function aiResumeProblems(db: Queryable, orgId: string, conv: { ai_
     const a = agent[0];
     if (!a || !a.enabled) problems.push("The AI employee is not included in this workspace.");
     else {
-      if (!["online", "busy"].includes(a.status)) problems.push(`${a.display_name} has not passed its connection check.`);
+      if (!isRuntimeOnline(a.status)) problems.push(`${a.display_name} has not passed its connection check.`);
       if (a.mode === "paused") problems.push(`${a.display_name} is paused.`);
     }
   }

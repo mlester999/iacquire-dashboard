@@ -223,11 +223,11 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
             <StatusPill tone={job.recoveryPending ? "warning" : TONE[job.status]} size="sm" dot={running}>
               {job.statusLabel}
             </StatusPill>
-            {elapsed && job.startedAt && !job.recoveryPending && <span className="text-[11.5px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
-            {job.cancelRequested && job.status === "running" && <span className="text-[11.5px] text-warning-ink">Stop requested</span>}
+            {elapsed && job.startedAt && !job.recoveryPending && <span className="text-[12px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
+            {job.cancelRequested && job.status === "running" && <span className="text-[12px] text-warning-ink">Stop requested</span>}
           </div>
-          <p className="mt-1.5 truncate text-[13.5px] font-semibold text-ink" title={job.title}>{job.title}</p>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-ink" title={job.title}>{job.title}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">
             {job.recoveryPending
               ? "No active worker lease is recorded. This job is waiting for recovery; no completion has been recorded."
               : running
@@ -270,7 +270,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
           <dl className="flex flex-wrap gap-x-4 gap-y-1.5">
             {counts.map(([label, value]) => (
               <div key={label} className="flex items-baseline gap-1.5">
-                <dt className="order-2 text-[11.5px] text-muted">{label}</dt>
+                <dt className="order-2 text-[12px] text-muted">{label}</dt>
                 <dd className="order-1 text-[13px] font-semibold tabular-nums text-ink">{value}</dd>
               </div>
             ))}
@@ -279,20 +279,20 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
 
         {metrics.length > 0 && (
           <div>
-            <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Measured KPIs</p>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Measured KPIs</p>
             <dl className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {metrics.map((metric, index) => (
                 <div key={metric.key ?? index} className="rounded-xl border border-line bg-surface-2/40 px-3 py-2" title={[metric.definition, metric.period, metric.source ? `Source: ${metric.source}` : null].filter(Boolean).join(" · ")}>
-                  <dt className="text-[10.5px] leading-snug text-muted">{metric.label}</dt>
+                  <dt className="text-[12px] leading-snug text-muted">{metric.label}</dt>
                   <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-ink">
                     {typeof metric.value === "number" ? metric.value.toLocaleString() : metric.value ?? "—"}
-                    {metric.unit && <span className="ml-0.5 text-[11px] font-normal text-muted">{metric.unit}</span>}
+                    {metric.unit && <span className="ml-0.5 text-[12px] font-normal text-muted">{metric.unit}</span>}
                   </dd>
-                  {metric.period && <p className="mt-0.5 text-[10px] leading-snug text-faint">{metric.period}</p>}
+                  {metric.period && <p className="mt-0.5 text-[12px] leading-snug text-faint">{metric.period}</p>}
                   {metric.trend && metric.previous !== null && metric.previous !== undefined && (
                     <p
                       className={cn(
-                        "mt-0.5 text-[10px] leading-snug",
+                        "mt-0.5 text-[12px] leading-snug",
                         metric.trend === "flat"
                           ? "text-muted"
                           : (metric.trend === "up") === (metric.higherIsBetter !== false)
@@ -314,10 +314,10 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
 
         {availableSlots.length > 0 && (
           <div>
-            <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Real bookable availability</p>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Real bookable availability</p>
             <ul className="flex flex-wrap gap-1.5">
               {availableSlots.map((slot) => (
-                <li key={slot.start} className="rounded-full border border-line bg-surface px-2.5 py-1 text-[11.5px] tabular-nums text-ink-2">
+                <li key={slot.start} className="rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] tabular-nums text-ink-2">
                   {(() => {
                     try {
                       return new Intl.DateTimeFormat("en-US", {
@@ -334,7 +334,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                 </li>
               ))}
             </ul>
-            {availability?.timeZone && <p className="mt-1 text-[10.5px] text-faint">Times shown in {availability.timeZone}. Nothing has been held or booked.</p>}
+            {availability?.timeZone && <p className="mt-1 text-[12px] text-faint">Times shown in {availability.timeZone}. Nothing has been held or booked.</p>}
           </div>
         )}
 
@@ -349,7 +349,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
 
         {findings.length > 0 && (
           <div className="space-y-2">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Findings and recommended actions</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Findings and recommended actions</p>
             <ul className="space-y-1.5">
               {findings.map((item, index) => {
                 const tone = item.severity === "critical" ? "border-danger/25 bg-danger-soft/30" : item.severity === "warning" ? "border-warning/25 bg-warning-soft/30" : "border-line bg-surface-2/40";
@@ -361,9 +361,9 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                     </div>
                     {item.detail && <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{item.detail}</p>}
                     {Boolean(item.samples?.length) && (
-                      <p className="mt-1 text-[11.5px] leading-relaxed text-muted">Examples: {item.samples!.join("; ")}</p>
+                      <p className="mt-1 text-[12px] leading-relaxed text-muted">Examples: {item.samples!.join("; ")}</p>
                     )}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
                       {item.recommendedAction && <span className="text-ink-2"><span className="font-medium">Next:</span> {item.recommendedAction}</span>}
                       {item.evidenceHref && <Link href={item.evidenceHref} className="font-semibold text-primary hover:underline">Open evidence</Link>}
                       {job.canCreateTask && item.key && (
@@ -397,7 +397,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
 
         {events.length > 0 && (
           <div>
-            <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Recorded activity</p>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Recorded activity</p>
             <ol className="space-y-1.5 border-l border-line pl-3">
               {events.map((event) => (
                 <li key={event.id} className="relative text-[12px] leading-relaxed text-ink-2">
@@ -414,7 +414,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
               ))}
             </ol>
             {job.events.length > 5 && !compact && (
-              <button type="button" onClick={() => setShowAllEvents((value) => !value)} className="mt-1.5 text-[11.5px] font-medium text-primary hover:underline">
+              <button type="button" onClick={() => setShowAllEvents((value) => !value)} className="mt-1.5 text-[12px] font-medium text-primary hover:underline">
                 {showAllEvents ? "Show recent activity" : `Show all ${job.events.length} recorded events`}
               </button>
             )}
@@ -423,7 +423,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
 
         {error && <p className="text-[12px] text-danger-ink" role="alert">{error}</p>}
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line/70 pt-2.5 text-[11.5px] text-muted">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line/70 pt-2.5 text-[12px] text-muted">
           <span className="inline-flex items-center gap-1"><ShieldCheck className="size-3.5 text-success-ink" aria-hidden /> Read-only research. CRM imports and outreach need your approval.</span>
           {job.status === "completed" && job.resultCount > 0 && (
             <Link href="/leads?tab=review" className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
@@ -460,7 +460,7 @@ export function WorkJobInlineActivity({ jobId }: { jobId: string }) {
   }, [jobId]);
   if (!job) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
+    <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
       <Search className="size-3.5" aria-hidden />
       {job.statusLabel}{job.recoveryPending ? " · waiting for worker recovery" : job.stageLabel ? ` · ${job.stageLabel}` : ""}
     </span>

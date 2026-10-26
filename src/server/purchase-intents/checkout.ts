@@ -14,10 +14,13 @@ import type { SessionUser } from "@/server/auth/service";
 import {
   canStartCheckout, CHECKOUT_CREATING_GRACE_MINUTES, CHECKOUT_STALE_HOURS, checkoutReturnText, type CheckoutStatus, type PurchaseStatus,
 } from "@/lib/purchase-intents/rules";
-import { checkoutAvailability } from "@/server/purchase-intents/availability";
+import { checkoutAvailability, PROVIDER_LABEL, type CheckoutProvider } from "@/server/purchase-intents/availability";
+import { completePaypalOrder, openPaypalOrder, paidEventFromCheckout, paypalAdapter, paypalStatus, readPaypalOrder, type PaypalDeps } from "@/server/billing/providers/paypal";
+import { recordAndApply } from "@/server/billing/payments";
+import { ProviderCallError } from "@/server/customer-payments/providers/types";
 import { addEvent, byToken, provisionPurchaseIntent, SELECT, type IntentRow } from "@/server/purchase-intents/service";
 
-// Online checkout for a purchase intent. The buyer holds a bearer link; after confirming the offer they may open ONE hosted PayMongo checkout for the frozen setup fee. The
+// Online checkout for a purchase intent. The buyer holds a bearer link; after confirming the offer they may open ONE hosted checkout (PayMongo, or PayPal) for the frozen setup fee. The
 // rules that make this safe, in the order they matter:
 //
 //   1. The amount is never the buyer's, the browser's or a request's. The checkout row copies the intent's frozen US$ fee (the database refuses another figure), converts it at
@@ -68,7 +71,8 @@ export interface StartedCheckout {
  * The buyer presses Pay. Opens one hosted checkout, or returns the open one. Nothing is charged here: the buyer pays on the provider's page. A failure to reach the provider
  * leaves the checkout row "failed" with a plain reason and charges nobody; the buyer may press again.
  */
-export async function startPurchaseCheckout(token: unknown, ctx: { ip: string | null }, deps: { fetch?: FetchLike; now?: Date } = {}): Promise<StartedCheckout> {
+export async function startPurchaseCheckout(token: unknown, ctx: { ip: string | null; provider?: CheckoutProvider }, deps: { fetch?: FetchLike; now?: Date; paypal?: PaypalDeps } = {}): Promise<StartedCheckout> {
+  const provider: CheckoutProvider = ctx.provider === "paypal" ? "paypal" : "paymongo";
   const now = deps.now ?? new Date();
   const perIp = await consumeRateLimit(RATE_LIMITS.purchaseCheckoutByIp, ctx.ip ?? "unknown");
   if (!perIp.allowed) throw new AppError("rate_limited", "Too many attempts. Wait a little and try again.");
@@ -93,38 +97,47 @@ export async function startPurchaseCheckout(token: unknown, ctx: { ip: string | 
     const allowed = canStartCheckout({ status: locked.status as PurchaseStatus, expiresAt: new Date(locked.expires_at).toISOString(), hold: locked.payment_hold, hasPaidCheckout: stats.paid, checkoutsSoFar: stats.n }, now);
     if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "This purchase cannot be paid now.");
 
-    const availability = await checkoutAvailability(db);
+    const availability = await checkoutAvailability(db, provider);
     if (!availability.available) throw new AppError("integration_unavailable", availability.reason === LIVE_REVIEW_TEXT ? "Online payment is not open yet. iAcquire will contact you." : "Online payment is not open yet. iAcquire will send you another way to pay.");
-    const rate = availability.settings.usdPhpRate as number;
-    const minor = usdToChargeMinor(locked.setup_fee_cents * 10_000, rate);
+    // PayMongo charges Philippine pesos, so the dollar price is converted at the agency's published rate and the rate is stored. PayPal charges the dollar price as it is: the amount is
+    // the frozen fee in cents, in USD, with no rate at all.
+    const currency = provider === "paypal" ? "USD" : "PHP";
+    const rate = provider === "paypal" ? null : (availability.settings.usdPhpRate as number);
+    const minor = provider === "paypal" ? locked.setup_fee_cents : usdToChargeMinor(locked.setup_fee_cents * 10_000, rate as number);
     const reference = newPaymentReference();
     const inserted = (await db.query<{ id: string }>(
       `insert into purchase_intent_checkouts (intent_id, agency_org_id, provider, reference_number, usd_amount_cents, charged_currency, charged_amount_minor, fx_rate, fx_source, fx_at, livemode, expires_at)
-       values ($1, $2, 'paymongo', $3, $4, 'PHP', $5, $6, $7, $8, $9, $10) returning id`,
-      [locked.id, locked.agency_org_id, reference, locked.setup_fee_cents, minor, rate, availability.settings.fxSource, availability.settings.fxUpdatedAt, availability.livemode === true,
-        new Date(now.getTime() + CHECKOUT_STALE_HOURS * 3_600_000).toISOString()],
+       values ($1, $2, $11, $3, $4, $12, $5, $6, $7, $8, $9, $10) returning id`,
+      [locked.id, locked.agency_org_id, reference, locked.setup_fee_cents, minor, rate, provider === "paypal" ? null : availability.settings.fxSource, provider === "paypal" ? null : availability.settings.fxUpdatedAt, availability.livemode === true,
+        new Date(now.getTime() + CHECKOUT_STALE_HOURS * 3_600_000).toISOString(), provider, currency],
     )).rows[0];
-    await addEvent(db, locked.id, locked.agency_org_id, "checkout_started", { reference, chargedCurrency: "PHP", chargedAmountMinor: minor, usdCents: locked.setup_fee_cents }, null, "buyer");
-    return { kind: "new" as const, checkoutId: inserted.id, reference, minor, intent: locked };
+    await addEvent(db, locked.id, locked.agency_org_id, "checkout_started", { reference, provider, chargedCurrency: currency, chargedAmountMinor: minor, usdCents: locked.setup_fee_cents }, null, "buyer");
+    return { kind: "new" as const, checkoutId: inserted.id, reference, minor, currency, intent: locked };
   });
   if (prepared.kind === "resume") return { checkoutUrl: prepared.url, reference: prepared.reference, resumed: true };
 
   const appUrl = env().APP_URL.replace(/\/$/, "");
   try {
-    const session = await createCheckoutSession(
-      {
-        amountMinor: prepared.minor,
-        currency: "PHP",
-        name: "iAcquireOS setup",
-        // Our reference travels in the description too, so a failed-payment notice (which names no checkout) can be linked back to this record.
-        description: `iAcquireOS setup for ${prepared.intent.company} [${prepared.reference}]`,
-        referenceNumber: prepared.reference,
-        // The buyer comes back by the checkout's own reference, never by the bearer token: the token is not given to the provider.
-        successUrl: `${appUrl}/purchase/return/${prepared.reference}`,
-        cancelUrl: `${appUrl}/purchase/return/${prepared.reference}?result=cancelled`,
-      },
-      { fetch: deps.fetch },
-    );
+    // The buyer comes back by the checkout's own reference, never by the bearer token: the token is not given to the provider.
+    const successUrl = `${appUrl}/purchase/return/${prepared.reference}`;
+    const cancelUrl = `${appUrl}/purchase/return/${prepared.reference}?result=cancelled`;
+    const description = `iAcquireOS setup for ${prepared.intent.company} [${prepared.reference}]`;
+    const session = provider === "paypal"
+      ? await openPaypalOrder({ reference: prepared.reference, amountMinor: prepared.minor, currency: prepared.currency, description, returnUrl: successUrl, cancelUrl }, deps.paypal)
+          .then((order) => ({ id: order.checkoutId, checkoutUrl: order.checkoutUrl }))
+      : await createCheckoutSession(
+          {
+            amountMinor: prepared.minor,
+            currency: "PHP",
+            name: "iAcquireOS setup",
+            // Our reference travels in the description too, so a failed-payment notice (which names no checkout) can be linked back to this record.
+            description,
+            referenceNumber: prepared.reference,
+            successUrl,
+            cancelUrl,
+          },
+          { fetch: deps.fetch },
+        );
     await withSystem((db) => db.query(
       "update purchase_intent_checkouts set status = 'pending', provider_checkout_id = $2, checkout_url = $3 where id = $1 and status = 'creating'",
       [prepared.checkoutId, session.id, session.checkoutUrl],
@@ -140,6 +153,9 @@ export async function startPurchaseCheckout(token: unknown, ctx: { ip: string | 
 }
 
 export interface CheckoutReturn {
+  /** The checkout's provider, and whether this server still has to take the buyer's approved PayPal payment (a pending PayPal checkout). */
+  provider: CheckoutProvider | null;
+  needsCapture: boolean;
   checkoutStatus: CheckoutStatus | null;
   purchaseStatus: PurchaseStatus | null;
   title: string;
@@ -151,12 +167,82 @@ export interface CheckoutReturn {
 export async function getCheckoutReturn(reference: unknown, options: { leftThePaymentPage?: boolean } = {}): Promise<CheckoutReturn> {
   const ref = typeof reference === "string" && /^IAQ-[A-Z0-9]{8,40}$/.test(reference) ? reference : null;
   const row = ref
-    ? (await withSystem((db) => db.query<{ status: CheckoutStatus; purchase_status: PurchaseStatus }>(
-        "select c.status, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
+    ? (await withSystem((db) => db.query<{ status: CheckoutStatus; purchase_status: PurchaseStatus; provider: CheckoutProvider }>(
+        "select c.status, c.provider, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
       ))).rows[0]
     : undefined;
   const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true);
-  return { checkoutStatus: row?.status ?? null, purchaseStatus: row?.purchase_status ?? null, ...text };
+  return {
+    provider: row?.provider ?? null,
+    needsCapture: row?.provider === "paypal" && row.status === "pending" && options.leftThePaymentPage !== true,
+    checkoutStatus: row?.status ?? null, purchaseStatus: row?.purchase_status ?? null, ...text,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PayPal: the buyer approves on PayPal's page, and THIS SERVER takes the money
+// ---------------------------------------------------------------------------
+
+export type ReturnCaptureState = "paid" | "waiting" | "not_applicable" | "unavailable" | "limited";
+
+/**
+ * The buyer came back from PayPal's page. Approving there does not take the money; this server does, with the app's credentials, for the order WE stored (never an id from the
+ * address the buyer came back on). What PayPal answers is its own record of the order and its captures; only a capture it reports COMPLETED becomes a payment, through the very same
+ * rules as a signed notice (our reference, the mode, the amount and the currency must equal what we stored, and the receipt ledger makes this and the later signed notice one payment).
+ * The browser supplies nothing but the page it landed on, so a forged return can do no more than ask PayPal what state the buyer's own order is in.
+ */
+export async function completePaypalPurchaseReturn(reference: unknown, ctx: { ip: string | null }, deps: { paypal?: PaypalDeps; now?: Date } = {}): Promise<{ state: ReturnCaptureState }> {
+  const ref = typeof reference === "string" && /^IAQ-[A-Z0-9]{8,40}$/.test(reference) ? reference : null;
+  if (!ref) return { state: "not_applicable" };
+  const limited = await consumeRateLimit(RATE_LIMITS.purchaseReturnByIp, ctx.ip ?? "unknown");
+  if (!limited.allowed) return { state: "limited" };
+  const row = (await withSystem((db) => db.query<{ provider_checkout_id: string | null; status: CheckoutStatus }>(
+    "select provider_checkout_id, status from purchase_intent_checkouts where reference_number = $1 and provider = 'paypal'", [ref],
+  ))).rows[0];
+  if (!row || !row.provider_checkout_id) return { state: "not_applicable" };
+  if (row.status === "paid" || row.status === "refunded" || row.status === "disputed") return { state: "paid" };
+  if (row.status !== "pending") return { state: "not_applicable" };
+  return settlePaypalCheckout(row.provider_checkout_id, ref, deps);
+}
+
+async function settlePaypalCheckout(orderId: string, reference: string, deps: { paypal?: PaypalDeps; now?: Date }): Promise<{ state: ReturnCaptureState }> {
+  let order;
+  try {
+    order = await completePaypalOrder(orderId, reference, deps.paypal);
+  } catch (error) {
+    if (error instanceof ProviderCallError) return { state: "unavailable" };
+    throw error;
+  }
+  if (!order) return { state: "waiting" };
+  const event = paidEventFromCheckout(order, paypalStatus().livemode === true);
+  if (!event) return { state: "waiting" };
+  const outcome = await recordAndApply(paypalAdapter, event);
+  return { state: outcome.outcome === "processed" || outcome.outcome === "duplicate" ? "paid" : "waiting" };
+}
+
+/** Settles pending PayPal checkouts a person approved but whose return page never ran (a closed tab) and whose signed notice has not come: capture if approved, otherwise just read. */
+async function settlePendingPaypal(now: Date, limit: number, deps: { paypal?: PaypalDeps }): Promise<number> {
+  if (!paypalStatus().configured) return 0;
+  const rows = (await withSystem((db) => db.query<{ reference_number: string; provider_checkout_id: string }>(
+    `select reference_number, provider_checkout_id from purchase_intent_checkouts
+      where provider = 'paypal' and status = 'pending' and provider_checkout_id is not null and created_at < $1 order by created_at desc limit $2`,
+    [new Date(now.getTime() - 2 * 60_000).toISOString(), limit],
+  ))).rows;
+  let settled = 0;
+  for (const r of rows) {
+    try {
+      const result = await settlePaypalCheckout(r.provider_checkout_id, r.reference_number, { paypal: deps.paypal, now });
+      if (result.state === "paid") settled += 1;
+    } catch {
+      // One order PayPal could not answer for must not stop the others; it is looked at again next time.
+    }
+  }
+  return settled;
+}
+
+/** PayPal's own record of one order, for a Super Admin who wants to see what PayPal says. Null when PayPal does not know it. */
+export async function readPaypalCheckoutState(orderId: string, deps: PaypalDeps = {}) {
+  return readPaypalOrder(orderId, deps);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +285,7 @@ export async function applyCheckoutPaid(db: Queryable, event: NormalizedPaymentE
     await db.query("update purchase_intent_checkouts set status = 'mismatch', failure_reason = 'Paid amount or currency did not match the checkout.' where id = $1", [checkout.id]);
     await holdIntent(db, intent, "mismatch");
     await addEvent(db, intent.id, intent.agency_org_id, "payment_mismatch", { reference: checkout.reference_number }, null, "system");
-    await notifyAgency(db, null, { kind: "billing_reconciliation", severity: "critical", title: "A purchase payment did not match its checkout", body: `Purchase ${intent.reference}, checkout ${checkout.reference_number}: nothing was created. Review it in PayMongo.`, link, dedupeKey: `purchase-mismatch:${checkout.id}` }, { permission: "agency.prospects.manage" });
+    await notifyAgency(db, null, { kind: "billing_reconciliation", severity: "critical", title: "A purchase payment did not match its checkout", body: `Purchase ${intent.reference}, checkout ${checkout.reference_number}: nothing was created. Review it in ${PROVIDER_LABEL[event.provider]}.`, link, dedupeKey: `purchase-mismatch:${checkout.id}` }, { permission: "agency.prospects.manage" });
     return { outcome: "rejected", detail: "Amount or currency mismatch.", checkoutId: checkout.id };
   }
 
@@ -214,7 +300,7 @@ export async function applyCheckoutPaid(db: Queryable, event: NormalizedPaymentE
     await notifyAgency(db, null, {
       kind: "billing_reconciliation", severity: "critical",
       title: status === "cancelled" ? "A cancelled purchase was paid" : "A purchase was paid twice",
-      body: `Purchase ${intent.reference}, checkout ${checkout.reference_number}. The purchase was already ${status === "cancelled" ? "cancelled" : "paid"}, so nothing new was created. Refund this payment in PayMongo and record the refund.`,
+      body: `Purchase ${intent.reference}, checkout ${checkout.reference_number}. The purchase was already ${status === "cancelled" ? "cancelled" : "paid"}, so nothing new was created. Refund this payment in ${PROVIDER_LABEL[event.provider]} and record the refund.`,
       link, dedupeKey: `purchase-duplicate:${checkout.id}`,
     }, { permission: "agency.prospects.manage" });
     await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: "purchase_intent.duplicate_payment", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, purchaseStatus: status } }, db);
@@ -222,9 +308,9 @@ export async function applyCheckoutPaid(db: Queryable, event: NormalizedPaymentE
   }
 
   await db.query(
-    `update purchase_intents set status = 'payment_verified', payment_at = $2, payment_method = 'paymongo', payment_reference = $3, payment_paid_on = $4::date,
+    `update purchase_intents set status = 'payment_verified', payment_at = $2, payment_method = $7, payment_reference = $3, payment_paid_on = $4::date,
        payment_note = $5, payment_amount_cents = setup_fee_cents, payment_source = 'provider', payment_checkout_id = $6, started_at = coalesce(started_at, $2), expired_at = null where id = $1`,
-    [intent.id, now.toISOString(), paid.id, todayIn(now, tz), `Confirmed by the payment provider's signed notice for checkout ${checkout.reference_number}.`, checkout.id],
+    [intent.id, now.toISOString(), paid.id, todayIn(now, tz), `Confirmed by ${PROVIDER_LABEL[event.provider]}'s verified record of checkout ${checkout.reference_number}.`, checkout.id, event.provider],
   );
   await addEvent(db, intent.id, intent.agency_org_id, "payment_received", { reference: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider }, null, "system");
   await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: "purchase_intent.payment_received", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider, autoProvision: intent.auto_provision } }, db);
@@ -250,8 +336,8 @@ export async function applyCheckoutReported(db: Queryable, event: NormalizedPaym
   await addEvent(db, intent.id, intent.agency_org_id, "payment_held", { reference: checkout.reference_number, what: dispute ? "dispute" : "refund", event: event.type }, null, "system");
   await notifyAgency(db, null, {
     kind: "billing_reconciliation", severity: dispute ? "critical" : "warning",
-    title: dispute ? "A purchase payment is disputed" : "PayMongo reports a refund on a purchase",
-    body: `Purchase ${intent.reference} (${intent.company}). ${intent.status === "provisioned" ? "The workspace already exists and was not changed." : "Creating the workspace is on hold until a person decides."} Check it in PayMongo.`,
+    title: dispute ? "A purchase payment is disputed" : `${PROVIDER_LABEL[event.provider]} reports a refund on a purchase`,
+    body: `Purchase ${intent.reference} (${intent.company}). ${intent.status === "provisioned" ? "The workspace already exists and was not changed." : "Creating the workspace is on hold until a person decides."} Check it in ${PROVIDER_LABEL[event.provider]}.`,
     link: AGENCY_LINK(intent.id), dedupeKey: `purchase-${dispute ? "dispute" : "refund"}:${event.provider}:${event.id}`,
   }, { permission: "agency.prospects.manage" });
   await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: dispute ? "purchase_intent.dispute_reported" : "purchase_intent.refund_reported", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, event: event.type } }, db);
@@ -332,11 +418,16 @@ export interface CheckoutSweepResult {
   closedUnpaid: number;
   givenUp: number;
   recovered: number;
+  /** PayPal checkouts a person approved whose payment this pass captured or found captured. */
+  paypalSettled: number;
 }
 
 /** Closes checkouts nobody finished and gives up on rows that never got a provider session; retries paid purchases whose workspace did not finish. A late payment on a closed checkout is still recorded. */
-export async function runPurchaseCheckoutSweep(opts: { now?: Date; maxRecoveries?: number } = {}): Promise<CheckoutSweepResult> {
+export async function runPurchaseCheckoutSweep(opts: { now?: Date; maxRecoveries?: number; paypal?: PaypalDeps } = {}): Promise<CheckoutSweepResult> {
   const now = opts.now ?? new Date();
+  // First the payments PayPal holds that nothing here has recorded yet, so an approved order is never closed as unpaid just because its return page and notice were both lost.
+  // Newest first: a buyer who approved a minute ago matters more than an abandoned order from yesterday, which the expiry below closes anyway.
+  const paypalSettled = await settlePendingPaypal(now, 25, { paypal: opts.paypal });
   const swept = await withSystem(async (db) => {
     const given = await db.query<{ id: string; intent_id: string; agency_org_id: string }>(
       "update purchase_intent_checkouts set status = 'failed', failure_reason = 'The checkout was never opened' where status = 'creating' and created_at < $1 returning id, intent_id, agency_org_id",
@@ -356,7 +447,7 @@ export async function runPurchaseCheckoutSweep(opts: { now?: Date; maxRecoveries
   ));
   let recovered = 0;
   for (const row of pending.rows) if ((await provisionPaidIntent(row.id, { now })) === "provisioned") recovered++;
-  return { closedUnpaid: swept.closed, givenUp: swept.given, recovered };
+  return { closedUnpaid: swept.closed, givenUp: swept.given, recovered, paypalSettled };
 }
 
 // ---------------------------------------------------------------------------

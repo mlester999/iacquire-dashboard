@@ -122,6 +122,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       acknowledgementCurrent={internalVerification.acknowledgementCurrent}
       credentialReady={agent.credential_ready}
       taskExecuting={agent.active_run}
+      readinessExtras={agent.readiness_extras}
       canConfigure={ctx.can("agents.configure")}
       configured={Boolean(applied)}
       hasPendingReview={versions.some((v) => v.status === "pending_agency_review")}

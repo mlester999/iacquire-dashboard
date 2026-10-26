@@ -10,7 +10,8 @@ import { InfoChip, RelativeTime, StatusPill } from "@/components/ui/status";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { useRunner } from "@/components/projects/common";
-import { cancelMaintenanceAction, createMaintenanceRequestAction, enrollMaintenanceAction, startMaintenancePaymentAction } from "@/app/actions/projects";
+import { cancelMaintenanceAction, createMaintenanceRequestAction, enrollMaintenanceAction, startMaintenanceAgreementAction, startMaintenancePaymentAction, stopMaintenanceAgreementAction } from "@/app/actions/projects";
+import { isTerminalAgreement, paymentModeLabel } from "@/lib/maintenance-agreement";
 import { createTicketAction } from "@/app/actions/support";
 import { MAINTENANCE_LANES, MAINTENANCE_STATUS_LABEL, formatPrice } from "@/lib/projects";
 import type { MaintenanceOverview } from "@/server/maintenance/service";
@@ -34,6 +35,10 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
   const [months, setMonths] = React.useState(1);
   const [paying, setPaying] = React.useState(false);
   const [payError, setPayError] = React.useState<string | null>(null);
+  const [autoOpen, setAutoOpen] = React.useState(false);
+  const [stopOpen, setStopOpen] = React.useState(false);
+  const [autoBusy, setAutoBusy] = React.useState(false);
+  const [autoError, setAutoError] = React.useState<string | null>(null);
   const [changeText, setChangeText] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [desc, setDesc] = React.useState("");
@@ -63,6 +68,41 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
     } catch {
       setPayError("Something went wrong. Nothing was charged. Please try again.");
       setPaying(false);
+    }
+  }
+  // Automatic payments. Nothing is charged here and the plan does not change: PayPal's own page is where the owner approves, and the plan moves only when PayPal confirms a charge.
+  async function doStartAuto() {
+    setAutoBusy(true);
+    setAutoError(null);
+    try {
+      const res = await startMaintenanceAgreementAction();
+      if (!res.ok) {
+        setAutoError(res.error);
+        setAutoBusy(false);
+        return;
+      }
+      window.location.assign(res.data.approvalUrl);
+    } catch {
+      setAutoError("Something went wrong. Nothing was charged. Please try again.");
+      setAutoBusy(false);
+    }
+  }
+  async function doStopAuto() {
+    setAutoBusy(true);
+    setAutoError(null);
+    try {
+      const res = await stopMaintenanceAgreementAction();
+      if (!res.ok) {
+        setAutoError(res.error);
+        return;
+      }
+      toast.success("Automatic payments are stopped. Your plan is unchanged.");
+      setStopOpen(false);
+      router.refresh();
+    } catch {
+      setAutoError("Something went wrong. Automatic payments are still on. Please try again.");
+    } finally {
+      setAutoBusy(false);
     }
   }
   async function doCancel() {
@@ -144,6 +184,23 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
             </div>
           )}
 
+          {sub && open && (() => {
+            const a = o.agreement ?? null;
+            const mode = paymentModeLabel(a ? { status: a.status, provider: a.provider, nextBillingAt: a.nextBillingAt, failedPayments: a.failedPayments, hold: a.hold } : null);
+            return (
+              <div role="group" className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line" aria-label="How this plan is paid">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill size="sm" tone={mode.mode === "automatic" ? "primary" : "neutral"}>{mode.mode === "automatic" ? "Automatic" : "By hand"}</StatusPill>
+                  <p className="text-[14px] font-medium text-ink">{mode.headline}</p>
+                </div>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{mode.detail}</p>
+                {a?.status === "approval_pending" && a.approvalUrl && canManagePlan && (
+                  <ButtonLink href={a.approvalUrl} size="sm" variant="secondary" className="mt-3">Continue to PayPal to approve <ArrowRight className="size-3.5" /></ButtonLink>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="grid gap-6 md:grid-cols-2">
             <div>
               <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">What&apos;s included</h3>
@@ -183,6 +240,16 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
             {o.payOnline?.offered && canManagePlan && (
               <Button variant="brand" onClick={() => setPayOpen(true)}>
                 {sub?.status === "requested" ? "Pay and start the plan" : sub?.status === "active" || sub?.status === "cancel_requested" ? "Pay for more months" : "Pay online to restore the plan"}
+              </Button>
+            )}
+            {o.recurring?.offered && canManagePlan && (
+              <Button variant="secondary" onClick={() => setAutoOpen(true)}>
+                Pay monthly automatically with PayPal
+              </Button>
+            )}
+            {o.agreement && !isTerminalAgreement(o.agreement.status) && canManagePlan && (
+              <Button variant="outline" onClick={() => setStopOpen(true)}>
+                Stop automatic payments
               </Button>
             )}
             {active && canManagePlan && (
@@ -303,6 +370,50 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
           The price comes from your plan. PayMongo charges in Philippine pesos, so the dollar amount is converted at iAcquire&apos;s published rate and the exact peso amount is shown on PayMongo&apos;s page before you pay.
           Months you pay for are added after the day your plan is already paid through, so paying early loses nothing.
         </p>
+      </Dialog>
+
+      <Dialog
+        open={autoOpen}
+        onOpenChange={(v) => { setAutoOpen(v); if (!v) setAutoError(null); }}
+        title="Pay monthly with PayPal"
+        description="You approve a subscription on PayPal's own page. Nothing is charged here, and your plan changes only when PayPal confirms a charge."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setAutoOpen(false); setAutoError(null); }} disabled={autoBusy}>
+              Cancel
+            </Button>
+            <Button variant="brand" loading={autoBusy} disabled={autoBusy} onClick={() => void doStartAuto()}>
+              Continue to PayPal
+            </Button>
+          </>
+        }
+      >
+        {autoError && <p role="alert" className="mb-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] leading-relaxed text-danger-ink">{autoError}</p>}
+        <ul className="space-y-2 text-[14px] leading-relaxed text-ink-2">
+          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />PayPal collects {formatMoney((sub?.monthlyPriceCents ?? 29900) / 100, sub?.currency ?? "USD")} each month, in US dollars, until you stop it.</li>
+          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />{sub?.paidThroughOn ? `Your plan is paid through ${formatDate(sub.paidThroughOn, timeZone)}; the first automatic charge comes after that day, so nothing you have paid for is charged twice.` : "PayPal charges the first month when you approve."}</li>
+          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />A month counts as paid only when PayPal confirms the charge. If a charge fails you keep Automation Studio for the grace period; your CRM, AI employees and automations are never switched off.</li>
+          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />You can stop at any time here or in your PayPal account. Stopping never changes the days you have already paid for.</li>
+        </ul>
+      </Dialog>
+
+      <Dialog
+        open={stopOpen}
+        onOpenChange={(v) => { setStopOpen(v); if (!v) setAutoError(null); }}
+        title="Stop automatic payments"
+        description="PayPal will stop collecting. Your plan stays exactly as it is, paid through the day it is paid through. After that day each period is paid by hand or online."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setStopOpen(false); setAutoError(null); }} disabled={autoBusy}>
+              Keep them
+            </Button>
+            <Button variant="danger" loading={autoBusy} disabled={autoBusy} onClick={() => void doStopAuto()}>
+              Stop automatic payments
+            </Button>
+          </>
+        }
+      >
+        {autoError ? <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] leading-relaxed text-danger-ink">{autoError}</p> : <p className="text-[14px] leading-relaxed text-ink-2">This cancels the subscription at PayPal first, and tells you if PayPal could not be reached, so it is never shown as stopped when it is not.</p>}
       </Dialog>
 
       <Dialog

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, Lock, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
@@ -460,9 +460,32 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
   );
 }
 
+/**
+ * What the review screen says when the stricter staff-access rule (D70) is on and this person has no support session on the client: how many held entries exist, and
+ * what to do about it. It is its own component so the development preview can render the exact card a reviewer sees (src/app/dev/billing-preview).
+ */
+export function HeldContentNotice({ count }: { count: number }) {
+  return (
+    <Card>
+      <CardContent className="flex items-start gap-4 py-5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warning-soft text-warning-ink"><Lock className="size-5" aria-hidden /></span>
+        <div>
+          <p className="text-[15px] font-semibold text-ink">{count === 1 ? "1 held knowledge entry is hidden" : `${count} held knowledge entries are hidden`}</p>
+          <p className="mt-1 text-[14px] text-muted">
+            This client&apos;s content needs a support session while the stricter staff-access rule is on. Open a session on this client with a reason the client can see,
+            then reload this page to read and review the held entries.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: string; canDecide: boolean }) {
   const { run } = useAction();
+  const held = data.contentAccess.heldKnowledgeHidden;
   if (!data.heldVersions.length && !data.heldKnowledge.length) {
+    if (held > 0) return <div className="space-y-4"><HeldContentNotice count={held} /></div>;
     return (
       <Card>
         <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[14px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
@@ -471,6 +494,7 @@ function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: str
   }
   return (
     <div className="space-y-4">
+      {held > 0 ? <HeldContentNotice count={held} /> : null}
       {data.heldVersions.map((item) => (
         <ConfigReviewCard key={item.id} item={item} timeZone={timeZone} canDecide={canDecide} />
       ))}

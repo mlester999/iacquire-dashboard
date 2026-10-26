@@ -16,6 +16,9 @@ import { createPurchaseIntent, provisionPurchaseIntent, startPurchase, verifyPur
 import { addMember, agentId, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { agencyOrgId, staffPerson } from "./support/staff-messages";
 
+/** Capabilities that are not read-only reviews: they prepare something a person must approve. Nothing here sends, books or changes a record by itself. */
+const APPROVAL_REQUIRED: readonly CapabilityKey[] = ["pipeline_followup_drafts"];
+
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
 let viewer: { id: string; email: string };
@@ -48,7 +51,8 @@ describe("the registry and the identities agree", () => {
       const def = WORKFORCE_CAPABILITIES[key];
       expect(def.allowedRoles.length, key).toBeGreaterThan(0);
       for (const role of def.allowedRoles) expect(AGENT_ROLE_KEYS, `${key} -> ${role}`).toContain(role);
-      expect(def.risk, key).toBe("read_only");
+      // Read-only reviews, plus the one capability that prepares drafts (never sent) for a person to approve.
+      expect(def.risk, key).toBe(APPROVAL_REQUIRED.includes(key) ? "approval_required" : "read_only");
     }
     // Every role owns something it can really do.
     for (const role of AGENT_ROLE_KEYS) expect(capabilitiesForRole(role).length >= 1 || role === "operations_manager", role).toBe(true);
@@ -117,7 +121,7 @@ describe("no employee runs another's work, and nobody runs work they may not sta
         refused += 1;
       }
     }
-    // 6 roles x 13 capabilities minus the 13 pairs that are allowed.
+    // Every role times every capability, minus the pairs that are allowed.
     expect(refused).toBe(AGENT_ROLE_KEYS.length * CAPABILITY_KEYS.length - CAPABILITY_KEYS.reduce((n, k) => n + WORKFORCE_CAPABILITIES[k].allowedRoles.length, 0));
   });
 

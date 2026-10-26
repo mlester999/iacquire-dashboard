@@ -74,6 +74,21 @@ def uid() -> str:
     return str(uuid.uuid4())
 
 
+ALL_TOOLSETS = ["memory", "session_search", "todo", "vision", "web"]
+TOOLS_IN = {
+    "memory": [("memory", "memory")], "session_search": [("session_search", "session_search")],
+    "todo": [("todo_list", "todo")], "vision": [("vision_analyze", "vision")],
+    "web": [("web_extract", "web"), ("web_search", "web")],
+}
+
+
+def role_policy(toolsets: list[str]) -> str:
+    """The policy config with one role's narrower API-server toolsets (what the portal sends when WORKFORCE_ROLE_TOOL_ENFORCEMENT=enforce)."""
+    listed = "\n".join(f"    - {name}" for name in [*toolsets, "no_mcp"])
+    shared = "\n".join(f"    - {name}" for name in [*ALL_TOOLSETS, "no_mcp"])
+    return POLICY.replace(shared, listed)
+
+
 def new_manifest(**updates: Any) -> dict[str, Any]:
     challenge = "ab" * 16
     soul = (
@@ -133,6 +148,17 @@ class FakeHermesApi:
         self.run_submission_error_code: str | None = None
         self.run_submission_profile_mismatch_rejections = 0
         self.run_submission_calls = 0
+        # When set, the gateway exposes these toolsets whatever the profile's config says (a profile that kept tools its policy does not name).
+        self.force_toolsets: list[str] | None = None
+
+    def active_toolsets(self, profile: str) -> list[str]:
+        if self.force_toolsets is not None:
+            return list(self.force_toolsets)
+        config = self.home / "profiles" / profile / "config.yaml"
+        value = yaml.safe_load(config.read_text(encoding="utf-8")) if config.exists() else {}
+        listed = (value or {}).get("platform_toolsets", {}).get("api_server", [])
+        names = [name for name in listed if name != "no_mcp"]
+        return names if names else (list(ALL_TOOLSETS) if profile == "default" else [])
 
     def json_request(
         self,
@@ -167,22 +193,21 @@ class FakeHermesApi:
             configured_toolsets = (config_value or {}).get("platform_toolsets", {}).get("api_server", [])
             is_canary = configured_toolsets == ["no_mcp"]
             canary_toolsets = [{"name": "no_mcp", "enabled": False, "tools": []}]
+            active = self.active_toolsets(profile)
             final_toolsets = [
-                {"name": "memory", "enabled": True, "tools": ["memory"]},
-                {"name": "session_search", "enabled": True, "tools": ["session_search"]},
-                {"name": "todo", "enabled": True, "tools": ["todo_list"]},
-                {"name": "vision", "enabled": True, "tools": ["vision_analyze"]},
-                {"name": "web", "enabled": True, "tools": ["web_extract", "web_search"]},
+                {"name": name, "enabled": True, "tools": sorted(tool for tool, _ in TOOLS_IN[name])}
+                for name in ALL_TOOLSETS if name in active
             ]
             if is_canary and self.canary_policy_pending_reads:
                 self.canary_policy_pending_reads -= 1
-                return 200, final_toolsets
+                # The gateway has not applied the canary yet: it still serves the previous, full policy.
+                return 200, [{"name": name, "enabled": True, "tools": sorted(tool for tool, _ in TOOLS_IN[name])} for name in ALL_TOOLSETS]
             if not is_canary and self.final_policy_pending_reads:
                 self.final_policy_pending_reads -= 1
                 return 200, canary_toolsets
             if is_canary:
                 return 200, canary_toolsets
-            if "web" not in config_text:
+            if not active:
                 return 200, [{"name": "no_mcp", "enabled": False, "tools": []}]
             return 200, final_toolsets
         if path == "/v1/runs" and method == "POST":
@@ -203,14 +228,8 @@ class FakeHermesApi:
             query_fields = dict(field.split("=", 1) for field in query.split("&") if "=" in field)
             self.catalog_query_challenges.append(query_fields.get("inventory_challenge", ""))
             available: bool | None = None if self.change_catalog_between_reads and self.catalog_reads % 2 == 0 else True
-            entries = [
-                ("memory", "memory"),
-                ("session_search", "session_search"),
-                ("todo_list", "todo"),
-                ("web_extract", "web"),
-                ("web_search", "web"),
-                ("vision_analyze", "vision"),
-            ]
+            active_for_catalog = self.active_toolsets(profile)
+            entries = [entry for name in ALL_TOOLSETS if name in active_for_catalog for entry in TOOLS_IN[name]]
             if self.omit_tool:
                 entries = [entry for entry in entries if entry[0] != self.omit_tool]
             rows = [
@@ -244,7 +263,7 @@ class FakeHermesApi:
                 "profile": profile,
                 "platform": "api_server",
                 "explicitConfigPresent": True,
-                "enabledToolsets": ["memory", "session_search", "todo", "vision", "web"],
+                "enabledToolsets": sorted(active_for_catalog),
                 "tools": sorted(canonical_tools, key=lambda row: row["name"]),
             }
             catalog_digest = digest(json.dumps(canonical, separators=(",", ":")).encode())
@@ -260,7 +279,7 @@ class FakeHermesApi:
                 "object": "list",
                 "platform": "api_server",
                 "explicit_config_present": True,
-                "enabled_toolsets": ["memory", "session_search", "todo", "vision", "web"],
+                "enabled_toolsets": ALL_TOOLSETS if active_for_catalog == ALL_TOOLSETS else [name for name in ALL_TOOLSETS if name in active_for_catalog],
                 "data": rows,
             }
             if self.legacy_resolver_catalog:
@@ -598,6 +617,33 @@ class RestrictedProvisionerTests(unittest.TestCase):
         result = self.provisioner.process(self.manifest)
         self.assertTrue(result["toolInventoryComplete"])
         self.assertEqual(len(self.commands), 1)
+
+    def test_role_policy_provisions_a_profile_with_only_the_toolsets_its_role_needs(self):
+        # An Appointment Setter does not research prospects: its policy names no web toolset, and the profile is verified against exactly that list.
+        policy = role_policy(["memory", "session_search", "todo", "vision"])
+        manifest = new_manifest(gatewayId=self.gateway_id, role="appointment_setter", profile="c-northwind-0123456789ab-appointment-setter", configYaml=policy, policyConfigSha256=digest(policy.encode()))
+        self.api.expected_challenge = manifest["soulChallenge"]
+        result = self.provisioner.process(manifest)
+        self.assertTrue(result["toolInventoryComplete"])
+        self.assertEqual(len(self.api.catalog_challenges), 2)
+
+    def test_role_policy_rejects_a_profile_that_still_exposes_a_toolset_its_policy_does_not_name(self):
+        policy = role_policy(["memory", "session_search", "todo", "vision"])
+        manifest = new_manifest(gatewayId=self.gateway_id, role="sales_assistant", profile="c-northwind-0123456789ab-sales-assistant", configYaml=policy, policyConfigSha256=digest(policy.encode()))
+        self.api.expected_challenge = manifest["soulChallenge"]
+        self.api.force_toolsets = list(ALL_TOOLSETS)  # the gateway keeps the web tools although the policy no longer names them
+        with patch("worker.PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS", 0.3), patch("worker.PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS", 0.05):
+            with self.assertRaisesRegex(ProvisioningError, "runtime_tool_policy_unverified"):
+                self.provisioner.process(manifest)
+        self.assertFalse((self.home / "profiles" / manifest["profile"] / ".iacquire-provisioner.json").exists())
+
+    def test_role_policy_rejects_a_profile_missing_a_tool_its_role_needs(self):
+        policy = role_policy(["memory", "session_search", "todo", "vision", "web"])
+        manifest = new_manifest(gatewayId=self.gateway_id, role="lead_hunter", configYaml=policy, policyConfigSha256=digest(policy.encode()))
+        self.api.expected_challenge = manifest["soulChallenge"]
+        self.api.omit_tool = "web_search"
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            self.provisioner.process(manifest)
 
     def test_inventory_change_between_challenged_reads_fails_closed(self):
         self.api.change_catalog_between_reads = True

@@ -16,6 +16,7 @@ import { installStarter, listBlueprints, listStarters } from "@/server/crm/bluep
 import { applyBlueprint, planApplication } from "@/server/crm/blueprints/apply";
 import type { ApplicationPlan, ApplyOptions, PlanAction, RequirementKey } from "@/lib/crm/blueprints/types";
 import type { BlueprintSummary, StarterView } from "@/lib/crm/blueprints/views";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 /** GHL locations that must never be mapped to a client tenant. */
 export const PROTECTED_GHL_LOCATIONS = {
@@ -284,7 +285,7 @@ export async function listTenants(user: SessionUser): Promise<TenantListRow[]> {
     const { rows } = await db.query<TenantListRow>(
       `select o.id, o.name, o.slug, o.status, o.is_demo, o.created_at, o.onboarding_completed_at,
          (select count(*)::int from organization_memberships m where m.org_id = o.id and m.status = 'active') as members,
-         (select count(*)::int from agent_instances a where a.org_id = o.id and a.status in ('online', 'busy')) as agents_online,
+         (select count(*)::int from agent_instances a where a.org_id = o.id and ${runtimeReadySql("a")}) as agents_online,
          (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled) as agents_enabled,
          (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('new', 'open', 'in_progress')) as open_tickets,
          (select g.status from ghl_location_mappings g where g.org_id = o.id) as ghl_status,

@@ -83,6 +83,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   invoice_paid: "The invoice was paid before this was sent",
   invoice_disputed: "A payment on the invoice was disputed before this was sent",
   invoice_written_off: "The invoice was written off before this was sent",
+  invoice_credited: "The invoice was credited in full before this was sent, so nothing is owed",
   invoice_link_replaced: "The customer's link was replaced before this was sent",
   proposal_link_unavailable: "The proposal's link had stopped working, so its message was not sent",
   proposal_withdrawn: "The proposal was withdrawn before this was sent",

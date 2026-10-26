@@ -215,12 +215,14 @@ describe("the registered jobs", () => {
     aiWorkRecovery: 5,
     aiProactiveHeldReports: 5,
     aiProactiveBriefings: 5,
+    aiHealthProbe: 5,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
     projectReviewOverdue: 15,
     fairUseChecks: 60,
     inactivityReview: 360,
     maintenanceRenewalSweep: 360,
+    maintenanceAgreementReconcile: 60,
     offboardingReminders: 360,
     crmWorkflowRecovery: 5,
     inboxAttention: 5,
@@ -284,6 +286,7 @@ describe("the registered jobs", () => {
     // Five minutes later only the five-minute jobs are due.
     const five = await runScheduledJobs(at(5));
     expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped").sort()).toEqual([
+      "aiHealthProbe",
       "aiProactiveBriefings",
       "aiProactiveHeldReports",
       "aiWorkRecovery",

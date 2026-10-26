@@ -200,6 +200,8 @@ function RefundForm({ payment, onClose, timeZone }: { payment: AgencyPaymentView
 /** One payment as a card: readable at 375 px with nothing to scroll sideways. */
 export function PaymentRow({ p, canManage, onRefund, timeZone, showClient = true }: { p: AgencyPaymentView; canManage: boolean; onRefund: (p: AgencyPaymentView) => void; timeZone: string; showClient?: boolean }) {
   const status = paymentStatusCopy(p.status);
+  // The report is attributed to the provider that made it: a PayPal refund is never described as PayMongo's.
+  const reporter = p.provider === "paypal" ? "PayPal" : p.provider === "paymongo" ? "PayMongo" : "The payment provider";
   const refundable = canManage && (p.status === "paid" || p.status === "partially_refunded") && p.usdMicros > p.refundedMicros;
   return (
     <li className="space-y-1.5 px-4 py-3.5 sm:px-5">
@@ -216,11 +218,11 @@ export function PaymentRow({ p, canManage, onRefund, timeZone, showClient = true
       </div>
       {p.refundedMicros > 0 && <p className="text-[13px] text-muted">Refunded so far: {formatUsd(p.refundedMicros)}</p>}
       {p.providerNotices.length > 0 && (
-        // What PayMongo reported is shown beside what a person recorded, and labelled as a report: the status and amounts above change only when a person records a refund.
-        <ul className="space-y-1 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink" aria-label="Reported by PayMongo">
+        // What the provider reported is shown beside what a person recorded, and labelled as a report: the status and amounts above change only when a person records a refund.
+        <ul className="space-y-1 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink" aria-label={`Reported by ${reporter === "The payment provider" ? "the payment provider" : reporter}`}>
           {p.providerNotices.map((n) => (
             <li key={`${n.type}:${n.receivedAt}`}>
-              <strong className="font-semibold">{/dispute|chargeback/i.test(n.type) ? "PayMongo reported a dispute" : "PayMongo reported a refund"}</strong> ({formatDateTime(n.receivedAt, timeZone)}). {/dispute|chargeback/i.test(n.type) ? "The payment still counts as received until you record what happened." : "Record it below if you have not already; nothing was changed automatically."}
+              <strong className="font-semibold">{/dispute|chargeback|revers/i.test(n.type) ? `${reporter} reported a ${/revers/i.test(n.type) ? "reversal" : "dispute"}` : `${reporter} reported a refund`}</strong> ({formatDateTime(n.receivedAt, timeZone)}). {/dispute|chargeback|revers/i.test(n.type) ? "The payment still counts as received until you record what happened." : "Record it below if you have not already; nothing was changed automatically."}
             </li>
           ))}
         </ul>

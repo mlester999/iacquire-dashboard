@@ -31,7 +31,7 @@ interface InvoiceFacts {
   number: string | null;
   closes_deal: boolean;
   status: "draft" | "pending_approval" | "issued" | "void";
-  payment_status: "unpaid" | "partially_paid" | "paid" | "disputed";
+  payment_status: "unpaid" | "partially_paid" | "paid" | "disputed" | "credited";
   contact_id: string | null;
   opportunity_id: string | null;
   company_id: string | null;

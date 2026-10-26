@@ -17,6 +17,7 @@ import { recordAudit } from "@/server/audit";
 import { canHandleConversations } from "@/lib/inbox";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/crm/types";
 import type { OrgContext } from "@/server/tenancy/context";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 // The customer panel beside a conversation: the one canonical CRM record, read through the same permission-checked CRM services the CRM screens
 // use. Each section is shown only when the person's role allows it; a section they cannot see says so instead of silently being empty, and a
@@ -228,7 +229,7 @@ export async function listConversationAiEmployees(ctx: OrgContext): Promise<Conv
     return rows
       .filter((a) => canHandleConversations(a.role_key))
       .map((a) => {
-        const ready = ["online", "busy"].includes(a.status) && a.mode !== "paused";
+        const ready = isRuntimeOnline(a.status) && a.mode !== "paused";
         return { id: a.id, name: a.display_name, roleKey: a.role_key, ready, problem: ready ? null : a.mode === "paused" ? "Paused" : "Not connected yet" };
       });
   });

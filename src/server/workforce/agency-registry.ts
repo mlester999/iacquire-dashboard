@@ -5,6 +5,7 @@ import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS } from "@/lib/agents";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 
 /**
  * Repairs the agency-owned employee registry when an older iAcquire organization exists without
@@ -100,7 +101,7 @@ export async function listClientWorkforceSummaries(user: SessionUser) {
               count(a.id)::int as identities,
               count(a.id) filter (where a.hermes_profile is not null)::int as mapped,
               count(a.id) filter (where a.credential_id is not null)::int as credentialed,
-              count(a.id) filter (where a.last_health_ok is true and a.status in ('online','busy'))::int as verified,
+              count(a.id) filter (where ${runtimeReadySql("a")})::int as verified,
               count(a.id) filter (where a.status in ('offline','error'))::int as issues,
               max(a.last_health_check_at) filter (where a.last_health_ok is true) as last_success_at,
               (select count(*)::int from agent_provisioning_jobs j where j.org_id=o.id and j.status in ('requested','in_progress','awaiting_health_check')) as provisioning_open,

@@ -8,6 +8,7 @@ import { claimHermesProvisionerJob, completeHermesProvisionerJob } from "@/serve
 import { createConfigVersion } from "@/server/workforce/service";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { addMember, createOrg, createUser } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -16,6 +17,8 @@ afterEach(() => {
 
 async function clientWithReadyProfile(gatewayId: string, isolationVerified: boolean) {
   const org = await createOrg({ name: "Northwind Test " + randomUUID().slice(0, 8) });
+  // Provisioning spends money for the client, so it waits for the setup fee (src/server/billing/clearance.ts). These tests are about the worker, not the fee.
+  await clearSetupPayment(org.id);
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   await withSystem(async (db) => {

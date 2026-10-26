@@ -167,6 +167,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         inventoryToolCount: agent.tool_inventory_tool_count,
         credentialReady: agent.credential_ready,
         taskExecuting: agent.active_run,
+        readinessExtras: agent.readiness_extras,
       }}
       canPause={ctx.can("automation.pause")}
       canGoAutonomous={ctx.can("automation.go_autonomous")}

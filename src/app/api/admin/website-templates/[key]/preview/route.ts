@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { toPublicError } from "@/server/errors";
 import { setTemplatePreviewImage } from "@/server/websites/templates";
@@ -17,8 +18,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
     const user = await requireAgencyOrThrow();
     const { key } = await params;
     if (!KEY.test(key)) return NextResponse.json({ error: "Template not found." }, { status: 404 });
-    if (Number(req.headers.get("content-length") ?? 0) > MAX + 64 * 1024) return NextResponse.json({ error: "Images can be up to 6 MB." }, { status: 413 });
-    const file = (await req.formData()).get("file");
+    const form = await readBoundedFormData(req, MAX + 64 * 1024);
+    if (!form) return NextResponse.json({ error: "Images can be up to 6 MB." }, { status: 413 });
+    const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose an image to upload." }, { status: 400 });
     if (file.size > MAX) return NextResponse.json({ error: "Images can be up to 6 MB." }, { status: 413 });
     await setTemplatePreviewImage(user, key, Buffer.from(await file.arrayBuffer()));

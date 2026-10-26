@@ -16,6 +16,7 @@ import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type Workforc
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
+import { roleToolEnforcement, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
 
 /**
  * Generates the agency runbook for provisioning a dedicated Hermes profile for one tenant employee.
@@ -83,13 +84,15 @@ export function buildProvisionerSoul(
   ].join("\n");
 }
 
-export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS): string {
+export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS, role?: AgentRoleKey): string {
   const known = new Set(HERMES_BLOCKABLE_TOOLSETS.map((toolset) => toolset.key));
   if (blockedToolsets.some((toolset) => !known.has(toolset as (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"]))) {
     throw new AppError("invalid_input", "This Hermes policy contains an unsupported toolset.");
   }
   const disabled = [...new Set(blockedToolsets)];
-  const apiToolsets = [...PORTAL_SAFE_TOOLSETS, "no_mcp"];
+  // With the role tool policy enforced, a CLIENT employee's profile enables only the toolsets its role needs (web research belongs to the Lead Hunter alone); otherwise the shared
+  // reviewed set, which is what every profile and the host-side policy package have always used.
+  const apiToolsets = [...(role && roleToolEnforcement() === "enforce" ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS), "no_mcp"];
   return [
     "# Merge into this profile's config.yaml. Keep the server-side allowlist in sync with the reviewed portal inventory.",
     "platform_toolsets:",
@@ -130,7 +133,7 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
     profile,
     soul,
     soulSha256,
-    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS) : buildConfigYaml(),
+    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key) : buildConfigYaml(),
     envTemplate: [
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
       "API_SERVER_ENABLED=true",

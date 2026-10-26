@@ -5,7 +5,7 @@ import { PAYMENT_ROW_LABELS } from "@/lib/invoices/labels";
 type Tone = NonNullable<React.ComponentProps<typeof Badge>["tone"]>;
 
 const STATUS_TONE: Record<InvoiceStatus, Tone> = { draft: "neutral", pending_approval: "warning", issued: "primary", void: "outline" };
-const PAYMENT_TONE: Record<InvoicePaymentStatus, Tone> = { unpaid: "neutral", partially_paid: "warning", paid: "success", disputed: "danger" };
+const PAYMENT_TONE: Record<InvoicePaymentStatus, Tone> = { unpaid: "neutral", partially_paid: "warning", paid: "success", disputed: "danger", credited: "primary" };
 
 /** Colour is never the only signal: every status also has its words, and the tooltip is the sentence the invoice page prints. */
 export function StatusBadge({ status, className }: { status: InvoiceStatus; className?: string }) {

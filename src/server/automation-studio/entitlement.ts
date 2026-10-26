@@ -21,6 +21,16 @@ export async function studioEntitlement(db: Queryable, orgId: string, now = new 
   return studioEntitlementOf(await readCurrentPlan(db, orgId), now);
 }
 
+/**
+ * The one question employee chat asks about the plan: what to SAY when a person asks an employee to build an automation (the builder lives in Automation Studio, which is premium).
+ * Chat itself never depends on the plan: the answer only chooses between "open the builder" and "this workspace does not have Studio access", so it sits here, with the
+ * rest of the premium gates, and not in the chat module (tests/payment-gate.test.ts and tests/entitlements-matrix.test.ts hold the line).
+ */
+export async function studioHandoffAccess(db: Queryable, orgId: string): Promise<{ entitled: boolean; reason: string }> {
+  const ent = await studioEntitlement(db, orgId);
+  return { entitled: ent.entitled, reason: ent.reason };
+}
+
 /** Refuses with code "plan_required" (the interface shows the upgrade page) unless the workspace is entitled. `doing` completes "… needs". */
 export async function assertStudioEntitled(db: Queryable, orgId: string, doing = "Automation Studio", now = new Date()): Promise<StudioEntitlement> {
   const ent = await studioEntitlement(db, orgId, now);

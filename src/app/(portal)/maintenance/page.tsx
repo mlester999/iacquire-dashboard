@@ -4,23 +4,37 @@ import { Wrench } from "lucide-react";
 import { PageHero } from "@/components/ui/workspace";
 import { MaintenancePanel } from "@/components/projects/maintenance-panel";
 import { ReturnRefresh } from "@/components/purchase-intents/return-refresh";
+import { AgreementReturn } from "@/components/projects/agreement-return";
 
 export const metadata = { title: "Managed maintenance" };
 
 export default async function MaintenancePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const q = await searchParams;
   const back = Array.isArray(q.return) ? q.return[0] : q.return;
+  // The automatic payment sends the owner back with the reference of the agreement they were approving; a one-off payment does not.
+  const rawAgreement = Array.isArray(q.agreement) ? q.agreement[0] : q.agreement;
+  const agreementRef = rawAgreement && /^IAQ-[A-Z0-9]{8,40}$/.test(rawAgreement) ? rawAgreement : undefined;
   const ctx = await requireOrgContext("maintenance.view");
   const overview = await getMaintenanceOverview(ctx);
   return (
     <div className="space-y-6">
-      {back === "success" && (
+      {agreementRef && back === "success" && (
+        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">
+          You are back from PayPal. iAcquire is reading PayPal&apos;s own record of your automatic payment. Approving it asks PayPal to collect each month; it does not pay for a month by itself, and your plan is extended only when PayPal confirms a charge.
+        </p>
+      )}
+      {agreementRef && back === "success" && <AgreementReturn reference={agreementRef} />}
+      {agreementRef && back === "success" && <ReturnRefresh active />}
+      {agreementRef && back === "cancelled" && (
+        <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">You left PayPal without approving automatic payments. Nothing was charged and your plan has not changed.</p>
+      )}
+      {!agreementRef && back === "success" && (
         <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">
           Thank you. PayMongo confirms a payment to iAcquire directly, and your plan updates when it does, usually within a minute. This page does not decide that a payment arrived; it looks again every few seconds and shows the new paid-through date once PayMongo has confirmed.
         </p>
       )}
-      {back === "success" && <ReturnRefresh active />}
-      {back === "cancelled" && (
+      {!agreementRef && back === "success" && <ReturnRefresh active />}
+      {!agreementRef && back === "cancelled" && (
         <p role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink-2">You left PayMongo&apos;s page without paying. Nothing was charged and your plan has not changed.</p>
       )}
       <PageHero icon={<Wrench className="size-4" />} eyebrow="Optional" title="Managed maintenance" description="Hands-on upkeep for your live iAcquire system. It's never required to use what you already have, and nothing here enrolls you automatically." />

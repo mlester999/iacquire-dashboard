@@ -6,7 +6,11 @@ import { addDays, isValidTimeZone, zonedDate } from "@/lib/calendars/slots";
 export const INVOICE_STATUSES = ["draft", "pending_approval", "issued", "void"] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
-export const PAYMENT_STATUSES = ["unpaid", "partially_paid", "paid", "disputed"] as const;
+/**
+ * What the payments and credits add up to. "paid": some money arrived and nothing is left to pay once the credit is taken off. "credited": the whole invoice was credited and nothing was
+ * paid (a credit note is not a payment, so this never announces a payment or closes a deal).
+ */
+export const PAYMENT_STATUSES = ["unpaid", "partially_paid", "paid", "disputed", "credited"] as const;
 export type InvoicePaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 /** Where a draft came from: typed by a person, made by an automation, made from a deal, or made from an accepted proposal. Only a person's own typed draft can be issued without an approver. */
@@ -32,6 +36,7 @@ export const PAYMENT_STATUS_LABELS: Record<InvoicePaymentStatus, string> = {
   partially_paid: "Partly paid",
   paid: "Paid",
   disputed: "Disputed",
+  credited: "Credited",
 };
 
 const NEXT: Record<InvoiceStatus, readonly InvoiceStatus[]> = {
@@ -56,18 +61,24 @@ export interface PaymentFacts {
   paidMinor: number;
   /** Any received payment the customer has disputed with their bank. */
   hasDispute: boolean;
+  /** The issued credit notes against the invoice (none when absent). They reduce what is owed; they are not money received. */
+  creditedMinor?: number;
 }
 
 /** What the payments add up to. The database computes the same thing and refuses any other value. */
 export function derivePaymentStatus(f: PaymentFacts): InvoicePaymentStatus {
+  const credited = f.creditedMinor ?? 0;
   if (f.hasDispute) return "disputed";
-  if (f.paidMinor >= f.totalMinor) return "paid";
+  if (f.paidMinor > 0 && f.paidMinor + credited >= f.totalMinor) return "paid";
+  if (credited >= f.totalMinor && f.totalMinor > 0) return "credited";
   if (f.paidMinor > 0) return "partially_paid";
   return "unpaid";
 }
 
-export const balanceMinor = (totalMinor: number, paidMinor: number) => Math.max(totalMinor - paidMinor, 0);
-export const overpaidMinor = (totalMinor: number, paidMinor: number) => Math.max(paidMinor - totalMinor, 0);
+/** What is still owed: the total less the credit and less what was paid. Never negative. */
+export const balanceMinor = (totalMinor: number, paidMinor: number, creditedMinor = 0) => Math.max(totalMinor - creditedMinor - paidMinor, 0);
+/** What was paid beyond what was owed after the credit. */
+export const overpaidMinor = (totalMinor: number, paidMinor: number, creditedMinor = 0) => Math.max(paidMinor - (totalMinor - creditedMinor), 0);
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export function isDay(v: unknown): v is string {
@@ -170,6 +181,8 @@ export const canEditDraft = (f: { canCreate: boolean; canApprove: boolean; isAut
 export interface VoidFacts {
   status: InvoiceStatus;
   paidMinor: number;
+  /** The issued credit notes against the invoice: an invoice that was credited cannot be voided, the credit would point at nothing. */
+  creditedMinor?: number;
   /** A payment that is waiting, being reviewed, or an open checkout a customer may be paying through. */
   hasOpenPayment: boolean;
   /** A test invoice has only test payments, so none of what blocks a real invoice applies. */
@@ -181,6 +194,7 @@ export function voidBlockedReason(f: VoidFacts): string | null {
   if (f.status !== "issued") return f.status === "void" ? "This invoice is already void." : "Only an issued invoice can be voided. A draft can be discarded.";
   if (f.isTest) return null;
   if (f.paidMinor > 0) return "This invoice has a payment recorded against it, so it cannot be voided. Record a refund instead.";
+  if ((f.creditedMinor ?? 0) > 0) return "A credit note was issued against this invoice, so it cannot be voided. Issue a new invoice for any correction.";
   if (f.hasOpenPayment) return "A customer may be paying this invoice, or a payment is waiting for review. Resolve that first.";
   return null;
 }

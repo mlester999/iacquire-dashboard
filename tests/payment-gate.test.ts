@@ -351,6 +351,8 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/server/billing/provider-setup-payment.ts",
       "src/server/billing/service.ts",
       "src/server/entitlements.ts",
+      // Opening an automatic monthly payment for a plan that has not started asks the same question the plan's own payment checkout does: nothing is opened that could not be applied.
+      "src/server/maintenance/agreement-service.ts",
       "src/server/maintenance/payment.ts",
       "src/server/maintenance/service.ts",
       "src/server/purchase-intents/service.ts",

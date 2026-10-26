@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { uploadPortfolioAsset } from "@/server/portfolio/service";
 import { toPublicError } from "@/server/errors";
@@ -13,8 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const user = await requireAgencyOrThrow("super_admin");
     const { id } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "Project not found." }, { status: 404 });
-    if (Number(req.headers.get("content-length") ?? 0) > MAX + 65536) return NextResponse.json({ error: "Images can be up to 10 MB." }, { status: 413 });
-    const form = await req.formData();
+    const form = await readBoundedFormData(req, MAX + 65536);
+    if (!form) return NextResponse.json({ error: "Images can be up to 10 MB." }, { status: 413 });
     const file = form.get("file");
     if (!(file instanceof File) || file.size > MAX) return NextResponse.json({ error: "Choose a PNG, JPEG or WebP image up to 10 MB." }, { status: 400 });
     const alt = String(form.get("alt") ?? "").trim();

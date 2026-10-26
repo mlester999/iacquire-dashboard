@@ -1,9 +1,16 @@
 import { SETUP_REQUIRED_LABEL, type AgentStatus } from "@/lib/agents";
 import { toolInventoryReady, toolInventoryRecorded } from "@/lib/hermes-tool-inventory";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
+import { blockingUnmet, type RequirementResult } from "@/lib/employee-requirements";
+
+export type { RequirementResult } from "@/lib/employee-requirements";
+
+/** Consecutive failed health probes after which an employee reads "Unavailable" (and the agency is alerted) instead of "Degraded". */
+export const HEALTH_FAILURE_THRESHOLD = 3;
 
 export type ReadinessStage =
   | "disabled"
+  | "suspended"
   | "review"
   | "setup"
   | "connection"
@@ -11,15 +18,69 @@ export type ReadinessStage =
   | "identity"
   | "attention"
   | "approval"
+  | "incomplete"
+  | "degraded"
   | "ready"
   | "working";
+
+/**
+ * The eight states every screen, the Super Admin, the scheduler and the acceptance tests speak in. `stage` is the finer detail a screen needs (which check is missing); the state is the
+ * answer to "what is this employee's situation": nothing here is displayed as `ready` unless the runtime is verified AND the role's blocking prerequisites are in place.
+ */
+export type ReadinessState = "pending_setup" | "configuration_incomplete" | "connection_required" | "provisioning" | "ready" | "degraded" | "unavailable" | "suspended";
+
+export const READINESS_STATE_LABEL: Record<ReadinessState, string> = {
+  pending_setup: "Pending setup",
+  configuration_incomplete: "Configuration incomplete",
+  connection_required: "Connection required",
+  provisioning: "Provisioning",
+  ready: "Ready for authorized work",
+  degraded: "Degraded",
+  unavailable: "Unavailable",
+  suspended: "Suspended",
+};
+
+export function readinessStateOf(stage: ReadinessStage): ReadinessState {
+  switch (stage) {
+    case "disabled":
+    case "suspended": return "suspended";
+    case "review":
+    case "setup": return "pending_setup";
+    case "connection":
+    case "inventory":
+    case "identity":
+    case "approval": return "connection_required";
+    case "attention": return "unavailable";
+    case "incomplete": return "configuration_incomplete";
+    case "degraded": return "degraded";
+    case "ready":
+    case "working": return "ready";
+  }
+}
+
+/** What the scheduled health probe has recorded, as the screens need it. Counts are of CONSECUTIVE failed probes; a passing probe resets them. */
+export interface HealthSummary {
+  consecutiveFailures: number;
+  lastHealthyAt: string | null;
+  lastFailureAt: string | null;
+  lastProbeAt: string | null;
+  lastProbeSource: "scheduled" | "manual" | null;
+}
+
+/** Facts a list or detail loader attaches to an employee row so every screen reaches the same answer (src/server/workforce/readiness-facts.ts). */
+export interface ReadinessExtras {
+  requirements?: RequirementResult[];
+  health?: HealthSummary | null;
+  /** The workspace is suspended or archived. */
+  suspended?: { reason: string } | null;
+}
 
 export type ReadinessTone = "neutral" | "warning" | "danger" | "success" | "primary" | "violet";
 export type ReadinessCta = "configure" | "history" | "chat" | "connection" | "none";
 export type ReadinessStepState = "done" | "current" | "upcoming" | "blocked" | "not_applicable";
 
 export interface ReadinessStep {
-  key: "configuration" | "connection" | "inventory" | "identity" | "acknowledgement" | "ready";
+  key: "configuration" | "connection" | "inventory" | "identity" | "acknowledgement" | "requirements" | "ready";
   label: string;
   description: string;
   state: ReadinessStepState;
@@ -27,6 +88,7 @@ export interface ReadinessStep {
 
 export interface EmployeeReadiness {
   stage: ReadinessStage;
+  state: ReadinessState;
   tone: ReadinessTone;
   label: string;
   title: string;
@@ -36,6 +98,13 @@ export interface EmployeeReadiness {
   completed: number;
   total: number;
   chatAvailable: boolean;
+  /** Ready for authorized WORK, not only to chat: the runtime is verified and no blocking role prerequisite is missing. */
+  workReady: boolean;
+  /** Every prerequisite of the role and whether it is met (empty when the loader did not supply them). */
+  requirements: RequirementResult[];
+  /** The unmet prerequisites that stop "ready". */
+  blocking: RequirementResult[];
+  health: HealthSummary | null;
   /** The persisted short-lived attestation is still within its TTL. */
   inventoryAttestationCurrent: boolean;
   executing: boolean;
@@ -74,6 +143,8 @@ export interface EmployeeReadinessInput {
   paymentCleared?: boolean;
   /** Fixed per server render to avoid server/client clock drift at the two-minute expiry boundary. */
   evaluatedAt?: string | Date | number;
+  /** Role prerequisites, the scheduled probe's record and workspace suspension, attached by the loader. Omitted: the runtime checks alone decide, as before. */
+  extras?: ReadinessExtras | null;
 }
 
 export interface InternalIdentityEvidence {
@@ -202,6 +273,12 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
   // attestation before persistence, and Hermes verifies the live inventory again before submit.
   const authorized = enabled && configured && healthOk && inventoryRecorded && credentialOk && identityOk && acknowledgementOk && online;
   const executing = taskExecuting === true;
+  const extras = input.extras ?? null;
+  const requirements = extras?.requirements ?? [];
+  const blocking = blockingUnmet(requirements);
+  const health = extras?.health ?? null;
+  // A run of fewer than HEALTH_FAILURE_THRESHOLD failed probes after the employee was last seen healthy is "degraded" (the probe is still retrying); the threshold turns it into "unavailable".
+  const degradedByProbe = Boolean(health && health.consecutiveFailures > 0 && health.consecutiveFailures < HEALTH_FAILURE_THRESHOLD && health.lastHealthyAt);
 
   let stage: ReadinessStage;
   let tone: ReadinessTone;
@@ -216,6 +293,13 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     label = "Paused";
     title = "This employee is paused";
     description = "Its configuration, knowledge and history are preserved. Re-enable it before starting new conversations.";
+    cta = "none";
+  } else if (extras?.suspended) {
+    stage = "suspended";
+    tone = "neutral";
+    label = "Suspended";
+    title = "This workspace is suspended";
+    description = extras.suspended.reason;
     cta = "none";
   } else if (input.paymentCleared === false && !authorized) {
     stage = "setup";
@@ -245,11 +329,18 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     title = "Verify the Hermes connection";
     description = "The configuration is applied. Run the authorized connection check to verify the profile and record its runtime tool inventory.";
     cta = "connection";
+  } else if (!healthOk && degradedByProbe) {
+    stage = "degraded";
+    tone = "warning";
+    label = "Degraded";
+    title = "The last connection check failed; re-checking";
+    description = `${health!.consecutiveFailures} of ${HEALTH_FAILURE_THRESHOLD} automatic re-checks have failed since this employee was last healthy. It reads Unavailable if the next ones fail too. ${lastHealthDetail?.trim() ?? ""}`.trim();
+    cta = "connection";
   } else if (!healthOk) {
     stage = "attention";
     tone = "danger";
-    label = "Connection needs attention";
-    title = "The last connection check did not pass";
+    label = health && health.consecutiveFailures >= HEALTH_FAILURE_THRESHOLD ? "Unavailable" : "Connection needs attention";
+    title = health && health.consecutiveFailures >= HEALTH_FAILURE_THRESHOLD ? `Unavailable after ${health.consecutiveFailures} failed checks` : "The last connection check did not pass";
     description = lastHealthDetail?.trim() || "The latest health check did not verify this employee. Review the connection detail and run the check again.";
     cta = "connection";
   } else if (!credentialOk) {
@@ -295,6 +386,13 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     label = "Working / executing";
     title = "This employee has a running task";
     description = "A current run is recorded as executing. New work remains subject to the same readiness and approval checks.";
+    cta = "chat";
+  } else if (blocking.length) {
+    stage = "incomplete";
+    tone = "warning";
+    label = "Configuration incomplete";
+    title = blocking.length === 1 ? blocking[0].label + " is missing" : `${blocking.length} things this role needs are missing`;
+    description = `The connection is verified, so this employee can chat, but it is not ready for authorized work yet. ${blocking.map((b) => b.detail).join(" ")}`;
     cta = "chat";
   } else {
     stage = "ready";
@@ -362,21 +460,36 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
       state: acknowledgementOk ? "done" : identityOk && inventoryRecorded ? "current" : "upcoming",
     });
   }
+  if (requirements.length) {
+    steps.push({
+      key: "requirements",
+      label: "Role prerequisites in place",
+      description: blocking.length
+        ? blocking.map((b) => b.detail).join(" ")
+        : requirements.some((r) => !r.met)
+          ? `Everything this role needs is in place. Still helpful: ${requirements.filter((r) => !r.met).map((r) => r.label.toLowerCase()).join(", ")}.`
+          : "Everything this role needs to do its job is in place.",
+      state: blocking.length ? (authorized ? "current" : "upcoming") : "done",
+    });
+  }
+  const workReady = authorized && blocking.length === 0 && stage !== "degraded" && stage !== "suspended";
   steps.push({
     key: "ready",
     label: "Ready for authorized work",
     description: !authorized
       ? "This becomes available when every requirement above is satisfied."
-      : inventoryCurrent
-        ? "All recorded requirements are current."
-        : "A fresh inventory check runs before a new chat is saved. Changes to tools or approval evidence block work.",
-    state: authorized ? "done" : "upcoming",
+      : blocking.length
+        ? "The connection is verified. The role prerequisites above must be in place before this employee reads as ready."
+        : inventoryCurrent
+          ? "All recorded requirements are current."
+          : "A fresh inventory check runs before a new chat is saved. Changes to tools or approval evidence block work.",
+    state: workReady ? "done" : "upcoming",
   });
 
   const completed = steps.filter((step) => step.state === "done").length;
   return {
-    stage, tone, label, title, description, cta, steps, completed, total: steps.length,
-    chatAvailable: authorized, inventoryAttestationCurrent: inventoryCurrent, executing,
+    stage, state: status === "provisioning" && (stage === "connection" || stage === "inventory") ? "provisioning" : readinessStateOf(stage), tone, label, title, description, cta, steps, completed, total: steps.length,
+    chatAvailable: authorized, workReady, requirements, blocking, health, inventoryAttestationCurrent: inventoryCurrent, executing,
   };
 }
 

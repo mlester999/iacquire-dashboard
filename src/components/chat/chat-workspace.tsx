@@ -36,7 +36,7 @@ import {
   searchConversationsAction,
 } from "@/app/actions/chat";
 import { type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
-import { deriveEmployeeReadiness, type EmployeeReadiness } from "@/lib/workforce-readiness";
+import { deriveEmployeeReadiness, type EmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { chatNavTargets } from "@/lib/chat-navigation";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { detectBrowserTimeZone, resolveChatTimeZone } from "@/lib/chat-timezone";
@@ -73,6 +73,8 @@ interface Props {
   identityCurrent: boolean | null;
   acknowledgementCurrent: boolean | null;
   taskExecuting: boolean;
+  /** Role prerequisites, the probe record and workspace suspension, attached by the loader (src/server/workforce/readiness-facts.ts). */
+  readinessExtras?: ReadinessExtras;
   canConfigure: boolean;
   configured: boolean;
   hasPendingReview: boolean;
@@ -221,6 +223,7 @@ export function ChatWorkspace(props: Props) {
     identityCurrent: props.identityCurrent,
     acknowledgementCurrent: props.acknowledgementCurrent,
     taskExecuting: props.taskExecuting,
+    extras: props.readinessExtras,
     evaluatedAt: now,
   });
   const ready = readiness.chatAvailable;

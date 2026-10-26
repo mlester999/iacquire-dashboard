@@ -8,3 +8,4 @@ export function assertIsolated(options?: {
   files?: string[];
   env?: Record<string, string | undefined>;
 }): void;
+export const SIM_PAYPAL: { clientId: string; clientSecret: string; webhookId: string; planId: string; base: string };

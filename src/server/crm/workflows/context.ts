@@ -12,6 +12,7 @@ import {
   hasErrors, parseDefinition, validateDefinition, validationContextFrom, type MessageChannel, type UpdateFieldConfig, type ValidationContext, type ValidationIssue, type WorkflowDefinition,
 } from "@/lib/crm/workflow/spec";
 import type { FieldType } from "@/lib/crm/types";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 /**
  * Everything in one workspace a workflow can refer to, with the names the editor shows. The same lists are the validator's context, so the
@@ -109,7 +110,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
     webhookSubscriptions: hooks.map((h) => ({ id: h.id, name: h.name, host: hostOf(h.url) })),
     assignmentRules: rules,
     agents: agents.map((a) => ({
-      roleKey: a.role_key, name: a.display_name, mode: a.mode, ready: ["online", "busy"].includes(a.status), connected: Boolean(a.hermes_base_url && a.credential_id), liveRuns: agentLiveRunsVerified(a),
+      roleKey: a.role_key, name: a.display_name, mode: a.mode, ready: isRuntimeOnline(a.status), connected: Boolean(a.hermes_base_url && a.credential_id), liveRuns: agentLiveRunsVerified(a),
     })),
     calendars,
     appointmentTypes: types.map((t) => ({ id: t.id, name: t.name, calendarId: t.calendar_id })),

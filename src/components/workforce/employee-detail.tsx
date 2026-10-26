@@ -44,7 +44,7 @@ import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { auditRoleConfiguration, recommendedSettings } from "@/lib/role-playbooks";
-import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { deriveEmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
 import { OperatingModeCard, type AgentMode } from "@/components/workforce/operating-controls";
 import { ConfigTestDialog } from "@/components/workforce/config-test-dialog";
@@ -82,6 +82,7 @@ interface Props {
     inventoryToolCount: number | null;
     credentialReady: boolean;
     taskExecuting: boolean;
+    readinessExtras?: ReadinessExtras;
   };
   canPause: boolean;
   canGoAutonomous: boolean;
@@ -149,6 +150,7 @@ export function EmployeeDetail(props: Props) {
     acknowledgementCurrent: props.acknowledgementCurrent,
     isAgencyEmployee: props.isAgencyEmployee,
     taskExecuting: agent.taskExecuting,
+    extras: agent.readinessExtras,
     evaluatedAt: props.now,
     paymentCleared: props.paymentCleared,
   });
@@ -320,7 +322,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
               <p key={s} className="flex items-start gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /> {s}</p>
             ))}
             <div className="mt-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
-              Pending approvals: <span className="font-semibold text-ink">{pendingApprovals}</span> · <Link href="/approvals" className="text-primary hover:underline">Approval Center</Link>
+              Pending approvals: <span className="font-semibold text-ink">{pendingApprovals}</span> · <Link href="/approvals" className="font-medium text-primary-ink underline underline-offset-2 hover:no-underline">Approval Center</Link>
               <br /> Knowledge last applied: <span suppressHydrationWarning>{knowledgeAppliedAt ? relativeTime(knowledgeAppliedAt) : "not yet"}</span>
             </div>
           </CardContent>

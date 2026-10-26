@@ -506,6 +506,24 @@ describe("agency Hermes workforce isolation", () => {
     })).rejects.toMatchObject({ kind: "bad_response" });
     expect(mock.requests).toHaveLength(wrongKeyRequestStart);
 
+    // The acknowledgement is bound to the profile, policy, applied configuration and inventory digest, not to the time of the last check: a re-check that finds the same things keeps it.
+    await testAgencyHermesProfile(admin, selectedAgent.id);
+    const keptAcknowledgementView = await getHermesToolPolicyView(admin);
+    expect(keptAcknowledgementView.agents.find((agent) => agent.id === selectedAgent.id)).toMatchObject({
+      identityMapped: true,
+      canAcknowledgeFullCapabilities: true,
+      fullCapabilitiesAcknowledged: true,
+    });
+    // A newly applied configuration is a new identity to acknowledge, however fresh the checks are: that is the stale state the refusals below need.
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: agencyOrgId,
+      agentId: selectedAgent.id,
+      settings: defaultSettings("sales_assistant"),
+      source: "agency",
+      userId: admin.id,
+      apply: true,
+    }));
+    expect(await runHealthCheck(selectedAgent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
     await testAgencyHermesProfile(admin, selectedAgent.id);
     const staleAcknowledgementView = await getHermesToolPolicyView(admin);
     expect(staleAcknowledgementView.agents.find((agent) => agent.id === selectedAgent.id)).toMatchObject({

@@ -7,8 +7,10 @@ import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
 import { assertStorageAllowed } from "@/server/fairuse/service";
+import { assertStorageEntitled } from "@/server/storage/entitlement";
+import type { PrivateBucket } from "@/lib/storage-policy";
 
-export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments" | "social-media" | "proposal-documents" | "staff-messages";
+export type { PrivateBucket };
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
@@ -84,6 +86,8 @@ export async function uploadPrivateFile(input: PrivateFileInput & {
   }
   // Refuses only NEW storage, and only when the agency set a limit and chose to enforce it. Nothing existing is touched.
   await assertStorageAllowed(input.orgId, input.bytes.length);
+  // The storage policy (src/lib/storage-policy.ts): managed media is the maintenance plan's. Asked here, where every upload passes, so no feature can skip it.
+  await assertStorageEntitled(input.orgId, input.bucket, input.bytes.length);
   const id = crypto.randomUUID();
   const filename = (input.filename ?? input.path.split("/").at(-1) ?? "document").slice(0, 200);
   await withSystem((db) => db.query(

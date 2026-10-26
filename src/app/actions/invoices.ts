@@ -8,6 +8,7 @@ import { requireOrgContextOrThrow, type OrgContext } from "@/server/tenancy/cont
 import type { Permission } from "@/lib/permissions";
 import { createDraft, discardDraft, issueInvoice, requestChanges, submitForApproval, updateDraft, voidInvoice, withdrawFromApproval, writeOffInvoice } from "@/server/invoices/invoices";
 import { recordManualPayment, recordRefund } from "@/server/invoices/payments";
+import { cancelCreditNote, createCreditNoteDraft, issueCreditNote, returnCreditNote, submitCreditNote, updateCreditNoteDraft, withdrawCreditNote } from "@/server/invoices/credit-notes";
 import { recordDisputeOpened, recordDisputeResult } from "@/server/invoices/disputes";
 import { getInvoiceLink, rotateInvoiceLink } from "@/server/invoices/share";
 import { previewInvoiceDelivery, sendInvoiceDelivery } from "@/server/invoices/delivery";
@@ -43,6 +44,59 @@ async function act<T>(permission: Permission, fn: (ctx: OrgContext) => Promise<T
 }
 
 const version = z.number().int().min(1);
+
+// Credit notes ------------------------------------------------------------------
+// A credit note takes money off what a customer still owes on one issued invoice. Writing, sending for approval, taking back, cancelling and editing need invoices.credit; issuing and
+// sending back need invoices.approve (and the author cannot issue their own unless they are the owner: the server decides). The amount travels as the text typed.
+
+const creditInput = z.object({ invoiceId: uuid, amount: z.string().max(40), reason: z.string().max(400), idempotencyKey: z.string().max(120).nullish() });
+const creditPatch = z.object({ amount: z.string().max(40).optional(), reason: z.string().max(400).optional() });
+
+export async function createCreditNoteAction(input: unknown) {
+  return act("invoices.credit", async (ctx) => {
+    const v = creditInput.parse(input);
+    return { id: (await createCreditNoteDraft(ctx, v)).id };
+  });
+}
+
+export async function updateCreditNoteAction(id: string, patch: unknown, expectedVersion: number) {
+  return act("invoices.credit", async (ctx) => ({ version: (await updateCreditNoteDraft(ctx, uuid.parse(id), creditPatch.parse(patch), version.parse(expectedVersion))).version }));
+}
+
+export async function submitCreditNoteAction(id: string, expectedVersion: number) {
+  return act("invoices.credit", async (ctx) => {
+    await submitCreditNote(ctx, uuid.parse(id), version.parse(expectedVersion));
+    return true;
+  });
+}
+
+export async function withdrawCreditNoteAction(id: string) {
+  return act("invoices.credit", async (ctx) => {
+    await withdrawCreditNote(ctx, uuid.parse(id));
+    return true;
+  });
+}
+
+export async function returnCreditNoteAction(id: string, input: { version: number; note: string }) {
+  return act("invoices.approve", async (ctx) => {
+    await returnCreditNote(ctx, uuid.parse(id), { version: version.parse(input?.version), note: z.string().max(400).parse(input?.note ?? "") });
+    return true;
+  });
+}
+
+export async function cancelCreditNoteAction(id: string, reason: string) {
+  return act("invoices.credit", async (ctx) => {
+    await cancelCreditNote(ctx, uuid.parse(id), z.string().max(400).parse(reason ?? ""));
+    return true;
+  });
+}
+
+export async function issueCreditNoteAction(id: string, expectedVersion: number) {
+  return act("invoices.approve", async (ctx) => {
+    const out = await issueCreditNote(ctx, uuid.parse(id), { version: version.parse(expectedVersion) });
+    return { number: out.number, owedMinor: out.owedMinor, settled: out.settled };
+  });
+}
 
 // Drafts ----------------------------------------------------------------------
 

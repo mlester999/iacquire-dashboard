@@ -21,7 +21,7 @@ const invoice: PublicInvoice = {
     { position: 2, description: "Replacement pressure valve", quantity: "2", unitPriceMinor: 125050, discountMinor: 5000, taxRateBps: null, amountMinor: 245100 },
     { position: 3, description: "SupercalifragilisticexpialidociousPartNumberWithoutAnySpacesAtAll", quantity: "10", unitPriceMinor: 12345678, discountMinor: 0, taxRateBps: null, amountMinor: 123456780 },
   ],
-  subtotalMinor: 480000, taxMinor: 57600, totalMinor: 537600, paidMinor: 0, balanceMinor: 537600, paymentStatus: "unpaid", overdue: false, paymentInstructions: "Bank transfer to QA Bank.", notes: null, terms: null, footerNote: "Thank you.",
+  subtotalMinor: 480000, taxMinor: 57600, totalMinor: 537600, paidMinor: 0, creditedMinor: 0, credits: [], balanceMinor: 537600, paymentStatus: "unpaid", overdue: false, paymentInstructions: "Bank transfer to QA Bank.", notes: null, terms: null, footerNote: "Thank you.",
   hasPendingPayment: false, canPayOnline: true, isTest: false, banner: { kind: "pay_online", tone: "info" },
 };
 

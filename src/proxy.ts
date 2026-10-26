@@ -29,6 +29,8 @@ const PUBLIC = [
   /^\/api\/internal\//,
   // The embeddable website-chat script: a public file, the same for everyone, carrying no secret.
   /^\/widget\//,
+  // Design previews and the simulated checkout: public so they open without a login during development. The production block at the top of proxy() answers 404 for
+  // this whole branch, and every file under src/app/dev carries its own NODE_ENV guard as the second layer (tests/dev-routes-production.test.ts keeps both true).
   /^\/dev\//,
   // Public booking pages and the customer's manage link. They read only public-safe data; the manage pages authorize by their secret.
   /^\/book\//,
@@ -113,6 +115,13 @@ function siteResponse(req: NextRequest, route: Extract<SiteRoute, { kind: "site"
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  // The /dev/ branch is development-only: design previews, the mailbox and the simulated checkout, all reachable without a login by design (see PUBLIC below). Each of
+  // its pages and route handlers refuses to answer outside development, and this is the outer gate: a production server answers 404 for the whole branch before any
+  // routing or session work, so a dev page added later that forgets its own guard is still unreachable. Nothing deployed depends on /dev/: the only reference from
+  // production code is the simulated payment provider's return page, which is itself refused in production.
+  if (process.env.NODE_ENV === "production" && (pathname === "/dev" || pathname.startsWith("/dev/"))) {
+    return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
   const role = (["portal", "sites", "both"].includes(process.env.DEPLOYMENT_ROLE ?? "") ? process.env.DEPLOYMENT_ROLE : "portal") as DeploymentRole;
   let appHost = "";
   try {

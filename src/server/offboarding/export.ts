@@ -158,6 +158,7 @@ const TABLES: TableSpec[] = [
   { file: "invoices/deliveries.json", table: "customer_invoice_deliveries", order: "created_at" },
   { file: "invoices/payments.json", table: "customer_payments", omit: ["idempotency_key"], order: "received_at" },
   { file: "invoices/refunds.json", table: "customer_refunds", omit: ["idempotency_key"], order: "created_at" },
+  { file: "invoices/credit-notes.json", table: "customer_credit_notes", omit: ["idempotency_key"], order: "created_at" },
   { file: "invoices/checkouts.json", table: "customer_payment_attempts", omit: ["checkout_url"], order: "created_at" },
   { file: "invoices/provider-notices.json", table: "customer_payment_events", order: "received_at" },
   { file: "invoices/payment-account.json", table: "customer_payment_connections", pick: ["id", "provider", "mode", "account_label", "supported_currencies", "status", "authorized_by", "authorized_at", "authorization_text_version", "live_confirmed_at", "live_confirmed_by", "last_event_at", "last_checked_at", "last_error", "created_at"], order: "created_at" },

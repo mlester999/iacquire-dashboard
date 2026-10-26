@@ -34,8 +34,8 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
         {i.voidedAt && <div className="sm:col-span-2"><dt className="text-muted">Voided</dt><dd className="text-ink">{formatInstant(i.voidedAt, tz)}{i.voidReason ? ` · ${i.voidReason}` : ""}</dd></div>}
         {i.writtenOffAt && <div className="sm:col-span-2"><dt className="text-muted">Written off</dt><dd className="text-ink">{formatInstant(i.writtenOffAt, tz)}{i.writeOffReason ? ` · ${i.writeOffReason}` : ""}</dd></div>}
       </dl>
-      <dl className="grid grid-cols-2 gap-3 border-t border-line pt-4 sm:grid-cols-4" aria-label="Amounts">
-        {[["Total", i.totalMinor], ["Paid", i.paidMinor], ["Refunded", i.refundedMinor], ["Balance", i.balanceMinor]].map(([label, minor]) => (
+      <dl className={`grid grid-cols-2 gap-3 border-t border-line pt-4 ${i.creditedMinor > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`} aria-label="Amounts">
+        {[["Total", i.totalMinor], ...(i.creditedMinor > 0 ? [["Credited", i.creditedMinor]] : []), ["Paid", i.paidMinor], ["Refunded", i.refundedMinor], ["Balance", i.balanceMinor]].map(([label, minor]) => (
           <div key={label as string} className="rounded-xl bg-surface-2/60 px-3 py-2"><dt className="text-[12px] text-muted">{label as string}</dt><dd className="text-[17px] font-semibold tabular-nums text-ink">{money(minor as number, i.currency)}</dd></div>
         ))}
       </dl>

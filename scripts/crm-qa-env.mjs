@@ -33,6 +33,10 @@ export const CRM_QA_DATA_DIR = ".data/crm-qa";
 export const SIM_PAYMONGO = { key: "sk_test_qasimulatedprovider", webhookSecret: "whsec_qa_simulated_provider_secret", base: "http://127.0.0.1:3281" };
 const PAYMONGO_SIM = process.env.CRM_QA_PAYMONGO_SIM === "1";
 
+/** The simulated PayPal's made-up credentials and loopback address (scripts/paypal-sim.mjs). They exist only for a QA run that sets CRM_QA_PAYPAL_SIM=1. */
+export const SIM_PAYPAL = { clientId: "qa-sim-paypal-client-id", clientSecret: "qa-sim-paypal-client-secret", webhookId: "QA-SIM-WEBHOOK-ID", planId: "P-QASIM000001", base: "http://127.0.0.1:3282" };
+const PAYPAL_SIM = process.env.CRM_QA_PAYPAL_SIM === "1";
+
 export const CRM_QA_ENV = {
   // Runtime and build
   NODE_ENV: "development",
@@ -115,6 +119,14 @@ export const CRM_QA_ENV = {
   PAYMONGO_WEBHOOK_SECRET: PAYMONGO_SIM ? SIM_PAYMONGO.webhookSecret : "",
   PAYMONGO_PAYMENT_METHODS: "card",
   PAYMONGO_API_BASE: PAYMONGO_SIM ? SIM_PAYMONGO.base : "",
+  // PayPal: blank unless the run asks for the simulated PayPal (CRM_QA_PAYPAL_SIM=1, scripts/paypal-sim.mjs on this machine). Then the credentials are the simulator's made-up ones,
+  // the environment is the sandbox and the address is its loopback one. Anything else fails assertIsolated.
+  PAYPAL_CLIENT_ID: PAYPAL_SIM ? SIM_PAYPAL.clientId : "",
+  PAYPAL_CLIENT_SECRET: PAYPAL_SIM ? SIM_PAYPAL.clientSecret : "",
+  PAYPAL_WEBHOOK_ID: PAYPAL_SIM ? SIM_PAYPAL.webhookId : "",
+  PAYPAL_MAINTENANCE_PLAN_ID: PAYPAL_SIM ? SIM_PAYPAL.planId : "",
+  PAYPAL_ENVIRONMENT: "sandbox",
+  PAYPAL_API_BASE: PAYPAL_SIM ? SIM_PAYPAL.base : "",
 
   // Connected calendars: no OAuth apps, and background sync and write-back stopped.
   GOOGLE_CALENDAR_CLIENT_ID: "",
@@ -257,6 +269,14 @@ export function assertIsolated({ root = path.resolve(import.meta.dirname, ".."),
     if (env.PAYMONGO_API_BASE !== SIM_PAYMONGO.base || env.PAYMONGO_SECRET_KEY !== SIM_PAYMONGO.key || env.PAYMONGO_WEBHOOK_SECRET !== SIM_PAYMONGO.webhookSecret) problems.push("PayMongo may only be the simulator on 127.0.0.1:3281 with its made-up keys");
   } else if (env.PAYMONGO_SECRET_KEY !== "" || env.PAYMONGO_WEBHOOK_SECRET !== "") {
     problems.push("PAYMONGO_SECRET_KEY and PAYMONGO_WEBHOOK_SECRET must be empty (or the simulator's, with its address)");
+  }
+  // PayPal: blank, or exactly the simulator's made-up credentials with its loopback address, in the sandbox environment (nothing else: no real app, no other address, never live).
+  const paypalSimulated = (env.PAYPAL_API_BASE ?? "") !== "";
+  if (paypalSimulated) {
+    if (env.PAYPAL_API_BASE !== SIM_PAYPAL.base || env.PAYPAL_CLIENT_ID !== SIM_PAYPAL.clientId || env.PAYPAL_CLIENT_SECRET !== SIM_PAYPAL.clientSecret || env.PAYPAL_WEBHOOK_ID !== SIM_PAYPAL.webhookId || env.PAYPAL_MAINTENANCE_PLAN_ID !== SIM_PAYPAL.planId) problems.push("PayPal may only be the simulator on 127.0.0.1:3282 with its made-up credentials");
+    if (env.PAYPAL_ENVIRONMENT !== "sandbox") problems.push("PAYPAL_ENVIRONMENT must be sandbox in the isolated QA harness");
+  } else if ((env.PAYPAL_CLIENT_ID ?? "") !== "" || (env.PAYPAL_CLIENT_SECRET ?? "") !== "" || (env.PAYPAL_WEBHOOK_ID ?? "") !== "" || (env.PAYPAL_MAINTENANCE_PLAN_ID ?? "") !== "") {
+    problems.push("PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID and PAYPAL_MAINTENANCE_PLAN_ID must be empty (or the simulator's, with its address)");
   }
   const notBlank = MUST_BE_BLANK.filter((k) => env[k] !== "");
   if (notBlank.length) problems.push(`must be empty: ${notBlank.join(", ")}`);

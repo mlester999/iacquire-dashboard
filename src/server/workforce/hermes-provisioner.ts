@@ -162,7 +162,7 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
   }
   const challenge = randomBytes(16).toString("hex");
   const soul = buildProvisionerSoul(row.role_key, row.org_name, row.compiled_instructions, challenge);
-  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS);
+  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key);
   const soulSha256 = digest(soul);
   const policyConfigSha256 = digest(configYaml);
   const challengeSha256 = digest(challenge);

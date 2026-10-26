@@ -9,7 +9,7 @@ import { PayOnline } from "@/components/purchase-intents/pay-online";
 import type { CheckoutStatus } from "@/lib/purchase-intents/rules";
 
 // The buyer's only action: confirm the details they were invited with. No account, card or password is collected here.
-export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, checkout }: { token: string; canConfirm: boolean; problem: string | null; setupFeeCents: number; checkout: { offered: boolean; status: CheckoutStatus | null; reference: string | null } }) {
+export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, checkout }: { token: string; canConfirm: boolean; problem: string | null; setupFeeCents: number; checkout: { offered: boolean; status: CheckoutStatus | null; reference: string | null; providers: Array<{ id: "paymongo" | "paypal"; label: string }> } }) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -38,7 +38,7 @@ export function ConfirmPurchase({ token, canConfirm, problem, setupFeeCents, che
           <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="size-4" aria-hidden /> Your purchase is confirmed.</p>
           <p className="mt-1">The next step is the payment.</p>
         </div>
-        <PayOnline token={token} setupFeeCents={setupFeeCents} previous={previous} />
+        <PayOnline token={token} setupFeeCents={setupFeeCents} previous={previous} providers={checkout.providers} />
         {checkout.reference && checkout.status === "pending" && <p className="text-[12px] text-muted">A checkout is already open for this purchase ({checkout.reference}). Pressing the button opens it again; you are not charged twice.</p>}
       </div>
     );

@@ -3,7 +3,8 @@
 //   2. run the health check (online + recorded inventory digest);
 //   3. run the profile check, then the Super Admin acknowledgement;
 //   4. only then does a run pass the gate.
-// A later profile check invalidates the acknowledgement again. Every refusal happens before /v1/runs.
+// A later profile check that finds the same identity, configuration and tool inventory keeps the acknowledgement; a changed applied configuration or inventory invalidates it.
+// Every refusal happens before /v1/runs.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { withSystem } from "@/server/db";
@@ -114,7 +115,24 @@ describe("the documented activation sequence", () => {
     expect(runsSent()).toBe(runsBefore + 1);
   });
 
-  it("invalidates the acknowledgement after a new profile check and blocks the next run", async () => {
+  it("keeps the acknowledgement across a re-check that finds nothing new, and blocks the next run once the applied configuration changed", async () => {
+    // The acknowledgement is bound to the profile, the policy, the applied configuration and the tool inventory digest, not to the time of the last check
+    // (src/lib/workforce-readiness.ts), so a scheduled or manual re-check that finds the same things does not ask for it again.
+    await testAgencyHermesProfile(admin, agentId);
+    const runsBeforeRecheckedRun = runsSent();
+    await expect(runAttempt()).resolves.toMatchObject({ runId: expect.stringMatching(/^run_/) });
+    expect(runsSent()).toBe(runsBeforeRecheckedRun + 1);
+
+    // A newly applied configuration is a new identity: it has to be acknowledged before the next run, however fresh the checks are.
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: agencyOrgId,
+      agentId,
+      settings: defaultSettings("sales_assistant"),
+      source: "agency",
+      userId: admin.id,
+      apply: true,
+    }));
+    expect(await runHealthCheck(agentId, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
     await testAgencyHermesProfile(admin, agentId);
     const runsBefore = runsSent();
     await expect(runAttempt()).rejects.toThrow(/Super Admin acknowledgement for its current identity/);

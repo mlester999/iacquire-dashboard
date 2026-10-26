@@ -21,6 +21,7 @@ import { invoiceDeliveriesFor, withdrawInvoiceDeliveriesInTx } from "@/server/in
 import type { InvoiceDeliveryView } from "@/lib/invoices/delivery-state";
 import { addInvoiceEvent, asAppError, INVOICE_COLUMNS, loadInvoiceRow, loadLines, readSettings, toMinor, type InvoiceRow, type LineRow } from "@/server/invoices/core";
 import { detailFor, viewsFor, type InvoiceDetail, type InvoiceView } from "@/server/invoices/views";
+import { creditNotesOfInvoice, type CreditNoteView } from "@/server/invoices/credit-notes";
 
 // Writing an invoice, getting it approved and issued, and voiding or writing it off. The server decides everything here; the interface only reads the result.
 // Rules that hold throughout:
@@ -61,7 +62,7 @@ async function orgFacts(db: Queryable, orgId: string): Promise<{ name: string; t
 
 export interface InvoiceFilter {
   status?: InvoiceStatus[];
-  paymentStatus?: Array<"unpaid" | "partially_paid" | "paid" | "disputed">;
+  paymentStatus?: Array<"unpaid" | "partially_paid" | "paid" | "disputed" | "credited">;
   overdueOnly?: boolean;
   /** Test invoices apart from the rest: only them, or none of them. */
   tests?: "only" | "exclude";
@@ -125,6 +126,8 @@ export interface ReceivablesRow {
   overdueCount: number;
   /** Real money received on issued invoices less the refunds recorded, so far. A test invoice and its test payments are not in it. */
   netReceivedMinor: number;
+  /** Taken off what is owed by issued credit notes on real invoices. Not money received and not in netReceivedMinor. */
+  creditedMinor: number;
 }
 
 export interface ReceivablesSummary {
@@ -143,12 +146,13 @@ export async function receivablesSummary(ctx: OrgContext, deps: { now?: Date } =
     await assertInvoicesAvailable(db, ctx);
     // A test invoice is never owed, overdue or received: it is left out of every figure here.
     const owing = "i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null";
-    const { rows } = await db.query<{ currency: CurrencyCode; outstanding: string; overdue: string; open_count: number; overdue_count: number }>(
+    const { rows } = await db.query<{ currency: CurrencyCode; outstanding: string; overdue: string; open_count: number; overdue_count: number; credited: string }>(
       `select i.currency,
          coalesce(sum(i.balance_minor) filter (where ${owing}), 0)::text as outstanding,
          coalesce(sum(i.balance_minor) filter (where ${owing} and i.due_on < $2::date), 0)::text as overdue,
          (count(*) filter (where ${owing}))::int as open_count,
-         (count(*) filter (where ${owing} and i.due_on < $2::date))::int as overdue_count
+         (count(*) filter (where ${owing} and i.due_on < $2::date))::int as overdue_count,
+         coalesce(sum(i.credited_minor), 0)::text as credited
        from customer_invoices i where i.org_id = $1 and i.status in ('issued') and not i.is_test group by i.currency order by i.currency`,
       [ctx.org.orgId, today],
     );
@@ -171,7 +175,7 @@ export async function receivablesSummary(ctx: OrgContext, deps: { now?: Date } =
         const m = receivedBy.get(r.currency);
         return {
           currency: r.currency, outstandingMinor: toMinor(r.outstanding), overdueMinor: toMinor(r.overdue), openCount: r.open_count, overdueCount: r.overdue_count,
-          netReceivedMinor: m ? toMinor(m.live_paid) - toMinor(m.live_refunded) : 0,
+          netReceivedMinor: m ? toMinor(m.live_paid) - toMinor(m.live_refunded) : 0, creditedMinor: toMinor(r.credited),
         };
       }),
       drafts: counts?.drafts ?? 0,
@@ -249,6 +253,8 @@ export interface InvoiceFullDetail extends InvoiceDetail {
   deliveries: InvoiceDeliveryView[];
   /** Set for an invoice made from an accepted proposal. */
   source: InvoiceSourceView | null;
+  /** The credit notes written against this invoice, newest first (drafts and cancelled ones included, for the people who may see them). */
+  creditNotes: CreditNoteView[];
   /** The part of the workspace's settings the invoice screen needs to say what will happen next. */
   closeRule: "none" | "task" | "auto_won";
 }
@@ -302,6 +308,7 @@ export async function getInvoiceDetail(ctx: OrgContext, id: string, deps: { now?
       ...base,
       deliveries: [] as InvoiceDeliveryView[],
       source,
+      creditNotes: await creditNotesOfInvoice(db, ctx.org.orgId, id),
       payments: pay.rows.map((p) => ({
         id: p.id, amountMinor: toMinor(p.amount_minor), currency: p.currency, provider: p.provider, verification: p.verification, method: p.method, status: p.status, livemode: p.livemode,
         receivedAt: new Date(p.received_at).toISOString(), evidence: p.evidence, taxPortionMinor: toMinor(p.tax_portion_minor), refundedMinor: toMinor(p.refunded), recordedByName: p.full_name,
@@ -741,7 +748,7 @@ export async function voidInvoice(ctx: OrgContext, id: string, rawInput: unknown
       `select 1 from customer_payments where invoice_id = $1 and org_id = $2 and status in ('succeeded', 'partially_refunded', 'refunded', 'disputed', 'pending', 'needs_review')
        union all select 1 from customer_payment_attempts where invoice_id = $1 and org_id = $2 and status in ('created', 'redirected', 'needs_review') limit 1`, [id, ctx.org.orgId],
     );
-    const blocked = voidBlockedReason({ status: row.status, paidMinor: toMinor(row.paid_minor), hasOpenPayment: open.rows.length > 0, isTest: row.is_test });
+    const blocked = voidBlockedReason({ status: row.status, paidMinor: toMinor(row.paid_minor), creditedMinor: toMinor(row.credited_minor), hasOpenPayment: open.rows.length > 0, isTest: row.is_test });
     if (blocked) throw new AppError("conflict", blocked);
     // No customer can be paying a test invoice and its payments moved no money, so a test is voided as it stands; the checkouts still open on it are closed with it.
     if (row.is_test) await db.query("update customer_payment_attempts set status = 'cancelled' where invoice_id = $1 and org_id = $2 and status in ('created', 'redirected', 'needs_review')", [id, ctx.org.orgId]);

@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import {
-  findHelperCalls, fingerprint, LEFT_ALONE_ALL_POLICIES, MIGRATION_PATH, normalize, PINNED, PROOF_HELPERS, proveColumns, readHelperDefinitions, rewriteExpression, ROLLBACK_PATH,
+  findHelperCalls, fingerprint, LEFT_ALONE_ALL_POLICIES, MIGRATION_PATH, normalize, PINNED, PROOF_HELPER_REVISIONS, PROOF_HELPERS, proveColumns, readHelperDefinitions, rewriteExpression, ROLLBACK_PATH,
   STATEMENT_HELPERS, type PolicyRow,
 } from "../scripts/rls-initplan";
 import { crmOrg } from "./support/crm";
@@ -101,7 +101,19 @@ describe("row-level security reads are evaluated once per statement (0060)", () 
     const rows = await withSystem((db) => readHelperDefinitions(db, names));
     expect(rows.map((r) => r.name), "each helper exists exactly once (no overloads)").toEqual([...names].sort());
     const actual = Object.fromEntries(rows.map((r) => [r.name, fingerprint(r)]));
-    expect(actual, "a helper the RLS proof relies on changed: re-check the candidate set of app.permitted_orgs / app.accessible_orgs, then update PINNED in scripts/rls-initplan.ts").toEqual(PINNED);
+    // PINNED is the state as of 0060, because the generator runs just before that migration and 0060 is never edited. A helper a LATER migration lawfully redefined
+    // is pinned to its current fingerprint here instead, and the entry must name the migration and the test that re-proves the equivalence.
+    const expected: Record<string, string> = { ...PINNED };
+    for (const [name, revision] of Object.entries(PROOF_HELPER_REVISIONS)) {
+      expect(names, `${name} is not a helper this proof reads`).toContain(name);
+      expect(actual[name], `${name} is not the revision ${revision.migration} recorded`).toBe(revision.fingerprint);
+      expect(PINNED[name as keyof typeof PINNED], `${name} was recorded as revised but its 0060 fingerprint never changed`).not.toBe(revision.fingerprint);
+      expect(existsSync(`supabase/migrations/${revision.migration}.sql`), `${name}: ${revision.migration}`).toBe(true);
+      expect(existsSync(revision.provedBy), `${name}: ${revision.provedBy}`).toBe(true);
+      expect(revision.why.length, name).toBeGreaterThan(40);
+      expected[name] = revision.fingerprint;
+    }
+    expect(actual, "a helper the RLS proof relies on changed: re-check the candidate set of app.permitted_orgs / app.accessible_orgs, then update PINNED in scripts/rls-initplan.ts").toEqual(expected);
     // The migration re-checks owners and definitions of the PROOF_HELPERS on its target, then rechecks every proved column and FK chain.
     const sql = readFileSync(MIGRATION_PATH, "utf8");
     const checked = [...sql.matchAll(/^select app\.rls_initplan_expect_function\('([a-z_]+)', /gm)].map((m) => m[1]);
@@ -112,7 +124,13 @@ describe("row-level security reads are evaluated once per statement (0060)", () 
     expect(sql).toContain("k.convalidated");
     expect(sql).toContain("public.organizations");
     for (const r of rows.filter((x) => (PROOF_HELPERS as readonly string[]).includes(x.name))) {
-      expect(sql, r.name).toContain(`$src$${r.normalized}$src$);`);
+      // 0060 embeds the source it shipped with; for a revised helper that is deliberately the older definition, and the revision above is where the change is reviewed.
+      const revision = PROOF_HELPER_REVISIONS[r.name];
+      if (revision) {
+        expect(sql, r.name).not.toContain(`$src$${r.normalized}$src$);`);
+      } else {
+        expect(sql, r.name).toContain(`$src$${r.normalized}$src$);`);
+      }
     }
   });
 

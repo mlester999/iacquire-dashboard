@@ -14,6 +14,7 @@ import { addInvoiceEvent, INVOICE_COLUMNS, loadLines, readSettings, toMinor, typ
 import { invoicesEnabledIn } from "@/server/invoices/feature";
 import { tokenIsFor } from "@/server/invoices/links";
 import { invoicesPublicDisabled, workspaceTakesNoCustomers } from "@/server/invoices/workspace-gate";
+import { publicCreditsOf } from "@/server/invoices/credit-notes";
 import { startCheckout } from "@/server/customer-payments/attempts";
 import { readBackAllowed } from "@/server/customer-payments/events";
 import { credentialVault } from "@/server/customer-payments/credentials";
@@ -81,6 +82,9 @@ export interface PublicInvoice {
   taxMinor: number;
   totalMinor: number;
   paidMinor: number;
+  /** The issued credit notes, each taken off what is owed. A credit note is not a payment. */
+  creditedMinor: number;
+  credits: Array<{ number: string; amountMinor: number; issuedOn: string }>;
   balanceMinor: number;
   paymentStatus: InvoicePaymentStatus;
   overdue: boolean;
@@ -160,6 +164,7 @@ export async function loadPublicInvoice(token: string, ctx: PublicContext): Prom
       onlinePaymentPossible(db, row.org_id, row.currency, row.is_test),
     ]);
     const tz = org.rows[0]?.timezone ?? "UTC";
+    const credits = await publicCreditsOf(db, row.org_id, row.id, tz);
     const balanceMinor = toMinor(row.balance_minor);
     const owing = row.payment_status === "unpaid" || row.payment_status === "partially_paid";
     const overdue = isOverdue({ status: row.status, paymentStatus: row.payment_status, dueOn: row.due_on, writtenOff: row.written_off_at !== null, isTest: row.is_test }, now, tz);
@@ -178,7 +183,7 @@ export async function loadPublicInvoice(token: string, ctx: PublicContext): Prom
           position: l.position, description: l.description, quantity: formatQuantity(l.quantity_milli), unitPriceMinor: toMinor(l.unit_price_minor), discountMinor: toMinor(l.discount_minor), taxRateBps: l.tax_rate_bps,
           amountMinor: row.tax_inclusive ? toMinor(l.total_minor) : toMinor(l.ex_tax_minor),
         })),
-        subtotalMinor: toMinor(row.subtotal_minor), taxMinor: toMinor(row.tax_minor), totalMinor: toMinor(row.total_minor), paidMinor: toMinor(row.paid_minor), balanceMinor,
+        subtotalMinor: toMinor(row.subtotal_minor), taxMinor: toMinor(row.tax_minor), totalMinor: toMinor(row.total_minor), paidMinor: toMinor(row.paid_minor), creditedMinor: toMinor(row.credited_minor), credits, balanceMinor,
         paymentStatus: row.payment_status, overdue, paymentInstructions: row.payment_instructions, notes: row.notes, terms: row.terms, footerNote: settings.footerNote, hasPendingPayment,
         canPayOnline: canPayOnline && stillPayable && row.payment_status !== "disputed", isTest: row.is_test,
         banner: invoiceBanner({ paymentStatus: row.payment_status, balanceMinor, hasPendingPayment, canPayOnline: canPayOnline && stillPayable, overdue, isTest: row.is_test }),

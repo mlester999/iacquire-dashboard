@@ -34,6 +34,7 @@ import { describeAction } from "@/lib/activity";
 import { SetupNudge } from "@/components/setup/setup-nudge";
 import { PageHero } from "@/components/ui/workspace";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 export const metadata = { title: "Overview" };
 
@@ -53,7 +54,7 @@ export default async function OverviewPage() {
   const first = ctx.user.fullName.split(" ")[0] || "there";
   const setupDone = data.setup.filter((s) => s.done).length;
   const setupPct = Math.round((setupDone / data.setup.length) * 100);
-  const operationsReady=agents.some(agent=>agent.role_key==="operations_manager"&&agent.enabled&&["online","busy"].includes(agent.status));
+  const operationsReady=agents.some(agent=>agent.role_key==="operations_manager"&&agent.enabled&&isRuntimeOnline(agent.status));
   const k = data.kpis;
   const metric = (m: (typeof k)[keyof typeof k]) => (m.available ? m.value : null);
   const reason = (m: (typeof k)[keyof typeof k]) => (m.available ? undefined : m.reason);
@@ -83,7 +84,7 @@ export default async function OverviewPage() {
           <ButtonLink href={operationsReady?"/chat/operations-manager":"/employees"} variant="brand" size="md">
             {operationsReady?"Ask your Operations Manager":"Review your AI team"} <ArrowRight className="size-4" />
           </ButtonLink>
-        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&["online","busy"].includes(agent.status)).length}<span className="ml-2 text-[14px] font-normal text-slate-300">employees ready to work</span></p><Link href="/employees" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
+        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&isRuntimeOnline(agent.status)).length}<span className="ml-2 text-[14px] font-normal text-slate-300">employees ready to work</span></p><Link href="/employees" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
 
       <ClosingNotice view={closing} />
       <ServiceNotices incidents={notices} />

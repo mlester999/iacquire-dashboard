@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin, requireUserOrThrow } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { loadTicketForAgency } from "@/server/support/access";
 import { stageSupportFile } from "@/server/support/attachments";
@@ -18,8 +19,8 @@ export async function POST(req: Request) {
     const user = await requireUserOrThrow();
     const settings = await loadSupportSettings();
     const limit = settings.maxAttachmentMb * 1024 * 1024;
-    if (Number(req.headers.get("content-length") ?? 0) > limit + 65536) throw new AppError("invalid_input", `Files can be up to ${settings.maxAttachmentMb} MB.`);
-    const form = await req.formData();
+    const form = await readBoundedFormData(req, limit + 65536);
+    if (!form) throw new AppError("invalid_input", `Files can be up to ${settings.maxAttachmentMb} MB.`);
     const file = form.get("file");
     if (!(file instanceof File)) throw new AppError("invalid_input", "Choose a file to attach.");
     if (file.size > limit) throw new AppError("invalid_input", `Files can be up to ${settings.maxAttachmentMb} MB.`);

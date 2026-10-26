@@ -5,6 +5,8 @@ node_modules
 out
 build
 .data
+# Scratch output from a working session (gate logs, build measurements, the browser-pass report). Results worth keeping are recorded in docs/.
+tmp/
 .env
 .env.local
 .env.*.local

@@ -124,14 +124,16 @@ export function OperatingModeCard({
                   selected ? "border-primary/50 bg-primary-soft/50 ring-1 ring-inset ring-primary/30" : "border-line bg-surface enabled:hover:-translate-y-px enabled:hover:border-line-strong enabled:hover:shadow-card disabled:opacity-60",
                 )}
               >
-                <span className="flex items-center gap-2.5 text-[14px] font-semibold">
-                  <IconTile tone={selected ? (option.value === "paused" ? "warning" : "primary") : "neutral"} size="sm">
-                    {option.icon}
-                  </IconTile>
-                  {option.label}
+                <span className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[14px] font-semibold">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <IconTile tone={selected ? (option.value === "paused" ? "warning" : "primary") : "neutral"} size="sm">
+                      {option.icon}
+                    </IconTile>
+                    {option.label}
+                  </span>
                   {pending === option.value && <span className="text-[12px] font-normal text-muted">Saving…</span>}
                   {selected && (
-                    <StatusPill tone={option.value === "paused" ? "warning" : "primary"} size="sm" className="ml-auto">
+                    <StatusPill tone={option.value === "paused" ? "warning" : "primary"} size="sm" className="ml-auto shrink-0">
                       Current
                     </StatusPill>
                   )}

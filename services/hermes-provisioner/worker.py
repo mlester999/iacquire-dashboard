@@ -111,6 +111,18 @@ REVIEWED_TOOLSET_FOR_TOOL = {
 MAX_AUDIT_BYTES = 10 * 1024 * 1024
 
 
+def inventory_policy(toolsets: "set[str] | frozenset[str]") -> tuple[set[str], set[str]]:
+    """The required and the optional tool names for a set of reviewed toolsets.
+
+    A client profile may carry the full reviewed set (every role, until the role policy is enforced) or the narrower set one role needs
+    (portal WORKFORCE_ROLE_TOOL_ENFORCEMENT=enforce): the portal writes the role's toolsets into the policy config it hands the worker, and the worker verifies the
+    profile against exactly that list, so a profile can neither miss a tool its role needs nor keep one it does not.
+    """
+    required = {tool for tool, toolset in REVIEWED_TOOLSET_FOR_TOOL.items() if toolset in toolsets and tool not in OPTIONAL_INVENTORY_TOOLS}
+    optional = {tool for tool in OPTIONAL_INVENTORY_TOOLS if REVIEWED_TOOLSET_FOR_TOOL[tool] in toolsets}
+    return required, optional
+
+
 class ProvisioningError(Exception):
     """A safe, loggable failure code. Never includes input text or secret material."""
 
@@ -144,8 +156,9 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str) -> str:
+def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, toolsets: "set[str] | None" = None) -> str:
     """Validate the same complete tool-catalog contract used by iAcquireOS and return its stable digest."""
+    expected_toolsets = set(SAFE_INVENTORY_TOOLSETS if toolsets is None else toolsets)
     if not isinstance(catalog, dict):
         raise ProvisioningError("runtime_tool_inventory_incomplete")
     if (
@@ -164,7 +177,7 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str) 
     enabled = catalog["enabled_toolsets"]
     if any(not isinstance(item, str) or not item for item in enabled) or len(set(enabled)) != len(enabled):
         raise ProvisioningError("runtime_tool_inventory_incomplete")
-    if set(enabled) != SAFE_INVENTORY_TOOLSETS:
+    if set(enabled) != expected_toolsets:
         raise ProvisioningError("runtime_tool_inventory_incomplete")
 
     tools: list[dict[str, Any]] = []
@@ -209,7 +222,7 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str) 
             or available is False
             or name not in REVIEWED_TOOLSET_FOR_TOOL
             or toolset != REVIEWED_TOOLSET_FOR_TOOL[name]
-            or toolset not in SAFE_INVENTORY_TOOLSETS
+            or toolset not in expected_toolsets
             or toolset not in requested
         ):
             raise ProvisioningError("runtime_tool_inventory_incomplete")
@@ -222,7 +235,8 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str) 
             "available": available,
         })
 
-    if not REQUIRED_INVENTORY_TOOLS.issubset(seen) or seen - REQUIRED_INVENTORY_TOOLS - OPTIONAL_INVENTORY_TOOLS:
+    required_tools, optional_tools = inventory_policy(expected_toolsets)
+    if not required_tools.issubset(seen) or seen - required_tools - optional_tools:
         raise ProvisioningError("runtime_tool_inventory_incomplete")
 
     tools.sort(key=lambda item: item["name"])
@@ -350,6 +364,11 @@ def _reject_secret_fields(value: Any, depth: int = 0) -> None:
             _reject_secret_fields(item, depth + 1)
     elif not isinstance(value, (str, int, float, bool, type(None))):
         raise ProvisioningError("unsafe_model_config")
+
+
+def policy_toolsets(source: str) -> set[str]:
+    """The reviewed toolsets a policy config enables for the API server (without the no_mcp marker)."""
+    return set(parse_policy_config(source)["platform_toolsets"]["api_server"]) - {"no_mcp"}
 
 
 def parse_policy_config(source: str) -> dict[str, Any]:
@@ -663,7 +682,7 @@ def _safe_canary_error_code(event: Any) -> str | None:
     return None
 
 
-def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False) -> str:
+def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False, toolsets: "set[str] | None" = None) -> str:
     """Prove this gateway supports a complete authenticated catalog before the worker can claim jobs."""
     if default_profile:
         capability_status, capabilities = api.json_request_default(key, "/v1/capabilities")
@@ -713,7 +732,7 @@ def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_p
             )
         if status != 200:
             raise ProvisioningError("runtime_tool_inventory_incomplete")
-        current_digest = _catalog_snapshot(catalog, profile, challenge, key)
+        current_digest = _catalog_snapshot(catalog, profile, challenge, key, toolsets)
         if stable_digest is not None and not hmac.compare_digest(stable_digest, current_digest):
             raise ProvisioningError("runtime_tool_inventory_incomplete")
         stable_digest = current_digest
@@ -1283,13 +1302,15 @@ class RestrictedProvisioner:
             time.sleep(min(PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS, remaining))
 
     def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
+        # The toolsets this profile must expose are the ones its policy config names (the full reviewed set, or one role's narrower set).
+        toolsets = policy_toolsets(manifest.config_yaml)
         self._wait_for_effective_toolsets(
             manifest,
             key,
-            expected=SAFE_INVENTORY_TOOLSETS,
+            expected=toolsets,
             failure_code="runtime_tool_policy_unverified",
         )
-        self._inventory_digest = verify_complete_catalog(self.api, manifest.profile, key)
+        self._inventory_digest = verify_complete_catalog(self.api, manifest.profile, key, toolsets=toolsets)
 
 
 def _load_service_token() -> str:

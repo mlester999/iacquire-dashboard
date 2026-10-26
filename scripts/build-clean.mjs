@@ -29,5 +29,9 @@ const pins = {
   GHL_WRITES_ENABLED: "false",
   EMAIL_PROVIDER: "capture",
 };
-const result = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build", ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, ...pins } });
+// The Webpack compiler keeps about 4 GB of V8 heap for this application, within a few percent of Node's default limit on this machine, so at the default it passes or runs out of
+// memory by chance (measured: docs/production-build-and-bundler.md). It is given an 8 GB cap unless the caller already chose one. Turbopack, the bundler a deployment uses, needs no cap.
+const env = { ...process.env, ...pins };
+if (process.argv.includes("--webpack") && !/--max-old-space-size/.test(env.NODE_OPTIONS ?? "")) env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --max-old-space-size=8192`.trim();
+const result = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build", ...process.argv.slice(2)], { stdio: "inherit", env });
 process.exit(result.status ?? 1);

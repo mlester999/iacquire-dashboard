@@ -142,7 +142,7 @@ export function MediaLibrary({
                     <div className="flex items-center justify-between text-[12px] tabular-nums text-muted">
                       <span>{a.width && a.height ? `${a.width}×${a.height}` : ""}</span>
                       {confirm === a.id ? (
-                        <span className="flex items-center gap-1"><button type="button" onClick={() => void remove(a)} className="min-h-8 rounded-md bg-danger px-2.5 py-1 font-medium text-white">Remove</button><button type="button" onClick={() => setConfirm(null)} className="min-h-8 rounded-md px-2.5 py-1 hover:bg-surface-3">Keep</button></span>
+                        <span className="flex items-center gap-1"><button type="button" onClick={() => void remove(a)} className="min-h-8 rounded-md bg-[#c6363c] px-2.5 py-1 font-medium text-white">Remove</button><button type="button" onClick={() => setConfirm(null)} className="min-h-8 rounded-md px-2.5 py-1 hover:bg-surface-3">Keep</button></span>
                       ) : (
                         <IconButton label={isUsed ? "Used on your site. Replace it there first to remove it." : "Remove from library"} disabled={isUsed || !canUpload} onClick={() => setConfirm(a.id)} className="size-8"><Trash2 className="size-3.5" /></IconButton>
                       )}

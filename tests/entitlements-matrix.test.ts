@@ -111,12 +111,16 @@ describe("no other code decides an entitlement from the plan table", () => {
   it("reads the plan's rows only where the plan is managed, and nowhere that decides what a workspace may use", () => {
     const readers = SRC.filter((f) => /maintenance_subscriptions/.test(sourceOf(f))).map(posix).sort();
     // billing/payments.ts locks and validates the plan a provider-verified period payment is for, and applies that period through the lifecycle's own transition; it decides no entitlement.
+    // maintenance/agreement.ts and agreement-service.ts (the optional automatic monthly payment) do the same: they lock the plan to apply a PayPal-confirmed charge through that transition, or to start
+    // the grace period a failed charge starts (lapse.ts), and the service reads the plan's state to decide whether an agreement can be opened. Neither decides what a workspace may use.
     expect(readers).toEqual([
       "src/server/automation-studio/lifecycle.ts",
       "src/server/billing/manual.ts",
       "src/server/billing/payments.ts",
       "src/server/db/index.ts",
       "src/server/entitlements.ts",
+      "src/server/maintenance/agreement-service.ts",
+      "src/server/maintenance/agreement.ts",
       "src/server/maintenance/lapse.ts",
       "src/server/maintenance/payment.ts",
       "src/server/maintenance/renewal.ts",

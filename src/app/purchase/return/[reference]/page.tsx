@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { ReturnRefresh } from "@/components/purchase-intents/return-refresh";
+import { PaypalReturnCapture } from "@/components/purchase-intents/paypal-return-capture";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { getCheckoutReturn } from "@/server/purchase-intents/checkout";
 
@@ -38,6 +39,7 @@ export default async function PurchaseReturnPage({ params, searchParams }: { par
             {state?.checkoutStatus && <p className="text-[12px] text-muted">Payment reference {reference}</p>}
           </CardContent>
         </Card>
+        {state?.needsCapture ? <PaypalReturnCapture reference={reference} /> : null}
         <ReturnRefresh active={Boolean(state && state.tone === "neutral" && !(left && state.checkoutStatus !== null && state.checkoutStatus !== "paid"))} />
       </div>
     </main>

@@ -42,6 +42,8 @@ export interface InvoiceView {
   totalMinor: number;
   paidMinor: number;
   refundedMinor: number;
+  /** The issued credit notes against the invoice: taken off what is owed, never counted as money received. */
+  creditedMinor: number;
   balanceMinor: number;
   overpaidMinor: number;
   issueOn: string | null;
@@ -101,7 +103,7 @@ export async function viewsFor(db: Queryable, orgId: string, rows: InvoiceRow[],
       id: r.id, number: r.number, status: r.status, paymentStatus: r.payment_status, currency: r.currency, taxInclusive: r.tax_inclusive,
       contactId: r.contact_id, contactName: r.contact_id ? contacts.get(r.contact_id) ?? null : null, companyId: r.company_id, companyName: r.company_id ? companies.get(r.company_id) ?? null : null,
       opportunityId: r.opportunity_id, opportunityName: r.opportunity_id ? deals.get(r.opportunity_id) ?? null : null,
-      subtotalMinor: toMinor(r.subtotal_minor), taxMinor: toMinor(r.tax_minor), totalMinor: toMinor(r.total_minor), paidMinor: toMinor(r.paid_minor), refundedMinor: toMinor(r.refunded_minor),
+      subtotalMinor: toMinor(r.subtotal_minor), taxMinor: toMinor(r.tax_minor), totalMinor: toMinor(r.total_minor), paidMinor: toMinor(r.paid_minor), refundedMinor: toMinor(r.refunded_minor), creditedMinor: toMinor(r.credited_minor),
       balanceMinor: toMinor(r.balance_minor), overpaidMinor: toMinor(r.overpaid_minor), issueOn: r.issue_on, dueOn: r.due_on, billTo: r.bill_to, billFrom: r.bill_from,
       paymentInstructions: r.payment_instructions, notes: r.notes, terms: r.terms, version: r.version, approvedVersion: r.approved_version,
       approvedByName: r.approved_by ? users.get(r.approved_by) ?? null : null, approvedAt: iso(r.approved_at), closesDeal: r.closes_deal, isTest: r.is_test, writtenOffAt: iso(r.written_off_at),

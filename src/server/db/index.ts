@@ -443,7 +443,16 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0106_workforce_chat_schedule_previews": ["0105_workforce_local_recurrence"],
   "0107_workforce_chat_booking_previews": ["0106_workforce_chat_schedule_previews"],
   "0108_workforce_appointment_changes": ["0107_workforce_chat_booking_previews"],
+  // 0109 reads the statement-level permission helper added by 0060 (its probe-log policy) and sits on the agent_instances columns 0059 extended.
   "0109_employee_health_probe": ["0059_hermes_tool_inventory", "0060_rls_initplan"],
+  // 0110 hangs agreements off maintenance_subscriptions (0015, whose (id, org_id) key 0099's payments already point at), adds a column and two foreign keys to payments (0018, widened by
+  // 0099 and 0103) and a switch to agency_billing_settings; applied before 0103 the payment's plan link would not exist.
+  "0110_maintenance_agreements": ["0099_payment_controls", "0103_purchase_checkouts"],
+  // 0111 replaces the invoice guard function and two of the invoice table's checks that 0093 made, adds a generated-column definition over them, and gives the invoice settings
+  // two columns; applied before 0093 none of that exists. (No later migration touches the invoice tables.)
+  "0111_customer_credit_notes": ["0093_customer_invoices_payments"],
+  // 0112 rewrites the two permission functions that 0042 (has_permission) and 0060 (permitted_orgs) wrote, so both must already be in; applied before them 0042/0060 would put the old text back.
+  "0112_client_content_policy": ["0042_company_delete_permission", "0060_rls_initplan"],
   // 0113 is the signed marketing registration: it adds the replay ledger and installs a trigger on demo_prospects, so the demo funnel (0100) must already be in. Its prefix
   // is deliberately above the highest number used on any branch: 0105–0109 belong to the workforce migrations and 0110–0112 exist on the release-candidate branch.
   "0113_demo_registration_requests": ["0100_demo_funnel"],

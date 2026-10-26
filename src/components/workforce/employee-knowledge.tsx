@@ -221,7 +221,7 @@ export function EmployeeKnowledge({
             </div>
             <div>
               <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared with every employee</p>
-              {shared.length === 0 ? <p className="text-[13px] text-muted">No shared documents yet. <Link href="/knowledge" className="text-primary hover:underline">Open Knowledge Center</Link>.</p> : (
+              {shared.length === 0 ? <p className="text-[13px] text-muted">No shared documents yet. <Link href="/knowledge" className="font-medium text-primary-ink underline underline-offset-2 hover:no-underline">Open Knowledge Center</Link>.</p> : (
                 <ul className="divide-y divide-line">
                   {shared.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} shared />)}
                 </ul>

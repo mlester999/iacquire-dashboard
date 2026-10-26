@@ -9,6 +9,8 @@ import type { OrgContext } from "@/server/tenancy/context";
 import { assertJobAllowed } from "@/server/automation/job-gate";
 import { createWorkJob } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
+import { authorizeEmployeeAction } from "@/lib/employee-tool-policy";
+import { recordActionDenied } from "@/server/workforce/action-policy";
 
 /**
  * The one server-side dispatcher for reviewed business capabilities.
@@ -35,7 +37,10 @@ export async function dispatchCapabilityJob(
 ): Promise<{ jobId: string; agentId: string }> {
   const definition = capabilityDefinition(input.capability);
   if (!definition) throw new AppError("invalid_input", "That capability is not available.");
-  if (!definition.allowedRoles.includes(input.agentRole)) {
+  // The tool policy table decides (src/lib/employee-tool-policy.ts); a refusal is recorded, because a request for another role's work is what a prompt trying to reach past its role looks like.
+  const policy = authorizeEmployeeAction(input.agentRole, `capability:${input.capability}`);
+  if (!policy.allowed || !definition.allowedRoles.includes(input.agentRole)) {
+    await recordActionDenied({ orgId: ctx.org.orgId, agentId: null, actionId: `capability:${input.capability}`, actorUserId: ctx.user.id, actorKind: "user", role: input.agentRole, reason: policy.allowed ? "This employee's role does not include that capability." : policy.reason });
     throw new AppError("forbidden", "This employee's role does not include that capability.");
   }
   // Only a member of the workspace's AI workforce can dispatch AI work. Capability permissions

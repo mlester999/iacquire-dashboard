@@ -131,6 +131,8 @@ export const PERMISSION_MATRIX = {
   "invoices.send": row(...OWNER_ADMIN),
   "invoices.record_payment": row(...OWNER_ADMIN),
   "invoices.void": row(...OWNER_ADMIN),
+  // Write and submit a credit note (it takes money off what a customer owes). Approving and issuing it needs invoices.approve, and its author cannot approve their own unless they are the owner.
+  "invoices.credit": row(...OWNER_ADMIN),
   "invoices.refund": row("owner"),
   "invoices.settings": row("owner"),
   "invoices.connect_payments": row("owner"),
@@ -564,6 +566,7 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "invoices.send": { label: "Send issued invoices to customers", group: "Customer invoices", note: "Reserved for the client's owner and manager." },
   "invoices.record_payment": { label: "Record a payment received outside the product", group: "Customer invoices", note: "Reserved for the client's owner and manager; it is recorded as the person's word, with their evidence." },
   "invoices.void": { label: "Void issued invoices", group: "Customer invoices", note: "Reserved for the client's owner and manager. An invoice with a payment cannot be voided." },
+  "invoices.credit": { label: "Write credit notes on issued invoices", group: "Customer invoices", note: "Reserved for the owner and managers of the client business. A credit note takes money off what a customer still owes; approving it needs the owner or another manager. It is not a refund." },
   "invoices.refund": { label: "Record refunds and write off invoices", group: "Customer invoices", note: "Reserved for the client owner. Refunds are made in the payment provider's own dashboard and recorded here." },
   "invoices.settings": { label: "Change invoice settings", group: "Customer invoices", note: "Reserved for the client owner." },
   "invoices.connect_payments": { label: "Connect the business's payment account", group: "Customer invoices", note: "The account belongs to the client: owner only." },

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { uploadKnowledgeDocument } from "@/server/knowledge/service";
 import { toPublicError } from "@/server/errors";
@@ -13,9 +14,9 @@ export async function POST(req: Request) {
   try {
     await assertSameOrigin();
     const ctx = await requireOrgContextOrThrow("knowledge.edit");
-    const length = Number(req.headers.get("content-length") ?? 0);
-    if (length > MAX + 64 * 1024) return NextResponse.json({ error: "Files can be up to 10 MB." }, { status: 413 });
-    const form = await req.formData();
+    // Read with a ceiling as it arrives: the Content-Length check alone is skipped by a chunked request, which would otherwise be held whole in memory first.
+    const form = await readBoundedFormData(req, MAX + 64 * 1024);
+    if (!form) return NextResponse.json({ error: "Files can be up to 10 MB." }, { status: 413 });
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a file to upload." }, { status: 400 });
     if (file.size > MAX) return NextResponse.json({ error: "Files can be up to 10 MB." }, { status: 413 });

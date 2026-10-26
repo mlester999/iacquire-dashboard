@@ -6,6 +6,7 @@ import { notifyOrgRoles } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import type { AgentMode } from "@/server/automation/gate";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 export const AGENT_MODES: readonly AgentMode[] = ["autonomous", "approval_required", "paused"];
 export const isAgentMode = (value: unknown): value is AgentMode => typeof value === "string" && (AGENT_MODES as readonly string[]).includes(value);
@@ -95,7 +96,7 @@ export async function autonomousBlocker(
   agent: { enabled: boolean; status: string; last_health_ok: boolean | null; display_name: string },
 ): Promise<string | null> {
   if (!agent.enabled) return `${agent.display_name} is not included in your workspace.`;
-  if (!["online", "busy"].includes(agent.status) || agent.last_health_ok !== true) {
+  if (!isRuntimeOnline(agent.status) || agent.last_health_ok !== true) {
     return `${agent.display_name} must pass its connection check before it can work autonomously.`;
   }
   const { rows } = await db.query<{ state: string }>("select state from client_setup_instances where org_id = $1", [orgId]);

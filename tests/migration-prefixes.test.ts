@@ -56,14 +56,12 @@ describe("migration file numbers", () => {
     expect(MIGRATION_PREREQUISITES["0113_demo_registration_requests"]).toEqual(["0100_demo_funnel"]);
     const files = listMigrationFiles();
     expect(files.filter((f) => f.startsWith("0113_"))).toEqual(["0113_demo_registration_requests.sql"]);
-    // 0105–0109 belong to the workforce migrations on this branch. 0110–0112 are reserved by the release-candidate branch (and absent here); the demo migration must not
-    // reuse any of those prefixes, because the Supabase CLI ledger keys on the prefix and would skip the second file.
+    // 0105–0109 are the workforce migrations and 0110–0112 the release candidate's (maintenance agreements, credit notes, the staff-access switch), which are merged here. The demo
+    // migration sits above all of them and shares none of their prefixes, because the Supabase CLI ledger keys on the prefix and would skip the second file.
     for (const taken of ["0105", "0106", "0107", "0108", "0109"]) {
       expect(files.some((f) => f.startsWith(`${taken}_`)), `${taken} is already used`).toBe(true);
     }
-    for (const reserved of ["0110", "0111", "0112"]) {
-      expect(files.some((f) => f.startsWith(`${reserved}_`)), `${reserved} is reserved on the RC branch`).toBe(false);
-    }
+    expect(files.filter((f) => /^011[0-2]_/.test(f))).toEqual(["0110_maintenance_agreements.sql", "0111_customer_credit_notes.sql", "0112_client_content_policy.sql"]);
   });
 
   it("notices a shared number (the check itself works)", () => {

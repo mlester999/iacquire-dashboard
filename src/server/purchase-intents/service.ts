@@ -9,7 +9,7 @@ import { checkManualPayment, MAX_MANUAL_PAYMENT_CENTS } from "@/lib/billing-clea
 import { createClientTenant } from "@/server/admin/tenants";
 import { recordManualPayment } from "@/server/billing/manual";
 import { recordProviderSetupPayment, type AdoptedCheckout } from "@/server/billing/provider-setup-payment";
-import { checkoutAvailability } from "@/server/purchase-intents/availability";
+import { availableCheckoutProviders, checkoutAvailability, CHECKOUT_PROVIDERS, PROVIDER_LABEL, type CheckoutProvider } from "@/server/purchase-intents/availability";
 import type { SessionUser } from "@/server/auth/service";
 import {
   canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, HELD_BUYER_TEXT, provisionHoldText, PURCHASE_LINK_DAYS, PURCHASE_STATUS_TEXT, PURCHASE_STATUS_TONE,
@@ -143,7 +143,7 @@ export interface PublicPurchaseView {
   canConfirm: boolean;
   problem: string | null;
   /** Online checkout: whether a Pay button is offered, and what the last attempt came to (never a link: the link is only handed out by starting a checkout). */
-  checkout: { offered: boolean; status: CheckoutStatus | null; reference: string | null };
+  checkout: { offered: boolean; status: CheckoutStatus | null; reference: string | null; providers: Array<{ id: CheckoutProvider; label: string }> };
 }
 
 interface Actor {
@@ -253,7 +253,7 @@ const publicProblem = (status: PurchaseStatus, payOnline = false, held = false):
           : status === "provisioned" ? "Your workspace is ready. Check the email address on this purchase for your invitation."
           : null;
 
-function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["checkout"] = { offered: false, status: null, reference: null }): PublicPurchaseView {
+function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["checkout"] = { offered: false, status: null, reference: null, providers: [] }): PublicPurchaseView {
   const status = statusOf(row, now);
   return {
     reference: row.reference,
@@ -385,10 +385,10 @@ export async function getPublicPurchase(token: unknown, opts: { now?: Date } = {
     const latest = (await db.query<{ status: CheckoutStatus; reference_number: string }>(
       "select status, reference_number from purchase_intent_checkouts where intent_id = $1 order by created_at desc, id desc limit 1", [row.id],
     )).rows[0];
-    const availability = await checkoutAvailability(db);
+    const providers = await availableCheckoutProviders(db);
     // The button is offered only when a checkout could actually be opened, and never once a payment is already on this purchase.
-    const offered = availability.available && statusOf(row, now) === "started" && !row.payment_hold && latest?.status !== "paid";
-    return toPublic(row, now, { offered, status: latest?.status ?? null, reference: latest?.reference_number ?? null });
+    const offered = providers.length > 0 && statusOf(row, now) === "started" && !row.payment_hold && latest?.status !== "paid";
+    return toPublic(row, now, { offered, status: latest?.status ?? null, reference: latest?.reference_number ?? null, providers: offered ? providers.map((p) => ({ id: p.provider, label: p.label })) : [] });
   });
 }
 
@@ -548,14 +548,15 @@ export interface CheckoutSwitchView {
   /** Why not, in words for the team. */
   reason: string | null;
   livemode: boolean | null;
+  /** Each payment provider on its own: ready to take and confirm a payment, and if not, why (words for the team). */
+  providers: Array<{ id: CheckoutProvider; label: string; available: boolean; reason: string | null; livemode: boolean | null }>;
 }
 
 /** Whether online checkout is open for buyers, and why not when it is not. Readable by anyone who may see purchases. */
 export async function getCheckoutSwitch(user: SessionUser): Promise<CheckoutSwitchView> {
   return withSystem(async (db) => {
     requireView(await actorFor(db, user));
-    const a = await checkoutAvailability(db);
-    return { enabled: a.settings.enabled, available: a.available, reason: a.reason, livemode: a.livemode };
+    return checkoutSwitchOf(db);
   });
 }
 
@@ -568,9 +569,23 @@ export async function setPurchaseCheckoutEnabled(user: SessionUser, enabled: boo
     if (changed.rowCount) {
       await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: enabled ? "purchase_checkout.enabled" : "purchase_checkout.disabled", targetType: "agency_billing_settings", result: "success", metadata: { enabled } }, db);
     }
-    const a = await checkoutAvailability(db);
-    return { enabled: a.settings.enabled, available: a.available, reason: a.reason, livemode: a.livemode };
+    return checkoutSwitchOf(db);
   });
+}
+
+async function checkoutSwitchOf(db: Queryable): Promise<CheckoutSwitchView> {
+  const each = await Promise.all(CHECKOUT_PROVIDERS.map(async (provider) => ({ provider, a: await checkoutAvailability(db, provider) })));
+  const settings = each[0].a.settings;
+  const open = each.filter((e) => e.a.available);
+  // The overall answer is "open" when any provider is; when none is, the reason given is the first provider's (PayMongo's), then the others'.
+  const first = each[0].a;
+  return {
+    enabled: settings.enabled,
+    available: open.length > 0,
+    reason: open.length > 0 ? null : first.reason,
+    livemode: open.length > 0 ? open[0].a.livemode : first.livemode,
+    providers: each.map((e) => ({ id: e.provider, label: PROVIDER_LABEL[e.provider], available: e.a.available, reason: e.a.available ? null : e.a.reason, livemode: e.a.livemode })),
+  };
 }
 
 /**

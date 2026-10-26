@@ -142,11 +142,6 @@ describe("runs through every entry point", () => {
     throw new Error("lead research did not settle");
   }
 
-  async function agentRunStatus(id: string | null) {
-    const { rows } = await withSystem((db) => db.query<{ status: string }>("select status from agent_runs where id = $1", [id]));
-    return rows[0]?.status;
-  }
-
   beforeAll(async () => {
     mock = await startMockHermes({
       [AGENCY_HERMES_PROFILE_IDS.sales_assistant]: { key: KEY },
@@ -208,12 +203,13 @@ describe("runs through every entry point", () => {
       const requestId = await research(ctx);
       // Not ready, so the request waits for the employee instead of queuing a run.
       expect((await settledResearch(requestId)).status).toBe("waiting_for_agent");
-      // A retry that races a status change (or any direct caller) reaches runResearch itself: the gate still refuses.
+      // A retry that races a status change (or any direct caller) reaches runResearch itself: the job gate refuses when the worker claims the job, so no run row is ever
+      // created, the request goes back to waiting with the reason, and the gateway is never contacted.
       await runResearch(agency.id, requestId, agency$.lead_hunter!, agencyOwner.id);
       const outcome = await settledResearch(requestId);
-      expect(outcome.status).toBe("failed");
-      expect(outcome.failure_reason).toMatch(HEALTH_CHECK_REQUIRED);
-      expect(await agentRunStatus(outcome.agent_run_id)).toBe("failed");
+      expect(outcome.status).toBe("waiting_for_agent");
+      expect(outcome.failure_reason).toMatch(/isn't connected yet/); // the reason it was already waiting with
+      expect(outcome.agent_run_id).toBeNull();
       expect(mock.requests).toHaveLength(requestsBefore);
     });
 
