@@ -94,6 +94,17 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             )
         )
 
+    def test_startup_failure_probe_is_readonly_and_limits_output_to_home_metadata(self):
+        workflow = (
+            ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("--network none --user 0:0 --cap-drop=ALL", workflow)
+        self.assertIn('CLIENT_HOME_OWNER_MODE="', workflow)
+        self.assertIn('CLIENT_CONFIG_VISIBLE=yes', workflow)
+        self.assertIn('CLIENT_CONFIG_READABLE=yes', workflow)
+        self.assertIn('^CLIENT_HOME_OWNER_MODE=([0-9:]+|unknown)$', workflow)
+        self.assertIn('^CLIENT_CONFIG_(VISIBLE|READABLE)=(yes|no)$', workflow)
+
     def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
         hermes = self.services["hermes-client"]
         self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
