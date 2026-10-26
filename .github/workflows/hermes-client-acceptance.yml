@@ -233,19 +233,25 @@ jobs:
             container_persistent: false
           YAML
 
-          sudo chown "10000:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          sudo chmod 0400 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          for private_file in "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/portal-admin-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
-            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"; do
-            [[ "$(stat -c '%u:%g:%a' "$private_file")" == "10000:10000:400" ]]
+          # The Hermes client starts as UID 0 with DAC_OVERRIDE dropped; UID 10000 workers
+          # also read the API key and client config. Give only those files root ownership
+          # and group 10000 read access, then keep worker-only files owner-readable.
+          sudo chown 0:10000 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"
+          sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"
+          for client_file in "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"; do
+            [[ "$(stat -c '%u:%g:%a' "$client_file")" == "0:10000:440" ]]
+          done
+
+          sudo chown 10000:10000 "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"
+          sudo chmod 0400 "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"
+          for worker_file in "$temp_dir/provisioner-token" "$temp_dir/portal-admin-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/acceptance-key.pem" \
+            "$temp_dir/acceptance-cert.pem"; do
+            [[ "$(stat -c '%u:%g:%a' "$worker_file")" == "10000:10000:400" ]]
           done
 
           cat > "$temp_dir/compose.env" <<EOF

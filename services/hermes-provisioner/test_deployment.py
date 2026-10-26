@@ -77,6 +77,23 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertTrue(mounts["/run/secrets/hermes_api_key"]["read_only"])
         self.assertNotIn("/docker/hermes-agent-wpwm/data", str(hermes["volumes"]))
 
+    def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
+        hermes = self.services["hermes-client"]
+        self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
+        workflow = (
+            ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'sudo chown 0:10000 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"',
+            workflow,
+        )
+        self.assertIn(
+            'sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/client-config.yaml"',
+            workflow,
+        )
+        self.assertIn('"0:10000:440"', workflow)
+        self.assertIn('"10000:10000:400"', workflow)
+
     def test_worker_home_initializer_is_volume_scoped_networkless_and_sets_profile_permissions(self):
         initializer = self.services["init-worker-home"]
         self.assertEqual(initializer["network_mode"], "none")
