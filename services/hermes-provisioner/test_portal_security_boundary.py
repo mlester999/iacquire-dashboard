@@ -5,8 +5,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import call, patch
 
-from verify_portal_security_boundary import BoundaryCheckError, verify_boundary
+from verify_portal_security_boundary import BoundaryCheckError, read_private_input, read_synthetic_credentials, verify_boundary
 
 
 _RUN_AS_ACCEPTANCE_UID = (
@@ -116,14 +117,23 @@ class PortalSecurityBoundaryTests(unittest.TestCase):
         return portal, client, worker
 
     def _verify(self):
-        verify_boundary(
-            self.portal,
-            self.client,
-            self.worker,
-            self.temp_dir,
-            self.repo_dir,
-            lambda _name: {"Internal": True},
-        )
+        with patch(
+            "verify_portal_security_boundary.read_synthetic_credentials",
+            return_value=(
+                "synthetic-hermes-key",
+                "synthetic-provisioner-token",
+                "synthetic-portal-token",
+                "synthetic-model-key",
+            ),
+        ):
+            verify_boundary(
+                self.portal,
+                self.client,
+                self.worker,
+                self.temp_dir,
+                self.repo_dir,
+                lambda _name: {"Internal": True},
+            )
 
     def test_accepts_container_owned_readonly_synthetic_inputs_and_exact_portal_mounts(self):
         self._verify()
@@ -135,10 +145,26 @@ class PortalSecurityBoundaryTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "secret_in_portal_environment")
 
     def test_rejects_a_private_input_with_relaxed_permissions(self):
-        (self.temp_dir / "hermes-api-key").chmod(0o600)
+        path = self.temp_dir / "hermes-api-key"
+        path.chmod(0o600)
         with self.assertRaises(BoundaryCheckError) as raised:
-            self._verify()
+            read_private_input(path, expected_mode=0o440, expected_uid=os.getuid(), expected_gid=os.getgid())
         self.assertEqual(raised.exception.code, "private_input_mode_mismatch")
+
+    def test_reads_the_gateway_key_with_exact_root_group_readonly_ownership(self):
+        model_config = json.dumps({"schemaVersion": 1, "environment": "OPENAI_API_KEY", "value": "synthetic-model-key"})
+        with patch(
+            "verify_portal_security_boundary.read_private_input",
+            side_effect=("synthetic-hermes-key", "synthetic-provisioner-token", "synthetic-portal-token", model_config),
+        ) as read_input:
+            self.assertEqual(
+                read_synthetic_credentials(self.temp_dir),
+                ("synthetic-hermes-key", "synthetic-provisioner-token", "synthetic-portal-token", "synthetic-model-key"),
+            )
+        self.assertEqual(
+            read_input.call_args_list[0],
+            call(self.temp_dir / "hermes-api-key", expected_mode=0o440, expected_uid=0, expected_gid=10000),
+        )
 
     def test_rejects_an_extra_portal_bind_mount(self):
         self.portal["Mounts"].append(

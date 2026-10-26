@@ -25,16 +25,21 @@ def require(condition: bool, code: str) -> None:
         raise BoundaryCheckError(code)
 
 
-def read_private_input(path: Path) -> str:
+def read_private_input(
+    path: Path,
+    expected_mode: int = 0o400,
+    expected_uid: int = 10000,
+    expected_gid: int = 10000,
+) -> str:
     try:
         info = path.lstat()
     except OSError:
         raise BoundaryCheckError("private_input_unavailable") from None
 
     require(stat.S_ISREG(info.st_mode), "private_input_not_regular")
-    require(stat.S_IMODE(info.st_mode) == 0o400, "private_input_mode_mismatch")
+    require(stat.S_IMODE(info.st_mode) == expected_mode, "private_input_mode_mismatch")
     if os.name != "nt":
-        require(info.st_uid == 10000 and info.st_gid == 10000, "private_input_owner_mismatch")
+        require(info.st_uid == expected_uid and info.st_gid == expected_gid, "private_input_owner_mismatch")
 
     try:
         value = path.read_text(encoding="ascii").strip()
@@ -45,9 +50,10 @@ def read_private_input(path: Path) -> str:
 
 
 def read_synthetic_credentials(temp_dir: Path) -> tuple[str, ...]:
-    credentials = tuple(
-        read_private_input(temp_dir / name)
-        for name in ("hermes-api-key", "provisioner-token", "portal-admin-token")
+    credentials = (
+        read_private_input(temp_dir / "hermes-api-key", expected_mode=0o440, expected_uid=0, expected_gid=10000),
+        read_private_input(temp_dir / "provisioner-token"),
+        read_private_input(temp_dir / "portal-admin-token"),
     )
     try:
         model_config = json.loads(read_private_input(temp_dir / "profile-model-env.json"))
