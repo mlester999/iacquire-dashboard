@@ -1447,7 +1447,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     } else if (!ctx.can("workflows.manage")) {
       content = "You can view Automation Studio, but your workspace role can't create or change workflows. Ask an owner or admin to prepare this automation. [Open Automation Studio](/automation-studio) to view workflows available to you. No workflow was created or activated, and no email was sent.";
     } else {
-      content = "Building automations belongs in Automation Studio. Open it to review access, create and test a draft, then follow the normal approval process before activation. No workflow was created or activated, and no email was sent.";
+      content = "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to review access, build a draft and test it, then follow the normal approval process before activation. This doesn't block supported AI Employee work or schedule settings. No workflow was created or activated, and no email was sent.";
     }
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,

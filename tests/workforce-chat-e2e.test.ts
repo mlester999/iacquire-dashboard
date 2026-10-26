@@ -627,7 +627,7 @@ describe("six employee chat to native workflow", () => {
     expect(ownerRequest).toMatchObject({ runId: null, jobId: null });
     const ownerReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [ownerRequest.assistantMessageId]))).rows[0].content;
     expect(ownerReply).toContain("[Open Automation Studio](/automation-studio)");
-    expect(ownerReply).toContain("doesn't currently have Studio access");
+    expect(ownerReply).toContain("to review access");
     expect(ownerReply).toContain("doesn't block supported AI Employee work or schedule settings");
     expect(ownerReply).toMatch(/no email was sent/i);
 
