@@ -41,18 +41,30 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def regular_file(path: Path, expected_mode: int = 0o600, label: str = "private_file") -> os.stat_result:
+def regular_file(
+    path: Path,
+    expected_mode: int = 0o600,
+    label: str = "private_file",
+    expected_uid: int | None = None,
+    expected_gid: int | None = None,
+) -> os.stat_result:
     require(not path.is_symlink(), "unexpected_symlink")
     info = path.stat()
     require(stat.S_ISREG(info.st_mode), "expected_regular_file")
-    require(info.st_uid == os.getuid(), f"{label}_owner_mismatch")
-    require(info.st_gid == os.getgid(), f"{label}_group_mismatch")
+    require(info.st_uid == (os.getuid() if expected_uid is None else expected_uid), f"{label}_owner_mismatch")
+    require(info.st_gid == (os.getgid() if expected_gid is None else expected_gid), f"{label}_group_mismatch")
     require(stat.S_IMODE(info.st_mode) == expected_mode, f"{label}_mode_mismatch")
     return info
 
 
-def read_private_text(path: Path, expected_mode: int = 0o600, label: str = "private_file") -> str:
-    regular_file(path, expected_mode, label)
+def read_private_text(
+    path: Path,
+    expected_mode: int = 0o600,
+    label: str = "private_file",
+    expected_uid: int | None = None,
+    expected_gid: int | None = None,
+) -> str:
+    regular_file(path, expected_mode, label, expected_uid, expected_gid)
     return path.read_text(encoding="utf-8")
 
 
@@ -191,7 +203,13 @@ def main() -> dict[str, int | str]:
     )
     secret_values = [
         read_private_text(Path("/run/secrets/provisioner_token"), expected_mode=0o400, label="provisioner_token").strip(),
-        read_private_text(Path("/run/secrets/hermes_api_key"), expected_mode=0o400, label="hermes_api_key").strip(),
+        read_private_text(
+            Path("/run/secrets/hermes_api_key"),
+            expected_mode=0o440,
+            label="hermes_api_key",
+            expected_uid=0,
+            expected_gid=os.getgid(),
+        ).strip(),
         str(model_config.get("value", "")),
         *api_keys,
     ]
