@@ -2,7 +2,18 @@
 
 **Status:** Prepared for review; not approved or executed. No production deployment, schema change, Hermes profile change, worker activation, or autonomous schedule has been performed.
 
-**Latest access check (2026-10-26 10:08 UTC):** the production iAcquire root still returns Internal Server Error; the open Appointment Setter config tab could not be attached. The latest successful readiness/config read remains 08:37–08:42 UTC (1/6 portal-ready, four target profiles 0/6). Windows OpenSSH Agent remains disabled/stopped with no loaded identity, and the SSH key scan did not return a host key. No production control or data was changed.
+**Latest access check (2026-10-26 10:14 UTC):** direct unauthenticated GETs to the production site root, `/employees`, and the Appointment Setter config route each returned HTTP 500. The latest successful readiness/config read remains 08:37–08:42 UTC (1/6 portal-ready, four target profiles 0/6). Windows OpenSSH Agent remains disabled/stopped with no loaded identity, and the SSH key scan did not return a host key. No production control or data was changed.
+
+**Four-role configuration review (offline preview only):** all nine behavior fields are populated for each employee: personality, traits, communication style, response behavior, procedures, proactive responsibilities, reporting behavior, responsibilities, and goals. Each passes the app role audit (7/7 role fields; 2/2 available company facts). The preview keeps `approvalPreference: always`, `disabledTools: []`, and the escalation contact blank. It uses the saved iAcquire company profile/preferences; the Knowledge Center has 0/9 supplied sections and 0 approved documents. Text below is not DeepSeek-generated and must not be saved as a provider result.
+
+| Employee | Distinct voice and role boundary |
+| --- | --- |
+| Appointment Setter | Friendly and precise; uses configured meeting types and live calendar availability, separates proposals, approval requests, and confirmed bookings, and asks the owner when hours or meeting details are missing. |
+| Sales Assistant | Consultative and low-pressure; uses actual opportunity records, prepares unsent drafts for approval, and asks before assuming prices, terms, or follow-up cadence. |
+| CRM Manager | Careful and traceable; checks authorized records against the existing schema, presents evidenced correction proposals, and does not assume stages or perform unapproved edits. |
+| Performance Analyst | Objective and evidence-led; reports source, period, definition, and calculation, and does not invent metrics, benchmarks, or trends. |
+
+**Unconfirmed business facts:** approved meeting types, durations, business hours and connected calendar; prices, discounts, contract terms, guarantees and follow-up cadence; connected internal CRM source and saved stage list; KPI definitions, targets, benchmarks and available metrics; website and operating area; global company rules, escalation policy and escalation contact. The saved profile timezone is UTC but does not establish appointment hours. These gaps remain explicit in the preview rather than being guessed.
 
 **Guarded application and Super Admin acknowledgement sequence (prepared, not executed):**
 
