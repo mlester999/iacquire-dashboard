@@ -82,7 +82,10 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
     const { settings: active } = await currentSettings(db, agent.id, ctx.org.orgId);
     const company = await loadCompanyContext(db, ctx.org.orgId);
     const { compiled, version } = await compileDraftConfig(db, ctx.org.orgId, agent.id, parsed.data);
-    const run = await composeRunInstructions(db, ctx.org.orgId, agent.id, compiled.instructions, null);
+    const run = await composeRunInstructions(db, ctx.org.orgId, agent.id, compiled.instructions, null, {
+      kind: ctx.org.kind,
+      name: ctx.org.name,
+    });
     const conn = await loadConnection(db, agent.id);
     const warnings: string[] = [];
     const orgKind = ctx.org.kind === "agency" ? "agency" : "client";

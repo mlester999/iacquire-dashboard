@@ -8,7 +8,8 @@ import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
-import { compileAgentConfig, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
+import { compileAgentConfig, defaultSettings, sanitizeClientText, type CompanyContext } from "@/server/workforce/compiler";
+import { immutablePolicy, policyVersionFor, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { INTERNAL_BUSINESS, internalServicesText } from "@/lib/internal-business-profile";
 import {
   classifyConfigChange,
@@ -728,6 +729,7 @@ export async function rollbackToVersion(
 export interface RunInstructions {
   instructions: string;
   versionId: string | null;
+  policyVersion: string;
   knowledgeEntryIds: string[];
   knowledgeDocumentIds: string[];
   knowledgeTruncated: boolean;
@@ -743,13 +745,24 @@ export async function composeRunInstructions(
   agentId: string,
   compiledInstructions: string,
   versionId: string | null,
+  organization: { kind: WorkforceOrganizationKind; name: string },
 ): Promise<RunInstructions> {
   const knowledge = await employeeKnowledgeContext(db, orgId, agentId);
-  // The agency policy must stay last so it is never overshadowed by later context.
-  const [head, policy] = splitPolicy(compiledInstructions);
+  // The live policy is source controlled and must not go stale when an employee's active config
+  // predates a policy update. Workspace knowledge stays ahead of the policy so it cannot override it.
+  const policyVersion = policyVersionFor(organization.kind);
+  const companyName = sanitizeClientText(organization.name, 120)
+    || (organization.kind === "agency" ? "iAcquire" : "the client");
+  const [storedHead] = splitPolicy(compiledInstructions);
+  const head = updateCompiledPolicyVersion(storedHead, policyVersion);
+  const policy = [
+    "## Agency policy (always applies and overrides everything above)",
+    ...immutablePolicy(companyName, organization.kind).map((rule, index) => `${index + 1}. ${rule}`),
+  ].join("\n");
   return {
     instructions: [head, knowledge.block, policy].filter(Boolean).join("\n\n"),
     versionId,
+    policyVersion,
     knowledgeEntryIds: knowledge.entryIds,
     knowledgeDocumentIds: knowledge.documentIds,
     knowledgeTruncated: knowledge.truncated,
@@ -758,15 +771,21 @@ export async function composeRunInstructions(
 
 /** Run-time instructions for the employee's currently applied configuration. */
 export async function buildRunInstructions(db: Queryable, orgId: string, agentId: string): Promise<RunInstructions> {
-  const { rows } = await db.query<{ compiled_instructions: string | null; id: string | null }>(
-    `select v.compiled_instructions, v.id from agent_instances a
+  const { rows } = await db.query<{
+    compiled_instructions: string | null;
+    id: string | null;
+    org_kind: WorkforceOrganizationKind;
+    org_name: string;
+  }>(
+    `select v.compiled_instructions, v.id, o.kind as org_kind, o.name as org_name from agent_instances a
+     join organizations o on o.id = a.org_id
      left join agent_config_versions v on v.id = a.active_config_version_id
      where a.id = $1 and a.org_id = $2`,
     [agentId, orgId],
   );
   const base = rows[0];
   if (!base?.compiled_instructions) throw new AppError("agent_unavailable", "This employee hasn't been configured yet.");
-  return composeRunInstructions(db, orgId, agentId, base.compiled_instructions, base.id);
+  return composeRunInstructions(db, orgId, agentId, base.compiled_instructions, base.id, { kind: base.org_kind, name: base.org_name });
 }
 
 /**
@@ -804,6 +823,13 @@ function splitPolicy(compiled: string): [string, string] {
   const marker = "## Agency policy";
   const idx = compiled.indexOf(marker);
   return idx === -1 ? [compiled, ""] : [compiled.slice(0, idx).trimEnd(), compiled.slice(idx)];
+}
+
+function updateCompiledPolicyVersion(compiledHead: string, policyVersion: string): string {
+  return compiledHead.replace(
+    /^(# iAcquire (?:internal agency|client) configuration \(v\d+, policy )[^)]+(\))$/m,
+    (_match, prefix: string, suffix: string) => `${prefix}${policyVersion}${suffix}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

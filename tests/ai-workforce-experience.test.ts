@@ -22,6 +22,7 @@ import { prepareConfigPreview, runConfigPreview } from "@/server/workforce/previ
 import { sendChatMessage } from "@/server/chat/service";
 import { agencyUser, addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
+import { immutablePolicy, INTERNAL_POLICY_VERSION, POLICY_VERSION } from "@/server/workforce/policy";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const KEY = "k".repeat(40);
@@ -280,6 +281,52 @@ describe("safe draft configuration testing", () => {
 });
 
 describe("super admin internal workforce", () => {
+  it("sends the current internal agency policy even when the saved version has legacy client-only wording", async () => {
+    const superAdmin = await createUser({ platformRole: "agency_super_admin" });
+    const agencyId = await ensureAgencyWorkforceRegistry(agencyUser(superAdmin, "agency_super_admin"));
+    await addMember(agencyId, superAdmin.id, "owner");
+    const internalSales = await agentId(agencyId, "sales_assistant");
+    await withSystem((db) =>
+      createConfigVersion(db, { orgId: agencyId, agentId: internalSales, settings: defaultSettings("sales_assistant"), source: "onboarding", userId: superAdmin.id, apply: true }),
+    );
+
+    const organization = await withSystem(async (db) => {
+      const { rows } = await db.query<{ name: string }>("select name from organizations where id=$1", [agencyId]);
+      return rows[0];
+    });
+    const saved = await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string; compiled_instructions: string }>(
+        `select v.id,v.compiled_instructions from agent_instances a
+         join agent_config_versions v on v.id=a.active_config_version_id where a.id=$1 and a.org_id=$2`,
+        [internalSales, agencyId],
+      );
+      return rows[0];
+    });
+    const currentAgencyRule = immutablePolicy(organization.name, "agency")[0];
+    const oldClientRule = immutablePolicy(organization.name, "client")[0];
+    const legacyInstructions = saved.compiled_instructions
+      .replace(`policy ${INTERNAL_POLICY_VERSION}`, `policy ${POLICY_VERSION}`)
+      .replace(currentAgencyRule, oldClientRule);
+    expect(legacyInstructions).not.toBe(saved.compiled_instructions);
+
+    await withSystem((db) => db.query(
+      "update agent_config_versions set policy_version=$2,compiled_instructions=$3 where id=$1 and org_id=$4",
+      [saved.id, POLICY_VERSION, legacyInstructions, agencyId],
+    ));
+
+    const runtime = await withSystem((db) => buildRunInstructions(db, agencyId, internalSales));
+    expect(runtime.policyVersion).toBe(INTERNAL_POLICY_VERSION);
+    expect(runtime.instructions).toContain(`policy ${INTERNAL_POLICY_VERSION}`);
+    expect(runtime.instructions).toContain(currentAgencyRule);
+    expect(runtime.instructions).not.toContain(oldClientRule);
+
+    const unchanged = await withSystem((db) => db.query<{ policy_version: string; compiled_instructions: string }>(
+      "select policy_version,compiled_instructions from agent_config_versions where id=$1 and org_id=$2",
+      [saved.id, agencyId],
+    ));
+    expect(unchanged.rows[0]).toMatchObject({ policy_version: POLICY_VERSION, compiled_instructions: legacyInstructions });
+  });
+
   it("keeps internal chat blocked until the profile check and full-capabilities acknowledgement are current", async () => {
     const superAdmin = await createUser({ platformRole: "agency_super_admin" });
     const agencyId = await ensureAgencyWorkforceRegistry(agencyUser(superAdmin, "agency_super_admin"));
