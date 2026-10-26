@@ -41,18 +41,28 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def regular_file(path: Path, expected_mode: int = 0o600) -> os.stat_result:
+def regular_file(
+    path: Path,
+    expected_mode: int = 0o600,
+    expected_uid: int | None = None,
+    expected_gid: int | None = None,
+) -> os.stat_result:
     require(not path.is_symlink(), "unexpected_symlink")
     info = path.stat()
     require(stat.S_ISREG(info.st_mode), "expected_regular_file")
-    require(info.st_uid == os.getuid(), "file_owner_mismatch")
-    require(info.st_gid == os.getgid(), "file_group_mismatch")
+    require(info.st_uid == (os.getuid() if expected_uid is None else expected_uid), "file_owner_mismatch")
+    require(info.st_gid == (os.getgid() if expected_gid is None else expected_gid), "file_group_mismatch")
     require(stat.S_IMODE(info.st_mode) == expected_mode, "private_file_mode_mismatch")
     return info
 
 
-def read_private_text(path: Path, expected_mode: int = 0o600) -> str:
-    regular_file(path, expected_mode)
+def read_private_text(
+    path: Path,
+    expected_mode: int = 0o600,
+    expected_uid: int | None = None,
+    expected_gid: int | None = None,
+) -> str:
+    regular_file(path, expected_mode, expected_uid, expected_gid)
     return path.read_text(encoding="utf-8")
 
 
@@ -191,7 +201,12 @@ def main() -> dict[str, int | str]:
     )
     secret_values = [
         read_private_text(Path("/run/secrets/provisioner_token"), expected_mode=0o400).strip(),
-        read_private_text(Path("/run/secrets/hermes_api_key"), expected_mode=0o400).strip(),
+        read_private_text(
+            Path("/run/secrets/hermes_api_key"),
+            expected_mode=0o440,
+            expected_uid=0,
+            expected_gid=os.getgid(),
+        ).strip(),
         str(model_config.get("value", "")),
         *api_keys,
     ]

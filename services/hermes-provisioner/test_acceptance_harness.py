@@ -42,6 +42,27 @@ class AcceptanceFixtureTests(unittest.TestCase):
                 read_private_text(path, expected_mode=0o400)
             self.assertEqual(str(exposed_mode_error.exception), "private_file_mode_mismatch")
 
+    def test_root_owned_group_readonly_gateway_key_uses_an_explicit_owner_check(self):
+        if os.name == "nt":
+            self.skipTest("POSIX ownership and file permission modes are required for this check")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "hermes-api-key"
+            path.write_text("synthetic-hermes-api-key", encoding="utf-8")
+            path.chmod(0o440)
+
+            self.assertEqual(
+                read_private_text(
+                    path,
+                    expected_mode=0o440,
+                    expected_uid=os.getuid(),
+                    expected_gid=os.getgid(),
+                ),
+                "synthetic-hermes-api-key",
+            )
+            with self.assertRaises(VerificationError) as owner_error:
+                read_private_text(path, expected_mode=0o440, expected_uid=os.getuid() + 1, expected_gid=os.getgid())
+            self.assertEqual(str(owner_error.exception), "file_owner_mismatch")
+
     def test_model_diagnostics_capture_portal_deltas_without_request_contents(self):
         model_key = "synthetic-model-key-not-for-diagnostics"
         challenge = "0123456789abcdef0123456789abcdef"
