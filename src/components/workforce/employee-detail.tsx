@@ -35,6 +35,7 @@ import { GuidedChoiceField, GuidedField, GuidedSwitch, ChangeDecisionNotice, typ
 import { ConfigVersionHistory, type ConfigVersion } from "@/components/workforce/config-version-history";
 import { applyChangeAction, previewConfigAction, proposeChangeAction, regenerateEmployeeSettingsAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type Tone } from "@/lib/agent-settings";
+import { EMPLOYEE_GENERATED_FIELDS, mergeGeneratedEmployeeFields, type EmployeeGeneratedFields } from "@/lib/employee-generated-fields";
 import { changeFixForReason, configFieldElementId, employeeFieldGuidance, ROLE_TOOL_GUIDANCE, TOOL_BOUNDARY_NOTE } from "@/lib/employee-field-guidance";
 import type { ReviewReasonView } from "@/lib/config-review";
 import type { ConfigPreviewSummary } from "@/lib/workforce-types";
@@ -55,26 +56,6 @@ import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/r
 import { PROACTIVE_SEVERITY_LABELS, proactiveDutyForRole } from "@/lib/proactive";
 
 type Version = ConfigVersion;
-
-const EMPLOYEE_GENERATED_FIELDS = [
-  ["personality", "Personality"],
-  ["characterTraits", "Traits"],
-  ["communicationStyle", "Communication style"],
-  ["responseBehavior", "Response behavior"],
-  ["responsibilities", "Responsibilities"],
-  ["goals", "Goals"],
-  ["operatingProcedures", "Operating procedures"],
-  ["proactiveResponsibilities", "Proactive work"],
-  ["reportingBehavior", "Reporting"],
-] as const satisfies ReadonlyArray<readonly [keyof Pick<AgentSettings,
-  "personality" | "characterTraits" | "communicationStyle" | "responseBehavior" |
-  "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior" | "responsibilities" | "goals"
->, string]>;
-
-type EmployeeGeneratedFields = Pick<AgentSettings,
-  "personality" | "characterTraits" | "communicationStyle" | "responseBehavior" |
-  "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior" | "responsibilities" | "goals"
->;
 
 interface Props {
   meta: AgentRoleMeta;
@@ -398,7 +379,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
   const [nameTouched, setNameTouched] = React.useState(false);
   const [saveAttempted, setSaveAttempted] = React.useState(false);
   const [regenerating, setRegenerating] = React.useState(false);
-  const [employeeSuggestion, setEmployeeSuggestion] = React.useState<EmployeeGeneratedFields & { source: "ai" | "safe_defaults" } | null>(null);
+  const [employeeSuggestion, setEmployeeSuggestion] = React.useState<EmployeeGeneratedFields & { source: "ai" | "safe_defaults"; fallbackFields: string[] } | null>(null);
   const statusRef = React.useRef<HTMLDivElement>(null);
   const previewSequence = React.useRef(0);
   const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => {
@@ -463,12 +444,22 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
   };
   const acceptEmployeeSettings = () => {
     if (!employeeSuggestion) return;
-    const accepted = Object.fromEntries(EMPLOYEE_GENERATED_FIELDS.map(([key]) => [key, employeeSuggestion[key]])) as EmployeeGeneratedFields;
-    setS((previous) => ({ ...previous, ...accepted }));
+    const merged = mergeGeneratedEmployeeFields(
+      s,
+      employeeSuggestion,
+      preparingFirstInternalConfig ? recommendedSettings(meta.key) : undefined,
+    );
+    if (merged.applied.length === 0) {
+      toast.info("Your current fields were preserved", { description: "There are no blank fields or untouched role defaults to replace." });
+      return;
+    }
+    setS(merged.settings);
     setEmployeeSuggestion(null);
     setJustSaved(false);
     setCheck({ state: "checking" });
-    toast.success("Suggestions added to your draft", { description: "Review the fields, then save to create a new version." });
+    toast.success("Suggestions added to your draft", {
+      description: `${merged.applied.length} fields updated; ${merged.preserved.length} existing values preserved. Review the draft, then save to create a new version.`,
+    });
   };
 
   React.useEffect(() => {
@@ -674,13 +665,14 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
           <ConfigSection id="config-identity" step="01" title="Identity & communication" description={`How ${agent.displayName} introduces itself and sounds in conversation.`}>
             <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate fresh role suggestions from your confirmed company information. Your current fields stay as they are until you accept the preview.</p>
-                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateEmployeeSettings()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : "Regenerate employee setup"}</Button>
+                <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate role suggestions from this workspace&apos;s confirmed company information. Nothing is saved until you accept the preview; existing non-default values are preserved.</p>
+                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateEmployeeSettings()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : preparingFirstInternalConfig ? "Generate employee setup" : "Regenerate employee setup"}</Button>
               </div>
               {employeeSuggestion && <div className="mt-3 space-y-2 border-t border-line pt-3 text-[12px] text-ink-2">
                 <p className="font-semibold">Suggested employee setup {employeeSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
                 {EMPLOYEE_GENERATED_FIELDS.map(([key, label]) => <p key={key}><strong>{label}:</strong> {employeeSuggestion[key]}</p>)}
-                <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptEmployeeSettings}>Use these in my draft</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEmployeeSuggestion(null)}>Dismiss</Button></div>
+                {employeeSuggestion.fallbackFields.length > 0 && <p className="text-warning-ink">Safe role defaults were used for: {employeeSuggestion.fallbackFields.map((field) => EMPLOYEE_GENERATED_FIELDS.find(([key]) => key === field)?.[1] ?? field).join(", ")}.</p>}
+                <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptEmployeeSettings}>Fill blank and default fields</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEmployeeSuggestion(null)}>Dismiss</Button></div>
               </div>}
             </div>
             <GuidedField

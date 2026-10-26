@@ -5,12 +5,12 @@ import { withSystem, withUser } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
-import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
+import { createConfigVersion, editableSettings, getAgentByRole, loadCompanyContext, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { prepareConfigPreview } from "@/server/workforce/preview";
-import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
+import { agentSettingsSchema, aiPreferencesSchema, onboardingSchema, type AgentSettings, type OnboardingData } from "@/lib/agent-settings";
 import { configAttribution } from "@/lib/config-review";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { getOnboardingSession } from "@/server/onboarding/service";
@@ -60,19 +60,55 @@ export async function saveAgentSettingsAction(role: string, input: unknown) {
 export async function regenerateEmployeeSettingsAction(role: string) {
   try {
     const { ctx, agent } = await resolve(role);
-    const session = await getOnboardingSession(ctx);
-    if (session.status !== "submitted" || session.hasUnsubmittedChanges) throw new AppError("conflict", "Approve your latest company information before regenerating employee preferences.");
+    let data: OnboardingData;
+    let knowledge: string[];
+    if (ctx.org.kind === "agency") {
+      // The internal agency workspace has no client onboarding submission. Read its own saved
+      // company profile and approved knowledge directly; do not create onboarding prefill rows.
+      const generationContext = await withUser(ctx.user.id, async (db) => {
+        const company = await loadCompanyContext(db, ctx.org.orgId);
+        const { rows: preferenceRows } = await db.query<{ ai_preferences: unknown }>(
+          "select ai_preferences from company_profiles where org_id = $1",
+          [ctx.org.orgId],
+        );
+        const { rows: knowledgeRows } = await db.query<{ content: string }>(
+          "select content from company_knowledge where org_id = $1 and review_status = 'approved' order by section limit 8",
+          [ctx.org.orgId],
+        );
+        const preferences = aiPreferencesSchema.parse(preferenceRows[0]?.ai_preferences ?? {});
+        const data = onboardingSchema.parse({
+          business: {
+            companyName: company.companyName,
+            industry: company.industry,
+            website: company.website,
+            description: company.description,
+            services: company.services,
+            idealCustomers: company.idealCustomers,
+            operatingArea: company.operatingArea,
+          },
+          goals: { selected: company.goals ?? [], other: "" },
+          communication: preferences,
+          workforce: { selected: [agent.role_key], answers: {} },
+        });
+        return { data, knowledge: knowledgeRows.map((row) => row.content) };
+      });
+      data = generationContext.data;
+      knowledge = generationContext.knowledge;
+    } else {
+      const session = await getOnboardingSession(ctx);
+      if (session.status !== "submitted" || session.hasUnsubmittedChanges) throw new AppError("conflict", "Approve your latest company information before regenerating employee preferences.");
+      const confirmed = confirmedAnswers(session.answers);
+      data = toLegacyData(confirmed, session.enabledRoles);
+      knowledge = await withUser(ctx.user.id, async (db) => {
+        const { rows } = await db.query<{ content: string }>(
+          "select content from company_knowledge where org_id = $1 and review_status = 'approved' order by section limit 8",
+          [ctx.org.orgId],
+        );
+        return rows.map((row) => row.content);
+      });
+    }
     const limit = await consumeRateLimit(RATE_LIMITS.onboardingAssistByOrg, ctx.org.orgId);
     if (!limit.allowed) throw new AppError("rate_limited", "AI suggestions are temporarily limited. Try again later.");
-    const confirmed = confirmedAnswers(session.answers);
-    const data = toLegacyData(confirmed, session.enabledRoles);
-    const knowledge = await withUser(ctx.user.id, async (db) => {
-      const { rows } = await db.query<{ content: string }>(
-        "select content from company_knowledge where org_id = $1 and review_status = 'approved' order by section limit 8",
-        [ctx.org.orgId],
-      );
-      return rows.map((row) => row.content);
-    });
     const generated = (await generateEmployeeSettings(data, knowledge, undefined, ctx.org.orgId))[agent.role_key];
     const {
       personality, characterTraits, communicationStyle, responseBehavior,
@@ -82,6 +118,7 @@ export async function regenerateEmployeeSettingsAction(role: string) {
       personality, characterTraits, communicationStyle, responseBehavior,
       operatingProcedures, proactiveResponsibilities, reportingBehavior, responsibilities, goals,
       source: generated.source,
+      fallbackFields: generated.fallbackFields ?? [],
     } };
   } catch (err) {
     return actionError(err);

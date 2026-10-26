@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastWarning: vi.fn(),
+  toastInfo: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -32,7 +33,7 @@ vi.mock("@/app/actions/workforce", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: mocks.toastSuccess, error: mocks.toastError, warning: mocks.toastWarning },
+  toast: { success: mocks.toastSuccess, error: mocks.toastError, warning: mocks.toastWarning, info: mocks.toastInfo },
 }));
 
 vi.mock("@/components/workforce/config-test-dialog", () => ({
@@ -111,6 +112,7 @@ beforeEach(() => {
   mocks.toastSuccess.mockReset();
   mocks.toastError.mockReset();
   mocks.toastWarning.mockReset();
+  mocks.toastInfo.mockReset();
   mocks.preview.mockResolvedValue({ ok: true, data: summary() });
   vi.stubGlobal(
     "ResizeObserver",
@@ -176,6 +178,7 @@ describe("guided AI employee configuration", () => {
         proactiveResponsibilities: "Flag overdue work only when an approved trigger runs.",
         reportingBehavior: "Report verified changes, blockers, owners and next steps.",
         source: "ai",
+        fallbackFields: [],
       },
     });
     renderForm();
@@ -191,10 +194,42 @@ describe("guided AI employee configuration", () => {
     expect(originalResponsibilities.value).toBe("Existing responsibility");
     expect(mocks.save).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Use these in my draft" }));
-    expect(originalResponsibilities.value).toBe("Coordinate assigned internal work and surface dependencies.");
+    await user.click(screen.getByRole("button", { name: "Fill blank and default fields" }));
+    expect(originalResponsibilities.value).toBe("Existing responsibility");
     expect((screen.getByRole("textbox", { name: /Goals for this employee/i }) as HTMLTextAreaElement).value)
       .toBe("Help the team meet confirmed commitments with clear ownership.");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("replaces untouched first-config defaults with AI suggestions while preserving edited fields", async () => {
+    const user = userEvent.setup();
+    mocks.regenerate.mockResolvedValue({
+      ok: true,
+      data: {
+        personality: "AI draft: a composed and attentive coordinator.",
+        characterTraits: "Thoughtful, steady and accountable.",
+        communicationStyle: "Summarise current work, blockers and decisions.",
+        responseBehavior: "Use recorded work and label uncertainty clearly.",
+        responsibilities: "Coordinate assigned internal work and surface dependencies.",
+        goals: "Help the team meet confirmed commitments with clear ownership.",
+        operatingProcedures: "Review authorized work, approvals and blocked items.",
+        proactiveResponsibilities: "Flag overdue work only when an approved trigger runs.",
+        reportingBehavior: "Report verified changes, blockers, owners and next steps.",
+        source: "ai",
+        fallbackFields: [],
+      },
+    });
+    renderForm({ responsibilities: "Owner-written responsibility" }, { internal: true, configVersion: null });
+
+    await user.click(screen.getByRole("button", { name: "Prepare first config" }));
+    await user.click(screen.getByRole("button", { name: "Generate employee setup" }));
+    expect(await screen.findByText("Suggested employee setup · AI draft")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Fill blank and default fields" }));
+
+    expect((screen.getByRole("textbox", { name: "Personality" }) as HTMLTextAreaElement).value)
+      .toBe("AI draft: a composed and attentive coordinator.");
+    expect((screen.getByRole("textbox", { name: /Main responsibilities/i }) as HTMLTextAreaElement).value)
+      .toBe("Owner-written responsibility");
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
