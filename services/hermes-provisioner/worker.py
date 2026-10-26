@@ -1356,11 +1356,11 @@ def _load_bootstrap_api_key() -> str:
         fd = os.open(path, flags)
         try:
             info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
-                raise OSError("unsafe key file")
-            if hasattr(os, "getuid") and info.st_uid != os.getuid():
-                raise OSError("key file owner mismatch")
-            if os.name != "nt" and info.st_mode & 0o077:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_size > 4096
+                or not _bootstrap_api_key_file_is_private(info)
+            ):
                 raise OSError("key file permissions are too broad")
             raw = os.read(fd, 4097)
             if len(raw) > 4096:
@@ -1377,6 +1377,21 @@ def _load_bootstrap_api_key() -> str:
     except (OSError, UnicodeDecodeError, ValueError):
         raise ProvisioningError("provisioner_credentials_missing") from None
     return key
+
+
+def _bootstrap_api_key_file_is_private(info: os.stat_result) -> bool:
+    """Allow worker-private files or the gateway's exact read-only shared mount."""
+    if os.name == "nt":
+        return True
+    mode = stat.S_IMODE(info.st_mode)
+    if info.st_uid == os.getuid() and mode in {0o400, 0o600}:
+        return True
+    return (
+        hasattr(os, "getegid")
+        and info.st_uid == 0
+        and info.st_gid == os.getegid()
+        and mode == 0o440
+    )
 
 
 def _load_profile_model_env() -> dict[str, str]:

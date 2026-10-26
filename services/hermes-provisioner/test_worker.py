@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ import uuid
 import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -19,6 +21,7 @@ from worker import (
     ProvisioningError,
     RestrictedProvisioner,
     _load_bootstrap_api_key,
+    _bootstrap_api_key_file_is_private,
     _load_service_token,
     _sanitize_worker_environment,
     _validate_portal_origin,
@@ -824,6 +827,28 @@ class RestrictedProvisionerTests(unittest.TestCase):
             "HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE": str(key_path),
         }, clear=True), self.assertRaisesRegex(ProvisioningError, "provisioner_credentials_missing"):
             _load_bootstrap_api_key()
+
+    def test_bootstrap_api_key_accepts_only_exact_readonly_gateway_group_mount(self):
+        with (
+            patch("worker.os.name", "posix"),
+            patch("worker.os.getuid", return_value=10000, create=True),
+            patch("worker.os.getegid", return_value=10000, create=True),
+        ):
+            shared_mode = stat.S_IFREG | 0o440
+            shared_key = SimpleNamespace(st_mode=shared_mode, st_uid=0, st_gid=10000)
+            self.assertTrue(_bootstrap_api_key_file_is_private(shared_key))
+
+            wrong_group = SimpleNamespace(st_mode=shared_mode, st_uid=0, st_gid=10001)
+            self.assertFalse(_bootstrap_api_key_file_is_private(wrong_group))
+
+            writable_shared = SimpleNamespace(st_mode=stat.S_IFREG | 0o460, st_uid=0, st_gid=10000)
+            self.assertFalse(_bootstrap_api_key_file_is_private(writable_shared))
+
+            world_readable = SimpleNamespace(st_mode=stat.S_IFREG | 0o444, st_uid=0, st_gid=10000)
+            self.assertFalse(_bootstrap_api_key_file_is_private(world_readable))
+
+            worker_private = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=10000, st_gid=10000)
+            self.assertTrue(_bootstrap_api_key_file_is_private(worker_private))
 
     def test_profile_model_env_file_accepts_only_one_api_key_name_and_no_extra_fields(self):
         from worker import _load_profile_model_env
