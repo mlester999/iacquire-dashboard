@@ -189,6 +189,13 @@ describe("internal identity and acknowledgement evidence", () => {
     expect(internalAcknowledgementIsCurrent({ ...currentAcknowledgement, hasAgentPolicyOverride: true })).toBe(false);
   });
 
+  it("keeps acknowledgement current after a later profile check with the same config and inventory", () => {
+    expect(internalAcknowledgementIsCurrent({
+      ...currentAcknowledgement,
+      checkedAt: "2026-10-20T00:01:00.000Z",
+    })).toBe(true);
+  });
+
   it("keeps internal Super Admin acknowledgement valid after the short-lived inventory attestation expires", () => {
     const expiredAt = "2026-10-19T23:59:59.000Z";
     const stillApproved = internalAcknowledgementIsCurrent(currentAcknowledgement);

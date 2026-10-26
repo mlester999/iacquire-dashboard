@@ -12,7 +12,7 @@ import { acknowledgeInternalFullCapabilities } from "@/server/workforce/tool-pol
 import { permissionsFor, roleHasPermission } from "@/lib/permissions";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
-import { agencyUser, createUser } from "./support/fixtures";
+import { addMember, agencyUser, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const KEY = "l".repeat(40);
@@ -59,7 +59,10 @@ async function waitForSettled(jobId: string, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const { rows } = await withSystem((db) =>
-      db.query<{ status: string; result_count: number }>("select status, result_count from ai_work_jobs where id = $1", [jobId]),
+      db.query<{ status: string; result_count: number; failure_code: string | null; failure_message: string | null }>(
+        "select status, result_count, failure_code, failure_message from ai_work_jobs where id = $1",
+        [jobId],
+      ),
     );
     if (rows[0] && ["completed", "failed", "cancelled", "blocked"].includes(rows[0].status)) return rows[0];
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -76,6 +79,7 @@ beforeAll(async () => {
   });
   admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
   agencyOrgId = await ensureAgencyWorkforceRegistry(admin);
+  await addMember(agencyOrgId, admin.id, "owner");
   await withSystem(async (db) => {
     await db.query("insert into usage_limits (org_id) values ($1) on conflict (org_id) do nothing", [agencyOrgId]);
     await db.query("insert into billing_accounts (org_id) values ($1) on conflict (org_id) do nothing", [agencyOrgId]);
@@ -225,7 +229,7 @@ describe("Lead Hunter genuine 6/6 activation", () => {
     });
     expect(created.jobId).toBeTruthy();
     const job = await waitForSettled(created.jobId!);
-    expect(job.status).toBe("completed");
+    expect(job.status, `Research job ended ${job.status}: ${job.failure_code ?? "no failure code"} ${job.failure_message ?? "no failure detail"}`).toBe("completed");
     expect(job.result_count).toBe(2);
     const { rows } = await withSystem((db) =>
       db.query<{ business_name: string; evidence: unknown; org_id: string }>(

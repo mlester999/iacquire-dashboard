@@ -141,12 +141,9 @@ export function internalIdentityIsCurrent(evidence: InternalIdentityEvidence): b
  */
 export function internalAcknowledgementIsCurrent(evidence: InternalAcknowledgementEvidence): boolean {
   const acknowledgedAt = validTimestamp(evidence.acknowledgedAt);
-  const checkedAt = validTimestamp(evidence.checkedAt);
   return Boolean(
     internalIdentityIsCurrent(evidence)
     && acknowledgedAt !== null
-    && checkedAt !== null
-    && acknowledgedAt >= checkedAt
     && evidence.acknowledgedProfile === evidence.expectedProfile
     && evidence.expectedPolicyId
     && evidence.acknowledgedPolicyId === evidence.expectedPolicyId
