@@ -1,5 +1,5 @@
 /**
- * Read-only production activation preflight for migrations 0077–0081.
+ * Read-only production activation preflight for the current workforce release migrations.
  *
  *   NODE_ENV=production DATABASE_SSL_CA_FILE=certs/prod-ca-2021.crt \
  *     node --env-file=.env --conditions=react-server --import tsx \
@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { closeDb, readSystem } from "../src/server/db";
+import { closeDb, MIGRATION_PREREQUISITES, readSystem } from "../src/server/db";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "../src/lib/agents";
 import { agentSettingsSchema } from "../src/lib/agent-settings";
 import { auditRoleConfiguration, recommendedSettings } from "../src/lib/role-playbooks";
@@ -29,7 +29,12 @@ if (!process.argv.includes("--live")) {
   process.exit(2);
 }
 
-const TARGETS = [
+const TARGETS: Array<{
+  version: string;
+  tables: string[];
+  columns: string[];
+  constraints?: string[];
+}> = [
   {
     version: "0077_ai_work_jobs",
     tables: ["ai_work_jobs", "ai_work_events"],
@@ -40,16 +45,8 @@ const TARGETS = [
       "leads.public_contact",
     ],
   },
-  {
-    version: "0078_ai_work_schedules",
-    tables: ["ai_work_schedules"],
-    columns: [],
-  },
-  {
-    version: "0079_ai_work_triggers",
-    tables: ["ai_work_triggers"],
-    columns: [],
-  },
+  { version: "0078_ai_work_schedules", tables: ["ai_work_schedules"], columns: [] },
+  { version: "0079_ai_work_triggers", tables: ["ai_work_triggers"], columns: [] },
   {
     version: "0080_proactive_ai_employees",
     tables: ["ai_work_reports", "ai_work_report_deliveries"],
@@ -60,10 +57,52 @@ const TARGETS = [
       "ai_work_schedules.payload",
     ],
   },
+  { version: "0081_ai_work_job_rls_hardening", tables: ["ai_work_jobs", "ai_work_events"], columns: [] },
   {
-    version: "0081_ai_work_job_rls_hardening",
-    tables: ["ai_work_jobs", "ai_work_events"],
-    columns: [],
+    version: "0084_restricted_hermes_provisioner",
+    tables: [],
+    columns: [
+      "hermes_gateways.provisioner_isolation_verified_at",
+      "agent_instances.hermes_profile_config_version_id",
+      "agent_provisioning_jobs.config_version_id",
+      "agent_provisioning_jobs.source_job_id",
+      "agent_provisioning_jobs.manifest_soul_sha256",
+      "agent_provisioning_jobs.manifest_policy_config_sha256",
+      "agent_provisioning_jobs.manifest_challenge_sha256",
+    ],
+  },
+  {
+    version: "0105_workforce_local_recurrence",
+    tables: [],
+    columns: ["ai_work_schedules.recurrence_rule"],
+  },
+  {
+    version: "0106_workforce_chat_schedule_previews",
+    tables: [],
+    columns: ["chat_conversations.pending_workforce_schedule"],
+  },
+  {
+    version: "0107_workforce_chat_booking_previews",
+    tables: [],
+    columns: ["chat_conversations.pending_workforce_booking"],
+  },
+  {
+    version: "0108_workforce_appointment_changes",
+    tables: [],
+    columns: ["chat_conversations.pending_workforce_appointment_change"],
+    constraints: ["approval_requests.approval_requests_kind_check"],
+  },
+  {
+    version: "0109_employee_health_probe",
+    tables: ["agent_health_probes"],
+    columns: [
+      "agent_instances.health_consecutive_failures",
+      "agent_instances.last_healthy_at",
+      "agent_instances.last_health_failure_at",
+      "agent_instances.last_probe_at",
+      "agent_instances.last_probe_source",
+      "agent_instances.health_alerted_at",
+    ],
   },
 ];
 
@@ -107,6 +146,15 @@ async function main() {
         )`,
       [TARGETS.flatMap((target) => target.columns).map((item) => item.split(".")[0]), TARGETS.flatMap((target) => target.columns).map((item) => item.split(".")[1])],
     );
+    const constraintNames = TARGETS.flatMap((target) => target.constraints ?? []).map((item) => item.split(".")[1]);
+    const constraintRows = constraintNames.length
+      ? await db.query<{ table_name: string; constraint_name: string }>(
+          `select r.relname as table_name, c.conname as constraint_name
+             from pg_constraint c join pg_class r on r.oid=c.conrelid join pg_namespace n on n.oid=r.relnamespace
+            where n.nspname='public' and c.conname=any($1::text[])`,
+          [constraintNames],
+        )
+      : { rows: [] as Array<{ table_name: string; constraint_name: string }> };
     const functionRows = await db.query<{ name: string }>(
       `select n.nspname || '.' || p.proname as name
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -244,23 +292,45 @@ async function main() {
       cliLedger: cliLedger.rows.map((row) => row.version),
       tables: new Set(tableRows.rows.map((row) => row.name)),
       columns: new Set(columnRows.rows.map((row) => `${row.table_name}.${row.column_name}`)),
+      constraints: new Set(constraintRows.rows.map((row) => `${row.table_name}.${row.constraint_name}`)),
       functions: new Set(functionRows.rows.map((row) => row.name)),
       agentKey: agentKey.rows.map((row) => row.def),
     };
   });
 
-  const applied = new Set(data.appLedger.map((row) => row.version));
+  const appApplied = new Set(data.appLedger.map((row) => row.version));
+  const cliPrefixes = new Set(data.cliLedger);
+  const applied = new Set(appApplied);
+  for (const version of localVersions) {
+    if (cliPrefixes.has(version.slice(0, 4))) applied.add(version);
+  }
   const migrations = TARGETS.map((target) => {
     const missingTables = target.tables.filter((table) => !data.tables.has(table));
     const missingColumns = target.columns.filter((column) => !data.columns.has(column));
+    const missingConstraints = (target.constraints ?? []).filter((constraint) => !data.constraints.has(constraint));
+    const version = target.version;
+    const prefix = version.slice(0, 4);
+    const appVersionApplied = appApplied.has(version);
+    const cliPrefixApplied = cliPrefixes.has(prefix);
+    const migrationApplied = appVersionApplied || cliPrefixApplied;
+    const prerequisites = MIGRATION_PREREQUISITES[version] ?? [];
+    const missingPrerequisites = prerequisites.filter((required) => !applied.has(required));
+    const objectsPresent = missingTables.length === 0 && missingColumns.length === 0 && missingConstraints.length === 0;
     return {
-      version: target.version,
-      applied: applied.has(target.version),
-      sha256: hashes[target.version],
+      version,
+      applied: migrationApplied,
+      appLedgerApplied: appVersionApplied,
+      cliPrefixApplied,
+      prerequisites,
+      missingPrerequisites,
+      sha256: hashes[version],
       expectedTables: target.tables,
       missingTables,
       missingColumns,
-      objectsPresent: missingTables.length === 0 && missingColumns.length === 0,
+      expectedConstraints: target.constraints ?? [],
+      missingConstraints,
+      objectsPresent,
+      schemaPresentWithoutLedger: !migrationApplied && objectsPresent,
     };
   });
 
@@ -408,11 +478,17 @@ async function main() {
     ),
   };
 
-  const prefixCollisions = TARGETS.flatMap((target) => {
+  const appPrefixCollisions = TARGETS.flatMap((target) => {
     const prefix = target.version.slice(0, 4);
     return data.appLedger
       .filter((row) => row.version.startsWith(prefix) && row.version !== target.version)
       .map((row) => ({ local: target.version, applied: row.version }));
+  });
+  const cliPrefixCollisions = TARGETS.flatMap((target) => {
+    const prefix = target.version.slice(0, 4);
+    return data.cliLedger
+      .filter((row) => row === prefix && !appApplied.has(target.version))
+      .map((row) => ({ local: target.version, appliedPrefix: row }));
   });
   const appliedTargets = migrations.filter((migration) => migration.applied).map((migration) => migration.version);
   const pendingOther = localVersions.filter((version) => !applied.has(version) && !targetVersions.has(version));
@@ -420,11 +496,11 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     readOnly: true,
-    target: "0077–0081",
+    target: "0077–0081, 0084, 0105–0109",
     appliedTargets,
     pendingTargets,
     pendingOtherLocalMigrations: pendingOther,
-    prefixCollisions,
+    prefixCollisions: { appLedger: appPrefixCollisions, cliLedger: cliPrefixCollisions },
     migrations,
     dependencies,
     agencyCount: data.agencyCount,

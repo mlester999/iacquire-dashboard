@@ -42,13 +42,14 @@ describe("migration file numbers", () => {
   });
 
   it("keeps appointment chat booking previews behind the chat schedule migration", () => {
-    expect(MIGRATION_PREREQUISITES["0089_workforce_chat_booking_previews"]).toContain("0088_workforce_chat_schedule_previews");
+    expect(MIGRATION_PREREQUISITES["0107_workforce_chat_booking_previews"]).toContain("0106_workforce_chat_schedule_previews");
   });
 
   it("keeps the workforce schedule proposal chain behind its schema prerequisites", () => {
-    expect(MIGRATION_PREREQUISITES["0087_workforce_local_recurrence"]).toContain("0078_ai_work_schedules");
-    expect(MIGRATION_PREREQUISITES["0088_workforce_chat_schedule_previews"]).toContain("0087_workforce_local_recurrence");
-    expect(MIGRATION_PREREQUISITES["0090_workforce_appointment_changes"]).toContain("0089_workforce_chat_booking_previews");
+    expect(MIGRATION_PREREQUISITES["0105_workforce_local_recurrence"]).toContain("0078_ai_work_schedules");
+    expect(MIGRATION_PREREQUISITES["0106_workforce_chat_schedule_previews"]).toContain("0105_workforce_local_recurrence");
+    expect(MIGRATION_PREREQUISITES["0108_workforce_appointment_changes"]).toContain("0107_workforce_chat_booking_previews");
+    expect(MIGRATION_PREREQUISITES["0109_employee_health_probe"]).toEqual(["0059_hermes_tool_inventory", "0060_rls_initplan"]);
   });
 
   it("notices a shared number (the check itself works)", () => {

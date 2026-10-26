@@ -9,6 +9,7 @@ import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { createConfigVersion, decideHeldVersion } from "@/server/workforce/service";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 const llm = vi.hoisted(() => ({
   config: null as object | null,
@@ -74,6 +75,7 @@ async function postJson(handler: RouteHandler, body: unknown, token?: string) {
 
 async function onboard(name: string, description: string, service: string, customer: string) {
   const org = await createOrg({ name });
+  await clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared");
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const ctx = ctxFor(owner, org, "owner");

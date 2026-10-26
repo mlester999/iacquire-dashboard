@@ -1,4 +1,4 @@
--- Rollback for 0090_workforce_appointment_changes.sql.
+-- Rollback for 0108_workforce_appointment_changes.sql.
 -- Do not discard a live proposal or approval history to restore the prior schema.
 do $$
 begin
@@ -6,14 +6,14 @@ begin
     select 1 from public.chat_conversations
     where pending_workforce_appointment_change is not null
   ) then
-    raise exception 'resolve pending appointment-change proposals before rolling back 0090';
+    raise exception 'resolve pending appointment-change proposals before rolling back 0108';
   end if;
 
   if exists (
     select 1 from public.approval_requests
     where kind = 'appointment_change'
   ) then
-    raise exception 'archive appointment-change approval history before rolling back 0090';
+    raise exception 'archive appointment-change approval history before rolling back 0108';
   end if;
 end $$;
 

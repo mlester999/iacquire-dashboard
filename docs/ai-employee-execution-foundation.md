@@ -81,7 +81,7 @@ that arrives from another process is detected at the next safe check. Retries ar
   available replacement start. The short-lived preview does not reserve or change the appointment. `confirm appointment change`
   creates an owner/admin approval request; the existing native calendar service or the guarded GoHighLevel update path executes
   only after approval and rechecks the saved appointment snapshot and replacement availability. iAcquire does not send a
-  customer message for these changes. Migration `0090_workforce_appointment_changes` is local to this branch/test database and
+  customer message for these changes. Migration `0108_workforce_appointment_changes` is local to this branch/test database and
   has not been applied in production. The four internal employee configurations and production Chat availability are unchanged.
 - Chat and the Leads workspace show the real job stage. The full panel appears for a new request and in the chat
   turn that created it.
@@ -225,13 +225,14 @@ read-only capability per employee, a cadence (hourly/daily/weekly), a next-run t
 and last job. The Work Board can save a schedule (always paused first), enable or pause it, and
 delete it; every change is audited.
 
-Migration `0087_workforce_local_recurrence.sql` adds an optional local-time recurrence rule. New
+Migration `0105_workforce_local_recurrence.sql` adds an optional local-time recurrence rule. New
 daily and selected-weekday rules use the workspace's IANA timezone and keep their wall-clock time
 across daylight-saving changes; a repeated fall-back time uses its earlier instant, while a
 nonexistent spring-forward time moves to the first valid local minute. Existing hourly/daily/weekly
 interval rows keep their prior behavior. New schedules still save paused, and the migration has
-not been applied to hosted production. The production ledger currently lacks `0084`, so hosted
-migrations remain a separately reviewed release step.
+not been applied to hosted production. The production ledger currently has 98 entries through
+`0104_customer_reply_usage`; `0084` and `0105`–`0109` remain pending and need a separately reviewed
+release step after a compatible backup restore.
 
 A schedule can only create work when **both** switches are on:
 

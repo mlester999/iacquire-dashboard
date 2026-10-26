@@ -349,16 +349,29 @@ describe("reviewed workforce capabilities", () => {
   });
 
   it("compares calendar months in the workspace time zone when the assignment asks for this month", async () => {
-    const monthStart = (await withSystem((db) => db.query<{ month_start: Date }>(
-      "select timezone('America/Los_Angeles', date_trunc('month', timezone('America/Los_Angeles', now()))) as month_start",
-    ))).rows[0].month_start;
+    const bounds = (await withSystem((db) => db.query<{ current_start: Date; previous_start: Date }>(
+      `with local_time as (
+         select timezone('America/Los_Angeles', now()) as now_local
+       ), month_anchor as (
+         select date_trunc('month', now_local) as month_start from local_time
+       )
+       select timezone('America/Los_Angeles', month_start) as current_start,
+              timezone('America/Los_Angeles', month_start - interval '1 month') as previous_start
+         from month_anchor`,
+    ))).rows[0];
+    const baseline = (await withSystem((db) => db.query<{ current: number; previous: number }>(
+      `select count(*) filter (where created_at >= $2 and created_at < now())::int as current,
+              count(*) filter (where created_at >= $3 and created_at < $2)::int as previous
+         from leads where org_id = $1`,
+      [org.id, bounds.current_start, bounds.previous_start],
+    ))).rows[0];
     await withSystem(async (db) => {
       await db.query("update organizations set timezone = 'America/Los_Angeles' where id = $1", [org.id]);
       await db.query(
         `insert into leads (org_id, business_name, review_status, created_at)
          values ($1, 'Before Local Month Boundary', 'pending', $2::timestamptz - interval '30 minutes'),
                 ($1, 'After Local Month Boundary', 'pending', $2::timestamptz + interval '30 minutes')`,
-        [org.id, monthStart],
+        [org.id, bounds.current_start],
       );
     });
     try {
@@ -372,7 +385,12 @@ describe("reviewed workforce capabilities", () => {
       expect(job.status).toBe("completed");
       const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; period?: string; comparisonPeriod?: string }>) ?? [];
       const leads = metrics.find((item) => item.key === "leads_created");
-      expect(leads).toMatchObject({ value: 4, previous: 3, period: "Current calendar month", comparisonPeriod: "Previous calendar month" });
+      expect(leads).toMatchObject({
+        value: baseline.current + 1,
+        previous: baseline.previous + 1,
+        period: "Current calendar month",
+        comparisonPeriod: "Previous calendar month",
+      });
     } finally {
       await withSystem((db) => db.query("update organizations set timezone = 'UTC' where id = $1", [org.id]));
     }

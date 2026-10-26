@@ -77,10 +77,11 @@ describe("AI workforce migration renumbering", () => {
       expect(provisionerColumns.rows).toHaveLength(7);
 
       const workforceTail = [
-        "0087_workforce_local_recurrence",
-        "0088_workforce_chat_schedule_previews",
-        "0089_workforce_chat_booking_previews",
-        "0090_workforce_appointment_changes",
+        "0105_workforce_local_recurrence",
+        "0106_workforce_chat_schedule_previews",
+        "0107_workforce_chat_booking_previews",
+        "0108_workforce_appointment_changes",
+        "0109_employee_health_probe",
       ];
       expect(await runMigrations(driver as never, workforceTail)).toEqual(workforceTail);
       const { rows: testOrgRows } = await driver.query<{ id: string }>(
@@ -103,7 +104,7 @@ describe("AI workforce migration renumbering", () => {
       const rollbackConversationId = rollbackConversationRows[0].id;
 
       const appointmentRollback = fs.readFileSync(
-        path.resolve(process.cwd(), "supabase", "rollbacks", "0090_workforce_appointment_changes.down.sql"),
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0108_workforce_appointment_changes.down.sql"),
         "utf8",
       );
       await driver.query(
@@ -128,8 +129,33 @@ describe("AI workforce migration renumbering", () => {
       );
       expect(approvalKindConstraint.rows[0].definition).not.toContain("appointment_change");
 
+      const healthProbeRollback = fs.readFileSync(
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0109_employee_health_probe.down.sql"),
+        "utf8",
+      );
+      const { rows: probeRows } = await driver.query<{ id: string }>(
+        "insert into agent_health_probes (org_id, agent_instance_id, source, ok, status) values ($1, $2, 'manual', false, 'error') returning id",
+        [testOrgId, rollbackAgentId],
+      );
+      await expect(driver.execScript(healthProbeRollback)).rejects.toThrow(/retain employee health-probe history/);
+      await driver.query("delete from agent_health_probes where id = $1", [probeRows[0].id]);
+      await driver.query("update agent_instances set health_consecutive_failures = 1 where id = $1", [rollbackAgentId]);
+      await expect(driver.execScript(healthProbeRollback)).rejects.toThrow(/retain employee health-probe state/);
+      await driver.query("update agent_instances set health_consecutive_failures = 0 where id = $1", [rollbackAgentId]);
+      await driver.execScript(healthProbeRollback);
+      const remainingHealthProbeSchema = await driver.query<{ count: string }>(
+        `select count(*)::text as count from information_schema.columns
+          where table_schema = 'public' and table_name = 'agent_instances'
+            and column_name in ('health_consecutive_failures', 'last_healthy_at', 'last_health_failure_at', 'last_probe_at', 'last_probe_source', 'health_alerted_at')`,
+      );
+      expect(remainingHealthProbeSchema.rows[0].count).toBe("0");
+      const healthProbeTable = await driver.query<{ present: boolean }>(
+        "select to_regclass('public.agent_health_probes') is not null as present",
+      );
+      expect(healthProbeTable.rows[0].present).toBe(false);
+
       const bookingRollback = fs.readFileSync(
-        path.resolve(process.cwd(), "supabase", "rollbacks", "0089_workforce_chat_booking_previews.down.sql"),
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0107_workforce_chat_booking_previews.down.sql"),
         "utf8",
       );
       await driver.query(
@@ -145,7 +171,7 @@ describe("AI workforce migration renumbering", () => {
       expect(bookingProposalColumn.rows[0].count).toBe("0");
 
       const schedulePreviewRollback = fs.readFileSync(
-        path.resolve(process.cwd(), "supabase", "rollbacks", "0088_workforce_chat_schedule_previews.down.sql"),
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0106_workforce_chat_schedule_previews.down.sql"),
         "utf8",
       );
       await driver.query(
@@ -161,7 +187,7 @@ describe("AI workforce migration renumbering", () => {
       expect(scheduleProposalColumn.rows[0].count).toBe("0");
 
       const recurrenceRollback = fs.readFileSync(
-        path.resolve(process.cwd(), "supabase", "rollbacks", "0087_workforce_local_recurrence.down.sql"),
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0105_workforce_local_recurrence.down.sql"),
         "utf8",
       );
       const { rows: scheduleRows } = await driver.query<{ id: string }>(
