@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
+import { env } from "@/server/env";
 import { appUrl, sendEmail } from "@/server/email";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { hashIp } from "@/server/security/crypto";
@@ -9,7 +10,7 @@ import { firstNameOf, isBlockedDomain, looksLikeEmail, normalizeProspectEmail, t
 import { demoIndustryLabel, isDemoIndustry } from "@/lib/demo/industries";
 import {
   accessOf, canTransition, chatRefusalFor, cleanLine, cleanUtm, effectiveStatus, MAX_BUSINESS_CHARS, MAX_NAME_CHARS, messagesLeft, messageAllowance, NOTICE_VERSION, REFUSAL_COPY,
-  SESSION_DAYS, VERIFICATION_TTL_HOURS, type AccessState, type ChatRefusal, type ProspectStatus,
+  SESSION_DAYS, type AccessState, type ChatRefusal, type ProspectStatus,
 } from "@/lib/demo/rules";
 import { addEvent, addressKey, factsOf, loadProspect, lockProspect, mailboxKey, maskEmail, PROSPECT_COLUMNS, type ProspectRow } from "@/server/demo/core";
 import { notifyProspectTeam, type ProspectNotice } from "@/server/demo/notify";
@@ -41,6 +42,12 @@ export interface DemoContext {
    * Admin's switch alone decides.
    */
   modelReady?: boolean | (() => Promise<boolean>);
+  /**
+   * Set only by the signed server-to-server registration route (src/server/demo/registration.ts), after it has verified the marketing backend's HMAC. That caller's network
+   * address is the marketing server, not the visitor, so counting it against the public per-address rules would throttle every prospect at once (six starts an hour). The
+   * per-mailbox rule still applies. Left out, every rule applies exactly as it does for a browser.
+   */
+  trustedCaller?: "marketing";
 }
 
 async function modelIsReady(ctx: DemoContext): Promise<boolean> {
@@ -65,6 +72,8 @@ const DAY_MS = 86_400_000;
 async function entry(ctx: DemoContext): Promise<Refused | null> {
   if (demoPublicDisabled()) return refuse("unavailable", { retryAfterSeconds: 300 });
   if (!demoDeploymentEnabled()) return refuse("not_available");
+  // A verified server-to-server call is paced by the registration route (per caller and per marketing address), not by this visitor-shaped rule.
+  if (ctx.trustedCaller) return null;
   const pace = await consumeRateLimit(RATE_LIMITS.demoPublicByIp, addressKey(ctx.ip));
   if (!pace.allowed) return refuse("rate_limited", { retryAfterSeconds: pace.retryAfterSeconds });
   return null;
@@ -95,7 +104,7 @@ async function createLink(db: Queryable, prospectId: string, purpose: LinkPurpos
   await db.query("delete from demo_verifications where prospect_id = $1 and purpose = $2 and consumed_at is null", [prospectId, purpose]);
   const token = newDemoToken();
   await db.query("insert into demo_verifications (prospect_id, purpose, token_hash, expires_at, created_at) values ($1, $2, $3, $4::timestamptz, $5::timestamptz)", [
-    prospectId, purpose, hashDemoToken(token), new Date(now.getTime() + VERIFICATION_TTL_HOURS * HOUR_MS).toISOString(), now.toISOString(),
+    prospectId, purpose, hashDemoToken(token), new Date(now.getTime() + env().DEMO_VERIFICATION_TTL_HOURS * HOUR_MS).toISOString(), now.toISOString(),
   ]);
   return token;
 }
@@ -111,7 +120,7 @@ async function sendLink(to: string, token: string, purpose: LinkPurpose): Promis
       text: [
         first ? "Your iAcquire demo is ready to open. It shows what the AI team does, with sample data only." : "Here is your link back to the iAcquire demo.",
         `Open your demo: ${appUrl(`/demo/verify?token=${token}`)}`,
-        `The link works once and expires in ${VERIFICATION_TTL_HOURS} hours. If you did not ask for it, you can ignore this email.`,
+        `The link works once and expires in ${env().DEMO_VERIFICATION_TTL_HOURS} hours. If you did not ask for it, you can ignore this email.`,
       ].join("\n\n"),
     },
     undefined,
@@ -156,8 +165,12 @@ export async function registerProspect(input: RegisterInput, ctx: DemoContext = 
   const closed = await entry(ctx);
   if (closed) return closed;
   const ipHashed = addressKey(ctx.ip);
-  const pace = await consumeRateLimit(RATE_LIMITS.demoStartByIp, ipHashed);
-  if (!pace.allowed) return refuse("rate_limited", { retryAfterSeconds: pace.retryAfterSeconds });
+  // Trusted server-to-server calls are paced by the registration route instead: this address is the marketing server, so a per-address start limit would cap all prospects
+  // together. The per-mailbox rule below still applies to every caller.
+  if (!ctx.trustedCaller) {
+    const pace = await consumeRateLimit(RATE_LIMITS.demoStartByIp, ipHashed);
+    if (!pace.allowed) return refuse("rate_limited", { retryAfterSeconds: pace.retryAfterSeconds });
+  }
 
   const typed = typedEmail(input.email);
   // A bot that filled the hidden field is told it worked and nothing is stored or sent.
@@ -326,7 +339,7 @@ export async function confirmVerification(token: unknown, ctx: DemoContext = {})
     let windowEndsAt = p.window_ends_at ? new Date(p.window_ends_at) : null;
     let firstTime = false;
     if (access === "unverified") {
-      // A place for today first: when none is left nothing is written, and the link still works tomorrow (it lives 48 hours).
+      // A place for today first: when none is left nothing is written, and the link still works tomorrow (within its configured lifetime).
       if (!(await takeStart(db, now, settings.dailyStartCap))) return refuse("daily_cap");
       windowEndsAt = new Date(now.getTime() + settings.windowHours * HOUR_MS);
       await db.query(

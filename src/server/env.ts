@@ -159,6 +159,17 @@ const schema = z.object({
   // The emergency stop: true makes every public demo page and route answer "temporarily unavailable" before any database read, whatever the two switches above say. A prospect
   // who already has a conversation keeps it; the agency's own Prospects screens are not touched. Unset or false (the default) = the two switches above decide.
   DEMO_PUBLIC_DISABLED: bool,
+  // Server-to-server registration from the separate marketing website (docs/demo-external-registration.md). Off unless this is true AND a signing secret is set, so the
+  // endpoint cannot be reached by accident. The secret is the marketing backend's IACQUIREOS_BACKEND_SIGNING_SECRET: server-only, never a NEXT_PUBLIC_ value.
+  DEMO_REGISTRATION_ENABLED: bool,
+  DEMO_REGISTRATION_SIGNING_SECRET: z.preprocess(blankToUndefined, z.string().min(32).max(200).optional()),
+  // The marketing site's own origins, comma-separated. Checked only when a request carries an Origin header (a browser); a server-to-server call normally carries none.
+  // An empty list refuses every request that names an origin. Never a wildcard.
+  DEMO_REGISTRATION_ALLOWED_ORIGINS: z.preprocess(blankToUndefined, z.string().max(1000).optional()),
+  // How far a signed request's timestamp may be from this server's clock, either way. Short: a captured request is useless a few minutes later.
+  DEMO_REGISTRATION_MAX_SKEW_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
+  // How long an emailed demo link works (and it works once). Independent of the 24-hour demo window: a link that is never opened expires on its own. 48 hours by default.
+  DEMO_VERIFICATION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(48),
   // The master switch for anything that creates or sends a signing request at a REAL signing service (PandaDoc): off (the default), a request for a real connection waits
   // untouched and nothing leaves the machine. Reading what a service reports (checking a pasted key, a request's status, fetching a signed copy) is not a write and is not
   // held by it. The simulated service reaches nothing and is not affected; it is refused in production. A founder-approved switch, like the other provider write switches.
@@ -207,6 +218,24 @@ export function env(): Env {
   const leaks = checkSupabaseConfig(process.env, false).filter((p) => p.code === "secret_in_public_var");
   if (leaks.length) throw new Error(leaks.map((p) => p.message).join(" "));
   if (value.SECRET_STORE === "test-memory" && value.NODE_ENV !== "test") throw new Error("SECRET_STORE=test-memory is allowed only in tests.");
+  // The external demo registration endpoint is open to another server, so a half-configured deployment is refused at boot rather than failing (or trusting) per request.
+  if (value.DEMO_REGISTRATION_ENABLED) {
+    if (!value.DEMO_REGISTRATION_SIGNING_SECRET) {
+      throw new Error("DEMO_REGISTRATION_ENABLED requires DEMO_REGISTRATION_SIGNING_SECRET (at least 32 characters, server-only; never a NEXT_PUBLIC_ value).");
+    }
+    for (const origin of (value.DEMO_REGISTRATION_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+      let url: URL;
+      try {
+        url = new URL(origin);
+      } catch {
+        throw new Error(`DEMO_REGISTRATION_ALLOWED_ORIGINS contains an invalid origin (${origin}).`);
+      }
+      const local = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+      if (url.protocol !== "https:" && !(value.NODE_ENV !== "production" && local)) {
+        throw new Error(`DEMO_REGISTRATION_ALLOWED_ORIGINS must be https origins (http is allowed only for localhost outside production): ${origin}`);
+      }
+    }
+  }
   if (value.PAYMONGO_API_BASE) {
     let host = "";
     try { host = new URL(value.PAYMONGO_API_BASE).hostname; } catch { host = ""; }

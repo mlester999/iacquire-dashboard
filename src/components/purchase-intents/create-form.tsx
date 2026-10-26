@@ -10,14 +10,25 @@ import { createPurchaseIntentAction } from "@/app/actions/purchase-intents";
 
 // The invitation form. It shows the public link once, in this answer: the server stores only its hash and cannot show it again. A lost link is rotated from the
 // intent's page.
+//
+// `defaults` comes from a demo prospect when a Super Admin follows "Create purchase invitation" on that prospect: the same existing service, the same frozen price and
+// the same public /purchase/<token> page. Nothing is created by the demo itself.
 
-export function CreatePurchaseIntentForm() {
-  const [buyerName, setBuyerName] = React.useState("");
-  const [buyerEmail, setBuyerEmail] = React.useState("");
-  const [company, setCompany] = React.useState("");
-  const [industry, setIndustry] = React.useState("");
+export interface CreatePurchaseIntentDefaults {
+  buyerName?: string;
+  buyerEmail?: string;
+  company?: string;
+  industry?: string;
+  timezone?: string;
+}
+
+export function CreatePurchaseIntentForm({ defaults }: { defaults?: CreatePurchaseIntentDefaults } = {}) {
+  const [buyerName, setBuyerName] = React.useState(defaults?.buyerName ?? "");
+  const [buyerEmail, setBuyerEmail] = React.useState(defaults?.buyerEmail ?? "");
+  const [company, setCompany] = React.useState(defaults?.company ?? "");
+  const [industry, setIndustry] = React.useState(defaults?.industry ?? "");
   const [website, setWebsite] = React.useState("");
-  const [timezone, setTimezone] = React.useState("America/Chicago");
+  const [timezone, setTimezone] = React.useState(defaults?.timezone ?? "America/Chicago");
   const [maintenanceSelected, setMaintenanceSelected] = React.useState(false);
   const [autoProvision, setAutoProvision] = React.useState(false);
   const [saving, setSaving] = React.useState(false);

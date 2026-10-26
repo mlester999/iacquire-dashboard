@@ -101,6 +101,12 @@ export function listHref(query: Partial<ListQuery>): string {
   return s ? `/admin/prospects?${s}` : "/admin/prospects";
 }
 
+/**
+ * Where a Super Admin creates a purchase invitation for a prospect who pressed Buy now. It is the existing purchase-intent screen with the form pre-filled from the
+ * demo; the demo never creates an intent, a checkout or a workspace itself.
+ */
+export const purchaseInviteHref = (prospectId: string): string => `/admin/purchase-intents?prospect=${encodeURIComponent(prospectId)}`;
+
 // ---------------------------------------------------------------------------
 // Which buttons
 // ---------------------------------------------------------------------------

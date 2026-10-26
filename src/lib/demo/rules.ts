@@ -10,8 +10,7 @@ export type ProspectStatus = (typeof PROSPECT_STATUSES)[number];
 /** The version of the notice a prospect ticks. The wording is counsel's to approve; this says which text was shown. A PROPOSAL until then. */
 export const NOTICE_VERSION = "draft-2026-10";
 
-/** An emailed link stops working after this long (and works once). */
-export const VERIFICATION_TTL_HOURS = 48;
+/** An emailed link stops working after DEMO_VERIFICATION_TTL_HOURS (48 by default) and works once. The lifetime lives in the environment schema, not here, so a deployment can shorten it. */
 /** A prospect's session lasts this long. Reading the conversation again after the window is over works until it ends; a new link is sent only while a window is open. */
 export const SESSION_DAYS = 7;
 /** Someone who never confirmed their address is cleared after this many days. */

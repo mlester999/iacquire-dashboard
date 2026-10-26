@@ -166,6 +166,12 @@ export const CRM_QA_ENV = {
   // Set CRM_QA_DEMO=1 when starting the QA server to let a browser run open /demo (the Super Admin still has to switch it on in the settings, as in a real deployment).
   DEMO_ENABLED: process.env.CRM_QA_DEMO === "1" ? "true" : "false",
   DEMO_PUBLIC_DISABLED: "false",
+  // The signed marketing registration stays off in a browser QA run: the demo's own browser form is what those runs drive, and no shared secret belongs in a QA environment.
+  DEMO_REGISTRATION_ENABLED: "false",
+  DEMO_REGISTRATION_SIGNING_SECRET: "",
+  DEMO_REGISTRATION_ALLOWED_ORIGINS: "",
+  DEMO_REGISTRATION_MAX_SKEW_SECONDS: "300",
+  DEMO_VERIFICATION_TTL_HOURS: "48",
   // Electronic signatures: no real signing service is ever reached in a QA run; the simulated one is what QA uses.
   ESIGN_WRITES_ENABLED: "false",
   // Customers' payments: no payment provider is ever called and nothing live is open. The simulated provider and its testing checkout page are what QA uses.
@@ -178,6 +184,7 @@ export const MUST_BE_BLANK = [
   "DATABASE_URL", "DATABASE_SSL_CA", "DATABASE_SSL_CA_FILE",
   "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY",
   "APP_ENCRYPTION_KEY_PREVIOUS", "INTEGRATION_ALLOWED_HOSTS",
+  "DEMO_REGISTRATION_SIGNING_SECRET",
   "RESEND_API_KEY", "RESEND_WEBHOOK_SECRET", "TWILIO_WEBHOOK_BASE_URL", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "GHL_WEBHOOK_PUBLIC_KEY",
   "LLM_BASE_URL", "LLM_API_KEY", "N8N_BASE_URL", "N8N_API_KEY", "SLACK_SUPPORT_WEBHOOK_URL",
   "GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET", "MICROSOFT_CALENDAR_CLIENT_ID", "MICROSOFT_CALENDAR_CLIENT_SECRET",

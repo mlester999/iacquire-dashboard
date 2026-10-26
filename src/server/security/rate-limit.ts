@@ -171,6 +171,10 @@ export const RATE_LIMITS = {
   demoMessageByProspect: { name: "demo:message:prospect", limit: 6, windowSeconds: 60 },
   demoMessageByIp: { name: "demo:message:ip", limit: 40, windowSeconds: 3600 },
   demoActionByProspect: { name: "demo:action:prospect", limit: 20, windowSeconds: 3600 },
+  // The signed server-to-server registration from the marketing website. Only a caller holding the shared secret reaches these, so their purpose is a bound on a broken or
+  // compromised marketing backend, not on a visitor: the per-address rule counts this application, and the per-mailbox rule in registerProspect still counts each prospect.
+  demoRegisterByCaller: { name: "demo:register:caller", limit: 240, windowSeconds: 60 },
+  demoRegisterByIp: { name: "demo:register:ip", limit: 120, windowSeconds: 60 },
   // Staff Messages (src/server/staff-messages), per signed-in agency person. Sending, editing and deleting share one rule; reactions, marking read, searching, starting or changing a
   // conversation and uploading a file each have their own, so a busy channel never uses up someone's search allowance. The numbers are proposals (docs/staff-messages.md).
   staffMessageSendByUser: { name: "staffmsg:send:user", limit: 90, windowSeconds: 60 },

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Badge, Card } from "@/components/ui/primitives";
 import { ProspectActions } from "@/components/demo/admin/prospect-actions";
-import { availableActions, describeEvent, STATUS_LABEL, STATUS_TONE, windowWords } from "@/lib/demo/admin-view";
+import { availableActions, describeEvent, purchaseInviteHref, STATUS_LABEL, STATUS_TONE, windowWords } from "@/lib/demo/admin-view";
 import { formatDateTime } from "@/lib/utils";
 import type { ProspectDetail } from "@/server/demo/admin";
 
@@ -96,7 +96,21 @@ export function ProspectDetailView({
           </Fact>
           <Fact label="Extended">{p.extendedCount === 0 ? "Never" : `${p.extendedCount} time${p.extendedCount === 1 ? "" : "s"}, ${p.extendedHours} hours in all`}</Fact>
           <Fact label="Asked for a consultation">{p.consultationRequestedAt ? `${formatDateTime(p.consultationRequestedAt, timeZone)}${p.consultationDoneAt ? `, held ${formatDateTime(p.consultationDoneAt, timeZone)}` : ", not held yet"}` : "No"}</Fact>
-          <Fact label="Pressed Buy now">{p.purchaseStartedAt ? formatDateTime(p.purchaseStartedAt, timeZone) : "No"}</Fact>
+          <Fact label="Pressed Buy now">
+            {p.purchaseStartedAt ? (
+              <>
+                {formatDateTime(p.purchaseStartedAt, timeZone)}
+                {caps.manage && !p.erased && (
+                  <>
+                    {" · "}
+                    <Link href={purchaseInviteHref(p.id)} className="text-primary hover:underline">
+                      Create purchase invitation
+                    </Link>
+                  </>
+                )}
+              </>
+            ) : "No"}
+          </Fact>
           <Fact label="Followed by">{p.ownerName ?? "Nobody yet"}</Fact>
           <Fact label="Agreed to the notice">
             {p.consentAt ? `${formatDateTime(p.consentAt, timeZone)} (version ${p.consentVersion ?? "unknown"})` : "No record"}

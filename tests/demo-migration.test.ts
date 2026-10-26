@@ -14,7 +14,7 @@ import { rows } from "./support/demo";
 class Done extends Error {}
 const up = readFileSync("supabase/migrations/0100_demo_funnel.sql", "utf8");
 const down = readFileSync("supabase/rollbacks/0100_demo_funnel.down.sql", "utf8");
-const TABLES = ["demo_settings", "demo_prospects", "demo_verifications", "demo_sessions", "demo_messages", "demo_events", "demo_usage_days"];
+const TABLES = ["demo_settings", "demo_prospects", "demo_verifications", "demo_sessions", "demo_messages", "demo_events", "demo_usage_days", "demo_registration_requests"];
 
 /** Splits a script into statements, keeping `$$ ... $$` bodies whole (the test driver runs one statement per call). */
 function statements(sql: string): string[] {
@@ -44,7 +44,7 @@ const insertProspect = async () => {
 };
 
 describe("the schema", () => {
-  it("has the seven tables with row-level security on and no policy, and no table was left without one", async () => {
+  it("has the eight tables with row-level security on and no policy, and no table was left without one", async () => {
     const found = await rows<{ relname: string; relrowsecurity: boolean }>("select relname, relrowsecurity from pg_class where relname like 'demo\\_%' and relkind = 'r' order by relname");
     expect(found.map((r) => r.relname)).toEqual([...TABLES].sort());
     expect(found.every((r) => r.relrowsecurity)).toBe(true);
@@ -280,7 +280,8 @@ describe("the rollback", () => {
     withSystem(async (db) => {
       await before(db);
       for (const stmt of statements(down)) await db.query(stmt);
-      const gone = await db.query<{ n: number }>("select count(*)::int as n from pg_class where relname like 'demo\\_%' and relkind = 'r'");
+      // 0100's own tables are gone; 0105's replay ledger belongs to a later migration and is not 0100's to remove.
+      const gone = await db.query<{ n: number }>("select count(*)::int as n from pg_class where relname like 'demo\\_%' and relkind = 'r' and relname <> 'demo_registration_requests'");
       const permissions = await db.query<{ n: number }>("select count(*)::int as n from role_permissions where permission like 'agency.prospects.%'");
       const kinds = await db.query<{ def: string }>("select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'notifications_kind_check'");
       throw Object.assign(new Done(), { gone: gone.rows[0].n, permissions: permissions.rows[0].n, kinds: kinds.rows[0].def });

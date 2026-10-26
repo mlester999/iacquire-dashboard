@@ -28,7 +28,7 @@ export const PUBLIC_COPY: Record<PublicRefusal, string> = {
 };
 
 /** What the form says after any request that passed the checks. It is the same whether or not the address was known, so the form cannot be used to find out who has asked for a demo. */
-export const LINK_SENT_COPY = "If this address can open a demo, we have emailed it a link. The link works once and expires in 48 hours.";
+export const LINK_SENT_COPY = "If this address can open a demo, we have emailed it a link. The link works once and expires after a short time.";
 
 /** The few words about a field that failed. */
 export const FIELD_COPY = {
