@@ -304,9 +304,14 @@ jobs:
           if ! "${compose_base[@]}" up --no-build -d; then
             echo "CLIENT_RUNTIME_START_FAILURE: Compose could not start the candidate gateway."
             "${compose_base[@]}" ps --all || true
+            if [[ -f "$HERMES_ACCEPTANCE_DIR/client-config.yaml" ]]; then
+              echo "CLIENT_CONFIG_SOURCE=present:$(stat -c '%u:%g:%a' "$HERMES_ACCEPTANCE_DIR/client-config.yaml")"
+            else
+              echo "CLIENT_CONFIG_SOURCE=missing"
+            fi
             home_volume="${HERMES_ACCEPTANCE_PROJECT}_hermes_home"
             probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"
-            home_probe="$(docker run --rm --network none --user 0:0 --cap-drop=ALL \
+            home_probe="$(docker run --rm --network none --user 10000:10000 --cap-drop=ALL \
               --security-opt no-new-privileges:true --read-only \
               --mount "type=volume,source=$home_volume,target=/opt/data,readonly" \
               --mount "type=bind,source=$HERMES_ACCEPTANCE_DIR/client-config.yaml,target=/opt/data/config.yaml,readonly" \

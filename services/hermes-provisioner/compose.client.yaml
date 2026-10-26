@@ -4,10 +4,12 @@ services:
   init-hermes-home:
     image: ${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}
     entrypoint: ["/bin/sh", "-ec"]
+    # Restricted-root Hermes bootstrap must search /opt/data; files keep their own modes.
     command:
       - >-
         test -d /opt/data;
         test -w /opt/data;
+        chmod 0711 /opt/data;
         if [ -L /opt/data/config.yaml ]; then exit 1; fi;
         if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi;
         if [ ! -e /opt/data/config.yaml ]; then touch /opt/data/config.yaml; chmod 0600 /opt/data/config.yaml; fi;

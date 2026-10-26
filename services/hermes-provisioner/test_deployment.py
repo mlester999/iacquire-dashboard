@@ -98,7 +98,8 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         workflow = (
             ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("--network none --user 0:0 --cap-drop=ALL", workflow)
+        self.assertIn("--network none --user 10000:10000 --cap-drop=ALL", workflow)
+        self.assertIn('CLIENT_CONFIG_SOURCE=present:', workflow)
         self.assertIn('CLIENT_HOME_OWNER_MODE="', workflow)
         self.assertIn('CLIENT_CONFIG_VISIBLE=yes', workflow)
         self.assertIn('CLIENT_CONFIG_READABLE=yes', workflow)
@@ -159,6 +160,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             {"hermes_home"},
         )
         command = " ".join(initializer["command"])
+        self.assertIn("chmod 0711 /opt/data", command)
         self.assertIn("if [ -L /opt/data/config.yaml ]; then exit 1; fi", command)
         self.assertIn("if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi", command)
         self.assertIn("touch /opt/data/config.yaml", command)
