@@ -39,6 +39,16 @@ class SafeRuntimeDiagnosticsTests(unittest.TestCase):
         self.assertIn("permission_denied_path_run_s6_container_environment", codes)
         self.assertNotIn("/run/s6/container_environment/KEY", ",".join(codes))
 
+    def test_classifies_standard_hermes_data_targets_without_echoing_path_values(self):
+        codes = classify_runtime_log(
+            "cp: cannot create regular file '/opt/data/config.yaml': "
+            "Read-only file system"
+        )
+
+        self.assertIn("read_only_write_command_cp", codes)
+        self.assertIn("read_only_write_path_opt_data_config", codes)
+        self.assertNotIn("/opt/data/config.yaml", ",".join(codes))
+
     def test_preserves_runtime_secret_codes_without_echoing_other_log_text(self):
         codes = classify_runtime_log(
             "Hermes client runtime stopped: api_key_secret_unavailable\n"

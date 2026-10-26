@@ -40,6 +40,10 @@ COMMANDS = (
 
 PATH_ROOTS = (
     ("etc", "/etc"),
+    ("opt_data_config", "/opt/data/config.yaml"),
+    ("opt_data_env", "/opt/data/.env"),
+    ("opt_data_soul", "/opt/data/soul.md"),
+    ("opt_data_profiles", "/opt/data/profiles"),
     ("opt_data", "/opt/data"),
     ("opt_hermes", "/opt/hermes"),
     ("run_s6_container_environment", "/run/s6/container_environment"),
