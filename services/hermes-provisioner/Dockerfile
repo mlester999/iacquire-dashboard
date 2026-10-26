@@ -7,6 +7,8 @@ ARG HERMES_SOURCE_COMMIT=bf0203a794a07aac3ff764972ab9087baa4e4f4e
 ARG HERMES_CATALOG_REVISION=v0225-catalog-v1
 RUN /opt/hermes/.venv/bin/python -c 'import re,subprocess,sys; h=subprocess.run(["/opt/hermes/bin/hermes","--version"],check=True,capture_output=True,text=True); hv=h.stdout+h.stderr; n=subprocess.run(["/usr/local/bin/node","--version"],check=True,capture_output=True,text=True).stdout.strip(); ok=re.search(r"(?<![0-9.])v?0\.22\.5(?![0-9.])",hv) and n=="v26.12.1"; sys.exit(0 if ok else f"Expected Hermes v0.22.5 with Node v26.12.1, got Hermes {hv.strip()} and Node {n}")'
 USER root
+RUN install -d -o 10000 -g 10000 -m 0711 /opt/data && \
+    test "$(stat -c '%u:%g:%a' /opt/data)" = "10000:10000:711"
 COPY --chown=0:0 services/hermes-provisioner/catalog-overlay-v0225/ /opt/iacquire-hermes/catalog-overlay/
 RUN /opt/hermes/.venv/bin/python /opt/iacquire-hermes/catalog-overlay/verify_overlay.py /opt/hermes /opt/iacquire-hermes/catalog-overlay
 RUN test -x /opt/hermes/bin/hermes && test -x /opt/hermes/docker/entrypoint-dispatch.sh

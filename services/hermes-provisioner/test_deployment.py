@@ -77,6 +77,23 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertTrue(mounts["/run/secrets/hermes_api_key"]["read_only"])
         self.assertNotIn("/docker/hermes-agent-wpwm/data", str(hermes["volumes"]))
 
+    def test_client_home_allows_bootstrap_path_search_without_extra_capabilities(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertRegex(
+            dockerfile,
+            r"(?m)^RUN install -d -o 10000 -g 10000 -m 0711 /opt/data && \\\n\s+test \"\$\(stat -c '%u:%g:%a' /opt/data\)\" = \"10000:10000:711\"$",
+        )
+        hermes = self.services["hermes-client"]
+        self.assertEqual(hermes["cap_drop"], ["ALL"])
+        self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
+        self.assertTrue(
+            next(
+                mount["read_only"]
+                for mount in hermes["volumes"]
+                if isinstance(mount, dict) and mount.get("target") == "/opt/data/config.yaml"
+            )
+        )
+
     def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
         hermes = self.services["hermes-client"]
         self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])
