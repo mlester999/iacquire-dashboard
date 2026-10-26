@@ -11,7 +11,7 @@ import {
   type Tone,
 } from "@/lib/agent-settings";
 import { immutablePolicy, policyVersionFor, ROLE_OPERATING_STANDARDS, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
-import { internalProspectingText } from "@/lib/internal-business-profile";
+import { INTERNAL_BUSINESS, internalProspectingText } from "@/lib/internal-business-profile";
 import { detectRiskFlags } from "@/lib/instruction-risk";
 
 // ---------------------------------------------------------------------------
@@ -175,6 +175,10 @@ export function compileAgentConfig(input: {
   if (input.role === "lead_hunter" && c.orgKind === "agency" && !sanitizeClientText(settings.targetCustomers, 1000)) {
     // Internal workspace only. A client with no confirmed targeting must ask, not inherit iAcquire's.
     fields.push(["Approved internal prospecting profile", internalProspectingText()]);
+  }
+  if (input.role === "sales_assistant" && c.orgKind === "agency") {
+    // Keep the approved iAcquire commercial terms available to internal sales drafts only.
+    fields.push(["Approved internal commercial context", INTERNAL_BUSINESS.commercialContext]);
   }
   for (const q of meta.questions) {
     fields.push([q.label, sanitizeClientText(settings.roleAnswers[q.id], 1000)]);

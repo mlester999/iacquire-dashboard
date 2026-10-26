@@ -6,6 +6,7 @@ import { withSystem } from "@/server/db";
 import { createConfigVersion, rollbackToVersion, isReservedProfile } from "@/server/workforce/service";
 import { restrictedToolsIn } from "@/server/integrations/hermes/client";
 import { INTERNAL_POLICY_VERSION, POLICY_VERSION } from "@/server/workforce/policy";
+import { INTERNAL_BUSINESS } from "@/lib/internal-business-profile";
 import { createOrg, agentId, createUser } from "./support/fixtures";
 
 const company = { companyName: "Lakeside Dental", description: "Family dental clinic", services: "Cleanings, whitening" };
@@ -43,6 +44,27 @@ describe("configuration compiler", () => {
     expect(c.instructions).not.toContain("Never discuss iAcquire's internal systems");
     expect(c.instructions.indexOf("## Agency policy")).toBeGreaterThan(c.instructions.indexOf("</workspace_context>"));
     expect(c.instructions).toContain("- crm.read_contacts");
+  });
+
+  it("gives only the internal Sales Assistant the approved iAcquire commercial context", () => {
+    const settings = defaultSettings("sales_assistant");
+    const internal = compileAgentConfig({
+      role: "sales_assistant",
+      settings,
+      company: { companyName: "iAcquire", orgKind: "agency" },
+      version: 1,
+      allowedTools: [],
+    });
+    const client = compileAgentConfig({
+      role: "sales_assistant",
+      settings,
+      company: { companyName: "Lakeside Dental", orgKind: "client" },
+      version: 1,
+      allowedTools: [],
+    });
+
+    expect(internal.instructions).toContain(INTERNAL_BUSINESS.commercialContext);
+    expect(client.instructions).not.toContain(INTERNAL_BUSINESS.commercialContext);
   });
 
   it("sanitizes agency workspace-context delimiters supplied as free text", () => {
