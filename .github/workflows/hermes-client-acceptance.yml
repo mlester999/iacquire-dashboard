@@ -305,11 +305,12 @@ jobs:
             echo "CLIENT_RUNTIME_START_FAILURE: Compose could not start the candidate gateway."
             "${compose_base[@]}" ps --all || true
             home_volume="${HERMES_ACCEPTANCE_PROJECT}_hermes_home"
+            probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"
             home_probe="$(docker run --rm --network none --user 0:0 --cap-drop=ALL \
               --security-opt no-new-privileges:true --read-only \
               --mount "type=volume,source=$home_volume,target=/opt/data,readonly" \
               --mount "type=bind,source=$HERMES_ACCEPTANCE_DIR/client-config.yaml,target=/opt/data/config.yaml,readonly" \
-              --entrypoint /bin/sh "$IACQUIRE_HERMES_IMAGE" -c '
+              --entrypoint /bin/sh "$probe_image" -c '
                 printf "CLIENT_HOME_OWNER_MODE="
                 stat -c "%u:%g:%a" /opt/data 2>/dev/null || printf "unknown\n"
                 if [ -f /opt/data/config.yaml ]; then echo "CLIENT_CONFIG_VISIBLE=yes"; else echo "CLIENT_CONFIG_VISIBLE=no"; fi

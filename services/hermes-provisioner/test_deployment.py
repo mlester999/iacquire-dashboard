@@ -104,6 +104,11 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertIn('CLIENT_CONFIG_READABLE=yes', workflow)
         self.assertIn('^CLIENT_HOME_OWNER_MODE=([0-9:]+|unknown)$', workflow)
         self.assertIn('^CLIENT_CONFIG_(VISIBLE|READABLE)=(yes|no)$', workflow)
+        self.assertIn(
+            'probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"',
+            workflow,
+        )
+        self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
 
     def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
         hermes = self.services["hermes-client"]
