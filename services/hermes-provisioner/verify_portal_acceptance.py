@@ -41,30 +41,30 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def regular_file(path: Path, expected_mode: int = 0o600) -> os.stat_result:
+def regular_file(path: Path, expected_mode: int = 0o600, label: str = "private_file") -> os.stat_result:
     require(not path.is_symlink(), "unexpected_symlink")
     info = path.stat()
     require(stat.S_ISREG(info.st_mode), "expected_regular_file")
-    require(info.st_uid == os.getuid(), "file_owner_mismatch")
-    require(info.st_gid == os.getgid(), "file_group_mismatch")
-    require(stat.S_IMODE(info.st_mode) == expected_mode, "private_file_mode_mismatch")
+    require(info.st_uid == os.getuid(), f"{label}_owner_mismatch")
+    require(info.st_gid == os.getgid(), f"{label}_group_mismatch")
+    require(stat.S_IMODE(info.st_mode) == expected_mode, f"{label}_mode_mismatch")
     return info
 
 
-def read_private_text(path: Path, expected_mode: int = 0o600) -> str:
-    regular_file(path, expected_mode)
+def read_private_text(path: Path, expected_mode: int = 0o600, label: str = "private_file") -> str:
+    regular_file(path, expected_mode, label)
     return path.read_text(encoding="utf-8")
 
 
-def read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(read_private_text(path))
+def read_json(path: Path, label: str = "private_file") -> dict[str, Any]:
+    value = json.loads(read_private_text(path, label=label))
     require(isinstance(value, dict), "invalid_json_object")
     return value
 
 
-def env_values(path: Path) -> dict[str, str]:
+def env_values(path: Path, label: str = "private_file") -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in read_private_text(path).splitlines():
+    for line in read_private_text(path, label=label).splitlines():
         name, separator, value = line.partition("=")
         require(bool(separator) and name not in values, "profile_env_invalid")
         values[name] = value
@@ -120,11 +120,11 @@ def main() -> dict[str, int | str]:
         config_path = profile_dir / "config.yaml"
         marker_path = profile_dir / ".iacquire-provisioner.json"
         key_path = profile_dir / ".env"
-        soul = read_private_text(soul_path)
-        regular_file(config_path)
+        soul = read_private_text(soul_path, label="profile_soul")
+        regular_file(config_path, label="profile_config")
         config = config_path.read_bytes()
-        marker = read_json(marker_path)
-        values = env_values(key_path)
+        marker = read_json(marker_path, label="profile_marker")
+        values = env_values(key_path, label="profile_key")
 
         require(sha256(soul.encode("utf-8")) == row.get("soulSha256"), "effective_soul_digest_mismatch")
         require(sha256(config) == row.get("effectiveConfigSha256"), "effective_config_digest_mismatch")
@@ -187,18 +187,18 @@ def main() -> dict[str, int | str]:
     require(wrong_profile_key_denials == 132 and cross_tenant_denials == 72, "profile_key_isolation_count_mismatch")
 
     model_config = json.loads(
-        read_private_text(Path("/run/secrets/profile_model_env.json"), expected_mode=0o400)
+        read_private_text(Path("/run/secrets/profile_model_env.json"), expected_mode=0o400, label="model_secret")
     )
     secret_values = [
-        read_private_text(Path("/run/secrets/provisioner_token"), expected_mode=0o400).strip(),
-        read_private_text(Path("/run/secrets/hermes_api_key"), expected_mode=0o400).strip(),
+        read_private_text(Path("/run/secrets/provisioner_token"), expected_mode=0o400, label="provisioner_token").strip(),
+        read_private_text(Path("/run/secrets/hermes_api_key"), expected_mode=0o400, label="hermes_api_key").strip(),
         str(model_config.get("value", "")),
         *api_keys,
     ]
     require(all(len(value) >= 16 for value in secret_values), "synthetic_secret_missing")
 
     audit_path = STATE / "audit.jsonl"
-    regular_file(audit_path)
+    regular_file(audit_path, label="worker_audit")
     audit_text = audit_path.read_text(encoding="utf-8")
     require(all(value not in audit_text for value in secret_values), "audit_secret_leak")
     matching: list[dict[str, Any]] = []
