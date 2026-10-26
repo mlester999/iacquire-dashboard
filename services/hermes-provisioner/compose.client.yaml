@@ -1,6 +1,29 @@
 name: iacquire-client-hermes
 
 services:
+  init-hermes-home:
+    image: ${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        test -d /opt/data;
+        test -w /opt/data;
+        if [ -L /opt/data/config.yaml ]; then exit 1; fi;
+        if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi;
+        if [ ! -e /opt/data/config.yaml ]; then touch /opt/data/config.yaml; chmod 0600 /opt/data/config.yaml; fi;
+        test -f /opt/data/config.yaml
+    network_mode: none
+    user: "10000:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    volumes:
+      - hermes_home:/opt/data
+    restart: "no"
+
   hermes-client:
     image: ${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}
     build:
@@ -12,6 +35,9 @@ services:
     command: ["gateway", "run"]
     restart: unless-stopped
     init: true
+    depends_on:
+      init-hermes-home:
+        condition: service_completed_successfully
     environment:
       HERMES_HOME: /opt/data
       HERMES_UID: "10000"
@@ -70,8 +96,13 @@ services:
     command:
       - >-
         mkdir -p /opt/data/iacquire-provisioner-state /opt/data/profiles;
+        if [ -L /opt/data/config.yaml ]; then exit 1; fi;
+        if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi;
+        if [ ! -e /opt/data/config.yaml ]; then touch /opt/data/config.yaml; fi;
         chown 10000:10000 /opt/data /opt/data/iacquire-provisioner-state /opt/data/profiles;
-        chmod 0700 /opt/data/iacquire-provisioner-state /opt/data/profiles
+        chmod 0700 /opt/data/iacquire-provisioner-state /opt/data/profiles;
+        chown 10000:10000 /opt/data/config.yaml;
+        chmod 0600 /opt/data/config.yaml
     network_mode: none
     user: "0:0"
     read_only: true

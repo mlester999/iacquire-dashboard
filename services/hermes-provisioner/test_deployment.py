@@ -141,6 +141,32 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         command = " ".join(initializer["command"])
         self.assertRegex(command, r"chown 10000:10000 [^;]*/opt/data/profiles")
         self.assertRegex(command, r"chmod 0700 [^;]*/opt/data/profiles")
+        self.assertIn("touch /opt/data/config.yaml", command)
+        self.assertIn("chmod 0600 /opt/data/config.yaml", command)
+
+    def test_hermes_home_initializer_prepares_readonly_config_bind_target_safely(self):
+        initializer = self.services["init-hermes-home"]
+        self.assertEqual(initializer["network_mode"], "none")
+        self.assertEqual(initializer["user"], "10000:10000")
+        self.assertTrue(initializer["read_only"])
+        self.assertEqual(initializer["cap_drop"], ["ALL"])
+        self.assertIn("no-new-privileges:true", initializer["security_opt"])
+        self.assertEqual(
+            {
+                mount.get("source") if isinstance(mount, dict) else mount.split(":", 1)[0]
+                for mount in initializer["volumes"]
+            },
+            {"hermes_home"},
+        )
+        command = " ".join(initializer["command"])
+        self.assertIn("if [ -L /opt/data/config.yaml ]; then exit 1; fi", command)
+        self.assertIn("if [ -d /opt/data/config.yaml ]; then rmdir /opt/data/config.yaml; fi", command)
+        self.assertIn("touch /opt/data/config.yaml", command)
+        self.assertIn("chmod 0600 /opt/data/config.yaml", command)
+        self.assertEqual(
+            self.services["hermes-client"]["depends_on"]["init-hermes-home"]["condition"],
+            "service_completed_successfully",
+        )
 
     def test_model_provider_secret_is_mounted_only_into_the_worker(self):
         def targets(service):
