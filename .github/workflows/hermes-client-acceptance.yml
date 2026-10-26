@@ -121,7 +121,7 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/repository/services/hermes-provisioner,readonly" \
             --workdir /repository/services/hermes-provisioner --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
-            test_worker test_deployment test_acceptance_harness test_portal_security_boundary >"$test_log" 2>&1; then
+            test_worker test_deployment test_acceptance_harness test_portal_security_boundary test_runtime_diagnostics >"$test_log" 2>&1; then
             summary="$(grep -E '^Ran [0-9]+ tests? ' "$test_log" | tail -n1 | sed -E 's/ in .*//')"
             [[ -n "$summary" ]]
             echo "CANDIDATE_COMPATIBILITY_PASS: $summary"
@@ -306,7 +306,7 @@ jobs:
               echo "CLIENT_HEALTH_FAILURE_CODES=${health_codes:-unclassified}"
               runtime_codes="$(
                 docker logs "$client_id" 2>&1 |
-                  python3 -c 'import re, sys; text = sys.stdin.read().lower(); rules = (("api_key_secret_unavailable", "api_key_secret_unavailable"), ("api_key_secret_invalid", "api_key_secret_invalid"), ("permission_denied", "permission denied"), ("operation_not_permitted", "operation not permitted"), ("missing_file", "no such file or directory"), ("read_only_write", "read-only file system"), ("address_in_use", "address already in use"), ("connection_refused", "connection refused"), ("timeout", "timed out"), ("python_traceback", "traceback (most recent call last)"), ("configuration_error", "invalid config")); codes = {code for code, phrase in rules if phrase in text}; codes.update(re.findall(r"hermes client runtime stopped: ([a-z0-9_]+)", text)); ordered = sorted(codes); print(",".join(ordered[:8]) if ordered else ("no_runtime_output" if not text.strip() else ("unclassified_runtime_error" if any(term in text for term in ("error", "fatal", "exception", "failed")) else "runtime_output_without_error_marker")))'
+                  python3 services/hermes-provisioner/safe_runtime_diagnostics.py
               )"
               echo "CLIENT_RUNTIME_FAILURE_CODES=${runtime_codes:-none}"
               exception_types="$(docker logs "$client_id" 2>&1 | python3 -c 'import re, sys; pattern = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Exit|Failure))(?=\s*(?::|$))"); types = sorted({match.group(1) for line in sys.stdin for match in pattern.finditer(line)}); print(",".join(types[:8]))')"
