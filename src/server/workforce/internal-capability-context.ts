@@ -2,11 +2,14 @@ import "server-only";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "@/lib/agents";
 import { recordAudit } from "@/server/audit";
 import type { Queryable } from "@/server/db";
+import { immutablePolicy } from "@/server/workforce/policy";
 import { z } from "zod";
 
 const MAX_RECORDS = 8;
-const INTERNAL_SYSTEMS_RESTRICTION =
-  "Never access, mention or infer information about any other iAcquire client, and never discuss iAcquire's internal systems or other customers.";
+const INTERNAL_AGENCY_POLICY = immutablePolicy("iAcquire", "agency");
+const INTERNAL_OPERATIONS_RULE = INTERNAL_AGENCY_POLICY[1];
+const INTERNAL_SNAPSHOT_RULE =
+  "You may discuss only the internal operations records supplied in the server-authorized read-only snapshot for this run. Do not infer or claim access to any other iAcquire record or any client tenant.";
 const internalContextInputSchema = z.object({
   orgId: z.string().uuid(),
   agentId: z.string().uuid(),
@@ -191,17 +194,23 @@ async function loadOperationsManagerContext({ db, input }: InternalContextAdapte
 function hasExpectedInternalPolicy(instructions: string): boolean {
   const policyStart = instructions.indexOf("## Agency policy");
   if (policyStart < 0) return false;
-  const restrictionAt = instructions.indexOf(INTERNAL_SYSTEMS_RESTRICTION, policyStart);
-  return restrictionAt >= policyStart && instructions.indexOf(INTERNAL_SYSTEMS_RESTRICTION, restrictionAt + 1) < 0;
+  const policy = instructions.slice(policyStart);
+  const clientOnlyRule = immutablePolicy("iAcquire", "client")[0];
+  return Boolean(INTERNAL_OPERATIONS_RULE)
+    && !policy.includes(clientOnlyRule)
+    && INTERNAL_AGENCY_POLICY.every((rule) => {
+      const first = policy.indexOf(rule);
+      return first >= 0 && policy.indexOf(rule, first + 1) < 0;
+    });
 }
 
 function bindInternalSnapshotPolicy(instructions: string, snapshotContext: string): string | null {
   const policyStart = instructions.indexOf("## Agency policy");
-  if (policyStart < 0) return null;
+  if (policyStart < 0 || !INTERNAL_OPERATIONS_RULE) return null;
   const policy = instructions.slice(policyStart);
   const scopedPolicy = policy.replace(
-    INTERNAL_SYSTEMS_RESTRICTION,
-    "Never access, mention or infer information about any iAcquire client or other tenant. You may discuss only the internal operations records supplied in the server-authorized read-only snapshot for this run; do not infer or claim access to any other iAcquire record.",
+    INTERNAL_OPERATIONS_RULE,
+    INTERNAL_SNAPSHOT_RULE,
   );
   if (scopedPolicy === policy) return null;
   return [instructions.slice(0, policyStart).trimEnd(), snapshotContext, scopedPolicy].filter(Boolean).join("\n\n");
