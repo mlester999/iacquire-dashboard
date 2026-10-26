@@ -1,7 +1,7 @@
 {
   "artifact": "internal-iacquire-employee-config-preview",
   "preparedAtUtc": "2026-10-26T08:34:00.379Z",
-  "reviewUpdatedAtUtc": "2026-10-26T08:43:12Z",
+  "reviewUpdatedAtUtc": "2026-10-26T08:55:16Z",
   "apply": false,
   "acknowledgementPrepared": false,
   "productionWritesPerformed": false,
@@ -73,7 +73,7 @@
   "soulRemediationPreview": {
     "apply": false,
     "exactSourceDiffReady": false,
-    "exactSourceDiffBlocker": "The Windows OpenSSH ssh-agent service is stopped and disabled; ssh-add -l cannot connect. The deployed profile files could not be re-read for a source-level diff. The proposed policy text below is a review draft only; do not apply it until each existing target SOUL is backed up and compared.",
+    "exactSourceDiffBlocker": "The Windows OpenSSH ssh-agent service is stopped and disabled. Starting it was denied by local Windows service permissions, so ssh-add -l cannot connect. The existing Hostinger web-terminal session is expired and must be restarted from hPanel. No current source-level diff or fresh backup was made. The proposed policy text below is a review draft only; do not apply it until each existing target SOUL is backed up and compared.",
     "editBoundary": "Replace only the conflicting client-only internal-work prohibition in the four target internal profiles; retain other independently reviewed policy, tool and approval text. Do not copy any client-specific or third-party instructions.",
     "observedScopeGap": "The last loader evidence found the same client-only wording in all six internal profile blocks. This draft targets only the four priority profiles; Zeng and Lead Hunter remain untouched pending an authorized source diff and an explicit decision about their instructions.",
     "sharedScopeDraft": "You are the internal iAcquire employee for this role in the agency workspace. Work only with records owned by that internal organization and capabilities authorized for this role. Never read, summarize, disclose, or act on client-tenant data or client instructions. Use the normal application approval flow for writes and external communications. If an integration, current source, approved business fact, or human decision is missing, say what is unavailable and ask; do not infer it.",
