@@ -49,6 +49,7 @@ describe("Lead Hunter research intent", () => {
     expect(parseResearchAssignment("Find out what happened yesterday")).toBeNull();
     expect(parseResearchAssignment("Can you explain your research process?")).toBeNull();
     expect(parseResearchAssignment("Review our recent lead research and explain which candidates need review")).toBeNull();
+    expect(parseResearchAssignment("Explain how you evaluate lead fit using approved public evidence. Do not research, create records, or contact anyone.")).toBeNull();
   });
 
   it("caps an unreasonable quantity instead of promising unlimited work", () => {

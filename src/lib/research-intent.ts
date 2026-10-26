@@ -16,6 +16,7 @@ export interface ResearchAssignment {
 }
 
 const RESEARCH_VERB = /\b(find|research|discover|source|identify|hunt|build(?:\s+me)?(?:\s+a)?\s+list\s+of)\b/i;
+const NEGATED_RESEARCH_ACTION = /\b(?:(?:do\s+not|don't|never|without|not)\s+(?:(?:do|perform|conduct|start|run|schedule)\s+)?(?:any\s+)?(?:new\s+)?research(?:ing)?|no\s+(?:lead\s+)?research)\b/gi;
 const TARGET_NOUN = /\b(business(?:es)?|compan(?:y|ies)|agenc(?:y|ies)|leads?|prospects?|clients?|firms?|practices?|stores?|restaurants?|clinics?|contractors?|studios?|shops?|dealers?|brokers?|realtors?|startups?|organi[sz]ations?|schools?|hotels?|salons?|dentists?|lawyers?|accountants?|developers?|builders?|agents?)\b/i;
 const LOCATION_PREP = /\b(?:in|near|around|across|within)\b/i;
 const STOP = /\b(?:that|which|who|whom|with|and|to|for|from|because|so)\b|[,.;!?]/i;
@@ -62,30 +63,31 @@ function stripVerbAndQuantity(value: string): string {
  */
 export function parseResearchAssignment(input: string): ResearchAssignment | null {
   const text = input.replace(/\s+/g, " ").trim().slice(0, 2000);
-  const reviewExistingResearch = /^\s*(?:please\s+)?(?:review|check|audit|summari[sz]e|analy[sz]e|explain)\b/i.test(text)
-    && /\b(?:recent|saved|existing|previous|prior|completed|recorded)\s+(?:lead\s+)?research\b/i.test(text);
-  const explicitNewResearch = /\b(?:find|research|discover|source|identify|hunt|get)\s+(?:(?:me|us)\s+)?(?:up to\s+)?\d{1,3}\b/i.test(text);
+  const intentText = text.replace(NEGATED_RESEARCH_ACTION, " ");
+  const reviewExistingResearch = /^\s*(?:please\s+)?(?:review|check|audit|summari[sz]e|analy[sz]e|explain)\b/i.test(intentText)
+    && /\b(?:recent|saved|existing|previous|prior|completed|recorded)\s+(?:lead\s+)?research\b/i.test(intentText);
+  const explicitNewResearch = /\b(?:find|research|discover|source|identify|hunt|get)\s+(?:(?:me|us)\s+)?(?:up to\s+)?\d{1,3}\b/i.test(intentText);
   if (reviewExistingResearch && !explicitNewResearch) return null;
-  if (!text || !RESEARCH_VERB.test(text)) return null;
-  if (!TARGET_NOUN.test(text) && !/\b\d{1,3}\b/.test(text)) return null;
+  if (!intentText || !RESEARCH_VERB.test(intentText)) return null;
+  if (!TARGET_NOUN.test(intentText) && !/\b\d{1,3}\b/.test(intentText)) return null;
 
-  const quantity = quantityOf(text);
+  const quantity = quantityOf(intentText);
 
   // Preferred shape: "<verb> [N] <target> in|near|around <location> [that …]".
   const pattern = /\b(?:find|research|discover|source|identify|hunt|get|build(?:\s+me)?(?:\s+a)?\s+list\s+of)\s+(?:me\s+)?(?:up to\s+)?(?:\d{1,3}\s+)?(.*?)\s+(?:in|near|around|across|within)\s+(.+)/i;
-  const matched = text.match(pattern);
+  const matched = intentText.match(pattern);
   let target = "";
   let location = "";
   if (matched) {
     target = stripVerbAndQuantity(cutAtStop(matched[1]));
     location = cutLocation(matched[2]);
   } else {
-    const prep = text.match(LOCATION_PREP);
+    const prep = intentText.match(LOCATION_PREP);
     if (prep && prep.index !== undefined) {
-      target = stripVerbAndQuantity(cutAtStop(text.slice(0, prep.index)));
-      location = cutLocation(text.slice(prep.index + prep[0].length));
+      target = stripVerbAndQuantity(cutAtStop(intentText.slice(0, prep.index)));
+      location = cutLocation(intentText.slice(prep.index + prep[0].length));
     } else {
-      target = stripVerbAndQuantity(cutAtStop(text.replace(RESEARCH_VERB, "")));
+      target = stripVerbAndQuantity(cutAtStop(intentText.replace(RESEARCH_VERB, "")));
     }
   }
 
