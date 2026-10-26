@@ -173,7 +173,7 @@ export function NotificationCenter({
                   animate={{ scale: 1 }}
                   exit={{ scale: 0.6 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b42328] px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg"
+                  className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b42328] px-1 text-[12px] leading-none font-bold tabular-nums text-white ring-2 ring-bg"
                 >
                   {unreadLabel}
                 </motion.span>
@@ -195,7 +195,7 @@ export function NotificationCenter({
                 </span>
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold tracking-tight text-ink">Notifications</p>
-                  <p className="mt-0.5 text-[11.5px] text-muted">
+                  <p className="mt-0.5 text-[12px] text-muted">
                     {unread > 0 ? `${unread} unread update${unread === 1 ? "" : "s"}` : "You're all caught up"}
                   </p>
                 </div>
@@ -204,8 +204,8 @@ export function NotificationCenter({
                 type="button"
                 onClick={() => void markAll()}
                 disabled={!unread || markingAll}
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:text-faint"
-                aria-label="Mark all notifications as read"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:text-faint"
+                aria-label="Mark all read"
               >
                 <CheckCheck className={cn("size-3.5", markingAll && "animate-pulse")} aria-hidden />
                 <span className="hidden min-[380px]:inline">Mark all read</span>
@@ -227,13 +227,13 @@ export function NotificationCenter({
                   aria-pressed={filter === option.value}
                   onClick={() => setFilter(option.value)}
                   className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11.5px] font-medium transition-colors",
+                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors",
                     filter === option.value ? "bg-ink text-surface shadow-soft" : "text-ink-2 hover:bg-surface-3/70",
                   )}
                 >
                   {option.label}
                   {option.count !== null && (
-                    <span className={cn("text-[10.5px] tabular-nums", filter === option.value ? "text-surface/75" : "text-faint")}>{option.count}</span>
+                    <span className={cn("text-[12px] tabular-nums", filter === option.value ? "text-surface/75" : "text-faint")}>{option.count}</span>
                   )}
                 </button>
               ))}
@@ -272,7 +272,7 @@ export function NotificationCenter({
                 <span className="mx-auto grid size-10 place-items-center rounded-xl bg-danger-soft text-danger-ink">
                   <AlertTriangle className="size-4" aria-hidden />
                 </span>
-                <p className="mt-3 text-[13px] font-semibold text-ink">Couldn&apos;t load notifications</p>
+                <p className="mt-3 text-[14px] font-semibold text-ink">Couldn&apos;t load notifications</p>
                 <p className="mt-1 text-[12px] leading-relaxed text-muted">{error}</p>
                 <button
                   type="button"
@@ -296,7 +296,7 @@ export function NotificationCenter({
             ) : (
               <div>
                 {error && (
-                  <div className="flex items-center gap-2 border-b border-line bg-warning-soft/60 px-3 py-2 text-[11.5px] text-warning-ink" role="status">
+                  <div className="flex items-center gap-2 border-b border-line bg-warning-soft/60 px-3 py-2 text-[12px] text-warning-ink" role="status">
                     <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1">Showing saved notifications. A refresh failed.</span>
                     <button type="button" onClick={() => void load()} className="font-semibold hover:underline">Retry</button>
@@ -326,7 +326,7 @@ export function NotificationCenter({
             >
               View all notifications <ChevronRight className="size-3.5" aria-hidden />
             </Link>
-            <span className="text-[10.5px] text-faint">Updates refresh automatically</span>
+            <span className="text-[12px] text-faint">Updates refresh automatically</span>
           </footer>
         </PopoverContent>
       </Popover>

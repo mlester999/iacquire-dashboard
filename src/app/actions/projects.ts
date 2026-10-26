@@ -7,7 +7,7 @@ import { hashIp } from "@/server/security/crypto";
 import { guard } from "@/server/action-guard";
 import { createProjectRequest, decideQuote, markQuoteViewed, postClientMessage, respondToMilestone, type ProjectRequestInput, type QuoteDecision } from "@/server/projects/client";
 import {
-  createMaintenanceRequest, requestMaintenanceCancellation, requestMaintenanceEnrollment, maintenanceRequestSchema,
+  createMaintenanceRequest, requestMaintenanceCancellation, requestMaintenanceEnrollment, maintenanceRequestSchema, startMaintenancePayment,
 } from "@/server/maintenance/service";
 import type { z } from "zod";
 
@@ -20,10 +20,10 @@ export async function createProjectRequestAction(input: ProjectRequestInput) {
   });
 }
 
-export async function postProjectMessageAction(requestId: string, body: string) {
+export async function postProjectMessageAction(requestId: string, body: string, clientMessageId?: string) {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow("projects.request");
-    await postClientMessage(ctx, requestId, body);
+    await postClientMessage(ctx, requestId, body, clientMessageId);
     revalidatePath(`/projects/${requestId}`);
   });
 }
@@ -60,6 +60,16 @@ export async function enrollMaintenanceAction(input: { acceptTerms: boolean; not
     const ctx = await requireOrgContextOrThrow("maintenance.view");
     await requestMaintenanceEnrollment(ctx, input);
     revalidatePath("/maintenance");
+  });
+}
+
+/** The owner pays the plan online for some months. Only the number of months comes from the browser: the amount is the plan's own price, and the plan changes only on the provider's signed confirmation. */
+export async function startMaintenancePaymentAction(months: number) {
+  return guard(async () => {
+    const ctx = await requireOrgContextOrThrow("maintenance.view");
+    const started = await startMaintenancePayment(ctx, months);
+    revalidatePath("/maintenance");
+    return { checkoutUrl: started.checkoutUrl, reference: started.referenceNumber };
   });
 }
 

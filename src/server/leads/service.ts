@@ -74,6 +74,7 @@ export async function createResearchRequest(
   const targeting = await getTargeting(ctx);
   const agent = await withSystem((db) => leadHunter(db, ctx.org.orgId));
   const connected = Boolean(agent?.enabled && canChat(agent.status));
+  // Pauses and unavailable employees keep the request honestly waiting; nothing starts in that state.
   const gate = connected && agent
     ? await withSystem((db) => jobGate(db, { orgId: ctx.org.orgId, agentId: agent.id }))
     : null;
@@ -300,7 +301,7 @@ export function leadsToCsv(rows: LeadRow[]): string {
     const s = v === null || v === undefined ? "" : String(v);
     // Neutralise spreadsheet formula injection.
     const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-    return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+    return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
   const header = ["Business", "Website", "Industry", "Location", "Score", "Review status", "Duplicate status", "CRM sync", "Sources", "Researched at"];
   const lines = rows.map((r) =>

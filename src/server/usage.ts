@@ -3,13 +3,15 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles, notifyAgency } from "@/server/notifications";
 
-type UsageKind = "agent_message" | "agent_run_failed" | "lead_research" | "help_request" | "crm_sync";
+type UsageKind = "agent_message" | "agent_run_failed" | "lead_research" | "help_request" | "crm_sync" | "customer_reply";
 
 export interface UsageLimits {
   monthly_agent_messages: number;
   monthly_tokens: number | null;
   daily_lead_research: number;
   monthly_help_requests: number;
+  /** An optional cap on AI replies to customers. Null means none is set (reported, never presented as unlimited); no value is shipped. */
+  monthly_customer_replies: number | null;
   warn_at_percent: number;
   hard_stop: boolean;
   fair_use_note: string | null;
@@ -20,6 +22,7 @@ const DEFAULT_LIMITS: UsageLimits = {
   monthly_tokens: null,
   daily_lead_research: 5,
   monthly_help_requests: 500,
+  monthly_customer_replies: null,
   warn_at_percent: 80,
   hard_stop: true,
   fair_use_note: null,
@@ -27,7 +30,7 @@ const DEFAULT_LIMITS: UsageLimits = {
 
 export async function getLimits(db: Queryable, orgId: string): Promise<UsageLimits> {
   const { rows } = await db.query<UsageLimits>(
-    `select monthly_agent_messages, monthly_tokens, daily_lead_research, monthly_help_requests, warn_at_percent,
+    `select monthly_agent_messages, monthly_tokens, daily_lead_research, monthly_help_requests, monthly_customer_replies, warn_at_percent,
             hard_stop, fair_use_note from usage_limits where org_id = $1`,
     [orgId],
   );
@@ -40,17 +43,20 @@ export interface UsageSummary {
   leadResearchToday: number;
   helpRequests: number;
   failedRuns: number;
+  /** AI replies prepared for customers this month. */
+  customerReplies: number;
   limits: UsageLimits;
 }
 
 export async function usageSummary(db: Queryable, orgId: string): Promise<UsageSummary> {
-  const { rows } = await db.query<{ agent: string; tokens: string; research: string; help: string; failed: string }>(
+  const { rows } = await db.query<{ agent: string; tokens: string; research: string; help: string; failed: string; replies: string }>(
     `select
        coalesce(sum(quantity) filter (where kind = 'agent_message' and created_at >= date_trunc('month', now())), 0)::text as agent,
        coalesce(sum(coalesce(input_tokens, 0) + coalesce(output_tokens, 0)) filter (where created_at >= date_trunc('month', now())), 0)::text as tokens,
        coalesce(sum(quantity) filter (where kind = 'lead_research' and created_at >= date_trunc('day', now())), 0)::text as research,
        coalesce(sum(quantity) filter (where kind = 'help_request' and created_at >= date_trunc('month', now())), 0)::text as help,
-       coalesce(sum(quantity) filter (where kind = 'agent_run_failed' and created_at >= date_trunc('month', now())), 0)::text as failed
+       coalesce(sum(quantity) filter (where kind = 'agent_run_failed' and created_at >= date_trunc('month', now())), 0)::text as failed,
+       coalesce(sum(quantity) filter (where kind = 'customer_reply' and created_at >= date_trunc('month', now())), 0)::text as replies
      from usage_events where org_id = $1`,
     [orgId],
   );
@@ -61,8 +67,15 @@ export async function usageSummary(db: Queryable, orgId: string): Promise<UsageS
     leadResearchToday: Number(r?.research ?? 0),
     helpRequests: Number(r?.help ?? 0),
     failedRuns: Number(r?.failed ?? 0),
+    customerReplies: Number(r?.replies ?? 0),
     limits: await getLimits(db, orgId),
   };
+}
+
+/** Whether the optional monthly cap on AI replies to customers has been reached. False when no cap is set, or when the workspace's limits are advisory (hard stop off). */
+export function customerReplyCapReached(summary: UsageSummary): boolean {
+  const cap = summary.limits.monthly_customer_replies;
+  return cap !== null && summary.limits.hard_stop && summary.customerReplies >= cap;
 }
 
 /** Throws when a hard limit would be exceeded. Called before any costly operation starts. */

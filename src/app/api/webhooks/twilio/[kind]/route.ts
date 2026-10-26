@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { handleTwilioWebhook } from "@/server/messaging/transports/twilio";
 import { respondToConversation } from "@/server/messaging/responder";
 import { dispatchDue } from "@/server/messaging/send";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,10 +19,8 @@ const TEXT = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no
 export async function POST(req: Request, { params }: { params: Promise<{ kind: string }> }) {
   const { kind } = await params;
   if (kind !== "inbound" && kind !== "status") return new Response("Not found", { status: 404, headers: TEXT });
-  const declared = Number(req.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: TEXT });
-  const rawBody = await req.text();
-  if (rawBody.length > MAX_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: TEXT });
+  const rawBody = await readBoundedText(req, MAX_BODY_BYTES);
+  if (rawBody === null) return new Response("Payload too large", { status: 413, headers: TEXT });
   try {
     const result = await handleTwilioWebhook(kind, rawBody, req.headers, req.url);
     if (result.aiShouldRespond && result.conversationId && result.orgId) {

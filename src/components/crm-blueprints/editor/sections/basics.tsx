@@ -37,7 +37,7 @@ export function DetailsSection({ blueprintKey }: { blueprintKey: string }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">Details</h2>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           What this Blueprint is called and who it is for. A Blueprint holds configuration only: it never carries contacts, deals, messages,
           appointments, connected accounts, credentials or anyone&apos;s personal details.
         </p>
@@ -76,9 +76,9 @@ export function DetailsSection({ blueprintKey }: { blueprintKey: string }) {
             {modules.map((m) => <li key={m.section}><Badge tone="outline">{m.label}: {m.count}</Badge></li>)}
           </ul>
         ) : (
-          <p className="text-[13px] text-muted">Nothing yet. Add tags, fields, pipelines and the rest from the sections in the menu.</p>
+          <p className="text-[14px] text-muted">Nothing yet. Add tags, fields, pipelines and the rest from the sections in the menu.</p>
         )}
-        <p className="text-[12.5px] text-muted">{total} {total === 1 ? "item" : "items"} and {content.slots.length} {content.slots.length === 1 ? "role" : "roles"} in this draft.</p>
+        <p className="text-[13px] text-muted">{total} {total === 1 ? "item" : "items"} and {content.slots.length} {content.slots.length === 1 ? "role" : "roles"} in this draft.</p>
       </DetailCard>
     </div>
   );
@@ -117,17 +117,17 @@ export function SlotsSection() {
           return (
             <DetailCard>
               <DetailHeader id={s.id} title={s.label} kind={SLOT_KIND_LABELS[kind]?.label ?? "Role"} onRemove={() => remove(s.id, s.label)} />
-              <p className="text-[12.5px] text-muted">{SLOT_KIND_LABELS[kind]?.description}</p>
+              <p className="text-[13px] text-muted">{SLOT_KIND_LABELS[kind]?.description}</p>
               <Field label="Role name" htmlFor="slot-label"><Input id="slot-label" value={s.label} maxLength={80} disabled={readOnly} onChange={(e) => set({ label: e.target.value })} /></Field>
               <Field label="What this role does" htmlFor="slot-desc" optional hint="Helps whoever maps it in a client's workspace pick the right person or connection.">
                 <Textarea id="slot-desc" rows={2} maxLength={300} value={s.description ?? ""} disabled={readOnly} onChange={(e) => set({ description: orNull(e.target.value) })} />
               </Field>
               <div>
-                <h4 className="text-[13px] font-semibold text-ink">Used by</h4>
+                <h4 className="text-[14px] font-semibold text-ink">Used by</h4>
                 {users.length ? (
                   <ul className="mt-1.5 flex flex-wrap gap-1.5">{users.map((u) => <li key={u}><Badge tone="outline">{refName(content, toRef(u))}</Badge></li>)}</ul>
                 ) : (
-                  <p className="mt-1 text-[12.5px] text-muted">Nothing uses this role yet.</p>
+                  <p className="mt-1 text-[13px] text-muted">Nothing uses this role yet.</p>
                 )}
               </div>
             </DetailCard>
@@ -334,8 +334,8 @@ function OptionsEditor({ options, onChange, readOnly }: { options: CustomFieldAs
   };
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-medium text-ink-2">Choices</legend>
-      <p className="text-[12.5px] text-muted">The value is what is stored and what filters compare; the label is what people see. Adding choices later is a compatible update; removing or renaming a value is not.</p>
+      <legend className="text-[14px] font-medium text-ink-2">Choices</legend>
+      <p className="text-[13px] text-muted">The value is what is stored and what filters compare; the label is what people see. Adding choices later is a compatible update; removing or renaming a value is not.</p>
       <ol className="space-y-2">
         {options.map((o, i) => (
           <li key={i} className="grid gap-2 rounded-xl border border-line p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
@@ -363,7 +363,7 @@ function OptionsEditor({ options, onChange, readOnly }: { options: CustomFieldAs
 export function CustomValuesSection() {
   const { content, edit, readOnly, remove, issues } = useEditor();
   const add = useAdder("customValues");
-  const items = content.assets.customValues.map((v) => ({ id: v.id, name: v.label, detail: `{{custom_values.${v.key}}}`, badges: v.required && !v.value.trim() ? <Badge tone="warning" className="h-5 px-1.5 text-[11px]">to fill in</Badge> : undefined }));
+  const items = content.assets.customValues.map((v) => ({ id: v.id, name: v.label, detail: `{{custom_values.${v.key}}}`, badges: v.required && !v.value.trim() ? <Badge tone="warning" className="h-5 px-1.5 text-[12px]">to fill in</Badge> : undefined }));
   return (
     <>
       <AssetWorkspace

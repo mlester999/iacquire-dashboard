@@ -133,23 +133,23 @@ function HoursEditor({ hours, onChange, readOnly }: { hours: WeeklyHours[]; onCh
   };
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-medium text-ink-2">Suggested working hours</legend>
-      <p className="text-[12.5px] text-muted">Copied only to hosts who have no weekly hours yet, when the client assigns them and chooses to use these. Nobody&apos;s own hours are replaced.</p>
+      <legend className="text-[14px] font-medium text-ink-2">Suggested working hours</legend>
+      <p className="text-[13px] text-muted">Copied only to hosts who have no weekly hours yet, when the client assigns them and chooses to use these. Nobody&apos;s own hours are replaced.</p>
       <ul className="divide-y divide-line rounded-2xl border border-line">
         {WEEK_ORDER.map((day) => {
           const list = windowsOf(day);
           return (
             <li key={day} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start">
-              <span className="w-28 shrink-0 pt-2 text-[13px] font-medium text-ink">{WEEKDAYS[day]}</span>
+              <span className="w-28 shrink-0 pt-2 text-[14px] font-medium text-ink">{WEEKDAYS[day]}</span>
               <div className="min-w-0 flex-1 space-y-2">
-                {!list.length && <p className="pt-2 text-[12.5px] text-muted">Closed</p>}
+                {!list.length && <p className="pt-2 text-[13px] text-muted">Closed</p>}
                 {list.map(({ h, i }) => {
                   const bad = h.endMinute <= h.startMinute;
                   return (
                     <div key={i} className="flex flex-wrap items-center gap-2">
                       <Input type="time" aria-label={`${WEEKDAYS[day]} from`} value={minutesToClock(h.startMinute)} disabled={readOnly} className="w-32"
                         onChange={(e) => { const m = clockToMinutes(e.target.value); if (m !== null && m <= 1439) setAt(i, { startMinute: m }); }} />
-                      <span className="text-[13px] text-muted">to</span>
+                      <span className="text-[14px] text-muted">to</span>
                       <Input type="time" aria-label={`${WEEKDAYS[day]} until`} value={minutesToClock(h.endMinute)} disabled={readOnly} className="w-32" aria-invalid={bad || undefined}
                         onChange={(e) => { const m = clockToMinutes(e.target.value); if (m !== null) setAt(i, { endMinute: m === 0 ? 1440 : m }); }} />
                       {bad && <span className="text-[12px] text-danger-ink" role="status">Ends before it starts</span>}
@@ -199,7 +199,7 @@ function TypesEditor({ calendar }: { calendar: CalendarAsset }) {
                 <button type="button" aria-expanded={expanded} aria-controls={`type-${t.id}`} onClick={() => setOpen(expanded ? null : t.id)} className="flex min-h-12 min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left">
                   <ChevronDown className={cn("size-4 shrink-0 text-muted transition-transform", expanded && "rotate-180")} aria-hidden />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium text-ink">{t.name || "Untitled"}</span>
+                    <span className="block truncate text-[14px] font-medium text-ink">{t.name || "Untitled"}</span>
                     <span className="block truncate text-[12px] text-muted">{t.durationMinutes} min · {LOCATION_LABELS[t.locationKind]}{t.public ? "" : " · not on the booking page"}</span>
                   </span>
                   {own.some((x) => x.severity === "error") && <Badge tone="danger">To fix</Badge>}
@@ -277,7 +277,7 @@ function TypeForm({ calendarId, type: t }: { calendarId: string; type: Appointme
         <ToggleRow id={f("phone")} label="Ask for a phone number" checked={t.requirePhone} disabled={readOnly} onChange={(v) => set({ requirePhone: v })} />
         <ToggleRow id={f("changes")} label="People can reschedule or cancel" checked={t.allowCustomerChanges} disabled={readOnly} onChange={(v) => set({ allowCustomerChanges: v })} />
       </div>
-      {!t.requireEmail && !t.requirePhone && <p className="text-[12.5px] text-danger-ink" role="status">Ask for at least an email address or a phone number, so the business can reach the person who booked.</p>}
+      {!t.requireEmail && !t.requirePhone && <p className="text-[13px] text-danger-ink" role="status">Ask for at least an email address or a phone number, so the business can reach the person who booked.</p>}
       {t.allowCustomerChanges && (
         <Field label="Changes allowed until" htmlFor={f("cut")}><NumberInput id={f("cut")} value={t.changeCutoffMinutes} min={0} max={10080} suffix="minutes before the start" disabled={readOnly} onChange={(v) => v !== null && set({ changeCutoffMinutes: v })} /></Field>
       )}
@@ -305,8 +305,8 @@ function QuestionsEditor({ questions, onChange, readOnly, idPrefix }: { question
   };
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-medium text-ink-2">Booking questions</legend>
-      <p className="text-[12.5px] text-muted">Asked when someone books, after their name and contact details.</p>
+      <legend className="text-[14px] font-medium text-ink-2">Booking questions</legend>
+      <p className="text-[13px] text-muted">Asked when someone books, after their name and contact details.</p>
       <ol className="space-y-2">
         {questions.map((q, i) => {
           const keyBad = !QUESTION_KEY_RE.test(q.key) || questions.some((x, j) => j !== i && x.key === q.key);
@@ -337,7 +337,7 @@ function QuestionsEditor({ questions, onChange, readOnly, idPrefix }: { question
                 </Field>
               )}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-0">
+                <label className="inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-0">
                   <input type="checkbox" checked={q.required} disabled={readOnly} onChange={(e) => setAt(i, { required: e.target.checked })} className="size-4 accent-primary" />
                   Required
                 </label>

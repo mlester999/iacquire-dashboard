@@ -99,12 +99,12 @@ export function VoiceConnections({ scope, connections, canConnect, vapiAuthModes
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><AudioLines className="size-4.5" aria-hidden /></span>
                   <div className="min-w-0">
                     <h3 className="text-[14.5px] font-semibold text-ink">{c.providerLabel}</h3>
-                    <p className="text-[12.5px] text-muted">{c.lastEventAt ? `Last call event ${formatDateTime(c.lastEventAt, scope.timezone)}` : "No call events yet"}</p>
+                    <p className="text-[13px] text-muted">{c.lastEventAt ? `Last call event ${formatDateTime(c.lastEventAt, scope.timezone)}` : "No call events yet"}</p>
                   </div>
                 </div>
                 <Badge tone={st.tone}>{st.label}</Badge>
               </div>
-              <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+              <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
                 <dt className="text-muted">{c.provider === "vapi" ? "Assistants / numbers" : "Agents"}</dt>
                 <dd className="min-w-0 break-all font-mono text-[12px] text-ink-2">{c.externalIds.length ? c.externalIds.join(", ") : "None"}</dd>
                 <dt className="text-muted">Credential</dt>
@@ -113,14 +113,14 @@ export function VoiceConnections({ scope, connections, canConnect, vapiAuthModes
                 <dd className="text-ink-2">{c.storeRecordings ? "Links to recordings and transcripts, and the provider's summary, are kept" : "Not kept: only call details are recorded (no recording, transcript or summary)"}</dd>
               </dl>
               <div className="mt-4">
-                <p className="mb-1.5 text-[12.5px] font-medium text-ink-2">Webhook address</p>
+                <p className="mb-1.5 text-[13px] font-medium text-ink-2">Webhook address</p>
                 <CopyField id={`${ids}-${c.provider}-url`} value={c.webhookUrl} label={`${c.providerLabel} webhook address`} />
               </div>
               <details className="group mt-3 rounded-xl border border-line">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-[13px] font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-10">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-[14px] font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-10">
                   <PlugZap className="size-4 text-muted" aria-hidden />How to connect {c.providerLabel}
                 </summary>
-                <ol className="list-decimal space-y-1.5 border-t border-line py-3 pl-8 pr-3 text-[12.5px] leading-relaxed text-ink-2">
+                <ol className="list-decimal space-y-1.5 border-t border-line py-3 pl-8 pr-3 text-[13px] leading-relaxed text-ink-2">
                   {SETUP[c.provider].steps.map((s) => <li key={s}>{s}</li>)}
                 </ol>
               </details>
@@ -153,7 +153,7 @@ export function VoiceConnections({ scope, connections, canConnect, vapiAuthModes
         {editing && (
           <div className="space-y-4">
             <Field label={editing.provider === "vapi" ? "Assistant and phone-number ids" : "Agent ids"} htmlFor={`${ids}-ids`} hint={SETUP[editing.provider].ids}>
-              <Textarea id={`${ids}-ids`} rows={3} spellCheck={false} className="font-mono text-[13px]" value={editing.ids} onChange={(e) => setEditing({ ...editing, ids: e.target.value })} />
+              <Textarea id={`${ids}-ids`} rows={3} spellCheck={false} className="font-mono text-[14px]" value={editing.ids} onChange={(e) => setEditing({ ...editing, ids: e.target.value })} />
             </Field>
             {editing.provider === "vapi" && (
               <Field label="How Vapi authenticates" htmlFor={`${ids}-mode`}>
@@ -174,13 +174,13 @@ export function VoiceConnections({ scope, connections, canConnect, vapiAuthModes
                 onChange={(v) => setEditing({ ...editing, storeRecordings: v, announced: v ? editing.announced : false })}
               />
               {editing.storeRecordings && (
-                <label className="flex cursor-pointer items-start gap-2 text-[13px] leading-relaxed text-ink-2">
+                <label className="flex cursor-pointer items-start gap-2 text-[14px] leading-relaxed text-ink-2">
                   <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={editing.announced} onChange={(e) => setEditing({ ...editing, announced: e.target.checked })} />
                   The assistant tells every caller at the start of the call that it is recorded. Check what the law requires where the business and its callers are.
                 </label>
               )}
             </div>
-            {error && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">{error}</p>}
+            {error && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink">{error}</p>}
           </div>
         )}
       </Dialog>

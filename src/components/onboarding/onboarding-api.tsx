@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/onboarding";
 import type { PipelinePayload, PipelineSaveResult } from "@/lib/onboarding/save-pipeline";
 import type { ReviewModel } from "@/lib/onboarding/engine";
+import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts";
 import type { Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
 import type { AssistanceOptions } from "@/lib/onboarding/assistance";
@@ -27,7 +28,8 @@ export interface OnboardingApi {
   suggest(questionId: string, options?: AssistanceOptions, signal?: AbortSignal): Promise<Result<Suggestion>>;
   readWebsite(url: string): Promise<Result<WebsiteAnalysisSummary>>;
   review(): Promise<Result<ReviewModel>>;
-  submit(): Promise<Result<unknown>>;
+  /** `scheduling` is what the booking answers did: a draft calendar made or extended, or why not (never live). Absent in the preview. */
+  submit(): Promise<Result<{ scheduling?: SchedulingDraftOutcome }>>;
   uploadImage(kind: "logo" | "image" | "reference", file: File): Promise<Result<AssetView>>;
   uploadDocument(file: File): Promise<Result<{ id: string; filename: string }>>;
   removeAsset(id: string): Promise<Result<unknown>>;

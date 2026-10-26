@@ -16,7 +16,7 @@ export function SupportSubnav({ active, caps }: { active: "requests" | "analytic
     <nav aria-label="Requests sections" className="flex gap-1 border-b border-line">
       {visible.map((t) => (
         <Link key={t.key} href={t.href} aria-current={active === t.key ? "page" : undefined}
-          className={cn("-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-3.5 text-[13.5px] font-medium transition", active === t.key ? "border-primary text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink")}>
+          className={cn("-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-3.5 text-[14px] font-medium transition", active === t.key ? "border-primary text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink")}>
           <t.icon className="size-4" aria-hidden /> {t.label}
         </Link>
       ))}

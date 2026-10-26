@@ -97,9 +97,9 @@ export function AqiInsightsDashboard() {
     <div className="module-stack space-y-6">
       <div className="flex flex-col justify-between gap-4 border-b border-line pb-5 sm:flex-row sm:items-end">
         <div>
-          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[.16em] text-primary-ink"><BarChart3 className="size-3" /> AQi Insights</p>
+          <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.16em] text-primary-ink"><BarChart3 className="size-3" /> AQi Insights</p>
           <h1 className="text-[27px] font-semibold tracking-[-0.045em] text-ink">How AQi is actually used</h1>
-          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">Real event and usage records only. A section with no reliable source is labelled unavailable rather than estimated. Conversation text is never displayed here.</p>
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted">Real event and usage records only. A section with no reliable source is labelled unavailable rather than estimated. Conversation text is never displayed here.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/admin/aqi" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-ink-2 shadow-soft hover:bg-surface-2"><ArrowLeft className="size-3.5" /> AQi Management</Link>
@@ -109,7 +109,7 @@ export function AqiInsightsDashboard() {
 
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-surface p-3" data-aqi-target="admin.aqi.insights.filters">
         <div>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Period</p>
+          <p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">Period</p>
           <div className="flex gap-1" role="group" aria-label="Date range">
             {DAY_OPTIONS.map((option) => (
               <button
@@ -125,13 +125,13 @@ export function AqiInsightsDashboard() {
           </div>
         </div>
         <div className="min-w-[280px] flex-1">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Custom range <span className="font-normal normal-case tracking-normal text-faint">(UTC calendar dates)</span></p>
+          <p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">Custom range <span className="font-normal normal-case tracking-normal text-faint">(UTC calendar dates)</span></p>
           <div className="flex flex-wrap items-end gap-1.5">
             <label className="min-w-[128px]">
               <span className="sr-only">From date</span>
               <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} aria-label="From date" className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink" />
             </label>
-            <span className="pb-2 text-[11px] text-muted">to</span>
+            <span className="pb-2 text-[12px] text-muted">to</span>
             <label className="min-w-[128px]">
               <span className="sr-only">To date</span>
               <input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} aria-label="To date" className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink" />
@@ -139,24 +139,24 @@ export function AqiInsightsDashboard() {
             <Button size="sm" variant="secondary" onClick={applyCustomRange}>Apply</Button>
             <Button size="sm" variant="ghost" onClick={resetRange}>Reset</Button>
           </div>
-          {rangeError && <p role="alert" className="mt-1 text-[11px] font-medium text-danger-ink">{rangeError}</p>}
-          {range.kind === "custom" && !rangeError && <p className="mt-1 text-[10.5px] text-muted">Showing {range.from} to {range.to} (UTC).</p>}
+          {rangeError && <p role="alert" className="mt-1 text-[12px] font-medium text-danger-ink">{rangeError}</p>}
+          {range.kind === "custom" && !rangeError && <p className="mt-1 text-[12px] text-muted">Showing {range.from} to {range.to} (UTC).</p>}
         </div>
         <label className="min-w-[180px] flex-1">
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Organization</span>
+          <span className="mb-1 block text-[12px] font-semibold uppercase tracking-wide text-muted">Organization</span>
           <select value={orgId} onChange={(event) => setOrgId(event.target.value)} className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink">
             <option value="">All organizations</option>
             {data?.filters.organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
           </select>
         </label>
         <label className="min-w-[150px] flex-1">
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Role</span>
+          <span className="mb-1 block text-[12px] font-semibold uppercase tracking-wide text-muted">Role</span>
           <select value={role} onChange={(event) => setRole(event.target.value)} className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink">
             <option value="">All roles</option>
             {(data?.filters.roles ?? ["owner", "admin", "member", "sales_rep", "support", "viewer", "appointment_setter"]).map((option) => <option key={option} value={option}>{option.replaceAll("_", " ")}</option>)}
           </select>
         </label>
-        {data && <p className="ml-auto text-[11px] text-muted">Showing {data.range.label} · generated {formatDateTime(data.generatedAt)}</p>}
+        {data && <p className="ml-auto text-[12px] text-muted">Showing {data.range.label} · generated {formatDateTime(data.generatedAt)}</p>}
       </div>
 
       {status === "loading" && <InsightsSkeleton />}
@@ -165,7 +165,7 @@ export function AqiInsightsDashboard() {
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <span className="flex size-10 items-center justify-center rounded-xl bg-danger-soft text-danger-ink"><TriangleAlert className="size-5" /></span>
             <p className="text-[14px] font-semibold">Insights could not be loaded</p>
-            <p className="max-w-md text-[12.5px] text-muted">{error ?? "The analytics request failed. No estimate has been substituted."}</p>
+            <p className="max-w-md text-[13px] text-muted">{error ?? "The analytics request failed. No estimate has been substituted."}</p>
             <Button size="sm" variant="secondary" onClick={() => void load()}><RefreshCw className="size-3.5" /> Try again</Button>
           </CardContent>
         </Card>
@@ -184,7 +184,7 @@ export function AqiInsightsDashboard() {
                   <Metric label="Avg messages / person" value={data.usage.activeUsers ? (data.usage.messages / data.usage.activeUsers).toFixed(1) : "—"} detail="Derived from the two real counts above" icon={<Gauge />} definition="Total messages divided by distinct active people in the period." />
                 </div>
                 {data.usage.daily.length > 0 && <Trend points={data.usage.daily.map((point) => ({ label: point.date, value: point.messages }))} title="Messages per day" description="Recorded turns in the selected period." />}
-                {data.usage.daily.length === 0 && <p className="mt-2 text-[11.5px] text-muted">No daily activity was recorded in this period.</p>}
+                {data.usage.daily.length === 0 && <p className="mt-2 text-[12px] text-muted">No daily activity was recorded in this period.</p>}
               </>
             )}
           </section>
@@ -201,15 +201,15 @@ export function AqiInsightsDashboard() {
                 <Metric label="Output tokens" value={data.performance.outputTokens.toLocaleString()} detail="Provider-reported or estimated" icon={<Brain />} definition="Sum of recorded output tokens." />
                 <Metric label="Rate-limited requests" value={data.performance.rateLimits.toLocaleString()} detail="Rejected before the provider call" icon={<ShieldCheck />} definition="Requests refused by the AQi per-person rate limit." />
                 <div className="rounded-2xl border border-line bg-surface p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Provider</p>
-                  <p className="mt-1 flex items-center gap-2 text-[13px] font-semibold"><StatusPill size="sm" tone={data.performance.provider.available ? "success" : "warning"}>{data.performance.provider.available ? "Connected" : "Unavailable"}</StatusPill></p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted">{data.performance.provider.detail}</p>
-                  <p className="mt-1 truncate text-[10.5px] text-faint">{data.performance.provider.model ?? "No model resolved"}{data.performance.provider.connectionStatus ? ` · ${data.performance.provider.connectionStatus}` : ""}</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Provider</p>
+                  <p className="mt-1 flex items-center gap-2 text-[14px] font-semibold"><StatusPill size="sm" tone={data.performance.provider.available ? "success" : "warning"}>{data.performance.provider.available ? "Connected" : "Unavailable"}</StatusPill></p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-muted">{data.performance.provider.detail}</p>
+                  <p className="mt-1 truncate text-[12px] text-faint">{data.performance.provider.model ?? "No model resolved"}{data.performance.provider.connectionStatus ? ` · ${data.performance.provider.connectionStatus}` : ""}</p>
                 </div>
                 {data.performance.errors.length > 0 && (
                   <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Provider error breakdown</p>
-                    <ul className="mt-2 flex flex-wrap gap-2">{data.performance.errors.map((row) => <li key={row.code} className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[11px]"><span className="font-mono text-[10px] text-muted">{row.code}</span> <strong className="ml-1 tabular-nums">{row.count}</strong></li>)}</ul>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Provider error breakdown</p>
+                    <ul className="mt-2 flex flex-wrap gap-2">{data.performance.errors.map((row) => <li key={row.code} className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[12px]"><span className="font-mono text-[12px] text-muted">{row.code}</span> <strong className="ml-1 tabular-nums">{row.count}</strong></li>)}</ul>
                   </div>
                 )}
               </div>
@@ -234,7 +234,7 @@ export function AqiInsightsDashboard() {
                 {data.knowledge.stale.length > 0 && (
                   <div className="rounded-2xl border border-warning/30 bg-warning-soft/40 p-4 lg:col-span-3">
                     <p className="flex items-center gap-1.5 text-[12px] font-semibold text-warning-ink"><TriangleAlert className="size-3.5" /> Published entries due for review</p>
-                    <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">{data.knowledge.stale.slice(0, 12).map((entry) => <li key={entry.id} className="rounded-lg bg-surface px-2.5 py-1.5 text-[11.5px]"><span className="font-medium">{entry.title}</span><span className="text-muted"> · {entry.category} · due {formatDateTime(entry.reviewDueAt ?? entry.updatedAt)}</span></li>)}</ul>
+                    <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">{data.knowledge.stale.slice(0, 12).map((entry) => <li key={entry.id} className="rounded-lg bg-surface px-2.5 py-1.5 text-[12px]"><span className="font-medium">{entry.title}</span><span className="text-muted"> · {entry.category} · due {formatDateTime(entry.reviewDueAt ?? entry.updatedAt)}</span></li>)}</ul>
                   </div>
                 )}
               </div>
@@ -257,7 +257,7 @@ export function AqiInsightsDashboard() {
                   <CardContent className="overflow-x-auto">
                     {data.tutorials.perTutorial.length === 0 ? <p className="text-[12px] text-muted">No tutorial activity was recorded in this period.</p> : (
                       <table className="w-full min-w-[540px] text-left text-[12px]">
-                        <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-muted"><th className="py-1.5 pr-2 font-semibold">Tutorial</th><th className="px-2 py-1.5 text-right font-semibold">Starts</th><th className="px-2 py-1.5 text-right font-semibold">Completions</th><th className="px-2 py-1.5 text-right font-semibold">Rate</th><th className="px-2 py-1.5 text-right font-semibold">Avg time</th><th className="px-2 py-1.5 text-right font-semibold">In progress</th></tr></thead>
+                        <thead><tr className="border-b border-line text-[12px] uppercase tracking-wide text-muted"><th className="py-1.5 pr-2 font-semibold">Tutorial</th><th className="px-2 py-1.5 text-right font-semibold">Starts</th><th className="px-2 py-1.5 text-right font-semibold">Completions</th><th className="px-2 py-1.5 text-right font-semibold">Rate</th><th className="px-2 py-1.5 text-right font-semibold">Avg time</th><th className="px-2 py-1.5 text-right font-semibold">In progress</th></tr></thead>
                         <tbody>{data.tutorials.perTutorial.map((tutorial) => <tr key={tutorial.slug} className="border-b border-line/70"><td className="max-w-[280px] truncate py-1.5 pr-2 font-medium">{tutorial.title}</td><td className="px-2 py-1.5 text-right tabular-nums">{tutorial.starts}</td><td className="px-2 py-1.5 text-right tabular-nums">{tutorial.completions}</td><td className="px-2 py-1.5 text-right tabular-nums">{tutorial.completionRate === null ? "—" : `${tutorial.completionRate}%`}</td><td className="px-2 py-1.5 text-right tabular-nums">{tutorial.averageSeconds ? formatDuration(tutorial.averageSeconds) : "—"}</td><td className="px-2 py-1.5 text-right tabular-nums">{tutorial.inProgress}</td></tr>)}</tbody>
                       </table>
                     )}
@@ -285,8 +285,8 @@ export function AqiInsightsDashboard() {
                       <Metric label="Positive share" value={data.feedback.total ? `${Math.round((data.feedback.helpful / data.feedback.total) * 100)}%` : "—"} detail="Of recorded feedback" icon={<Gauge />} definition="Helpful divided by all recorded feedback in the period." compact />
                     </div>
                     {data.feedback.trend.length > 0 && <StackedTrend points={data.feedback.trend.map((point) => ({ label: point.date, good: point.helpful, bad: point.notHelpful }))} title="Feedback per day" />}
-                    {data.feedback.byPage.length > 0 && <div><p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Not helpful by page</p><CountList rows={data.feedback.byPage.map((row) => ({ label: row.page, count: row.notHelpful }))} empty="No page recorded." /></div>}
-                    <p className="text-[10.5px] leading-relaxed text-muted">Comments are deliberately not displayed in analytics. Use the knowledge review area or Support to investigate a specific report.</p>
+                    {data.feedback.byPage.length > 0 && <div><p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">Not helpful by page</p><CountList rows={data.feedback.byPage.map((row) => ({ label: row.page, count: row.notHelpful }))} empty="No page recorded." /></div>}
+                    <p className="text-[12px] leading-relaxed text-muted">Comments are deliberately not displayed in analytics. Use the knowledge review area or Support to investigate a specific report.</p>
                   </CardContent>
                 </Card>
               )}
@@ -303,8 +303,8 @@ export function AqiInsightsDashboard() {
                       <Metric label="Acceptance" value={data.guidance.acceptanceRate === null ? "—" : `${data.guidance.acceptanceRate}%`} detail="Accepted / offered" icon={<Gauge />} definition="Accepted offers divided by offers in the period." compact />
                       <Metric label="Tips shown / clicked" value={`${data.guidance.tipsShown} / ${data.guidance.tipsClicked}`} detail="Configured tips" icon={<Info />} definition={data.definitions.tips} compact />
                     </div>
-                    {data.guidance.requestsByPage.length > 0 && <div><p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Pages where users were offered guidance</p><CountList rows={data.guidance.requestsByPage.map((row) => ({ label: row.page, count: row.count }))} empty="No page recorded." /></div>}
-                    {data.guidance.topTips.length > 0 && <div><p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Tips by impressions</p><CountList rows={data.guidance.topTips.map((row) => ({ label: row.tipSlug, count: row.views }))} empty="No tip recorded." /></div>}
+                    {data.guidance.requestsByPage.length > 0 && <div><p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">Pages where users were offered guidance</p><CountList rows={data.guidance.requestsByPage.map((row) => ({ label: row.page, count: row.count }))} empty="No page recorded." /></div>}
+                    {data.guidance.topTips.length > 0 && <div><p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">Tips by impressions</p><CountList rows={data.guidance.topTips.map((row) => ({ label: row.tipSlug, count: row.views }))} empty="No tip recorded." /></div>}
                   </CardContent>
                 </Card>
               )}
@@ -314,7 +314,7 @@ export function AqiInsightsDashboard() {
           <Card>
             <details>
               <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-[12px] font-semibold text-ink"><Info className="size-3.5 text-primary" /> Metric definitions and privacy</summary>
-              <CardContent className="grid gap-2 border-t border-line text-[11.5px] leading-relaxed text-muted sm:grid-cols-2">
+              <CardContent className="grid gap-2 border-t border-line text-[12px] leading-relaxed text-muted sm:grid-cols-2">
                 {Object.entries(data.definitions).map(([key, definition]) => <p key={key}><strong className="text-ink-2">{key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}:</strong> {definition}</p>)}
                 <p className="sm:col-span-2 rounded-xl bg-surface-2 p-2.5"><strong className="text-ink-2">Privacy:</strong> analytics never displays a conversation, message body or feedback comment. Only counts, categories, routes and tutorial step identifiers are queried. Super Admin access is required and checked on the server for every request.</p>
               </CardContent>
@@ -327,16 +327,16 @@ export function AqiInsightsDashboard() {
 }
 
 function SectionHead({ id, title, description, icon }: { id: string; title: string; description: string; icon: React.ReactNode }) {
-  return <div className="mb-2 flex items-center gap-2"><span className="flex size-7 items-center justify-center rounded-lg bg-primary-soft text-primary">{icon}</span><div><h2 id={id} className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2><p className="text-[11.5px] text-muted">{description}</p></div></div>;
+  return <div className="mb-2 flex items-center gap-2"><span className="flex size-7 items-center justify-center rounded-lg bg-primary-soft text-primary">{icon}</span><div><h2 id={id} className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2><p className="text-[12px] text-muted">{description}</p></div></div>;
 }
 
 function Metric({ label, value, detail, icon, definition, compact = false }: { label: string; value: string; detail: string; icon: React.ReactNode; definition: string; compact?: boolean }) {
   return (
     <Card title={definition}>
       <CardContent className={cn("pt-4", compact && "pb-3")}>
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-2">{icon}{label}</span>
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-2">{icon}{label}</span>
         <p className={cn("mt-1 font-semibold tracking-tight text-ink", compact ? "text-[19px]" : "text-[25px]")}>{value}</p>
-        <p className="mt-0.5 text-[10.5px] leading-relaxed text-ink-2">{detail}</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">{detail}</p>
       </CardContent>
     </Card>
   );
@@ -345,8 +345,8 @@ function Metric({ label, value, detail, icon, definition, compact = false }: { l
 function Unavailable({ note }: { note: string | null }) {
   return (
     <div className="rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-6 text-center">
-      <p className="text-[12.5px] font-medium text-ink-2">No reliable data for this period</p>
-      <p className="mx-auto mt-1 max-w-lg text-[11.5px] leading-relaxed text-muted">{note ?? "This metric has no recorded event source in the selected period. It is left empty rather than estimated."}</p>
+      <p className="text-[13px] font-medium text-ink-2">No reliable data for this period</p>
+      <p className="mx-auto mt-1 max-w-lg text-[12px] leading-relaxed text-muted">{note ?? "This metric has no recorded event source in the selected period. It is left empty rather than estimated."}</p>
     </div>
   );
 }
@@ -357,7 +357,7 @@ function CountList({ rows, empty }: { rows: Array<{ label: string; count: number
   return (
     <ul className="space-y-1.5">
       {rows.map((row) => (
-        <li key={row.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[11.5px]">
+        <li key={row.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[12px]">
           <span className="min-w-0"><span className="block truncate text-ink-2">{row.label}</span><span className="mt-0.5 block h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden><span className="block h-full rounded-full bg-primary" style={{ width: `${(row.count / max) * 100}%` }} /></span></span>
           <strong className="tabular-nums text-ink">{row.count.toLocaleString()}</strong>
         </li>
@@ -372,14 +372,14 @@ function Trend({ points, title, description }: { points: Array<{ label: string; 
     <Card className="mt-3">
       <CardHeader><div><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></div></CardHeader>
       <CardContent>
-        <div className="flex h-32 items-end gap-1 overflow-x-auto pb-1" role="img" aria-label={`${title}. Highest ${max}. ${points.length} days.`}>
+        <div className="relative flex h-32 items-end gap-1 overflow-x-auto pb-1" role="img" aria-label={`${title}. Highest ${max}. ${points.length} days.`}>
           {points.map((point) => (
             <div key={point.label} className="group flex min-w-[6px] flex-1 flex-col items-center justify-end" title={`${point.label}: ${point.value}`}>
               <span className="w-full rounded-t bg-primary/70 transition group-hover:bg-primary" style={{ height: `${Math.max(2, (point.value / max) * 112)}px` }} />
             </div>
           ))}
         </div>
-        <div className="mt-1 flex justify-between text-[10px] text-faint"><span>{points[0]?.label}</span><span>{points[points.length - 1]?.label}</span></div>
+        <div className="mt-1 flex justify-between text-[12px] text-faint"><span>{points[0]?.label}</span><span>{points[points.length - 1]?.label}</span></div>
         <table className="sr-only"><caption>{title}</caption><thead><tr><th>Date</th><th>Count</th></tr></thead><tbody>{points.map((point) => <tr key={point.label}><td>{point.label}</td><td>{point.value}</td></tr>)}</tbody></table>
       </CardContent>
     </Card>
@@ -390,8 +390,8 @@ function StackedTrend({ points, title }: { points: Array<{ label: string; good: 
   const max = Math.max(...points.map((point) => point.good + point.bad), 1);
   return (
     <div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</p>
-      <div className="flex h-16 items-end gap-1 overflow-x-auto" role="img" aria-label={`${title}: helpful and not helpful feedback per day.`}>
+      <p className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">{title}</p>
+      <div className="relative flex h-16 items-end gap-1 overflow-x-auto" role="img" aria-label={`${title}: helpful and not helpful feedback per day.`}>
         {points.map((point) => (
           <div key={point.label} className="flex min-w-[8px] flex-1 flex-col justify-end" title={`${point.label}: ${point.good} helpful, ${point.bad} not helpful`}>
             <span className="w-full rounded-t bg-danger/60" style={{ height: `${Math.max(1, (point.bad / max) * 56)}px` }} />
@@ -399,7 +399,7 @@ function StackedTrend({ points, title }: { points: Array<{ label: string; good: 
           </div>
         ))}
       </div>
-      <div className="mt-1 flex items-center gap-3 text-[10px] text-muted"><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-success/70" /> Helpful</span><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-danger/60" /> Not helpful</span></div>
+      <div className="mt-1 flex items-center gap-3 text-[12px] text-muted"><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-success/70" /> Helpful</span><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-danger/60" /> Not helpful</span></div>
     </div>
   );
 }

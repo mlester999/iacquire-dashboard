@@ -30,7 +30,7 @@ export default async function AutomationStudioPreview({ searchParams }: { search
   return (
     <div className="min-h-dvh bg-bg">
       <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-6 sm:px-6 lg:pl-[calc(272px+2rem)] lg:pr-8">
-        <div role="note" className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-2.5 text-[12.5px] text-muted">
+        <div role="note" className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-2.5 text-[13px] text-muted">
           <PreviewTheme />
           <span>Design preview with <strong>sample props</strong>; the left gutter stands in for the sidebar. States:</span>
           {Object.keys(STATES).map((s) => <a key={s} href={`?state=${s}`} className="font-medium text-primary underline">{s}</a>)}

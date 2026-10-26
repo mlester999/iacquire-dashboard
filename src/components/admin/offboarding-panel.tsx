@@ -18,7 +18,7 @@ import type { ReviewRow } from "@/server/inactivity/service";
 /** One precondition for deletion: the sentence on the left, a Done or Waiting pill on the right. */
 function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
-    <li className="flex items-start justify-between gap-3 rounded-lg bg-surface-2/50 px-3 py-2.5 text-[13px] leading-relaxed ring-1 ring-inset ring-line">
+    <li className="flex items-start justify-between gap-3 rounded-lg bg-surface-2/50 px-3 py-2.5 text-[14px] leading-relaxed ring-1 ring-inset ring-line">
       <span className={ok ? "min-w-0 text-ink" : "min-w-0 text-ink-2"}>{children}</span>
       {ok ? <StatusPill tone="success" size="sm">Done</StatusPill> : <StatusPill tone="neutral" size="sm">Waiting</StatusPill>}
     </li>
@@ -126,7 +126,7 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
             <div className="space-y-5">
               <ul className="space-y-2" aria-label="Shutdown steps">
                 {view.steps.map((s) => (
-                  <li key={s.key} className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2.5 text-[13px] leading-relaxed ring-1 ring-inset ${s.ok ? "bg-success-soft/25 ring-success/15" : "bg-danger-soft/30 ring-danger/20"}`}>
+                  <li key={s.key} className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2.5 text-[14px] leading-relaxed ring-1 ring-inset ${s.ok ? "bg-success-soft/25 ring-success/15" : "bg-danger-soft/30 ring-danger/20"}`}>
                     <span className="min-w-0"><span className="font-medium text-ink">{s.key[0].toUpperCase() + s.key.slice(1)}.</span> <span className={s.ok ? "text-ink-2" : "text-danger-ink"}>{s.text}</span></span>
                     {s.ok ? <StatusPill tone="success" size="sm">Done</StatusPill> : <StatusPill tone="danger" size="sm">Needs attention</StatusPill>}
                   </li>
@@ -143,7 +143,7 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
               </dl>
 
               <div className="space-y-3 rounded-2xl border border-line p-4">
-                <p className="text-[13.5px] font-semibold text-ink">Before anything can be deleted</p>
+                <p className="text-[14px] font-semibold text-ink">Before anything can be deleted</p>
                 <ul className="space-y-2">
                   <Check ok={retentionOver}>The retention period has ended{view.deleteAfter ? ` (${formatDate(view.deleteAfter, "UTC")})` : ""}.</Check>
                   <Check ok={Boolean(view.billingClosedAt)}><span suppressHydrationWarning>Billing is closed{view.billingClosedAt ? ` (${relativeTime(view.billingClosedAt)})` : ""}.</span></Check>
@@ -172,7 +172,7 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
                       <Callout tone="warning" icon={<Trash2 />} title={`Would remove ${plan.totalPurgeRows.toLocaleString("en-US")} rows across ${plan.purge.length} tables and ${plan.files} stored files`}>
                         Kept as financial and audit records: {plan.retain.map((r) => `${r.table.replace(/_/g, " ")} (${r.rows})`).join(", ") || "none"}.
                       </Callout>
-                      <ul className="grid gap-x-6 text-[12.5px] sm:grid-cols-2">{plan.purge.map((p) => <li key={p.table} className="flex justify-between gap-3 border-b border-line py-1.5"><span className="truncate text-muted" title={p.table.replace(/_/g, " ")}>{p.table.replace(/_/g, " ")}</span><span className="tabular-nums text-ink">{p.rows.toLocaleString("en-US")}</span></li>)}</ul>
+                      <ul className="grid gap-x-6 text-[13px] sm:grid-cols-2">{plan.purge.map((p) => <li key={p.table} className="flex justify-between gap-3 border-b border-line py-1.5"><span className="truncate text-muted" title={p.table.replace(/_/g, " ")}>{p.table.replace(/_/g, " ")}</span><span className="tabular-nums text-ink">{p.rows.toLocaleString("en-US")}</span></li>)}</ul>
                     </div>
                   )}
                 </div>
@@ -181,9 +181,9 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
           )}
 
           {view && view.timeline.length > 0 && (
-            <details className="group rounded-xl border border-line px-4 py-3 text-[13px]">
-              <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden"><History className="size-4 text-muted" aria-hidden /> History <InfoChip className="h-5 text-[11px]">{view.timeline.length}</InfoChip></summary>
-              <ol className="mt-3 space-y-3 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i} className="relative"><span aria-hidden className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" /><p className="text-ink-2">{t.detail ?? sentenceCase(t.kind)}</p><InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[11px]">{formatDateTime(t.at, "UTC")}</InfoChip></li>)}</ol>
+            <details className="group rounded-xl border border-line px-4 py-3 text-[14px]">
+              <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden"><History className="size-4 text-muted" aria-hidden /> History <InfoChip className="h-5 text-[12px]">{view.timeline.length}</InfoChip></summary>
+              <ol className="mt-3 space-y-3 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i} className="relative"><span aria-hidden className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" /><p className="text-ink-2">{t.detail ?? sentenceCase(t.kind)}</p><InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[12px]">{formatDateTime(t.at, "UTC")}</InfoChip></li>)}</ol>
             </details>
           )}
         </CardContent>

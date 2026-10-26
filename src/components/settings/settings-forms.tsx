@@ -284,11 +284,11 @@ export function TeamManager({
               const Icon = ROLE_META[r].icon;
               return (
                 <li key={r} className={cn("flex flex-col gap-1.5 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:gap-4", r === role && "bg-primary-soft/50")}>
-                  <p className="flex shrink-0 items-center gap-2.5 text-[13px] font-semibold text-ink sm:w-56">
+                  <p className="flex shrink-0 items-center gap-2.5 text-[14px] font-semibold text-ink sm:w-56">
                     <IconTile icon={<Icon />} tone={ROLE_META[r].tone} size="sm" className="size-7 rounded-lg [&>svg]:size-3.5" />
                     {ROLE_LABELS[r]}
                   </p>
-                  <p className="min-w-0 text-[12.5px] leading-relaxed text-muted">{ROLE_DESCRIPTIONS[r]}</p>
+                  <p className="min-w-0 text-[13px] leading-relaxed text-muted">{ROLE_DESCRIPTIONS[r]}</p>
                 </li>
               );
             })}
@@ -324,7 +324,7 @@ export function TeamManager({
                       </span>
                       {m.user_id === myId && <StatusPill tone="primary" size="sm" dot={false}>You</StatusPill>}
                     </p>
-                    <p className="truncate text-[12.5px] text-muted" title={m.email}>
+                    <p className="truncate text-[13px] text-muted" title={m.email}>
                       {m.email}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -456,7 +456,7 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
         }
       >
         <div>
-          <p className="mb-2.5 text-[13px] font-medium text-ink-2" id="pref-tone-label">
+          <p className="mb-2.5 text-[14px] font-medium text-ink-2" id="pref-tone-label">
             Default tone
           </p>
           <div role="radiogroup" aria-labelledby="pref-tone-label" className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
@@ -636,7 +636,7 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
           />
         </SettingRow>
         {quiet && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/40 p-3 text-[12.5px]">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/40 p-3 text-[13px]">
             <Clock className="size-3.5 text-muted" aria-hidden />
             <span className="font-medium">Quiet from</span>
             <input
@@ -644,7 +644,7 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
               aria-label="Quiet hours start"
               value={p.proactive.quietStart ?? "21:00"}
               onChange={(event) => saveProactive({ quietStart: event.target.value })}
-              className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]"
+              className="h-9 rounded-lg border border-line bg-surface px-2 text-[14px]"
             />
             <span className="font-medium">until</span>
             <input
@@ -652,7 +652,7 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
               aria-label="Quiet hours end"
               value={p.proactive.quietEnd ?? "07:00"}
               onChange={(event) => saveProactive({ quietEnd: event.target.value })}
-              className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]"
+              className="h-9 rounded-lg border border-line bg-surface px-2 text-[14px]"
             />
             <span className="text-muted">your local time</span>
           </div>

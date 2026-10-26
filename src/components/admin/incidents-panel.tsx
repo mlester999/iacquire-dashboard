@@ -41,11 +41,11 @@ function Timeline({ id, timeZone }: { id: string; timeZone: string }) {
     return () => { live = false; };
   }, [id]);
   if (error) return <StatusPill tone="danger" icon={<AlertTriangle className="size-3" aria-hidden />}>{error}</StatusPill>;
-  if (!events) return <div className="space-y-2" aria-busy="true" aria-label="Loading timeline"><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-64" /><Skeleton className="h-4 w-40" /></div>;
+  if (!events) return <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading timeline"><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-64" /><Skeleton className="h-4 w-40" /></div>;
   return (
     <ol className="ml-1 space-y-3 border-l border-line-strong pl-5">
       {events.map((e) => (
-        <li key={e.id} className="relative text-[12.5px] leading-relaxed">
+        <li key={e.id} className="relative text-[13px] leading-relaxed">
           <span className={cn("absolute -left-[26px] top-1.5 size-2.5 rounded-full ring-4 ring-surface-2", EVENT_TONE[e.kind] ?? "bg-faint")} aria-hidden />
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold text-ink">{EVENT_LABEL[e.kind] ?? sentenceCase(e.kind)}</span>
@@ -95,14 +95,14 @@ function IncidentCard({ incident: i, timeZone, canManage }: { incident: Incident
             {i.orgName && <InfoChip icon={<Building2 />}>{i.orgName}</InfoChip>}
           </div>
           <p className="mt-2.5 break-words text-[14.5px] font-semibold leading-snug">{i.title}</p>
-          {i.detail && <p className="mt-1 break-words text-[13px] leading-relaxed text-muted">{i.detail}</p>}
+          {i.detail && <p className="mt-1 break-words text-[14px] leading-relaxed text-muted">{i.detail}</p>}
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             <InfoChip icon={<Clock3 />}>Detected {relativeTime(i.detectedAt)}</InfoChip>
             {i.occurrences > 1 && !resolved && <InfoChip icon={<Repeat />}>Seen in {i.occurrences} checks</InfoChip>}
             {!resolved && <InfoChip><RelativeTime value={i.lastSeenAt} prefix="Last seen " /></InfoChip>}
           </div>
           {resolved && (
-            <div className={cn("mt-3 flex items-start gap-2.5 rounded-xl border p-3 text-[12.5px] leading-relaxed", i.resolution === "verified_recovery" ? "border-success/20 bg-success-soft/60" : "border-warning/25 bg-warning-soft/60")}>
+            <div className={cn("mt-3 flex items-start gap-2.5 rounded-xl border p-3 text-[13px] leading-relaxed", i.resolution === "verified_recovery" ? "border-success/20 bg-success-soft/60" : "border-warning/25 bg-warning-soft/60")}>
               {i.resolution === "verified_recovery" ? <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden /> : <ShieldQuestion className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />}
               <p>
                 <span className="font-semibold text-ink">{i.resolution === "verified_recovery" ? "Recovery verified by a health check. " : "Closed by hand. Nothing verified that it recovered. "}</span>
@@ -113,17 +113,17 @@ function IncidentCard({ incident: i, timeZone, canManage }: { incident: Incident
           {!resolved && i.safeActions.length > 0 && (
             <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3.5">
               <p className="flex items-center gap-1.5 text-[12px] font-semibold text-ink-2"><Lock className="size-3.5 text-muted" aria-hidden />Held back while this lasts</p>
-              <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[12.5px] leading-relaxed text-muted marker:text-faint">{i.safeActions.map((a) => <li key={a}>{a}</li>)}</ul>
+              <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-relaxed text-muted marker:text-faint">{i.safeActions.map((a) => <li key={a}>{a}</li>)}</ul>
             </div>
           )}
           {!resolved && i.recoveryGuidance && (
-            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-primary/15 bg-primary-soft/50 p-3.5 text-[12.5px] leading-relaxed">
+            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-primary/15 bg-primary-soft/50 p-3.5 text-[13px] leading-relaxed">
               <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
               <p><span className="font-semibold text-primary-ink">What to do: </span><span className="text-ink-2">{i.recoveryGuidance}</span></p>
             </div>
           )}
         </div>
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="col-start-2 inline-flex h-11 items-center gap-1 justify-self-start rounded-lg border border-line bg-surface px-3 sm:col-start-3 sm:row-start-1 sm:justify-self-end sm:px-2.5 text-[12.5px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="col-start-2 inline-flex h-11 items-center gap-1 justify-self-start rounded-lg border border-line bg-surface px-3 sm:col-start-3 sm:row-start-1 sm:justify-self-end sm:px-2.5 text-[13px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
           Timeline <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
         </button>
       </div>
@@ -132,7 +132,7 @@ function IncidentCard({ incident: i, timeZone, canManage }: { incident: Incident
           <Timeline id={i.id} timeZone={timeZone} />
           {canManage && !resolved && (
             <div className="space-y-3">
-              <label htmlFor={`note-${i.id}`} className="block text-[12.5px] font-medium text-ink-2">Add a note for the team</label>
+              <label htmlFor={`note-${i.id}`} className="block text-[13px] font-medium text-ink-2">Add a note for the team</label>
               <Textarea id={`note-${i.id}`} rows={2} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What you found or what you tried" />
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" disabled={!note.trim()} loading={busy} onClick={() => act(() => addIncidentNoteAction(i.id, note), "Note added.")}>Add note</Button>
@@ -156,7 +156,7 @@ function IncidentCard({ incident: i, timeZone, canManage }: { incident: Incident
           </>
         }
       >
-        <label htmlFor={`resolve-${i.id}`} className="mb-1.5 block text-[13px] font-medium text-ink-2">What was done?</label>
+        <label htmlFor={`resolve-${i.id}`} className="mb-1.5 block text-[14px] font-medium text-ink-2">What was done?</label>
         <Textarea id={`resolve-${i.id}`} rows={3} maxLength={400} value={note} onChange={(e) => setNote(e.target.value)} />
       </Dialog>
     </li>

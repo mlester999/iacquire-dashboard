@@ -47,7 +47,7 @@ export function CompanyProfile({
 
   return (
     <div className="space-y-5">
-      <Link href={`${scope.base}/companies`} className="inline-flex min-h-9 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />Companies</Link>
+      <Link href={`${scope.base}/companies`} className="inline-flex min-h-9 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />Companies</Link>
 
       <section className="rounded-3xl border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -58,7 +58,7 @@ export function CompanyProfile({
                 <h2 className="text-[22px] font-semibold tracking-[-0.03em] text-ink">{detail.name}</h2>
                 {archived && <Badge tone="warning">Archived</Badge>}
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted">
                 {website && <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-primary"><Globe className="size-3.5" />{detail.domain ?? website}<ExternalLink className="size-3" /></a>}
                 {detail.email && <a href={`mailto:${detail.email}`} className="inline-flex items-center gap-1.5 hover:text-primary"><Mail className="size-3.5" />{detail.email}</a>}
                 {detail.phone && <a href={`tel:${detail.phone}`} className="inline-flex items-center gap-1.5 hover:text-primary"><Phone className="size-3.5" />{formatPhone(detail.phone)}</a>}
@@ -122,9 +122,9 @@ export function CompanyProfile({
                       </li>
                     ))}
                   </ul>
-                  <Link href={peopleHref} className="inline-flex text-[13px] font-medium text-primary hover:underline">Open these people in Contacts</Link>
+                  <Link href={peopleHref} className="inline-flex text-[14px] font-medium text-primary hover:underline">Open these people in Contacts</Link>
                 </div>
-              ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted"><Users className="mx-auto mb-1 size-4" />No one is linked yet. Link people from their contact page.</p>
+              ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[14px] text-muted"><Users className="mx-auto mb-1 size-4" />No one is linked yet. Link people from their contact page.</p>
             )}
             {tab === "deals" && (
               detail.opportunities.length ? (
@@ -136,13 +136,13 @@ export function CompanyProfile({
                         <p className="text-[12px] text-muted">{o.stage ?? "—"}</p>
                       </div>
                       <span className="flex items-center gap-2">
-                        <span className="text-[13px] font-medium tabular-nums">{o.value === null ? "—" : money(o.value, o.currency ?? scope.currency)}</span>
+                        <span className="text-[14px] font-medium tabular-nums">{o.value === null ? "—" : money(o.value, o.currency ?? scope.currency)}</span>
                         <Badge tone={STATUS_TONE[o.status as keyof typeof STATUS_TONE] ?? "neutral"}>{STATUS_LABEL[o.status as keyof typeof STATUS_LABEL] ?? o.status}</Badge>
                       </span>
                     </li>
                   ))}
                 </ul>
-              ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">No deals with this company yet.</p>
+              ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[14px] text-muted">No deals with this company yet.</p>
             )}
             {tab === "notes" && <NotesPanel scope={scope} type="company" recordId={detail.id} notes={notes} />}
             {tab === "tasks" && (
@@ -162,7 +162,7 @@ export function CompanyProfile({
               { label: "Added", value: <>{CREATED_VIA_LABELS[detail.createdVia as CreatedVia] ?? "Added"} · <RelativeTime iso={detail.createdAt} timezone={scope.timezone} /></> },
               { label: "Updated", value: <RelativeTime iso={detail.updatedAt} timezone={scope.timezone} /> },
             ]} />
-            {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[13px] leading-relaxed text-ink-2">{detail.description}</p>}
+            {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[14px] leading-relaxed text-ink-2">{detail.description}</p>}
           </SectionCard>
           {detail.fields.length > 0 && (
             <SectionCard title="Custom fields" action={canEdit ? <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>Edit</Button> : undefined}>
@@ -224,7 +224,7 @@ function EditCompanySheet({ scope, detail, members, onClose }: { scope: CrmScope
         </div>
         {detail.fields.length > 0 && (
           <div className="space-y-3 border-t border-line pt-4">
-            <p className="text-[13px] font-semibold text-ink">Custom fields</p>
+            <p className="text-[14px] font-semibold text-ink">Custom fields</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {detail.fields.map((f) => (
                 <Field key={f.fieldId} label={f.label} htmlFor={`ec-cf-${f.fieldId}`} optional={!f.required} hint={f.helpText ?? undefined} className={f.type === "textarea" || f.type === "multiselect" ? "sm:col-span-2" : undefined}>

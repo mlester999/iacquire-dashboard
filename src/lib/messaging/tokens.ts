@@ -13,6 +13,7 @@
 //   * Meta WhatsApp Cloud API text messages (`text.body`): maximum 4096 characters. Template BODY components: maximum 1024 characters.
 //   * Resend POST /emails (resend/resend-openapi): `subject` is required.
 import { smsSegments, type Channel } from "@/lib/messaging";
+import { reviewIncentiveFindings } from "@/lib/reputation/incentives";
 
 export type TokenGroup = "contact" | "business" | "user" | "appointment" | "review";
 
@@ -180,8 +181,8 @@ export function sampleTokenValues(overrides: TokenValues = {}): Record<TokenKey,
 // Finding tokens
 // ---------------------------------------------------------------------------
 
-/** A well-formed placeholder: two braces, anything but braces, two braces. Whitespace inside is allowed and ignored. */
-const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
+/** A well-formed placeholder: two braces, anything but braces, two braces. Whitespace inside is allowed and ignored (callers trim the capture: a \s* beside it made a long run of spaces take minutes). */
+const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
 
 export interface TokenOccurrence {
   /** Exactly as written, braces included. */
@@ -452,7 +453,7 @@ export interface TemplateIssue {
   code:
     | "body_required" | "body_too_long" | "subject_required" | "subject_too_long" | "subject_multiline" | "unknown_token" | "positional_token"
     | "stray_braces" | "single_braces" | "too_many_tokens" | "sms_too_long" | "sms_segments" | "sms_long" | "sms_unicode" | "sms_opt_out"
-    | "whatsapp_too_long" | "whatsapp_window" | "whatsapp_marketing" | "email_unsubscribe" | "any_channel" | "unknown_custom_value";
+    | "whatsapp_too_long" | "whatsapp_window" | "whatsapp_marketing" | "email_unsubscribe" | "any_channel" | "unknown_custom_value" | "review_incentive" | "review_steering";
   message: string;
   /** Where the issue is: the subject line or the body. */
   field: "subject" | "body";
@@ -556,6 +557,11 @@ export function validateTemplate(body: string, subject: string | null | undefine
     issues.push(...tokenIssues(subj, "subject", catalog));
   }
   issues.push(...tokenIssues(text, "body", catalog));
+  // Rule R4: wording that carries the customer's own review link may not offer anything in return for feedback or a review, or ask for a particular rating. This is a block, not a
+  // warning: the template can't be saved or approved until it is reworded (src/lib/reputation/incentives.ts).
+  if (/\{\{\s*review\.link\s*\}\}/.test(text)) {
+    for (const f of reviewIncentiveFindings(`${subj}\n${text}`).slice(0, 3)) issues.push({ level: "error", code: f.kind === "incentive" ? "review_incentive" : "review_steering", field: "body", message: f.message });
+  }
 
   const tokens = tokensUsed(subj, text);
   const customValues = customValueKeysUsed(subj, text).filter((k) => known.has(k));

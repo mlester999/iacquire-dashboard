@@ -66,7 +66,7 @@ export function CustomValuesManager({ scope, values, limit, defaultCallingCode }
       )}
 
       {missing.length > 0 && (
-        <div role="status" className="mb-4 flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <div role="status" className="mb-4 flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="min-w-0">
             <p className="font-medium">
@@ -76,11 +76,11 @@ export function CustomValuesManager({ scope, values, limit, defaultCallingCode }
               {missing.map((v) => (
                 <li key={v.id}>
                   {canManage ? (
-                    <button type="button" onClick={() => setEditing(v)} className="inline-flex min-h-9 items-center rounded-lg bg-surface/70 px-2.5 text-[12.5px] font-medium text-ink underline-offset-2 hover:underline sm:min-h-7">
+                    <button type="button" onClick={() => setEditing(v)} className="inline-flex min-h-9 items-center rounded-lg bg-surface/70 px-2.5 text-[13px] font-medium text-ink underline-offset-2 hover:underline sm:min-h-7">
                       Fill in {v.label}
                     </button>
                   ) : (
-                    <a href={`#cv-${v.key}`} className="inline-flex min-h-9 items-center rounded-lg bg-surface/70 px-2.5 text-[12.5px] font-medium text-ink sm:min-h-7">{v.label}</a>
+                    <a href={`#cv-${v.key}`} className="inline-flex min-h-9 items-center rounded-lg bg-surface/70 px-2.5 text-[13px] font-medium text-ink sm:min-h-7">{v.label}</a>
                   )}
                 </li>
               ))}
@@ -105,12 +105,12 @@ export function CustomValuesManager({ scope, values, limit, defaultCallingCode }
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
               <Input type="search" aria-label="Search configuration values" placeholder="Search names, keys and values" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
-            <p className="text-[12.5px] text-muted" aria-live="polite">
+            <p className="text-[13px] text-muted" aria-live="polite">
               {term ? `${shown.length} of ${values.length} shown` : `${values.length} of ${limit} values`}
             </p>
           </div>
           {!shown.length ? (
-            <Card className="px-4 py-8 text-center text-[13px] text-muted">No values match “{q.trim()}”.</Card>
+            <Card className="px-4 py-8 text-center text-[14px] text-muted">No values match “{q.trim()}”.</Card>
           ) : (
             <div className="space-y-4">
               {groups.map(([name, items]) => (
@@ -179,10 +179,10 @@ function ValueRow({ scope, value: v, canManage, onEdit, onDelete }: { scope: Crm
             {v.missingRequired ? <Badge tone="danger"><AlertTriangle className="size-3" aria-hidden />Required, empty</Badge> : v.required ? <Badge tone="warning">Required</Badge> : null}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-ink-2">{v.token}</code>
+            <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink-2">{v.token}</code>
             <Button variant="ghost" size="icon-sm" aria-label={`Copy the token for ${v.label}`} onClick={() => copy(v.token, "Token")}><Copy className="size-3.5" /></Button>
           </div>
-          <div className="mt-1.5 text-[13px]"><ValuePreview value={v} /></div>
+          <div className="mt-1.5 text-[14px]"><ValuePreview value={v} /></div>
         </div>
         <div className="flex items-center gap-1">
           {v.usage.length ? (
@@ -191,7 +191,7 @@ function ValueRow({ scope, value: v, canManage, onEdit, onDelete }: { scope: Crm
               <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} aria-hidden />
             </Button>
           ) : (
-            <span className="px-2 text-[12.5px] text-muted">Not used yet</span>
+            <span className="px-2 text-[13px] text-muted">Not used yet</span>
           )}
           {canManage && (
             <Menu>
@@ -225,7 +225,7 @@ function ValuePreview({ value: v }: { value: CustomValueView }) {
     return (
       <span className="inline-flex items-center gap-2 text-ink-2">
         <span className="size-4 rounded border border-line" style={{ background: v.value }} aria-hidden />
-        <span className="font-mono text-[12.5px]">{v.value}</span>
+        <span className="font-mono text-[13px]">{v.value}</span>
       </span>
     );
   }
@@ -251,7 +251,7 @@ function usageStatus(u: CustomValueUsage): { label: string; tone: "success" | "w
 
 export function UsageList({ scope, usage }: { scope: CrmScope; usage: CustomValueUsage[] }) {
   return (
-    <ul className="space-y-1.5 text-[12.5px]">
+    <ul className="space-y-1.5 text-[13px]">
       {usage.map((u) => {
         const status = usageStatus(u);
         const href = !u.name
@@ -322,7 +322,7 @@ function DeleteValueDialog({ scope, value: listed, onClose }: { scope: CrmScope;
             <UsageList scope={scope} usage={blocked ? blocking : others} />
           </div>
           {!blocked && needsConfirm && (
-            <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+            <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
               I understand {others.length === 1 ? "this one" : `these ${others.length}`} will need {value.token} removed before {others.length === 1 ? "it" : "they"} can be used again.
             </label>

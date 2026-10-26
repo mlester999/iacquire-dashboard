@@ -56,15 +56,15 @@ export function AgencyWorkforceControls({
       <div className="flex flex-wrap gap-2">
         <Link
           href={`/admin/employees/open?role=${encodeURIComponent(slug)}`}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[12.5px] font-medium text-white hover:bg-primary-strong"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[13px] font-medium text-primary-on hover:bg-primary-strong"
         >
           <MessageSquare className="size-3.5" aria-hidden /> Chat
         </Link>
         <Link
           href={`/admin/employees/open?role=${encodeURIComponent(slug)}&to=manage`}
           className={dark
-            ? "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 text-[12.5px] font-medium text-white hover:bg-white/15"
-            : "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2"}
+            ? "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 text-[13px] font-medium text-white hover:bg-white/15"
+            : "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2"}
         >
           <Settings2 className="size-3.5" aria-hidden /> Manage
         </Link>
@@ -96,7 +96,7 @@ export function AgencyWorkforceControls({
           </>
         }
       >
-        <p className="text-[13px] leading-relaxed text-muted">
+        <p className="text-[14px] leading-relaxed text-muted">
           This changes the employee&apos;s availability for the iAcquire internal workspace. It does not delete its history, knowledge or profile connection.
         </p>
       </Dialog>

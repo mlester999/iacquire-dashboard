@@ -15,10 +15,11 @@ import { MAINTENANCE_STATUS_LABEL, formatMoney } from "@/lib/projects";
 import type { listAgencyMaintenance } from "@/server/maintenance/service";
 import { formatDate } from "@/lib/utils";
 import { PlanLifecycle } from "@/components/admin/plan-lifecycle";
+import { localDayIso } from "@/lib/local-day";
 
 type AgencyData = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 /** The plan's money side is optional here so sample data without it still draws; the real listing always has it. */
-type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"] }> };
+type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle" | "blockedBy"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"]; blockedBy?: AgencyData["subscriptions"][number]["blockedBy"] }> };
 
 export function MaintenanceAdmin({ subscriptions, requests }: Data) {
   const [planFilter,setPlanFilter]=React.useState("all");const [requestFilter,setRequestFilter]=React.useState("all");
@@ -27,7 +28,7 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
   const shownRequests=requests.filter(r=>requestFilter==="all"||r.kind===requestFilter);
   return (
     <div className="space-y-6">
-      <PageHero tone="dark" eyebrow="Client care / Managed maintenance" title={active.length?"Keep every client system in good shape.":"Built to last. Supported with care."} icon={<ShieldCheck className="size-5"/>} description={active.length?`${active.length} active plan${active.length===1?"":"s"}, ${pending.length} enrollment request${pending.length===1?"":"s"} and ${requests.length} open maintenance item${requests.length===1?"":"s"}.`:"No plans are currently active. Optional managed maintenance keeps existing integrations and AI systems cared for after delivery."} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[10px] font-semibold uppercase tracking-[.14em] text-blue-200">Optional managed plan</p><p className="mt-2 text-[35px] font-semibold tracking-tight">$299<span className="text-sm font-normal text-slate-300">/month</span></p><p className="mt-2 text-xs leading-relaxed text-slate-300">Monitoring, troubleshooting, reasonable adjustments and AI optimization.</p><p className="mt-3 border-t border-white/10 pt-3 text-[10px] text-slate-400">Enrollment and activation are explicit. Payment collection is not inferred.</p></div>} action={<ButtonLink href="/admin/clients" variant="secondary">View client accounts <ArrowRight className="size-4"/></ButtonLink>}/>
+      <PageHero tone="dark" eyebrow="Client care / Managed maintenance" title={active.length?"Keep every client system in good shape.":"Built to last. Supported with care."} icon={<ShieldCheck className="size-5"/>} description={active.length?`${active.length} active plan${active.length===1?"":"s"}, ${pending.length} enrollment request${pending.length===1?"":"s"} and ${requests.length} open maintenance item${requests.length===1?"":"s"}.`:"No plans are currently active. Optional managed maintenance keeps existing integrations and AI systems cared for after delivery."} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-semibold uppercase tracking-[.14em] text-blue-200">Optional managed plan</p><p className="mt-2 text-[35px] font-semibold tracking-tight">$299<span className="text-sm font-normal text-slate-300">/month</span></p><p className="mt-2 text-xs leading-relaxed text-slate-300">Monitoring, troubleshooting, reasonable adjustments and AI optimization.</p><p className="mt-3 border-t border-white/10 pt-3 text-[12px] text-slate-400">Enrollment and activation are explicit. Payment collection is not inferred.</p></div>} action={<ButtonLink href="/admin/clients" variant="secondary">View client accounts <ArrowRight className="size-4"/></ButtonLink>}/>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Active plans" value={active.length} detail="Recorded maintenance agreements" tone="green" icon={<Activity className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Pending enrollment" value={pending.length} detail="Awaiting agency activation" tone="amber" icon={<Clock3 className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Open maintenance items" value={requests.length} detail="Focused changes and corrections" tone="blue" icon={<Wrench className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Core defect reports" value={defects.length} detail="No charge · outside allowance" tone="neutral" icon={<ShieldCheck className="size-4"/>}/></div>
       <section aria-label="Client maintenance plans">
         <SectionLabel title="Client maintenance plans" count={subscriptions.length} description="Activation, agreements and renewals in one place." action={<div className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">{[{id:"all",label:"All plans"},{id:"active",label:"Active"},{id:"requested",label:"Pending"},{id:"cancel_requested",label:"Cancellation"},{id:"past_due",label:"Past due"},{id:"expired",label:"Expired"}].map(f=><button key={f.id} onClick={()=>setPlanFilter(f.id)} aria-pressed={planFilter===f.id} className={cn("min-h-8 rounded-lg px-2.5 text-xs font-medium",planFilter===f.id?"bg-surface text-ink shadow-soft":"text-muted")}>{f.label}</button>)}</div>}/>
@@ -58,8 +59,8 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
         )}
         {requests.length>0&&!shownRequests.length&&<p className="rounded-xl border border-dashed border-line-strong p-4 text-xs text-muted">No open requests in this category. Your other maintenance items remain in All requests.</p>}
       </section>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[{Icon:ShieldCheck,title:"Defect correction",body:"Original setup defects. No charge and no allowance used."},{Icon:LifeBuoy,title:"Basic support",body:"Questions and guidance through the existing support inbox."},{Icon:Wrench,title:"Managed maintenance",body:"Focused upkeep within an active plan and its allowance."},{Icon:Code2,title:"Custom project work",body:"New systems and larger features are scoped and quoted separately."}].map(l=><div key={l.title} className="rounded-xl border border-line bg-surface-2/50 p-4"><l.Icon className="size-4 text-primary"/><p className="mt-2 text-xs font-semibold">{l.title}</p><p className="mt-1 text-[11px] leading-relaxed text-muted">{l.body}</p></div>)}</div>
-      <p className="text-[11px] text-muted">Payment collection and verified maintenance revenue are not available in these records. PayMongo is not presented as connected.</p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[{Icon:ShieldCheck,title:"Defect correction",body:"Original setup defects. No charge and no allowance used."},{Icon:LifeBuoy,title:"Basic support",body:"Questions and guidance through the existing support inbox."},{Icon:Wrench,title:"Managed maintenance",body:"Focused upkeep within an active plan and its allowance."},{Icon:Code2,title:"Custom project work",body:"New systems and larger features are scoped and quoted separately."}].map(l=><div key={l.title} className="rounded-xl border border-line bg-surface-2/50 p-4"><l.Icon className="size-4 text-primary"/><p className="mt-2 text-xs font-semibold">{l.title}</p><p className="mt-1 text-[12px] leading-relaxed text-muted">{l.body}</p></div>)}</div>
+      <p className="text-[12px] text-muted">Payment collection and verified maintenance revenue are not available in these records. PayMongo is not presented as connected.</p>
     </div>
   );
 }
@@ -67,9 +68,9 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
 function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
-  const [start, setStart] = React.useState(new Date().toISOString().slice(0, 10));
+  const [start, setStart] = React.useState(() => localDayIso());
   // A plan starts only once a person has checked the payment in their own billing records and says what period it pays for (a month by default).
-  const [through, setThrough] = React.useState(() => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 31); return d.toISOString().slice(0, 10); });
+  const [through, setThrough] = React.useState(() => localDayIso(new Date(), 31));
   const [paymentConfirmed, setPaymentConfirmed] = React.useState(false);
   const done = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     const ok = await run(key, fn as never, msg);
@@ -92,7 +93,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
           <InfoChip icon={<Receipt />} className="tabular-nums">{formatMoney(s.monthlyPriceCents, s.currency)}/month</InfoChip>
           <InfoChip icon={<Gauge />} className="tabular-nums">{s.monthlyRequestAllowance} requests/month</InfoChip>
         </div>
-        {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">“{s.requestNote}”</p>}
+        {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[14px] text-ink-2">“{s.requestNote}”</p>}
         {s.status === "active" || s.status === "past_due" || s.status === "cancel_requested" ? (
           <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-3">
             {[
@@ -101,17 +102,20 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
               { label: "Used this month", value: `${s.used} of ${s.monthlyRequestAllowance}` },
             ].map((f) => (
               <div key={f.label} className="min-w-0 rounded-xl bg-surface-2/70 px-3 py-2 ring-1 ring-inset ring-line">
-                <p className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted">{f.label}</p>
-                <p className="mt-0.5 truncate text-[12.5px] font-medium tabular-nums text-ink">{f.value}</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">{f.label}</p>
+                <p className="mt-0.5 truncate text-[13px] font-medium tabular-nums text-ink">{f.value}</p>
               </div>
             ))}
           </div>
         ) : null}
-        {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[13px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
+        {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[14px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
         {s.lifecycle && ["active", "past_due", "cancel_requested", "expired"].includes(s.status) && <PlanLifecycle subscriptionId={s.id} status={s.status} info={s.lifecycle} />}
         {!s.eligible && s.status === "requested" && (
-          <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink ring-1 ring-inset ring-warning/25">
-            <CalendarClock className="size-4 shrink-0" /> The core system isn&apos;t activated yet, so this can&apos;t start.
+          <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink ring-1 ring-inset ring-warning/25">
+            <CalendarClock className="size-4 shrink-0" />
+            {s.blockedBy === "setup_payment"
+              ? <span>The client&apos;s setup payment isn&apos;t confirmed yet, so this can&apos;t start. <Link href={`/admin/clients/${s.orgId}?tab=billing`} className="font-medium underline underline-offset-2">Open the client&apos;s billing</Link></span>
+              : "The core system isn't activated yet, so this can't start."}
           </p>
         )}
         <div className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
@@ -125,7 +129,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
                 Payment covers through
                 <Input type="date" value={through} onChange={(e) => setThrough(e.target.value)} className="mt-1 h-9 w-44" />
               </label>
-              <label className="flex basis-full items-start gap-2 text-[12.5px] text-ink-2">
+              <label className="flex basis-full items-start gap-2 text-[13px] text-ink-2">
                 <input type="checkbox" className="mt-0.5 size-4 rounded border-line-strong" checked={paymentConfirmed} onChange={(e) => setPaymentConfirmed(e.target.checked)} />
                 <span>I confirmed this client&apos;s payment in our billing records. iAcquire doesn&apos;t detect payments, so the plan starts only on this confirmation.</span>
               </label>
@@ -142,7 +146,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
               Confirm cancellation
             </Button>
           )}
-          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
+          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-primary-soft">
             Client <ExternalLink className="size-3" />
           </Link>
         </div>
@@ -158,7 +162,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
     <li className="grid gap-3 px-4 py-4 transition hover:bg-surface-2/50 md:px-5 lg:grid-cols-[1fr_190px_150px] lg:items-center">
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
-          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-normal text-muted ring-1 ring-inset ring-line">{r.ref}</span>
+          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] font-normal text-muted ring-1 ring-inset ring-line">{r.ref}</span>
           {r.title}
           <StatusPill size="sm" tone={r.kind === "core_defect" ? "danger" : "primary"}>{r.kind === "core_defect" ? "Core defect" : "Managed"}</StatusPill>
         </p>
@@ -167,7 +171,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
           <InfoChip><RelativeTime value={r.createdAt} /></InfoChip>
           <InfoChip>{r.kind === "core_defect" ? "No charge, not counted" : r.countsAgainstAllowance ? "Uses monthly allowance" : "Allowance waived"}</InfoChip>
         </div>
-        <p className="mt-2 line-clamp-2 text-[12.5px] text-ink-2" title={r.description}>{r.description}</p>
+        <p className="mt-2 line-clamp-2 text-[13px] text-ink-2" title={r.description}>{r.description}</p>
       </div>
       <Select
         aria-label={`Status of ${r.ref}`}
@@ -198,7 +202,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
           </Button>
         )}
         {r.ticketId && (
-          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-primary-soft">
+          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[14px] font-medium text-primary hover:bg-primary-soft">
             Open thread
           </Link>
         )}

@@ -171,21 +171,21 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label="Collection" className="scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+          <div role="group" aria-label="Collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
             {COLLECTIONS.map((c) => {
               const n = scope.filter(c.match).length;
               const on = collection === c.id;
               return (
                 <button key={c.id} type="button" aria-pressed={on} onClick={() => setUrl({ collection: c.id })}
-                  className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", on ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
+                  className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", on ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                   {c.id === "featured" && <Star className="size-3.5" aria-hidden />}{c.label}
-                  <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", on ? "bg-primary/10" : "bg-surface-3")}>{n}</span>
+                  <span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", on ? "bg-primary/10" : "bg-surface-3")}>{n}</span>
                 </button>
               );
             })}
           </div>
           <div className="flex items-center gap-3">
-            {filtered && <button type="button" onClick={clear} className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-medium text-primary-ink hover:underline sm:min-h-0"><X className="size-3.5" aria-hidden /> Clear filters</button>}
+            {filtered && <button type="button" onClick={clear} className="inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline sm:min-h-0"><X className="size-3.5" aria-hidden /> Clear filters</button>}
             <p role="status" className="text-[12px] text-muted">{list.length} {list.length === 1 ? "Blueprint" : "Blueprints"}{filtered ? " match" : ""}</p>
           </div>
         </div>
@@ -194,7 +194,7 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
           <Card className="border-dashed px-6 py-12 text-center">
             <Layers className="mx-auto size-8 text-faint" aria-hidden />
             <p className="mt-3 text-[16px] font-semibold text-ink">{blueprints.length ? "Nothing in this view" : "Your library is empty"}</p>
-            <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
+            <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-muted">
               {blueprints.length ? "No Blueprint matches this collection and these filters." : "Create a Blueprint from scratch, add one of the iAcquire starters below, capture one from a client's CRM, or import from GoHighLevel or a package file."}
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -225,7 +225,7 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
         <SectionLabel title="iAcquire starters" count={shownStarters.length}
           description="Original starting points for common industries: pipeline stages, contact fields, tags, Smart Lists, appointment types, forms, message drafts, workflow drafts and report presets. Adding one puts a published copy in your library (super admins), or start an editable draft from it; nothing reaches a client and no outbound sequence is switched on." />
         {shownStarters.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">{starters.length ? "No starter matches these filters." : "No starters are available in this environment."}</p>
+          <p className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-[14px] text-muted">{starters.length ? "No starter matches these filters." : "No starters are available in this environment."}</p>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="iAcquire starters">
             {shownStarters.map((s) => (
@@ -233,14 +233,14 @@ export function BlueprintLibrary({ blueprints, folders, starters, clients, permi
                 <Card className="flex h-full flex-col gap-3 rounded-[18px] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(s.industry)}</p>
+                      <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(s.industry)}</p>
                       <h3 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">{s.name}</h3>
                     </div>
                     <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
                   </div>
-                  <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted">{s.description}</p>
+                  <p className="line-clamp-2 text-[13px] leading-relaxed text-muted">{s.description}</p>
                   <ModuleChips modules={s.modules} max={4} />
-                  <p className="text-[11.5px] text-muted">{s.totalAssets} {s.totalAssets === 1 ? "asset" : "assets"} · {s.requirements.length} setup {s.requirements.length === 1 ? "step" : "steps"} per client</p>
+                  <p className="text-[12px] text-muted">{s.totalAssets} {s.totalAssets === 1 ? "asset" : "assets"} · {s.requirements.length} setup {s.requirements.length === 1 ? "step" : "steps"} per client</p>
                   <div className="mt-auto border-t border-line pt-3">
                     {s.installedId ? (
                       <ButtonLink href={bpHref.detail(s.installedId)} size="sm" variant="secondary">In your library · Open</ButtonLink>
@@ -288,7 +288,7 @@ function ApplyForClientBanner({ client }: { client: ClientOption }) {
     <section aria-labelledby="bp-for-client" className="flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary-soft px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <h2 id="bp-for-client" className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Send className="size-4 text-primary" aria-hidden /> Choosing a Blueprint for {client.name}</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+        <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
           {ghl
             ? `${client.name} uses GoHighLevel as its CRM, so a Blueprint can't be applied to it. Blueprints apply to iAcquire Native CRM only; switch its CRM provider first.`
             : `Pick a published Blueprint. Applying starts with a preview of every change to ${client.name}'s CRM, and nothing changes until you confirm.${client.crmMode === "hybrid" ? " Sections GoHighLevel owns for this client are left out." : ""}`}
@@ -335,9 +335,9 @@ function BlueprintCard({ b, permissions, busy, forClient, applyHref, onPreview, 
     <Card className={cn("group flex h-full flex-col overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-md focus-within:border-primary/50 motion-reduce:transition-none", archived && "opacity-80")}>
       <article aria-labelledby={titleId} className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(b.industry)}{b.folderName ? ` · ${b.folderName}` : ""}</p>
+          <p className="min-w-0 truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{industryLabel(b.industry)}{b.folderName ? ` · ${b.folderName}` : ""}</p>
           <div className="flex shrink-0 items-center gap-1.5">
-            {b.featured && <span className="inline-flex items-center gap-1 rounded-full bg-inverse px-2 py-0.5 text-[10.5px] font-semibold text-bg"><Star className="size-3 fill-current" aria-hidden />Featured</span>}
+            {b.featured && <span className="inline-flex items-center gap-1 rounded-full bg-inverse px-2 py-0.5 text-[12px] font-semibold text-bg"><Star className="size-3 fill-current" aria-hidden />Featured</span>}
             <SourceBadge source={b.source} />
           </div>
         </div>
@@ -351,16 +351,16 @@ function BlueprintCard({ b, permissions, busy, forClient, applyHref, onPreview, 
             {b.hasUnpublishedChanges && b.currentVersion && <span className="font-medium text-warning-ink">· Unpublished changes</span>}
           </div>
         </div>
-        <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted">{b.description || "No description yet."}</p>
+        <p className="line-clamp-2 text-[13px] leading-relaxed text-muted">{b.description || "No description yet."}</p>
         <ModuleChips modules={b.modules} max={5} />
         <div className="flex flex-wrap items-center gap-2">
           <CompatibilityBadge value={b.compatibility} notes={b.compatibilityNotes} />
-          {b.compatibilityNotes[0] && <span className="text-[11.5px] text-muted">{b.compatibilityNotes.slice(0, 2).join(" · ")}</span>}
+          {b.compatibilityNotes[0] && <span className="text-[12px] text-muted">{b.compatibilityNotes.slice(0, 2).join(" · ")}</span>}
         </div>
         {forClient && appliedHere !== null && (
           <p className="text-[12px] font-medium text-success-ink">{forClient.name} has version {appliedHere}{update ? `; version ${b.currentVersion} is available to review` : ""}.</p>
         )}
-        <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
+        <p className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
           <span>{b.appliedTo ? `Applied to ${b.appliedTo} ${b.appliedTo === 1 ? "client" : "clients"}` : "Not applied yet"}</span>
           <span>{b.totalAssets} {b.totalAssets === 1 ? "asset" : "assets"}</span>
           <When iso={b.updatedAt} prefix="Updated" />
@@ -403,22 +403,22 @@ function PreviewSheet({ b, permissions, applyHref, forClient, onClose }: {
             <Badge tone="outline">{b.currentVersion ? `Version ${b.currentVersion}` : "Never published"}</Badge>
             <CompatibilityBadge value={b.compatibility} notes={b.compatibilityNotes} />
           </div>
-          {b.description && <p className="text-[13px] leading-relaxed text-ink-2">{b.description}</p>}
+          {b.description && <p className="text-[14px] leading-relaxed text-ink-2">{b.description}</p>}
           <section aria-labelledby="bp-peek-modules">
-            <h3 id="bp-peek-modules" className="mb-2 text-[13px] font-semibold text-ink">What&apos;s inside</h3>
+            <h3 id="bp-peek-modules" className="mb-2 text-[14px] font-semibold text-ink">What&apos;s inside</h3>
             {b.modules.length ? (
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-                {b.modules.map((m) => <li key={m.section} className="flex items-center justify-between px-4 py-2 text-[13px]"><span className="text-ink-2">{m.label}</span><span className="font-semibold tabular-nums text-ink">{m.count}</span></li>)}
+                {b.modules.map((m) => <li key={m.section} className="flex items-center justify-between px-4 py-2 text-[14px]"><span className="text-ink-2">{m.label}</span><span className="font-semibold tabular-nums text-ink">{m.count}</span></li>)}
               </ul>
-            ) : <p className="text-[13px] text-muted">No CRM assets yet.</p>}
+            ) : <p className="text-[14px] text-muted">No CRM assets yet.</p>}
           </section>
           <section aria-labelledby="bp-peek-compat">
-            <h3 id="bp-peek-compat" className="mb-1 text-[13px] font-semibold text-ink">Compatibility</h3>
-            <p className="text-[12.5px] leading-relaxed text-muted">{compatibilityHint(b.compatibility)}</p>
-            {b.compatibilityNotes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12.5px] text-ink-2">{b.compatibilityNotes.map((n) => <li key={n}>{n}</li>)}</ul>}
+            <h3 id="bp-peek-compat" className="mb-1 text-[14px] font-semibold text-ink">Compatibility</h3>
+            <p className="text-[13px] leading-relaxed text-muted">{compatibilityHint(b.compatibility)}</p>
+            {b.compatibilityNotes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[13px] text-ink-2">{b.compatibilityNotes.map((n) => <li key={n}>{n}</li>)}</ul>}
           </section>
           <section aria-labelledby="bp-peek-reqs">
-            <h3 id="bp-peek-reqs" className="mb-2 text-[13px] font-semibold text-ink">Each client still has to</h3>
+            <h3 id="bp-peek-reqs" className="mb-2 text-[14px] font-semibold text-ink">Each client still has to</h3>
             <RequirementList keys={b.requirements} compact />
           </section>
           <p className="text-[12px] text-muted">{b.appliedTo ? `Live in ${b.appliedTo} client ${b.appliedTo === 1 ? "workspace" : "workspaces"}.` : "Not applied to any client yet."} <When iso={b.updatedAt} prefix="Updated" />.</p>

@@ -90,14 +90,14 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
             type="button"
             disabled={disabled}
             className={cn(
-              "inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-xl border px-3 text-left text-[13px] font-medium transition-colors sm:min-h-9",
+              "inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-xl border px-3 text-left text-[14px] font-medium transition-colors sm:min-h-9",
               isPlatform ? "border-line bg-surface text-ink-2 hover:bg-surface-2" : "border-primary/30 bg-primary-soft text-primary-ink",
               "disabled:opacity-60",
             )}
             aria-label={`${SCOPE_TYPE_LABEL[scope.type]}: ${isPlatform ? "Entire platform" : scope.label}. Change investigation context`}
           >
             <span className="shrink-0">{ICON[scope.type]}</span>
-            <span className="min-w-0 truncate"><span className="text-[11.5px] font-normal">{SCOPE_TYPE_LABEL[scope.type]}: </span>{isPlatform ? "Entire platform" : scope.label}</span>
+            <span className="min-w-0 truncate"><span className="text-[12px] font-normal">{SCOPE_TYPE_LABEL[scope.type]}: </span>{isPlatform ? "Entire platform" : scope.label}</span>
             <ChevronsUpDown className="size-3.5 shrink-0 opacity-60" aria-hidden />
           </button>
         </PopoverTrigger>
@@ -112,10 +112,10 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <Input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, tickets, incidents, employees" className="pl-9" aria-label="Search for an investigation context" aria-controls={listId} />
         </div>
-        <p className="px-1 pb-1 pt-2 text-[11.5px] leading-snug text-muted">Selecting a client is an audited access to that workspace. AQi reads operational metadata only.</p>
+        <p className="px-1 pb-1 pt-2 text-[12px] leading-snug text-muted">Selecting a client is an audited access to that workspace. AQi reads operational metadata only.</p>
         <ul id={listId} className="scrollbar-thin max-h-72 overflow-y-auto" aria-label="Contexts" aria-busy={status === "loading"}>
           <li>
-            <button type="button" onClick={() => void choose(null)} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] text-ink hover:bg-surface-2 sm:min-h-9">
+            <button type="button" onClick={() => void choose(null)} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[14px] text-ink hover:bg-surface-2 sm:min-h-9">
               <Globe2 className="size-4 text-muted" aria-hidden />Entire platform{isPlatform && <Check className="ml-auto size-4 text-primary" aria-label="Selected" />}
             </button>
           </li>
@@ -123,7 +123,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
             <li key={`${o.type}-${o.id}`}>
               <button type="button" onClick={() => void choose(o)} disabled={choosing !== null} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 text-left hover:bg-surface-2 disabled:opacity-60 sm:min-h-9">
                 <span className="text-muted">{ICON[o.type]}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-[13px] text-ink">{o.label}</span><span className="block truncate text-[11.5px] text-muted">{SCOPE_TYPE_LABEL[o.type]}{o.detail ? ` · ${o.detail}` : ""}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-[14px] text-ink">{o.label}</span><span className="block truncate text-[12px] text-muted">{SCOPE_TYPE_LABEL[o.type]}{o.detail ? ` · ${o.detail}` : ""}</span></span>
                 {choosing === o.id ? <Loader2 className="size-4 animate-spin text-muted" aria-label="Opening" /> : scope.id === o.id ? <Check className="size-4 text-primary" aria-label="Selected" /> : null}
               </button>
             </li>
@@ -134,7 +134,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
           {status === "error" && "Search is unavailable right now. Try again."}
           {status === "idle" && !options.length && (query.length >= 2 ? "Nothing matches that search." : "Type at least two letters to search records.")}
         </div>
-        {error && <p className="px-2 pt-1 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+        {error && <p className="px-2 pt-1 text-[13px] text-danger-ink" role="alert">{error}</p>}
       </PopoverContent>
     </Popover>
   );

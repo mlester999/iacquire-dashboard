@@ -116,7 +116,7 @@ export function BookDialog({ open, onOpenChange, timeZone }: { open: boolean; on
                 <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Matching contacts">
                   {results.map((r) => (
                     <li key={r.id}>
-                      <button type="button" onClick={() => setContact(r)} className="flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2 text-left text-[13.5px] hover:bg-surface-2">
+                      <button type="button" onClick={() => setContact(r)} className="flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2 text-left text-[14px] hover:bg-surface-2">
                         <span className="truncate font-medium">{r.name}</span>
                         <span className="shrink-0 text-[12px] text-muted">{r.detail}{r.linkedToCrm ? "" : " · not in CRM yet"}</span>
                       </button>
@@ -126,17 +126,17 @@ export function BookDialog({ open, onOpenChange, timeZone }: { open: boolean; on
               )}
             </div>
           )}
-          {contact && !contact.linkedToCrm && <p className="mt-2 text-[12.5px] text-warning-ink">This contact isn&apos;t linked to your CRM yet, so the booking will wait for someone to add it to the calendar by hand.</p>}
+          {contact && !contact.linkedToCrm && <p className="mt-2 text-[13px] text-warning-ink">This contact isn&apos;t linked to your CRM yet, so the booking will wait for someone to add it to the calendar by hand.</p>}
         </Field>
 
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink-2">Free times</p>
+          <p className="mb-2 text-[14px] font-medium text-ink-2">Free times</p>
           {slotError ? (
-            <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] text-warning-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{slotError}</p>
+            <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[14px] text-warning-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{slotError}</p>
           ) : !slots ? (
-            <p className="text-[13px] text-muted">Asking your calendar…</p>
+            <p className="text-[14px] text-muted">Asking your calendar…</p>
           ) : byDay.length === 0 ? (
-            <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-[13px] text-muted">Your calendar shows nothing free in the next two weeks.</p>
+            <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-[14px] text-muted">Your calendar shows nothing free in the next two weeks.</p>
           ) : (
             <div className="max-h-72 space-y-4 overflow-y-auto pr-1" role="radiogroup" aria-label="Free times">
               {byDay.map(([day, list]) => (
@@ -150,7 +150,7 @@ export function BookDialog({ open, onOpenChange, timeZone }: { open: boolean; on
                         role="radio"
                         aria-checked={chosen === s.start}
                         onClick={() => setChosen(s.start)}
-                        className={cn("min-h-11 rounded-xl border px-3 text-[13px] font-medium transition sm:min-h-9", chosen === s.start ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface hover:border-line-strong")}
+                        className={cn("min-h-11 rounded-xl border px-3 text-[14px] font-medium transition sm:min-h-9", chosen === s.start ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface hover:border-line-strong")}
                       >
                         {new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone }).format(new Date(s.start))}
                       </button>
@@ -186,7 +186,7 @@ export function PendingBookings({ rows, canBook }: { rows: PendingBookingRow[]; 
                   <InfoChip icon={<Clock />}>{r.label}</InfoChip>
                   <StatusPill tone={r.status === "awaiting_approval" ? "primary" : "warning"} size="sm">{r.status === "awaiting_approval" ? "Awaiting your approval" : "Needs a calendar entry"}</StatusPill>
                 </p>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                   {r.status === "awaiting_approval" ? <span suppressHydrationWarning>{`Your Appointment Setter proposed this ${relativeTime(r.createdAt)}. Confirm it in Approvals.`}</span> : `Add this to your calendar${r.reason ? `. ${r.reason}` : ""}`}
                 </p>
               </div>
@@ -282,25 +282,25 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
           <label className="flex items-start justify-between gap-4 p-4">
             <span>
               <span className="block text-[14px] font-medium">Send appointment reminders</span>
-              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">A short text or email before each appointment. Only to customers who haven&apos;t opted out, never during quiet hours, and always from your credit balance. This records your standing permission, which you renew every 90 days.</span>
+              <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">A short text or email before each appointment. Only to customers who haven&apos;t opted out, never during quiet hours, and always from your credit balance. This records your standing permission, which you renew every 90 days.</span>
             </span>
             <Switch checked={p.remindersEnabled} aria-label="Send appointment reminders" onCheckedChange={(v) => setP({ ...p, remindersEnabled: v })} />
           </label>
           {p.remindersEnabled && (
             <div className="space-y-3 p-4">
-              <p className="text-[13px] font-medium">When to remind <span className="font-normal text-muted">(up to three)</span></p>
+              <p className="text-[14px] font-medium">When to remind <span className="font-normal text-muted">(up to three)</span></p>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Reminder times">
                 {OFFSET_CHOICES.map((o) => {
                   const on = p.reminderOffsetsMinutes.includes(o.value);
                   return (
-                    <button key={o.value} type="button" aria-pressed={on} onClick={() => toggleOffset(o.value)} className={cn("min-h-11 rounded-full border px-3.5 text-[13px] font-medium transition sm:min-h-9", on ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface hover:border-line-strong")}>
+                    <button key={o.value} type="button" aria-pressed={on} onClick={() => toggleOffset(o.value)} className={cn("min-h-11 rounded-full border px-3.5 text-[14px] font-medium transition sm:min-h-9", on ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface hover:border-line-strong")}>
                       {o.label}
                     </button>
                   );
                 })}
               </div>
               {policy.remindersAuthorization === "expired" && (
-                <p className="flex flex-wrap items-center gap-3 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] text-warning-ink" role="alert">
+                <p className="flex flex-wrap items-center gap-3 rounded-xl bg-warning-soft px-3.5 py-3 text-[14px] text-warning-ink" role="alert">
                   <AlertTriangle className="size-4 shrink-0" aria-hidden /> Your permission has lapsed, so reminders are paused.
                   <Button size="sm" variant="secondary" onClick={async () => { const r = await renewRemindersAction(); if (!r.ok) return void toast.error(r.error); toast.success("Renewed for 90 days"); router.refresh(); }}>Renew now</Button>
                 </p>
@@ -313,7 +313,7 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
           <label className={cn("flex items-start justify-between gap-4 p-4", !canGoAutonomous && "opacity-70")}>
             <span>
               <span className="block text-[14px] font-medium">Let the Appointment Setter book without asking</span>
-              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
+              <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">
                 Off by default: it proposes a time from your real calendar and you confirm in Approvals. When this is on, an employee that works autonomously books a time the customer clearly chose, and the calendar must still confirm it.
                 {!canGoAutonomous && " Only the business owner can change this."}
               </span>

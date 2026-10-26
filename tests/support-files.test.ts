@@ -7,7 +7,7 @@ import { resetEnvCache } from "@/server/env";
 import { getRequestDetail, postClientMessage, submitRequest } from "@/server/support/service";
 import { agencyPostMessage, changeRequestStatus, getAgencyRequest } from "@/server/support/agency";
 import { loadSupportSettings, updateSupportSettings, type SupportSettingsPatch } from "@/server/support/settings";
-import { attachSupportFile, cleanupStagedUploads, discardStagedFile, listSupportAttachments, purgeRetainedAttachments, stageSupportFile, supportAttachmentDownload } from "@/server/support/attachments";
+import { cleanupStagedUploads, discardStagedFile, listSupportAttachments, purgeRetainedAttachments, stageSupportFile, supportAttachmentDownload } from "@/server/support/attachments";
 import { countRows, resetRateLimits, supportWorld, ticketRow, type SupportWorld } from "./support/support-world";
 
 let w: SupportWorld;
@@ -153,13 +153,13 @@ describe("files inside the conversation", () => {
     expect(await countRows("select 1 from support_messages where body = 'Public reply with an internal file.'")).toBe(0);
   });
 
-  it("refuses files on a closed request and still supports the direct upload used before", async () => {
-    const r = await submitRequest(w.ctx.member, { subject: "Direct upload", message: "Using the older upload route." });
-    const direct = await attachSupportFile(w.people.member.id, r.id, { name: "direct.txt", bytes: Buffer.from("direct upload") });
-    expect((await listSupportAttachments(w.people.member.id, r.id)).map((a) => a.id)).toEqual([direct.id]);
-    expect((await getAgencyRequest(w.agency.superAdmin, r.id))!.looseAttachments.map((a) => a.filename)).toEqual(["direct.txt"]);
+  it("refuses files on a closed request, and leaves the unsent file with the person who chose it", async () => {
+    const r = await submitRequest(w.ctx.member, { subject: "Closed then a file", message: "Closing this request." });
     await changeRequestStatus(w.agency.superAdmin, r.id, "closed");
-    await expect(attachSupportFile(w.people.member.id, r.id, { name: "late.txt", bytes: Buffer.from("late") })).rejects.toThrow(/closed/);
+    const late = await stage("late.txt", Buffer.from("late"));
+    await expect(postClientMessage(w.ctx.member, r.id, { body: "A late file.", attachmentIds: [late.id] })).rejects.toThrow(/closed/);
+    expect((await attachmentRow(late.id)).status).toBe("staged");
+    expect(await listSupportAttachments(w.people.member.id, r.id)).toEqual([]);
   });
 });
 
@@ -167,8 +167,10 @@ describe("retention", () => {
   it("deletes the files of long-closed requests only when the Super Admin turned retention on", async () => {
     const old = await submitRequest(w.ctx.member, { subject: "Closed long ago", message: "Old request with a file." });
     const recent = await submitRequest(w.ctx.member, { subject: "Closed recently", message: "Recent request with a file." });
-    const oldFile = await attachSupportFile(w.people.member.id, old.id, { name: "old.txt", bytes: Buffer.from("old") });
-    const recentFile = await attachSupportFile(w.people.member.id, recent.id, { name: "recent.txt", bytes: Buffer.from("recent") });
+    const oldFile = await stage("old.txt", Buffer.from("old"));
+    await postClientMessage(w.ctx.member, old.id, { body: "Here is the old file.", attachmentIds: [oldFile.id] });
+    const recentFile = await stage("recent.txt", Buffer.from("recent"));
+    await postClientMessage(w.ctx.member, recent.id, { body: "Here is the recent file.", attachmentIds: [recentFile.id] });
     await changeRequestStatus(w.agency.superAdmin, old.id, "closed");
     await changeRequestStatus(w.agency.superAdmin, recent.id, "closed");
     await withSystem((db) => db.query("update support_tickets set closed_at = now() - interval '40 days' where id = $1", [old.id]));

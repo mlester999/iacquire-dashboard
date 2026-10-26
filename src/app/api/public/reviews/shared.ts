@@ -1,5 +1,6 @@
 import "server-only";
 import { looksLikeReviewToken } from "@/server/crm/reviews";
+import { readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
 
 // Shared by the customer review page's two form endpoints. The token is the only authorization; nothing here reads a session.
 
@@ -19,13 +20,14 @@ export async function formFields(req: Request, max = 4000): Promise<URLSearchPar
   const type = (req.headers.get("content-type") ?? "").toLowerCase();
   try {
     if (type.startsWith("multipart/form-data")) {
-      const form = await req.formData();
+      const form = await readBoundedFormData(req, MAX_BODY_BYTES);
+      if (!form) return null;
       const out = new URLSearchParams();
       for (const [k, v] of form.entries()) if (typeof v === "string") out.append(k, v.slice(0, max));
       return out;
     }
-    const text = await req.text();
-    if (text.length > MAX_BODY_BYTES) return null;
+    const text = await readBoundedText(req, MAX_BODY_BYTES);
+    if (text === null) return null;
     return new URLSearchParams(text);
   } catch {
     return new URLSearchParams();

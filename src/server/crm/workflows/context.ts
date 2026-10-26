@@ -7,6 +7,7 @@ import { agentLiveRunsVerified } from "@/server/crm/agent-tools/tasks";
 import { n8nStepReadiness } from "@/server/integrations/n8n-actions";
 import { connectionsForOptions } from "@/server/automation-studio/connections";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
+import { surveysEnabledIn } from "@/server/reputation/entitlement";
 import {
   hasErrors, parseDefinition, validateDefinition, validationContextFrom, type MessageChannel, type UpdateFieldConfig, type ValidationContext, type ValidationIssue, type WorkflowDefinition,
 } from "@/lib/crm/workflow/spec";
@@ -23,7 +24,7 @@ export interface WorkflowBuilderOptions {
   users: Array<{ id: string; name: string; role: string }>;
   pipelines: Array<{ id: string; name: string; stages: Array<{ id: string; name: string; kind: "open" | "won" | "lost" }> }>;
   fields: Array<{ id: string; key: string; label: string; entity: "contact" | "company" | "opportunity"; type: FieldType; options: Array<{ value: string; label: string }> }>;
-  templates: Array<{ id: string; name: string; channel: MessageChannel; purpose: "service" | "marketing"; version: number; contentHash: string }>;
+  templates: Array<{ id: string; name: string; channel: MessageChannel; purpose: "service" | "marketing"; version: number; contentHash: string; reviewLink?: boolean }>;
   /** `problem`: why a step starting it can't run right now (n8n calls switched off, no trigger stored…), in client-safe words. */
   n8nMappings: Array<{ id: string; label: string; workflowId: string; problem: string | null }>;
   webhookSubscriptions: Array<{ id: string; name: string; host: string }>;
@@ -43,6 +44,8 @@ export interface WorkflowBuilderOptions {
   connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
   /** Whether the workspace has the new inbox (the rollout): without it the conversation triggers and the "Update conversation" step can't be published. */
   inboxEnabled?: boolean;
+  /** Whether a Super Admin switched satisfaction surveys on for the workspace: without it a request-a-review step can't be set to send a survey. */
+  surveysEnabled?: boolean;
 }
 
 const hostOf = (url: string) => {
@@ -73,8 +76,8 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
   const fields = await q<{ id: string; key: string; label: string; entity: "contact" | "company" | "opportunity"; type: FieldType; options: unknown }>(
     "select id, key, label, entity, type, options from crm_custom_fields where org_id = $1 and archived_at is null order by entity, position, lower(label)",
   );
-  const templates = await q<{ id: string; name: string; channel: MessageChannel; purpose: "service" | "marketing"; version: number; content_hash: string }>(
-    `select t.id, t.name, t.channel, t.purpose, v.version, v.content_hash from crm_message_templates t
+  const templates = await q<{ id: string; name: string; channel: MessageChannel; purpose: "service" | "marketing"; version: number; content_hash: string; review_link: boolean }>(
+    `select t.id, t.name, t.channel, t.purpose, v.version, v.content_hash, v.body ~ '\\{\\{\\s*review\\.link\\s*\\}\\}' as review_link from crm_message_templates t
      join crm_message_template_versions v on v.template_id = t.id and v.org_id = t.org_id and v.version = t.approved_version
      where t.org_id = $1 and t.kind = 'template' and t.status = 'approved' and t.archived_at is null order by lower(t.name)`,
   );
@@ -101,7 +104,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
       id: f.id, key: f.key, label: f.label, entity: f.entity, type: f.type,
       options: Array.isArray(f.options) ? f.options.map((o) => (typeof o === "string" ? { value: o, label: o } : { value: String((o as { value?: unknown }).value ?? ""), label: String((o as { label?: unknown }).label ?? (o as { value?: unknown }).value ?? "") })) : [],
     })),
-    templates: templates.map((t) => ({ id: t.id, name: t.name, channel: t.channel, purpose: t.purpose, version: t.version, contentHash: t.content_hash })),
+    templates: templates.map((t) => ({ id: t.id, name: t.name, channel: t.channel, purpose: t.purpose, version: t.version, contentHash: t.content_hash, reviewLink: t.review_link })),
     n8nMappings: mappings.map((m) => ({ id: m.id, label: m.template_key === "agency-approved" ? `n8n workflow ${m.workflow_id}` : m.template_key, workflowId: m.workflow_id, problem: n8nProblems.get(m.id) ?? null })),
     webhookSubscriptions: hooks.map((h) => ({ id: h.id, name: h.name, host: hostOf(h.url) })),
     assignmentRules: rules,
@@ -114,6 +117,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
     customValues,
     connections,
     inboxEnabled: await inboxEnabledFor(orgId, db),
+    surveysEnabled: await surveysEnabledIn(db, orgId),
   };
 }
 

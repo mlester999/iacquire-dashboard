@@ -2,6 +2,8 @@ import "server-only";
 import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { modelGate } from "@/server/llm/gate";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { MAX_REQUEST, SYSTEM_PROMPT, briefSchema, buildUserPrompt, parseModelPlan } from "@/lib/website/assistant/brief";
 import type { Plan } from "@/lib/website/assistant/ops";
@@ -25,9 +27,14 @@ export async function suggestWithAi(ctx: OrgContext, input: { request: string; b
   if (!brief.success) throw new AppError("invalid_input", "That request wasn't valid. Reload the editor and try again.");
   const config = await resolveLlmConfig().catch(() => null);
   if (!config) return null;
+  // A suspended or archived workspace is not sent to the model; the built-in assistant answers. A balance of zero does not stop this one: a workspace builds its site
+  // before it has credit, and the call is recorded below either way.
+  if (!(await modelGate(ctx.org.orgId, { credit: false })).allowed) return null;
   const limit = await consumeRateLimit(RATE_LIMITS.websiteAssistByOrg, ctx.org.orgId);
   if (!limit.allowed) throw new AppError("rate_limited", "You've used the assistant a lot in the last hour. Try again shortly, or edit by hand.", { retryAfterSeconds: limit.retryAfterSeconds });
   const reply = await llmComplete(config, { system: SYSTEM_PROMPT, user: buildUserPrompt(brief.data, request), maxTokens: 1200, temperature: 0.2, timeoutMs: 25_000 });
+  // The tokens are recorded whatever becomes of the answer, a failed call that still cost some included. Never fails the request.
+  await meterModelUse({ orgId: ctx.org.orgId, feature: "website_assistant", key: modelCallKey(ctx.user.id), usage: reply.usage });
   if (!reply.ok) return null;
   return parseModelPlan(reply.text);
 }

@@ -118,7 +118,7 @@ export function TemplatesWorkspace(props: TemplatesWorkspaceProps) {
           </>
         )}
         {tab !== "whatsapp" && (
-          <label className="ml-auto inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-9">
+          <label className="ml-auto inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-9">
             <Switch checked={showArchived} onCheckedChange={setShowArchived} aria-label="Show archived" />
             Show archived
           </label>
@@ -156,11 +156,11 @@ export function TemplatesWorkspace(props: TemplatesWorkspaceProps) {
                 const Icon = CHANNEL_ICON[c];
                 return (
                   <section key={c} aria-labelledby={`tpl-ch-${c}`}>
-                    <h3 id={`tpl-ch-${c}`} className="mb-2 flex items-center gap-2 text-[14px] font-semibold text-ink"><Icon className="size-4 text-muted" aria-hidden />{CHANNEL_LABELS[c]}<span className="text-[12.5px] font-normal text-muted">{inChannel.length}</span></h3>
+                    <h3 id={`tpl-ch-${c}`} className="mb-2 flex items-center gap-2 text-[14px] font-semibold text-ink"><Icon className="size-4 text-muted" aria-hidden />{CHANNEL_LABELS[c]}<span className="text-[13px] font-normal text-muted">{inChannel.length}</span></h3>
                     <div className="space-y-3">
                       {groups.map(([f, items]) => (
                         <div key={f || "none"}>
-                          {(groups.length > 1 || f) && <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{f || "No folder"}</p>}
+                          {(groups.length > 1 || f) && <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{f || "No folder"}</p>}
                           <Card className="divide-y divide-line overflow-hidden p-0">
                             {items.map((t) => (
                               <div key={t.id} className={cn("flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50", t.status === "archived" && "opacity-70")}>
@@ -171,9 +171,9 @@ export function TemplatesWorkspace(props: TemplatesWorkspaceProps) {
                                     {t.purpose === "marketing" && <Badge tone="violet">Marketing</Badge>}
                                     {t.category && <Badge>{t.category}</Badge>}
                                   </span>
-                                  {t.subject && <span className="mt-1 block truncate text-[12.5px] font-medium text-ink-2"><TokenHighlight text={t.subject} /></span>}
-                                  <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-relaxed text-muted"><TokenHighlight text={t.body} /></span>
-                                  <span className="mt-1 block text-[11.5px] text-faint" suppressHydrationWarning>
+                                  {t.subject && <span className="mt-1 block truncate text-[13px] font-medium text-ink-2"><TokenHighlight text={t.subject} /></span>}
+                                  <span className="mt-0.5 line-clamp-2 block text-[13px] leading-relaxed text-muted"><TokenHighlight text={t.body} /></span>
+                                  <span className="mt-1 block text-[12px] text-faint" suppressHydrationWarning>
                                     v{t.currentVersion}{t.status === "draft" && t.currentVersion > 1 ? " · not approved" : ""} · updated {relativeTime(t.updatedAt)}{t.versionCreatedByName ? ` by ${t.versionCreatedByName}` : ""}
                                   </span>
                                 </button>

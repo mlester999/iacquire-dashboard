@@ -41,13 +41,13 @@ export function QuestionsBuilder({ value, onChange, showErrors, idPrefix }: { va
                 </div>
                 {d.type === "select" && (
                   <div className="mt-2">
-                    <label htmlFor={`${id}-opts`} className="text-[12.5px] font-medium text-ink-2">Choices, one per line</label>
+                    <label htmlFor={`${id}-opts`} className="text-[13px] font-medium text-ink-2">Choices, one per line</label>
                     <Textarea id={`${id}-opts`} rows={3} className="mt-1 min-h-[72px]" value={d.optionsText} onChange={(e) => update(d.id, { optionsText: e.target.value })} placeholder={"Morning\nAfternoon"} />
                   </div>
                 )}
-                {problem && <p id={`${id}-err`} role="alert" className="mt-2 text-[12.5px] text-danger-ink">{problem}</p>}
+                {problem && <p id={`${id}-err`} role="alert" className="mt-2 text-[13px] text-danger-ink">{problem}</p>}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <label className="flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-8">
+                  <label className="flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-8">
                     <input type="checkbox" className="size-4 accent-primary" checked={d.required} onChange={(e) => update(d.id, { required: e.target.checked })} />
                     Required
                   </label>

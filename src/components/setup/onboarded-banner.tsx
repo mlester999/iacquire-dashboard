@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import type { AgentInstanceRow } from "@/server/workforce/service";
 
 export interface EmployeeProvisioningState {
@@ -10,11 +11,13 @@ export interface EmployeeProvisioningState {
 }
 
 /** Reads persisted configuration, health, inventory and job evidence. No elapsed-time progress is inferred. */
-export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [] }: {
+export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared }: {
   nativeCrm: boolean;
   crmGuide: boolean;
   agents?: AgentInstanceRow[];
   provisioning?: EmployeeProvisioningState[];
+  /** Whether the setup payment is confirmed; employees do not start without it. */
+  paymentCleared?: boolean;
 }) {
   const jobs = new Map(provisioning.map((job) => [job.role, job]));
   const rows = AGENT_ROLE_KEYS.map((role) => {
@@ -29,8 +32,10 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
       inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
       inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
       inventoryToolCount: agent.tool_inventory_tool_count, credentialCurrent: agent.credential_ready,
+      paymentCleared,
     });
     if (readiness.chatAvailable) return { role, label: "Ready", detail: "Verified for authorized chat. Connected workflows depend on their own setup.", ready: true };
+    if (paymentCleared === false && !job) return { role, label: "Waiting for setup payment", detail: `${PAYMENT_REQUIRED_SENTENCE}.`, ready: false };
     if (job?.status === "failed") return { role, label: "Failed · review needed", detail: "Profile setup failed. iAcquire can review the recorded error and retry safely.", ready: false };
     if (job?.status === "requested") return { role, label: "Provisioning requested", detail: "iAcquire has the setup request. A dedicated profile and runtime verification are still required.", ready: false };
     if (job?.status === "in_progress") return { role, label: "Provisioning", detail: "iAcquire has recorded a setup attempt. Runtime verification has not passed yet.", ready: false };
@@ -44,9 +49,9 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     <section role="status" aria-label="Your six AI employees" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
           <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Meet your AI team</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
         </div>
         <span className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink">{ready}/6 ready</span>
       </div>
@@ -55,7 +60,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
           const meta = AGENT_BY_KEY[row.role];
           return (
             <div key={row.role} className="rounded-2xl border border-line bg-surface-2/40 p-4">
-              <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[11px] font-semibold text-success-ink" : "text-[11px] font-semibold text-warning-ink"}>{row.label}</span></div>
+              <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[12px] font-semibold text-success-ink" : "text-[12px] font-semibold text-warning-ink"}>{row.label}</span></div>
               <p className="mt-2 min-h-12 text-[12px] leading-relaxed text-muted">{row.detail}</p>
               <Link href={row.ready ? `/chat/${meta.slug}` : `/employees/${meta.slug}`} className="mt-3 inline-block text-[12px] font-semibold text-primary hover:underline">{row.ready ? "Open chat" : "View employee"} →</Link>
             </div>

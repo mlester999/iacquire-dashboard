@@ -1471,9 +1471,12 @@ export async function testAqiProvider(admin: SessionUser, prompt: string, draftC
   return { ok: true, text, intent: intent.kind, words: text.trim().split(/\s+/).filter(Boolean).length, sources };
 }
 
+/** How many pages AQi is given at most. A person who may open every client page has 33 curated routes, so this must stay above that or the last pages silently drop out. */
+export const AQI_NAVIGATION_LIMIT = 40;
+
 /** Used by tests and the admin page to display permission-safe route choices. */
 export function aqiNavigationFor(viewer: AqiViewer): AqiRoute[] {
-  return allowedRoutes(viewer).slice(0, 30);
+  return allowedRoutes(viewer).slice(0, AQI_NAVIGATION_LIMIT);
 }
 
 export type AqiPermission = Permission;

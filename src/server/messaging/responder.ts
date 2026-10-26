@@ -2,7 +2,9 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { automationGate } from "@/server/automation/gate";
-import { chargeUsage, getBalance } from "@/server/billing/ledger";
+import { getBalance } from "@/server/billing/ledger";
+import { customerReplyCapReached, recordUsage, usageSummary } from "@/server/usage";
+import { chargeModelUsage } from "@/server/llm/meter";
 import { buildRunInstructions, loadConnection } from "@/server/workforce/service";
 import { HermesError, startAgentRun, streamRunEvents } from "@/server/integrations/hermes/client";
 import { createEscalation } from "@/server/messaging/handoff";
@@ -12,7 +14,7 @@ import type { AppointmentProvider } from "@/server/appointments/provider";
 import { detectBookingIntent, formatSlot } from "@/lib/appointments";
 import { queueOutbound } from "@/server/messaging/send";
 import { isEscalationCategory, type EscalationCategory } from "@/lib/escalation";
-import { withDisclosure, type Channel } from "@/lib/messaging";
+import { withDisclosure, type ConversationChannel } from "@/lib/messaging";
 
 export interface ReplyContext {
   orgId: string;
@@ -20,7 +22,9 @@ export interface ReplyContext {
   conversationId: string;
   contactId: string;
   inboundMessageId: string;
-  channel: Channel;
+  channel: ConversationChannel;
+  /** A website chat's widget may switch booking off; every other channel can always read the calendar. */
+  allowBooking?: boolean;
   businessName: string;
   customerMessage: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
@@ -51,7 +55,7 @@ export function customerInstructions(base: string, ctx: ReplyContext): string {
   return `${base}
 
 ## You are replying to a customer
-You are writing one ${ctx.channel === "email" ? "email" : ctx.channel === "whatsapp" ? "WhatsApp message" : "text message"} to a customer of ${ctx.businessName}. You are an AI assistant, not a person.
+You are writing one ${ctx.channel === "email" ? "email" : ctx.channel === "whatsapp" ? "WhatsApp message" : ctx.channel === "web_chat" ? "chat message on the business's website" : "text message"} to a customer of ${ctx.businessName}. You are an AI assistant, not a person.
 Be short, clear, natural and friendly. Use only information from the approved knowledge above and this conversation.
 Never invent prices, availability, bookings, policies, results or promises. Never offer discounts or commit to anything legal or financial.
 If you do not know, say you will check with the team.
@@ -67,7 +71,7 @@ Otherwise reply with the message text only, with no JSON, no preamble and no sig
  * What the model may say about appointments. The list is read from the real calendar a moment ago and is the only thing it may offer
  * or book. Without it, it is told plainly that it cannot see the calendar.
  */
-function bookingBlock(ctx: ReplyContext): string {
+export function bookingBlock(ctx: ReplyContext): string {
   const a = ctx.availability;
   if (!a) return "";
   if (a.state === "unknown") {
@@ -108,7 +112,14 @@ export function parseReply(raw: string): ReplyOutcome {
 
 export { withDisclosure };
 
-const MAX_LENGTH: Record<Channel, number> = { sms: 900, whatsapp: 1500, email: 4000 };
+const MAX_LENGTH: Record<ConversationChannel, number> = { sms: 900, whatsapp: 1500, email: 4000, web_chat: 1200 };
+
+/** The reply generator for a conversation's channel when the caller names none: a website chat is answered from the widget's own knowledge, every other channel by the employee's Hermes profile. */
+async function defaultGenerator(channel: ConversationChannel): Promise<ReplyGenerator> {
+  // Loaded on demand so the website chat module (which imports from this file) is not a static cycle.
+  if (channel === "web_chat") return (await import("@/server/webchat/generator")).webChatReplyGenerator;
+  return hermesReplyGenerator;
+}
 
 /** Generates a reply through the employee's own Hermes profile, waiting for the finished answer. */
 export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
@@ -157,9 +168,10 @@ export type RespondResult =
   | { status: "unavailable"; reason: string };
 
 async function loadContext(db: Queryable, orgId: string, conversationId: string): Promise<(ReplyContext & { aiDisclosure: string; aiMessageCount: number; ownerKind: string; ownershipVersion: number; aiPaused: boolean }) | null> {
-  const { rows } = await db.query<{ contact_id: string; channel: Channel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null }>(
-    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure
-     from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id where c.id = $1 and c.org_id = $2`,
+  const { rows } = await db.query<{ contact_id: string; channel: ConversationChannel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null; allow_booking: boolean | null }>(
+    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure, w.allow_booking
+     from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id left join web_chat_widgets w on w.org_id = c.org_id
+     where c.id = $1 and c.org_id = $2`,
     [conversationId, orgId],
   );
   const c = rows[0];
@@ -180,6 +192,7 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
     contactId: c.contact_id,
     inboundMessageId: last.rows[0].id,
     channel: c.channel,
+    allowBooking: c.channel === "web_chat" ? c.allow_booking !== false : true,
     businessName: c.name,
     customerMessage: last.rows[0].body,
     history: hist.rows.reverse().map((r) => ({ role: r.direction === "inbound" ? ("user" as const) : ("assistant" as const), content: r.body })),
@@ -198,7 +211,6 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
  * same rule chain as every other outbound message (drafts when approval is required, blocked when anything stops it).
  */
 export async function respondToConversation(orgId: string, conversationId: string, deps: { generate?: ReplyGenerator; now?: Date; provider?: AppointmentProvider } = {}): Promise<RespondResult> {
-  const generate = deps.generate ?? hermesReplyGenerator;
   const pre = await withSystem(async (db) => {
     const ctx = await loadContext(db, orgId, conversationId);
     if (!ctx) return { skip: "no_conversation" as const };
@@ -213,14 +225,31 @@ export async function respondToConversation(orgId: string, conversationId: strin
     if (gate.decision === "blocked") return { skip: gate.reason };
     const bal = await getBalance(db, orgId);
     if (bal.availableMicros <= 0) return { skip: "credits" as const };
+    // The optional monthly cap on AI replies to customers (none is set unless the agency sets one): over it, no model call is made and a person is asked to reply instead.
+    if (customerReplyCapReached(await usageSummary(db, orgId))) return { skip: "usage_limit" as const, agentId: ctx.agentId, inboundMessageId: ctx.inboundMessageId };
     return { ctx };
   });
-  if ("skip" in pre) return { status: "skipped", reason: pre.skip as string };
+  if ("skip" in pre) {
+    if (pre.skip === "usage_limit" && "agentId" in pre) {
+      const capEmails: OutgoingEmail[] = [];
+      await withSystem(async (db) => {
+        // One note and one escalation per conversation per day: every further message from the same customer must not add another note, another open case and another email.
+        const already = await db.query("select 1 from conversation_messages where org_id = $1 and conversation_id = $2 and status_detail = 'ai_usage_limit' and created_at > now() - interval '1 day' limit 1", [orgId, conversationId]);
+        if (already.rows.length > 0) return;
+        await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_usage_limit')", [orgId, conversationId, pre.agentId, "The AI employee did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself."]);
+        const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: "This workspace has reached its monthly limit on AI replies, so the AI employee did not answer. Please reply.", sourceMessageId: pre.inboundMessageId, agentId: pre.agentId, now: deps.now });
+        capEmails.push(...esc.emails);
+      });
+      await Promise.all(capEmails.map((e) => sendEmail(e)));
+    }
+    return { status: "skipped", reason: pre.skip as string };
+  }
   const { ctx } = pre;
 
   // Only when the customer is talking about booking: read the real calendar so the employee can offer nothing else.
-  if (detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
+  if (ctx.allowBooking !== false && detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
 
+  const generate = deps.generate ?? (await defaultGenerator(ctx.channel));
   let outcome = await generate(ctx);
   let bookingNote: BookingResult | null = null;
   if (outcome.kind === "book") {
@@ -240,6 +269,12 @@ export async function respondToConversation(orgId: string, conversationId: strin
   }
   const emails: OutgoingEmail[] = [];
   const result = await withSystem(async (db): Promise<RespondResult> => {
+    // The model ran, so the usage is recorded whatever happens to the reply next (it may be discarded below because a person took over). A failed run is a failed run, not a reply.
+    if (outcome.kind === "unavailable") await recordUsage(db, { orgId, agentId: ctx.agentId, kind: "agent_run_failed" });
+    else {
+      const used = "usage" in outcome ? outcome.usage : null;
+      await recordUsage(db, { orgId, agentId: ctx.agentId, kind: "customer_reply", inputTokens: used?.inputTokens ?? null, outputTokens: used?.outputTokens ?? null });
+    }
     // Re-check after the (possibly slow) generation: a person may have taken over meanwhile.
     const fresh = await loadContext(db, orgId, conversationId);
     // The ownership revision is the fence: a takeover (even one handed straight back), a pause or another employee since the reply was
@@ -273,21 +308,6 @@ export async function respondToConversation(orgId: string, conversationId: strin
   });
   await Promise.all(emails.map((e) => sendEmail(e)));
   return result;
-}
-
-async function chargeModelUsage(db: Queryable, orgId: string, messageId: string, usage: { inputTokens: number | null; outputTokens: number | null }) {
-  for (const [unit, tokens] of [["ai_tokens_in", usage.inputTokens], ["ai_tokens_out", usage.outputTokens]] as const) {
-    if (!tokens || tokens <= 0) continue;
-    const rate = await db.query<{ w: string }>(
-      `select r.wholesale_micros_per_unit::text as w from usage_unit_rates r join usage_rate_versions v on v.id = r.rate_version_id
-       where r.provider = 'llm' and r.unit_type = $1 order by v.version desc limit 1`,
-      [unit],
-    );
-    if (!rate.rows[0]) continue;
-    // Rates are per 1,000 tokens.
-    const wholesale = Math.ceil((Number(rate.rows[0].w) * tokens) / 1000);
-    await chargeUsage(db, { orgId, usage: { provider: "llm", unitType: unit, quantity: tokens, wholesaleMicros: wholesale, providerReference: `reply:${messageId}:${unit}`, messageId } });
-  }
 }
 
 /**

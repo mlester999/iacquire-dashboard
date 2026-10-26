@@ -81,7 +81,7 @@ export function HrefControl({ value, onChange, label }: { value: string; onChang
             aria-label={`${label}: address`} value={draft} placeholder="https://… or #section" maxLength={300} aria-invalid={check === null}
             onChange={(e) => { setDraft(e.target.value); const ok = safeHref(e.target.value); if (ok !== null) onChange(ok); }}
           />
-          {check === null && draft && <p role="alert" className="text-[11px] text-danger-ink">Use https://…, mailto:, tel:, a page like /about, or #anchor.</p>}
+          {check === null && draft && <p role="alert" className="text-[12px] text-danger-ink">Use https://…, mailto:, tel:, a page like /about, or #anchor.</p>}
         </>
       )}
     </div>
@@ -100,7 +100,7 @@ export function ImageThumb({ src, className }: { src: ImageSrc; className?: stri
     const a = assets.find((x) => x.id.toLowerCase() === src.id.toLowerCase());
     if (a) return <SafeImage key={a.id} src={assetUrl(a.id)} fallbackSrc={src.default ? templateImageUrl(src.default.id) : undefined} alt="" className={cn("object-cover", className)} />;
     if (src.default) return <SafeImage key={src.default.id} src={templateImageUrl(src.default.id)} alt="" className={cn("object-cover", className)} />;
-    return <span className={cn("flex items-center justify-center bg-warning-soft text-[9px] text-warning-ink", className)}>Missing</span>;
+    return <span className={cn("flex items-center justify-center bg-warning-soft text-[12px] text-warning-ink", className)}>Missing</span>;
   }
   if (src.kind === "template") return <SafeImage key={src.id} src={templateImageUrl(src.id)} alt="" className={cn("object-cover", className)} />;
   return <span className={cn("block overflow-hidden", className)} style={{ ["--c-primary" as string]: design.colors.primary, ["--c-accent" as string]: design.colors.accent }}><Art scene={src.scene} tone={src.tone} seed={src.seed} className="size-full" /></span>;
@@ -118,9 +118,9 @@ function ImageField({ value, onChange, label }: { value: ImageSrc; onChange: (v:
       <div className="min-w-0 flex-1 space-y-1">
         <p className="truncate text-[12px] font-medium text-ink-2">{!value ? "No image yet" : starter ? `Starter image · ${fieldLabel}` : art ? `Built-in artwork · ${fieldLabel}` : `Your image · ${fieldLabel}`}</p>
         <div className="flex flex-wrap gap-1.5">
-          <button type="button" aria-label={`${fieldLabel}: ${value ? "replace" : "choose"} image`} onClick={() => openMedia({ current: value, onPick: (picked) => onChange(withTemplateImageDefault(picked, value)), title: fieldLabel })} className="h-6 rounded-md bg-primary-soft px-2 text-[11.5px] font-medium text-primary-ink hover:bg-primary/15">{value ? "Replace" : "Choose image"}</button>
-          {fallback && !starter && <button type="button" onClick={() => onChange(fallback)} className="h-6 rounded-md px-2 text-[11.5px] font-medium text-primary-ink hover:bg-primary-soft">Restore default</button>}
-          {value && !fallback && <button type="button" onClick={() => onChange(null)} className="h-6 rounded-md px-2 text-[11.5px] font-medium text-muted hover:bg-surface-3 hover:text-ink">Remove</button>}
+          <button type="button" aria-label={`${fieldLabel}: ${value ? "replace" : "choose"} image`} onClick={() => openMedia({ current: value, onPick: (picked) => onChange(withTemplateImageDefault(picked, value)), title: fieldLabel })} className="h-6 rounded-md bg-primary-soft px-2 text-[12px] font-medium text-primary-ink hover:bg-primary/15">{value ? "Replace" : "Choose image"}</button>
+          {fallback && !starter && <button type="button" onClick={() => onChange(fallback)} className="h-6 rounded-md px-2 text-[12px] font-medium text-primary-ink hover:bg-primary-soft">Restore default</button>}
+          {value && !fallback && <button type="button" onClick={() => onChange(null)} className="h-6 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-surface-3 hover:text-ink">Remove</button>}
         </div>
       </div>
     </div>
@@ -137,7 +137,7 @@ function IconField({ value, onChange, label }: { value: string; onChange: (v: st
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label={`${label}: ${value}`} className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink-2 hover:border-line-strong">
+        <button type="button" aria-label={`${label}: ${value}`} className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink-2 hover:border-line-strong">
           <Icon name={value} className="size-4 text-primary" />
           <span className="flex-1 truncate text-left capitalize">{value.replace(/-/g, " ")}</span>
           <ChevronDown className="size-3.5 text-muted" aria-hidden />
@@ -162,10 +162,10 @@ function IconField({ value, onChange, label }: { value: string; onChange: (v: st
 // Booking: the calendar and appointment type a booking element offers
 // ---------------------------------------------------------------------------
 
-const linkBtn = "text-[11.5px] font-medium text-primary-ink underline-offset-2 hover:underline";
+const linkBtn = "text-[12px] font-medium text-primary-ink underline-offset-2 hover:underline";
 
 function BookingWarning({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-[11.5px] leading-relaxed text-warning-ink">{children}</p>;
+  return <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-[12px] leading-relaxed text-warning-ink">{children}</p>;
 }
 
 /**
@@ -176,12 +176,12 @@ function FormPicker({ label, value, onChange }: { label: string; value: string; 
   const { forms, refreshForms } = useServices();
   if (!forms) {
     return value
-      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the CRM form &ldquo;{value}&rdquo; where a workspace has one.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the built-in form</button></div>
-      : <p className="text-[11.5px] leading-relaxed text-muted">Uses the built-in enquiry form. A client&apos;s own CRM forms can be chosen on their website.</p>;
+      ? <div className="flex items-center gap-2 text-[12px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the CRM form &ldquo;{value}&rdquo; where a workspace has one.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the built-in form</button></div>
+      : <p className="text-[12px] leading-relaxed text-muted">Uses the built-in enquiry form. A client&apos;s own CRM forms can be chosen on their website.</p>;
   }
-  if (forms.state === "loading") return <p role="status" className="text-[11.5px] text-muted">Loading your forms…</p>;
+  if (forms.state === "loading") return <p role="status" className="text-[12px] text-muted">Loading your forms…</p>;
   if (forms.state === "error") {
-    return <div className="space-y-1"><p role="alert" className="text-[11.5px] text-danger-ink">{forms.message}</p><button type="button" className={linkBtn} onClick={refreshForms}>Try again</button></div>;
+    return <div className="space-y-1"><p role="alert" className="text-[12px] text-danger-ink">{forms.message}</p><button type="button" className={linkBtn} onClick={refreshForms}>Try again</button></div>;
   }
   const o = forms.options;
   const chosen = value ? o.forms.find((f) => f.key === value) ?? null : null;
@@ -201,7 +201,7 @@ function FormPicker({ label, value, onChange }: { label: string; value: string; 
     <div className="space-y-1.5">
       <SelectControl<string> label={label} value={value} options={options} onChange={onChange} />
       {warn && <BookingWarning>{warn}</BookingWarning>}
-      {chosen?.def && <p className="text-[11.5px] leading-relaxed text-muted">{chosen.def.questions.length} {chosen.def.questions.length === 1 ? "question" : "questions"}, version {chosen.def.version}. Questions, consent wording and what happens after sending are edited in the CRM. After sending, visitors see your website&apos;s thank-you page.</p>}
+      {chosen?.def && <p className="text-[12px] leading-relaxed text-muted">{chosen.def.questions.length} {chosen.def.questions.length === 1 ? "question" : "questions"}, version {chosen.def.version}. Questions, consent wording and what happens after sending are edited in the CRM. After sending, visitors see your website&apos;s thank-you page.</p>}
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         <a href={o.manageHref} target="_blank" rel="noreferrer" className={linkBtn}>Manage forms</a>
         <button type="button" onClick={refreshForms} className={linkBtn}>Refresh the list</button>
@@ -215,12 +215,12 @@ function CalendarPicker({ label, value, onChange }: { label: string; value: stri
   const { booking, refreshBooking } = useServices();
   if (!booking) {
     return value
-      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the calendar &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the default</button></div>
-      : <p className="text-[11.5px] leading-relaxed text-muted">Uses each client&apos;s default public calendar, so this works on any client&apos;s website.</p>;
+      ? <div className="flex items-center gap-2 text-[12px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the calendar &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the default</button></div>
+      : <p className="text-[12px] leading-relaxed text-muted">Uses each client&apos;s default public calendar, so this works on any client&apos;s website.</p>;
   }
-  if (booking.state === "loading") return <p role="status" className="text-[11.5px] text-muted">Loading your calendars…</p>;
+  if (booking.state === "loading") return <p role="status" className="text-[12px] text-muted">Loading your calendars…</p>;
   if (booking.state === "error") {
-    return <div className="space-y-1"><p role="alert" className="text-[11.5px] text-danger-ink">{booking.message}</p><button type="button" className={linkBtn} onClick={refreshBooking}>Try again</button></div>;
+    return <div className="space-y-1"><p role="alert" className="text-[12px] text-danger-ink">{booking.message}</p><button type="button" className={linkBtn} onClick={refreshBooking}>Try again</button></div>;
   }
   const o = booking.options;
   const def = defaultCalendar(o.site);
@@ -257,14 +257,14 @@ function TypePicker({ label, value, calendar, onChange }: { label: string; value
   const { booking } = useServices();
   if (!booking) {
     return value
-      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Offers only &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Offer every type</button></div>
-      : <p className="text-[11.5px] leading-relaxed text-muted">Offers every public appointment type in that calendar.</p>;
+      ? <div className="flex items-center gap-2 text-[12px] text-muted"><span className="min-w-0 flex-1 truncate">Offers only &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Offer every type</button></div>
+      : <p className="text-[12px] leading-relaxed text-muted">Offers every public appointment type in that calendar.</p>;
   }
   if (booking.state !== "ready") return null;
   const o = booking.options;
   const slug = calendar || defaultCalendar(o.site)?.slug || "";
   const cal = o.calendars.find((c) => c.slug === slug);
-  if (!cal) return <p className="text-[11.5px] text-muted">Choose a calendar first.</p>;
+  if (!cal) return <p className="text-[12px] text-muted">Choose a calendar first.</p>;
   const chosen = value ? cal.types.find((t) => t.slug === value) ?? null : null;
   const options = [
     { value: "", label: "Every public type" },
@@ -281,7 +281,7 @@ function TypePicker({ label, value, calendar, onChange }: { label: string; value
     <div className="space-y-1.5">
       <SelectControl<string> label={label} value={value} options={options} onChange={onChange} />
       {warn && <BookingWarning>{warn}</BookingWarning>}
-      {offered.length > 0 && <p className="text-[11px] leading-relaxed text-muted">Visitors can book: {offered.map((t) => `${t.name} (${durationLabel(t.durationMinutes)})`).join(", ")}.</p>}
+      {offered.length > 0 && <p className="text-[12px] leading-relaxed text-muted">Visitors can book: {offered.map((t) => `${t.name} (${durationLabel(t.durationMinutes)})`).join(", ")}.</p>}
     </div>
   );
 }
@@ -290,7 +290,7 @@ function TypePicker({ label, value, calendar, onChange }: { label: string; value
 // One field
 // ---------------------------------------------------------------------------
 
-const counter = (v: string, max: number) => (v.length > max * 0.8 ? <span className={cn("text-[10.5px] tabular-nums", v.length >= max ? "text-danger-ink" : "text-muted")}>{v.length}/{max}</span> : null);
+const counter = (v: string, max: number) => (v.length > max * 0.8 ? <span className={cn("text-[12px] tabular-nums", v.length >= max ? "text-danger-ink" : "text-muted")}>{v.length}/{max}</span> : null);
 
 /** One field of an element. `siblings` are the element's other values, for fields that depend on another (an appointment type on its calendar). */
 export function FieldEditor({ spec, value, onChange, scope, siblings }: { spec: FieldSpec; value: unknown; onChange: (v: unknown) => void; scope: string; siblings?: Rec }) {
@@ -380,7 +380,7 @@ function ListEditor({ spec, rows, onChange, scope }: { spec: Extract<FieldSpec, 
           return (
             <li key={i} className="overflow-hidden rounded-xl border border-line bg-surface">
               <div className="flex items-center gap-0.5 pr-1">
-                <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)} className="flex min-h-9 flex-1 items-center gap-1.5 px-2.5 text-left text-[12.5px] font-medium text-ink-2 hover:text-ink">
+                <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)} className="flex min-h-9 flex-1 items-center gap-1.5 px-2.5 text-left text-[13px] font-medium text-ink-2 hover:text-ink">
                   <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform", !isOpen && "-rotate-90")} aria-hidden />
                   <span className="truncate">{summary(r, i)}</span>
                 </button>
@@ -405,7 +405,7 @@ function ListEditor({ spec, rows, onChange, scope }: { spec: Extract<FieldSpec, 
           <Plus className="size-3.5" /> Add {spec.itemLabel}
         </button>
       )}
-      <p className="text-[10.5px] text-muted">{rows.length} of {spec.max}</p>
+      <p className="text-[12px] text-muted">{rows.length} of {spec.max}</p>
     </Row>
   );
 }

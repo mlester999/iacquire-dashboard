@@ -675,7 +675,7 @@ function SelectionLayer({
             {movable && (
               <DragHandle source={handleSource} label={`Drag ${kindLabel.toLowerCase()} to move it`} className="flex size-7 items-center justify-center rounded-lg hover:bg-white/15" />
             )}
-            <span className="max-w-[10rem] truncate px-1.5 text-[11.5px] font-medium">{kindLabel}{shared ? " · shared" : ""}</span>
+            <span className="max-w-[10rem] truncate px-1.5 text-[12px] font-medium">{kindLabel}{shared ? " · shared" : ""}</span>
             {!editing && (
               <>
                 {movable && (
@@ -716,7 +716,7 @@ function SelectionLayer({
           </div>
         </div>
       ) : null}
-      {!editing && hasText && kind === "element" && <div className="pointer-events-none absolute z-20 text-[10.5px] font-medium text-primary-ink" style={{ left: box.left, top: box.top + box.height + 4 }}><span className="rounded bg-primary-soft px-1.5 py-0.5">Click the text again to edit it</span></div>}
+      {!editing && hasText && kind === "element" && <div className="pointer-events-none absolute z-20 text-[12px] font-medium text-primary-ink" style={{ left: box.left, top: box.top + box.height + 4 }}><span className="rounded bg-primary-soft px-1.5 py-0.5">Click the text again to edit it</span></div>}
       {/* Resize handles */}
       {canResizeColumn && !editing && (
         <div className="pointer-events-auto absolute z-30 flex w-3 cursor-col-resize items-center justify-center" style={{ left: box.left + box.width - 6, top: box.top, height: box.height, touchAction: "none" }} onPointerDown={onResizeColumn} role="separator" aria-orientation="vertical" aria-label="Drag to change the column width">

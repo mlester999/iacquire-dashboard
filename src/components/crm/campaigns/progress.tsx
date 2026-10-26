@@ -37,12 +37,12 @@ export function CampaignProgress({ campaign, timezone }: { campaign: CampaignDet
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-[15px] font-semibold text-ink">Progress</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">
+          <p className="mt-0.5 text-[13px] text-muted">
             {campaign.startedAt ? <>Started {formatDateTime(campaign.startedAt, timezone)}</> : "Not started"}
             {campaign.completedAt && <> · {campaign.status === "cancelled" ? "Cancelled" : "Finished"} {formatDateTime(campaign.completedAt, timezone)}</>}
           </p>
         </div>
-        <p className="text-[12.5px] tabular-nums text-muted">{Math.round(pct)}% handled</p>
+        <p className="text-[13px] tabular-nums text-muted">{Math.round(pct)}% handled</p>
       </div>
       <ProgressBar className="mt-3" value={pct} tone={campaign.status === "paused" ? "warning" : campaign.status === "completed" ? "success" : "primary"} label="Share of recipients handled" />
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -60,7 +60,7 @@ export function CampaignProgress({ campaign, timezone }: { campaign: CampaignDet
           {reasons.length > 0 && (
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Why people were left out</p>
-              <ul className="mt-1.5 space-y-1 text-[12.5px]">
+              <ul className="mt-1.5 space-y-1 text-[13px]">
                 {reasons.map(([r, v]) => <li key={r} className="flex justify-between gap-3"><span className="text-ink-2">{reasonLabel(r, campaign.channel)}</span><span className="tabular-nums text-muted">{n(v)}</span></li>)}
               </ul>
             </div>
@@ -68,7 +68,7 @@ export function CampaignProgress({ campaign, timezone }: { campaign: CampaignDet
           {failures.length > 0 && (
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Why messages weren&apos;t delivered</p>
-              <ul className="mt-1.5 space-y-1 text-[12.5px]">
+              <ul className="mt-1.5 space-y-1 text-[13px]">
                 {failures.map(([r, v]) => <li key={r} className="flex justify-between gap-3"><span className="text-ink-2">{reasonLabel(r, campaign.channel)}</span><span className="tabular-nums text-muted">{n(v)}</span></li>)}
               </ul>
             </div>
@@ -97,21 +97,21 @@ export function CampaignSummary({ scope, campaign, filterOptions, listFilter }: 
         <h3 className="text-[15px] font-semibold text-ink">The message</h3>
         {campaign.message ? (
           <div className="mt-2 rounded-2xl border border-line bg-surface-2/60 p-3">
-            <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{campaign.message.name} · v{campaign.message.version} · exact wording</p>
-            {campaign.message.subject && <p className="text-[13px] font-medium text-ink">{campaign.message.subject}</p>}
-            <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{campaign.message.body}</p>
-            <p className="mt-1.5 text-[11.5px] text-muted">Placeholders such as {"{{contact.first_name}}"} are filled in for each person; someone missing a detail it uses is left out.</p>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{campaign.message.name} · v{campaign.message.version} · exact wording</p>
+            {campaign.message.subject && <p className="text-[14px] font-medium text-ink">{campaign.message.subject}</p>}
+            <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{campaign.message.body}</p>
+            <p className="mt-1.5 text-[12px] text-muted">Placeholders such as {"{{contact.first_name}}"} are filled in for each person; someone missing a detail it uses is left out.</p>
           </div>
-        ) : <p className="mt-2 text-[12.5px] text-muted">No message chosen.</p>}
+        ) : <p className="mt-2 text-[13px] text-muted">No message chosen.</p>}
       </Card>
       <Card className="p-5">
         <h3 className="text-[15px] font-semibold text-ink">Audience and schedule</h3>
-        <dl className="mt-2 grid gap-x-3 gap-y-1.5 text-[13px] sm:grid-cols-[max-content_minmax(0,1fr)]">
+        <dl className="mt-2 grid gap-x-3 gap-y-1.5 text-[14px] sm:grid-cols-[max-content_minmax(0,1fr)]">
           <dt className="text-muted">Channel</dt><dd className="text-ink">{CHANNEL_LABELS[campaign.channel as Channel]}</dd>
           <dt className="text-muted">Smart List</dt>
           <dd className="min-w-0 text-ink">
-            {campaign.list ? <>{campaign.list.name}{filterText && <span className="block text-[12.5px] text-muted">Matches: {filterText}</span>}</> : "None"}
-            {campaign.startedAt && <span className="block text-[12.5px] text-muted">Read once when sending started; later changes to the list don&apos;t change who it goes to.</span>}
+            {campaign.list ? <>{campaign.list.name}{filterText && <span className="block text-[13px] text-muted">Matches: {filterText}</span>}</> : "None"}
+            {campaign.startedAt && <span className="block text-[13px] text-muted">Read once when sending started; later changes to the list don&apos;t change who it goes to.</span>}
           </dd>
           <dt className="text-muted">Starts</dt><dd className="text-ink">{campaign.scheduledAt ? formatDateTime(campaign.scheduledAt, scope.timezone) : "As soon as it was approved"}</dd>
           <dt className="text-muted">Pace</dt><dd className="text-ink">At most {campaign.ratePerMinute} a minute</dd>
@@ -123,14 +123,14 @@ export function CampaignSummary({ scope, campaign, filterOptions, listFilter }: 
           )}
         </dl>
         <div className="mt-4 rounded-2xl border border-line p-3">
-          <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden />{APPROVAL_STATE[campaign.approval].label}<Fingerprint hash={campaign.approvedHash ?? a?.fingerprint} /></p>
+          <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden />{APPROVAL_STATE[campaign.approval].label}<Fingerprint hash={campaign.approvedHash ?? a?.fingerprint} /></p>
           {a && (
-            <p className="mt-1 text-[12.5px] text-muted" suppressHydrationWarning>
+            <p className="mt-1 text-[13px] text-muted" suppressHydrationWarning>
               {a.requestedByName ? `Requested by ${a.requestedByName}` : "Requested"} {relativeTime(a.requestedAt)}
               {a.decidedAt ? ` · decided by ${a.decidedByName ?? "the owner"} ${relativeTime(a.decidedAt)}` : ""}
             </p>
           )}
-          {a?.note && <p className="mt-1 text-[12.5px] text-ink-2">“{a.note}”</p>}
+          {a?.note && <p className="mt-1 text-[13px] text-ink-2">“{a.note}”</p>}
         </div>
       </Card>
     </div>
@@ -159,13 +159,13 @@ export function DeliveryLog({ scope, campaign, page, filter }: { scope: CrmScope
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h3 id="delivery-log-title" className="text-[15px] font-semibold text-ink">Delivery log</h3>
-          <p className="text-[12.5px] text-muted">{canContacts ? "Each person's outcome, newest change first." : "Outcomes only: your access doesn't include contact details."}</p>
+          <p className="text-[13px] text-muted">{canContacts ? "Each person's outcome, newest change first." : "Outcomes only: your access doesn't include contact details."}</p>
         </div>
       </div>
-      <nav aria-label="Filter the delivery log" className="scrollbar-thin -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <nav aria-label="Filter the delivery log" className="relative scrollbar-thin -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
         {LOG_FILTERS.map((f) => (
           <Link key={f.value} href={href(f.value)} aria-current={filter === f.value ? "page" : undefined} scroll={false}
-            className={cn("inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[12.5px] font-medium sm:min-h-8", filter === f.value ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
+            className={cn("inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[13px] font-medium sm:min-h-8", filter === f.value ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
             {f.label}
           </Link>
         ))}
@@ -175,14 +175,14 @@ export function DeliveryLog({ scope, campaign, page, filter }: { scope: CrmScope
           <EmptyState compact icon={<ListFilter className="size-5" />} title={filter === "all" ? "No recipients yet" : "Nobody here"} description={filter === "all" ? "Recipients are read from the Smart List when sending starts." : "No recipient has this outcome."} />
         ) : (
           <>
-            <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint md:grid">
+            <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-faint md:grid">
               <span>{canContacts ? "Contact" : "Recipient"}</span><span>Outcome</span><span>Detail</span><span>Updated</span>
             </div>
             <ul className="divide-y divide-line">
               {page.rows.map((r) => {
                 const s = RECIPIENT_STATUS[r.status];
                 return (
-                  <li key={r.contactId} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-4 py-2.5 text-[13px] md:grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] md:items-center">
+                  <li key={r.contactId} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-4 py-2.5 text-[14px] md:grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px] md:items-center">
                     <div className="min-w-0">
                       {r.name !== null ? (
                         r.name === "Removed contact" ? <span className="text-muted">Removed contact</span> : <Link href={`${scope.base}/contacts/${r.contactId}`} className="font-medium text-ink hover:underline">{r.name}</Link>
@@ -192,7 +192,7 @@ export function DeliveryLog({ scope, campaign, page, filter }: { scope: CrmScope
                       )}
                     </div>
                     <div className="row-start-1 md:row-auto"><Badge tone={s.tone}>{s.label}</Badge></div>
-                    <p className="col-span-2 text-[12.5px] text-muted md:col-span-1">
+                    <p className="col-span-2 text-[13px] text-muted md:col-span-1">
                       {r.reason ? reasonLabel(r.reason, campaign.channel) : r.status === "delivered" ? "The provider confirmed delivery." : r.status === "sent" ? "Handed to the provider." : r.status === "queued" ? "Queued to leave." : ""}
                       {r.waitUntil && <> until {formatDateTime(r.waitUntil, scope.timezone)}</>}
                     </p>

@@ -189,7 +189,7 @@ export function HermesProfileMapper({
     </label>}
     {error && <p role="alert" className="rounded-lg bg-danger-soft p-2.5 text-xs text-danger-ink">{error}</p>}
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-      <p className="max-w-md text-[11px] leading-relaxed text-muted">The wizard does not create, edit, or delete Hermes profiles.</p>
+      <p className="max-w-md text-[12px] leading-relaxed text-muted">The wizard does not create, edit, or delete Hermes profiles.</p>
       <Button type="submit" size="sm" loading={busy} disabled={!choices.length || !gatewayId || (mappingNeedsConfirmation && !confirmProfile) || apiKey.trim().length < 24}>
         <KeyRound className="size-3.5" />{replaceSavedCredential ? "Verify and replace key" : "Save mapping and verify"}
       </Button>
@@ -201,7 +201,7 @@ export function HermesProfileMapper({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink"><KeyRound className="size-4 text-primary" />Profile connection</h3>
-          <p className="mt-1 break-all font-mono text-[11px] text-muted">{currentProfile ?? expectedProfile}{currentGatewayId ? ` · ${choices.find((gateway) => gateway.id === currentGatewayId)?.label ?? "approved gateway"}` : " · no gateway mapped"}</p>
+          <p className="mt-1 break-all font-mono text-[12px] text-muted">{currentProfile ?? expectedProfile}{currentGatewayId ? ` · ${choices.find((gateway) => gateway.id === currentGatewayId)?.label ?? "approved gateway"}` : " · no gateway mapped"}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted">Maps to the existing Hermes identity. The profile key stays in Supabase Vault and is never shown again.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -234,27 +234,27 @@ export function HermesProfileMapper({
       {toolReviewError && <p role="alert" className="rounded-lg bg-danger-soft p-2.5 text-xs text-danger-ink">{toolReviewError}</p>}
       {toolReview && <div className="space-y-3 rounded-xl border border-line bg-surface-2 p-3" aria-live="polite">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div><h4 className="text-xs font-semibold text-ink">Live tool inventory</h4><p className="mt-1 text-[11px] text-muted">Read from Hermes at {formatDateTime(toolReview.checkedAt, timeZone)}. This review does not change tool permissions.</p></div>
-          <span className="rounded-full bg-surface px-2 py-1 text-[10px] font-medium text-ink-2">{toolReview.inventoryComplete ? "Complete inventory" : "Completeness not proven"}</span>
+          <div><h4 className="text-xs font-semibold text-ink">Live tool inventory</h4><p className="mt-1 text-[12px] text-muted">Read from Hermes at {formatDateTime(toolReview.checkedAt, timeZone)}. This review does not change tool permissions.</p></div>
+          <span className="rounded-full bg-surface px-2 py-1 text-[12px] font-medium text-ink-2">{toolReview.inventoryComplete ? "Complete inventory" : "Completeness not proven"}</span>
         </div>
         {!toolReview.inventoryComplete && <p className="text-xs leading-relaxed text-warning-ink">Hermes returned its visible toolsets, but this API does not prove the full effective permission inventory. Active use remains blocked until completeness can be verified.</p>}
         {toolReview.restrictedTools.length > 0
           ? <p className="text-xs leading-relaxed text-warning-ink">Review these unapproved or restricted tools: <span className="font-mono">{toolReview.restrictedTools.join(", ")}</span></p>
           : <p className="text-xs text-muted">No unapproved tools appeared in the returned inventory.</p>}
         <ul className="grid gap-2 sm:grid-cols-2">
-          {toolReview.toolsets.map((toolset) => <li key={toolset.name} className="rounded-lg border border-line bg-surface p-2.5 text-[11px]">
+          {toolReview.toolsets.map((toolset) => <li key={toolset.name} className="rounded-lg border border-line bg-surface p-2.5 text-[12px]">
             <p className="font-medium text-ink">{toolset.name} · {toolset.enabled ? "enabled" : "disabled"}</p>
             <p className="mt-1 break-words font-mono leading-relaxed text-muted">{toolset.tools.length ? toolset.tools.join(", ") : "No tools listed"}</p>
           </li>)}
         </ul>
-        {toolReview.truncated && <p className="text-[11px] text-muted">The displayed inventory was shortened to keep the review readable.</p>}
+        {toolReview.truncated && <p className="text-[12px] text-muted">The displayed inventory was shortened to keep the review readable.</p>}
       </div>}
 
       {historyOpen && <div className="space-y-2 rounded-xl border border-line bg-surface-2 p-3" aria-live="polite">
         <h4 className="text-xs font-semibold text-ink">Recorded connection history</h4>
         {historyError && <p role="alert" className="text-xs text-danger-ink">{historyError}</p>}
         {history?.length === 0 && <p className="text-xs text-muted">No recorded connection or profile-check events yet.</p>}
-        {history && history.length > 0 && <ol className="space-y-2">{history.map((event, index) => <li key={`${event.action}:${event.occurredAt}:${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface p-2.5 text-[11px]">
+        {history && history.length > 0 && <ol className="space-y-2">{history.map((event, index) => <li key={`${event.action}:${event.occurredAt}:${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface p-2.5 text-[12px]">
           <span className="font-medium text-ink">{event.action === "connected" ? "Profile connection saved" : `Profile check${event.status ? ` · ${event.status.replaceAll("_", " ")}` : ""}`}</span>
           <span className="text-muted">{event.result} · {event.actorKind === "agency" ? "iAcquire admin" : event.actorKind}</span>
           <time dateTime={event.occurredAt} className="text-muted">{formatDateTime(event.occurredAt, timeZone)}</time>

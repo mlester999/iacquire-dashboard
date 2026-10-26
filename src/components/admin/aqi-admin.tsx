@@ -194,9 +194,9 @@ export function AqiAdmin({
     <div className="module-stack space-y-6">
       <div className="flex flex-col justify-between gap-4 border-b border-line pb-5 sm:flex-row sm:items-end">
         <div>
-          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[.16em] text-primary-ink"><Sparkles className="size-3" /> Platform assistant</p>
+          <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.16em] text-primary-ink"><Sparkles className="size-3" /> Platform assistant</p>
           <h1 className="text-[27px] font-semibold tracking-[-0.045em] text-ink">AQi Management</h1>
-          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">Configure the assistant, its approved knowledge, suggestions and publishing. AQi is separate from AI employees and never inherits Hermes tools.</p>
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted">Configure the assistant, its approved knowledge, suggestions and publishing. AQi is separate from AI employees and never inherits Hermes tools.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={data.health.available ? "success" : "warning"}>{data.health.available ? "Provider connected" : "No provider"}</StatusPill>
@@ -231,7 +231,7 @@ export function AqiAdmin({
           <Metric label="Average latency" value={data.usage.avgLatencyMs ? `${data.usage.avgLatencyMs} ms` : "Not reported"} detail={data.health.detail} />
           <Card className="sm:col-span-2 xl:col-span-4">
             <CardHeader><CardTitle>Current configuration</CardTitle><CardDescription>Only real values from the published version and the configured integration are shown.</CardDescription></CardHeader>
-            <CardContent className="grid gap-3 text-[13px] sm:grid-cols-2">
+            <CardContent className="grid gap-3 text-[14px] sm:grid-cols-2">
               <p><span className="text-muted">Provider:</span> {data.health.provider ?? "Not configured"}</p>
               <p><span className="text-muted">Model:</span> {data.health.model ?? "Not configured"}</p>
               <p><span className="text-muted">Identity:</span> {data.published.config.identity}</p>
@@ -251,7 +251,7 @@ export function AqiAdmin({
             <Field label="Maximum context tokens" htmlFor="aqi-context"><Input id="aqi-context" type="number" min={1000} max={64000} value={config.maxContextTokens} onChange={(event) => set("maxContextTokens", Number(event.target.value))} /></Field>
             <Field label="Knowledge review threshold (days)" htmlFor="aqi-freshness"><Input id="aqi-freshness" type="number" min={7} max={3650} value={config.knowledgeFreshnessDays} onChange={(event) => set("knowledgeFreshnessDays", Number(event.target.value))} /></Field>
             <Field label="Temperature" htmlFor="aqi-temp"><Input id="aqi-temp" type="number" min={0} max={1} step={0.05} value={config.temperature} onChange={(event) => set("temperature", Number(event.target.value))} /></Field>
-            <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12.5px] text-muted sm:col-span-2">
+            <div className="rounded-xl border border-line bg-surface-2 p-3 text-[13px] text-muted sm:col-span-2">
               <p>Integration: <strong className="text-ink-2">{data.health.connectionStatus ?? "not configured"}</strong> · AQi eligible: <strong className="text-ink-2">{data.health.eligible ? "yes" : "no"}</strong> · Model: <strong className="text-ink-2">{data.health.model ?? "not available"}</strong> · Model listed by provider: <strong className="text-ink-2">{data.health.modelListed === null ? "not checked" : data.health.modelListed ? "yes" : "no"}</strong></p>
               <p className="mt-1">Resolution: {data.health.reason}{data.health.host ? ` · Host: ${data.health.host}` : ""}. Credentials stay in the existing secure integration store and are never displayed.</p>
             </div>
@@ -270,7 +270,7 @@ export function AqiAdmin({
             <Field label="Short description" htmlFor="aqi-desc"><Input id="aqi-desc" value={config.description} onChange={(event) => set("description", event.target.value)} /></Field>
             <Field label="Greeting" htmlFor="aqi-greeting"><Input id="aqi-greeting" value={config.greeting} onChange={(event) => set("greeting", event.target.value)} /></Field>
             <Field label="Editable guidance" htmlFor="aqi-instructions"><Textarea id="aqi-instructions" rows={6} value={config.instructions} onChange={(event) => set("instructions", event.target.value)} /></Field>
-            <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-[12.5px] text-warning-ink"><TriangleAlert className="mr-1 inline size-3.5" /> Protected policy is always appended after this text: no secrets, no cross-tenant data, no action claims and no permission bypass.</div>
+            <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-[13px] text-warning-ink"><TriangleAlert className="mr-1 inline size-3.5" /> Protected policy is always appended after this text: no secrets, no cross-tenant data, no action claims and no permission bypass.</div>
           </CardContent>
         </Card>
       )}
@@ -289,7 +289,7 @@ export function AqiAdmin({
             </div>
             <Field label="Safe fallback instructions" htmlFor="aqi-fallback"><Textarea id="aqi-fallback" rows={3} value={config.fallbackInstructions} onChange={(event) => set("fallbackInstructions", event.target.value)} /></Field>
             <Field label="Role-aware guidance" htmlFor="aqi-role-guidance"><Textarea id="aqi-role-guidance" rows={3} value={config.roleGuidance} onChange={(event) => set("roleGuidance", event.target.value)} /></Field>
-            <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-[12.5px] text-warning-ink"><TriangleAlert className="mr-1 inline size-3.5" /> These settings control style and usefulness, not permissions, security policy or action authority.</div>
+            <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-[13px] text-warning-ink"><TriangleAlert className="mr-1 inline size-3.5" /> These settings control style and usefulness, not permissions, security policy or action authority.</div>
           </CardContent>
         </Card>
       )}
@@ -307,8 +307,8 @@ export function AqiAdmin({
                 <div key={entry.id} className="rounded-xl border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
                     <button type="button" className="min-w-0 text-left" onClick={() => editKnowledge(entry)}>
-                      <p className="truncate text-[13px] font-medium">{entry.title}</p>
-                      <p className="mt-0.5 text-[11px] text-muted">{entry.category} · {entry.routePrefix ?? "all pages"} · updated <span suppressHydrationWarning>{relativeTime(entry.updatedAt)}</span></p>
+                      <p className="truncate text-[14px] font-medium">{entry.title}</p>
+                      <p className="mt-0.5 text-[12px] text-muted">{entry.category} · {entry.routePrefix ?? "all pages"} · updated <span suppressHydrationWarning>{relativeTime(entry.updatedAt)}</span></p>
                     </button>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <StatusPill size="sm" tone={entry.status === "published" ? "success" : entry.status === "archived" ? "neutral" : "warning"}>{entry.status}</StatusPill>
@@ -358,7 +358,7 @@ export function AqiAdmin({
               <ul className="space-y-2">
                 {previewResult.map((entry) => (
                   <li key={entry.id} className="rounded-xl border border-line p-3">
-                    <p className="text-[13px] font-medium">{entry.title} <span className="font-normal text-muted">· {entry.category}</span></p>
+                    <p className="text-[14px] font-medium">{entry.title} <span className="font-normal text-muted">· {entry.category}</span></p>
                     <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-muted">{entry.body}</p>
                   </li>
                 ))}
@@ -384,7 +384,7 @@ export function AqiAdmin({
             <CardContent className="space-y-2">
               {data.questions.map((question) => (
                 <div key={question.id} className="flex items-start justify-between gap-2 rounded-xl border border-line p-3">
-                  <div><p className="text-[13px]">{question.question}</p><p className="mt-0.5 text-[11px] text-muted">{question.scope}{question.role ? ` · ${question.role}` : ""}{question.routePrefix ? ` · ${question.routePrefix}` : ""} · order {question.sortOrder}</p></div>
+                  <div><p className="text-[14px]">{question.question}</p><p className="mt-0.5 text-[12px] text-muted">{question.scope}{question.role ? ` · ${question.role}` : ""}{question.routePrefix ? ` · ${question.routePrefix}` : ""} · order {question.sortOrder}</p></div>
                   <div className="flex shrink-0 gap-1"><StatusPill size="sm" tone={question.enabled ? "success" : "neutral"}>{question.enabled ? "on" : "off"}</StatusPill><button type="button" onClick={() => void deleteQuestion(question.id)} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink" aria-label={`Delete ${question.question}`}><Trash2 className="size-3.5" /></button></div>
                 </div>
               ))}
@@ -411,25 +411,25 @@ export function AqiAdmin({
             <CardHeader><CardTitle>Test the configured provider</CardTitle><CardDescription>This is a real provider generation test, not retrieval-only. It uses the same intent prompt, page context, published knowledge, link validation and citation rendering as a live AQi turn, with the configuration currently in this editor (including unsaved changes). It does not save a conversation.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
-                <div className="flex flex-wrap gap-1.5">{["hi", "hey", "hello", "what's up", "can you help me?", "Where are integrations?"].map((probe) => <button key={probe} type="button" onClick={() => setTestPrompt(probe)} className="rounded-full border border-line px-2 py-1 text-[10.5px] text-muted hover:bg-surface-2 hover:text-ink">{probe}</button>)}</div>
+                <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
+                <div className="flex flex-wrap gap-1.5">{["hi", "hey", "hello", "what's up", "can you help me?", "Where are integrations?"].map((probe) => <button key={probe} type="button" onClick={() => setTestPrompt(probe)} className="rounded-full border border-line px-2 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink">{probe}</button>)}</div>
               </div>
               <Field label="Test question" htmlFor="test-prompt"><Textarea id="test-prompt" rows={3} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} /></Field>
               <Button variant="brand" onClick={() => void testProvider()} loading={testing}><FlaskConical className="size-4" /> Run test</Button>
               {testResult && (testResult.ok ? (
                 <div className="rounded-xl border border-success/25 bg-success-soft p-3">
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-success-ink"><span>Real provider generation</span><span aria-hidden>·</span><span>intent: {testResult.intent}</span><span aria-hidden>·</span><span>{testResult.words} words</span></div>
+                  <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-success-ink"><span>Real provider generation</span><span aria-hidden>·</span><span>intent: {testResult.intent}</span><span aria-hidden>·</span><span>{testResult.words} words</span></div>
                   <div className="mt-2 text-ink"><Markdown>{testResult.text}</Markdown></div>
-                  {testResult.sources?.length ? <div className="mt-2 border-t border-success/20 pt-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Sources</p><ol className="mt-1 space-y-0.5">{testResult.sources.map((source, index) => <li key={source.id} className="text-[11px] text-ink-2">{index + 1}. {source.title} <span className="text-muted">· {source.category}</span></li>)}</ol></div> : <p className="mt-2 text-[10.5px] text-muted">No citations were returned for this answer.</p>}
+                  {testResult.sources?.length ? <div className="mt-2 border-t border-success/20 pt-2"><p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Sources</p><ol className="mt-1 space-y-0.5">{testResult.sources.map((source, index) => <li key={source.id} className="text-[12px] text-ink-2">{index + 1}. {source.title} <span className="text-muted">· {source.category}</span></li>)}</ol></div> : <p className="mt-2 text-[12px] text-muted">No citations were returned for this answer.</p>}
                 </div>
-              ) : <div className="rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] text-danger-ink">{testResult.text}</div>)}
+              ) : <div className="rounded-xl border border-danger/25 bg-danger-soft p-3 text-[13px] text-danger-ink">{testResult.text}</div>)}
             </CardContent>
           </Card>
           <Card>
             <CardHeader><CardTitle>Publishing</CardTitle><CardDescription>Save a draft, test it, then publish. Publishing archives the previous live version.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-[13px] text-muted">Current published version: <strong className="text-ink">{data.published.version ? `v${data.published.version}` : "none"}</strong></p>
-              {draftId && <p className="text-[13px] text-muted">Saved draft: <strong className="text-ink">ready to publish</strong></p>}
+              <p className="text-[14px] text-muted">Current published version: <strong className="text-ink">{data.published.version ? `v${data.published.version}` : "none"}</strong></p>
+              {draftId && <p className="text-[14px] text-muted">Saved draft: <strong className="text-ink">ready to publish</strong></p>}
               <Button variant="brand" disabled={!draftId} onClick={() => draftId && void publish(draftId)}><CheckCircle2 className="size-4" /> Publish saved draft</Button>
               {!draftId && <p className="text-[12px] text-muted">Use Save draft above first.</p>}
             </CardContent>
@@ -437,10 +437,10 @@ export function AqiAdmin({
           <Card className="lg:col-span-2">
             <CardHeader><CardTitle>Draft compared with published</CardTitle><CardDescription>Fields that will change when this draft is published.</CardDescription></CardHeader>
             <CardContent>
-              {changed.length === 0 ? <p className="text-[12.5px] text-muted">The editor matches the published configuration.</p> : (
+              {changed.length === 0 ? <p className="text-[13px] text-muted">The editor matches the published configuration.</p> : (
                 <ul className="space-y-2">
                   {changed.map((key) => (
-                    <li key={key} className="rounded-xl border border-line p-3 text-[12.5px]">
+                    <li key={key} className="rounded-xl border border-line p-3 text-[13px]">
                       <p className="font-medium text-ink">{key}</p>
                       <p className="mt-1 text-muted"><span className="text-faint">Published:</span> {String(data.published.config[key]).slice(0, 180)}</p>
                       <p className="mt-0.5 text-ink-2"><span className="text-faint">Draft:</span> {String(config[key]).slice(0, 180)}</p>
@@ -459,7 +459,7 @@ export function AqiAdmin({
           <CardContent className="space-y-2">
             {data.versions.map((version) => (
               <div key={version.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
-                <div><p className="text-[13px] font-medium">v{version.version} <StatusPill size="sm" tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</StatusPill></p><p className="mt-0.5 text-[11px] text-muted">{version.notes ?? "No note"} · <span suppressHydrationWarning>{formatDateTime(version.createdAt)}</span></p></div>
+                <div><p className="text-[14px] font-medium">v{version.version} <StatusPill size="sm" tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</StatusPill></p><p className="mt-0.5 text-[12px] text-muted">{version.notes ?? "No note"} · <span suppressHydrationWarning>{formatDateTime(version.createdAt)}</span></p></div>
                 {version.status !== "published" && <Button size="sm" variant="secondary" onClick={() => void publish(version.id)}><RotateCcw className="size-3.5" /> {version.status === "archived" ? "Restore" : "Publish"}</Button>}
               </div>
             ))}
@@ -472,7 +472,7 @@ export function AqiAdmin({
           <Card>
             <CardHeader><CardTitle>Global AQi budget</CardTitle><CardDescription>Server-side monthly limits. A request is rejected before the provider call when the budget is exhausted. $0 means no cap while enabled; leave budgets off until prices are configured.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Enforce AQi budgets</span><input type="checkbox" checked={budget.enabled} onChange={(event) => setBudget({ ...budget, enabled: event.target.checked })} aria-label="Enforce AQi budgets" /></label>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[14px]"><span>Enforce AQi budgets</span><input type="checkbox" checked={budget.enabled} onChange={(event) => setBudget({ ...budget, enabled: event.target.checked })} aria-label="Enforce AQi budgets" /></label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Workspace monthly budget (USD)" htmlFor="aqi-org-budget"><Input id="aqi-org-budget" type="number" min={0} step="0.01" value={budget.orgUsd} onChange={(event) => setBudget({ ...budget, orgUsd: Number(event.target.value) })} /></Field>
                 <Field label="Per-user monthly budget (USD)" htmlFor="aqi-user-budget"><Input id="aqi-user-budget" type="number" min={0} step="0.01" value={budget.userUsd} onChange={(event) => setBudget({ ...budget, userUsd: Number(event.target.value) })} /></Field>
@@ -490,7 +490,7 @@ export function AqiAdmin({
               </div>
               <Button variant="secondary" onClick={() => void savePrice()} loading={budgetBusy}><Save className="size-4" /> Save model price</Button>
               <div className="border-t border-line pt-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Configured prices</p>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Configured prices</p>
                 {data.prices.length === 0 ? <p className="mt-2 text-[12px] text-muted">No model prices configured. Budgeted calls stay blocked until a price is saved.</p> : (
                   <ul className="mt-2 space-y-1">
                     {data.prices.map((item) => <li key={item.model} className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[12px]"><span className="font-medium">{item.model}</span><span className="text-muted">${(item.inputMicrosPerMillion / 1_000_000).toFixed(4)} in · ${(item.outputMicrosPerMillion / 1_000_000).toFixed(4)} out {item.enabled ? "" : "· off"}</span></li>)}
@@ -507,16 +507,16 @@ export function AqiAdmin({
           <Card>
             <CardHeader><CardTitle>Images</CardTitle><CardDescription><span className="text-ink-2">Limits are enforced by the upload endpoint, not just the browser.</span></CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow image uploads</span><input type="checkbox" checked={config.attachments.imagesEnabled} onChange={(event) => setAttachment("imagesEnabled", event.target.checked)} /></label>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[14px]"><span>Allow image uploads</span><input type="checkbox" checked={config.attachments.imagesEnabled} onChange={(event) => setAttachment("imagesEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max image MB" htmlFor="aqi-img-mb"><Input id="aqi-img-mb" type="number" min={1} max={10} value={config.attachments.imageMaxMb} onChange={(event) => setAttachment("imageMaxMb", Number(event.target.value))} /></Field><Field label="Max images / message" htmlFor="aqi-img-n"><Input id="aqi-img-n" type="number" min={1} max={5} value={config.attachments.maxImages} onChange={(event) => setAttachment("maxImages", Number(event.target.value))} /></Field></div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader><CardTitle>Documents and video</CardTitle><CardDescription><span className="text-ink-2">Documents use the existing bounded PDF/DOCX/TXT/CSV extraction pipeline. Video is stored and playable; AI video analysis is unavailable.</span></CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow document uploads</span><input type="checkbox" checked={config.attachments.documentsEnabled} onChange={(event) => setAttachment("documentsEnabled", event.target.checked)} /></label>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[14px]"><span>Allow document uploads</span><input type="checkbox" checked={config.attachments.documentsEnabled} onChange={(event) => setAttachment("documentsEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max document MB" htmlFor="aqi-doc-mb"><Input id="aqi-doc-mb" type="number" min={1} max={20} value={config.attachments.documentMaxMb} onChange={(event) => setAttachment("documentMaxMb", Number(event.target.value))} /></Field><Field label="Max documents / message" htmlFor="aqi-doc-n"><Input id="aqi-doc-n" type="number" min={1} max={5} value={config.attachments.maxDocuments} onChange={(event) => setAttachment("maxDocuments", Number(event.target.value))} /></Field></div>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow video uploads</span><input type="checkbox" checked={config.attachments.videosEnabled} onChange={(event) => setAttachment("videosEnabled", event.target.checked)} /></label>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[14px]"><span>Allow video uploads</span><input type="checkbox" checked={config.attachments.videosEnabled} onChange={(event) => setAttachment("videosEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max video MB" htmlFor="aqi-vid-mb"><Input id="aqi-vid-mb" type="number" min={1} max={50} value={config.attachments.videoMaxMb} onChange={(event) => setAttachment("videoMaxMb", Number(event.target.value))} /></Field><Field label="Max video seconds" htmlFor="aqi-vid-sec"><Input id="aqi-vid-sec" type="number" min={1} max={60} value={config.attachments.videoMaxSeconds} onChange={(event) => setAttachment("videoMaxSeconds", Number(event.target.value))} /></Field></div>
               <Field label="Max documents context tokens" htmlFor="aqi-att-context"><Input id="aqi-att-context" type="number" min={500} max={16000} value={config.attachments.attachmentContextTokens} onChange={(event) => setAttachment("attachmentContextTokens", Number(event.target.value))} /></Field>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Workspace storage quota (MB)" htmlFor="aqi-att-quota"><Input id="aqi-att-quota" type="number" min={1} max={100000} value={config.attachments.storageQuotaMb} onChange={(event) => setAttachment("storageQuotaMb", Number(event.target.value))} /></Field><Field label="Attachment retention (days)" htmlFor="aqi-att-retention"><Input id="aqi-att-retention" type="number" min={1} max={3650} value={config.attachments.retentionDays} onChange={(event) => setAttachment("retentionDays", Number(event.target.value))} /></Field></div>
@@ -538,7 +538,7 @@ export function AqiAdmin({
           <Metric label="Rate-limited turns" value={String(data.usage.rateLimits)} detail="Rejected before the provider call" />
           <Metric label="Helpful feedback" value={String(data.usage.helpful)} detail="Persisted thumbs-up ratings" />
           <Metric label="Needs improvement" value={String(data.usage.notHelpful)} detail="Persisted thumbs-down ratings" />
-          <Card className="sm:col-span-2 xl:col-span-4"><CardHeader><CardTitle>Health</CardTitle><CardDescription>{data.health.detail}</CardDescription></CardHeader><CardContent className="text-[13px]"><p>Provider: {data.health.provider ?? "not configured"} · Model: {data.health.model ?? "not configured"}</p><p className="mt-1 text-muted">Costs are estimates from configured pricing; no provider invoice is implied. A request that fails before usage is reported is released without a cost charge.</p></CardContent></Card>
+          <Card className="sm:col-span-2 xl:col-span-4"><CardHeader><CardTitle>Health</CardTitle><CardDescription>{data.health.detail}</CardDescription></CardHeader><CardContent className="text-[14px]"><p>Provider: {data.health.provider ?? "not configured"} · Model: {data.health.model ?? "not configured"}</p><p className="mt-1 text-muted">Costs are estimates from configured pricing; no provider invoice is implied. A request that fails before usage is reported is released without a cost charge.</p></CardContent></Card>
         </div>
       )}
     </div>
@@ -546,5 +546,5 @@ export function AqiAdmin({
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <Card><CardContent className="pt-5"><p className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p><p className="mt-1 text-[24px] font-semibold tracking-tight text-ink">{value}</p><p className="mt-1 text-[11.5px] leading-relaxed text-muted">{detail}</p></CardContent></Card>;
+  return <Card><CardContent className="pt-5"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">{label}</p><p className="mt-1 text-[24px] font-semibold tracking-tight text-ink">{value}</p><p className="mt-1 text-[12px] leading-relaxed text-muted">{detail}</p></CardContent></Card>;
 }

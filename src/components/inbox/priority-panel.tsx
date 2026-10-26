@@ -18,7 +18,7 @@ function Card({ title, icon: Icon, action, children }: { title: string; icon: Re
   return (
     <section className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
+        <h2 className="flex items-center gap-1.5 text-[14px] font-semibold"><Icon className="size-4 text-muted" aria-hidden />{title}</h2>
         {action}
       </div>
       <div className="mt-2">{children}</div>
@@ -32,7 +32,7 @@ export function InboxPriorityCard({ view, contactHref }: { view: PriorityView; c
   const missing = (a?.missing ?? []).filter((m) => m.dimension !== "completeness").slice(0, 3);
   return (
     <Card title="Lead priority" icon={Gauge} action={<Link href={contactHref} className="-mx-2 -my-2 inline-block px-2 py-2 text-[12px] text-primary">Why</Link>}>
-      <div className="space-y-2 text-[12.5px]">
+      <div className="space-y-2 text-[13px]">
         <div className="flex flex-wrap items-center gap-2">
           <PriorityBadge label={view.label} score={view.score} source={view.source} />
           {view.evaluatedAt && <span className="text-muted">checked {relativeTime(view.evaluatedAt)}</span>}
@@ -62,7 +62,7 @@ export function InboxPriorityCard({ view, contactHref }: { view: PriorityView; c
 export function InboxMissedCallCard({ view }: { view: CaseView; timeZone?: string }) {
   return (
     <Card title="Missed call" icon={PhoneMissed} action={<Link href={`/crm/calls?tab=recovery&case=${view.id}`} className="-mx-2 -my-2 inline-block px-2 py-2 text-[12px] text-primary">Open</Link>}>
-      <div className="space-y-1.5 text-[12.5px]">
+      <div className="space-y-1.5 text-[13px]">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="warning">{caseStatusLabel(view.state, view.stateReason)}</Badge>
           {view.paused && <Badge tone="outline">Paused</Badge>}

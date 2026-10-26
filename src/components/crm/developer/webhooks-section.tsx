@@ -39,7 +39,7 @@ export function WebhooksSection({ scope, subscriptions, events, maxSubscriptions
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 id="dev-webhooks" className="text-[15px] font-semibold text-ink">Webhooks</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
             iAcquire tells your app the moment something happens, with a signed request it can verify. Failed deliveries are retried for about two days.
           </p>
         </div>
@@ -88,19 +88,19 @@ export function WebhooksSection({ scope, subscriptions, events, maxSubscriptions
                   </div>
 
                   {!s.active && s.disabledReason && (
-                    <p className={cn("mt-3 flex items-start gap-2 rounded-xl p-2.5 text-[12.5px] leading-relaxed", st.tone === "danger" ? "bg-danger-soft text-danger-ink" : "bg-surface-2 text-ink-2")}>
+                    <p className={cn("mt-3 flex items-start gap-2 rounded-xl p-2.5 text-[13px] leading-relaxed", st.tone === "danger" ? "bg-danger-soft text-danger-ink" : "bg-surface-2 text-ink-2")}>
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                       <span>{s.disabledReason}{st.tone === "danger" ? " Events that happen while it is off aren't queued." : ""}</span>
                     </p>
                   )}
                   {s.active && s.consecutiveFailures > 0 && (
-                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] leading-relaxed text-warning-ink">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                       {s.consecutiveFailures} failed {s.consecutiveFailures === 1 ? "delivery" : "deliveries"} in a row. It is turned off automatically after {autoDisableAfter}.
                     </p>
                   )}
 
-                  <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+                  <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
                     <dt className="text-muted">Events</dt>
                     <dd className="min-w-0 text-ink-2">
                       {s.eventTypes.length <= 3 ? s.eventTypes.map((t) => labels.get(t) ?? t).join(", ") : `${s.eventTypes.slice(0, 2).map((t) => labels.get(t) ?? t).join(", ")} and ${s.eventTypes.length - 2} more`}
@@ -117,7 +117,7 @@ export function WebhooksSection({ scope, subscriptions, events, maxSubscriptions
 
                   <div aria-live="polite">
                     {result && (
-                      <p className={cn("mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed", result.status === "delivered" ? "text-success-ink" : "text-danger-ink")}>
+                      <p className={cn("mt-3 flex items-start gap-2 text-[13px] leading-relaxed", result.status === "delivered" ? "text-success-ink" : "text-danger-ink")}>
                         {result.status === "delivered" ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <XCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                         <span>Test {result.status === "delivered" ? "delivered" : "failed"}: {result.detail}</span>
                       </p>

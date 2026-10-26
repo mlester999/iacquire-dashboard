@@ -130,12 +130,12 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
               <div className="rounded-xl border border-line bg-surface-2/50 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <FileText className="size-4 text-primary" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{lastUpload.document.filename}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{lastUpload.document.filename}</span>
                   <StatusPill size="sm" tone={lastUpload.document.extractionStatus === "ready" ? "success" : "warning"}>{lastUpload.document.extractionStatus}</StatusPill>
                 </div>
-                {lastUpload.document.extractionDetail && <p className="mt-1 text-[11px] text-warning-ink">{lastUpload.document.extractionDetail}</p>}
-                {lastUpload.document.riskFlags.length > 0 && <p className="mt-1 flex items-start gap-1.5 text-[11px] text-warning-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" /> Content flags: {lastUpload.document.riskFlags.join(", ")}. Extracted text is treated as untrusted evidence.</p>}
-                {lastUpload.preview && <p className="mt-2 line-clamp-5 whitespace-pre-wrap rounded-lg bg-surface p-2 text-[11px] leading-relaxed text-muted">{lastUpload.preview}</p>}
+                {lastUpload.document.extractionDetail && <p className="mt-1 text-[12px] text-warning-ink">{lastUpload.document.extractionDetail}</p>}
+                {lastUpload.document.riskFlags.length > 0 && <p className="mt-1 flex items-start gap-1.5 text-[12px] text-warning-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" /> Content flags: {lastUpload.document.riskFlags.join(", ")}. Extracted text is treated as untrusted evidence.</p>}
+                {lastUpload.preview && <p className="mt-2 line-clamp-5 whitespace-pre-wrap rounded-lg bg-surface p-2 text-[12px] leading-relaxed text-muted">{lastUpload.preview}</p>}
                 {lastUpload.document.extractionStatus === "ready" && (
                   <Button size="sm" variant="secondary" className="mt-2" onClick={() => { setLinking(lastUpload.document); setLinkDraft({ title: lastUpload.document.filename.replace(/\.[a-z0-9]+$/i, "").slice(0, 160), category: "Platform overview", routePrefix: "" }); }}>
                     Create a draft entry
@@ -150,7 +150,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
                   <FileText className="size-3.5 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{document.filename}</span>
                   <Badge tone={document.extractionStatus === "ready" ? "success" : "warning"}>{document.extractionStatus}</Badge>
-                  <span className="text-[10px] text-muted">{document.extractedChars ? `${document.extractedChars.toLocaleString()} chars` : "no text"}</span>
+                  <span className="text-[12px] text-muted">{document.extractedChars ? `${document.extractedChars.toLocaleString()} chars` : "no text"}</span>
                   {document.knowledgeEntryId ? <Badge tone="primary">linked</Badge> : document.extractionStatus === "ready" ? (
                     <Button size="sm" variant="ghost" onClick={() => { setLinking(document); setLinkDraft({ title: document.filename.replace(/\.[a-z0-9]+$/i, "").slice(0, 160), category: "Platform overview", routePrefix: "" }); }}>Create entry</Button>
                   ) : null}
@@ -171,7 +171,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
                   <Button size="sm" variant="brand" loading={busy === `link:${linking.id}`} onClick={() => void createEntry()}>Create draft</Button>
                   <Button size="sm" variant="ghost" onClick={() => setLinking(null)}>Cancel</Button>
                 </div>
-                <p className="mt-1.5 text-[10.5px] text-muted">The extracted text is the draft body. Review and edit it before publishing.</p>
+                <p className="mt-1.5 text-[12px] text-muted">The extracted text is the draft body. Review and edit it before publishing.</p>
               </div>
             )}
           </CardContent>
@@ -188,7 +188,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
             <Metric label="Up to date" value={fresh} tone="success" />
             <Metric label="Review due" value={due} tone="warning" />
             <Metric label="Needs attention" value={attention} tone="danger" />
-            <div className="col-span-3 rounded-xl bg-surface-2 p-2.5 text-[11px] leading-relaxed text-muted">Review marks an entry as checked and schedules the next review. Publishing also refreshes the review date. Archiving keeps the history.</div>
+            <div className="col-span-3 rounded-xl bg-surface-2 p-2.5 text-[12px] leading-relaxed text-muted">Review marks an entry as checked and schedules the next review. Publishing also refreshes the review date. Archiving keeps the history.</div>
           </CardContent>
         </Card>
       </div>
@@ -207,17 +207,17 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
             <div key={entry.id} className="rounded-xl border border-line p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-ink">
+                  <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
                     <span className="truncate">{entry.title}</span>
                     <StatusPill size="sm" tone={FRESHNESS_TONE[entry.freshness]}>{entry.freshness.replaceAll("_", " ")}</StatusPill>
                     <Badge tone={entry.status === "published" ? "success" : entry.status === "draft" ? "warning" : "neutral"}>{entry.status}</Badge>
                   </p>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
                     <span>{entry.category}</span><span aria-hidden>·</span><span>{entry.sourceKind === "document" ? `Document: ${entry.sourceFilename ?? "linked file"}` : entry.source}</span>
                     {entry.routePrefix && <><span aria-hidden>·</span><span>{entry.routePrefix}</span></>}
                     {entry.roles.length > 0 && <><span aria-hidden>·</span><span>Roles: {entry.roles.join(", ")}</span></>}
                   </p>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted">
+                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted">
                     <span className="inline-flex items-center gap-1"><Clock className="size-3" /> Reviewed {entry.lastReviewedAt ? formatDateTime(entry.lastReviewedAt) : "never"}</span>
                     <span>Next review {formatDateTime(entry.reviewDueAt)}</span>
                     {entry.daysOverdue > 0 && <span className="font-medium text-danger-ink">{entry.daysOverdue}d overdue</span>}
@@ -230,20 +230,20 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
                   {entry.status !== "archived" && <Button size="sm" variant="ghost" loading={busy === `${entry.id}:archive`} onClick={() => void reviewEntry(entry, "archive")}><Archive className="size-3.5" /> Archive</Button>}
                 </div>
               </div>
-              <Input className="mt-2 h-8 text-[11.5px]" aria-label={`Review note for ${entry.title}`} placeholder="Optional review note (why it changed or was checked)" maxLength={500} value={note[entry.id] ?? ""} onChange={(e) => setNote({ ...note, [entry.id]: e.target.value })} />
+              <Input className="mt-2 h-8 text-[12px]" aria-label={`Review note for ${entry.title}`} placeholder="Optional review note (why it changed or was checked)" maxLength={500} value={note[entry.id] ?? ""} onChange={(e) => setNote({ ...note, [entry.id]: e.target.value })} />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setHistoryFor(historyFor === entry.id ? null : entry.id)} aria-expanded={historyFor === entry.id}>
                   <History className="size-3.5" /> Version history ({entryVersions.length})
                 </Button>
-                {entryVersions.length === 0 && <span className="text-[10.5px] text-muted">History starts with the next edit; earlier versions were not stored.</span>}
+                {entryVersions.length === 0 && <span className="text-[12px] text-muted">History starts with the next edit; earlier versions were not stored.</span>}
               </div>
               {historyFor === entry.id && entryVersions.length > 0 && (
                 <div className="mt-2 space-y-1.5 rounded-xl border border-line bg-surface-2/50 p-2.5">
                   {entryVersions.map((version) => (
                     <div key={version.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-2.5 py-2">
                       <div className="min-w-0">
-                        <p className="text-[11.5px] font-medium text-ink">v{version.version} · {version.title} <Badge tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</Badge></p>
-                        <p className="mt-0.5 text-[10.5px] text-muted">{formatDateTime(version.createdAt)}{version.createdBy ? ` · ${version.createdBy}` : ""}{version.changeNote ? ` · ${version.changeNote}` : ""}</p>
+                        <p className="text-[12px] font-medium text-ink">v{version.version} · {version.title} <Badge tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</Badge></p>
+                        <p className="mt-0.5 text-[12px] text-muted">{formatDateTime(version.createdAt)}{version.createdBy ? ` · ${version.createdBy}` : ""}{version.changeNote ? ` · ${version.changeNote}` : ""}</p>
                       </div>
                       <div className="flex gap-1.5">
                         <Button size="sm" variant="ghost" onClick={() => setCompare(compare?.version.id === version.id ? null : { entry, version })}>Compare</Button>
@@ -256,14 +256,14 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
               {compare && compare.entry.id === entry.id && (
                 <div className="mt-2 grid gap-2 rounded-xl border border-primary/25 bg-primary-soft/30 p-2.5 sm:grid-cols-2">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Restored version v{compare.version.version}</p>
-                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[11px] leading-relaxed text-ink-2">{compare.version.body}</pre>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Restored version v{compare.version.version}</p>
+                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[12px] leading-relaxed text-ink-2">{compare.version.body}</pre>
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Current live content (v{entry.version})</p>
-                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[11px] leading-relaxed text-ink-2">{entry.body}</pre>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Current live content (v{entry.version})</p>
+                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[12px] leading-relaxed text-ink-2">{entry.body}</pre>
                   </div>
-                  <p className="text-[10.5px] text-muted sm:col-span-2">Restoring creates a new draft and keeps both versions. Nothing is published automatically.</p>
+                  <p className="text-[12px] text-muted sm:col-span-2">Restoring creates a new draft and keeps both versions. Nothing is published automatically.</p>
                 </div>
               )}
             </div>
@@ -279,7 +279,7 @@ export function AqiKnowledgeReview({ documents, review, versions }: { documents:
 function Metric({ label, value, tone }: { label: string; value: number; tone: "success" | "warning" | "danger" }) {
   return (
     <div className={cn("rounded-xl border px-2.5 py-2", tone === "success" ? "border-success/25 bg-success-soft/50" : tone === "warning" ? "border-warning/25 bg-warning-soft/50" : "border-danger/25 bg-danger-soft/50")}>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{value}</p>
     </div>
   );

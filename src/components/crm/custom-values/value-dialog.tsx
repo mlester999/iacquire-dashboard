@@ -151,10 +151,10 @@ export function CustomValueDialog({ scope, value, groups, defaultCallingCode, on
 
         {editing ? (
           <div className="space-y-1.5 sm:col-span-2">
-            <p className="text-[13px] font-medium text-ink-2">Token</p>
-            <p className="flex flex-wrap items-center gap-2 text-[13px]">
+            <p className="text-[14px] font-medium text-ink-2">Token</p>
+            <p className="flex flex-wrap items-center gap-2 text-[14px]">
               <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink-2">{value!.token}</code>
-              <span className="inline-flex items-center gap-1 text-[12.5px] text-muted"><Lock className="size-3" aria-hidden />The key can&apos;t change: templates refer to it.</span>
+              <span className="inline-flex items-center gap-1 text-[13px] text-muted"><Lock className="size-3" aria-hidden />The key can&apos;t change: templates refer to it.</span>
             </p>
           </div>
         ) : (
@@ -198,15 +198,15 @@ export function CustomValueDialog({ scope, value, groups, defaultCallingCode, on
         <div className="flex items-start gap-3 sm:col-span-2">
           <Switch id="cv-required" checked={required} onCheckedChange={setRequired} aria-describedby="cv-required-hint" />
           <div>
-            <label htmlFor="cv-required" className="text-[13px] font-medium text-ink-2">Required</label>
-            <p id="cv-required-hint" className="text-[12.5px] leading-relaxed text-muted">
+            <label htmlFor="cv-required" className="text-[14px] font-medium text-ink-2">Required</label>
+            <p id="cv-required-hint" className="text-[13px] leading-relaxed text-muted">
               Messages that use a required value are held, not sent, while it is empty. An optional value that is empty simply shows nothing.
             </p>
           </div>
         </div>
 
         {(emptyRequired || (valueChanged && approvedUses > 0)) && (
-          <div role="status" className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/70 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2 sm:col-span-2">
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/70 px-3 py-2 text-[13px] leading-relaxed text-ink-2 sm:col-span-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
             <span>
               {emptyRequired && "This value is required but empty, so messages that use it will be held until someone fills it in. "}

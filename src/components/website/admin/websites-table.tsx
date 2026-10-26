@@ -42,12 +42,12 @@ export function WebsitesTable({ sites, timeZone, canEdit, frameFor = defaultSite
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <input type="search" aria-label="Search client websites" placeholder="Search by website, client, domain or template" value={q} onChange={(e) => setQ(e.target.value)} className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-3 text-[14px] shadow-soft placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30" />
         </div>
-        <select aria-label="Filter by status" value={state} onChange={(e) => setState(e.target.value as typeof state)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[13px] shadow-soft">
+        <select aria-label="Filter by status" value={state} onChange={(e) => setState(e.target.value as typeof state)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[14px] shadow-soft">
           <option value="all">All statuses · {sites.length}</option>
           <option value="attention">Needs attention · {sites.filter((s) => s.warnings.length).length}</option>
           {ORDER.map((s) => <option key={s} value={s}>{LIFECYCLE_LABEL[s]} · {sites.filter((x) => x.lifecycle === s).length}</option>)}
         </select>
-        <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[13px] shadow-soft">
+        <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[14px] shadow-soft">
           <option value="edited">Recently edited</option><option value="client">Client A–Z</option><option value="status">Status</option>
         </select>
       </div>
@@ -69,7 +69,7 @@ export function WebsitesTable({ sites, timeZone, canEdit, frameFor = defaultSite
                         <AvatarTile name={s.orgName} />
                         <div className="min-w-0">
                           <p className="truncate text-[15px] font-semibold tracking-tight" title={s.name}>{s.name}</p>
-                          <p className="truncate text-[12.5px] text-muted" title={s.orgName}>{s.orgName}</p>
+                          <p className="truncate text-[13px] text-muted" title={s.orgName}>{s.orgName}</p>
                         </div>
                       </div>
                       <LifecycleBadge state={s.lifecycle} />
@@ -89,8 +89,8 @@ export function WebsitesTable({ sites, timeZone, canEdit, frameFor = defaultSite
                     {s.warnings.length === 0 && s.published?.health === "healthy" && <StatusPill tone="success" icon={<ShieldCheck className="size-3" />}>Live and answering</StatusPill>}
                     <div className="flex flex-wrap gap-2 pt-0.5">
                       <Button size="sm" variant="secondary" className="max-sm:h-10" onClick={() => setPreview(s)}><Eye className="size-3.5" /> Preview</Button>
-                      {canEdit && !s.archived && <Link href={`/admin/website-studio/websites/${s.orgId}/edit`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Edit</Link>}
-                      <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:h-8"><ExternalLink className="size-3.5" aria-hidden /> Review</Link>
+                      {canEdit && !s.archived && <Link href={`/admin/website-studio/websites/${s.orgId}/edit`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[14px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Edit</Link>}
+                      <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2 sm:h-8"><ExternalLink className="size-3.5" aria-hidden /> Review</Link>
                     </div>
                   </div>
                 </div>

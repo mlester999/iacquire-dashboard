@@ -106,10 +106,17 @@ export async function getRetention(ctx: OrgContext) {
        from retention_accounts where org_id = $1 order by case status when 'at_risk' then 0 when 'onboarding' then 1 when 'active' then 2 else 3 end, customer_name`,
       [ctx.org.orgId],
     );
+    // Only feedback recorded on a customer here. Private feedback from review requests and surveys has its own screen (CRM > Reviews); mixed in, it showed as anonymous
+    // "Customer" cards and was averaged together with what the team typed in by hand.
     const feedback = await db.query<{ id: string; account_id: string | null; customer_name: string | null; rating: number | null; comment: string | null; received_at: Date }>(
       `select f.id, f.account_id, a.customer_name, f.rating, f.comment, f.received_at
-       from customer_feedback f left join retention_accounts a on a.id = f.account_id
+       from customer_feedback f join retention_accounts a on a.id = f.account_id
        where f.org_id = $1 order by f.received_at desc limit 20`,
+      [ctx.org.orgId],
+    );
+    // How many pieces of low private feedback from customers still wait for a person: a pointer to CRM > Reviews, not a second copy of the list.
+    const lowFeedback = await db.query<{ n: number }>(
+      "select count(*)::int as n from customer_feedback where org_id = $1 and low_score and follow_up_status in ('new', 'escalated')",
       [ctx.org.orgId],
     );
     const history = await db.query<{ id: string; account_id: string; event: string; occurred_at: Date }>(
@@ -124,6 +131,6 @@ export async function getRetention(ctx: OrgContext) {
       "select coalesce(sum(open_issues), 0)::int as n from retention_accounts where org_id = $1",
       [ctx.org.orgId],
     );
-    return { accounts: accounts.rows, feedback: feedback.rows, history: history.rows, tasks: tasks.rows, openIssues: tickets.rows[0]?.n ?? 0 };
+    return { accounts: accounts.rows, feedback: feedback.rows, history: history.rows, tasks: tasks.rows, openIssues: tickets.rows[0]?.n ?? 0, lowFeedbackOpen: lowFeedback.rows[0]?.n ?? 0 };
   });
 }

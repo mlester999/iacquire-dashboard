@@ -390,7 +390,7 @@ describe("one outside call", () => {
       ["a credential header", { method: "GET", path: "/x", headers: { Authorization: "Bearer other" } }],
       ["a cookie header", { method: "GET", path: "/x", headers: { Cookie: "a=b" } }],
       ["a host override", { method: "GET", path: "/x", headers: { Host: "evil.example" } }],
-      ["a header that carries a secret value", { method: "GET", path: "/x", headers: { "X-Note": "sk_live_Zr7Qw1XyAbCdEf90Zr7Qw1" } }],
+      ["a header that carries a secret value", { method: "GET", path: "/x", headers: { "X-Note": "sk_live_Zr7Qw1Xy90Zr7Qw1" } }],
       ["a body on a GET", { method: "GET", path: "/x", body: "{}", contentType: "application/json" }],
       ["a body without a content type", { method: "POST", path: "/x", body: "{}" }],
       ["a body over the size limit", { method: "POST", path: "/x", body: "x".repeat(17 * 1024), contentType: "text/plain" }],
@@ -478,6 +478,8 @@ describe("one outside call", () => {
   });
 
   it("limits how often one connection is called, and how many calls a workspace has going at once", async () => {
+    // Keep the 61 rapid calls in one fixed-window bucket even when a slow full-suite run crosses a wall-clock minute.
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-24T12:00:00Z"));
     const ws = await studioWorkspace();
     const c = await verifiedHttp(ws);
     const get = () => performOutbound({ kind: "http", orgId: ws.o.org.id, connectionId: c.id, origin: "step", idempotencyKey: `k-${uid()}`, method: "GET", path: "/x" });
@@ -642,7 +644,7 @@ describe("HTTP and Slack steps in a workflow", () => {
     const c = verified;
     const id = await liveStudioWorkflow(ws, postDef(c.id));
     // The secret is changed after the version was approved: the connection must be verified again before anything is sent with it.
-    await rotateConnectionSecret(owner, c.id, "sk_live_RotatedAfterApproval1");
+    await rotateConnectionSecret(owner, c.id, "sk_live_RotatedApproval1");
     const { runId } = await startManualRun(owner, id, { contactId: await newContact(ws) });
     const t = Date.now();
     await processWorkflowRuns({ now: new Date(t) });

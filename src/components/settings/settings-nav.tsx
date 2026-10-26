@@ -4,11 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { Bell, BellRing, Building2, CreditCard, DatabaseBackup, Gauge, LifeBuoy, MessagesSquare, Plug, Shield, Sparkles, Users } from "lucide-react";
+import { Bell, BellRing, Building2, CreditCard, DatabaseBackup, Gauge, LifeBuoy, MessagesSquare, Plug, Shield, Sparkles, Users, Wallet } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
-const ITEMS: Array<{ href: string; label: string; group: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission }> = [
+// `feature` names a module a Super Admin switches on per workspace (an org_features name); the entry appears only when the layout says the workspace has it.
+const ITEMS: Array<{ href: string; label: string; group: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; feature?: string }> = [
   { href: "/settings", label: "Business profile", group: "Workspace", icon: Building2 },
   { href: "/settings/team", label: "Team members", group: "Workspace", icon: Users, permission: "team.view" },
   { href: "/settings/ai", label: "AI preferences", group: "AI and messaging", icon: Sparkles },
@@ -19,13 +20,14 @@ const ITEMS: Array<{ href: string; label: string; group: string; icon: React.Com
   { href: "/settings/security", label: "Security", group: "Account", icon: Shield },
   { href: "/settings/usage", label: "Usage", group: "Plan and data", icon: Gauge, permission: "usage.view" },
   { href: "/settings/billing", label: "Billing & credits", group: "Plan and data", icon: CreditCard, permission: "usage.view" },
+  { href: "/settings/payments", label: "Customer payments", group: "Plan and data", icon: Wallet, permission: "invoices.connect_payments", feature: "invoices" },
   { href: "/settings/data", label: "Your data", group: "Plan and data", icon: DatabaseBackup, permission: "offboarding.view" },
   { href: "/support", label: "Support", group: "Help", icon: LifeBuoy, permission: "support.use" },
 ];
 
-export function SettingsNav({ permissions }: { permissions: Permission[] }) {
+export function SettingsNav({ permissions, features = [] }: { permissions: Permission[]; features?: string[] }) {
   const pathname = usePathname();
-  const items = ITEMS.filter((i) => !i.permission || permissions.includes(i.permission));
+  const items = ITEMS.filter((i) => (!i.permission || permissions.includes(i.permission)) && (!i.feature || features.includes(i.feature)));
   const groups = Array.from(new Set(items.map((i) => i.group)));
   const scroller = React.useRef<HTMLUListElement>(null);
 
@@ -38,11 +40,11 @@ export function SettingsNav({ permissions }: { permissions: Permission[] }) {
   }, [pathname]);
 
   return (
-    <nav aria-label="Settings" className="scrollbar-thin -mx-4 min-w-0 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
+    <nav aria-label="Settings" className="relative scrollbar-thin -mx-4 min-w-0 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
       <ul ref={scroller} className="relative flex gap-1 rounded-2xl border border-line bg-surface p-2 shadow-soft lg:flex-col lg:gap-0.5 lg:p-2.5">
         {groups.map((group, gi) => (
           <React.Fragment key={group}>
-            <li aria-hidden className={cn("hidden px-3 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[.14em] text-faint lg:block", gi > 0 && "mt-1.5 border-t border-line pt-3.5")}>
+            <li aria-hidden className={cn("hidden px-3 pb-1 pt-2 text-[12px] font-semibold uppercase tracking-[.14em] text-faint lg:block", gi > 0 && "mt-1.5 border-t border-line pt-3.5")}>
               {group}
             </li>
             {items
@@ -55,7 +57,7 @@ export function SettingsNav({ permissions }: { permissions: Permission[] }) {
                       href={i.href}
                       data-aqi-target={i.href === "/settings/team" ? "settings.team.nav" : i.href === "/settings/integrations" ? "settings.integrations.nav" : undefined}
                       aria-current={active ? "page" : undefined}
-                      className={cn("relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-[13px] font-medium transition-colors", active ? "text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}
+                      className={cn("relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-[14px] font-medium transition-colors", active ? "text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}
                     >
                       {active && <motion.span layoutId="settings-active" className="absolute inset-0 rounded-xl border border-primary/15 bg-primary-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
                       <i.icon className={cn("relative size-4", active && "text-primary")} />

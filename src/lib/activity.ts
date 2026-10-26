@@ -1,6 +1,7 @@
 // Human-readable descriptions for audit actions. Unknown actions fall back to a cleaned label.
 const LABELS: Record<string, string> = {
   "onboarding.completed": "completed company setup",
+  "onboarding.scheduling_drafted": "drafted a booking calendar from the setup answers (not live)",
   "agent.config_version_created": "updated an AI employee's configuration",
   "agent.config_review_approved": "iAcquire approved a held configuration",
   "agent.config_review_rejected": "iAcquire declined a held configuration",

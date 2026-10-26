@@ -6,9 +6,12 @@ import { getAgencySetupSnapshot } from "@/server/setup/snapshots";
 import { activateSetup, markReadyForReview, setServices, updateTaskStatus } from "@/server/setup/agency";
 import { runChecks } from "@/server/setup/automation";
 import { createOrg, createUser, agencyUser, addMember } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 async function fixture(onboarded = true) {
   const org = await createOrg();
+  // Activation and provisioning also need the setup payment confirmed; the payment gate has its own tests (tests/payment-gate.test.ts).
+  await clearSetupPayment(org.id);
   const user = await createUser({ platformRole: "agency_super_admin" });
   const admin = agencyUser(user, "agency_super_admin");
   await ensureInstanceStandalone(org.id);

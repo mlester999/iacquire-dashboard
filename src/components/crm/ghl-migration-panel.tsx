@@ -94,7 +94,7 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><ArrowRightLeft className="size-4 text-muted" aria-hidden />Migrate from GoHighLevel</h3>
-          <p className="mt-1 max-w-2xl text-[13px] text-muted">
+          <p className="mt-1 max-w-2xl text-[14px] text-muted">
             Brings your contacts (with their tags and custom field values), companies, pipelines with their stages, and opportunities from your own GoHighLevel location into iAcquire CRM.
             iAcquire only reads GoHighLevel: it sends GET requests to GoHighLevel&rsquo;s official API and never changes, deletes or messages anything there.
           </p>
@@ -102,11 +102,11 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
         {state.connected ? <Badge tone="success"><ShieldCheck className="size-3.5" aria-hidden />Read-only connection{state.locationName ? ` · ${state.locationName}` : ""}</Badge> : <Badge>Not connected</Badge>}
       </div>
 
-      {!state.connected && <p className="mt-4 rounded-xl border border-dashed border-line px-3 py-3 text-[13px] text-ink-2">{state.reason}</p>}
+      {!state.connected && <p className="mt-4 rounded-xl border border-dashed border-line px-3 py-3 text-[14px] text-ink-2">{state.reason}</p>}
 
       {state.connected && (
         <div className="mt-4 space-y-5">
-          <ol className="grid gap-2 text-[12.5px] text-ink-2 sm:grid-cols-4">
+          <ol className="grid gap-2 text-[13px] text-ink-2 sm:grid-cols-4">
             {["Preview what's there", "Dry run every step (nothing is imported)", "Import step by step (the owner)", "Compare, and undo if needed"].map((t, i) => (
               <li key={t} className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/40 px-3 py-2"><span className="font-semibold tabular-nums text-ink">{i + 1}</span>{t}</li>
             ))}
@@ -132,12 +132,12 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
             )}
           </div>
           {state.can.dryRun && !state.switchActive && anyJob && remaining.length > 0 && remaining.length < GHL_MIGRATION_ENTITIES.length && (
-            <p className="text-[12.5px] text-muted">Remaining: {remaining.map((e) => GHL_ENTITY_LABELS[e].many.toLowerCase()).join(", ")}. Steps already imported keep their run (and its Undo); use Run this step again to read one again.</p>
+            <p className="text-[13px] text-muted">Remaining: {remaining.map((e) => GHL_ENTITY_LABELS[e].many.toLowerCase()).join(", ")}. Steps already imported keep their run (and its Undo); use Run this step again to read one again.</p>
           )}
-          {!state.can.dryRun && <p className="text-[12.5px] text-muted">{state.can.preview ? "You can preview what your GoHighLevel location holds. " : ""}Owners and managers run the dry run, and only the owner imports.</p>}
-          {state.switchActive && <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink"><Clock className="size-4" aria-hidden />A CRM provider switch is in progress. Manage migration steps in Settings → CRM Provider; this panel is read-only until the switch finishes.{state.switching ? " Automations that could act twice are paused." : ""}</p>}
+          {!state.can.dryRun && <p className="text-[13px] text-muted">{state.can.preview ? "You can preview what your GoHighLevel location holds. " : ""}Owners and managers run the dry run, and only the owner imports.</p>}
+          {state.switchActive && <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink"><Clock className="size-4" aria-hidden />A CRM provider switch is in progress. Manage migration steps in Settings → CRM Provider; this panel is read-only until the switch finishes.{state.switching ? " Automations that could act twice are paused." : ""}</p>}
           {!nativeOwnsAll && (
-            <p className="rounded-xl bg-surface-2/60 px-3 py-2 text-[12.5px] text-ink-2">
+            <p className="rounded-xl bg-surface-2/60 px-3 py-2 text-[13px] text-ink-2">
               GoHighLevel still owns {GHL_MIGRATION_ENTITIES.filter((e) => state.owners[e] === "ghl").map((e) => GHL_ENTITY_LABELS[e].many.toLowerCase()).join(", ")} here. You can preview and dry run now; those steps import once that part of the CRM moves to iAcquire (Settings → CRM provider), so both systems never own the same records.
             </p>
           )}
@@ -146,7 +146,7 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
 
           {anyJob && (
             <section aria-label="Migration steps">
-              <h4 className="mb-2 text-[13.5px] font-semibold text-ink">Steps, in order</h4>
+              <h4 className="mb-2 text-[14px] font-semibold text-ink">Steps, in order</h4>
               <ul className="divide-y divide-line rounded-2xl border border-line">
                 {GHL_MIGRATION_ENTITIES.map((entity, i) => (
                   <StepRow
@@ -175,15 +175,15 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
           {state.comparison && <ComparisonTable comparison={state.comparison} />}
 
           <details className="rounded-xl border border-line">
-            <summary className="cursor-pointer px-3 py-2 text-[13px] font-medium text-ink">What doesn&rsquo;t come across</summary>
-            <ul className="space-y-1.5 border-t border-line px-3 py-2 text-[12.5px]">
+            <summary className="cursor-pointer px-3 py-2 text-[14px] font-medium text-ink">What doesn&rsquo;t come across</summary>
+            <ul className="space-y-1.5 border-t border-line px-3 py-2 text-[13px]">
               {GHL_NOT_MIGRATED.map((x) => <li key={x.what}><span className="font-medium text-ink">{x.what}.</span> <span className="text-muted">{x.why}</span></li>)}
             </ul>
           </details>
         </div>
       )}
 
-      {error && <p role="alert" className="mt-3 flex items-center gap-2 text-[13px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" />{error}</p>}
+      {error && <p role="alert" className="mt-3 flex items-center gap-2 text-[14px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" />{error}</p>}
 
       <ConfirmDialog
         open={!!undo}
@@ -211,7 +211,7 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
         onConfirm={() => setDetail(null)}
       >
         {detail && (detail.problems.length ? (
-          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line text-[12.5px]">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line text-[13px]">
             {detail.problems.map((p) => (
               <li key={p.row} className="px-3 py-2">
                 <span className="font-medium text-ink">{Object.values(p.data).filter((v) => v !== p.data.ghl_id).slice(0, 2).join(" · ") || `Row ${p.row}`}</span>
@@ -221,7 +221,7 @@ export function GhlMigrationPanel({ scope, initial }: { scope: CrmScope; initial
               </li>
             ))}
           </ul>
-        ) : <p className="text-[13px] text-muted">Nothing to look at in this step.</p>)}
+        ) : <p className="text-[14px] text-muted">Nothing to look at in this step.</p>)}
       </ConfirmDialog>
     </Card>
   );
@@ -283,7 +283,7 @@ function StepRow({ index, entity, job, state, timezone, busy, onImport, onAgain,
   const earlier = undoJob && job && undoJob.id !== job.id ? undoJob : null;
   const wait = job ? waitLine(job, timezone) : null;
   return (
-    <li className="space-y-2 px-4 py-3 text-[13px]">
+    <li className="space-y-2 px-4 py-3 text-[14px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex size-6 items-center justify-center rounded-full bg-surface-2 text-[12px] font-semibold tabular-nums text-ink">{index}</span>
         <span className="min-w-0 flex-1 font-medium text-ink">{GHL_ENTITY_LABELS[entity].many}</span>
@@ -294,7 +294,7 @@ function StepRow({ index, entity, job, state, timezone, busy, onImport, onAgain,
       {job && (
         <div className="space-y-2 pl-8">
           {job.status === "fetching" && (
-            <p className="text-[12.5px] text-muted">
+            <p className="text-[13px] text-muted">
               {n(job.totalRows)} read so far{job.fetch?.sourceTotal ? ` of ${n(job.fetch.sourceTotal)}` : ""} · {n(job.fetch?.requests)} requests
               {wait ? ` · ${wait}` : ""}
               {job.fetch?.rateLimited ? ` · GoHighLevel answered 429 ${job.fetch.rateLimited}×, resuming from where it stopped` : ""}
@@ -302,21 +302,21 @@ function StepRow({ index, entity, job, state, timezone, busy, onImport, onAgain,
           )}
           {(job.status === "validating" || job.status === "importing" || job.status === "rolling_back") && <Progress job={job} />}
           {job.status === "validated" && (
-            <p className="text-[12.5px] text-ink-2">
+            <p className="text-[13px] text-ink-2">
               Dry run: <b>{n(s.create)}</b> to create, <b>{n(s.update)}</b> to link to records already here, {n(s.skip)} already migrated or left alone, {n(s.review)} held for review
               {problems ? <>, <span className="text-danger-ink">{n(problems)} with problems</span></> : null}. Read {n(job.totalRows)} from GoHighLevel{job.fetch?.truncated ? " (stopped early: see the comparison)" : ""}.
             </p>
           )}
           {job.status === "completed" && (
-            <p className="flex items-center gap-1.5 text-[12.5px] text-ink-2"><CheckCircle2 className="size-3.5 text-success-ink" aria-hidden />{n(s.created)} created, {n(s.updated)} linked, {n(s.skipped)} skipped, {n(s.needsReview)} need review, {n(s.failed)} failed{job.completedAt ? <> · <RelativeTime iso={job.completedAt} timezone={timezone} /></> : ""}</p>
+            <p className="flex items-center gap-1.5 text-[13px] text-ink-2"><CheckCircle2 className="size-3.5 text-success-ink" aria-hidden />{n(s.created)} created, {n(s.updated)} linked, {n(s.skipped)} skipped, {n(s.needsReview)} need review, {n(s.failed)} failed{job.completedAt ? <> · <RelativeTime iso={job.completedAt} timezone={timezone} /></> : ""}</p>
           )}
-          {job.status === "rolled_back" && <p className="flex items-center gap-1.5 text-[12.5px] text-ink-2"><RotateCcw className="size-3.5" aria-hidden />Undone: {n(s.rolledBack)} removed or unlinked{s.keptChanged ? `, ${n(s.keptChanged)} kept because they changed or are still in use` : ""}.</p>}
-          {job.status === "failed" && <p className="flex items-center gap-1.5 text-[12.5px] text-danger-ink"><AlertTriangle className="size-3.5" aria-hidden />{job.error ?? "This step stopped."}</p>}
-          {job.status === "cancelled" && job.error && <p className="text-[12.5px] text-warning-ink">{job.error}</p>}
+          {job.status === "rolled_back" && <p className="flex items-center gap-1.5 text-[13px] text-ink-2"><RotateCcw className="size-3.5" aria-hidden />Undone: {n(s.rolledBack)} removed or unlinked{s.keptChanged ? `, ${n(s.keptChanged)} kept because they changed or are still in use` : ""}.</p>}
+          {job.status === "failed" && <p className="flex items-center gap-1.5 text-[13px] text-danger-ink"><AlertTriangle className="size-3.5" aria-hidden />{job.error ?? "This step stopped."}</p>}
+          {job.status === "cancelled" && job.error && <p className="text-[13px] text-warning-ink">{job.error}</p>}
           {earlier && (
             earlier.status === "rolling_back"
-              ? <div className="space-y-1"><p className="text-[12.5px] text-ink-2">Undoing the earlier run from <RelativeTime iso={earlier.createdAt} timezone={timezone} />.</p><Progress job={earlier} /></div>
-              : <p className="text-[12.5px] text-muted">The run from <RelativeTime iso={earlier.createdAt} timezone={timezone} /> imported records that are still here; Undo removes them.</p>
+              ? <div className="space-y-1"><p className="text-[13px] text-ink-2">Undoing the earlier run from <RelativeTime iso={earlier.createdAt} timezone={timezone} />.</p><Progress job={earlier} /></div>
+              : <p className="text-[13px] text-muted">The run from <RelativeTime iso={earlier.createdAt} timezone={timezone} /> imported records that are still here; Undo removes them.</p>
           )}
           {s.flags && Object.keys(s.flags).length > 0 && (
             <p className="text-[12px] text-muted">{Object.entries(s.flags).map(([f, c]) => `${IMPORT_FLAG_LABELS[f] ?? f}: ${n(c)}`).join(" · ")}</p>
@@ -344,10 +344,10 @@ function StepRow({ index, entity, job, state, timezone, busy, onImport, onAgain,
 function PlanTable({ plan, timezone }: { plan: GhlMigrationPlan; timezone: string }) {
   return (
     <section aria-label="What GoHighLevel holds" className="space-y-2">
-      <h4 className="text-[13.5px] font-semibold text-ink">In GoHighLevel now <span className="font-normal text-muted">· checked <RelativeTime iso={plan.checkedAt} timezone={timezone} /> with {plan.requests} read-only requests</span></h4>
-      {plan.reason && <p className="text-[13px] text-warning-ink">{plan.reason}</p>}
-      <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[640px] text-[13px]">
+      <h4 className="text-[14px] font-semibold text-ink">In GoHighLevel now <span className="font-normal text-muted">· checked <RelativeTime iso={plan.checkedAt} timezone={timezone} /> with {plan.requests} read-only requests</span></h4>
+      {plan.reason && <p className="text-[14px] text-warning-ink">{plan.reason}</p>}
+      <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
+        <table className="w-full min-w-[640px] text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr><th scope="col" className="px-3 py-2 text-left font-medium">Step</th><th scope="col" className="px-3 py-2 text-right font-medium">In GoHighLevel</th><th scope="col" className="px-3 py-2 text-right font-medium">Already linked here</th><th scope="col" className="px-3 py-2 text-left font-medium">Notes</th></tr>
           </thead>
@@ -357,7 +357,7 @@ function PlanTable({ plan, timezone }: { plan: GhlMigrationPlan; timezone: strin
                 <td className="px-3 py-2 font-medium text-ink">{e.label}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{e.status === "ok" ? `${e.countKind === "at_least" ? "at least " : ""}${n(e.count)}` : "—"}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{n(e.alreadyLinked)}</td>
-                <td className={cn("px-3 py-2 text-[12.5px]", e.status === "ok" ? "text-muted" : "text-warning-ink")}>
+                <td className={cn("px-3 py-2 text-[13px]", e.status === "ok" ? "text-muted" : "text-warning-ink")}>
                   {e.status === "forbidden" ? `Not readable with this token (needs ${e.scope}).` : e.detail ?? (e.status === "ok" ? "" : "Not available.")}
                   {e.unsupported?.length ? ` ${e.unsupported.map((u) => `${u.name} (${u.type})`).join(", ")}.` : ""}
                 </td>
@@ -366,7 +366,7 @@ function PlanTable({ plan, timezone }: { plan: GhlMigrationPlan; timezone: strin
           </tbody>
         </table>
       </div>
-      <p className="text-[12.5px] text-muted">
+      <p className="text-[13px] text-muted">
         Owners: {plan.owners.status === "ok" ? `${n(plan.owners.matched)} of ${n(plan.owners.ghlUsers)} GoHighLevel users match a member here by email; records owned by the others come across unassigned.` : "GoHighLevel users couldn't be read (users.readonly), so records come across unassigned."}{" "}
         Calendars: {plan.appointments.calendars !== null ? `${n(plan.appointments.calendars)} in GoHighLevel. ` : ""}{plan.appointments.note}
       </p>
@@ -377,9 +377,9 @@ function PlanTable({ plan, timezone }: { plan: GhlMigrationPlan; timezone: strin
 function ComparisonTable({ comparison }: { comparison: NonNullable<GhlMigrationState["comparison"]> }) {
   return (
     <section aria-label="Source and destination side by side" className="space-y-2">
-      <h4 className="text-[13.5px] font-semibold text-ink">Side by side</h4>
-      <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[760px] text-[13px]">
+      <h4 className="text-[14px] font-semibold text-ink">Side by side</h4>
+      <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
+        <table className="w-full min-w-[760px] text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr>
               {["Step", "In GoHighLevel", "Read", "Here now", "Mapped", "Skipped", "Failed", "Needs review"].map((h, i) => <th key={h} scope="col" className={cn("px-3 py-2 font-medium", i ? "text-right" : "text-left")}>{h}</th>)}
@@ -391,7 +391,7 @@ function ComparisonTable({ comparison }: { comparison: NonNullable<GhlMigrationS
                 <td className="px-3 py-2 font-medium text-ink">{r.label}{r.truncated && <span className="ml-1 text-[12px] font-normal text-warning-ink">(stopped early)</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {r.sourceCount === null ? <span className="text-muted">not reported</span> : r.sourceCountKind === "at_least" ? `at least ${n(r.sourceCount)}` : n(r.sourceCount)}
-                  {r.sourceCountKind === "listed" && <span className="ml-1 text-[11.5px] text-muted">listed</span>}
+                  {r.sourceCountKind === "listed" && <span className="ml-1 text-[12px] text-muted">listed</span>}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{n(r.staged)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{n(r.destinationCount)}</td>
@@ -405,12 +405,12 @@ function ComparisonTable({ comparison }: { comparison: NonNullable<GhlMigrationS
         </table>
       </div>
       {comparison.rows.some((r) => r.sourceCountKind === "listed" || r.sourceCountKind === "at_least") && (
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[13px] text-muted">
           &ldquo;Listed&rdquo;: GoHighLevel reports no total for that step, so the number is how many it listed when the whole list was read. &ldquo;At least&rdquo;: reading stopped early, failed or was cancelled, so GoHighLevel may hold more.
         </p>
       )}
       {comparison.rows.some((r) => r.unsupported.length) && (
-        <p className="text-[12.5px] text-muted">Not created (unsupported): {comparison.rows.flatMap((r) => r.unsupported).map((u) => `${u.name} (${u.type})`).join(", ")}.</p>
+        <p className="text-[13px] text-muted">Not created (unsupported): {comparison.rows.flatMap((r) => r.unsupported).map((u) => `${u.name} (${u.type})`).join(", ")}.</p>
       )}
     </section>
   );

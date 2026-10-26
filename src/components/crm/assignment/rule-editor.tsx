@@ -130,7 +130,7 @@ export function RuleEditor({
           <Field label="Rule name" htmlFor={`${ids}-name`}>
             <Input id={`${ids}-name`} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={entity === "contact" ? "Website leads" : "New deals"} />
           </Field>
-          <label className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-line px-3 text-[13px] sm:min-h-10">
+          <label className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-line px-3 text-[14px] sm:min-h-10">
             <span className="font-medium">Active</span>
             <Switch checked={active} onCheckedChange={setActive} aria-label="Rule is active" />
           </label>
@@ -138,7 +138,7 @@ export function RuleEditor({
 
         <section aria-labelledby={`${ids}-cond`} className="space-y-2">
           <h3 id={`${ids}-cond`} className="text-[14px] font-semibold text-ink">Which {noun.many}</h3>
-          <p className="text-[12.5px] text-muted">
+          <p className="text-[13px] text-muted">
             {entity === "opportunity" ? "Conditions are checked against the deal's contact. A deal without a contact only matches a rule with no conditions." : "Leave empty to match every new contact."}
           </p>
           <div className="rounded-2xl border border-line bg-surface p-3">
@@ -158,8 +158,8 @@ export function RuleEditor({
                 onClick={() => setStrategy(s)}
                 className={cn("rounded-2xl border p-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", strategy === s ? "border-primary bg-primary-soft/50" : "border-line bg-surface hover:border-line-strong")}
               >
-                <span className="block text-[13.5px] font-semibold text-ink">{STRATEGY_INFO[s].label}</span>
-                <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{STRATEGY_INFO[s].description}</span>
+                <span className="block text-[14px] font-semibold text-ink">{STRATEGY_INFO[s].label}</span>
+                <span className="mt-1 block text-[13px] leading-relaxed text-muted">{STRATEGY_INFO[s].description}</span>
               </button>
             ))}
           </div>
@@ -169,29 +169,29 @@ export function RuleEditor({
           <section aria-labelledby={`${ids}-members`} className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <h3 id={`${ids}-members`} className="text-[14px] font-semibold text-ink">Team members</h3>
-              <p className="text-[12.5px] text-muted">{members.length} {members.length === 1 ? "person" : "people"} · paused people are skipped</p>
+              <p className="text-[13px] text-muted">{members.length} {members.length === 1 ? "person" : "people"} · paused people are skipped</p>
             </div>
             {members.length ? (
               <ul className="divide-y divide-line rounded-2xl border border-line">
                 {members.map((m) => (
                   <li key={m.userId} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-ink">{m.name}</span>
+                      <span className="block truncate text-[14px] font-medium text-ink">{m.name}</span>
                       {m.canOwn === false && <span className="block text-[12px] text-danger-ink">Can no longer own records. Remove them, or ask an owner to restore their access.</span>}
                     </span>
                     {strategy === "weighted" && (
-                      <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                      <label className="flex items-center gap-2 text-[13px] text-muted">
                         Weight
                         <Input aria-label={`Weight for ${m.name}`} inputMode="numeric" className="w-20" value={m.weight} onChange={(e) => patch(m.userId, { weight: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
                       </label>
                     )}
                     {strategy === "priority" && (
-                      <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                      <label className="flex items-center gap-2 text-[13px] text-muted">
                         Priority
                         <Input aria-label={`Priority for ${m.name}`} inputMode="numeric" className="w-20" value={m.priority} onChange={(e) => patch(m.userId, { priority: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
                       </label>
                     )}
-                    <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    <label className="flex items-center gap-2 text-[13px] text-muted">
                       Paused
                       <Switch checked={m.paused} onCheckedChange={(paused) => patch(m.userId, { paused })} aria-label={`Pause ${m.name}`} />
                     </label>
@@ -202,7 +202,7 @@ export function RuleEditor({
                 ))}
               </ul>
             ) : (
-              <p className="flex items-center gap-2 rounded-2xl border border-dashed border-line-strong px-3 py-4 text-[13px] text-muted"><Users className="size-4" aria-hidden />No one yet. Add the people this rule can choose from.</p>
+              <p className="flex items-center gap-2 rounded-2xl border border-dashed border-line-strong px-3 py-4 text-[14px] text-muted"><Users className="size-4" aria-hidden />No one yet. Add the people this rule can choose from.</p>
             )}
             {available.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -215,24 +215,24 @@ export function RuleEditor({
               </div>
             )}
 
-            <label className="flex items-start justify-between gap-3 rounded-2xl border border-line p-3 text-[13px]">
+            <label className="flex items-start justify-between gap-3 rounded-2xl border border-line p-3 text-[14px]">
               <span>
                 <span className="block font-medium text-ink">Only people who are working now</span>
-                <span className="block text-[12.5px] text-muted">Uses each person&apos;s working hours from Availability (in their own time zone, with days off) and skips anyone not accepting new work.</span>
+                <span className="block text-[13px] text-muted">Uses each person&apos;s working hours from Availability (in their own time zone, with days off) and skips anyone not accepting new work.</span>
               </span>
               <Switch checked={respectHours} onCheckedChange={setRespectHours} aria-label="Only people who are working now" />
             </label>
             {missingHours.length > 0 && (
-              <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] text-warning-ink">
+              <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] text-warning-ink">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                 {missingHours.map((m) => m.name).join(", ")} {missingHours.length === 1 ? "has" : "have"} no working hours set, so they are never chosen while this is on. Set hours in Availability.
               </p>
             )}
 
-            <label className="flex items-start justify-between gap-3 rounded-2xl border border-line p-3 text-[13px]">
+            <label className="flex items-start justify-between gap-3 rounded-2xl border border-line p-3 text-[14px]">
               <span>
                 <span className="block font-medium text-ink">Also reassign {noun.many} that already have an owner</span>
-                <span className="block text-[12.5px] text-muted">Off: an owner someone already chose is always kept. On: the rule picks again, for example when a workflow sends an owned record through it.</span>
+                <span className="block text-[13px] text-muted">Off: an owner someone already chose is always kept. On: the rule picks again, for example when a workflow sends an owned record through it.</span>
               </span>
               <Switch checked={reassign} onCheckedChange={setReassign} aria-label={`Reassign ${noun.many} that already have an owner`} />
             </label>
@@ -256,7 +256,7 @@ export function RuleEditor({
         </section>
 
         {showIssues && issues.length > 0 && (
-          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft p-3 text-[13px] text-danger-ink">
+          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft p-3 text-[14px] text-danger-ink">
             <p className="font-medium">Before saving:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">{issues.map((i) => <li key={i}>{i}</li>)}</ul>
           </div>

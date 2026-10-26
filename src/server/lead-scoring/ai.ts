@@ -1,18 +1,20 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { llmComplete, resolveLlmConfig, type LlmConfig } from "@/server/llm/client";
+import { modelGate, type ModelGateReason } from "@/server/llm/gate";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { SYSTEM_PROMPT, buildSignalPrompt, parseSignals } from "@/lib/lead-scoring/ai-signals";
 import type { AiSignals } from "@/lib/lead-scoring/types";
 
-// The one place a model touches lead scoring. It is optional (off until a workspace turns it on and a model is configured), bounded (a daily
-// limit per workspace, a short prompt, a short answer, two tries), metered (every call is counted, tokens are estimated and marked so) and
-// checked (the answer must be exactly the closed form in src/lib/lead-scoring/ai-signals.ts, with evidence). Any failure leaves the rules to
-// score on their own; a model can lower nothing and raise nothing by failing.
+// The one place a model touches lead scoring. It is optional (off until a workspace turns it on and a model is configured), allowed (the workspace is
+// active, not paused and has credit: see src/server/llm/gate.ts), bounded (a daily limit per workspace, a short prompt, a short answer, two tries), metered
+// (every call is counted, tokens are estimated and marked so) and checked (the answer must be exactly the closed form in src/lib/lead-scoring/ai-signals.ts,
+// with evidence). Any failure leaves the rules to score on their own; a model can lower nothing and raise nothing by failing.
 
 export type ExtractionResult =
   | { status: "not_used" }
   | { status: "skipped_limit" }
-  | { status: "fallback"; reason: "no_model" }
+  | { status: "fallback"; reason: "no_model" | ModelGateReason }
   | { status: "failed"; reason: "provider" | "not_json" | "schema" | "evidence" }
   | { status: "used"; signals: AiSignals; model: string };
 
@@ -37,6 +39,10 @@ export async function extractSignals(
   if (!limits.enabled) return { status: "not_used" };
   const prompt = buildSignalPrompt(messages);
   if (!prompt) return { status: "not_used" };
+  // Before a model is looked for and before the day's allowance is taken, so a refusal uses up nothing: a suspended or paused workspace, or one with no credit,
+  // would cost iAcquire a call nobody can be charged for. The rules score on their own and the reason travels back.
+  const allowed = await modelGate(orgId, { automation: "workflows", credit: true });
+  if (!allowed.allowed) return { status: "fallback", reason: allowed.reason };
   const config = await (deps.resolve ?? resolveLlmConfig)();
   if (!config) return { status: "fallback", reason: "no_model" };
 
@@ -54,6 +60,8 @@ export async function extractSignals(
   let reply: string | null = null;
   for (let attempt = 1; attempt <= MAX_TRIES && reply === null; attempt += 1) {
     const r = await complete(config, { system: SYSTEM_PROMPT, user: prompt.user, maxTokens: 300, temperature: 0, timeoutMs: 20_000 });
+    // The provider's own token counts are recorded (and charged where a rate is published) per call; the estimates below stay as the daily tally. Never fails the scoring.
+    await meterModelUse({ orgId, feature: "lead_scoring", key: modelCallKey(orgId), usage: r.usage });
     if (r.ok) reply = r.text;
     // Only a timeout, a rate limit or a server error is worth a second try; anything else (a bad key, a refused request) would fail the same way.
     else if (attempt < MAX_TRIES && (r.status === 0 || r.status === 429 || r.status >= 500)) await new Promise((res) => setTimeout(res, deps.backoffMs ?? 400));

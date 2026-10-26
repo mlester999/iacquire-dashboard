@@ -1,5 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
+import { surveysEnabledIn } from "@/server/reputation/entitlement";
 import { formContextFrom, publicDefinition, type FormActions, type FormConsent, type FormContext, type FormKind, type FormPurpose, type FormQuestion, type FormSettings, type FormStatus, type PublicFormDef } from "@/lib/crm/forms/spec";
 import type { FieldType } from "@/lib/crm/types";
 
@@ -115,5 +116,6 @@ export async function loadFormOptionLists(db: Queryable, orgId: string): Promise
 }
 
 export async function loadFormContext(db: Queryable, orgId: string): Promise<FormContext> {
-  return formContextFrom(await loadFormOptionLists(db, orgId));
+  // Whether the workspace has satisfaction surveys decides whether a question may be saved as private feedback (src/server/reputation/entitlement.ts).
+  return { ...formContextFrom(await loadFormOptionLists(db, orgId)), feedbackEnabled: await surveysEnabledIn(db, orgId) };
 }

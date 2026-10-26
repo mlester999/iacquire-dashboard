@@ -51,7 +51,7 @@ export function StatTile({ icon, label, value, detail, tone = "primary", classNa
       <div className="min-w-0">
         <p className="text-[12px] font-medium leading-snug text-muted">{label}</p>
         <p className="text-[19px] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-ink">{value}</p>
-        {detail && <div className="mt-0.5 text-[11.5px] text-muted">{detail}</div>}
+        {detail && <div className="mt-0.5 text-[12px] text-muted">{detail}</div>}
       </div>
     </div>
   );
@@ -61,7 +61,7 @@ export function StatTile({ icon, label, value, detail, tone = "primary", classNa
 export function Callout({ tone = "neutral", icon, title, children, className }: { tone?: StatusTone; icon?: React.ReactNode; title?: React.ReactNode; children?: React.ReactNode; className?: string }) {
   const c = CALLOUT[tone];
   return (
-    <div className={cn("flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[13px] leading-relaxed ring-1 ring-inset", c.box, className)}>
+    <div className={cn("flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[14px] leading-relaxed ring-1 ring-inset", c.box, className)}>
       {icon && (
         <span aria-hidden className={cn("mt-0.5 shrink-0 [&>svg]:size-4", c.ink)}>
           {icon}
@@ -82,7 +82,7 @@ export function DetailList({ children, className }: { children: React.ReactNode;
 
 export function DetailRow({ label, children, mono, className }: { label: React.ReactNode; children: React.ReactNode; mono?: boolean; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 px-3 py-2 text-[12.5px]", className)}>
+    <div className={cn("flex items-center justify-between gap-3 px-3 py-2 text-[13px]", className)}>
       <dt className="shrink-0 text-muted">{label}</dt>
       <dd className={cn("flex min-w-0 items-center justify-end gap-1.5 text-right text-ink", mono && "font-mono text-[12px]")}>{children}</dd>
     </div>
@@ -103,7 +103,7 @@ export function HeroIdentity({ name, label, children, className }: { name: strin
     <div className={cn("flex items-center gap-3.5 rounded-2xl bg-surface/80 p-3.5 shadow-card ring-1 ring-inset ring-line sm:gap-4 sm:p-4", className)}>
       <AvatarTile name={name} size="lg" />
       <div className="flex min-w-0 flex-col items-start gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</span>
+        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</span>
         <div className="flex flex-wrap items-center gap-1.5">{children}</div>
       </div>
     </div>

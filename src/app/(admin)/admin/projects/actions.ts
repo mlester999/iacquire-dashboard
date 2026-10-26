@@ -5,8 +5,13 @@ import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { guard } from "@/server/action-guard";
 import {
   addProgressUpdate, assignProject, completeReviewTask, deleteMilestone, postAgencyMessage, recordHandover, saveInternalNotes, saveMilestone,
-  saveQuoteDraft, sendQuote, setMilestoneStatus, updateProjectStatus, withdrawQuote, type QuoteDraftInput,
+  saveQuoteDraft, sendQuote, setMilestoneStatus, setProjectTerms, updateProjectStatus, withdrawQuote, type ProjectTermsInput, type QuoteDraftInput,
 } from "@/server/projects/agency";
+import {
+  applyInScopeRevision, classifyChangeOrder, declineChangeOrder, markChangeApplied, pullBackChangeQuote, requestChangeInfo, saveChangeInternalNotes, sendChangeQuote, startChangeReview,
+} from "@/server/projects/change-orders";
+import { addPrerequisite, removePrerequisite, satisfyPrerequisite, waivePrerequisite, type PrerequisiteInput } from "@/server/projects/prerequisites";
+import type { ChangeQuoteInput } from "@/lib/project-change-orders";
 import type { MilestoneStatus, ProjectStatus } from "@/lib/projects";
 
 const refresh = (id: string) => {
@@ -82,9 +87,99 @@ export async function withdrawQuoteAction(id: string, quoteId: string) {
     refresh(id);
   });
 }
-export async function handoverAction(id: string, notes: string) {
+export async function handoverAction(id: string, notes: string, terms: ProjectTermsInput = {}) {
   return guard(async () => {
-    await recordHandover(await requireAgencyOrThrow(), id, notes);
+    await recordHandover(await requireAgencyOrThrow(), id, notes, terms);
+    refresh(id);
+  });
+}
+export async function projectTermsAction(id: string, terms: ProjectTermsInput) {
+  return guard(async () => {
+    await setProjectTerms(await requireAgencyOrThrow(), id, terms);
+    refresh(id);
+  });
+}
+
+// The change list: classify, ask, apply a revision, quote, take a quote back, decline, mark made.
+export async function startChangeReviewAction(id: string, changeId: string) {
+  return guard(async () => {
+    await startChangeReview(await requireAgencyOrThrow(), changeId);
+    refresh(id);
+  });
+}
+export async function classifyChangeOrderAction(id: string, changeId: string, input: { classification: "in_scope_revision" | "out_of_scope"; internalNotes?: string | null }) {
+  return guard(async () => {
+    await classifyChangeOrder(await requireAgencyOrThrow(), changeId, input);
+    refresh(id);
+  });
+}
+export async function saveChangeNotesAction(id: string, changeId: string, notes: string, expected?: string | null) {
+  return guard(async () => {
+    await saveChangeInternalNotes(await requireAgencyOrThrow(), changeId, notes, expected);
+    refresh(id);
+  });
+}
+export async function requestChangeInfoAction(id: string, changeId: string, body: string) {
+  return guard(async () => {
+    await requestChangeInfo(await requireAgencyOrThrow(), changeId, body);
+    refresh(id);
+  });
+}
+export async function applyRevisionAction(id: string, changeId: string, note?: string) {
+  return guard(async () => {
+    await applyInScopeRevision(await requireAgencyOrThrow(), changeId, note);
+    refresh(id);
+  });
+}
+export async function sendChangeQuoteAction(id: string, changeId: string, input: ChangeQuoteInput) {
+  return guard(async () => {
+    const r = await sendChangeQuote(await requireAgencyOrThrow(), changeId, input);
+    refresh(id);
+    return r;
+  });
+}
+export async function pullBackChangeQuoteAction(id: string, changeId: string) {
+  return guard(async () => {
+    await pullBackChangeQuote(await requireAgencyOrThrow(), changeId);
+    refresh(id);
+  });
+}
+export async function declineChangeOrderAction(id: string, changeId: string, reason: string) {
+  return guard(async () => {
+    await declineChangeOrder(await requireAgencyOrThrow(), changeId, reason);
+    refresh(id);
+  });
+}
+export async function markChangeAppliedAction(id: string, changeId: string, note?: string) {
+  return guard(async () => {
+    await markChangeApplied(await requireAgencyOrThrow(), changeId, note);
+    refresh(id);
+  });
+}
+
+// What a person confirms before work starts or before handover.
+export async function addPrerequisiteAction(id: string, input: PrerequisiteInput) {
+  return guard(async () => {
+    const r = await addPrerequisite(await requireAgencyOrThrow(), id, input);
+    refresh(id);
+    return r;
+  });
+}
+export async function satisfyPrerequisiteAction(id: string, prerequisiteId: string, evidence: string) {
+  return guard(async () => {
+    await satisfyPrerequisite(await requireAgencyOrThrow(), prerequisiteId, evidence);
+    refresh(id);
+  });
+}
+export async function waivePrerequisiteAction(id: string, prerequisiteId: string, reason: string) {
+  return guard(async () => {
+    await waivePrerequisite(await requireAgencyOrThrow(), prerequisiteId, reason);
+    refresh(id);
+  });
+}
+export async function removePrerequisiteAction(id: string, prerequisiteId: string) {
+  return guard(async () => {
+    await removePrerequisite(await requireAgencyOrThrow(), prerequisiteId);
     refresh(id);
   });
 }

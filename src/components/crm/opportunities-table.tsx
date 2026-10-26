@@ -93,12 +93,12 @@ export function OpportunitiesTable({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Opportunities</h2>
-          <p className="mt-1 text-[13px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "deal" : "deals"}{pipeline ? ` in ${pipeline.name}` : " across all pipelines"}</p>
+          <p className="mt-1 text-[14px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "deal" : "deals"}{pipeline ? ` in ${pipeline.name}` : " across all pipelines"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5" role="group" aria-label="View">
-            <Link href={`${scope.base}/pipelines${state.pipeline ? `?p=${state.pipeline}` : ""}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><KanbanSquare className="size-4" aria-hidden />Board</Link>
-            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-surface px-3 text-[13px] font-medium text-ink shadow-soft sm:min-h-8"><Table2 className="size-4" aria-hidden />Table</span>
+            <Link href={`${scope.base}/pipelines${state.pipeline ? `?p=${state.pipeline}` : ""}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><KanbanSquare className="size-4" aria-hidden />Board</Link>
+            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-surface px-3 text-[14px] font-medium text-ink shadow-soft sm:min-h-8"><Table2 className="size-4" aria-hidden />Table</span>
           </div>
           {canEdit && <Button onClick={() => setNewOpen(true)}><Plus className="size-4" />New deal</Button>}
         </div>
@@ -131,13 +131,13 @@ export function OpportunitiesTable({
           {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </Select>
         {(state.pipeline || state.stage || state.owner || state.q || state.status !== "open") && (
-          <Link href={pathname} className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-[13px] font-medium text-muted hover:text-ink sm:min-h-9"><X className="size-3.5" />Clear</Link>
+          <Link href={pathname} className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-[14px] font-medium text-muted hover:text-ink sm:min-h-9"><X className="size-3.5" />Clear</Link>
         )}
       </div>
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-primary/25 bg-primary-soft/50 px-3 py-2" role="region" aria-label="Bulk actions">
-          <span className="text-[13px] font-medium text-primary-ink">{selected.size} selected</span>
+          <span className="text-[14px] font-medium text-primary-ink">{selected.size} selected</span>
           {canEdit && scope.can["contacts.bulk"] && (
             <Button size="sm" variant="secondary" disabled={!samePipeline} title={samePipeline ? undefined : "Select deals from one pipeline to move them together"} onClick={() => setMoveOpen(true)}><MoveRight className="size-4" />Move to stage</Button>
           )}
@@ -148,8 +148,8 @@ export function OpportunitiesTable({
 
       {rows.length ? (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-[13px]">
+          <div className="overflow-x-auto" tabIndex={0}>
+            <table className="w-full min-w-[860px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="w-10 px-3 py-2.5">

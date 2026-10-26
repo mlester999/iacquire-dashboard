@@ -4,9 +4,10 @@ import { AppError } from "@/server/errors";
 import { automationGate, type BlockReason } from "@/server/automation/gate";
 
 /**
- * Background AI work must recheck current workspace and employee controls when it is requested,
- * scheduled, and claimed by a worker. Approval-required mode still permits these read-only jobs;
- * approval applies to customer-facing actions inside a job, not to the review itself.
+ * Background AI work is checked when requested, scheduled, and claimed by a worker. The claim-time
+ * check includes readiness so a queued job cannot run after its employee is disabled or loses its
+ * connection. Approval-required mode still permits read-only jobs; approval applies to customer-
+ * facing actions inside a job, not to the review itself.
  */
 export type JobGateDecision = { allowed: true } | { allowed: false; reason: BlockReason; detail: string };
 
@@ -30,7 +31,6 @@ export async function jobGate(db: Queryable, input: { orgId: string; agentId: st
 /** Stable failure code for a skipped schedule or a job blocked before execution. */
 export const jobBlockCode = (reason: BlockReason): string => `automation_${reason}`;
 
-/** Prevents a new job from being persisted while its workspace or employee is paused/unavailable. */
 export async function assertJobAllowed(db: Queryable, input: { orgId: string; agentId: string }): Promise<void> {
   const gate = await jobGate(db, input);
   if (!gate.allowed) throw new AppError("agent_unavailable", gate.detail);

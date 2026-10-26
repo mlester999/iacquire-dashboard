@@ -146,7 +146,7 @@ export default async function UnsubscribePage({ params, searchParams }: { params
               </p>
             </div>
           </div>
-          <p className="mt-5 border-t border-line pt-4 text-[13px] leading-relaxed text-muted">
+          <p className="mt-5 border-t border-line pt-4 text-[14px] leading-relaxed text-muted">
             You&apos;ll still get messages about things you&apos;ve asked for, such as appointment confirmations. If you change your mind, ask {business.name} to add you back.
           </p>
         </Card>
@@ -164,14 +164,14 @@ export default async function UnsubscribePage({ params, searchParams }: { params
           {where}. You&apos;ll still get messages about things you&apos;ve asked for, such as appointment confirmations.
         </p>
         {(result === "error" || result === "rate_limited") && (
-          <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+          <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>{result === "rate_limited" ? "Too many attempts in a short while. Wait a few minutes, then try again." : "That didn't go through. Please try again."}</span>
           </p>
         )}
         <form method="post" action={`/api/public/unsubscribe?t=${encodeURIComponent(token)}`} className="mt-5 flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
           <input type="hidden" name="via" value="page" />
-          <p className="text-[13px] text-muted">Nothing changes until you press Unsubscribe.</p>
+          <p className="text-[14px] text-muted">Nothing changes until you press Unsubscribe.</p>
           <Button type="submit" className="w-full sm:w-auto">
             <MailX className="size-4" aria-hidden />
             Unsubscribe

@@ -69,7 +69,7 @@ export function PreviewOverlay({
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-[#14171f]" role="dialog" aria-modal="true" aria-label={title}>
       <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0e1118] px-4 py-2 text-white">
-        <p className="mr-2 flex items-center gap-2 text-[13px] font-semibold"><Eye className="size-4 text-primary" aria-hidden /> {title}{subtitle && <span className="font-normal text-white/60">· {subtitle}</span>}</p>
+        <p className="mr-2 flex items-center gap-2 text-[14px] font-semibold"><Eye className="size-4 text-primary" aria-hidden /> {title}{subtitle && <span className="font-normal text-white/60">· {subtitle}</span>}</p>
         <div role="radiogroup" aria-label="Device" className="flex rounded-lg bg-white/10 p-0.5">
           {DEVICES.map((d) => {
             const I = DEVICE_ICON[d.id];
@@ -78,9 +78,9 @@ export function PreviewOverlay({
         </div>
         <SelectControl<string> label="Page" value={page} onChange={(v) => { setPage(v); scroller.current?.scrollTo({ top: 0 }); }} options={doc.pages.map((p) => ({ value: p.slug, label: p.title }))} />
         <span className="flex-1" />
-        <span className="hidden text-[11.5px] text-white/55 md:inline">Sample behaviour: the enquiry form is switched off here.</span>
+        <span className="hidden text-[12px] text-white/55 md:inline">Sample behaviour: the enquiry form is switched off here.</span>
         {actions}
-        <button ref={closeRef} type="button" onClick={onClose} className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[12.5px] font-medium hover:bg-white/20"><X className="size-4" /> Close <kbd className="hidden rounded bg-white/15 px-1 text-[10px] sm:inline">Esc</kbd></button>
+        <button ref={closeRef} type="button" onClick={onClose} className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[13px] font-medium hover:bg-white/20"><X className="size-4" /> Close <kbd className="hidden rounded bg-white/15 px-1 text-[12px] sm:inline">Esc</kbd></button>
       </div>
       <div ref={scroller} className="min-h-0 flex-1 overflow-auto p-3 sm:p-6" onClick={onClick}>
         <div className="mx-auto overflow-hidden rounded-xl bg-white shadow-2xl" style={{ width }}>
@@ -192,8 +192,8 @@ export function VersionsDialog({
   return (
     <>
       <Dialog open={open && !view} onOpenChange={onOpenChange} size="lg" title="Version history" description="Every named version, every time you sent the site for review, and every publication. Restoring never loses your current draft; it&apos;s saved first.">
-        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft/50 p-3 text-[13px] text-danger-ink">{error}</p>}
-        {!list && !error && <p className="flex items-center justify-center gap-2 rounded-xl bg-surface-2 py-10 text-[13.5px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden /> Loading versions…</p>}
+        {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft/50 p-3 text-[14px] text-danger-ink">{error}</p>}
+        {!list && !error && <p className="flex items-center justify-center gap-2 rounded-xl bg-surface-2 py-10 text-[14px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden /> Loading versions…</p>}
         {list && list.length === 0 && <EmptyState icon={<History className="size-5" />} title="No versions yet" description="Use “Save version” whenever you like a draft." />}
         {list && list.length > 0 && (
           <ul className="divide-y divide-line">
@@ -201,7 +201,7 @@ export function VersionsDialog({
               <li key={v.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span aria-hidden className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink ring-1 ring-inset ring-line"><span className="text-[8.5px] font-medium uppercase leading-none tracking-wider text-muted">v</span>{v.version}</span>
+                    <span aria-hidden className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl bg-surface-2 text-[14px] font-semibold tabular-nums text-ink ring-1 ring-inset ring-line"><span className="text-[12px] font-medium uppercase leading-none tracking-wider text-muted">v</span>{v.version}</span>
                     <div className="min-w-0 space-y-1.5">
                       <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold"><span>Version {v.version}</span>
                         <StatusPill size="sm" tone={SOURCE_TONE[v.source] ?? "neutral"}>{SOURCE[v.source] ?? "Saved"}</StatusPill>
@@ -212,7 +212,7 @@ export function VersionsDialog({
                         <InfoChip>{formatDateTime(v.createdAt, "UTC")}</InfoChip>
                         {v.createdByName && <InfoChip icon={<User className="size-3" aria-hidden />}>{v.createdByName}</InfoChip>}
                       </div>
-                      {v.note && <p className="text-[13px] text-ink-2">“{v.note}”</p>}
+                      {v.note && <p className="text-[14px] text-ink-2">“{v.note}”</p>}
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
@@ -223,8 +223,8 @@ export function VersionsDialog({
                 </div>
                 {diff?.v.id === v.id && (
                   <div className="mt-3 rounded-xl border border-line bg-surface-2/60 p-3">
-                    <p className="text-[12.5px] font-semibold">What would change if you went back to version {v.version}</p>
-                    {diff.diff.changes.length === 0 ? <p className="mt-1 text-[12.5px] text-muted">Nothing: your draft already matches this version.</p> : (
+                    <p className="text-[13px] font-semibold">What would change if you went back to version {v.version}</p>
+                    {diff.diff.changes.length === 0 ? <p className="mt-1 text-[13px] text-muted">Nothing: your draft already matches this version.</p> : (
                       <>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <StatusPill size="sm" tone="success">{diff.diff.counts.added} added</StatusPill>
@@ -232,8 +232,8 @@ export function VersionsDialog({
                           <StatusPill size="sm" tone="warning">{diff.diff.counts.changed} changed</StatusPill>
                           <StatusPill size="sm" tone="primary">{diff.diff.counts.moved} moved</StatusPill>
                         </div>
-                        <p className="mt-1.5 text-[11.5px] text-muted">Compared with your current draft, from this version&apos;s point of view.</p>
-                        <ul className="mt-2 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-[12.5px] text-ink-2">{diff.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                        <p className="mt-1.5 text-[12px] text-muted">Compared with your current draft, from this version&apos;s point of view.</p>
+                        <ul className="mt-2 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-[13px] text-ink-2">{diff.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
                       </>
                     )}
                   </div>
@@ -245,7 +245,7 @@ export function VersionsDialog({
       </Dialog>
       {view && (
         <PreviewOverlay doc={view.content.content} resolveAsset={resolveAsset} onClose={() => setView(null)} title={`Version ${view.v.version}`} subtitle={`${SOURCE[view.v.source] ?? "Saved"} · ${relativeTime(view.v.createdAt)}`}
-          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12.5px] font-medium text-white hover:opacity-90"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
+          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-on hover:opacity-90"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
       )}
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)} size="sm" title={confirm ? `Restore version ${confirm.version}?` : "Restore"}
         description="It replaces your current draft. Your current draft is saved as its own version first, and your live site doesn't change until you publish."
@@ -263,7 +263,7 @@ export function ConflictDialog({ open, onReload, onKeepMine, busy }: { open: boo
     <Dialog open={open} onOpenChange={() => undefined} size="md" title="This website changed somewhere else"
       description="Someone else (or another window of yours) saved changes after you opened it. We stopped saving so nothing is overwritten without your say-so."
       footer={<><Button variant="secondary" loading={busy} onClick={onKeepMine}>Keep my version</Button><Button variant="brand" loading={busy} onClick={onReload}>Load the latest</Button></>}>
-      <div className="space-y-3 text-[13.5px] leading-relaxed text-ink-2">
+      <div className="space-y-3 text-[14px] leading-relaxed text-ink-2">
         <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> Your last unsaved edits are still on screen.</p>
         <p><strong className="font-semibold text-ink">Load the latest</strong> replaces what you see with the saved site. Your unsaved edits are discarded.</p>
         <p><strong className="font-semibold text-ink">Keep my version</strong> saves what you see now as the draft. The other person&apos;s changes stay in version history, but your draft is what carries on.</p>
@@ -319,7 +319,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     <Dialog open={open} onOpenChange={onOpenChange} size="md" title="Keyboard shortcuts" description="Everything you can do with a mouse can be done from the keyboard too.">
       <dl className="divide-y divide-line">
         {SHORTCUTS.map(([k, d]) => (
-          <div key={k} className="flex items-start justify-between gap-4 py-2"><dt className="shrink-0 rounded-md bg-surface-3 px-2 py-0.5 text-[12px] font-medium">{k}</dt><dd className="text-right text-[13px] text-ink-2">{d}</dd></div>
+          <div key={k} className="flex items-start justify-between gap-4 py-2"><dt className="shrink-0 rounded-md bg-surface-3 px-2 py-0.5 text-[12px] font-medium">{k}</dt><dd className="text-right text-[14px] text-ink-2">{d}</dd></div>
         ))}
       </dl>
     </Dialog>

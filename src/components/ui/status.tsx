@@ -67,7 +67,7 @@ export function StatusPill({ status, tone, icon, dot = true, size = "md", classN
     <span
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium ring-1 ring-inset",
-        size === "sm" ? "h-5 px-2 text-[11px]" : "h-6 px-2.5 text-[12px]",
+        size === "sm" ? "h-5 px-2 text-[12px]" : "h-6 px-2.5 text-[12px]",
         t.box,
         className,
       )}
@@ -91,7 +91,7 @@ export function RelativeTime({ value, prefix = "" }: { value: string | Date | nu
 /** A quiet chip for non-status facts (owner, count, date, channel) so they never sit as bare muted text. */
 export function InfoChip({ icon, className, children }: { icon?: React.ReactNode; className?: string; children: React.ReactNode }) {
   return (
-    <span className={cn("inline-flex h-6 max-w-full items-center gap-1.5 rounded-lg bg-surface-2/80 px-2 text-[11.5px] font-medium text-ink-2 ring-1 ring-inset ring-line [&>svg]:size-3 [&>svg]:shrink-0 [&>svg]:text-muted", className)}>
+    <span className={cn("inline-flex h-6 max-w-full items-center gap-1.5 rounded-lg bg-surface-2/80 px-2 text-[12px] font-medium text-ink-2 ring-1 ring-inset ring-line [&>svg]:size-3 [&>svg]:shrink-0 [&>svg]:text-muted", className)}>
       {icon}
       <span className="truncate">{children}</span>
     </span>
@@ -114,7 +114,7 @@ function hashOf(value: string) {
 
 /** Deterministic gradient monogram: the same person or company always gets the same colour. */
 export function AvatarTile({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
-  const dims = { sm: "size-7 rounded-lg text-[10.5px]", md: "size-9 rounded-[10px] text-[12px]", lg: "size-12 rounded-[14px] text-[15px]" }[size];
+  const dims = { sm: "size-7 rounded-lg text-[12px]", md: "size-9 rounded-[10px] text-[12px]", lg: "size-12 rounded-[14px] text-[15px]" }[size];
   return (
     <span
       aria-hidden

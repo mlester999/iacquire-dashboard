@@ -66,7 +66,7 @@ export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone
   const visible = sections.filter((s) => (filter === "all" || filter === "missing" && !s.content.trim() || filter === "review" && s.held) && `${s.label} ${s.hint} ${s.content}`.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="module-stack space-y-6" data-aqi-target="knowledge.list">
-      <PageHero eyebrow="Your business memory" title="Give your AI team the context to get it right." description="Brief your employees as you would a trusted teammate. Keep approved business facts, preferences and private reference documents together." icon={<BookOpen />} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-xs font-semibold">{filled} of {sections.length} knowledge sections supplied</p><div className="mt-3"><CoverageBar label="Business knowledge completeness" parts={[{label:"Supplied",count:filled,color:"var(--primary)"},{label:"Missing",count:sections.length-filled,color:"var(--surface-3)"}]} /></div><p className="mt-3 text-[11px] text-muted">{lastApplied ? `Last applied ${relativeTime(lastApplied)}` : "No application timestamp recorded"}</p></div>} />
+      <PageHero eyebrow="Your business memory" title="Give your AI team the context to get it right." description="Brief your employees as you would a trusted teammate. Keep approved business facts, preferences and private reference documents together." icon={<BookOpen />} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-xs font-semibold">{filled} of {sections.length} knowledge sections supplied</p><div className="mt-3"><CoverageBar label="Business knowledge completeness" parts={[{label:"Supplied",count:filled,color:"var(--primary)"},{label:"Missing",count:sections.length-filled,color:"var(--surface-3)"}]} /></div><p className="mt-3 text-[12px] text-muted">{lastApplied ? `Last applied ${relativeTime(lastApplied)}` : "No application timestamp recorded"}</p></div>} />
       <DataToolbar><div className="relative w-full max-w-sm"><Search className="absolute left-3 top-3 size-4 text-muted" /><Input aria-label="Search business knowledge" placeholder="Find a section or business fact…" className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="flex flex-wrap gap-1">{[{key:"all",label:"All sections"},{key:"missing",label:"Needs information"},{key:"review",label:"In review"}].map((f) => <Button key={f.key} size="sm" variant={filter === f.key ? "soft" : "ghost"} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</Button>)}</div></DataToolbar>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
@@ -95,14 +95,14 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-semibold">{section.label}</span>
-          <span className="block truncate text-[12.5px] text-muted">{section.content ? section.content.slice(0, 90) : section.hint}</span>
+          <span className="block truncate text-[13px] text-muted">{section.content ? section.content.slice(0, 90) : section.hint}</span>
         </span>
         {section.held ? (
           <Badge tone="warning">
             <ShieldAlert className="size-3" /> In review
           </Badge>
         ) : section.appliedAt ? (
-          <span className="hidden text-[11.5px] text-faint sm:block">Applied {relativeTime(section.appliedAt)}</span>
+          <span className="hidden text-[12px] text-faint sm:block">Applied {relativeTime(section.appliedAt)}</span>
         ) : null}
         <ChevronDown className={cn("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
@@ -110,12 +110,12 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
             <div className="space-y-3 border-t border-line px-5 pb-5 pt-4">
-              <p className="text-[12.5px] text-muted">{section.hint}</p>
+              <p className="text-[13px] text-muted">{section.hint}</p>
               <label htmlFor={`k-${section.key}`} className="sr-only">
                 {section.label}
               </label>
               <Textarea id={`k-${section.key}`} rows={6} maxLength={12000} value={value} disabled={!canEdit} onChange={(e) => setValue(e.target.value)} />
-              {section.held && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">This update is waiting for a quick iAcquire review because it may conflict with AI safety rules. Your AI team keeps using the previous approved knowledge until then.</p>}
+              {section.held && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">This update is waiting for a quick iAcquire review because it may conflict with AI safety rules. Your AI team keeps using the previous approved knowledge until then.</p>}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-faint">
                   <Clock className="size-3.5" />
@@ -215,7 +215,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
             className={cn("flex flex-col items-center rounded-2xl border-2 border-dashed px-4 py-7 text-center transition", drag ? "border-primary bg-primary-soft/40" : "border-line")}
           >
             <UploadCloud className="size-7 text-primary" />
-            <p className="mt-2 text-[13.5px] font-medium">{uploading ? `Uploading ${uploading}…` : "Drop a file here"}</p>
+            <p className="mt-2 text-[14px] font-medium">{uploading ? `Uploading ${uploading}…` : "Drop a file here"}</p>
             <p className="text-[12px] text-muted">or</p>
             <Button size="sm" variant="secondary" className="mt-2" loading={Boolean(uploading)} onClick={() => inputRef.current?.click()}>
               Choose file
@@ -235,7 +235,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
           </div>
         )}
         {documents.length === 0 ? (
-          <p className="py-4 text-center text-[13px] text-muted">No documents yet.</p>
+          <p className="py-4 text-center text-[14px] text-muted">No documents yet.</p>
         ) : (
           <ul className="divide-y divide-line">
             {documents.map((d) => (
@@ -244,11 +244,11 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                   <FileText className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{d.filename}</p>
-                  <p className="text-[11.5px] text-muted">
+                  <p className="truncate text-[14px] font-medium">{d.filename}</p>
+                  <p className="text-[12px] text-muted">
                     {size(d.size_bytes)} · {documentStatus(d)} · {formatDateTime(d.created_at, timeZone)}
                   </p>
-                  {d.processing_detail && !["ready"].includes(d.status) && <p className="mt-0.5 text-[11px] text-faint">{d.processing_detail}</p>}
+                  {d.processing_detail && !["ready"].includes(d.status) && <p className="mt-0.5 text-[12px] text-faint">{d.processing_detail}</p>}
                 </div>
                 <a href={`/api/knowledge/documents/${d.id}`} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" aria-label={`Download ${d.filename}`}>
                   <Download className="size-4" />
@@ -266,7 +266,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                       else toast.warning("Still not searchable", { description: res.data.processingDetail ?? "Upload a text version if you need it used in conversations." });
                       router.refresh();
                     }}
-                    className="flex min-h-8 items-center rounded-lg px-2 text-[11.5px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
+                    className="flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
                   >
                     Retry
                   </button>
@@ -280,7 +280,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
             ))}
           </ul>
         )}
-        <p className="text-[11.5px] leading-relaxed text-faint">TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read by your AI team after extraction. Encrypted, scanned/image-only PDFs and damaged files remain downloadable but aren&apos;t used; OCR isn&apos;t supported.</p>
+        <p className="text-[12px] leading-relaxed text-faint">TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read by your AI team after extraction. Encrypted, scanned/image-only PDFs and damaged files remain downloadable but aren&apos;t used; OCR isn&apos;t supported.</p>
       </CardContent>
       <Dialog
         open={Boolean(confirm)}

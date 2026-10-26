@@ -37,7 +37,7 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
   return (
     <section aria-labelledby="onboarding-stage-title" className="onboarding-stages p-4 sm:p-5 lg:px-7 lg:pb-6 lg:pt-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-[var(--stage-accent)] lg:text-[11px]">Built around you</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[.18em] text-[var(--stage-accent)] lg:text-[12px]">Built around you</p>
         {saveState}
       </div>
 
@@ -46,12 +46,12 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
           <h2 id="onboarding-stage-title" className="text-[18px] font-semibold leading-snug tracking-[-0.02em] sm:text-[21px] lg:text-[26px] lg:leading-tight">
             {welcome ? "Let's set up your workspace." : section.title}
           </h2>
-          <p className="mt-1 hidden max-w-xl text-[13.5px] leading-relaxed text-[var(--stage-ink-2)] sm:block lg:mt-1.5 lg:text-[14px]">
+          <p className="mt-1 hidden max-w-xl text-[14px] leading-relaxed text-[var(--stage-ink-2)] sm:block lg:mt-1.5 lg:text-[14px]">
             {welcome ? "We'll start with the basics about your business. Everything saves as you go." : section.blurb}
           </p>
         </div>
-        <p className="mt-1 flex shrink-0 items-baseline gap-2 text-[12.5px] tabular-nums sm:mt-0 sm:flex-col sm:items-end sm:gap-0.5 sm:text-right">
-          <span className="font-medium text-[var(--stage-ink-2)] sm:text-[13px]">{position}</span>
+        <p className="mt-1 flex shrink-0 items-baseline gap-2 text-[13px] tabular-nums sm:mt-0 sm:flex-col sm:items-end sm:gap-0.5 sm:text-right">
+          <span className="font-medium text-[var(--stage-ink-2)] sm:text-[14px]">{position}</span>
           <span aria-hidden className="text-[var(--stage-muted)] sm:hidden">·</span>
           <span className="text-[var(--stage-muted)]">{progress.percent}% answered</span>
         </p>
@@ -77,12 +77,14 @@ export function OnboardingProgress({ current, progress, welcome, position, saveS
         <ol className="grid grid-cols-3 gap-1.5 md:grid-cols-6 md:gap-2">
           {stages.map((stage) => (
             <li key={stage.id} className="min-w-0">
-              <button type="button" data-state={stage.state} onClick={() => onSelect(stage.id)} disabled={disabled} aria-current={stage.state === "current" ? "step" : undefined} aria-label={stage.label} className="onboarding-stage">
+              <button type="button" data-state={stage.state} onClick={() => onSelect(stage.id)} disabled={disabled} aria-current={stage.state === "current" ? "step" : undefined} className="onboarding-stage">
                 <span aria-hidden className="flex w-full items-center justify-between">
                   <span className="onboarding-stage-number">{stage.number}</span>
                   <StageMark state={stage.complete ? "complete" : stage.state} />
                 </span>
-                <span aria-hidden className="onboarding-stage-label">{stage.short}</span>
+                {/* Named from its own words, with the state said once: an aria-label that replaces visible text fails WCAG label-in-name (axe: label-content-name-mismatch). */}
+                <span className="onboarding-stage-label">{stage.short}</span>
+                <span className="sr-only">: {stage.label.slice(stage.short.length + 2)}</span>
                 <span aria-hidden className="onboarding-stage-status hidden sm:block">
                   {stage.status}
                   {stage.state === "current" && stage.id !== "F" && <span className="hidden lg:inline"> answered</span>}

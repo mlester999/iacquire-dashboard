@@ -30,7 +30,7 @@ export default async function ClientWebsitesPage() {
             <ul className="flex flex-wrap gap-2">
               {without.map((c) => (
                 <li key={c.id}>
-                  <Link href={`/admin/website-studio/websites/${c.id}`} className="group inline-flex h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface py-1 pl-1.5 pr-3 text-[13px] font-medium text-ink shadow-soft transition-colors hover:border-primary/40 hover:bg-surface-2">
+                  <Link href={`/admin/website-studio/websites/${c.id}`} className="group inline-flex h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface py-1 pl-1.5 pr-3 text-[14px] font-medium text-ink shadow-soft transition-colors hover:border-primary/40 hover:bg-surface-2">
                     <AvatarTile name={c.name} size="sm" /> <span className="truncate" title={c.name}>{c.name}</span> <Plus className="size-3.5 shrink-0 text-primary transition-transform group-hover:rotate-90" aria-hidden />
                   </Link>
                 </li>

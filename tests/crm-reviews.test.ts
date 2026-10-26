@@ -21,7 +21,7 @@ vi.mock("next/cache", () => ({ revalidatePath() {} }));
 const { stub } = vi.hoisted(() => ({ stub: async () => ({ ok: false, error: "not in tests" }) }));
 vi.mock("@/app/actions/crm-reviews", () => Object.fromEntries([
   "createReviewDestinationAction", "updateReviewDestinationAction", "setReviewDestinationActiveAction", "moveReviewDestinationAction", "deleteReviewDestinationAction",
-  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction",
+  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction", "confirmSurveyMatchAction", "dismissSurveyMatchAction",
 ].map((n) => [n, stub])));
 vi.mock("@/app/actions/crm", () => Object.fromEntries(["searchContactsAction"].map((n) => [n, stub])));
 
@@ -36,6 +36,7 @@ import {
   listReviewTemplates, loadReviewPage, moveReviewDestination, newReviewToken, previewReviewRequest, recordReviewClick, requestReview, REVIEW_TOKEN_RE, reviewTokenFor,
   setFeedbackFollowUp, setReviewDestinationActive, submitReviewFeedback, validateDestinationUrl,
 } from "@/server/crm/reviews";
+import { getSites } from "@/server/reputation/connections";
 import { createWorkflow, publishWorkflow, requestWorkflowApproval } from "@/server/crm/workflows/definitions";
 import { startManualRun, startTestRun } from "@/server/crm/workflows/runs";
 import { processWorkflowRuns } from "@/server/crm/workflows/runner";
@@ -46,6 +47,7 @@ import { STEP_KINDS, validateDefinition, type WorkflowDefinition, type WorkflowS
 import { renderTemplate, validateTemplate } from "@/lib/messaging/tokens";
 import { scopeFor } from "@/server/crm/page";
 import { ReviewsWorkspace } from "@/components/crm/reviews/reviews-workspace";
+import { DEFAULT_REPUTATION_SETTINGS } from "@/lib/reputation/settings";
 import ReviewRequestPage from "@/app/r/[token]/page";
 import { POST as feedbackRoute, GET as feedbackGet } from "@/app/api/public/reviews/feedback/route";
 import { POST as clickRoute, GET as clickGet } from "@/app/api/public/reviews/click/route";
@@ -376,7 +378,7 @@ describe("the customer's review page", () => {
     expect(ev).toEqual([expect.objectContaining({ dedupe_key: `feedback.received:${lowResult.feedbackId}`, actor_kind: "contact", payload: expect.objectContaining({ rating: 1, hasComment: true }) })]);
     const lowAfter = await loadReviewPage(tLow);
     expect(lowAfter.destinations.map((d) => ({ id: d.id, label: d.label }))).toEqual(active);
-    expect(lowAfter.feedback).toEqual({ rating: 1 });
+    expect(lowAfter.feedback).toEqual({ rating: 1, followUp: true });
     expect(await submitReviewFeedback(tLow, { rating: "5" })).toEqual({ outcome: "already" });
 
     // A 5-star rating: saved, not escalated; the same links.
@@ -386,6 +388,7 @@ describe("the customer's review page", () => {
     expect(await one("select follow_up_status, escalated_task_id from customer_feedback where id = $1", [highResult.feedbackId])).toMatchObject({ follow_up_status: "new", escalated_task_id: null });
     const highAfter = await loadReviewPage(tHigh);
     expect(highAfter.destinations).toEqual(lowAfter.destinations);
+    expect(highAfter.feedback).toEqual({ rating: 5, followUp: false });
 
     // The rendered page lists the same review sites for both customers, next to the private form's thank-you.
     for (const t of [tLow, tHigh]) {
@@ -600,7 +603,7 @@ describe("the request_review workflow step", () => {
 // ---------------------------------------------------------------------------
 
 describe("the Reviews screen", () => {
-  it("renders the links, the numbers, the Google Business Profile status and the rules", async () => {
+  it("renders the links, the numbers, the public review sites' honest state and the rules", async () => {
     const scope = await scopeFor(a.owner, "/crm");
     const [stats, destinations, templates, requests, feedback] = await Promise.all([
       getReviewStats(a.owner, { days: 30 }), listReviewDestinations(a.owner), listReviewTemplates(a.owner), listReviewRequests(a.owner, { pageSize: 5 }), listFeedback(a.owner, { filter: "open", pageSize: 5 }),
@@ -609,13 +612,24 @@ describe("the Reviews screen", () => {
       scope, tab: "overview", days: 30, stats, destinations, templates, requests, feedback, requestFilter: "all", feedbackFilter: "open",
       canManageLinks: true, canSend: true, canFollowUp: true, contactsLinked: true,
       limits: { cooldownDays: 30, linkDays: 60, escalateAtOrBelow: 2, maxActive: 6, maxTotal: 10 }, initialContact: null,
+      settings: DEFAULT_REPUTATION_SETTINGS, canEditSettings: true, surveysEnabled: true, satisfaction: null,
+      publicReviews: { sites: await getSites(a.owner), enabled: false, any: false, data: null, filter: "all", focusId: null, pending: null, pendingStateId: null, notice: null, canManageSites: true },
     }));
     expect(html).toContain("Public review links");
+    expect(html).toContain("tab=satisfaction");
+    expect(html).toContain("A survey goes the same way and opens the same page, with the same review links.");
+    expect(html).toContain("Nothing is offered in return for a review or feedback");
     expect(html).toContain("Review us on Facebook");
-    expect(html).toContain("Blocked");
-    expect(html).toContain("Business Profile API");
+    // The old static "Blocked" card is a status card now: each site says where it stands, in words, and nothing claims a connection that does not exist.
+    expect(html).toContain("Public reviews in iAcquire");
+    expect(html).toContain("Not available yet");
+    expect(html).toContain("Business Profile reviews");
+    expect(html).toContain("Public reviews aren&#x27;t switched on for this workspace yet");
+    expect(html).not.toContain("Blocked");
+    expect(html).not.toContain("Public reviews</a>");
     expect(html).toContain("whatever rating they give you privately");
     expect(html).toContain("Request a review");
+    expect(html).toContain("tab=settings");
     expect(html).not.toMatch(/\/r\/[A-Za-z0-9_-]{43}/);
   });
 });

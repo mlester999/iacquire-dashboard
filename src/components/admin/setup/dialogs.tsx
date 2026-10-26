@@ -106,9 +106,9 @@ function AddTaskInner({ open, onClose, orgId, snapshot, act, busy, onCreated }: 
         </div>
         {candidates.length > 0 && (
           <fieldset className="space-y-2">
-            <legend className="flex w-full items-center justify-between gap-2 text-[13px] font-medium text-ink-2">
+            <legend className="flex w-full items-center justify-between gap-2 text-[14px] font-medium text-ink-2">
               Prerequisites (optional)
-              {f.deps.length > 0 && <InfoChip className="h-5 text-[11px]">{f.deps.length} selected</InfoChip>}
+              {f.deps.length > 0 && <InfoChip className="h-5 text-[12px]">{f.deps.length} selected</InfoChip>}
             </legend>
             <div className="scrollbar-thin max-h-48 space-y-1.5 overflow-y-auto pr-1">
               {candidates.map((t) => (
@@ -160,8 +160,8 @@ function ServicesInner({ open, onClose, orgId, current, act, busy }: ServicesPro
     >
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[13px] font-medium text-ink-2">Included in this client&apos;s package</p>
-          <InfoChip className="h-5 text-[11px]">{sel.length} of {SETUP_SERVICES.length} included</InfoChip>
+          <p className="text-[14px] font-medium text-ink-2">Included in this client&apos;s package</p>
+          <InfoChip className="h-5 text-[12px]">{sel.length} of {SETUP_SERVICES.length} included</InfoChip>
         </div>
         {SETUP_SERVICES.map((s) => (
           <CheckRow key={s.key} id={`svc-${s.key}`} label={s.label} hint={s.description} checked={sel.includes(s.key)} onChange={(v) => setSel(v ? [...sel, s.key] : sel.filter((x) => x !== s.key))} />
@@ -252,12 +252,12 @@ function ActivateInner({ open, onClose, orgId, snapshot, act, busy }: ActivatePr
       }
     >
       <div className="space-y-4">
-        <p className="text-[13.5px] leading-relaxed text-ink-2">
+        <p className="text-[14px] leading-relaxed text-ink-2">
           Every implemented connection check is re-run when you approve. A failed or unverified required check blocks approval. This records the agency review; live workflows and outreach need separate authorization.
         </p>
         <ul className="space-y-1.5">
           {snapshot.checks.map((c) => (
-            <li key={c.key} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2/40 px-3 py-2 text-[13px]">
+            <li key={c.key} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2/40 px-3 py-2 text-[14px]">
               <span className="min-w-0 text-ink">{CHECK_LABEL[c.key]}</span>
               <StatusPill tone={c.status === "unverified" ? "warning" : CHECK_STATUS[c.status].tone} size="sm">{CHECK_STATUS[c.status].label}</StatusPill>
             </li>

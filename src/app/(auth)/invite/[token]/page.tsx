@@ -41,7 +41,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
       </div>
       <div className="min-w-0">
         <p className="truncate text-[14px] font-semibold text-ink">{invite.orgName ?? "iAcquire agency team"}</p>
-        <p className="text-[12.5px] text-muted">Joining as {roleLabel}</p>
+        <p className="text-[13px] text-muted">Joining as {roleLabel}</p>
       </div>
     </div>
   );
@@ -72,7 +72,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
       <AuthHeading eyebrow="You're invited" title="Set up your account" description="Create your password to join your team's iAcquire workspace." />
       {header}
       <AcceptInviteForm token={token} email={invite.email} />
-      <p className="mt-6 text-center text-[12.5px] text-muted">
+      <p className="mt-6 text-center text-[13px] text-muted">
         Already have an account?{" "}
         <Link className="text-primary hover:underline" href={signInHref}>
           Sign in

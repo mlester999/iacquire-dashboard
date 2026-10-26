@@ -112,13 +112,13 @@ export function ReportsWorkspace({ scope, report, options, saved, active, reques
       {scope.agency && <ReadOnlyNotice>You&rsquo;re viewing this client&rsquo;s reports in a support session. Saving and exporting reports stay with the client&rsquo;s own team.</ReadOnlyNotice>}
 
       {notices.length > 0 && (
-        <div role="status" className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <div role="status" className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="space-y-1">{notices.map((n) => <p key={n}>{n}</p>)}</div>
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-5">
           <FilterBar
             // Remounts when the applied filters change, so the controls always start from what the report shows.
@@ -136,9 +136,9 @@ export function ReportsWorkspace({ scope, report, options, saved, active, reques
           <div aria-live="polite" className="sr-only">{pending ? "Updating the report…" : ""}</div>
           <div aria-busy={pending || undefined} className={cn("space-y-5 transition-opacity", pending && "opacity-60")}>
             {report.sections.length > 1 && (
-              <nav aria-label="Report sections" className="scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5">
+              <nav aria-label="Report sections" className="relative scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
                 {report.sections.map((s) => (
-                  <a key={s.section} href={`#report-${s.section}`} className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 sm:min-h-8">
+                  <a key={s.section} href={`#report-${s.section}`} className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:min-h-8">
                     {SECTION_INFO[s.section].label}
                   </a>
                 ))}
@@ -159,8 +159,8 @@ export function ReportsWorkspace({ scope, report, options, saved, active, reques
 
             {report.hidden.length > 0 && (
               <Card className="p-4">
-                <h2 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><EyeOff className="size-4 text-muted" aria-hidden />Not included</h2>
-                <ul className="mt-2 space-y-1 text-[13px] text-muted">
+                <h2 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><EyeOff className="size-4 text-muted" aria-hidden />Not included</h2>
+                <ul className="mt-2 space-y-1 text-[14px] text-muted">
                   {report.hidden.map((h) => <li key={h.section}><span className="font-medium text-ink-2">{SECTION_INFO[h.section].label}</span>: {h.reason}</li>)}
                 </ul>
               </Card>
@@ -213,7 +213,7 @@ function FilterBar({ report, options, available, requested, pending, onApply, on
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><SlidersHorizontal className="size-4 text-muted" aria-hidden />Filters</h2>
+        <h2 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><SlidersHorizontal className="size-4 text-muted" aria-hidden />Filters</h2>
         <div className="flex items-center gap-2">
           {pending && <span className="inline-flex items-center gap-1.5 text-[12px] text-muted"><Loader2 className="size-3.5 animate-spin" aria-hidden />Updating</span>}
           {any && <Button variant="ghost" size="sm" onClick={onReset}><RotateCcw className="size-3.5" aria-hidden />Reset</Button>}
@@ -277,12 +277,12 @@ function FilterBar({ report, options, available, requested, pending, onApply, on
             <Input id={`${id}-to`} type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? `${id}-range-error` : undefined} />
           </Field>
           <Button type="submit" size="md">Apply dates</Button>
-          {error && <p id={`${id}-range-error`} role="alert" className="w-full text-[12.5px] text-danger-ink">{error}</p>}
+          {error && <p id={`${id}-range-error`} role="alert" className="w-full text-[13px] text-danger-ink">{error}</p>}
         </form>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <SectionsPicker available={available} requested={requested} onChange={onSections} />
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[13px] text-muted">
           {requested ? `${requested.filter((s) => available.includes(s)).length} of ${available.length} sections` : `All ${available.length} sections you can see`}
         </p>
       </div>
@@ -305,13 +305,13 @@ function SectionsPicker({ available, requested, onChange }: { available: ReportS
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[min(22rem,calc(100vw-2rem))] p-3">
         <fieldset>
-          <legend className="px-1 text-[13px] font-semibold text-ink">Show these sections</legend>
+          <legend className="px-1 text-[14px] font-semibold text-ink">Show these sections</legend>
           <div className="mt-2 max-h-[50vh] space-y-0.5 overflow-y-auto">
             {available.map((s) => (
               <label key={s} className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-surface-2 sm:min-h-9">
                 <input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" checked={picked.includes(s)} onChange={() => toggle(s)} />
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-medium text-ink-2">{SECTION_INFO[s].label}</span>
+                  <span className="block text-[14px] font-medium text-ink-2">{SECTION_INFO[s].label}</span>
                   <span className="block text-[12px] leading-snug text-muted">{SECTION_INFO[s].description}</span>
                 </span>
               </label>
@@ -348,17 +348,17 @@ function SectionCard({ result, ctx, periodLabel }: { result: CrmReport["sections
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 id={headingId} className="text-[15px] font-semibold tracking-tight text-ink">{info.label}</h2>
-          <p className="mt-0.5 text-[13px] text-muted">{info.description}</p>
+          <p className="mt-0.5 text-[14px] text-muted">{info.description}</p>
         </div>
         <Badge tone={info.dated ? "neutral" : "primary"}>{info.dated ? periodLabel : "Current state"}</Badge>
       </div>
       {(result.notes.length > 0 || result.ignored.length > 0) && (
-        <div className="mt-3 space-y-1 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
+        <div className="mt-3 space-y-1 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
           {result.notes.map((n) => <p key={n}>{n}</p>)}
           {result.ignored.length > 0 && <p>The {result.ignored.map((k) => FILTER_LABELS[k].toLowerCase()).join(" and ")} filter{result.ignored.length === 1 ? " doesn't" : "s don't"} apply to this section.</p>}
         </div>
       )}
-      <div className="mt-4">
+      <div className="@container mt-4">
         {result.empty ? (
           <EmptyState
             compact
@@ -426,7 +426,7 @@ function ReportDetailsForm({ id, name, setName, description, setDescription, vis
         <Textarea id={`${id}-desc`} value={description} maxLength={300} rows={2} onChange={(e) => setDescription(e.target.value)} />
       </Field>
       <fieldset>
-        <legend className="text-[13px] font-medium text-ink-2">Who can open it</legend>
+        <legend className="text-[14px] font-medium text-ink-2">Who can open it</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {([
             { value: "private", icon: Lock, title: "Only me", body: "A private report is yours alone." },
@@ -436,7 +436,7 @@ function ReportDetailsForm({ id, name, setName, description, setDescription, vis
             return (
             <label key={o.value} className={cn("flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xl border p-3", visibility === o.value ? "border-primary/40 bg-primary-soft/50" : "border-line", off && "cursor-not-allowed opacity-60")}>
               <input type="radio" name={`${id}-visibility`} value={o.value} className="mt-0.5 accent-[var(--primary)]" checked={visibility === o.value} disabled={off} onChange={() => setVisibility(o.value)} />
-              <span><span className="flex items-center gap-1.5 text-[13px] font-medium text-ink"><o.icon className="size-3.5" aria-hidden />{o.title}</span><span className="block text-[12px] text-muted">{o.body}</span></span>
+              <span><span className="flex items-center gap-1.5 text-[14px] font-medium text-ink"><o.icon className="size-3.5" aria-hidden />{o.title}</span><span className="block text-[12px] text-muted">{o.body}</span></span>
             </label>
             );
           })}
@@ -480,7 +480,7 @@ function SaveReportButton({ orgId, config, canShare, labels, onSaved }: { orgId:
           <ReportDetailsForm id={id} name={name} setName={setName} description={description} setDescription={setDescription} visibility={visibility} setVisibility={setVisibility} canShare={canShare} error={error} />
           <div className="rounded-xl bg-surface-2 px-3 py-2.5">
             <p className="text-[12px] font-medium text-muted">What it remembers</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-ink-2">{configSummary(config, labels).map((l) => <li key={l}>{l}</li>)}</ul>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-ink-2">{configSummary(config, labels).map((l) => <li key={l}>{l}</li>)}</ul>
           </div>
         </div>
       </Dialog>
@@ -505,11 +505,11 @@ function SavedReports({ orgId, saved, activeId, base, canShare, canSave }: { org
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[13.5px] font-semibold text-ink">Saved reports</h2>
-        {activeId && <Link href={base} className="text-[12.5px] font-medium text-primary hover:underline">New report</Link>}
+        <h2 className="text-[14px] font-semibold text-ink">Saved reports</h2>
+        {activeId && <Link href={base} className="text-[13px] font-medium text-primary hover:underline">New report</Link>}
       </div>
       {!saved.length ? (
-        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{canSave ? "Save a set of filters and sections to open it again in one click. Saved reports always show current numbers." : "No saved reports yet."}</p>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">{canSave ? "Save a set of filters and sections to open it again in one click. Saved reports always show current numbers." : "No saved reports yet."}</p>
       ) : (
         <ul className="mt-2 space-y-1">
           {saved.map((r) => (
@@ -517,7 +517,7 @@ function SavedReports({ orgId, saved, activeId, base, canShare, canSave }: { org
               <Link href={`${base}?report=${r.id}`} aria-current={r.id === activeId ? "page" : undefined} className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-xl px-2 py-2 hover:bg-surface-2">
                 {r.pinned ? <Pin className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label="Pinned" /> : r.visibility === "private" ? <Lock className="mt-0.5 size-3.5 shrink-0 text-muted" aria-label="Private" /> : <Users className="mt-0.5 size-3.5 shrink-0 text-muted" aria-label="Team" />}
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium text-ink">{r.name}</span>
+                  <span className="block truncate text-[14px] font-medium text-ink">{r.name}</span>
                   <span className="block truncate text-[12px] text-muted">{r.visibility === "private" ? "Only you" : r.mine ? "Shared with your team" : `Shared by ${r.ownerName ?? "a former team member"}`}</span>
                 </span>
               </Link>
@@ -585,7 +585,7 @@ function EditSavedDialog({ orgId, report, canShare, onClose }: { orgId: string |
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy("edit")} onClick={submit}>Save</Button></>}
     >
       <ReportDetailsForm id={id} name={name} setName={setName} description={description} setDescription={setDescription} visibility={visibility} setVisibility={setVisibility} canShare={shareOk} canPrivate={report.mine || report.visibility === "private"} error={error} />
-      {!report.mine && <p className="mt-3 text-[12.5px] text-muted">{report.ownerName ?? "Another team member"} saved this report. Only they can make it private again.</p>}
+      {!report.mine && <p className="mt-3 text-[13px] text-muted">{report.ownerName ?? "Another team member"} saved this report. Only they can make it private again.</p>}
     </Dialog>
   );
 }

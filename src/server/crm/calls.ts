@@ -8,6 +8,7 @@ import { assertCan, auditActor, crmRead, crmWrite, systemActor, type CrmActor } 
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { createTaskInTx } from "@/server/crm/tasks";
 import { assertAssignable } from "@/server/crm/contacts";
+import { recordCallTouchSafely } from "@/server/attribution/touches";
 import { syncCaseForCallSafely } from "@/server/missed-calls/sync";
 import {
   CALL_STATUSES, E164, e164, httpsUrl, isCallStatus, isFinalCallStatus, isVoiceProvider, providerId, VOICE_PROVIDER_LABELS,
@@ -150,6 +151,8 @@ export async function recordVoiceEvent(db: Queryable, conn: { orgId: string; sto
   if (completed) await callCompleted(db, orgId, { recordId, provider: e.provider, direction, status, duration, disposition: e.disposition, contactId, now });
   // Missed-call recovery: the case follows the call record (created, joined, or corrected). It runs in its own savepoint, so a problem there can never lose the call.
   await syncCaseForCallSafely(db, orgId, recordId, now);
+  // Where an inbound caller came from (the phone channel), for the contact's source history.
+  if (direction === "inbound" && contactId) await recordCallTouchSafely(db, { orgId, contactId, callId: recordId, occurredAt: e.startedAt ?? now });
   return { outcome: ins.rows[0] ? "created" : "updated", recordId, completed, contactId };
 }
 

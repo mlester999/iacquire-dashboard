@@ -12,7 +12,11 @@ import { listContactCalls } from "@/server/crm/calls";
 import type { CrmScope } from "@/server/crm/page";
 import { ContactProfile } from "@/components/crm/contact-profile";
 import { getPriority } from "@/server/lead-scoring/priority";
+import { getContactAttribution } from "@/server/attribution/touches";
 import { openCaseFor } from "@/server/missed-calls/ops";
+import { getContactReputation } from "@/server/reputation/feedback";
+import { listProposals } from "@/server/proposals/proposals";
+import { invoicesForActor } from "@/server/invoices/search";
 
 export async function ContactView({ actor, scope, id }: { actor: CrmActor; scope: CrmScope; id: string }) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -37,12 +41,19 @@ export async function ContactView({ actor, scope, id }: { actor: CrmActor; scope
   // Calls can carry recording links, so they're only loaded for people who may see call records.
   const calls = actor.can("calls.view") ? await listContactCalls(actor, id, 20) : null;
   // The explained priority and any missed call still waiting. Neither may stop the page from opening.
-  const [priority, missedCall] = await Promise.all([
+  const [priority, missedCall, attribution, reputation, proposals, invoices] = await Promise.all([
     getPriority(actor, id).catch(() => null),
     actor.can("calls.view") ? openCaseFor(actor, { contactId: id }).catch(() => null) : Promise.resolve(null),
+    getContactAttribution(actor, id).catch(() => null),
+    // What this person privately told the business (private feedback only). Like the others, it may not stop the page from opening.
+    getContactReputation(actor, id).catch(() => null),
+    // Proposals belong to the client's own team: an agency person looking in a support session is not offered them, and a workspace that does not have the module gets no tab.
+    actor.kind === "member" && actor.can("proposals.view") ? listProposals(actor, { contactId: id, limit: 50 }).catch(() => null) : Promise.resolve(null),
+    // Invoices likewise: the client's own team only, and a workspace that does not have the module gets no tab.
+    invoicesForActor(actor, { contactId: id }),
   ]);
   await auditSupportView(actor, "contact", id);
-  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks, opportunities: opportunities?.rows ?? [], conversations, appointments, calls: calls ?? undefined, priority, missedCall }));
+  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks, opportunities: opportunities?.rows ?? [], conversations, appointments, calls: calls ?? undefined, priority, missedCall, attribution, reputation, proposals, invoices }));
   return (
     <ContactProfile
       scope={scope}

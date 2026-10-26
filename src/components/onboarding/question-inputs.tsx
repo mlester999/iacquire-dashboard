@@ -153,14 +153,14 @@ function OptionCard({ label, description, selected, onClick, role, disabled }: {
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center border-2 transition-colors",
           role === "radio" ? "rounded-full" : "rounded-md",
-          selected ? "border-primary bg-primary text-white" : "border-line-strong",
+          selected ? "border-primary bg-primary text-primary-on" : "border-line-strong",
         )}
       >
         {selected && <Check className="size-3" strokeWidth={3} />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[14.5px] font-medium leading-snug text-ink">{label}</span>
-        {description && <span className="mt-1 block text-[13px] leading-relaxed text-muted">{description}</span>}
+        {description && <span className="mt-1 block text-[14px] leading-relaxed text-muted">{description}</span>}
       </span>
     </button>
   );
@@ -199,7 +199,7 @@ function MultiInput({ q, value, answers, onChange }: InputProps) {
           );
         })}
       </div>
-      {max && <p className="mt-2 text-[12.5px] text-muted">Choose up to {max}.</p>}
+      {max && <p className="mt-2 text-[13px] text-muted">Choose up to {max}.</p>}
     </div>
   );
 }
@@ -249,10 +249,10 @@ function HoursInput({ value, onChange }: InputProps) {
           const open = ranges.length > 0;
           return (
             <li key={day} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-              <label className="flex w-36 items-center gap-2.5 text-[14px] font-medium">
+              <label className="flex min-h-11 w-36 cursor-pointer items-center gap-2.5 text-[14px] font-medium">
                 <input
                   type="checkbox"
-                  className="size-4 accent-[var(--primary)]"
+                  className="size-5 accent-[var(--primary)]"
                   checked={open}
                   onChange={(e) => setDay(day, e.target.checked ? [["09:00", "17:00"]] : [])}
                 />
@@ -281,7 +281,7 @@ function HoursInput({ value, onChange }: InputProps) {
                   )}
                 </div>
               ) : (
-                <span className="text-[13px] text-muted">Closed</span>
+                <span className="text-[14px] text-muted">Closed</span>
               )}
             </li>
           );
@@ -329,7 +329,7 @@ function ListInput({ q, value, onChange, inputId = INPUT_ID }: InputProps) {
 function ListFieldInput({ field, value, id, wide, onChange }: { field: ListField; value: string; id: string; wide: boolean; onChange: (v: string) => void }) {
   return (
     <div className={cn("space-y-1.5", wide && "sm:col-span-2")}>
-      <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
+      <label htmlFor={id} className="text-[14px] font-medium text-ink-2">
         {field.label}
       </label>
       {field.type === "select" ? (
@@ -370,7 +370,7 @@ function ColorInput({ value, error, onChange }: InputProps) {
   const set = (patch: { primary?: string; accent?: string }) => onChange({ primary: v.primary ?? "", accent: v.accent ?? "", ...patch });
   const row = (key: "primary" | "accent", label: string) => (
     <div className="space-y-2">
-      <label htmlFor={`${INPUT_ID}-${key}`} className="text-[13px] font-medium text-ink-2">
+      <label htmlFor={`${INPUT_ID}-${key}`} className="text-[14px] font-medium text-ink-2">
         {label}
       </label>
       <div className="flex items-center gap-3">
@@ -498,7 +498,7 @@ function FilesInput({ q, value, assets, onAssetsChange, documents, onDocumentsCh
           >
             {busy ? <Loader2 className="size-6 animate-spin text-primary" /> : <ImagePlus className="size-6 text-primary" />}
             <span className="text-[14px] font-medium">{busy ? "Uploading…" : isDocument ? "Choose documents" : assetKind === "logo" ? "Choose your logo" : "Choose images"}</span>
-            <span className="text-[12.5px] text-muted">{isDocument ? "PDF, Word, text, Markdown or CSV, up to 10 MB each" : "PNG, JPG or WebP, up to 10 MB. A white background is fine."}</span>
+            <span className="text-[13px] text-muted">{isDocument ? "PDF, Word, text, Markdown or CSV, up to 10 MB each" : "PNG, JPG or WebP, up to 10 MB. A white background is fine."}</span>
           </label>
         </div>
       )}
@@ -536,7 +536,7 @@ function AssetCard({ asset, onChange }: { asset: AssetView; onChange: (a: AssetV
                   aria-checked={asset.useVariant === v}
                   disabled={busy}
                   onClick={() => void choose(v)}
-                  className={cn("rounded-xl border px-3 py-2 text-[12.5px] font-medium transition", asset.useVariant === v ? "border-primary bg-primary-soft text-primary-ink" : "border-line hover:border-line-strong")}
+                  className={cn("rounded-xl border px-3 py-2 text-[13px] font-medium transition", asset.useVariant === v ? "border-primary bg-primary-soft text-primary-ink" : "border-line hover:border-line-strong")}
                 >
                   {v === "original" ? "Original" : "Transparent"}
                 </button>
@@ -544,7 +544,7 @@ function AssetCard({ asset, onChange }: { asset: AssetView; onChange: (a: AssetV
             </div>
           ) : null}
           {asset.processingNote && (
-            <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
+            <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted">
               <Wand2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {asset.processingNote}
             </p>

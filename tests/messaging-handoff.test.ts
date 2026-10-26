@@ -326,7 +326,8 @@ describe("who can see which conversations", () => {
     await withSystem((db) => createEscalation(db, { orgId: org.org.id, conversationId: c.conversationId, category: "phone_consultation", summary: "Wants a call.", now: T }));
     const d = await getConversationDetail(org.ctx("manager"), c.conversationId);
     expect(d.contact).toMatchObject({ name: "Detail Customer", lifecycleStage: "lead_captured" });
-    expect(d.contact.identities).toEqual([{ kind: "phone", value: c.address, verified: true }]);
+    // Each address now also carries its id (for confirming it) and whether a website visitor only typed it.
+    expect(d.contact.identities).toEqual([{ id: expect.any(String), kind: "phone", value: c.address, verified: true, typedByVisitor: false }]);
     expect(d.contact.consent).toEqual([{ channel: "sms", purpose: "service", status: "granted" }]);
     expect(d.messages.map((x) => [x.direction, x.status])).toEqual([["inbound", "received"], ["outbound", "queued"], ["internal", "note"]]);
     expect(d.memories.map((x) => x.kind).sort()).toEqual(["ai_summary", "confirmed_fact"]);

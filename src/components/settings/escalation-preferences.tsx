@@ -141,7 +141,7 @@ export function EscalationPreferences({ me, team, isOwner, canConfigure, ownerMo
             <Field label="Mobile number (with country code)" htmlFor="alert-phone" hint="Kept private. Never visible to teammates.">
               <Input id="alert-phone" inputMode="tel" placeholder="+639171234567" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
-            <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-ink-2 ring-1 ring-inset ring-line">
+            <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-surface px-3.5 py-3 text-[14px] leading-relaxed text-ink-2 ring-1 ring-inset ring-line">
               <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={ack} onChange={(e) => setAck(e.target.checked)} />
               <span>I understand SMS and WhatsApp alerts are charged to my workspace as usage, and I choose to receive them.</span>
             </label>
@@ -219,7 +219,7 @@ function TeamAuthorization({ team, run, busy }: { team: StaffProfile[]; busy: st
                   <label
                     key={cat}
                     className={cn(
-                      "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-[12.5px] font-medium ring-1 ring-inset transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary sm:min-h-8",
+                      "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-[13px] font-medium ring-1 ring-inset transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary sm:min-h-8",
                       on ? "bg-primary-soft text-primary-ink ring-primary/25" : "bg-surface text-muted ring-line-strong hover:text-ink",
                     )}
                   >
@@ -229,7 +229,7 @@ function TeamAuthorization({ team, run, busy }: { team: StaffProfile[]; busy: st
                       checked={on}
                       onChange={(e) => setDraft((d) => ({ ...d, [p.userId]: e.target.checked ? [...(d[p.userId] ?? []), cat] : (d[p.userId] ?? []).filter((x) => x !== cat) }))}
                     />
-                    <span aria-hidden className={cn("grid size-4 place-items-center rounded-full border", on ? "border-primary bg-primary text-white" : "border-line-strong")}>
+                    <span aria-hidden className={cn("grid size-4 place-items-center rounded-full border", on ? "border-primary bg-primary text-primary-on" : "border-line-strong")}>
                       {on && <Check className="size-2.5" strokeWidth={3.5} />}
                     </span>
                     {ESCALATION_LABELS[cat]}

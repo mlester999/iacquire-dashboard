@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, CalendarClock, Clock, HeartHandshake, HeartPulse, MessageSquareQuote, Plus, Repeat, Search, Star, UserPlus } from "lucide-react";
@@ -33,6 +34,8 @@ interface Data {
   history: Array<{ id: string; account_id: string; event: string; occurred_at: string }>;
   tasks: Array<{ id: string; title: string; due_at: string | null; related_id: string | null }>;
   openIssues: number;
+  /** Low private feedback from review requests that still waits for a person (listed under CRM > Reviews). */
+  lowFeedbackOpen?: number;
 }
 
 const HEALTH: Record<Account["health"], { label: string; dot: string; tone: StatusTone }> = {
@@ -155,7 +158,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                           </span>
                           {account.onboarding_progress !== null && (
                             <span className="mt-3 block">
-                              <span className="mb-1 flex justify-between text-[11px] text-muted"><span>Onboarding</span><span className="font-semibold tabular-nums text-ink-2">{account.onboarding_progress}%</span></span>
+                              <span className="mb-1 flex justify-between text-[12px] text-muted"><span>Onboarding</span><span className="font-semibold tabular-nums text-ink-2">{account.onboarding_progress}%</span></span>
                               <ProgressBar value={account.onboarding_progress} label={`${account.customer_name} onboarding`} />
                             </span>
                           )}
@@ -164,8 +167,8 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                     </button>
                   ))}
                 </div>
-                <div className="scrollbar-thin hidden overflow-x-auto md:block">
-                  <table className="workspace-table w-full min-w-[640px] text-left text-[13.5px]">
+                <div className="scrollbar-thin hidden overflow-x-auto md:block" tabIndex={0}>
+                  <table className="workspace-table w-full min-w-[640px] text-left text-[14px]">
                     <thead className="border-y border-line bg-surface-2/60 text-[12px] text-muted">
                       <tr>
                         <th className="px-5 py-2.5 font-medium">Customer</th>
@@ -202,7 +205,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                             )}
                           </td>
                           <td className="px-3 py-3">{a.renewal_date ? <InfoChip icon={<CalendarClock />}>{formatDate(a.renewal_date, "UTC")}</InfoChip> : <span className="text-faint">—</span>}</td>
-                          <td className="px-5 py-3 text-right">{a.open_issues > 0 ? <StatusPill tone="warning" size="sm"><span className="tabular-nums">{a.open_issues}</span> open</StatusPill> : <span className="text-[12.5px] tabular-nums text-muted">0</span>}</td>
+                          <td className="px-5 py-3 text-right">{a.open_issues > 0 ? <StatusPill tone="warning" size="sm"><span className="tabular-nums">{a.open_issues}</span> open</StatusPill> : <span className="text-[13px] tabular-nums text-muted">0</span>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -221,7 +224,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
             ) : (
               <ul className="space-y-2">
                 {renewals.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2/60 px-3 py-2 text-[13px] ring-1 ring-inset ring-line">
+                  <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2/60 px-3 py-2 text-[14px] ring-1 ring-inset ring-line">
                     <span className="flex min-w-0 items-center gap-2.5">
                       <AvatarTile name={a.customer_name} size="sm" />
                       <span className="truncate font-medium" title={a.customer_name}>{a.customer_name}</span>
@@ -244,7 +247,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                         <Star key={i} className={cn("size-3.5", i < (f.rating ?? 0) ? "fill-current" : "text-surface-3")} />
                       ))}
                     </div>
-                    {f.comment && <p className="mt-1.5 text-[13px] leading-snug">&ldquo;{f.comment}&rdquo;</p>}
+                    {f.comment && <p className="mt-1.5 text-[14px] leading-snug">&ldquo;{f.comment}&rdquo;</p>}
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <InfoChip>{f.customer_name ?? "Customer"}</InfoChip>
                       <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(f.received_at)}</span></InfoChip>
@@ -253,12 +256,18 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                 ))}
               </ul>
             )}
+            {(data.lowFeedbackOpen ?? 0) > 0 && (
+              <p role="status" className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[13px] leading-snug text-warning-ink">
+                {data.lowFeedbackOpen} piece{data.lowFeedbackOpen === 1 ? "" : "s"} of low private feedback from customers {data.lowFeedbackOpen === 1 ? "is" : "are"} waiting for a follow-up.{" "}
+                <Link href="/crm/reviews?tab=feedback" className="font-medium underline underline-offset-2">Open it in CRM &rarr; Reviews</Link>
+              </p>
+            )}
           </Panel>
           <Panel icon={<Repeat />} tone="success" title="Repeat business">
             {data.accounts.filter((a) => a.repeat_opportunity).length === 0 ? (
               <EmptyState compact className="!px-2 !py-3" icon={<Repeat className="size-5" />} title="No repeat-business ideas yet" description="Note repeat-business ideas on a customer to see them here." />
             ) : (
-              <ul className="space-y-2 text-[13px]">
+              <ul className="space-y-2 text-[14px]">
                 {data.accounts
                   .filter((a) => a.repeat_opportunity)
                   .map((a) => (
@@ -377,9 +386,9 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
             )}
           </div>
           <div>
-            <p className="mb-2 text-[13px] font-semibold">Follow-up tasks</p>
-            {tasks.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[13px] text-muted">No open follow-ups.</p> : (
-              <ul className="space-y-1.5 text-[13px]">
+            <p className="mb-2 text-[14px] font-semibold">Follow-up tasks</p>
+            {tasks.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[14px] text-muted">No open follow-ups.</p> : (
+              <ul className="space-y-1.5 text-[14px]">
                 {tasks.map((t) => (
                   <li key={t.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2 ring-1 ring-inset ring-line">
                     <span className="min-w-0">{t.title}</span>
@@ -410,14 +419,14 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
             )}
           </div>
           <div>
-            <p className="mb-2 text-[13px] font-semibold">Service history</p>
-            {history.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[13px] text-muted">Nothing recorded yet.</p> : (
+            <p className="mb-2 text-[14px] font-semibold">Service history</p>
+            {history.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[14px] text-muted">Nothing recorded yet.</p> : (
               <ol className="relative space-y-3 border-l border-line pl-4">
                 {history.map((h) => (
                   <li key={h.id} className="relative">
                     <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-primary ring-4 ring-surface" />
-                    <p className="text-[13px]">{h.event}</p>
-                    <p className="text-[11.5px] text-faint">{formatDate(h.occurred_at, timeZone)}</p>
+                    <p className="text-[14px]">{h.event}</p>
+                    <p className="text-[12px] text-faint">{formatDate(h.occurred_at, timeZone)}</p>
                   </li>
                 ))}
               </ol>
@@ -444,7 +453,7 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
           </div>
           {canEdit && (
             <div className="space-y-2 rounded-xl border border-line p-3">
-              <p className="text-[13px] font-semibold">Record feedback</p>
+              <p className="text-[14px] font-semibold">Record feedback</p>
               <div className="flex gap-1" role="radiogroup" aria-label="Rating">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <label key={n} className="relative inline-flex size-11 cursor-pointer items-center justify-center rounded-lg text-warning has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary hover:bg-surface-2">

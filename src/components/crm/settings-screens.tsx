@@ -40,7 +40,7 @@ export function ProviderSettings({ scope, workspace, canEditDefaults, switchStat
                 <p className="text-[14px] font-semibold text-ink">{CRM_MODE_LABELS[m].label}</p>
                 {current && <Badge tone="primary"><CheckCircle2 className="size-3" />Current</Badge>}
               </div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{CRM_MODE_LABELS[m].description}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{CRM_MODE_LABELS[m].description}</p>
             </Card>
           );
         })}
@@ -49,11 +49,11 @@ export function ProviderSettings({ scope, workspace, canEditDefaults, switchStat
       <Card className="overflow-hidden p-0">
         <div className="border-b border-line px-4 py-3">
           <h3 className="text-[14px] font-semibold text-ink">Who owns each capability</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">iAcquire refuses to write to anything GoHighLevel owns, and the other way round. This is enforced on the server, not just hidden in the interface.</p>
+          <p className="mt-0.5 text-[13px] text-muted">iAcquire refuses to write to anything GoHighLevel owns, and the other way round. This is enforced on the server, not just hidden in the interface.</p>
         </div>
         <ul className="divide-y divide-line">
           {CRM_CAPABILITIES.map((c) => (
-            <li key={c} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[13px]">
+            <li key={c} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
               <span className="text-ink">{CAPABILITY_LABELS[c]}</span>
               {workspace.capabilities[c] === "native" ? <Badge tone="primary">iAcquire</Badge> : <Badge tone="warning">GoHighLevel</Badge>}
             </li>
@@ -64,7 +64,7 @@ export function ProviderSettings({ scope, workspace, canEditDefaults, switchStat
       <Card className="p-4">
         <div className="flex items-start gap-3">
           <Plug className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
-          <div className="text-[13px] leading-relaxed text-ink-2">
+          <div className="text-[14px] leading-relaxed text-ink-2">
             <p className="font-medium text-ink">GoHighLevel connection: {workspace.ghlConnected ? "connected (read-only)" : "not connected"}</p>
             <p className="mt-1 text-muted">
               {workspace.ghlConnected
@@ -79,7 +79,7 @@ export function ProviderSettings({ scope, workspace, canEditDefaults, switchStat
 
       <Card className="p-4">
         <h3 className="text-[14px] font-semibold text-ink">Defaults</h3>
-        <p className="mt-0.5 text-[12.5px] text-muted">Used when a deal has no currency, and to read phone numbers typed without a country code.</p>
+        <p className="mt-0.5 text-[13px] text-muted">Used when a deal has no currency, and to read phone numbers typed without a country code.</p>
         {!canEditDefaults && <div className="mt-3"><ReadOnlyNotice /></div>}
         <form className="mt-3 grid max-w-xl gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={async (e) => { e.preventDefault(); await run("defaults", () => updateWorkspaceSettingsAction(scope.orgId, { defaultCurrency: currency, defaultCallingCode: callingCode || null }), "Defaults saved."); }}>
           <Field label="Currency" htmlFor="ws-currency" hint="Three letters, like USD or PHP"><Input id="ws-currency" maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} disabled={!canEditDefaults} /></Field>
@@ -118,7 +118,7 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
                     className={cn("flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left", m.userId === selectedId ? "bg-surface shadow-soft ring-1 ring-line" : "hover:bg-surface-2")}>
                     <Avatar name={m.name} size="sm" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-ink">{m.name}</span>
+                      <span className="block truncate text-[14px] font-medium text-ink">{m.name}</span>
                       <span className="block truncate text-[12px] text-muted">{m.roleLabel}{changes ? ` · ${changes} ${changes === 1 ? "change" : "changes"}` : ""}</span>
                     </span>
                   </button>
@@ -131,7 +131,7 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <div>
                   <p className="text-[14px] font-semibold text-ink">{person.name}</p>
-                  <p className="text-[12.5px] text-muted">{person.email} · {person.roleLabel}</p>
+                  <p className="text-[13px] text-muted">{person.email} · {person.roleLabel}</p>
                 </div>
                 {!person.editable && <Badge tone="neutral"><Lock className="size-3" />{person.role === "owner" ? "Owners always have full access" : person.userId === scope.userId ? "You can't change your own access" : "Only the owner can change this person"}</Badge>}
               </div>
@@ -140,22 +140,22 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
                   const perms = DELEGABLE_PERMISSIONS.filter((p) => DELEGABLE_PERMISSION_INFO[p].group === g);
                   return (
                     <section key={g}>
-                      <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-faint">{g}</h3>
+                      <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-faint">{g}</h3>
                       <ul className="divide-y divide-line rounded-xl border border-line">
                         {perms.map((p: DelegablePermission) => {
                           const override = person.overrides[p];
                           const on = person.effective[p];
                           return (
-                            <li key={p} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+                            <li key={p} className="flex items-center justify-between gap-3 px-3 py-2 text-[14px]">
                               <span className="min-w-0">
                                 <span className={cn("block", on ? "text-ink" : "text-muted")}>{DELEGABLE_PERMISSION_INFO[p].label}</span>
-                                {override && <span className="text-[11.5px] text-primary-ink">{override === "grant" ? "Granted to this person" : "Withdrawn for this person"}</span>}
+                                {override && <span className="text-[12px] text-primary-ink">{override === "grant" ? "Granted to this person" : "Withdrawn for this person"}</span>}
                               </span>
                               {canManage && person.editable ? (
                                 <Menu>
                                   <MenuTrigger asChild>
                                     <button type="button" aria-label={`${DELEGABLE_PERMISSION_INFO[p].label}: ${on ? "allowed" : "not allowed"}. Change`}
-                                      className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium", on ? "border-success/30 bg-success-soft text-success-ink" : "border-line bg-surface-2 text-muted")}>
+                                      className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium", on ? "border-success/30 bg-success-soft text-success-ink" : "border-line bg-surface-2 text-muted")}>
                                       {on ? "Allowed" : "Not allowed"}
                                     </button>
                                   </MenuTrigger>
@@ -172,7 +172,7 @@ export function PermissionsSettings({ scope, members }: { scope: CrmScope; membe
                                   </MenuContent>
                                 </Menu>
                               ) : (
-                                <span className={cn("text-[12.5px] font-medium", on ? "text-success-ink" : "text-muted")}>{on ? "Allowed" : "Not allowed"}</span>
+                                <span className={cn("text-[13px] font-medium", on ? "text-success-ink" : "text-muted")}>{on ? "Allowed" : "Not allowed"}</span>
                               )}
                             </li>
                           );
@@ -203,7 +203,7 @@ export function SupportAccessLog({ sessions }: { sessions: SupportSessionLogEntr
       ) : (
         <Card className="overflow-hidden p-0">
           <div role="region" aria-label="Support access history table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <table className="w-full min-w-[720px] text-[13px]">
+            <table className="w-full min-w-[720px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 text-left font-medium">Who</th>

@@ -1,0 +1,267 @@
+/**
+ * The fictional customer invoices used for isolated local browser QA and for the test that proves this script works: a business's invoice settings, a testing payment
+ * connection, six customers and sixteen invoices in every state a customer or the team can meet. It writes through the application's own services and contacts NO ONE: no
+ * payment provider exists (the connection is the simulated one, and the only payments through it are test-mode ones made on its testing checkout page, which takes TEST invoices
+ * only), no message is sent, and every name, address, account number and price is made up. The prices are not a price list: they exist so the totals have something to add up.
+ *
+ * Two of the sixteen are TEST invoices (TEST-0001 and TEST-0002, numbered from their own counter): one already paid at the testing checkout and one a customer can open and pay
+ * there. Nothing else is paid with test money: a real invoice takes money a person recorded or a provider took live, and a test invoice takes only test-mode payments.
+ *
+ * Some of it is fiction on purpose and says so: so that the Lead Sources report's verified-revenue column and the dispute and review screens can be looked at, three invoices carry a
+ * "live" PayMongo payment that was inserted through the application's own payment function against a placeholder connection (paused, with no keys): one paid, one disputed, one
+ * kept for review. No PayMongo account exists behind them. They are in the throwaway QA database only, and `revenueFiction: false` leaves them out.
+ *
+ * It is a plain module (no vitest, no database setup) so that both scripts/ui-qa-invoices-seed.qa.ts and tests/invoices-qa-seed.test.ts can run it.
+ */
+import { withSystem } from "../src/server/db/index";
+import type { CrmActor } from "../src/server/crm/actor";
+import { createContact, setContactConsent } from "../src/server/crm/contacts";
+import { connectQaEmail } from "./qa-delivery-channel";
+import type { ChannelTransport } from "../src/server/messaging/transports/types";
+import { dispatchMessage } from "../src/server/messaging/send";
+import { invoiceDeliveriesFor, previewInvoiceDelivery, sendInvoiceDelivery } from "../src/server/invoices/delivery";
+import { createOpportunity } from "../src/server/crm/opportunities";
+import { addCost } from "../src/server/attribution/costs";
+import { recordTouch } from "../src/server/attribution/touches";
+import type { OrgContext } from "../src/server/tenancy/context";
+import { CURRENT_AUTHORIZATION_VERSION } from "../src/lib/invoices/connection-rules";
+import { todayIn } from "../src/lib/invoices/state";
+import { applyDisputeInTx, applyPaymentInTx } from "../src/server/invoices/apply";
+import { createDraft, issueInvoice, submitForApproval, voidInvoice, writeOffInvoice } from "../src/server/invoices/invoices";
+import { recordManualPayment, recordRefund } from "../src/server/invoices/payments";
+import { getInvoiceLink } from "../src/server/invoices/share";
+import { getInvoiceSettings, saveInvoiceSettings } from "../src/server/invoices/settings";
+import { startCheckout } from "../src/server/customer-payments/attempts";
+import { connectProvider, listConnections } from "../src/server/customer-payments/connections";
+import { completeSimulatedCheckout } from "../src/server/customer-payments/dev-checkout";
+import { newPublicKey } from "../src/server/customer-payments/ids";
+import type { LineFormInput } from "../src/lib/invoices/lines";
+
+export interface InvoiceWorldPeople {
+  /** The business owner: sets the settings and the payment connection up, records payments and refunds. */
+  owner: OrgContext;
+  /** The owner as the CRM sees them: creates the customers and deals. */
+  ownerActor: CrmActor;
+  /** A salesperson: writes drafts, which wait for an approver. */
+  sales: OrgContext;
+}
+
+export interface InvoiceWorldRow {
+  /** Null while it is still a draft. */
+  number: string | null;
+  title: string;
+  /** What state the story leaves it in, in a few words. */
+  state: string;
+  invoiceId: string;
+  /** The team's screen for it. */
+  portalPath: string;
+  /** The customer's page, while the invoice is issued. */
+  customerPath: string | null;
+}
+
+const DAY = 86_400_000;
+const AUTHORIZATION = { accepted: true as const, version: CURRENT_AUTHORIZATION_VERSION };
+const TESTING_ORIGIN = "http://localhost:3280";
+
+const line = (description: string, unitPrice: string, over: Partial<LineFormInput> = {}): LineFormInput => ({ description, quantity: "1", unitPrice, ...over });
+
+export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date; revenueFiction?: boolean } = {}): Promise<InvoiceWorldRow[]> {
+  const now = opts.now ?? new Date();
+  const ago = (days: number) => new Date(now.getTime() - days * DAY);
+  const orgId = a.owner.org.orgId;
+  // A date is the workspace's own: between about 18:00 and midnight in Chicago the UTC date is already tomorrow, and a payment dated by the UTC date would be "in the future".
+  const tz = (await withSystem((db) => db.query<{ timezone: string }>("select timezone from organizations where id = $1", [orgId]))).rows[0]?.timezone ?? "UTC";
+  const day = (offset: number) => todayIn(new Date(now.getTime() + offset * DAY), tz);
+  const rows: InvoiceWorldRow[] = [];
+
+  const settings = await getInvoiceSettings(a.owner);
+  await saveInvoiceSettings(a.owner, {
+    legalName: "Harbor Home Services (QA)", addressLines: ["14 Quay Road", "Cebu City 6000", "Philippines"], taxLabel: "Sales tax", taxId: "QA-000-111-222 (made up)", replyToEmail: "billing@harbor.example.test",
+    paymentTermsDays: 14, defaultPaymentInstructions: "Bank transfer to QA Bank, account 000-111-222 (not a real account). Quote the invoice number.", footerNote: "Thank you for your business. This is a QA copy.",
+    closeRule: "task", countManualAsVerified: false,
+  }, settings.version);
+
+  // The testing payment connection: the simulated provider, which moves no money and reaches nothing.
+  const existing = await listConnections(a.owner);
+  if (!existing.find((c) => c.provider === "simulated")) await connectProvider(a.owner, { provider: "simulated", accountLabel: "Testing till (QA)", authorization: AUTHORIZATION });
+
+  const customer = async (first: string, last: string, source: string | null) => {
+    const id = (await createContact(a.ownerActor, { firstName: first, lastName: last, email: `${first}.${last}@customer.example.test`.toLowerCase(), phone: null })).id;
+    if (source) await withSystem((db) => recordTouch(db, { orgId, contactId: id, facts: { kind: "website_form", attribution: { utm_source: source } } }));
+    return id;
+  };
+  const mara = await customer("Mara", "Villanueva", "google");
+  const noel = await customer("Noel", "Tan", "facebook");
+  const ines = await customer("Ines", "Ocampo", "google");
+  const dario = await customer("Dario", "Lim", null);
+  const petra = await customer("Petra", "Soriano", "facebook");
+  const tomas = await customer("Tomas", "Reyes", "google");
+  const deal = (await createOpportunity(a.ownerActor, { name: "Kitchen repipe (QA)", contactId: ines, value: 4200 })).id;
+
+  const draft = (who: OrgContext, contactId: string, lines: LineFormInput[], over: Record<string, unknown> = {}) => createDraft(who, { contactId, currency: "PHP", lines, ...over });
+  const issue = async (id: string, version: number, at: Date = now) => (await issueInvoice(a.owner, id, { version }, { now: at })).detail;
+  const record = async (title: string, state: string, id: string, number: string | null, issued: boolean) => {
+    const customerPath = issued ? new URL((await getInvoiceLink(a.owner, id)).url).pathname : null;
+    rows.push({ number, title, state, invoiceId: id, portalPath: `/invoices/${id}`, customerPath });
+  };
+
+  // 1. A draft the owner is still writing.
+  const d1 = await draft(a.owner, mara, [line("Bathroom faucet replacement", "2500.00"), line("Parts: faucet and fittings", "1850.50", { quantity: "2" })]);
+  await record("Bathroom faucet replacement", "a draft", d1.invoice.id, null, false);
+
+  // 2. A salesperson's invoice, waiting for an approver.
+  const d2 = await draft(a.sales, noel, [line("Leak detection survey", "3200.00")]);
+  const submitted = await submitForApproval(a.sales, d2.invoice.id, d2.invoice.version);
+  await record("Leak detection survey", "waiting for approval", submitted.invoice.id, null, false);
+
+  // 3. Issued, not yet due. A real invoice is paid by hand or through a live account, and no live account exists here, so its page offers the payment instructions only.
+  const d3 = await draft(a.owner, mara, [line("Annual boiler service", "4800.00", { taxPercent: "12" })]);
+  const i3 = await issue(d3.invoice.id, d3.invoice.version);
+  await record("Annual boiler service", "issued, due soon, with tax", i3.invoice.id, i3.invoice.number, true);
+
+  // 4. Issued a month ago and overdue.
+  const d4 = await draft(a.owner, noel, [line("Water heater inspection", "1800.00"), line("Anode rod", "650.00")]);
+  const i4 = await issue(d4.invoice.id, d4.invoice.version, ago(30));
+  await record("Water heater inspection", "overdue", i4.invoice.id, i4.invoice.number, true);
+
+  // 5. Part paid by hand, with the evidence the person gave.
+  const d5 = await draft(a.owner, ines, [line("Kitchen repipe: labour", "9000.00"), line("Kitchen repipe: materials", "3000.00")], { opportunityId: deal, closesDeal: false });
+  const i5 = await issue(d5.invoice.id, d5.invoice.version, ago(5));
+  await recordManualPayment(a.owner, i5.invoice.id, { amount: "4000.00", receivedOn: day(-3), method: "bank_transfer", evidence: "Deposit, bank transfer ref QA-4410 (made up)" }, { now: ago(3) });
+  await record("Kitchen repipe", "part paid by hand, linked to a deal", i5.invoice.id, i5.invoice.number, true);
+
+  // 6. Paid in full by hand.
+  const d6 = await draft(a.owner, dario, [line("Drain clearing", "950.00")]);
+  const i6 = await issue(d6.invoice.id, d6.invoice.version, ago(12));
+  await recordManualPayment(a.owner, i6.invoice.id, { amount: "950.00", receivedOn: day(-9), method: "cash", evidence: "Cash, receipt book page 12 (made up)" }, { now: ago(9) });
+  await record("Drain clearing", "paid by hand", i6.invoice.id, i6.invoice.number, true);
+
+  // 7. Paid by hand in full, then partly refunded (recorded by the owner, who handed the money back outside this product).
+  const d7 = await draft(a.owner, petra, [line("Sump pump installation", "6400.00", { taxPercent: "12" })]);
+  const i7 = await issue(d7.invoice.id, d7.invoice.version, ago(6));
+  await recordManualPayment(a.owner, i7.invoice.id, { amount: "7168.00", receivedOn: day(-5), method: "bank_transfer", evidence: "Bank transfer ref QA-5530 (made up)" }, { now: ago(5) });
+  const paid7 = (await withSystem((db) => db.query<{ id: string }>("select id from customer_payments where invoice_id = $1", [i7.invoice.id]))).rows[0];
+  await recordRefund(a.owner, paid7.id, { amount: "500.00", reason: "Goodwill credit for a late arrival (QA)" });
+  await record("Sump pump installation", "paid by hand, partly refunded", i7.invoice.id, i7.invoice.number, true);
+
+  // 8. Voided.
+  const d8 = await draft(a.owner, tomas, [line("Gas line check", "2100.00")]);
+  const i8 = await issue(d8.invoice.id, d8.invoice.version, ago(20));
+  await voidInvoice(a.owner, i8.invoice.id, { reason: "Raised for the wrong address (QA)" });
+  await record("Gas line check", "void", i8.invoice.id, i8.invoice.number, false);
+
+  // 9. A US dollar invoice with tax included in the price.
+  const d9 = await createDraft(a.owner, { contactId: tomas, currency: "USD", taxInclusive: true, lines: [line("Remote monitoring set-up", "560.00", { taxPercent: "12" })] });
+  const i9 = await issue(d9.invoice.id, d9.invoice.version, ago(2));
+  await record("Remote monitoring set-up", "issued in US dollars, tax included", i9.invoice.id, i9.invoice.number, true);
+
+  // 10. Written off.
+  const d10 = await draft(a.owner, dario, [line("Seasonal tune-up", "1200.00")]);
+  const i10 = await issue(d10.invoice.id, d10.invoice.version, ago(90));
+  await writeOffInvoice(a.owner, i10.invoice.id, { reason: "The customer closed their business (QA)" });
+  await record("Seasonal tune-up", "written off", i10.invoice.id, i10.invoice.number, true);
+
+  // 11 to 14 (a fictional live account). A real invoice that a provider took money on needs a live payment, and no live account exists here: these are inserted through the application's
+  // own payment function against a placeholder connection (see the top of this file). Left out with `revenueFiction: false`.
+  if (opts.revenueFiction !== false) {
+    const placeholder = (await withSystem((db) => db.query<{ id: string }>(
+      `insert into customer_payment_connections (org_id, provider, mode, public_key, account_label, credentials, supported_currencies, status)
+       values ($1, 'paymongo', 'live', $2, 'QA placeholder: no real account', null, '{PHP}', 'disabled') returning id`, [orgId, newPublicKey()],
+    ))).rows[0];
+    const liveFiction = (invoiceId: string, amountMinor: number, providerPaymentId: string, receivedAt: Date, status?: "needs_review") =>
+      withSystem((db) => applyPaymentInTx(db, {
+        orgId, invoiceId, amountMinor, currency: "PHP", provider: "paymongo", verification: "provider_confirmed", connectionId: placeholder.id, providerPaymentId,
+        livemode: true, method: "card", receivedAt, ...(status ? { status } : {}), actor: { id: null, kind: "provider" },
+      }));
+
+    // 11. Paid by a fictional live payment, then disputed by the customer's bank.
+    const d11 = await draft(a.owner, noel, [line("Pressure valve replacement", "3300.00")]);
+    const i11 = await issue(d11.invoice.id, d11.invoice.version, ago(8));
+    const paid11 = await liveFiction(i11.invoice.id, 330_000, "qa-fiction-live-2", ago(7));
+    await withSystem((db) => applyDisputeInTx(db, { orgId, paymentId: paid11.paymentId, open: true, actor: { id: null, kind: "provider" } }));
+    await record("Pressure valve replacement", "paid by a FICTIONAL live payment, then disputed", i11.invoice.id, i11.invoice.number, true);
+
+    // 12. A payment the provider reported that does not match, kept for a person to look at: counted for nothing.
+    const d12 = await draft(a.owner, petra, [line("Radiator bleed", "800.00")]);
+    const i12 = await issue(d12.invoice.id, d12.invoice.version, ago(4));
+    await liveFiction(i12.invoice.id, 70_000, "qa-review-1", ago(1), "needs_review");
+    await record("Radiator bleed", "a payment kept for review", i12.invoice.id, i12.invoice.number, true);
+
+    // 13 and 14. The Lead Sources report: a fictional live payment and a hand-recorded one, with a cost, so verified revenue and a return can be looked at.
+    const d13 = await draft(a.owner, mara, [line("Whole-house water filter", "7000.00", { taxPercent: "12" })]);
+    const i13 = await issue(d13.invoice.id, d13.invoice.version, ago(3));
+    await liveFiction(i13.invoice.id, 784_000, "qa-fiction-live-1", ago(2));
+    await record("Whole-house water filter", "paid by a FICTIONAL live payment (counts as verified revenue in the QA report)", i13.invoice.id, i13.invoice.number, true);
+    const d14 = await draft(a.owner, tomas, [line("Sprinkler repair", "1500.00")]);
+    const i14 = await issue(d14.invoice.id, d14.invoice.version, ago(3));
+    await recordManualPayment(a.owner, i14.invoice.id, { amount: "1500.00", receivedOn: day(-2), method: "e_wallet", evidence: "E-wallet screenshot QA-2210 (made up)" }, { now: ago(2) });
+    await record("Sprinkler repair", "paid by hand (shown apart in the report)", i14.invoice.id, i14.invoice.number, true);
+    await addCost(a.ownerActor, { source: "google", periodStart: day(-1), periodEnd: day(-1), amount: 1500, currency: "PHP", note: "Search ads (QA)" });
+  }
+
+  // 15 and 16. TEST invoices, made on purpose to try the payment account in test mode: nothing is owed on them and no money moves. They have their own numbers (TEST-0001, TEST-0002) and
+  // the testing checkout takes them only. One is paid there already; the other is open for a customer to pay there from the link.
+  const d15 = await draft(a.owner, tomas, [line("Testing the payment account: paid", "1000.00")], { isTest: true });
+  const i15 = await issue(d15.invoice.id, d15.invoice.version, ago(2));
+  const started15 = await startCheckout({ orgId, invoiceId: i15.invoice.id, audience: "member", actorUserId: a.owner.user.id, onlyMode: "test" });
+  await completeSimulatedCheckout(started15.attemptId, "pay", { origin: TESTING_ORIGIN });
+  await record("Testing the payment account: paid", "a TEST invoice, paid at the testing checkout", i15.invoice.id, i15.invoice.number, true);
+  const d16 = await draft(a.owner, dario, [line("Testing the payment account: open", "1000.00")], { isTest: true });
+  const i16 = await issue(d16.invoice.id, d16.invoice.version, ago(1));
+  await record("Testing the payment account: open", "a TEST invoice a customer can open and pay at the testing checkout", i16.invoice.id, i16.invoice.number, true);
+  return rows;
+}
+
+/**
+ * Makes some of the world's issued invoices sendable to their customers from the invoice page, for browser QA of "Send it to the customer". It contacts NO ONE (see
+ * scripts/qa-delivery-channel.ts: the workspace's email goes through a native Resend channel with a made-up credential, and the QA environment keeps RESEND_WRITES_ENABLED off, so a
+ * confirmed message is queued and then blocked by the dispatcher instead of leaving). The workspace is given credits and a published email rate, and these customers have the service
+ * consent for email that a business would have recorded:
+ *
+ *   - Annual boiler service (Mara Villanueva), Water heater inspection (Noel Tan, overdue) and Kitchen repipe (Ines Ocampo, part paid): consent on record, so the preview is ready and a
+ *     confirmed message is queued;
+ *   - Remote monitoring set-up (Tomas Reyes): no consent on record, so the preview says the send chain would refuse it;
+ *   - the two TEST invoices, the paid and written-off ones, the void one and the drafts: never offered. A test invoice is never sent, and the page says so.
+ *
+ * It replaces the workspace's email channel with the native one (one email channel per workspace), so it is separate from seedInvoiceWorld and runs only when asked for.
+ */
+export async function seedInvoiceDeliveryWorld(a: Pick<InvoiceWorldPeople, "owner" | "ownerActor">): Promise<{ ready: string[]; refused: string[] }> {
+  const orgId = a.owner.org.orgId;
+  await connectQaEmail(orgId, a.owner.user.id);
+  const contactOf = async (email: string) => (await withSystem((db) => db.query<{ id: string }>("select id from contacts where org_id = $1 and email = $2 and deleted_at is null", [orgId, email]))).rows[0]?.id;
+  for (const email of ["mara.villanueva@customer.example.test", "noel.tan@customer.example.test", "ines.ocampo@customer.example.test"]) {
+    const id = await contactOf(email);
+    if (!id) throw new Error(`The QA customer ${email} does not exist: seed the invoices world first.`);
+    await setContactConsent(a.ownerActor, id, { channel: "email", purpose: "service", status: "granted", evidence: "Agreed to messages about their work on the intake form (QA data)" });
+  }
+  return { ready: ["Annual boiler service", "Water heater inspection", "Kitchen repipe"], refused: ["Remote monitoring set-up"] };
+}
+
+/**
+ * Sends two of the delivery world's invoices for real, through sendInvoiceDelivery (the page's own service) and the dispatcher, with a CONTROLLED in-process provider in place of Resend so
+ * that the invoice page can show the two ends of a send that no QA server can produce (it has no credential vault and its write switches are off): Mara Villanueva's message is taken by
+ * the provider ("accepted"), Noel Tan's is refused by it ("failed"). Nothing leaves the process and no address is contacted. Kitchen repipe (Ines Ocampo) is left unsent so the browser can
+ * confirm a send of its own, which the QA server then queues and its dispatcher blocks ("not switched on"). Run after seedInvoiceDeliveryWorld.
+ */
+export async function seedInvoiceSentWorld(a: Pick<InvoiceWorldPeople, "owner">): Promise<{ accepted: string; refused: string }> {
+  const orgId = a.owner.org.orgId;
+  const invoiceOf = async (email: string, title: string) => (await withSystem((db) => db.query<{ id: string }>(
+    `select i.id from customer_invoices i join contacts c on c.id = i.contact_id join customer_invoice_lines l on l.invoice_id = i.id
+     where i.org_id = $1 and c.email = $2 and l.description = $3 and i.status = 'issued' and not i.is_test limit 1`, [orgId, email, title],
+  ))).rows[0]?.id;
+  const accept: ChannelTransport = { name: "resend", channels: ["email"], requiresContactRef: false, async send() { return { ok: true, providerMessageId: `qa_accepted_${Date.now()}`, providerThreadRef: null, quantity: 1 }; } };
+  const refuse: ChannelTransport = { name: "resend", channels: ["email"], requiresContactRef: false, async send() { return { ok: false, retryable: false, error: "The email provider refused this message (QA stand-in)." }; } };
+  const one = async (email: string, title: string, transport: ChannelTransport): Promise<string> => {
+    const id = await invoiceOf(email, title);
+    if (!id) throw new Error(`No issued invoice "${title}" for ${email}: seed the invoices world first.`);
+    const pre = await previewInvoiceDelivery(a.owner, id, "email");
+    if (!pre.available) throw new Error(`Not offered: ${pre.text}`);
+    const sent = await sendInvoiceDelivery(a.owner, id, { channel: "email", linkVersion: pre.linkVersion, wordingHash: pre.wordingHash });
+    if (sent.status !== "queued") throw new Error(`Not queued: ${JSON.stringify(sent)}`);
+    const delivery = await withSystem((db) => invoiceDeliveriesFor(db, orgId, id));
+    const messageId = (await withSystem((db) => db.query<{ message_id: string }>("select message_id from customer_invoice_deliveries where id = $1", [delivery[0].id]))).rows[0].message_id;
+    await dispatchMessage(messageId, { transport });
+    return id;
+  };
+  return { accepted: await one("mara.villanueva@customer.example.test", "Annual boiler service", accept), refused: await one("noel.tan@customer.example.test", "Water heater inspection", refuse) };
+}

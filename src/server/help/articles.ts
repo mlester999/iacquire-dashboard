@@ -1,4 +1,5 @@
 import "server-only";
+import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 
 export interface HelpArticle {
   id: string;
@@ -26,9 +27,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     id: "agent-status",
-    title: "What does 'Setup required' or 'Offline' mean?",
+    title: `What does '${SETUP_REQUIRED_LABEL}' or 'Offline' mean?`,
     keywords: ["status", "setup required", "offline", "online", "busy", "unavailable", "not working", "disabled", "being set up", "provisioning", "ready", "connected"],
-    body: "Online means the employee passed a live connection check and can chat. Setup required means iAcquire is still preparing its dedicated, private AI environment — you'll get a notification when it's ready. Offline means the last connection check failed; try again shortly or contact us if it persists. We never show an employee as online unless the check really succeeded.",
+    body: `Online means the employee passed a live connection check and can chat. ${SETUP_REQUIRED_LABEL} means either that your setup payment has not been confirmed yet (your AI team starts after it is) or that iAcquire is still preparing the employee's dedicated, private AI environment (its Hermes profile is not connected yet). The employee's card says which. You'll get a notification when it's ready. Offline means the last connection check failed; try again shortly or contact us if it persists. We never show an employee as online unless the check really succeeded.`,
     links: [{ label: "AI Employees", href: "/employees" }, { label: "Contact support", href: "/support" }],
   },
   {

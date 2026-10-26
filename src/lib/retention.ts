@@ -1,5 +1,6 @@
 // Retention programs: the default programs a workspace can switch on, and the rules for the wording of their messages.
 // Pure functions and constants only. Nothing here reads the database; the server code in src/server/retention does.
+import { reviewIncentiveFindings } from "@/lib/reputation/incentives";
 
 export const PROGRAM_KINDS = ["welcome", "onboarding_checkin", "service_followup", "feedback_request", "reengagement"] as const;
 export type ProgramKind = (typeof PROGRAM_KINDS)[number];
@@ -102,14 +103,29 @@ export const isProgramKind = (v: unknown): v is ProgramKind => typeof v === "str
 const PLACEHOLDER = /\{([a-z_]+)\}/g;
 const ALLOWED_PLACEHOLDERS = new Set(["name", "business"]);
 
+/**
+ * The place in a message where the customer's own private feedback link goes. The link opens their page: the business's public review links, and a way to say privately how
+ * it went. It is created when the message is prepared, and only the words around it are what the owner approves.
+ */
+export const FEEDBACK_LINK = "{feedback_link}";
+/** The programs whose messages may carry it: asking for feedback, and following up after an attended appointment. Both are service messages. */
+export const FEEDBACK_LINK_PROGRAMS: readonly ProgramKind[] = ["feedback_request", "service_followup"];
+export const hasFeedbackLink = (body: string) => body.includes(FEEDBACK_LINK);
+export const programMayCarryLink = (kind: ProgramKind | undefined, purpose: ProgramPurpose) => kind !== undefined && FEEDBACK_LINK_PROGRAMS.includes(kind) && purpose === "service";
+
 export interface StepIssue {
   step: number;
   message: string;
 }
 
-/** Checks the wording a person typed. Marketing messages must tell the customer how to stop them; every message must be short and plain. */
-export function validateSteps(steps: ProgramStep[], purpose: ProgramPurpose): StepIssue[] {
+/**
+ * Checks the wording a person typed. Marketing messages must tell the customer how to stop them; every message must be short and plain. {feedback_link} is allowed only in the
+ * programs that ask for feedback or follow up after a visit (pass the program's `kind`), only once, and a message that carries it may not offer anything in return for feedback
+ * or a review, or ask for a particular rating (rule R4).
+ */
+export function validateSteps(steps: ProgramStep[], purpose: ProgramPurpose, kind?: ProgramKind): StepIssue[] {
   const issues: StepIssue[] = [];
+  const linkAllowed = programMayCarryLink(kind, purpose);
   if (steps.length < 1 || steps.length > MAX_STEPS) issues.push({ step: -1, message: `A program has between 1 and ${MAX_STEPS} messages.` });
   const keys = new Set<string>();
   let last = -1;
@@ -123,19 +139,38 @@ export function validateSteps(steps: ProgramStep[], purpose: ProgramPurpose): St
     const body = s.body.trim();
     if (!body) issues.push({ step: i, message: "Write the message." });
     if (body.length > MAX_BODY) issues.push({ step: i, message: `Keep it under ${MAX_BODY} characters.` });
-    for (const m of body.matchAll(PLACEHOLDER)) if (!ALLOWED_PLACEHOLDERS.has(m[1])) issues.push({ step: i, message: `{${m[1]}} isn't something we can fill in. Use {name} or {business}.` });
+    for (const m of body.matchAll(PLACEHOLDER)) {
+      if (m[0] === FEEDBACK_LINK) {
+        if (!linkAllowed) issues.push({ step: i, message: `${FEEDBACK_LINK} can only be used in the "Ask for feedback" and "Follow up after an appointment" programs. Remove it, or use {name} or {business}.` });
+      } else if (!ALLOWED_PLACEHOLDERS.has(m[1])) {
+        issues.push({ step: i, message: `{${m[1]}} isn't something we can fill in. Use {name} or {business}${linkAllowed ? `, or ${FEEDBACK_LINK} for the customer's own feedback link` : ""}.` });
+      }
+    }
+    if (body.split(FEEDBACK_LINK).length > 2) issues.push({ step: i, message: `Use ${FEEDBACK_LINK} once in a message.` });
+    if (hasFeedbackLink(body)) {
+      const wording = reviewIncentiveFindings(body)[0];
+      if (wording) issues.push({ step: i, message: wording.message });
+    }
     if (purpose === "marketing" && !/\bstop\b/i.test(body)) issues.push({ step: i, message: "A promotional message must tell the customer how to opt out, for example \"Reply STOP to opt out.\"" });
   });
   return issues;
 }
 
-/** Fills in the two placeholders. A missing first name becomes "there", so a message never reads "Hi ,". */
+/** Fills in the two placeholders. A missing first name becomes "there", so a message never reads "Hi ,". Braces in a name are dropped: a name can't write a placeholder. */
 export function renderStep(body: string, v: { name: string; business: string }): string {
-  const first = v.name.trim().split(/\s+/)[0];
+  const first = v.name.trim().split(/\s+/)[0].replace(/[{}]/g, "");
   return body
     .replace(/\{name\}/g, first || "there")
-    .replace(/\{business\}/g, v.business.trim() || "our team")
+    .replace(/\{business\}/g, v.business.trim().replace(/[{}]/g, "") || "our team")
     .slice(0, 900);
+}
+
+/**
+ * A step that carries {feedback_link}, ready to queue: the placeholder becomes {{review.link}} (the message keeps it; the dispatcher fills in the customer's own link for the
+ * provider call only, so nobody who reads the conversation can answer as the customer), and the name and business are filled in around it.
+ */
+export function renderLinkedStep(body: string, v: { name: string; business: string }, linkToken: string): string {
+  return body.split(FEEDBACK_LINK).map((part) => renderStep(part, v)).join(linkToken);
 }
 
 export const stepDueAt = (base: Date, delayDays: number) => new Date(base.getTime() + delayDays * 86_400_000);
@@ -166,7 +201,18 @@ const REASONS: Record<string, string> = {
   customer_opted_out: "They opted out",
   human_took_over: "A person took over",
   contact_excluded: "You excluded this customer",
+  // Low private feedback stops the automatic program messages that had not gone out yet, so an unhappy customer is not sent a cheerful check-in the next day.
+  // It never changes which public review links they see.
+  negative_feedback: "They shared low private feedback, so a person follows up instead",
+  // A message with a private feedback link has two more rules than a plain one: the customer must have agreed to service messages on the channel it goes by, and they are
+  // not asked again within the cool-down that every review request and survey shares.
+  surveys_not_enabled: "Satisfaction surveys aren't switched on for this workspace",
+  link_needs_consent: "A private link is only sent to someone who agreed to service messages on that channel",
+  recently_requested: "They were already asked for feedback or a review in the last 30 days",
+  incentive_wording: "The wording offers something for feedback or a review, which isn't allowed",
+  link_not_allowed: "This program can't carry a private feedback link",
   contact_removed: "The contact was removed",
+  contact_merged: "The contact was merged into another record",
   no_longer_customer: "They're no longer marked as a customer",
   appointment_changed: "The appointment changed",
   step_removed: "That message was removed from the program",

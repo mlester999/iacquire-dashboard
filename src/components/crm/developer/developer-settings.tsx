@@ -52,35 +52,35 @@ export function DeveloperSettings({ scope, keys, subscriptions, scopes, events, 
           <div className="min-w-0 flex-1 space-y-3">
             <div>
               <h2 className="text-[15px] font-semibold text-ink">For developers</h2>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted">
+              <p className="mt-1 text-[14px] leading-relaxed text-muted">
                 Send the key as a bearer token. Responses are JSON; lists are paged with <span className="font-mono text-[12px]">limit</span> and <span className="font-mono text-[12px]">cursor</span>; creates accept an <span className="font-mono text-[12px]">Idempotency-Key</span> header. Each key may make {limits.requestsPerMinute} requests a minute. API version {apiVersion}.
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="min-w-0">
-                <p className="mb-1.5 text-[12.5px] font-medium text-ink-2">Base URL</p>
+                <p className="mb-1.5 text-[13px] font-medium text-ink-2">Base URL</p>
                 <CopyField id="dev-base" value={apiBase} label="Base URL" />
               </div>
               <div className="min-w-0">
-                <p className="mb-1.5 text-[12.5px] font-medium text-ink-2">Header</p>
+                <p className="mb-1.5 text-[13px] font-medium text-ink-2">Header</p>
                 <CopyField id="dev-auth" value="Authorization: Bearer iaq_…" label="Authorization header" />
               </div>
             </div>
-            <p className="text-[12.5px] leading-relaxed text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Endpoints: <span className="font-mono text-[12px]">GET /me</span>, <span className="font-mono text-[12px]">GET|POST /contacts</span>, <span className="font-mono text-[12px]">GET|PATCH /contacts/:id</span>,{" "}
               <span className="font-mono text-[12px]">POST /contacts/:id/tags</span>, <span className="font-mono text-[12px]">GET|POST /opportunities</span>, <span className="font-mono text-[12px]">GET /opportunities/:id</span>,{" "}
               <span className="font-mono text-[12px]">POST /opportunities/:id/stage</span>, <span className="font-mono text-[12px]">GET /pipelines</span>, <span className="font-mono text-[12px]">GET /appointments</span>, <span className="font-mono text-[12px]">GET /tags</span>.
             </p>
             <details className="group rounded-xl border border-line">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-[13px] font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-10">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-[14px] font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-10">
                 <ShieldCheck className="size-4 text-muted" aria-hidden />Verifying webhook signatures
               </summary>
               <div className="space-y-2 border-t border-line p-3">
-                <p className="text-[12.5px] leading-relaxed text-muted">
+                <p className="text-[13px] leading-relaxed text-muted">
                   Every delivery is a POST with an <span className="font-mono">iAcquire-Signature: t=…,v1=…</span> header: an HMAC-SHA256 of <span className="font-mono">{"<t>.<raw body>"}</span> keyed with the webhook&apos;s signing secret. Check it, refuse old timestamps, answer 2xx within 10 seconds, and ignore an <span className="font-mono">iAcquire-Event-Id</span> you have already processed.
                 </p>
                 <div className="relative">
-                  <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-surface-2 p-3 pr-12 text-[11.5px] leading-relaxed text-ink"><code>{VERIFY_SNIPPET}</code></pre>
+                  <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-surface-2 p-3 pr-12 text-[12px] leading-relaxed text-ink"><code>{VERIFY_SNIPPET}</code></pre>
                   <div className="absolute right-2 top-2"><CopyButton value={VERIFY_SNIPPET} label="Copy the verification code" size="icon-sm" variant="ghost" /></div>
                 </div>
               </div>

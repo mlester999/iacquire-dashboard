@@ -81,7 +81,7 @@ export function TestRunDialog({ scope, workflowId, needsContact, carriesContact,
         )}
         {carriesContact ? (
           <div className="space-y-1.5">
-            <p className="text-[13px] font-medium text-ink-2">Contact{needsContact ? "" : " (optional)"}</p>
+            <p className="text-[14px] font-medium text-ink-2">Contact{needsContact ? "" : " (optional)"}</p>
             {canSearch ? (
               <RecordPicker<ContactHit>
                 id="wf-test-contact"
@@ -94,14 +94,14 @@ export function TestRunDialog({ scope, workflowId, needsContact, carriesContact,
                 onClear={() => { setContact(null); setResult(null); }}
               />
             ) : (
-              <p className="text-[12.5px] text-muted">Choosing a contact needs permission to see contacts.</p>
+              <p className="text-[13px] text-muted">Choosing a contact needs permission to see contacts.</p>
             )}
           </div>
         ) : (
-          <p className="flex items-center gap-1.5 text-[12.5px] text-muted"><Info className="size-3.5" aria-hidden />This trigger has no contact, so the test runs without one.</p>
+          <p className="flex items-center gap-1.5 text-[13px] text-muted"><Info className="size-3.5" aria-hidden />This trigger has no contact, so the test runs without one.</p>
         )}
-        {source === "draft" && dirty && <p className="flex items-center gap-1.5 text-[12.5px] text-muted"><Info className="size-3.5" aria-hidden />You have unsaved changes; they&apos;re saved before the test runs.</p>}
-        {source === "published" && <p className="text-[12.5px] text-muted">A test of the published version is kept in the run history, marked as a test.</p>}
+        {source === "draft" && dirty && <p className="flex items-center gap-1.5 text-[13px] text-muted"><Info className="size-3.5" aria-hidden />You have unsaved changes; they&apos;re saved before the test runs.</p>}
+        {source === "published" && <p className="text-[13px] text-muted">A test of the published version is kept in the run history, marked as a test.</p>}
 
         {result && (
           <section aria-labelledby="wf-test-result" aria-live="polite" className="space-y-2">
@@ -110,14 +110,14 @@ export function TestRunDialog({ scope, workflowId, needsContact, carriesContact,
                 {errors.length ? "The draft can't be tested yet" : `What would happen${result.contactName ? ` for ${result.contactName}` : ""}`}
               </h3>
               {result.runId && (
-                <Link href={`${scope.base}/workflows/${workflowId}/runs/${result.runId}`} className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-medium text-primary hover:underline sm:min-h-8">
+                <Link href={`${scope.base}/workflows/${workflowId}/runs/${result.runId}`} className="inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary hover:underline sm:min-h-8">
                   Open the test run<ExternalLink className="size-3" aria-hidden />
                 </Link>
               )}
             </div>
             {errors.length > 0 && (
               <ul className="space-y-1.5">
-                {errors.map((i, n) => <li key={n} className="flex gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{i.message}</li>)}
+                {errors.map((i, n) => <li key={n} className="flex gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{i.message}</li>)}
               </ul>
             )}
             {!errors.length && (
@@ -126,15 +126,15 @@ export function TestRunDialog({ scope, workflowId, needsContact, carriesContact,
                   <li key={`${s.stepKey}-${i}`} className="flex items-start gap-3 rounded-2xl border border-line p-3">
                     <span className={cn("inline-flex size-8 shrink-0 items-center justify-center rounded-xl", stepTone(s.kind))}><StepIcon kind={s.kind} /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium text-ink">
+                      <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-ink">
                         <span className="text-faint tabular-nums">{i + 1}.</span>{s.label}
                         <Badge tone={s.tone}>{s.outcomeLabel}</Badge>
                       </p>
-                      {s.detail && <p className="mt-0.5 break-words text-[12.5px] text-ink-2">{s.detail}</p>}
+                      {s.detail && <p className="mt-0.5 break-words text-[13px] text-ink-2">{s.detail}</p>}
                     </div>
                   </li>
                 ))}
-                {!result.steps.length && <li className="rounded-2xl border border-dashed border-line px-3 py-4 text-center text-[12.5px] text-muted">No step would run.</li>}
+                {!result.steps.length && <li className="rounded-2xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">No step would run.</li>}
               </ol>
             )}
           </section>

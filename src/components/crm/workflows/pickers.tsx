@@ -30,7 +30,7 @@ export function MultiPick({ id, label, options, value, onChange, empty, max }: {
     else next.delete(oid);
     onChange([...options.map((o) => o.id).filter((x) => next.has(x)), ...missing.filter((x) => next.has(x))]);
   };
-  if (!options.length) return <p className="rounded-xl border border-dashed border-line px-3 py-2.5 text-[12.5px] text-muted">{empty}</p>;
+  if (!options.length) return <p className="rounded-xl border border-dashed border-line px-3 py-2.5 text-[13px] text-muted">{empty}</p>;
   return (
     <fieldset className="space-y-2">
       <legend className="sr-only">{label}</legend>
@@ -45,15 +45,15 @@ export function MultiPick({ id, label, options, value, onChange, empty, max }: {
           const on = chosen.has(o.id);
           const atMax = !!max && !on && chosen.size >= max;
           return (
-            <label key={o.id} htmlFor={`${id}-${o.id}`} className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] hover:bg-surface-2 sm:min-h-9", atMax && "cursor-not-allowed opacity-50")}>
+            <label key={o.id} htmlFor={`${id}-${o.id}`} className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[14px] hover:bg-surface-2 sm:min-h-9", atMax && "cursor-not-allowed opacity-50")}>
               <input id={`${id}-${o.id}`} type="checkbox" className="size-4 accent-[var(--primary)]" checked={on} disabled={atMax} onChange={(e) => toggle(o.id, e.target.checked)} />
               {o.color && <i className="size-2.5 shrink-0 rounded-full" style={{ background: o.color }} aria-hidden />}
               <span className="min-w-0 flex-1 truncate text-ink-2">{o.label}</span>
-              {o.hint && <span className="shrink-0 text-[11.5px] text-faint">{o.hint}</span>}
+              {o.hint && <span className="shrink-0 text-[12px] text-faint">{o.hint}</span>}
             </label>
           );
         })}
-        {!shown.length && <p className="px-2.5 py-2 text-[12.5px] text-muted">No matches.</p>}
+        {!shown.length && <p className="px-2.5 py-2 text-[13px] text-muted">No matches.</p>}
       </div>
       {missing.length > 0 && (
         <p className="text-[12px] text-danger-ink">
@@ -101,8 +101,8 @@ export function Toggle({ id, label, hint, checked, onChange, disabled }: { id: s
   return (
     <div className="flex items-start justify-between gap-3">
       <label htmlFor={id} className="min-w-0 cursor-pointer">
-        <span className="block text-[13px] font-medium text-ink-2">{label}</span>
-        {hint && <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{hint}</span>}
+        <span className="block text-[14px] font-medium text-ink-2">{label}</span>
+        {hint && <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{hint}</span>}
       </label>
       <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </div>
@@ -119,7 +119,7 @@ export function Choice<V extends string>({ name, label, value, onChange, options
           <label
             key={o.value}
             className={cn(
-              "inline-flex min-h-11 cursor-pointer items-center rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+              "inline-flex min-h-11 cursor-pointer items-center rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
               "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
               value === o.value ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
               (disabled || o.disabled) && "cursor-not-allowed opacity-50",
@@ -186,7 +186,7 @@ export function WeekdayPick({ label, value, onChange, disabled }: { label: strin
             aria-pressed={on}
             disabled={disabled}
             onClick={() => onChange(on ? value.filter((x) => x !== i) : [...value, i].sort((a, b) => a - b))}
-            className={cn("inline-flex size-11 items-center justify-center rounded-xl border text-[12.5px] font-medium sm:size-9", on ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
+            className={cn("inline-flex size-11 items-center justify-center rounded-xl border text-[13px] font-medium sm:size-9", on ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
           >
             {d}
           </button>
@@ -207,7 +207,7 @@ export function TokenInsert({ id, onInsert, groups = ["contact", "business", "us
       onChange={(e) => {
         if (e.target.value) onInsert(tokenText(e.target.value as AnyTokenKey));
       }}
-      className="h-9 w-auto min-w-44 text-[12.5px] sm:h-8"
+      className="h-9 w-auto min-w-44 text-[13px] sm:h-8"
     >
       <option value="">Insert placeholder…</option>
       {groups.map((g) => (

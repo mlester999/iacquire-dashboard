@@ -5,7 +5,7 @@ import { resealSecret, sealedWithCurrentKey } from "@/server/security/crypto";
 /**
  * Every column that holds a value sealed by `encryptSecret` (AES-256-GCM under APP_ENCRYPTION_KEY), and the one routine that moves them to a new key.
  *
- * Why it exists: rotating APP_ENCRYPTION_KEY used to make every calendar token, webhook secret and Automation Studio connection secret
+ * Why it exists: rotating APP_ENCRYPTION_KEY used to make every calendar token, webhook secret, signing key, payment key, review-site token and Automation Studio connection secret
  * unreadable at once. Now `decryptSecret` also tries the retired keys in APP_ENCRYPTION_KEY_PREVIOUS, so nothing breaks while the rotation happens, and this routine re-seals each
  * value with the new key so the retired one can finally be dropped:
  *
@@ -29,12 +29,19 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
   { table: "crm_calendar_connections", column: "credentials", holds: "calendar OAuth tokens, CalDAV passwords and ICS links" },
   { table: "crm_webhook_subscriptions", column: "secret_ciphertext", holds: "outbound CRM webhook signing secrets" },
   { table: "automation_connections", column: "secret_ciphertext", holds: "Automation Studio connection secrets (Slack, HTTP)" },
+  { table: "social_accounts", column: "credentials", holds: "social page access tokens" },
+  { table: "esign_connections", column: "credentials", holds: "e-signature provider keys" },
+  { table: "customer_payment_connections", column: "credentials", holds: "a client's own payment provider keys" },
+  { table: "review_connections", column: "credentials", holds: "review-site refresh tokens" },
   { table: "integration_credentials", column: "ciphertext", holds: "legacy app-sealed credentials (a vault reference is not sealed and is skipped)" },
 ];
 
 /** Columns that look sealed but are not re-sealed, each with the reason. They are short-lived OAuth state rows that expire within minutes. */
 export const NOT_RESEALED: Readonly<Record<string, string>> = {
   "crm_calendar_oauth_states.code_verifier": "an OAuth sign-in in progress; it expires within minutes and still opens through the retired key meanwhile",
+  "social_oauth_states.pending": "a social sign-in in progress; it expires within minutes",
+  "review_oauth_states.code_verifier": "a review-site sign-in in progress; it expires within minutes",
+  "review_oauth_states.pending": "a review-site sign-in in progress; it expires within minutes",
 };
 
 export interface ResealReport {

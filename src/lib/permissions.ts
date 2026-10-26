@@ -101,6 +101,39 @@ export const PERMISSION_MATRIX = {
   "website.publish": row("owner", "agency_manager", "agency_super_admin"),
   "website.archive": row("owner", "agency_super_admin"),
   // Designing and maintaining the agency template library, publishing a template to clients, and reviewing a client's site and leaving comments on it.
+  // Social media manager. Everyone on the team and the agency can see it; drafting (including AI drafts) is for people who write for the business; only the
+  // client's own owner and manager approve what goes out under their name; publishing an approved post is also open to the agency's managers; the account
+  // belongs to the client, so connecting it is theirs; the approval policy is the owner's.
+  "social.view": row(...CLIENT, ...STAFF),
+  "social.create": row("owner", "admin", "member", "sales_rep", ...STAFF),
+  "social.approve": row(...OWNER_ADMIN),
+  "social.publish": row(...OWNER_ADMIN, "agency_manager", "agency_super_admin"),
+  "social.connect": row(...OWNER_ADMIN),
+  "social.settings": row("owner"),
+  // Proposals. Everyone who works with customers can see them; drafting is for people who write for the business; a discount and an approval are the client's owner
+  // and manager; a sales rep can send what is approved; recording an answer that was given outside the product is the owner's and manager's. The price book, tax
+  // rates and templates are also set up by the agency as a service, but sending, approving and accepting stay with the client. None of these is delegable.
+  "proposals.view": row("owner", "admin", "member", "sales_rep", "viewer", ...STAFF),
+  "proposals.create": row("owner", "admin", "member", "sales_rep"),
+  "proposals.discount": row(...OWNER_ADMIN),
+  "proposals.approve": row(...OWNER_ADMIN),
+  "proposals.send": row("owner", "admin", "sales_rep"),
+  "proposals.record_decision": row(...OWNER_ADMIN),
+  "proposals.catalog": row(...OWNER_ADMIN, ...STAFF),
+  "proposals.settings": row("owner"),
+  "proposals.connect": row(...OWNER_ADMIN),
+  // Customer invoices and payments (what a client sends to and collects from its own customers; iAcquire's own billing is billing.* above). An invoice holds a customer's
+  // details and the client's finances, so agency staff have none of these: they are not delegable and are not part of an audited support session. The owner and manager
+  // work with invoices; a sales rep drafts and submits; a refund record, settings and the payment connection are the owner's alone.
+  "invoices.view": row("owner", "admin", "sales_rep"),
+  "invoices.create": row("owner", "admin", "sales_rep"),
+  "invoices.approve": row(...OWNER_ADMIN),
+  "invoices.send": row(...OWNER_ADMIN),
+  "invoices.record_payment": row(...OWNER_ADMIN),
+  "invoices.void": row(...OWNER_ADMIN),
+  "invoices.refund": row("owner"),
+  "invoices.settings": row("owner"),
+  "invoices.connect_payments": row("owner"),
   "website.templates.design": row(...STAFF),
   "website.templates.publish": row("agency_super_admin"),
   "website.review": row(...STAFF),
@@ -144,6 +177,11 @@ export const PERMISSION_MATRIX = {
   "campaigns.send": row("owner"),
   "forms.manage": row(...OWNER_ADMIN),
   "reviews.manage": row(...OWNER_ADMIN),
+  // Reputation. Everyone who can read contacts reads private feedback and public reviews; people who write to customers (and the agency's managers) draft replies; only the
+  // client's owner and manager approve and post a reply under the business's name. The agency never approves or posts.
+  "reviews.view": row(...CLIENT, "agency_staff", "agency_manager"),
+  "reviews.respond": row("owner", "admin", "member", "sales_rep", "support", "agency_manager", "agency_super_admin"),
+  "reviews.reply_publish": row(...OWNER_ADMIN),
   // Call records can include recordings and transcripts, so read-only viewers do not see them.
   "calls.view": row(...WORKING, "agency_staff", "agency_manager"),
   // Switching between iAcquire Native CRM and GoHighLevel moves the record of truth, so only the owner can start it.
@@ -178,8 +216,27 @@ export const PERMISSION_MATRIX = {
   "agency.support.priority": row("agency_manager", "agency_super_admin"),
   "agency.support.analytics": row("agency_manager", "agency_super_admin"),
   "agency.support.settings": row("agency_super_admin"),
+  // Internal staff Messages (migration 0096). Agency roles only: no client role is ever in these rows. Everyone on the agency team can message; creating channels and groups of any
+  // kind and managing a channel's members is for managers; moderating (archiving any channel, deleting a message in a channel) is the Super Admin's, and gives no right to read
+  // anyone's direct messages or private groups.
+  "agency.messages.use": row(...STAFF),
+  "agency.messages.channels": row("agency_manager", "agency_super_admin"),
+  "agency.messages.moderate": row("agency_super_admin"),
+  // Staff workload (migration 0097). Agency roles only: no client role is ever in these rows. Everyone on the agency team sees their own load, their own items and their own
+  // time off; managers and the Super Admin see everyone's labels, the board, the calendar and the escalations, give work to others (the module's own assign permission is also
+  // needed) and record capacity, working days, skills and time off for others. The rules (weights, thresholds) are the Super Admin's alone and are never delegable.
+  "agency.workload.view": row(...STAFF),
+  "agency.workload.team": row("agency_manager", "agency_super_admin"),
+  "agency.workload.assign": row("agency_manager", "agency_super_admin"),
+  "agency.workload.manage": row("agency_manager", "agency_super_admin"),
+  "agency.workload.settings": row("agency_super_admin"),
   "agency.security.manage": row("agency_super_admin"),
   "agency.billing.manage": row("agency_super_admin"),
+  // The demo funnel's prospects (migration 0100). People who asked for a demo are not users and belong to no workspace: seeing them (their details, timeline and transcripts, each
+  // transcript read audited) is for managers and Super Admins; the demo's settings, extending a window, blocking, assigning, notes, erasing and converting a prospect into a
+  // client are the Super Admin's. Neither is delegable per person.
+  "agency.prospects.view": row("agency_manager", "agency_super_admin"),
+  "agency.prospects.manage": row("agency_super_admin"),
   "agency.settings.manage": row("agency_super_admin"),
   "agency.audit.view": row("agency_super_admin"),
   "agency.workforce.full_capabilities.acknowledge": row("agency_super_admin"),
@@ -231,8 +288,18 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.support.priority": { label: "Change support request priority", group: "Client operations", delegable: true },
   "agency.support.analytics": { label: "View support analytics", group: "Client operations", delegable: true },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Agency security", delegable: false },
+  "agency.messages.use": { label: "Use the agency's internal Messages (direct messages, groups and channels)", group: "Agency Messages", delegable: true },
+  "agency.messages.channels": { label: "Create channels and groups of any kind and manage who is in a channel", group: "Agency Messages", delegable: true },
+  "agency.messages.moderate": { label: "Moderate channels: archive any channel and delete a message in a channel", group: "Agency Messages", delegable: false },
+  "agency.workload.view": { label: "See your own workload, your own work items and your own time off", group: "Agency workload", delegable: true },
+  "agency.workload.team": { label: "See everyone's workload labels, the workload board, calendar and escalations", group: "Agency workload", delegable: true },
+  "agency.workload.assign": { label: "Give work to team members from the workload board (the module's own assign permission is also needed)", group: "Agency workload", delegable: true },
+  "agency.workload.manage": { label: "Set other people's capacity, working days, skills and time off", group: "Agency workload", delegable: true },
+  "agency.workload.settings": { label: "Change the workload rules: point weights, label thresholds and the team default capacity", group: "Agency workload", delegable: false },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", delegable: false },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", delegable: false },
+  "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", delegable: false },
+  "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", delegable: false },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", delegable: false },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", delegable: false },
   "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", delegable: false },
@@ -254,6 +321,12 @@ export const AGENCY_DELEGABLE_PERMISSIONS = [
   "agency.support.assign",
   "agency.support.priority",
   "agency.support.analytics",
+  "agency.messages.use",
+  "agency.messages.channels",
+  "agency.workload.view",
+  "agency.workload.team",
+  "agency.workload.assign",
+  "agency.workload.manage",
 ] as const satisfies readonly AgencyPermission[];
 
 /** Client actions that Agency Managers and Staff can have individually customized. */
@@ -470,14 +543,45 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "crm.blueprints.design": { label: "Design CRM Blueprints", group: "Native CRM", note: "Agency role control." },
   "crm.blueprints.publish": { label: "Publish CRM Blueprints", group: "Native CRM", note: "Super Admin only." },
   "crm.blueprints.apply": { label: "Apply CRM Blueprints to clients", group: "Native CRM", note: "Super Admin only." },
+  "social.view": { label: "View the social media manager", group: "Social media", note: "Client scope and resource access still apply." },
+  "social.create": { label: "Draft social media posts", group: "Social media", note: "Client scope still applies. An AI draft always needs the client's approval." },
+  "social.approve": { label: "Approve social media posts", group: "Social media", note: "Reserved for the client's owner and manager." },
+  "social.publish": { label: "Schedule and publish approved social posts", group: "Social media", note: "Only an approved version publishes; client scope still applies." },
+  "social.connect": { label: "Connect client social accounts", group: "Social media", note: "The account belongs to the client: owner or manager." },
+  "social.settings": { label: "Change social media approval settings", group: "Social media", note: "Reserved for the client owner." },
+  "proposals.view": { label: "View client proposals", group: "Proposals", note: "Client scope still applies. Opening a client's proposal files (frozen copies, signed copies, certificates) needs an active support session. Whether the proposal records themselves also need one at the database level is a founder decision still open; no screen shows an agency person these records today." },
+  "proposals.create": { label: "Draft client proposals", group: "Proposals", note: "Client scope still applies. An AI draft always needs the client's approval." },
+  "proposals.discount": { label: "Give discounts and override catalog prices on proposals", group: "Proposals", note: "Reserved for the client's owner and manager." },
+  "proposals.approve": { label: "Approve proposals before they are sent", group: "Proposals", note: "Reserved for the client's owner and manager." },
+  "proposals.send": { label: "Send approved proposals", group: "Proposals", note: "Only an approved version is sent; sending stays with the client." },
+  "proposals.record_decision": { label: "Record a proposal decision made outside the product", group: "Proposals", note: "Reserved for the client's owner and manager; it is recorded as the person's word." },
+  "proposals.catalog": { label: "Manage the proposal price book, tax rates and templates", group: "Proposals", note: "Agency staff can set these up for a client as a service inside an audited support session." },
+  "proposals.settings": { label: "Change proposal approval settings", group: "Proposals", note: "Reserved for the client owner." },
+  "proposals.connect": { label: "Connect the client's signing service", group: "Proposals", note: "The signing account belongs to the client; the agency never connects one for them." },
+  "invoices.view": { label: "View customer invoices and payments", group: "Customer invoices", note: "An invoice holds a customer's details and the client's finances, so agency staff do not have it." },
+  "invoices.create": { label: "Draft customer invoices", group: "Customer invoices", note: "Client scope still applies. Issuing needs the owner's or manager's approval unless the owner allows otherwise." },
+  "invoices.approve": { label: "Approve and issue customer invoices", group: "Customer invoices", note: "Reserved for the client's owner and manager: an approval is of one exact version." },
+  "invoices.send": { label: "Send issued invoices to customers", group: "Customer invoices", note: "Reserved for the client's owner and manager." },
+  "invoices.record_payment": { label: "Record a payment received outside the product", group: "Customer invoices", note: "Reserved for the client's owner and manager; it is recorded as the person's word, with their evidence." },
+  "invoices.void": { label: "Void issued invoices", group: "Customer invoices", note: "Reserved for the client's owner and manager. An invoice with a payment cannot be voided." },
+  "invoices.refund": { label: "Record refunds and write off invoices", group: "Customer invoices", note: "Reserved for the client owner. Refunds are made in the payment provider's own dashboard and recorded here." },
+  "invoices.settings": { label: "Change invoice settings", group: "Customer invoices", note: "Reserved for the client owner." },
+  "invoices.connect_payments": { label: "Connect the business's payment account", group: "Customer invoices", note: "The account belongs to the client: owner only." },
+  "reviews.view": { label: "View private feedback and public reviews", group: "Reputation", note: "Client scope and resource access still apply." },
+  "reviews.respond": { label: "Draft replies to customer reviews", group: "Reputation", note: "Client scope still applies. A draft is never posted until the client's owner or manager approves it." },
+  "reviews.reply_publish": { label: "Approve and post replies to customer reviews", group: "Reputation", note: "Reserved for the client's owner and manager: a reply goes out under the business's name." },
   "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", note: "Super Admin only." },
   "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", note: "Agency role control." },
   "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", note: "Super Admin only." },
   "agency.integrations.health": { label: "View integration health", group: "Integrations", note: "Agency role control." },
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", note: "Super Admin only." },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Support", note: "Super Admin only." },
+  "agency.messages.moderate": { label: "Moderate channels in the agency's internal Messages", group: "Agency Messages", note: "Super Admin only. It does not allow reading anyone's direct messages or private groups." },
+  "agency.workload.settings": { label: "Change the workload rules: point weights, label thresholds and the team default capacity", group: "Agency workload", note: "Super Admin only. Every number is a proposal until the founder approves it." },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", note: "Super Admin only." },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", note: "Super Admin only." },
+  "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", note: "Agency Managers and Super Admins. Reading a prospect's conversation is recorded in the audit history." },
+  "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", note: "Super Admin only. Converting a prospect also needs the permission to create client workspaces." },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", note: "Super Admin only." },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", note: "Super Admin only." },
   "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", note: "Super Admin only." },

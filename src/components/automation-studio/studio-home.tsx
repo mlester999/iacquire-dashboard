@@ -90,11 +90,11 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
 
   return (
     <div className="space-y-10">
-      {planNotice && <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink" role="note">{planNotice}</p>}
+      {planNotice && <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink" role="note">{planNotice}</p>}
       <div className="mb-6 flex justify-end gap-1">
-        <a href="#studio-templates" className="sr-only rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-primary focus:not-sr-only focus-visible:outline-2 focus-visible:outline-primary">Skip to ready-made automations</a>
-        <Link href="/automation-studio/usage" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><Gauge className="size-3.5" aria-hidden />Usage and plan</Link>
-        <Link href="/automation-studio/connections" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><KeyRound className="size-3.5" aria-hidden />Connections</Link>
+        <a href="#studio-templates" className="sr-only rounded-lg px-2.5 py-1.5 text-[14px] font-medium text-primary focus:not-sr-only focus-visible:outline-2 focus-visible:outline-primary">Skip to ready-made automations</a>
+        <Link href="/automation-studio/usage" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[14px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><Gauge className="size-3.5" aria-hidden />Usage and plan</Link>
+        <Link href="/automation-studio/connections" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[14px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><KeyRound className="size-3.5" aria-hidden />Connections</Link>
       </div>
 
       <section aria-labelledby="studio-headline" className="relative overflow-hidden rounded-3xl border border-line bg-surface px-5 py-10 shadow-md sm:px-10 sm:py-14">
@@ -129,13 +129,13 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
                 </div>
               </div>
             </div>
-            {error && <p id="studio-prompt-error" role="alert" className="mt-2 flex items-start gap-1.5 text-[13px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>}
-            {!builderReady && <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="note">{builderReason ?? "The AI builder isn't available right now."} Start from scratch to build by hand with the same editor.</p>}
-            {!canBuild && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted" role="note">Building automations needs the “Build and change automations” permission. Ask the owner of your workspace.</p>}
+            {error && <p id="studio-prompt-error" role="alert" className="mt-2 flex items-start gap-1.5 text-[14px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>}
+            {!builderReady && <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink" role="note">{builderReason ?? "The AI builder isn't available right now."} Start from scratch to build by hand with the same editor.</p>}
+            {!canBuild && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-muted" role="note">Building automations needs the “Build and change automations” permission. Ask the owner of your workspace.</p>}
           </form>
 
           <div className="mt-5 flex flex-wrap justify-center gap-2" role="group" aria-label="Ideas to start from">
-            {chips.map((s) => <button key={s.id} type="button" onClick={() => use(s)} disabled={!canBuild || !builderReady} className="rounded-full border border-line bg-surface px-3.5 py-1.5 text-[13px] text-ink-2 shadow-sm transition-colors hover:border-primary hover:text-primary disabled:opacity-50">{s.title}</button>)}
+            {chips.map((s) => <button key={s.id} type="button" onClick={() => use(s)} disabled={!canBuild || !builderReady} className="rounded-full border border-line bg-surface px-3.5 py-1.5 text-[14px] text-ink-2 shadow-sm transition-colors hover:border-primary hover:text-primary disabled:opacity-50">{s.title}</button>)}
           </div>
         </div>
       </section>
@@ -152,7 +152,7 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
                     <Badge tone={STATUS[w.status].tone}>{w.status === "paused" && w.pausedForPlan ? "Paused: plan" : STATUS[w.status].label}</Badge>
                   </div>
                   <p className="mt-3 truncate text-[15px] font-semibold text-ink group-hover:text-primary" title={w.name}>{w.name}</p>
-                  <p className="mt-1 line-clamp-1 text-[12.5px] text-muted">{w.triggerLabel} · {w.stepCount} step{w.stepCount === 1 ? "" : "s"}</p>
+                  <p className="mt-1 line-clamp-1 text-[13px] text-muted">{w.triggerLabel} · {w.stepCount} step{w.stepCount === 1 ? "" : "s"}</p>
                   <p className="mt-2 text-[12px] text-faint">{w.unpublishedChanges ? "Has unpublished changes · " : ""}Updated {formatDate(w.updatedAt, timezone)}</p>
                 </Link>
               </li>
@@ -167,7 +167,7 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="studio-ideas" className="text-[18px] font-semibold text-ink">Start from an idea</h2>
-            <p className="mt-1 text-[13.5px] text-muted">Each one is a request the builder turns into a real automation in your workspace. You’ll see it, test it and change it before anything runs.</p>
+            <p className="mt-1 text-[14px] text-muted">Each one is a request the builder turns into a real automation in your workspace. You’ll see it, test it and change it before anything runs.</p>
           </div>
           <div className="relative w-full sm:w-72">
             <label htmlFor="studio-search" className="sr-only">Search ideas</label>
@@ -176,8 +176,8 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Categories">
-          <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>All</button>
-          {STARTER_CATEGORIES.map((c) => <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c === category ? null : c)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{c}</button>)}
+          <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)} className={cn("rounded-full border px-3 py-1 text-[13px] font-medium transition-colors", category === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>All</button>
+          {STARTER_CATEGORIES.map((c) => <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c === category ? null : c)} className={cn("rounded-full border px-3 py-1 text-[13px] font-medium transition-colors", category === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{c}</button>)}
         </div>
         {matches.length === 0 ? (
           <p className="mt-6 rounded-2xl border border-dashed border-line-strong p-8 text-center text-[14px] text-muted">No idea matches “{q}”. Describe what you need in the box above instead.</p>
@@ -187,9 +187,9 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
               const ready = starterReadiness(s, options);
               return (
                 <li key={s.id} className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-soft">
-                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{s.category}</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">{s.category}</p>
                   <h3 className="mt-1 text-[15px] font-semibold text-ink">{s.title}</h3>
-                  <p className="mt-1 flex-1 text-[13px] leading-relaxed text-muted">{s.description}</p>
+                  <p className="mt-1 flex-1 text-[14px] leading-relaxed text-muted">{s.description}</p>
                   <p className={cn("mt-3 text-[12px]", ready.ready ? "text-success-ink" : "text-warning-ink")}>{ready.ready ? "Your workspace has what this needs." : `Needs ${ready.missing.join(" and ")} first.`}</p>
                   <Button variant="secondary" size="sm" className="mt-3 self-start" onClick={() => use(s)} disabled={!canBuild || !builderReady}>Use this idea</Button>
                 </li>

@@ -27,7 +27,7 @@ export function CreateForClient({ orgId, clientName, cards, canCreate }: { orgId
   };
   return (
     <>
-      {!canCreate && <p className="rounded-xl bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">You can look at the designs, but your role can&apos;t create a website for this client.</p>}
+      {!canCreate && <p className="rounded-xl bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">You can look at the designs, but your role can&apos;t create a website for this client.</p>}
       <TemplateGallery cards={cards} frameBase="/frame/template" onChoose={canCreate ? setConfirm : undefined} chooseLabel="Use for this client" />
       <Dialog
         open={confirm !== null} onOpenChange={(o) => !busy && !o && setConfirm(null)} size="sm" title={card ? `Start ${clientName} with ${card.name}?` : "Start the website"}

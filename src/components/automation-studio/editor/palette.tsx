@@ -66,13 +66,13 @@ export function Palette({ editor, options, selectedKey, onAdded, className }: { 
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" aria-hidden />
           <Input id="studio-palette-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search steps" className="pl-8" />
         </div>
-        <p className="mt-2 text-[11.5px] leading-snug text-muted">Drag a step onto the canvas, or click it to add it after the selected step.</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">Drag a step onto the canvas, or click it to add it after the selected step.</p>
       </div>
       <div className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-4">
-        {groups.length === 0 && <p className="px-1 text-[12.5px] text-muted">No step matches “{q}”.</p>}
+        {groups.length === 0 && <p className="px-1 text-[13px] text-muted">No step matches “{q}”.</p>}
         {groups.map(([group, items]) => (
           <section key={group} aria-label={group}>
-            <h3 className="px-1 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-faint">{group}</h3>
+            <h3 className="px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{group}</h3>
             <ul className="space-y-1.5">
               {items.map((k) => (
                 <li key={k.kind}>
@@ -87,8 +87,8 @@ export function Palette({ editor, options, selectedKey, onAdded, className }: { 
                   >
                     <span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg", stepTone(k.kind))}><StepIcon kind={k.kind} /></span>
                     <span className="min-w-0">
-                      <span className="block text-[13px] font-medium text-ink">{k.label}</span>
-                      {k.note && <span className="block text-[11px] leading-snug text-warning-ink">{k.note}</span>}
+                      <span className="block text-[14px] font-medium text-ink">{k.label}</span>
+                      {k.note && <span className="block text-[12px] leading-snug text-warning-ink">{k.note}</span>}
                     </span>
                   </button>
                 </li>

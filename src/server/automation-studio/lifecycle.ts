@@ -1,13 +1,15 @@
 import "server-only";
-import { withSystem, type Queryable } from "@/server/db";
+import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import { env } from "@/server/env";
 import { assertManage, subscriptionForAgency } from "@/server/maintenance/service";
 import { studioEntitlement } from "@/server/automation-studio/entitlement";
+import { applyVerifiedPayment } from "@/server/maintenance/payment";
+import { applyPaymentFailed, noticeExpired, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import type { SessionUser } from "@/server/auth/service";
-import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, paidThroughProblem, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
+import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, canTransition, paidThroughProblem, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
 
 /**
  * The Automation Studio plan's lifecycle after activation: a payment that failed, a payment that was verified, expiry, and what a lapse
@@ -22,7 +24,6 @@ import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_
  */
 
 const PLAN_LINK = "/maintenance";
-const day = (d: Date) => d.toISOString().slice(0, 10);
 
 function allow(status: string, t: PlanTransition) {
   if (!canTransition(status as PlanStatus, t)) {
@@ -31,45 +32,8 @@ function allow(status: string, t: PlanTransition) {
   }
 }
 
-/**
- * Pauses the workspace's switched-on Automation Studio workflows because the plan lapsed, and tells the owners once a day. Returns how many
- * it paused. Safe to run again: a workflow already paused is not touched, and a person's own pause is never marked as a plan pause.
- */
-export async function pauseWorkflowsForLapse(db: Queryable, orgId: string, now = new Date()): Promise<number> {
-  const paused = await db.query<{ id: string; name: string }>(
-    `update crm_workflows w set status = 'paused', entitlement_paused_at = $2
-       from crm_workflow_versions v
-      where w.org_id = $1 and w.status = 'active' and v.id = w.published_version_id and v.org_id = w.org_id and cardinality(v.premium_features) > 0
-      returning w.id, w.name`,
-    [orgId, now.toISOString()],
-  );
-  for (const w of paused.rows) {
-    await recordAudit({ orgId, actorKind: "system", action: "crm.workflow_paused_for_plan", targetType: "crm_workflow", targetId: w.id, result: "success", metadata: { name: w.name.slice(0, 80) } }, db);
-  }
-  if (paused.rows.length) {
-    await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-      kind: "maintenance_update",
-      severity: "warning",
-      title: `${paused.rows.length === 1 ? "An Automation Studio workflow was" : `${paused.rows.length} Automation Studio workflows were`} paused`,
-      body: `Your ${STUDIO_PLAN_NAME} plan isn't active. ${STUDIO_LAPSE_POLICY.paused} ${STUDIO_LAPSE_POLICY.kept} ${STUDIO_LAPSE_POLICY.unaffected}`.slice(0, 900),
-      link: PLAN_LINK,
-      dedupeKey: `studio-lapse:${orgId}:${day(now)}`,
-    });
-  }
-  return paused.rows.length;
-}
-
-/** Tells the owners the plan has ended and what that means (once per plan), whether or not any workflow needed pausing. */
-async function noticeExpired(db: Queryable, orgId: string, subscriptionId: string) {
-  await notifyOrgRoles(db, orgId, ["owner"], {
-    kind: "maintenance_update",
-    severity: "warning",
-    title: "Your maintenance plan has expired",
-    body: `${STUDIO_LAPSE_POLICY.paused} ${STUDIO_LAPSE_POLICY.kept} ${STUDIO_LAPSE_POLICY.unaffected} Contact iAcquire to reactivate the plan.`.slice(0, 900),
-    link: PLAN_LINK,
-    dedupeKey: `studio-expired:${subscriptionId}`,
-  });
-}
+// Pausing the workflows, the lapse notices and the move into past due are shared with the other ways a plan lapses (src/server/maintenance/lapse.ts).
+export { pauseWorkflowsForLapse };
 
 /**
  * An agency member records that a payment for the plan didn't go through. The workspace keeps Automation Studio for the grace period: the
@@ -80,20 +44,9 @@ export async function recordPaymentFailed(user: SessionUser, subscriptionId: str
   const now = opts.now ?? new Date();
   const graceDays = opts.graceDays ?? env().STUDIO_PAYMENT_GRACE_DAYS;
   if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > MAX_GRACE_DAYS) throw new AppError("invalid_input", `The grace period is a whole number of days from 1 to ${MAX_GRACE_DAYS}.`);
-  const graceEnds = new Date(now.getTime() + graceDays * 86_400_000);
-  await withSystem(async (db) => {
+  const graceEnds = await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
-    allow(s.status, "payment_failed");
-    await db.query("update maintenance_subscriptions set status = 'past_due', past_due_since = $2, grace_ends_at = $3 where id = $1", [subscriptionId, now.toISOString(), graceEnds.toISOString()]);
-    await notifyOrgRoles(db, s.org_id, ["owner"], {
-      kind: "maintenance_update",
-      severity: "warning",
-      title: "A payment for your maintenance plan didn't go through",
-      body: `Automation Studio keeps working for ${graceDays} more day${graceDays === 1 ? "" : "s"}, until ${day(graceEnds)}. After that its workflows are paused (nothing is deleted) until the payment is sorted out. Your CRM, AI employees and external automations aren't affected.`,
-      link: PLAN_LINK,
-      dedupeKey: `studio-payment-failed:${subscriptionId}:${day(now)}`,
-    });
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.payment_failed", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { graceEndsAt: graceEnds.toISOString(), graceDays } }, db);
+    return (await applyPaymentFailed(db, { subscription: s, actor: { kind: "agency", userId: user.id }, graceDays, now })).graceEndsAt;
   });
   return { graceEndsAt: graceEnds.toISOString(), graceDays };
 }
@@ -108,34 +61,9 @@ export async function recordVerifiedPayment(user: SessionUser, subscriptionId: s
   if (problem) throw new AppError("invalid_input", problem);
   return withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
-    allow(s.status, "payment_verified");
-    const reactivated = s.status === "past_due" || s.status === "expired";
-    if (s.status === "expired") {
-      // A workspace has one open plan. If the client enrolled again after this one expired, that request is the plan to activate.
-      const newer = await db.query("select 1 from maintenance_subscriptions where org_id = $1 and id <> $2 and status in ('requested', 'active', 'past_due', 'cancel_requested')", [s.org_id, subscriptionId]);
-      if (newer.rows[0]) throw new AppError("conflict", "This workspace already has a newer plan request. Activate that one instead of reactivating the expired plan.");
-    }
-    await db.query(
-      `update maintenance_subscriptions set status = case when status in ('past_due', 'expired') then 'active' else status end,
-         past_due_since = null, grace_ends_at = null, expired_at = null,
-         last_payment_verified_at = $2, last_payment_verified_by = $3, paid_through_on = $4 where id = $1`,
-      [subscriptionId, now.toISOString(), user.id, input.paidThroughOn],
-    );
-    const waiting = (await db.query<{ n: number }>("select count(*)::int as n from crm_workflows where org_id = $1 and status = 'paused' and entitlement_paused_at is not null", [s.org_id])).rows[0].n;
-    if (reactivated) {
-      await notifyOrgRoles(db, s.org_id, ["owner"], {
-        kind: "maintenance_update",
-        severity: "success",
-        title: "Your maintenance plan is active again",
-        body: waiting
-          ? `${waiting === 1 ? "One Automation Studio workflow is" : `${waiting} Automation Studio workflows are`} still paused. ${STUDIO_LAPSE_POLICY.resume}`
-          : "Automation Studio is available again.",
-        link: PLAN_LINK,
-        dedupeKey: `studio-reactivated:${subscriptionId}:${day(now)}`,
-      });
-    }
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.payment_verified", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { paidThroughOn: input.paidThroughOn, reactivated } }, db);
-    return { reactivated, workflowsWaiting: waiting };
+    // The transition itself (checks, dates, the owner's notice, the audit entry) is shared with a payment a Super Admin records outside a provider.
+    const out = await applyVerifiedPayment(db, { subscription: s, mode: "renew", actor: { kind: "agency", userId: user.id }, paidThroughOn: input.paidThroughOn, now });
+    return { reactivated: out.reactivated, workflowsWaiting: out.workflowsWaiting };
   });
 }
 

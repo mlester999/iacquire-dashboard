@@ -22,7 +22,7 @@ import {
 export function AuthHeading({ eyebrow, title, description }: { eyebrow?: string; title: string; description?: React.ReactNode }) {
   return (
     <div className="mb-7">
-      {eyebrow && <p className="mb-2 text-[12.5px] font-medium uppercase tracking-[0.14em] text-primary">{eyebrow}</p>}
+      {eyebrow && <p className="mb-2 text-[13px] font-medium uppercase tracking-[0.14em] text-primary">{eyebrow}</p>}
       <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">{title}</h1>
       {description && <div className="mt-2 text-[14.5px] leading-relaxed text-muted">{description}</div>}
     </div>
@@ -37,7 +37,7 @@ export function FormAlert({ state }: { state: FormState }) {
       {message && (
         <motion.div
           key={message}
-          initial={reduce?false:{ opacity: 0, y: -6, height: 0 }}
+          initial={{ opacity: 0, y: -6, height: 0 }}
           animate={{ opacity: 1, y: 0, height: "auto" }}
           exit={reduce?undefined:{ opacity: 0, height: 0 }}
           className="overflow-hidden"
@@ -45,7 +45,7 @@ export function FormAlert({ state }: { state: FormState }) {
           <div
             role={state?.error ? "alert" : "status"}
             className={cn(
-              "mb-5 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-[13.5px] leading-relaxed",
+              "mb-5 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-[14px] leading-relaxed",
               state?.error ? "border-danger/20 bg-danger-soft text-danger-ink" : "border-success/20 bg-success-soft text-success-ink",
             )}
           >
@@ -100,7 +100,7 @@ function StrengthMeter({ value }: { value: string }) {
   const s = strength(value);
   const labels = ["Too short", "Weak", "Fair", "Good", "Strong"];
   const colors = ["bg-danger", "bg-danger", "bg-warning", "bg-primary", "bg-success"];
-  if (!value) return <p className="text-[12.5px] text-muted">At least 10 characters. Longer passphrases are best.</p>;
+  if (!value) return <p className="text-[13px] text-muted">At least 10 characters. Longer passphrases are best.</p>;
   return (
     <div className="flex items-center gap-3" aria-live="polite">
       <div className="flex flex-1 gap-1">
@@ -135,7 +135,7 @@ export function LoginForm({ next, notice }: { next?: string; notice?: string }) 
         <PasswordInput id="password" name="password" autoComplete="current-password" onValue={(value) => setHasPassword(Boolean(value.trim()))} />
       </Field>
       <div className="flex justify-end">
-        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline">
+        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-[14px] font-medium text-primary hover:underline">
           Forgot password?
         </Link>
       </div>
@@ -161,7 +161,7 @@ export function ForgotPasswordForm() {
           </Button>
         </>
       )}
-      <p className="text-center text-[13.5px] text-muted">
+      <p className="text-center text-[14px] text-muted">
         <Link href="/login" className="font-medium text-primary hover:underline">
           Back to sign in
         </Link>
@@ -224,7 +224,7 @@ export function AcceptInviteForm({ token, email }: { token: string; email: strin
       <Field label="Confirm password" htmlFor="confirm" error={state?.fieldErrors?.confirm}>
         <PasswordInput id="confirm" name="confirm" autoComplete="new-password" invalid={Boolean(state?.fieldErrors?.confirm)} />
       </Field>
-      <label className="flex items-start gap-3 text-[13px] leading-relaxed text-muted">
+      <label className="flex items-start gap-3 text-[14px] leading-relaxed text-muted">
         <input type="checkbox" name="terms" className="mt-0.5 size-4 rounded border-line-strong accent-[var(--primary)]" />
         <span>
           I agree to use this workspace under my organisation&apos;s agreement with iAcquire.
@@ -280,7 +280,7 @@ export function RequestAccessForm() {
           Fax <input name="company_fax" tabIndex={-1} autoComplete="off" />
         </label>
       </div>
-      <label className="flex items-start gap-3 text-[13px] leading-relaxed text-muted">
+      <label className="flex items-start gap-3 text-[14px] leading-relaxed text-muted">
         <input type="checkbox" name="consent" className="mt-0.5 size-4 accent-[var(--primary)]" />
         <span>
           iAcquire may contact me about this request. No marketing lists.

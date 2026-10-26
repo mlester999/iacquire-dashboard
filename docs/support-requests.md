@@ -135,6 +135,36 @@ When AQi cannot resolve something it offers **Prepare support request**. That op
 
 **Super Admin.** The customer-facing *Prepare support request* flow is for clients. A Super Admin has no one to ask for help, so both routes (`requireClient` in `src/server/aqi/support.ts`) now refuse a Super Admin with a message pointing to AQi Operations. There, the same Support & Requests service backs four operator actions instead: **Create internal issue**, **Record platform bug**, **Propose engineering task** (each a request in the agency workspace, created only after the preview is confirmed and verified by reading it back) and **Review support queue** (read-only; permissions, SLA and escalation advice come from this module unchanged). See [aqi-operations.md](aqi-operations.md).
 
+## 9a. Request a Change (Phase 6, migration 0098)
+
+A fourth request type, `change`, with its own page (`/support/change`, "Request a Change" in the Requests menu) and six categories: an AI employee, the website, an automation or
+workflow, a connected service, a custom project, something else. It is **dormant until a Super Admin switches it on for the workspace** (`org_features` `request_changes` on the Module
+rollout page); until then the menu entry is hidden and the page says it is not switched on. Switching it off stops new change requests only. The assistant (AQi) and the help widget do
+not offer it (`ASSISTANT_REQUEST_TYPES`): a change needs a target and, for a project, a project.
+
+* The category says what the change is about, and the database keeps `support_ticket_change.target_kind` and the ticket's project equal. A change about a project names one of the workspace's
+  own agreed projects. An owner or admin can also file it as a change to what was agreed; the request and the entry on the project's change list are made together and linked (see
+  `docs/custom-projects.md`).
+* The team records, on the request, what kind of change it is: covered by the core system, belongs in the maintenance plan, needs a quote, or out of scope, with a note
+  (`support_ticket_change`, `agency.support.manage`). It is a working label: it prices nothing, promises no date, **is never shown to the client** (a team-only timeline line, no client
+  policy on the table) and does not use up a maintenance request. What the client reads is the team's reply and the status.
+* A client with an active maintenance plan sees the plan's own monthly allowance on the form and a pointer to Maintenance for small changes it covers. A client without a plan is told
+  nothing about an allowance and no figure is invented. Whether classifying a change as covered by the plan should create the maintenance request itself is open (see the Phase 6 report).
+* A starting priority comes from the Super Admin's defaults (`normal` until they set one for changes).
+* AQi knows the page (`src/lib/aqi/routes.ts`) and may point a client at it in a workspace where it is off; the page then says plainly that it isn't switched on and offers Get Support.
+  AQi's routes have no per-workspace switch yet, so this is the one place the dormant module can be reached by name.
+
+## 9b. Satisfaction survey (Phase 6, using the 0098 table)
+
+The support survey is separate from the reputation surveys in `voice-and-reviews.md`: this one is about a support request, not a public review or NPS program.
+
+* A Super Admin switches **Satisfaction survey** on in Support settings and chooses a delay (default 24 hours, 0–720). Off is the default; nothing is asked until it is on.
+* When a request moves to **resolved**, one `support_surveys` row is scheduled for the person who opened it, with `requested_at = now + delay` and a **14-day** window. The unique index on `ticket_id` means a reopen/resolve cycle never asks twice. Reopening a resolved request before it is answered marks the question **skipped**; an answered survey is a record and never changes.
+* The client sees the question inside the request only after the delay, and only if they are the opener. It asks a **1–5 rating**, **whether the reply helped**, and an **optional comment** (1,000 characters). Nothing is pre-selected; the Send button waits for both answers.
+* The answer is written by `answerSupportSurvey`, checked against the opener, the due time, the 14-day window and the `requested` status. A second answer, another person's answer, or an answer before the delay is refused. The audit log records the rating, not the comment.
+* `/admin/support/analytics` counts surveys **requested** and **answered** in the selected range and shows the average rating and the share who said the reply helped. Comments stay in the survey record; they are not copied into analytics or notifications.
+* No email or text is sent by this feature; it is an in-app question. There is no scheduler job because the row is created at resolution with a future due time.
+
 ## 10. AI help (advisory only)
 
 Uses the connected provider (`resolveLlmConfig`), the support settings switch, a per-person hourly limit, short outputs with a timeout and, for client-side help, the workspace's monthly help-request allowance. Everything is wrapped as data, emails/phones/long numbers/keys are removed first, and **nothing is sent, closed, assigned, prioritised or promised by AI**.

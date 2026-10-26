@@ -63,7 +63,7 @@ export function CheckRow({ checked, onChange, title, description, disabled, hint
     >
       <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span className="min-w-0">
-        <span className="block text-[13px] font-medium leading-snug text-ink">{title}</span>
+        <span className="block text-[14px] font-medium leading-snug text-ink">{title}</span>
         {description && <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">{description}</span>}
       </span>
     </label>
@@ -77,7 +77,7 @@ export function ChoiceChip({ checked, onChange, children, disabled, title }: { c
       title={title}
       className={cn(
         disabled && "pointer-events-none opacity-55",
-        "inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 text-[12.5px] font-medium transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary sm:min-h-9",
+        "inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary sm:min-h-9",
         checked ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2",
       )}
     >
@@ -95,10 +95,10 @@ export function FilterTab({ active, onClick, count, children }: { active: boolea
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[12.5px] font-medium transition sm:min-h-9", active ? "bg-ink text-surface shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}
+      className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[13px] font-medium transition sm:min-h-9", active ? "bg-ink text-surface shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}
     >
       {children}
-      {count !== undefined && <span className={cn("inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface-3 text-ink-2")}>{count}</span>}
+      {count !== undefined && <span className={cn("inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[12px] font-semibold tabular-nums", active ? "bg-surface/20 text-surface" : "bg-surface-3 text-ink-2")}>{count}</span>}
     </button>
   );
 }
@@ -202,10 +202,10 @@ export function ServiceCatalogAdmin({ services, categories, portfolio }: { servi
         title="Service catalog."
         description="The right service. The right scope. Keep offers clear, availability current and every pricing change traceable."
         action={<><Button variant="secondary" onClick={()=>setCatForm({name:"",description:"",tier:"ready_to_use",sortOrder:100,visible:true})}><FolderPlus className="size-4"/> Add category</Button><Button variant="primary" onClick={()=>setForm(blank(categories[0]?.id??""))}><Plus className="size-4"/>Add service</Button></>}
-        aside={<div className="rounded-2xl border border-line bg-surface p-4 shadow-card"><div className="mb-3 flex items-baseline justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-muted">Catalog at a glance</p><p className="text-[12px] font-medium text-ink-2">{pluralize(services.length,"service")}</p></div><CoverageBar label="Service availability" parts={[{label:"Available",count:mix.available,color:"var(--success)"},{label:"Coming soon",count:mix.soon,color:"var(--primary)"},{label:"Unavailable",count:mix.unavailable,color:"var(--faint)"},{label:"Hidden",count:mix.hidden,color:"var(--warning)"}]}/></div>}
+        aside={<div className="rounded-2xl border border-line bg-surface p-4 shadow-card"><div className="mb-3 flex items-baseline justify-between gap-3"><p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Catalog at a glance</p><p className="text-[12px] font-medium text-ink-2">{pluralize(services.length,"service")}</p></div><CoverageBar label="Service availability" parts={[{label:"Available",count:mix.available,color:"var(--success)"},{label:"Coming soon",count:mix.soon,color:"var(--primary)"},{label:"Unavailable",count:mix.unavailable,color:"var(--faint)"},{label:"Hidden",count:mix.hidden,color:"var(--warning)"}]}/></div>}
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Catalog services" value={services.length} detail={`${categories.length} configured categories`} icon={<Layers className="size-4"/>} tone="blue"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Available offers" value={services.filter(s=>s.visible&&s.availability==="available").length} detail="Visible and accepting requests" icon={<Workflow className="size-4"/>} tone="green"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Featured services" value={services.filter(s=>s.featured).length} detail="Curated offers in the catalog" icon={<Star className="size-4"/>} tone="amber"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Hidden services" value={services.filter(s=>!s.visible).length} detail="Kept out of client browsing" icon={<EyeOff className="size-4"/>} tone="neutral"/></div>
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft"><div className="scrollbar-thin flex gap-1 overflow-x-auto border-b border-line px-3 py-2"><FilterTab active={category==="all"} onClick={()=>setCategory("all")} count={services.length}>All services</FilterTab>{categories.map(c=><FilterTab key={c.id} active={category===c.id} onClick={()=>setCategory(c.id)} count={services.filter(s=>s.categoryId===c.id).length}>{c.name}</FilterTab>)}</div><div className="flex flex-wrap items-center gap-3 p-3"><div className="relative min-w-0 flex-1 basis-48"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted sm:top-3" aria-hidden/><Input aria-label="Search service catalog" placeholder="Search services, platforms or categories…" className="pl-9" value={query} onChange={e=>setQuery(e.target.value)}/></div><Select aria-label="Filter service availability" value={availability} onChange={e=>setAvailability(e.target.value)} className="w-40"><option value="all">All availability</option><option value="available">Available</option><option value="coming_soon">Coming soon</option><option value="unavailable">Unavailable</option><option value="hidden">Hidden</option></Select><div className="flex gap-0.5 rounded-xl border border-line bg-surface-2 p-0.5"><Button size="icon-sm" variant={layout==="grid"?"secondary":"ghost"} aria-label="Grid view" aria-pressed={layout==="grid"} onClick={()=>setLayout("grid")}><LayoutGrid className="size-4"/></Button><Button size="icon-sm" variant={layout==="list"?"secondary":"ghost"} aria-label="List view" aria-pressed={layout==="list"} onClick={()=>setLayout("list")}><List className="size-4"/></Button></div></div></div>
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft"><div className="relative scrollbar-thin flex gap-1 overflow-x-auto border-b border-line px-3 py-2 lg:flex-wrap lg:overflow-visible"><FilterTab active={category==="all"} onClick={()=>setCategory("all")} count={services.length}>All services</FilterTab>{categories.map(c=><FilterTab key={c.id} active={category===c.id} onClick={()=>setCategory(c.id)} count={services.filter(s=>s.categoryId===c.id).length}>{c.name}</FilterTab>)}</div><div className="flex flex-wrap items-center gap-3 p-3"><div className="relative min-w-0 flex-1 basis-48"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted sm:top-3" aria-hidden/><Input aria-label="Search service catalog" placeholder="Search services, platforms or categories…" className="pl-9" value={query} onChange={e=>setQuery(e.target.value)}/></div><Select aria-label="Filter service availability" value={availability} onChange={e=>setAvailability(e.target.value)} className="w-40"><option value="all">All availability</option><option value="available">Available</option><option value="coming_soon">Coming soon</option><option value="unavailable">Unavailable</option><option value="hidden">Hidden</option></Select><div className="flex gap-0.5 rounded-xl border border-line bg-surface-2 p-0.5"><Button size="icon-sm" variant={layout==="grid"?"secondary":"ghost"} aria-label="Grid view" aria-pressed={layout==="grid"} onClick={()=>setLayout("grid")}><LayoutGrid className="size-4"/></Button><Button size="icon-sm" variant={layout==="list"?"secondary":"ghost"} aria-label="List view" aria-pressed={layout==="list"} onClick={()=>setLayout("list")}><List className="size-4"/></Button></div></div></div>
       {category!=="all"&&(()=>{const c=categories.find(c=>c.id===category);return c?<SectionLabel title={c.name} description={c.description} action={<Button size="sm" variant="ghost" onClick={()=>setCatForm(c)}><Pencil className="size-3.5"/>Edit category</Button>}/>:null;})()}
       <p className="px-1 text-[12px] text-muted" aria-live="polite">{pluralize(shown.length,"service")} shown · custom projects are always quoted separately</p>
       <motion.ul layout={!reduce} className={layout==="grid"?"grid gap-4 md:grid-cols-2 xl:grid-cols-3":"space-y-2"}>{shown.map((s,i)=>{const Icon=s.kind==="custom_build"?Code2:s.tags.includes("ai-agents")?Bot:Workflow;const av=AVAILABILITY[s.availability];const grid=layout==="grid";
@@ -213,9 +213,9 @@ export function ServiceCatalogAdmin({ services, categories, portfolio }: { servi
         const menu=<Menu><MenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Actions for ${s.name}`}><MoreHorizontal className="size-4"/></Button></MenuTrigger><MenuContent>{grid&&<MenuItem onSelect={()=>setForm(fromService(s))}><Pencil className="size-3.5"/>Edit service</MenuItem>}<MenuItem onSelect={()=>void flag(s,{featured:!s.featured})}><Star className="size-3.5"/>{s.featured?"Unfeature":"Feature"}</MenuItem><MenuItem onSelect={()=>void openHistory(s)}><History className="size-3.5"/>Pricing history</MenuItem><MenuSeparator/><MenuItem onSelect={()=>void flag(s,{visible:!s.visible})}><EyeOff className="size-3.5"/>{s.visible?"Hide from clients":"Show to clients"}</MenuItem></MenuContent></Menu>;
         return <motion.li key={s.id} layout={!reduce} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2,delay:i*.015}} className={cn("group relative min-w-0 rounded-2xl border bg-surface shadow-soft transition hover:border-line-strong hover:shadow-card",grid?"flex flex-col p-4":"grid gap-3 p-4 sm:grid-cols-[42px_minmax(0,1fr)_170px_auto] sm:items-center",s.visible?"border-line":"border-dashed border-line-strong bg-surface-2/50")}>
           <div className={cn("flex items-start justify-between gap-2",grid&&"mb-3")}><span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl border",s.kind==="custom_build"?"border-violet/15 bg-violet-soft text-violet-ink":"border-primary/15 bg-primary-soft text-primary-ink")}><Icon className="size-5" aria-hidden/></span>{grid&&<div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">{pills}{menu}</div>}</div>
-          <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-1.5"><InfoChip icon={<Tags aria-hidden/>}>{s.categoryName}</InfoChip>{!grid&&pills}</div><h3 className="text-[15px] font-semibold leading-snug tracking-tight text-ink">{s.name}</h3><p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-muted">{s.tagline||s.description}</p>{grid&&<div className="mt-3 flex min-h-6 flex-wrap gap-1.5">{s.platforms.slice(0,4).map(p=><TechnologyPill name={p} key={p}/>)}</div>}</div>
+          <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-1.5"><InfoChip icon={<Tags aria-hidden/>}>{s.categoryName}</InfoChip>{!grid&&pills}</div><h3 className="text-[15px] font-semibold leading-snug tracking-tight text-ink">{s.name}</h3><p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted">{s.tagline||s.description}</p>{grid&&<div className="mt-3 flex min-h-6 flex-wrap gap-1.5">{s.platforms.slice(0,4).map(p=><TechnologyPill name={p} key={p}/>)}</div>}</div>
           <div className={cn(grid?"mt-4 border-t border-line pt-3":"")}><p className="text-[18px] font-semibold tabular-nums tracking-tight text-ink">{formatPrice(s.price)}</p><div className="mt-2 flex flex-wrap gap-1.5"><InfoChip icon={<Clock aria-hidden/>}>{formatDelivery(s.deliveryMinDays,s.deliveryMaxDays)||"Scope based delivery"}</InfoChip>{s.portfolio.length>0&&<InfoChip icon={<Briefcase aria-hidden/>}>{s.portfolio.length} portfolio {s.portfolio.length===1?"project":"projects"}</InfoChip>}</div></div>
-          <div className={cn("flex items-end gap-2",grid&&"mt-auto pt-4")}><div className={cn("min-w-0",grid?"flex-1":"w-40")}><label htmlFor={`av-${s.id}`} className="mb-1 block text-[11px] font-medium text-muted">Availability</label><Select id={`av-${s.id}`} value={s.availability} onChange={e=>void flag(s,{availability:e.target.value as ServiceAvailability})} className="text-[13px] sm:h-9"><option value="available">Available</option><option value="coming_soon">Coming soon</option><option value="unavailable">Unavailable</option></Select></div><Button size="sm" variant="secondary" aria-label={`Edit ${s.name}`} className="sm:h-9" onClick={()=>setForm(fromService(s))}><Pencil className="size-3.5"/>Edit</Button>{!grid&&menu}</div>
+          <div className={cn("flex items-end gap-2",grid&&"mt-auto pt-4")}><div className={cn("min-w-0",grid?"flex-1":"w-40")}><label htmlFor={`av-${s.id}`} className="mb-1 block text-[12px] font-medium text-muted">Availability</label><Select id={`av-${s.id}`} value={s.availability} onChange={e=>void flag(s,{availability:e.target.value as ServiceAvailability})} className="text-[14px] sm:h-9"><option value="available">Available</option><option value="coming_soon">Coming soon</option><option value="unavailable">Unavailable</option></Select></div><Button size="sm" variant="secondary" aria-label={`Edit ${s.name}`} className="sm:h-9" onClick={()=>setForm(fromService(s))}><Pencil className="size-3.5"/>Edit</Button>{!grid&&menu}</div>
         </motion.li>;})}</motion.ul>
       {!shown.length&&<div className="rounded-2xl border border-dashed border-line-strong bg-surface"><EmptyState icon={<Search className="size-5"/>} title="No services match this view" description="Try another category, availability state or search term." action={<Button size="sm" variant="secondary" onClick={()=>{setQuery("");setCategory("all");setAvailability("all");}}>Clear filters</Button>}/></div>}
       <p className="flex items-start gap-2.5 rounded-xl border border-line bg-surface-2/60 px-3.5 py-3 text-[12px] leading-relaxed text-muted"><CircleDollarSign className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden/>Hidden services disappear from clients immediately. Coming-soon and unavailable offers remain visible but cannot be requested. The core $1,499 setup and optional $299/month maintenance prices are unchanged; included package services are not charged again.</p>
@@ -225,15 +225,15 @@ export function ServiceCatalogAdmin({ services, categories, portfolio }: { servi
       <Dialog open={!!history} onOpenChange={(o) => !o && setHistory(null)} title={`Price history · ${history?.service.name ?? ""}`} description="Every change is kept. Earlier prices are never edited." footer={<Button variant="secondary" onClick={() => setHistory(null)}>Close</Button>}>
         <ul className="space-y-2">
           {history?.rows.map((r) => (
-            <li key={r.version} className="rounded-xl border border-line bg-surface p-3.5 text-[13px]">
+            <li key={r.version} className="rounded-xl border border-line bg-surface p-3.5 text-[14px]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="grid h-6 min-w-8 place-items-center rounded-md bg-surface-2 px-1.5 text-[11px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">v{r.version}</span>
+                <span className="grid h-6 min-w-8 place-items-center rounded-md bg-surface-2 px-1.5 text-[12px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">v{r.version}</span>
                 <p className="text-[15px] font-semibold tabular-nums tracking-tight text-ink">{formatPrice({ type: r.type, minCents: r.minCents, maxCents: r.maxCents, currency: "USD", note: null })}</p>
                 {r.version === history.rows[0].version && <StatusPill tone="success" size="sm">Current</StatusPill>}
                 <span className="ml-auto"><InfoChip icon={<Clock aria-hidden />}>{formatDateTime(r.at)}</InfoChip></span>
               </div>
               <p className="mt-2 text-muted">{r.source === "founder_portfolio" ? "Imported from the founder's published pricing" : `Set by ${r.by ?? "an agency admin"}`}</p>
-              {r.note && <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{r.note}</p>}
+              {r.note && <p className="mt-1 text-[13px] leading-relaxed text-muted">{r.note}</p>}
             </li>
           ))}
         </ul>
@@ -371,7 +371,7 @@ function ServiceEditor({ initial, categories, portfolio, onClose, onSaved }: { i
             <Field label="Note shown with the price" htmlFor="sv-pn" className="sm:col-span-4" optional>
               <Input id="sv-pn" value={f.priceNote} maxLength={300} onChange={text("priceNote")} />
             </Field>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[12.5px] text-muted sm:col-span-4">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted sm:col-span-4">
               Preview
               <strong className="text-[14px] font-semibold tabular-nums text-ink">{formatPrice({ type: f.priceType, minCents: dollars(f.priceMin), maxCents: range ? dollars(f.priceMax) : null, currency: "USD", note: null })}</strong>
               {f.priceMin && dollars(f.priceMin) !== null ? <span>({formatMoney(dollars(f.priceMin))} minimum)</span> : null}
@@ -414,7 +414,7 @@ function ServiceEditor({ initial, categories, portfolio, onClose, onSaved }: { i
             <Textarea id="sv-kw" rows={2} value={f.keywords} onChange={text("keywords")} />
           </Field>
           <fieldset className="sm:col-span-2">
-            <legend className="mb-2 text-[13px] font-medium text-ink-2">Marketplace filters</legend>
+            <legend className="mb-2 text-[14px] font-medium text-ink-2">Marketplace filters</legend>
             <div className="flex flex-wrap gap-2">
               {FILTER_TAGS.map((t) => (
                 <ChoiceChip key={t.id} checked={f.tags.includes(t.id)} onChange={() => toggle("tags", t.id)}>
@@ -424,14 +424,14 @@ function ServiceEditor({ initial, categories, portfolio, onClose, onSaved }: { i
             </div>
           </fieldset>
           <fieldset className="sm:col-span-2">
-            <legend className="mb-2 text-[13px] font-medium text-ink-2">Related portfolio projects</legend>
+            <legend className="mb-2 text-[14px] font-medium text-ink-2">Related portfolio projects</legend>
             <div className="flex flex-wrap gap-2">
               {portfolio.map((p) => (
                 <ChoiceChip key={p.slug} checked={f.portfolioSlugs.includes(p.slug)} onChange={() => toggle("portfolioSlugs", p.slug)}>
                   {p.title.split(":")[0]}
                 </ChoiceChip>
               ))}
-              {portfolio.length === 0 && <p className="text-[12.5px] text-muted">Import the founder portfolio first (Portfolio page).</p>}
+              {portfolio.length === 0 && <p className="text-[13px] text-muted">Import the founder portfolio first (Portfolio page).</p>}
             </div>
           </fieldset>
         </FormSection>
@@ -458,7 +458,7 @@ function ServiceEditor({ initial, categories, portfolio, onClose, onSaved }: { i
             <CheckRow checked={f.requiresQuote} onChange={(v) => setF({ ...f, requiresQuote: v })} title="Requires a custom quote" description="Clients request a quote first." />
           </div>
         </FormSection>
-        {error && <p role="alert" className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-ink sm:col-span-2">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger-ink sm:col-span-2">{error}</p>}
       </div>
     </Dialog>
   );

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Archive, Bot, Check, CheckCheck, PhoneMissed, ChevronDown, Clock, Inbox, Loader2, Mail, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
+import { AlertTriangle, Archive, Bot, Check, CheckCheck, PhoneMissed, ChevronDown, Clock, Inbox, Loader2, Mail, Globe, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlays";
@@ -11,12 +11,12 @@ import { bulkConversationsAction } from "@/app/actions/inbox";
 import { PriorityBadge } from "@/components/crm/priority/priority-ui";
 import { AGENT_ROLES } from "@/lib/agents";
 import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_HELP, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
-import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
+import { CONVERSATION_CHANNEL_LABELS, type ConversationChannel } from "@/lib/messaging";
 import { cn, initials, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ConversationListItem, ViewCounts } from "@/server/messaging/inbox-list";
 
-const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail };
-const CHANNEL_TONE: Record<Channel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink" };
+const CHANNEL_ICON: Record<ConversationChannel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail, web_chat: Globe };
+const CHANNEL_TONE: Record<ConversationChannel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink", web_chat: "text-primary" };
 
 /** The views always on the tab row; the rest are under "More". */
 export const PRIMARY_VIEWS: readonly InboxView[] = ["all", "unread", "attention", "mine", "ai"];
@@ -46,7 +46,7 @@ export interface ListPanelProps {
   q: string;
   channel: string;
   selectedId: string | null;
-  channelProviders?: Partial<Record<Channel, string>>;
+  channelProviders?: Partial<Record<ConversationChannel, string>>;
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -63,12 +63,12 @@ export interface ListPanelProps {
   aboveList?: React.ReactNode;
 }
 
-function ChannelMark({ channel, provider }: { channel: Channel; provider?: string | null }) {
+function ChannelMark({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
+    <span className={cn("inline-flex items-center gap-1 text-[12px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
-      {CHANNEL_LABELS[channel]}
+      {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
     </span>
   );
@@ -82,11 +82,11 @@ export function employeeShortName(agent: { name: string; roleKey: string }): str
 export function OwnerPill({ item }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused"> }) {
   if (item.ownerKind === "ai") {
     const label = item.aiAgent ? employeeShortName(item.aiAgent) : "AI";
-    if (item.aiPaused) return <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning-ink"><PauseCircle className="size-3" aria-hidden />{label} · paused</span>;
-    return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />{label}</span>;
+    if (item.aiPaused) return <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[12px] font-medium text-warning-ink"><PauseCircle className="size-3" aria-hidden />{label} · paused</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />{label}</span>;
   }
-  if (item.ownerKind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{item.ownerName?.split(" ")[0] ?? "Person"}</span>;
-  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-2">Unassigned</span>;
+  if (item.ownerKind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[12px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{item.ownerName?.split(" ")[0] ?? "Person"}</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-medium text-ink-2">Unassigned</span>;
 }
 
 /** The chips that say why a row matters. Each is a fact from the database (see ATTENTION_LABELS), never a guess. */
@@ -97,7 +97,7 @@ function StatusChips({ c }: { c: ConversationListItem }) {
   if (c.attention.includes("urgent") && !c.attention.includes("needs_person")) chips.push(<Badge key="u" tone="danger">Urgent</Badge>);
   if (c.attention.includes("awaiting_reply")) chips.push(<Badge key="a" tone="warning"><Clock className="size-3" aria-hidden />Awaiting reply</Badge>);
   if (c.missedCallOpen) chips.push(<Badge key="mc" tone="warning"><PhoneMissed className="size-3" aria-hidden />Missed call</Badge>);
-  if (c.lead && (c.lead.label === "hot" || c.lead.label === "warm")) chips.push(<PriorityBadge key="lead" label={c.lead.label} source={c.lead.source} className="h-5 px-2 text-[11px]" />);
+  if (c.lead && (c.lead.label === "hot" || c.lead.label === "warm")) chips.push(<PriorityBadge key="lead" label={c.lead.label} source={c.lead.source} className="h-5 px-2 text-[12px]" />);
   if (c.waitingOnCustomer && !chips.length) chips.push(<Badge key="w" tone="outline">Waiting on customer</Badge>);
   if (c.archivedAt) chips.push(<Badge key="x" tone="outline"><Archive className="size-3" aria-hidden />Archived</Badge>);
   else if (c.status === "closed") chips.push(<Badge key="r" tone="success"><Check className="size-3" aria-hidden />{c.outcome ? OUTCOME_LABELS[c.outcome] : "Resolved"}</Badge>);
@@ -123,15 +123,15 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
             <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
-            <span className="shrink-0 text-[11px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
+            <span className="shrink-0 text-[12px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
           </span>
-          <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
+          <span className="mt-0.5 block truncate text-[13px] text-muted">{c.preview ?? "No messages yet"}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <ChannelMark channel={c.channel} provider={provider} />
             <OwnerPill item={c} />
             <StatusChips c={c} />
             {c.priority === "high" && !c.attention.length && <Badge tone="warning">High</Badge>}
-            {c.unread > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
+            {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold text-primary-on" aria-label={`${c.unread} unread`}>{c.unread}</span>}
           </span>
           {attention && <span className="sr-only">{attention}.</span>}
         </span>
@@ -156,7 +156,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       tabIndex={view === v ? 0 : -1}
       onClick={() => onChange(v)}
       className={cn(
-        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-medium transition",
+        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition",
         view === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink",
       )}
     >
@@ -164,7 +164,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       {count(v) !== null && count(v)! > 0 && (
         <>
           <span className="sr-only"> </span>
-          <span className={cn("rounded-full px-1.5 text-[11px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
+          <span className={cn("rounded-full px-1.5 text-[12px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
         </>
       )}
     </button>
@@ -189,7 +189,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       </div>
       <Menu>
         <MenuTrigger asChild>
-          <button className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] font-medium text-muted transition hover:text-ink" aria-label="More views">
+          <button className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[13px] font-medium text-muted transition hover:text-ink" aria-label="More views">
             More<ChevronDown className="size-3.5" aria-hidden />
           </button>
         </MenuTrigger>
@@ -199,7 +199,7 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
             <MenuItem key={v} onSelect={() => onChange(v)} aria-label={INBOX_VIEW_LABELS[v]}>
               <span className="flex w-full items-center justify-between gap-3">
                 <span className="flex items-center gap-2">{view === v ? <Check className="size-3.5" aria-hidden /> : <span className="size-3.5" aria-hidden />}{INBOX_VIEW_LABELS[v]}</span>
-                {count(v) !== null && <span className="text-[11.5px] tabular-nums text-faint">{count(v)}</span>}
+                {count(v) !== null && <span className="text-[12px] tabular-nums text-faint">{count(v)}</span>}
               </span>
             </MenuItem>
           ))}
@@ -228,10 +228,10 @@ export function BulkBar({ selected, perms, team, onClear, onDone }: { selected: 
   return (
     <div role="region" aria-label="Bulk actions" className="space-y-2 rounded-2xl border border-primary/30 bg-primary-soft/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[13px] font-semibold" aria-live="polite">{selected.length} selected</p>
-        <button onClick={onClear} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink"><X className="size-3.5" aria-hidden />Clear</button>
+        <p className="text-[14px] font-semibold" aria-live="polite">{selected.length} selected</p>
+        <button onClick={onClear} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] text-muted hover:text-ink"><X className="size-3.5" aria-hidden />Clear</button>
       </div>
-      <p className="text-[11.5px] text-muted">Nothing here sends a message to a customer.</p>
+      <p className="text-[12px] text-muted">Nothing here sends a message to a customer.</p>
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" variant="secondary" loading={busy === "read"} disabled={!selected.length} onClick={() => run("read", { kind: "mark_read" }, "Marked read")}><CheckCheck className="size-3.5" aria-hidden />Mark read</Button>
         {perms.reply && (
@@ -323,7 +323,7 @@ export function InboxListPanel(p: ListPanelProps) {
       </form>
 
       <ViewTabs view={p.view} counts={p.counts} onChange={(v) => { setChecked(new Set()); p.onChange({ view: v }); }} />
-      <p className="-mt-1 text-[11.5px] text-muted" id="inbox-view-help">{INBOX_VIEW_HELP[p.view]}</p>
+      <p className="-mt-1 text-[12px] text-muted" id="inbox-view-help">{INBOX_VIEW_HELP[p.view]}</p>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
@@ -333,6 +333,7 @@ export function InboxListPanel(p: ListPanelProps) {
             <option value="sms">SMS</option>
             <option value="whatsapp">WhatsApp</option>
             <option value="email">Email</option>
+            <option value="web_chat">Website chat</option>
           </Select>
         </div>
         <div>
@@ -347,12 +348,12 @@ export function InboxListPanel(p: ListPanelProps) {
         <button
           onClick={() => { setSelectMode((v) => !v); setChecked(new Set()); }}
           aria-pressed={selectMode}
-          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-medium transition", selectMode ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}
+          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition", selectMode ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}
         >
           <SquareCheckBig className="size-3.5" aria-hidden />{selectMode ? "Done selecting" : "Select"}
         </button>
         {selectMode && p.items.length > 0 && (
-          <button onClick={() => setChecked(new Set(p.items.slice(0, 50).map((i) => i.id)))} className="min-h-9 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink">Select first {Math.min(50, p.items.length)}</button>
+          <button onClick={() => setChecked(new Set(p.items.slice(0, 50).map((i) => i.id)))} className="min-h-9 rounded-lg px-2 text-[13px] text-muted hover:text-ink">Select first {Math.min(50, p.items.length)}</button>
         )}
       </div>
       {selectMode && <BulkBar selected={selectedIds} perms={p.perms} team={p.team} onClear={() => setChecked(new Set())} onDone={() => { setChecked(new Set()); p.onChanged(); }} />}
@@ -361,7 +362,7 @@ export function InboxListPanel(p: ListPanelProps) {
 
       <div id="inbox-list" role="tabpanel" aria-labelledby={`inbox-view-${p.view}`} aria-busy={p.loading || undefined}>
         {p.error && (
-          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[13px] text-danger-ink">
+          <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft/50 p-4 text-[14px] text-danger-ink">
             <p className="flex items-center gap-2 font-medium"><ShieldAlert className="size-4" aria-hidden />The list couldn&apos;t be loaded.</p>
             <p className="mt-1 text-ink-2">{p.error}</p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={p.onRetry}><RotateCcw className="size-3.5" aria-hidden />Try again</Button>
@@ -395,9 +396,9 @@ export function InboxListPanel(p: ListPanelProps) {
           <div className="rounded-2xl border border-dashed border-line-strong p-8 text-center">
             <Inbox className="mx-auto size-6 text-muted" aria-hidden />
             <h2 className="mt-3 text-[15px] font-semibold">{searching ? "Nothing matches" : empty.title}</h2>
-            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">{searching ? "Try different words, or clear the channel filter." : empty.body}</p>
+            <p className="mx-auto mt-1 max-w-xs text-[14px] leading-relaxed text-muted">{searching ? "Try different words, or clear the channel filter." : empty.body}</p>
             {searching && <Button size="sm" variant="secondary" className="mt-3" onClick={() => { setQ(""); p.onChange({ q: "", channel: "" }); }}>Clear search and filters</Button>}
-            {!searching && p.view === "all" && !restricted && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
+            {!searching && p.view === "all" && !restricted && <Link href="/settings/messaging" className="mt-3 inline-block text-[14px] font-medium text-primary">Check channel setup</Link>}
           </div>
         )}
         {p.hasMore && (

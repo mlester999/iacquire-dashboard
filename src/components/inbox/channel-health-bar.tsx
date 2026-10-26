@@ -39,26 +39,26 @@ export function ChannelHealthBar({ channels, status, lastSyncAt }: { channels: C
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Popover>
         <PopoverTrigger asChild>
-          <button className={cn("inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-medium transition", summary.tone === "warn" ? "border-warning/40 bg-warning-soft text-warning-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")} aria-haspopup="dialog">
+          <button className={cn("inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium transition", summary.tone === "warn" ? "border-warning/40 bg-warning-soft text-warning-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")} aria-haspopup="dialog">
             {summary.tone === "warn" ? <CircleAlert className="size-4" aria-hidden /> : summary.tone === "ok" ? <CircleCheck className="size-4 text-success-ink" aria-hidden /> : <CircleOff className="size-4 text-muted" aria-hidden />}
             {summary.label}
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[min(420px,calc(100vw-32px))] p-0">
-          <h2 className="border-b border-line px-4 py-3 text-[13px] font-semibold">Channels</h2>
+          <h2 className="border-b border-line px-4 py-3 text-[14px] font-semibold">Channels</h2>
           <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto">
             {channels.map((c) => {
               const s = STATE_STYLE[c.state];
               const Icon = s.icon;
               return (
-                <li key={c.key} className="px-4 py-3 text-[12.5px]">
+                <li key={c.key} className="px-4 py-3 text-[13px]">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2 font-medium"><Icon className={cn("size-4", s.dot)} aria-hidden />{c.label}{c.provider && <span className="font-normal text-faint">via {c.provider}</span>}</span>
                     <span className={cn("font-medium", s.text)}>{CHANNEL_STATE_LABELS[c.state]}</span>
                   </div>
                   <p className="mt-1 text-muted">{c.detail}</p>
                   {(c.state === "connected" || c.state === "needs_attention" || c.state === "paused") && (
-                    <p className="mt-1 text-[11.5px] text-faint" suppressHydrationWarning>
+                    <p className="mt-1 text-[12px] text-faint" suppressHydrationWarning>
                       {c.inbound7d} received in 7 days{c.lastInboundAt ? `, last ${relativeTime(c.lastInboundAt)}` : ""}
                       {c.sent24h ? ` · ${c.sent24h} sent today, ${c.failed24h} failed` : ""}
                     </p>

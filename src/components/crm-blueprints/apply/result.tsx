@@ -41,18 +41,18 @@ export function ApplyResultView({ result, clientName, orgId, onAnother, rulesAdd
             <h2 className="text-[17px] font-semibold text-ink" role="status">
               {app.blueprintName} version {app.version}: {st.label.toLowerCase()} for {clientName}
             </h2>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{st.text}</p>
+            <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{st.text}</p>
           </div>
           <Badge tone={st.tone}>{st.label}</Badge>
         </div>
         {result.replayed && (
-          <p className="flex gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+          <p className="flex gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-2">
             <Info className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
             This confirmation had already been applied, so nothing new was done. This is the result of the first time.
           </p>
         )}
         <ActionCounts counts={app.counts} />
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[13px] text-muted">
           Calendars are drafts until verified and activated in the client&apos;s CRM, workflows are drafts, forms are unpublished and templates wait for
           the client&apos;s approval.{" "}
           {rules.length
@@ -95,19 +95,19 @@ export function ChecklistCard({ orgId, clientName }: { orgId: string; clientName
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-[15px] font-semibold text-ink">{clientName}&apos;s setup checklist</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">What the client&apos;s CRM still has to connect, map, fill in or approve. An item is marked done only when there is evidence of it there.</p>
+          <p className="mt-0.5 text-[13px] text-muted">What the client&apos;s CRM still has to connect, map, fill in or approve. An item is marked done only when there is evidence of it there.</p>
         </div>
         {checklist && <Badge tone={checklist.done === checklist.total ? "success" : "outline"}>{checklist.done} of {checklist.total} done</Badge>}
       </div>
       {error ? (
-        <div className="flex flex-wrap items-center gap-2 text-[13px] text-danger-ink" role="alert">
+        <div className="flex flex-wrap items-center gap-2 text-[14px] text-danger-ink" role="alert">
           {error}
           <Button variant="ghost" size="sm" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>Try again</Button>
         </div>
       ) : !checklist ? (
         <div className="space-y-2" aria-busy>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
       ) : !checklist.items.length ? (
-        <p className="text-[13px] text-muted">Nothing to set up.</p>
+        <p className="text-[14px] text-muted">Nothing to set up.</p>
       ) : (
         <ul className="space-y-2">
           {checklist.items.map((i) => {
@@ -116,12 +116,12 @@ export function ChecklistCard({ orgId, clientName }: { orgId: string; clientName
               <li key={i.key} className="flex items-start gap-3 rounded-xl border border-line px-3 py-2.5">
                 <Icon className={cn("mt-0.5 size-4 shrink-0", i.status === "done" ? "text-success" : i.status === "pending" ? "text-muted" : "text-faint")} aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-ink">
+                  <p className="text-[14px] font-medium text-ink">
                     <span className="sr-only">{CHECK_LABEL[i.status]}: </span>{i.label}{!i.required && <span className="font-normal text-muted"> · optional</span>}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{i.detail || i.description}</p>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{i.detail || i.description}</p>
                 </div>
-                {i.path && i.status !== "done" && <Link href={clientCrmHref(orgId, i.path)} className="shrink-0 text-[12.5px] font-medium text-primary-ink hover:underline">Open</Link>}
+                {i.path && i.status !== "done" && <Link href={clientCrmHref(orgId, i.path)} className="shrink-0 text-[13px] font-medium text-primary-ink hover:underline">Open</Link>}
               </li>
             );
           })}

@@ -3,7 +3,7 @@ import { withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { maskCustomerLinks } from "@/server/messaging/redact";
 import { AWAITING_REPLY_MINUTES, INBOX_VIEWS, type AttentionReason, type ConversationOutcome, type InboxSort, type InboxView } from "@/lib/inbox";
-import type { Channel } from "@/lib/messaging";
+import type { ConversationChannel } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // The conversation list: views, search, sorting and keyset paging. Everything runs as the signed-in person (withUser), so row-level security
@@ -14,7 +14,7 @@ export interface ConversationListItem {
   id: string;
   contactId: string;
   contactName: string;
-  channel: Channel;
+  channel: ConversationChannel;
   status: "open" | "snoozed" | "closed";
   ownerKind: "ai" | "human" | "unassigned";
   ownerName: string | null;
@@ -47,7 +47,7 @@ export interface ConversationListItem {
 
 export interface ConversationFilters {
   q?: string;
-  channel?: Channel;
+  channel?: ConversationChannel;
   /** Legacy filters, kept for callers that predate views. */
   status?: "open" | "closed";
   owner?: "ai" | "human" | "unassigned" | "mine";
@@ -144,7 +144,7 @@ export function decodeCursor(raw: string | null | undefined): Cursor | null {
 }
 
 type Row = {
-  id: string; contact_id: string; display_name: string; channel: Channel; status: "open" | "snoozed" | "closed"; owner_kind: "ai" | "human" | "unassigned"; owner_name: string | null;
+  id: string; contact_id: string; display_name: string; channel: ConversationChannel; status: "open" | "snoozed" | "closed"; owner_kind: "ai" | "human" | "unassigned"; owner_name: string | null;
   owner_user_id: string | null; assigned_user_id: string | null; priority: "low" | "normal" | "high" | "urgent"; unread_count: number; last_message_at: Date | null;
   last_message_preview: string | null; last_inbound_at: Date | null; last_outbound_at: Date | null; esc_id: string | null; esc_status: string | null; esc_urgency: string | null;
   agent_id: string | null; agent_name: string | null; agent_role: string | null; ai_paused_at: Date | null; archived_at: Date | null; resolved_at: Date | null;

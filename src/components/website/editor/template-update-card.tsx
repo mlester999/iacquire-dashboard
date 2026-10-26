@@ -38,7 +38,7 @@ export function TemplateUpdateCard({ doc, commit, checkpoint, readOnly }: { doc:
   };
   return (
     <section aria-label="Template update" className="m-3 space-y-2.5 rounded-xl border border-primary/25 bg-primary-soft/60 p-3">
-      <p className="flex items-start gap-2 text-[12.5px] font-semibold leading-snug text-primary-ink"><Palette className="mt-0.5 size-4 shrink-0" aria-hidden /> A newer look for “{update.templateName}” is available</p>
+      <p className="flex items-start gap-2 text-[13px] font-semibold leading-snug text-primary-ink"><Palette className="mt-0.5 size-4 shrink-0" aria-hidden /> A newer look for “{update.templateName}” is available</p>
       <p className="text-[12px] leading-relaxed text-ink-2">You started from version {update.fromVersion}. Taking it changes colours, fonts, shapes and spacing only. Your words, pictures and sections stay exactly as they are.</p>
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="text-[12px] font-medium text-primary-ink hover:underline">{open ? "Hide what would change" : `See what would change · ${changes.length}`}</button>
       {open && (

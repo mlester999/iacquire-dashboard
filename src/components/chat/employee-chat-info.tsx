@@ -31,7 +31,7 @@ export function EmployeeChatInfo({ agentName, roleTitle, readiness, operationsSn
         {hasPendingReview && <p className="mt-3 text-[12px] text-warning-ink">Configuration review pending. The requested changes are not active.</p>}
         {operationsSnapshot && (
           <div className="mt-3 border-t border-line pt-3">
-            <h3 className="text-[13px] font-semibold tracking-tight text-ink">Read-only workspace snapshot</h3>
+            <h3 className="text-[14px] font-semibold tracking-tight text-ink">Read-only workspace snapshot</h3>
             <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
               Before each authorized run, {agentName} receives a fresh, bounded snapshot of the internal records they are allowed to read. It stays point-in-time; there is no live refresh during a run.
             </p>

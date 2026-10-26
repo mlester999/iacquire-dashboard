@@ -71,7 +71,7 @@ export function PreviewPanel({ scope, channel, subject, body, idPrefix }: { scop
   return (
     <section aria-labelledby={`${idPrefix}-preview-h`} className="rounded-2xl border border-line bg-surface-2/50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={`${idPrefix}-preview-h`} className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"><Eye className="size-4 text-muted" aria-hidden />Preview</h3>
+        <h3 id={`${idPrefix}-preview-h`} className="flex items-center gap-1.5 text-[14px] font-semibold text-ink"><Eye className="size-4 text-muted" aria-hidden />Preview</h3>
         {canUseContacts && (
           <Segmented id={`${idPrefix}-src`} size="sm" ariaLabel="Fill tokens with" value={source} onChange={setSource} options={[{ value: "sample", label: "Sample values" }, { value: "contact", label: "A contact" }]} />
         )}
@@ -90,7 +90,7 @@ export function PreviewPanel({ scope, channel, subject, body, idPrefix }: { scop
           />
         </div>
       )}
-      <div className="mt-3 rounded-xl border border-line bg-surface p-3.5 text-[13.5px] leading-relaxed text-ink" aria-live="polite">
+      <div className="mt-3 rounded-xl border border-line bg-surface p-3.5 text-[14px] leading-relaxed text-ink" aria-live="polite">
         {waiting ? (
           <p className="text-muted">Choose a contact to see the message with their details.</p>
         ) : loading && !rows ? (
@@ -100,7 +100,7 @@ export function PreviewPanel({ scope, channel, subject, body, idPrefix }: { scop
         ) : (
           <>
             {channel === "email" && (
-              <p className="mb-2 border-b border-line pb-2 text-[13px]">
+              <p className="mb-2 border-b border-line pb-2 text-[14px]">
                 <span className="text-muted">Subject: </span>
                 <span className="font-medium"><RenderedText text={subject ?? ""} values={values} customValues={customValues} singleLine /></span>
               </p>

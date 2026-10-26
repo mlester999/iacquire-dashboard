@@ -197,6 +197,21 @@ export async function revokeApiKey(actor: CrmActor, id: string): Promise<void> {
   });
 }
 
+/** Revokes every live key of a workspace that is being closed (offboarding), so no request made with one is accepted again. No signed-in member is involved. */
+export async function revokeWorkspaceApiKeys(orgId: string, actorUserId: string): Promise<{ revoked: number; failed: boolean }> {
+  try {
+    return await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string; key_prefix: string }>("update crm_api_keys set revoked_at = now() where org_id = $1 and revoked_at is null returning id, key_prefix", [orgId]);
+      for (const r of rows) {
+        await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "crm.api_key_revoked", targetType: "crm_api_key", targetId: r.id, result: "success", metadata: { prefix: r.key_prefix, why: "workspace_closed" } }, db);
+      }
+      return { revoked: rows.length, failed: false };
+    });
+  } catch {
+    return { revoked: 0, failed: true };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Authentication (every /api/v1/crm request)
 // ---------------------------------------------------------------------------

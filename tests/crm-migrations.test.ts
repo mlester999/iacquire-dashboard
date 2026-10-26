@@ -31,6 +31,52 @@ const CRM_MIGRATION_NAMES = [
   // Missed-call recovery and lead scoring: read policies on app.permitted_orgs, and both rollbacks refuse while recovery cases or assessments exist (none do here).
   // 0086 is rolled back before 0085, and both before 0060.
   "0085_missed_call_recovery.sql", "0086_lead_scoring.sql",
+  // Website chat: read policies on app.permitted_orgs; its rollback refuses while a widget is on or a chat exists (none do here).
+  "0087_website_chat.sql",
+  // Lead touches and entered campaign costs: read policies on app.permitted_orgs; its rollback refuses while a touch or cost exists (none do here).
+  "0088_lead_attribution.sql",
+  // Social media manager: read policies on app.permitted_orgs, a new private-file bucket and permission rows; its rollback refuses while an account, post,
+  // media file, campaign, AI run or job exists (none do here) and puts app.file_permission back to 0049's definition.
+  "0089_social_media_manager.sql",
+  // Two more private-file buckets (proposal documents, staff message attachments) and 0089's app.file_permission with their two branches; its rollback refuses while a
+  // file is stored in either bucket (none is here) and is rolled back first, putting 0089's definition back before 0089's own rollback replaces it with 0049's.
+  "0090_document_buckets.sql",
+  // Proposals: read policies on app.permitted_orgs, eight permission rows and nine notification kinds; its rollback refuses while a proposal, price book entry, tax rate,
+  // template, AI run or stored proposal document exists (none does here). It is rolled back before 0090 and leaves 0090's bucket and file rule alone.
+  "0091_proposals.sql",
+  // E-signatures for proposals: three tables with read policies on app.permitted_orgs, one permission row and a key from proposal_decisions to the signature request that
+  // made it; its rollback refuses while a connection, a signature request or its history exists (none does here) and is rolled back before 0091, whose tables it hangs off.
+  "0092_esign.sql",
+  // Reputation follow-through: columns on customer_feedback and crm_review_requests, a settings table and three permissions; its rollback refuses while a survey answer,
+  // an escalation, an acknowledgement or a resolution exists (none does here).
+  "0094_reputation_followthrough.sql",
+  // Public reviews read from a review site and replies to them: five tables with read policies on app.permitted_orgs (a connection's credentials stay unreadable); its rollback
+  // refuses while a connection, a mirrored review or a reply exists (none does here) and is rolled back before 0094, whose permissions its policies use.
+  "0095_external_reviews.sql",
+  // Customer invoices and payments: ten tables with read policies on app.permitted_orgs, seventeen invoices.* permission rows, eight notification kinds and the 'billing' message
+  // scope; its rollback refuses while an invoice, payment, refund, connection, receipt or reminder exists (none does here).
+  "0093_customer_invoices_payments.sql",
+  // Internal staff Messages: eight agency-only tables with read policies on the caller's current standing (app.staff_conversation_ids), three agency.messages.* permission rows,
+  // two entries in the agency override lists, the 'staff' notification audience and five notification kinds; its rollback refuses while a conversation, message, attachment or
+  // staff notification exists (none does here).
+  "0096_staff_messages.sql",
+  // Staff workload: six agency-only tables with read policies on the caller's current standing (app.staff_workload_allowed and its team and manage forms), five
+  // agency.workload.* permission rows and four entries in the agency override lists; its rollback refuses while a capacity profile, time off, a history row, an alert, an
+  // assignment or a changed rule exists (none does here) and deletes the workload notices that 0096's rollback would refuse on. It is rolled back before 0096.
+  "0097_staff_workload.sql",
+  // Payment controls for iAcquire's own billing: columns on billing_accounts, payments and maintenance_subscriptions, a function and four notification kinds; its rollback
+  // refuses while a payment recorded by hand, a waiver a person made or a plan period tied to a payment exists (none does here).
+  "0099_payment_controls.sql",
+  // Requests completion: eight tables with read policies on app.permitted_orgs (change classifications, change orders and their decisions, scope amendments, prerequisites,
+  // mentions, triage records, surveys), columns on client_projects and support_settings and five notification kinds; its rollback refuses while a Request a Change request,
+  // a change order, a prerequisite, a mention, a triage record or a survey exists (none does here). It is rolled back after 0099 and before 0096.
+  "0098_requests_completion.sql",
+  // The prospect demo funnel: seven tables with row-level security and no grant for any application role, two agency.prospects.* permission rows and four notification kinds; its
+  // rollback refuses while a prospect, a transcript, a session, a link or a timeline exists, or a demo notification (none does here). It is rolled back first of all.
+  "0100_demo_funnel.sql",
+  // Onboarding completion: a snapshot column on onboarding_responses, the 'onboarding' origin of a draft calendar and one optional step in the default checklist; its rollback
+  // refuses while a snapshot, a calendar drafted from onboarding answers or a media storage step a person worked on exists (none does here). Rolled back before 0100.
+  "0102_onboarding_snapshot.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

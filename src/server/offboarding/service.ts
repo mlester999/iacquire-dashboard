@@ -6,8 +6,17 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { cancelRetention } from "@/server/retention/cancel";
+import { endWorkspaceBatches } from "@/server/reputation/batch-state";
+import { disconnectWorkspaceReviewConnections } from "@/server/reputation/connections";
 import { releaseReservation } from "@/server/billing/ledger";
 import { disconnectIntegration } from "@/server/integrations/manager";
+import { disconnectWorkspaceAccounts } from "@/server/social/accounts";
+import { revokeWorkspaceConnections } from "@/server/customer-payments/connections";
+import { disconnectWorkspaceEsign } from "@/server/esign/connections";
+import { disconnectWorkspaceCalendars } from "@/server/calendars/connections";
+import { revokeWorkspaceAutomationConnections } from "@/server/automation-studio/connections";
+import { revokeWorkspaceApiKeys } from "@/server/crm/api-keys";
+import { pauseWorkspaceWebhooks } from "@/server/crm/webhooks";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -162,7 +171,7 @@ export async function cancelOffboarding(actor: { user: Pick<SessionUser, "id" | 
     }
     await addEvent(db, r.id, actor.orgId, "cancelled", why, actor.user.id);
     await recordAudit({ orgId: actor.orgId, actorUserId: actor.user.id, actorKind: actor.viaOwner ? "user" : "agency", action: "offboarding.cancelled", targetType: "offboarding_request", targetId: r.id, result: "success" }, db);
-    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
+    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed, connect your Facebook and Instagram accounts again in Social media, and reconnect calendars, Automation Studio connections and webhooks, and create any API keys again.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
   });
 }
 
@@ -179,7 +188,7 @@ const shutdownSchema = z.object({ websitePlan: z.enum(["keep_until_deletion", "u
 
 /**
  * Closes the workspace down safely: customer-facing automation stops and everything already queued is cancelled, messaging is disconnected, staff
- * (not the owner) lose access, the services connected for this client are disconnected, and the retention clock starts. Each step is recorded
+ * (not the owner) lose access, the services and social media accounts connected for this client are disconnected, and the retention clock starts. Each step is recorded
  * with its outcome; a step that fails is shown as failed, never hidden. The owner keeps access, so they can still download their data.
  */
 export async function shutdownClient(user: SessionUser, requestId: string, input: z.input<typeof shutdownSchema> = {}): Promise<OffboardingView> {
@@ -197,6 +206,8 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
       await db.query("insert into automation_pauses (org_id, scope, active, reason, set_by, set_at) values ($1, $2, true, null, $3, now()) on conflict (org_id, scope) do update set active = true, set_by = $3, set_at = now()", [orgId, scope, user.id]);
     }
     await db.query("update agent_instances set mode = 'paused', mode_changed_by = $2, mode_changed_at = now(), mode_reason = 'Workspace is closing.' where org_id = $1", [orgId, user.id]);
+    // Review request batches first, so the requests behind their queued messages are cancelled with them, before every queued message is stopped below.
+    await endWorkspaceBatches(db, orgId, user.id);
     const msgs = await db.query<{ reservation_id: string | null }>(
       "update conversation_messages set status = 'blocked', blocked_reason = 'offboarding', status_detail = 'Stopped before sending.' where org_id = $1 and direction = 'outbound' and status in ('draft', 'queued') returning reservation_id",
       [orgId],
@@ -227,6 +238,87 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
   }
   await record("integrations", failed.length === 0, failed.length ? `Could not disconnect: ${failed.join(", ")}. Disconnect these by hand and revoke their tokens at the provider.` : `Disconnected ${conns.rows.length} connected service${conns.rows.length === 1 ? "" : "s"}. Revoke any upstream tokens at the provider too.`);
 
+  // 2b. Facebook Pages and Instagram accounts. They are not integration connections, but they hold the same kind of live token (a Page's long-lived token) and
+  // have posts waiting to go out, so they are disconnected exactly as their owner would: the token is deleted and what was queued is stopped.
+  const social = await disconnectWorkspaceAccounts(orgId, user.id);
+  const socialOk = social.failed.length === 0;
+  await record(
+    "social", socialOk,
+    social.failed.length
+      ? `Could not disconnect social media accounts: ${social.failed.join(", ")}. Disconnect them by hand and have the iAcquire app removed on the platform.`
+      : social.disconnected
+        ? `Disconnected ${social.disconnected} social media account${social.disconnected === 1 ? "" : "s"} and deleted their sign-in tokens${social.stopped ? `; ${social.stopped} post${social.stopped === 1 ? "" : "s"} waiting to publish ${social.stopped === 1 ? "was" : "were"} stopped` : ""}. The app can also be removed on the platform.`
+        : "No social media accounts were connected.",
+  );
+
+  // 2b-2. Review sites (Google Business Profile, Facebook recommendations). A Google connection holds a long-lived refresh token, deleted here exactly as the owner's own disconnect
+  // would; nothing more is read. The reviews already read stay for the export. Recorded only when there was something to disconnect.
+  const reviewSites = await disconnectWorkspaceReviewConnections(orgId, user.id);
+  if (reviewSites.disconnected > 0 || reviewSites.failed.length > 0) {
+    await record(
+      "review_sites", reviewSites.failed.length === 0,
+      reviewSites.failed.length
+        ? `Could not disconnect review sites: ${reviewSites.failed.join(", ")}. Disconnect them by hand and remove iAcquire's access in the review site's account settings.`
+        : `Disconnected ${reviewSites.disconnected} review site${reviewSites.disconnected === 1 ? "" : "s"} and deleted the saved sign-in. Remove iAcquire's access in the review site's account settings too.`,
+    );
+  }
+
+  // 2c. The business's own payment accounts (customer invoices). Their keys can move money, so they are deleted exactly as the owner's own disconnect would; the invoices and
+  // payments already recorded are the client's data and stay for the export. Recorded only when there was something to disconnect.
+  const payments = await revokeWorkspaceConnections(orgId, user.id);
+  if (payments.revoked > 0 || payments.failed.length > 0) {
+    await record(
+      "payments", payments.failed.length === 0,
+      payments.failed.length
+        ? `Could not disconnect payment accounts: ${payments.failed.join(", ")}. Remove the saved keys by hand and revoke them at the provider.`
+        : `Disconnected ${payments.revoked} payment account${payments.revoked === 1 ? "" : "s"} and deleted the saved keys${payments.cancelledCheckouts ? `; ${payments.cancelledCheckouts} checkout${payments.cancelledCheckouts === 1 ? "" : "s"} waiting to be paid ${payments.cancelledCheckouts === 1 ? "was" : "were"} cancelled` : ""}. Revoke the keys at the provider too.`,
+    );
+  }
+
+  // 2d. The business's own signing service (proposals). Its API key can create and send documents in the client's account, so it is deleted exactly as the owner's own
+  // disconnect would, and signing requests still out are ended (a signature that arrives later is not applied). Recorded only when there was something to disconnect.
+  const esign = await disconnectWorkspaceEsign(orgId, user.id);
+  if (esign.disconnected > 0 || esign.failed) {
+    await record(
+      "esign", !esign.failed,
+      esign.failed
+        ? "Could not disconnect the signing service. Remove the saved keys by hand and revoke them at the signing service."
+        : `Disconnected the signing service and deleted the saved keys${esign.ended ? `; ${esign.ended} signing request${esign.ended === 1 ? "" : "s"} still out ${esign.ended === 1 ? "was" : "were"} ended` : ""}. Revoke the key at the signing service too, and withdraw any document still waiting there.`,
+    );
+  }
+
+  // 2e. What else still holds a live secret or a door into the workspace: calendar connections (OAuth tokens, CalDAV passwords, private feed links), Automation Studio connections
+  // (Slack and HTTP secrets), the CRM's public API keys and its outbound webhooks. Each is closed exactly as its owner's own disconnect would, so nothing here is left to keep
+  // talking after "Workspace is closing". A failure is shown as failed, never hidden. Recorded only when there was something to close.
+  const calendars = await disconnectWorkspaceCalendars(orgId, user.id);
+  if (calendars.disconnected > 0 || calendars.failed.length > 0) {
+    await record(
+      "calendars", calendars.failed.length === 0,
+      calendars.failed.length
+        ? "Could not disconnect the calendar connections. Disconnect them by hand and remove iAcquire's access in each calendar account."
+        : `Disconnected ${calendars.disconnected} calendar connection${calendars.disconnected === 1 ? "" : "s"} and deleted the saved sign-ins${calendars.revoked ? `; ${calendars.revoked} Google grant${calendars.revoked === 1 ? " was" : "s were"} revoked` : ""}. Events already on a calendar stay there; remove iAcquire from each Microsoft account's app permissions too.`,
+    );
+  }
+  const studioConnections = await revokeWorkspaceAutomationConnections(orgId, user.id);
+  if (studioConnections.revoked > 0 || studioConnections.failed) {
+    await record(
+      "automation_connections", !studioConnections.failed,
+      studioConnections.failed
+        ? "Could not revoke the Automation Studio connections. Revoke them by hand and rotate their secrets at the other service."
+        : `Revoked ${studioConnections.revoked} Automation Studio connection${studioConnections.revoked === 1 ? "" : "s"} and erased their secrets. Rotate them at the other service too.`,
+    );
+  }
+  const apiKeys = await revokeWorkspaceApiKeys(orgId, user.id);
+  const webhooks = await pauseWorkspaceWebhooks(orgId, user.id);
+  if (apiKeys.revoked > 0 || apiKeys.failed || webhooks.paused > 0 || webhooks.failed) {
+    await record(
+      "api_access", !apiKeys.failed && !webhooks.failed,
+      apiKeys.failed || webhooks.failed
+        ? "Could not close every API key and webhook. Revoke the keys and pause the webhooks by hand in CRM Settings."
+        : `Revoked ${apiKeys.revoked} API key${apiKeys.revoked === 1 ? "" : "s"} and paused ${webhooks.paused} outbound webhook${webhooks.paused === 1 ? "" : "s"}. The webhooks and their logs stay for the export.`,
+    );
+  }
+
   // 3. Access: staff lose it, the owner keeps it to download their data.
   const revoked = await withSystem(async (db) => {
     const res = await db.query("update organization_memberships set status = 'revoked' where org_id = $1 and status = 'active' and role <> 'owner'", [orgId]);
@@ -253,7 +345,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     );
     await addEvent(db, requestId, orgId, "shutdown", `Workspace shut down. Data is kept for ${d.retentionDays} days. Remaining prepaid credit: $${(Number(bal) / 1_000_000).toFixed(2)}.`, user.id);
     await addEvent(db, requestId, orgId, "retention_started", `Deletion can be scheduled after ${d.retentionDays} days.`, user.id);
-    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed } }, db);
+    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk || payments.failed.length || esign.failed ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed, failedPaymentDisconnects: payments.failed, failedEsignDisconnect: esign.failed } }, db);
     await notifyOrgRoles(db, orgId, ["owner"], {
       kind: "offboarding_update", severity: "info", title: "Your workspace has been closed down",
       body: `Automation and messaging are off. You can download your data until ${new Date(res.rows[0].delete_after!).toISOString().slice(0, 10)}. Your domains are yours to keep.`, link: "/settings/data", dedupeKey: `offboarding:${requestId}:shutdown`,

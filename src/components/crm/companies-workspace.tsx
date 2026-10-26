@@ -94,7 +94,7 @@ export function CompaniesWorkspace({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Companies</h2>
-          <p className="mt-1 text-[13px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "company" : "companies"}{state.archived === "only" ? " (archived)" : ""}</p>
+          <p className="mt-1 text-[14px] text-muted">{total.toLocaleString("en-US")} {total === 1 ? "company" : "companies"}{state.archived === "only" ? " (archived)" : ""}</p>
         </div>
         {canEdit && <Button onClick={() => setNewOpen(true)}><Plus className="size-4" />New company</Button>}
       </div>
@@ -114,18 +114,18 @@ export function CompaniesWorkspace({
           <option value="include">Active and archived</option>
         </Select>
         {state.filter && (
-          <span className="inline-flex min-h-9 max-w-full items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] text-ink-2">
+          <span className="inline-flex min-h-9 max-w-full items-center gap-1 rounded-xl bg-surface-2 px-3 text-[13px] text-ink-2">
             <span className="truncate">{describeFilter(state.filter, catalog, options)}</span>
             <Link href={hrefWith({ f: null })} aria-label="Clear filter" className="-mr-1 inline-flex size-6 items-center justify-center rounded-md hover:bg-line/60"><X className="size-3.5" /></Link>
           </span>
         )}
       </div>
 
-      {error && <p className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="alert">{error} Showing every company instead.</p>}
+      {error && <p className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink" role="alert">{error} Showing every company instead.</p>}
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-primary/25 bg-primary-soft/50 px-3 py-2" role="region" aria-label="Bulk actions">
-          <span className="text-[13px] font-medium text-primary-ink">{selected.size} selected</span>
+          <span className="text-[14px] font-medium text-primary-ink">{selected.size} selected</span>
           {canEdit && <Button size="sm" variant="secondary" onClick={() => setTagOpen(true)}><Tag className="size-4" />Tag</Button>}
           {scope.can["contacts.delete"] && !scope.readOnly && (
             <Button size="sm" variant="secondary" onClick={() => setArchiveOpen(true)}>
@@ -138,8 +138,8 @@ export function CompaniesWorkspace({
 
       {rows.length ? (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-[13px]">
+          <div className="overflow-x-auto" tabIndex={0}>
+            <table className="w-full min-w-[760px] text-[14px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="w-10 px-3 py-2.5"><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSelected(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} className="size-4 accent-[var(--color-primary)]" /></th>
@@ -220,7 +220,7 @@ function BulkTagDialog({ tags, count, busy, onClose, onApply }: { tags: Array<{ 
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!tagId} loading={busy} onClick={() => onApply(tagId)}>Add tag</Button></>}>
       {tags.length ? (
         <Field label="Tag" htmlFor="bt-tag"><Select id="bt-tag" value={tagId} onChange={(e) => setTagId(e.target.value)}>{tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
-      ) : <p className="text-[13px] text-muted">Create a tag first under Tags &amp; Segments.</p>}
+      ) : <p className="text-[14px] text-muted">Create a tag first under Tags &amp; Segments.</p>}
     </Dialog>
   );
 }

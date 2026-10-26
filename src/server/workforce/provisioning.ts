@@ -10,7 +10,7 @@ export { PORTAL_DISABLED_TOOLSETS, PORTAL_SAFE_TOOLSETS, unauthorizedToolsets };
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { notifyAgency } from "@/server/notifications";
+import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
@@ -165,23 +165,55 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
   };
 }
 
-/** Opens provisioning requests for enabled employees that don't have a dedicated profile yet. */
+/**
+ * Opens provisioning requests for enabled employees that don't have a dedicated profile yet. Provisioning is the step that costs iAcquire money, so it also needs the
+ * setup payment confirmed (paid or waived: app.setup_payment_cleared); the questionnaire and everything else in the workspace do not. Called again after any event that
+ * clears the payment (src/server/billing/after-clearing.ts), so a client who finished onboarding first is provisioned the moment the payment is confirmed.
+ */
 export async function requestProvisioning(db: Queryable, orgId: string, requestedBy: string | null) {
-  const { rows } = await db.query<{ id: string; role_key: AgentRoleKey }>(
-    `insert into agent_provisioning_jobs (org_id, agent_instance_id, kind, requested_by)
-     select a.org_id, a.id, 'provision', $2 from agent_instances a
-     join organizations o on o.id = a.org_id
-     where a.org_id = $1 and a.enabled and a.hermes_profile is null
+  const eligible = `a.org_id = $1 and a.enabled and a.hermes_profile is null
        and o.kind = 'client' and not o.is_demo and o.status = 'active' and o.onboarding_completed_at is not null
        and exists (
          select 1 from organization_memberships m join users u on u.id = m.user_id
          where m.org_id = o.id and m.role = 'owner' and m.status = 'active' and u.email_verified_at is not null
        )
-       and not exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id = a.id and j.kind = 'provision')
+       and not exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id = a.id and j.kind = 'provision')`;
+  const { rows } = await db.query<{ id: string; role_key: AgentRoleKey }>(
+    `insert into agent_provisioning_jobs (org_id, agent_instance_id, kind, requested_by)
+     select a.org_id, a.id, 'provision', $2 from agent_instances a
+     join organizations o on o.id = a.org_id
+     where ${eligible} and app.setup_payment_cleared(o.id)
      on conflict do nothing
      returning agent_instance_id as id, (select role_key from agent_instances where id = agent_instance_id) as role_key`,
     [orgId, requestedBy],
   );
+  if (!rows.length) {
+    // Everything else is in place but the payment is not: say so once, to the agency (who can record the payment or waive the fee) and to the client's owners.
+    const waiting = await db.query<{ n: number }>(
+      `select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${eligible} and not app.setup_payment_cleared(o.id)`,
+      [orgId],
+    );
+    if (waiting.rows[0].n > 0) {
+      const dedupeKey = `setup-payment-required:${orgId}`;
+      const name = (await db.query<{ name: string }>("select name from organizations where id = $1", [orgId])).rows[0]?.name ?? "A client";
+      await notifyAgency(db, orgId, {
+        kind: "billing_setup_payment_required",
+        severity: "warning",
+        title: `${name} finished onboarding, but the setup payment is not confirmed`,
+        body: "No AI employee is being provisioned. Record the payment, or waive the setup fee with a reason, on the client's billing tab.",
+        link: `/admin/clients/${orgId}?tab=billing`,
+        dedupeKey,
+      });
+      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+        kind: "billing_setup_payment_required",
+        severity: "info",
+        title: "Your AI team starts after your setup payment is confirmed",
+        body: "Your business information is saved. iAcquire will start setting up your AI employees as soon as the setup payment is confirmed.",
+        link: "/employees",
+        dedupeKey,
+      });
+    }
+  }
   if (rows.length) {
     await notifyAgency(db, orgId, {
       kind: "agent_status",

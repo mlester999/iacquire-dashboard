@@ -38,9 +38,9 @@ export function IssueList({ issues, className, onPick }: { issues: readonly Form
         return (
           <li key={`${i.code}-${i.question ?? ""}-${n}`}>
             {onPick ? (
-              <button type="button" onClick={() => onPick(i)} className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] leading-relaxed text-ink-2 hover:bg-surface-2">{body}</button>
+              <button type="button" onClick={() => onPick(i)} className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-relaxed text-ink-2 hover:bg-surface-2">{body}</button>
             ) : (
-              <p className="flex items-start gap-2 px-2 py-1.5 text-[12.5px] leading-relaxed text-ink-2">{body}</p>
+              <p className="flex items-start gap-2 px-2 py-1.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
             )}
           </li>
         );
@@ -56,7 +56,7 @@ export function Section({ title, description, children, className, actions }: { 
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-[14.5px] font-semibold tracking-tight text-ink">{title}</h3>
-          {description && <div className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted">{description}</div>}
+          {description && <div className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">{description}</div>}
         </div>
         {actions}
       </div>

@@ -6,6 +6,7 @@ import { notifyUser } from "@/server/notifications";
 import { sha256 } from "@/server/security/crypto";
 import { assertCan, type CrmActor } from "@/server/crm/actor";
 import { ghlOwnsSql, switchingSql } from "@/server/crm/provider-guard";
+import { socialOrgRunnableSql } from "@/server/social/org-gate";
 import { assertConnectionOwner, markNeedsReauth, openConnection, pollMinutesFor, PROVIDER_LABELS, type ConnectionHandle, type SyncState } from "@/server/calendars/connections";
 import { isProviderError, type BusyResult, type ExistingEvent, type OutboundEvent } from "@/server/calendars/adapters/types";
 
@@ -461,6 +462,9 @@ export async function writeBackDue(opts: { now?: Date; connections?: number; per
            -- A workspace switching CRM providers writes nothing to outside calendars until the switch finishes, and one whose calendars
            -- GoHighLevel owns writes nothing from iAcquire at all (the pending writes stay pending, so nothing is lost).
            and not ${switchingSql("c.org_id")} and not ${ghlOwnsSql("c.org_id", "calendars")}
+           -- Writing an event into a person's own calendar is outward action: a suspended or archived workspace, an iAcquire agency pause and the workspace's outbound pause all
+           -- stop it (the same rule as social publishing). The writes stay pending, so nothing is lost and nothing is sent late in a way that surprises anyone.
+           and ${socialOrgRunnableSql("c.org_id")}
            and coalesce((c.sync_cursors->>'writeLeaseUntil')::timestamptz, '-infinity'::timestamptz) < $1
            and coalesce((c.sync_cursors->>'writeRetryAt')::timestamptz, '-infinity'::timestamptz) <= $1
            and exists (select 1 from appointment_refs a left join crm_external_events e on e.appointment_id = a.id and e.connection_id = c.id where ${pending("$1")})

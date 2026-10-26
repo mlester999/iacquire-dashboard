@@ -20,7 +20,7 @@ const TONE: Record<LeadLabel, "warning" | "primary" | "neutral" | "outline"> = {
 const ICON: Record<LeadLabel, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = { hot: Flame, warm: Sun, cold: Snowflake, insufficient_data: HelpCircle };
 
 export function PriorityBadge({ label, score, source, className }: { label: LeadLabel | null; score?: number | null; source?: "engine" | "human" | null; className?: string }) {
-  if (!label) return <span className="text-[12.5px] text-faint">Not scored</span>;
+  if (!label) return <span className="text-[13px] text-faint">Not scored</span>;
   const Icon = ICON[label];
   return (
     <Badge tone={TONE[label]} className={className} title={`${LEAD_LABEL_TEXT[label]}. ${LEAD_LABEL_HELP[label]}${source === "human" ? " Set by a teammate." : ""}`}>
@@ -66,16 +66,16 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
     >
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <PriorityBadge label={label} score={view.score} source={view.source} className="h-7 px-3 text-[13px]" />
+          <PriorityBadge label={label} score={view.score} source={view.source} className="h-7 px-3 text-[14px]" />
           {view.evaluatedAt && <span className="text-[12px] text-muted">Checked <RelativeTime iso={view.evaluatedAt} timezone={scope.timezone} /></span>}
           {view.queued && <Badge tone="outline">Update queued</Badge>}
         </div>
 
-        {label ? <p className="text-[13px] leading-relaxed text-ink-2">{view.reason}</p> : <p className="text-[13px] text-muted">This lead has not been assessed yet. It is checked automatically when something about it changes, or use Check again.</p>}
-        {label && <p className="text-[12.5px] text-muted">{LEAD_LABEL_HELP[label]}</p>}
+        {label ? <p className="text-[14px] leading-relaxed text-ink-2">{view.reason}</p> : <p className="text-[14px] text-muted">This lead has not been assessed yet. It is checked automatically when something about it changes, or use Check again.</p>}
+        {label && <p className="text-[13px] text-muted">{LEAD_LABEL_HELP[label]}</p>}
 
         {view.override && (
-          <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[12.5px] text-warning-ink" role="note">
+          <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink" role="note">
             <p className="font-medium">{view.override.setBy ?? "A teammate"} set this to {LEAD_LABEL_TEXT[view.override.label]}{view.override.expiresAt ? <> until <RelativeTime iso={view.override.expiresAt} timezone={scope.timezone} /></> : ""}.</p>
             <p className="mt-0.5">“{view.override.reason}”</p>
             {view.engineSays && <p className="mt-1">The scoring rules say {LEAD_LABEL_TEXT[view.engineSays.label]}{view.engineSays.score !== null ? ` (${view.engineSays.score})` : ""}. They keep checking, but never replace a teammate’s call.</p>}
@@ -92,7 +92,7 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
                   const t = a.dimensions[d];
                   return (
                     <li key={d} title={DIMENSION_HELP[d]}>
-                      <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
+                      <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
                         <span className="font-medium text-ink">{DIMENSION_TEXT[d]}</span>
                         <span className="tabular-nums text-muted">{t.known ? `${t.earned} of ${t.max}` : "nothing known yet"}</span>
                       </div>
@@ -107,45 +107,45 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
               <p className="mb-2 text-[12px] font-medium text-muted">Why</p>
               <ul className="space-y-2">
                 {shown.map((f) => (
-                  <li key={f.key} className="flex items-start gap-2 text-[13px]">
+                  <li key={f.key} className="flex items-start gap-2 text-[14px]">
                     <span className={cn("mt-0.5 w-9 shrink-0 text-right text-[12px] font-semibold tabular-nums", f.points > 0 ? "text-success-ink" : f.points < 0 ? "text-danger-ink" : "text-muted")}>{sign(f.points)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="font-medium text-ink">{f.label}</span>
-                      {f.source === "ai" && <Badge tone="violet" className="ml-1.5 h-5 px-1.5 text-[10px]"><Sparkles className="size-3" aria-hidden />From their messages</Badge>}
-                      <span className="block text-[12.5px] text-muted">{f.detail}{f.evidence.length ? ` · ${f.evidence.length} record${f.evidence.length === 1 ? "" : "s"}` : ""}</span>
+                      {f.source === "ai" && <Badge tone="violet" className="ml-1.5 h-5 px-1.5 text-[12px]"><Sparkles className="size-3" aria-hidden />From their messages</Badge>}
+                      <span className="block text-[13px] text-muted">{f.detail}{f.evidence.length ? ` · ${f.evidence.length} record${f.evidence.length === 1 ? "" : "s"}` : ""}</span>
                     </span>
                   </li>
                 ))}
-                {!factors.length && <li className="text-[12.5px] text-muted">Nothing on record yet that counts for or against.</li>}
+                {!factors.length && <li className="text-[13px] text-muted">Nothing on record yet that counts for or against.</li>}
               </ul>
-              {factors.length > 5 && <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-2 text-[12.5px] font-medium text-primary-ink hover:underline">{showAll ? "Show fewer" : `Show all ${factors.length}`}</button>}
+              {factors.length > 5 && <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-2 text-[13px] font-medium text-primary-ink hover:underline">{showAll ? "Show fewer" : `Show all ${factors.length}`}</button>}
             </div>
 
             {missing.length > 0 && (
               <div>
                 <p className="mb-1.5 text-[12px] font-medium text-muted">Would help to know</p>
-                <ul className="list-disc space-y-0.5 pl-5 text-[12.5px] text-ink-2">
+                <ul className="list-disc space-y-0.5 pl-5 text-[13px] text-ink-2">
                   {missing.map((m) => <li key={m.key}>{m.label}{m.hint ? <span className="text-muted"> — {m.hint}</span> : null}</li>)}
                 </ul>
               </div>
             )}
 
             {a.nextAction?.label && (
-              <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px]"><span className="font-medium text-ink">Suggested next step:</span> <span className="text-ink-2">{a.nextAction.label}</span></p>
+              <p className="rounded-xl bg-surface-2 px-3 py-2 text-[14px]"><span className="font-medium text-ink">Suggested next step:</span> <span className="text-ink-2">{a.nextAction.label}</span></p>
             )}
-            <p className="text-[11.5px] leading-relaxed text-faint">
+            <p className="text-[12px] leading-relaxed text-faint">
               Scored by rules{a.aiPoints ? ` (${a.rulePoints} points) with signals read from their messages (${a.aiPoints} points)` : ""}. The language model never sets a score. Rules v{a.profileVersion}, engine {a.engineVersion}.
             </p>
           </>
         )}
 
         {view.recent.length > 1 && (
-          <details className="text-[12.5px]">
+          <details className="text-[13px]">
             <summary className="cursor-pointer font-medium text-ink-2">Recent changes</summary>
             <ul className="mt-2 space-y-1">
               {view.recent.map((r, i) => (
                 <li key={r.seq} className="flex items-center gap-2 text-muted">
-                  <PriorityBadge label={r.label} score={r.score} className="h-5 px-2 text-[11px]" />
+                  <PriorityBadge label={r.label} score={r.score} className="h-5 px-2 text-[12px]" />
                   <RelativeTime iso={r.at} timezone={scope.timezone} />
                   {i === 0 && <span className="text-faint">· latest</span>}
                 </li>
@@ -181,7 +181,7 @@ export function PriorityCard({ scope, contactId, view, canEdit }: { scope: CrmSc
               </div>
             </form>
           ) : (
-            <button type="button" onClick={() => setSetting(true)} className="inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary-ink hover:underline sm:min-h-0">Set the priority yourself</button>
+            <button type="button" onClick={() => setSetting(true)} className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink hover:underline sm:min-h-0">Set the priority yourself</button>
           )
         )}
       </div>

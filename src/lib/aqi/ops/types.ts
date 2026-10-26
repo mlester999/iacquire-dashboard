@@ -3,6 +3,7 @@
  * Copilot. Nothing here grants access: the server resolves the viewer, validates every scope and
  * checks every tool again. These are only the shapes that cross the wire.
  */
+import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 
 /** Honest platform states. There is deliberately no percentage and no unqualified "green". */
 export type OpsHealthState = "healthy" | "degraded" | "unavailable" | "unknown" | "not_configured";
@@ -142,7 +143,7 @@ export const OPS_EMPLOYEE_STATE_LABEL: Record<OpsEmployeeState, string> = {
   blocked: "Blocked",
   idle: "Idle",
   offline: "Offline",
-  setup_required: "Setup required",
+  setup_required: SETUP_REQUIRED_LABEL,
   failed: "Failed",
   unknown: "Unknown",
 };

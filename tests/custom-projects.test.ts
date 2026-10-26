@@ -419,4 +419,44 @@ describe("quotes, approval and delivery", () => {
     // Declining or asking for changes is still possible.
     await decideQuote(ctxOwnerA(), q, "declined", "No longer needed.");
   });
+
+  it("is not decided while staff have held or cancelled the project, so a closed project is never brought back to Approved", async () => {
+    // A fresh owner: project requests are limited per person per hour and the earlier tests in this file spend the first owner's allowance.
+    const owner = await createUser();
+    await addMember(orgA.id, owner.id, "owner");
+    const ctx = ctxFor(owner, orgA, "owner");
+    const rows = async (table: string, id: string) => Number((await withSystem((db) => db.query<{ n: string }>(`select count(*)::text as n from ${table} where request_id = $1`, [id]))).rows[0].n);
+    const statusOf = async (id: string) => (await withSystem((db) => db.query<{ status: string }>("select status from client_project_requests where id = $1", [id]))).rows[0].status;
+    const id = (await createProjectRequest(ctx, request("Held then accepted project"))).id;
+    await updateProjectStatus(staffAssigned, id, { status: "under_review" });
+    const q = (await saveQuoteDraft(staffAssigned, id, fullQuote())).id;
+    await sendQuote(staffAssigned, id, q);
+
+    await updateProjectStatus(staffAssigned, id, { status: "on_hold", reason: "Waiting for the client's budget." });
+    for (const decision of ["accepted", "declined", "changes_requested"] as const) await expect(decideQuote(ctx, q, decision, "please")).rejects.toThrow(/on hold/);
+    expect(await statusOf(id)).toBe("on_hold");
+    expect(await rows("client_projects", id)).toBe(0);
+    expect(await rows("quote_approvals", id)).toBe(0);
+
+    // Resume it, then cancel it from there to prove the second closed state too.
+    await updateProjectStatus(staffAssigned, id, { resume: true });
+    expect(await statusOf(id)).toBe("quote_sent");
+    await updateProjectStatus(staffAssigned, id, { status: "cancelled", reason: "The client changed plans." });
+    // Cancelling withdraws the quote that was still waiting, so the client is told it is no longer open (the status guard behind it is the backstop).
+    await expect(decideQuote(ctx, q, "accepted")).rejects.toThrow(/no longer open/);
+    expect(await statusOf(id)).toBe("cancelled");
+    expect(await rows("client_projects", id)).toBe(0);
+    expect(await rows("quote_approvals", id)).toBe(0);
+
+    // A project that was only held can be decided again once it resumes.
+    const id2 = (await createProjectRequest(ctx, request("Held then resumed project"))).id;
+    await updateProjectStatus(staffAssigned, id2, { status: "under_review" });
+    const q2 = (await saveQuoteDraft(staffAssigned, id2, fullQuote())).id;
+    await sendQuote(staffAssigned, id2, q2);
+    await updateProjectStatus(staffAssigned, id2, { status: "on_hold" });
+    await expect(decideQuote(ctx, q2, "accepted")).rejects.toThrow(/on hold/);
+    await updateProjectStatus(staffAssigned, id2, { resume: true });
+    expect((await decideQuote(ctx, q2, "accepted")).decision).toBe("accepted");
+    expect(await statusOf(id2)).toBe("approved");
+  });
 });

@@ -20,6 +20,8 @@ export interface PlanLifecycleInfo {
   lastPaymentVerifiedBy: string | null;
   studioWorkflows: number;
   studioPaused: number;
+  /** Days since the paid-through day, while the plan is still running with no payment recorded since; null otherwise. Absent on sample pages that predate it. */
+  periodEndedDaysAgo?: number | null;
 }
 
 type Dlg = "failed" | "verified" | "expire" | null;
@@ -61,22 +63,28 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface-2/50 p-3" aria-label="Automation Studio plan">
-      <p className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted">Automation Studio plan</p>
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-[12.5px] min-[460px]:grid-cols-2">
+    <div role="group" className="space-y-3 rounded-xl border border-line bg-surface-2/50 p-3" aria-label="Automation Studio plan">
+      <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Automation Studio plan</p>
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-[13px] min-[460px]:grid-cols-2">
         <div className="flex gap-2"><dt className="text-muted">Paid through</dt><dd className="font-medium text-ink">{info.paidThroughOn ? formatDate(info.paidThroughOn, "UTC") : "Not recorded"}</dd></div>
         <div className="flex gap-2"><dt className="text-muted">Last verified</dt><dd className="font-medium text-ink">{info.lastPaymentVerifiedAt ? `${formatDate(info.lastPaymentVerifiedAt, "UTC")}${info.lastPaymentVerifiedBy ? ` by ${info.lastPaymentVerifiedBy}` : ""}` : "Never"}</dd></div>
         <div className="flex gap-2"><dt className="text-muted">Studio workflows</dt><dd className="font-medium text-ink">{info.studioWorkflows}{info.studioPaused ? `, ${info.studioPaused} paused for the plan` : ""}</dd></div>
       </dl>
 
+      {(status === "active" || status === "cancel_requested") && info.periodEndedDaysAgo != null && info.periodEndedDaysAgo > 0 && (
+        <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="status">
+          <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>The paid period ended {info.periodEndedDaysAgo} day{info.periodEndedDaysAgo === 1 ? "" : "s"} ago and no payment has been recorded since. The plan is still active. Record the payment, or record a failed payment to start the grace period.</span>
+        </p>
+      )}
       {status === "past_due" && info.graceEndsAt && (
-        <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink" role="status">
+        <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="status">
           <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>Payment failed{info.pastDueSince ? ` on ${formatDate(info.pastDueSince, "UTC")}` : ""}. The client keeps Automation Studio until {formatDate(info.graceEndsAt, "UTC")} ({left !== null && left > 0 ? `${left} day${left === 1 ? "" : "s"} left` : "ends today"}); then its workflows pause.</span>
         </p>
       )}
       {status === "expired" && (
-        <p className="flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink" role="status">
+        <p className="flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger-ink" role="status">
           <ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>Expired{info.expiredAt ? ` on ${formatDate(info.expiredAt, "UTC")}` : ""}. Studio workflows are paused (nothing is deleted). Recording a verified payment brings the plan back; the client then turns each workflow on again after reviewing it.</span>
         </p>
@@ -104,7 +112,7 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
         <Field label="Grace period (days)" htmlFor="grace-days" hint={`From 1 to ${MAX_GRACE_DAYS}. The default is ${PAYMENT_GRACE_DAYS}. The client is told the exact date.`}>
           <Input id="grace-days" type="number" min={1} max={MAX_GRACE_DAYS} value={graceDays} onChange={(e) => setGraceDays(e.target.value)} />
         </Field>
-        {error && <p className="mt-2 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+        {error && <p className="mt-2 text-[13px] text-danger-ink" role="alert">{error}</p>}
       </Dialog>
 
       <Dialog
@@ -124,12 +132,12 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
           <Field label="The payment covers through" htmlFor="paid-through">
             <Input id="paid-through" type="date" value={through} onChange={(e) => setThrough(e.target.value)} />
           </Field>
-          <label className="flex items-start gap-2 text-[13px] text-ink-2">
+          <label className="flex items-start gap-2 text-[14px] text-ink-2">
             <input type="checkbox" className="mt-0.5 size-4 rounded border-line-strong" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
             <span>I confirmed this payment in our billing records.</span>
           </label>
-          {status === "past_due" || status === "expired" ? <p className="text-[12.5px] text-muted">The plan becomes active again. Workflows that were paused stay paused until the client reviews and turns each one on.</p> : null}
-          {error && <p className="text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+          {status === "past_due" || status === "expired" ? <p className="text-[13px] text-muted">The plan becomes active again. Workflows that were paused stay paused until the client reviews and turns each one on.</p> : null}
+          {error && <p className="text-[13px] text-danger-ink" role="alert">{error}</p>}
         </div>
       </Dialog>
 
@@ -146,7 +154,7 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
           </>
         }
       >
-        {error && <p className="text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+        {error && <p className="text-[13px] text-danger-ink" role="alert">{error}</p>}
       </Dialog>
     </div>
   );

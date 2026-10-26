@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Hourglass } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { businessInitials } from "@/lib/business-initials";
 
 // The frame every public booking page shares: the business's name and colour, the page, and a quiet footer. No portal navigation,
 // nothing about the signed-in app.
@@ -14,12 +15,6 @@ function readableOn(hex: string): string {
   return (1.05) / (l + 0.05) >= (l + 0.05) / 0.05 ? "#ffffff" : "#0a0d14";
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-}
-
 export function Monogram({ name, color, className }: { name: string; color: string | null; className?: string }) {
   const bg = color && HEX.test(color) ? color : null;
   return (
@@ -28,7 +23,7 @@ export function Monogram({ name, color, className }: { name: string; color: stri
       className={cn("inline-flex size-11 shrink-0 items-center justify-center rounded-2xl text-[15px] font-semibold tracking-tight shadow-soft", !bg && "brand-gradient text-white", className)}
       style={bg ? { backgroundColor: bg, color: readableOn(bg) } : undefined}
     >
-      {initialsOf(name)}
+      {businessInitials(name)}
     </span>
   );
 }
@@ -45,7 +40,7 @@ export function BookingShell({ business, subtitle, children }: { business: { nam
             <Monogram name={business.name} color={business.brandColor} />
             <div className="min-w-0">
               <p className="truncate text-[16px] font-semibold tracking-[-0.02em] text-ink">{business.name}</p>
-              {subtitle && <p className="truncate text-[13px] text-muted">{subtitle}</p>}
+              {subtitle && <p className="truncate text-[14px] text-muted">{subtitle}</p>}
             </div>
           </div>
         </header>

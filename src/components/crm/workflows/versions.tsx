@@ -44,24 +44,24 @@ export function VersionsList({ versions, timezone, onView, approvalsHref }: { ve
       <ol className="divide-y divide-line">
         {versions.map((v) => (
           <li key={v.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink-2">v{v.version}</span>
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-[14px] font-semibold tabular-nums text-ink-2">v{v.version}</span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[14px] font-medium text-ink">Version {v.version}</span>
                 {v.current && <Badge tone="primary">Current</Badge>}
                 {approvalBadge(v.approval)}
               </div>
-              <p className="mt-0.5 text-[12.5px] text-muted">
+              <p className="mt-0.5 text-[13px] text-muted">
                 Published {formatDateTime(v.publishedAt, timezone)}{v.publishedByName ? ` by ${v.publishedByName}` : ""}
                 {v.approval === "approved" && v.approvedAt ? ` · approved ${formatDateTime(v.approvedAt, timezone)}${v.approvedByName ? ` by ${v.approvedByName}` : ""}` : ""}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {v.effects.length ? v.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>) : <span className="text-[12px] text-faint">Changes CRM records only</span>}
-                <span className="font-mono text-[11px] text-faint" title="Content fingerprint: approvals apply to exactly this content">#{v.contentHash.slice(0, 10)}</span>
+                {v.effects.length ? v.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>) : <span className="text-[12px] text-faint">Changes CRM records only</span>}
+                <span className="font-mono text-[12px] text-faint" title="Content fingerprint: approvals apply to exactly this content">#{v.contentHash.slice(0, 10)}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {approvalsHref && v.approvalId && v.approval === "pending" && <Link href={approvalsHref} className="inline-flex min-h-11 items-center px-2 text-[12.5px] font-medium text-primary hover:underline sm:min-h-8">In Approvals</Link>}
+              {approvalsHref && v.approvalId && v.approval === "pending" && <Link href={approvalsHref} className="inline-flex min-h-11 items-center px-2 text-[13px] font-medium text-primary hover:underline sm:min-h-8">In Approvals</Link>}
               <Button variant="secondary" size="sm" onClick={() => onView(v)}><Eye className="size-4" aria-hidden />View</Button>
             </div>
           </li>

@@ -81,8 +81,8 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
               <h2 id="verify-h" className="text-[15px] font-semibold tracking-tight text-ink">Verify and activate</h2>
               <DraftBadge />
             </div>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
-              {DRAFT_EXPLAINER} {calendar.origin === "blueprint" ? "It was created from a Blueprint, which never carries people or connections, so this workspace sets those up here." : ""}
+            <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
+              {DRAFT_EXPLAINER} {calendar.origin === "blueprint" ? "It was created from a Blueprint, which never carries people or connections, so this workspace sets those up here." : calendar.origin === "onboarding" ? "It was drafted from your answers about booking in the onboarding questionnaire. Nobody is assigned to it yet, so assign the people who take these appointments here." : ""}
             </p>
           </div>
           {canManage && (
@@ -94,7 +94,7 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
         </div>
 
         {suggested.length > 0 && (
-          <div className="rounded-xl border border-line bg-surface-2/60 p-3 text-[12.5px] text-ink-2">
+          <div className="rounded-xl border border-line bg-surface-2/60 p-3 text-[13px] text-ink-2">
             <p className="font-medium text-ink">Suggested working hours{calendar.suggestedTimezone ? ` (${calendar.suggestedTimezone})` : ""}</p>
             <ul className="mt-1 space-y-0.5">{suggested.map((line) => <li key={line}>{line}</li>)}</ul>
             <p className="mt-1.5 text-muted">Hours belong to each person and apply to every calendar they host, so only hosts with no weekly hours yet receive these.</p>
@@ -109,7 +109,7 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
 
         {current ? (
           <div>
-            <p className="text-[12.5px] text-muted" role="status">{passing} of {current.checks.length} checks pass{current.ok ? ". Ready to activate." : "."}</p>
+            <p className="text-[13px] text-muted" role="status">{passing} of {current.checks.length} checks pass{current.ok ? ". Ready to activate." : "."}</p>
             <ul className="mt-2 divide-y divide-line rounded-xl border border-line" aria-label="Activation checks">
               {current.checks.map((c) => {
                 const fix = canManage ? fixFor(c, scope.base, calendar.id, onEditHosts) : null;
@@ -117,20 +117,20 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
                   <li key={c.key} className="flex items-start gap-3 px-3 py-2.5">
                     {c.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />}
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-ink">{c.label}<span className="sr-only">: {c.ok ? "passes" : "needs attention"}</span></p>
-                      <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">{c.detail}</p>
-                      {c.key === "slot" && c.ok && current.firstOpenTime && <p className="mt-0.5 text-[12.5px] text-muted">First open time: {dateTimeIn(current.firstOpenTime.start, tz)}.</p>}
+                      <p className="text-[14px] font-medium text-ink">{c.label}<span className="sr-only">: {c.ok ? "passes" : "needs attention"}</span></p>
+                      <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">{c.detail}</p>
+                      {c.key === "slot" && c.ok && current.firstOpenTime && <p className="mt-0.5 text-[13px] text-muted">First open time: {dateTimeIn(current.firstOpenTime.start, tz)}.</p>}
                     </div>
                     {fix && (fix.href
-                      ? <Link href={fix.href} className="shrink-0 text-[12.5px] font-medium text-primary hover:underline">{fix.label}</Link>
-                      : <button type="button" onClick={fix.onClick} className="shrink-0 text-[12.5px] font-medium text-primary hover:underline">{fix.label}</button>)}
+                      ? <Link href={fix.href} className="shrink-0 text-[13px] font-medium text-primary hover:underline">{fix.label}</Link>
+                      : <button type="button" onClick={fix.onClick} className="shrink-0 text-[13px] font-medium text-primary hover:underline">{fix.label}</button>)}
                   </li>
                 );
               })}
             </ul>
           </div>
         ) : (
-          <p className="text-[12.5px] text-muted">{canManage ? "Run the checks to see what this calendar still needs." : "Someone who manages calendars verifies and activates it."}</p>
+          <p className="text-[13px] text-muted">{canManage ? "Run the checks to see what this calendar still needs." : "Someone who manages calendars verifies and activates it."}</p>
         )}
         {canManage && !current && <Button variant="secondary" size="sm" onClick={checkAgain} loading={busy("verify")}>Run the checks</Button>}
       </section>

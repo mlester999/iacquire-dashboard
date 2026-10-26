@@ -49,7 +49,7 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
             <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">{paused ? "Emergency pause is active" : "Automation pause is off"}</h2>
             <StatusPill tone={paused ? "danger" : "success"} size="sm">{paused ? "Automation paused" : "Automation running"}</StatusPill>
           </div>
-          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-muted">
+          <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-muted">
             {paused
               ? "Customer messages, follow-ups and autonomous jobs for this client are blocked on the server. Client records remain available. Only a super admin can lift this pause."
               : "No emergency pause is recorded. Integration verification and activation approval still determine whether automation can run. An emergency pause blocks sends, including queued ones, and notifies the client's owner and managers."}

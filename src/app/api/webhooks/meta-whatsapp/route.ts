@@ -3,6 +3,7 @@ import { handleMetaWebhook, handleMetaWebhookVerify } from "@/server/messaging/t
 import { syncWhatsappTemplates } from "@/server/messaging/whatsapp-templates";
 import { respondToConversation } from "@/server/messaging/responder";
 import { dispatchDue } from "@/server/messaging/send";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,10 +28,8 @@ export async function GET(req: Request) {
  * Preparing AI replies and re-syncing changed templates happen after the response.
  */
 export async function POST(req: Request) {
-  const declared = Number(req.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: TEXT });
-  const rawBody = await req.text();
-  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: TEXT });
+  const rawBody = await readBoundedText(req, MAX_BODY_BYTES);
+  if (rawBody === null) return new Response("Payload too large", { status: 413, headers: TEXT });
   try {
     const result = await handleMetaWebhook(rawBody, req.headers);
     if (result.respond.length || result.templateSync.length) {

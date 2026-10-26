@@ -22,9 +22,9 @@ export function ContactCalls({ scope, contact, calls, members }: { scope: CrmSco
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12.5px] text-muted">Matched to this contact by their exact phone number, or logged by your team.</p>
+        <p className="text-[13px] text-muted">Matched to this contact by their exact phone number, or logged by your team.</p>
         <div className="flex items-center gap-2">
-          {calls.length > 0 && <Link href={`${scope.base}/calls`} className="text-[13px] font-medium text-primary hover:underline">All calls</Link>}
+          {calls.length > 0 && <Link href={`${scope.base}/calls`} className="text-[14px] font-medium text-primary hover:underline">All calls</Link>}
           {canLog && <Button size="sm" variant="secondary" onClick={() => setLogging(true)}><PhoneCall className="size-4" aria-hidden />Log a call</Button>}
         </div>
       </div>

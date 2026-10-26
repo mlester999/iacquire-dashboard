@@ -68,11 +68,11 @@ export function ActionPreview({ card, onOutcome }: { card: OpsActionPreviewCard;
       <p className="mt-3 text-[14px] font-semibold leading-snug text-ink">{card.headline}</p>
       <p className="mt-1 text-[12px] text-muted">Target: <span className="font-medium text-ink-2">{card.target}</span></p>
       <p className="mt-3 text-[12px] font-medium uppercase tracking-wide text-muted">Exactly what will happen</p>
-      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-ink-2">
+      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[14px] leading-relaxed text-ink-2">
         {card.effects.map((effect) => <li key={effect}>{effect}</li>)}
       </ul>
-      <p className="mt-3 text-[12.5px] text-muted"><span className="font-medium text-ink-2">Undo:</span> {card.reversible}</p>
-      <p className={cn("mt-3 text-[12.5px]", card.status === "succeeded" ? "text-success-ink" : card.status === "failed" || card.status === "verification_failed" ? "text-danger-ink" : "text-muted")} role={card.status === "proposed" ? undefined : "status"}>
+      <p className="mt-3 text-[13px] text-muted"><span className="font-medium text-ink-2">Undo:</span> {card.reversible}</p>
+      <p className={cn("mt-3 text-[13px]", card.status === "succeeded" ? "text-success-ink" : card.status === "failed" || card.status === "verification_failed" ? "text-danger-ink" : "text-muted")} role={card.status === "proposed" ? undefined : "status"}>
         {STATUS_COPY[card.status]}{proposed ? <> Expires <time dateTime={card.expiresAt} suppressHydrationWarning>{new Date(card.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>.</> : null}
       </p>
       {proposed && (
@@ -85,7 +85,7 @@ export function ActionPreview({ card, onOutcome }: { card: OpsActionPreviewCard;
           <Button size="sm" variant="ghost" onClick={() => void submit("cancel")} loading={busy === "cancel"} disabled={busy !== null}>Cancel proposal</Button>
         </div>
       )}
-      {error && !open && <p className="mt-2 flex items-start gap-1.5 text-[12.5px] text-danger-ink" role="alert"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{error}</p>}
+      {error && !open && <p className="mt-2 flex items-start gap-1.5 text-[13px] text-danger-ink" role="alert"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{error}</p>}
       <Dialog
         open={open}
         onOpenChange={(next) => { if (busy === null) setOpen(next); }}
@@ -100,7 +100,7 @@ export function ActionPreview({ card, onOutcome }: { card: OpsActionPreviewCard;
         }
       >
         <div className="space-y-4">
-          <ul className="list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-ink-2">{card.effects.map((effect) => <li key={effect}>{effect}</li>)}</ul>
+          <ul className="list-disc space-y-1 pl-5 text-[14px] leading-relaxed text-ink-2">{card.effects.map((effect) => <li key={effect}>{effect}</li>)}</ul>
           <Field label="Why are you doing this?" htmlFor={`reason-${card.actionId}`} hint="Recorded in the audit log with your name. At least 8 characters.">
             <Textarea id={`reason-${card.actionId}`} value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} />
           </Field>
@@ -109,7 +109,7 @@ export function ActionPreview({ card, onOutcome }: { card: OpsActionPreviewCard;
               <Input id={`phrase-${card.actionId}`} value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" spellCheck={false} />
             </Field>
           )}
-          {error && <p className="flex items-start gap-1.5 text-[12.5px] text-danger-ink" role="alert"><OctagonAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{error}</p>}
+          {error && <p className="flex items-start gap-1.5 text-[13px] text-danger-ink" role="alert"><OctagonAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{error}</p>}
         </div>
       </Dialog>
     </div>
@@ -127,10 +127,10 @@ export function ActionResult({ card }: { card: OpsActionResultCard }) {
       {card.observed.length > 0 && (
         <>
           <p className="mt-3 text-[12px] font-medium uppercase tracking-wide text-muted">What the system shows now</p>
-          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] text-ink-2">{card.observed.map((line) => <li key={line}>{line}</li>)}</ul>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[14px] text-ink-2">{card.observed.map((line) => <li key={line}>{line}</li>)}</ul>
         </>
       )}
-      {card.link && isSafeOpsHref(card.link.href) && <Link href={card.link.href} className="mt-3 inline-flex text-[13px] font-medium text-primary-ink underline-offset-2 hover:underline">{card.link.label}</Link>}
+      {card.link && isSafeOpsHref(card.link.href) && <Link href={card.link.href} className="mt-3 inline-flex text-[14px] font-medium text-primary-ink underline-offset-2 hover:underline">{card.link.label}</Link>}
     </div>
   );
 }

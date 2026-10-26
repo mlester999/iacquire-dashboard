@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CRM_QA_ENV, assertIsolated } from "../scripts/crm-qa-env.mjs";
+import { CRM_QA_ENV, SIM_PAYMONGO, assertIsolated } from "../scripts/crm-qa-env.mjs";
 import { clearDevRestartNoise, exitCodeFor, isDevRestartInterruption, isLocalUrl, isRedirectTargetCurrent, parseNextRedirectMeta } from "../scripts/crm-browser-qa.mjs";
 
 const roots: string[] = [];
@@ -50,6 +50,26 @@ describe("CRM browser QA stays isolated", () => {
       { RESEND_API_KEY: "not-a-real-key" },
     ]) {
       expect(() => assertIsolated({ root, files: [".env"], env: { ...CRM_QA_ENV, ...unsafe } })).toThrow();
+    }
+  });
+
+  it("allows PayMongo only as the simulator on this machine, with its made-up keys", () => {
+    const root = tempRoot();
+    fs.writeFileSync(path.join(root, ".env"), "");
+    const sim = { PAYMONGO_API_BASE: SIM_PAYMONGO.base, PAYMONGO_SECRET_KEY: SIM_PAYMONGO.key, PAYMONGO_WEBHOOK_SECRET: SIM_PAYMONGO.webhookSecret };
+    expect(() => assertIsolated({ root, files: [".env"], env: { ...CRM_QA_ENV, ...sim } })).not.toThrow();
+    // The default run has no PayMongo at all.
+    expect(CRM_QA_ENV.PAYMONGO_API_BASE).toBe("");
+    expect(CRM_QA_ENV.PAYMONGO_SECRET_KEY).toBe("");
+    for (const unsafe of [
+      { ...sim, PAYMONGO_SECRET_KEY: "sk_test_a_real_looking_key" },
+      { ...sim, PAYMONGO_API_BASE: "https://api.paymongo.com" },
+      { ...sim, PAYMONGO_API_BASE: "http://127.0.0.1:3282" },
+      { ...sim, PAYMONGO_WEBHOOK_SECRET: "whsec_something_else" },
+      { PAYMONGO_SECRET_KEY: SIM_PAYMONGO.key },
+      { PAYMONGO_WEBHOOK_SECRET: SIM_PAYMONGO.webhookSecret },
+    ]) {
+      expect(() => assertIsolated({ root, files: [".env"], env: { ...CRM_QA_ENV, ...unsafe } }), JSON.stringify(Object.keys(unsafe))).toThrow();
     }
   });
 

@@ -97,7 +97,7 @@ export function AssignmentWorkspace({ scope, rules, recent, recordHistory, initi
                             {r.respectWorkingHours && <Badge tone="neutral"><Clock className="size-3" aria-hidden />Working hours</Badge>}
                             {r.reassignOwned && <Badge tone="warning">Reassigns owned</Badge>}
                           </div>
-                          <p className="mt-1 text-[12.5px] text-muted">
+                          <p className="mt-1 text-[13px] text-muted">
                             {r.conditionsValid ? <>Matches: {describeFilter(r.conditions, fields, options)}{r.entity === "opportunity" && r.conditions.conditions.length ? " (the deal's contact)" : ""}</> : <span className="text-danger-ink">Its conditions are no longer valid, so it never matches. Edit it to fix them.</span>}
                           </p>
                           {r.strategy !== "keep_existing_owner" && (
@@ -136,7 +136,7 @@ export function AssignmentWorkspace({ scope, rules, recent, recordHistory, initi
                 ))}
               </ol>
             )}
-            <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+            <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
               <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               Rules run a moment after a {noun.one} is created, and once per record. Contacts from a spreadsheet import keep the owner chosen in the import. Workflows can also send a record through a rule.
             </p>
@@ -146,7 +146,7 @@ export function AssignmentWorkspace({ scope, rules, recent, recordHistory, initi
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h3 id="decisions-heading" className="text-[15px] font-semibold text-ink">Recent decisions</h3>
-                <p className="text-[12.5px] text-muted">The latest 50 automatic assignments and why each went the way it did.</p>
+                <p className="text-[13px] text-muted">The latest 50 automatic assignments and why each went the way it did.</p>
               </div>
               <ContactLookup scope={scope} />
             </div>
@@ -228,13 +228,13 @@ function RecordHistory({ scope, history }: { scope: CrmScope; history: NonNullab
   const noun = ENTITY_LABEL[history.entity];
   return (
     <section aria-labelledby="record-history" className="space-y-3">
-      <Link href={`${scope.base}/settings/assignment${history.entity === "opportunity" ? "?entity=opportunity" : ""}`} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-0">
+      <Link href={`${scope.base}/settings/assignment${history.entity === "opportunity" ? "?entity=opportunity" : ""}`} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-0">
         <ArrowLeft className="size-4" aria-hidden />All rules and decisions
       </Link>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 id="record-history" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><History className="size-4" aria-hidden />Assignment history</h3>
-          <p className="text-[13px] text-muted">
+          <p className="text-[14px] text-muted">
             {history.label ? <>For the {noun.one} <Link className="font-medium text-ink hover:text-primary" href={recordHref(scope, history.entity, history.id)}>{history.label}</Link></> : `For a ${noun.one} you can't open`}
           </p>
         </div>
@@ -259,16 +259,16 @@ function DecisionList({ scope, decisions, showRecord, emptyText }: { scope: CrmS
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={OUTCOME_INFO[d.outcome].tone}>{OUTCOME_INFO[d.outcome].label}</Badge>
-              {d.userName && <span className="text-[13.5px] font-medium text-ink">{d.userName}</span>}
+              {d.userName && <span className="text-[14px] font-medium text-ink">{d.userName}</span>}
               {showRecord && (
-                <span className="text-[13px] text-muted">
+                <span className="text-[14px] text-muted">
                   {d.recordLive && d.recordLabel ? <Link href={recordHref(scope, d.entity, d.entityId)} className="font-medium text-ink-2 hover:text-primary">{d.recordLabel}</Link> : <span>{d.recordLabel ?? `A ${ENTITY_LABEL[d.entity].one}`}{!d.recordLive ? " (archived or removed)" : ""}</span>}
                   {" · "}
                   <Link href={historyHref(scope, d.entity, d.entityId)} className="underline-offset-2 hover:underline">history</Link>
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{d.reason}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">{d.reason}</p>
             <p className="mt-0.5 text-[12px] text-faint">{d.ruleName ? `Rule: ${d.ruleName}` : "Rule deleted"}</p>
           </div>
           <RelativeTime iso={d.at} timezone={scope.timezone} className="text-[12px] text-faint sm:text-right" />

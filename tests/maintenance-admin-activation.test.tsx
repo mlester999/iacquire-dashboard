@@ -59,4 +59,14 @@ describe("activating a managed maintenance plan", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /confirmed this client's payment/ }));
     expect((screen.getByRole("button", { name: /Activate plan/ }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("names the real reason: an unconfirmed setup payment points to the client's billing, not to the setup", () => {
+    const { container, unmount } = ui(requested({ eligible: false, blockedBy: "setup_payment" }));
+    expect(container.textContent).toMatch(/setup payment isn.t confirmed yet/);
+    expect(container.textContent).not.toMatch(/core system isn.t activated/);
+    expect(screen.getByRole("link", { name: /Open the client.s billing/ }).getAttribute("href")).toBe("/admin/clients/org-1?tab=billing");
+    unmount();
+    const other = ui(requested({ eligible: false, blockedBy: "setup" }));
+    expect(other.container.textContent).toMatch(/core system isn.t activated/);
+  });
 });

@@ -15,14 +15,14 @@ function Bubble({ item }: { item: ChatItem }) {
   return (
     <div className={cn("flex gap-2.5", mine && "justify-end")} data-role={item.role} data-status={item.status}>
       {!mine && <span aria-hidden className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full brand-gradient text-white"><Sparkles className="size-3.5" /></span>}
-      <div className={cn("max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed", mine ? "rounded-br-md bg-primary text-primary-on" : item.status === "error" || item.status === "refused" ? "rounded-bl-md border border-warning/30 bg-warning-soft text-warning-ink" : "rounded-bl-md border border-line bg-surface text-ink")}>
+      <div className={cn("max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", mine ? "rounded-br-md bg-primary text-primary-on" : item.status === "error" || item.status === "refused" ? "rounded-bl-md border border-warning/30 bg-warning-soft text-warning-ink" : "rounded-bl-md border border-line bg-surface text-ink")}>
         {typing ? (
           <span className="inline-flex items-center gap-1 py-1" role="status" aria-label="The builder is writing"><i className="size-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.2s]" /><i className="size-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.1s]" /><i className="size-1.5 animate-bounce rounded-full bg-muted" /></span>
         ) : (
           <p className="whitespace-pre-wrap break-words">{item.content}{item.streaming && <span aria-hidden className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-current" />}</p>
         )}
-        {mine && item.nodeKey && <p className="mt-1 text-[11px] opacity-80">About the selected step</p>}
-        {!mine && item.status === "applied" && item.changes && item.changes.length > 0 && !item.streaming && <p className="mt-1.5 text-[11.5px] font-medium text-success-ink">Updated the canvas</p>}
+        {mine && item.nodeKey && <p className="mt-1 text-[12px] opacity-80">About the selected step</p>}
+        {!mine && item.status === "applied" && item.changes && item.changes.length > 0 && !item.streaming && <p className="mt-1.5 text-[12px] font-medium text-success-ink">Updated the canvas</p>}
         {item.notice?.code === "plan_required" && <Link href="/automation-studio" className="mt-1.5 inline-block text-[12px] font-medium underline">See what Automation Studio includes</Link>}
       </div>
     </div>
@@ -89,7 +89,7 @@ export function ChatPanel({ chat, selectedLabel, onClearSelection, selectedKey, 
         className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
       >
         {chat.items.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-line-strong bg-surface-2 p-4 text-[13px] leading-relaxed text-muted">
+          <div className="rounded-2xl border border-dashed border-line-strong bg-surface-2 p-4 text-[14px] leading-relaxed text-muted">
             <p className="font-medium text-ink">Describe the automation in your own words.</p>
             <p className="mt-1">For example: “When a new lead comes in, create a task for the owner and, two days later, remind us if nobody has followed up.” You can change it afterwards just by saying so.</p>
           </div>
@@ -101,9 +101,9 @@ export function ChatPanel({ chat, selectedLabel, onClearSelection, selectedKey, 
       </div>
 
       <div className="shrink-0 border-t border-line bg-surface p-3">
-        {unavailable && <p className="mb-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] leading-snug text-warning-ink" role="note">{unavailable}</p>}
+        {unavailable && <p className="mb-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] leading-snug text-warning-ink" role="note">{unavailable}</p>}
         {showFollowUps && (
-          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Suggestions">
+          <div role="group" className="mb-2 flex flex-wrap gap-1.5" aria-label="Suggestions">
             {FOLLOW_UPS.map((s) => <button key={s} type="button" onClick={() => void submit(s)} className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-primary hover:text-primary">{s}</button>)}
           </div>
         )}

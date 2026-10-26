@@ -72,7 +72,7 @@ export default async function WebsitePreview({ searchParams }: { searchParams: P
 
   return (
     <div className="app-backdrop grain min-h-dvh">
-      <div role="region" aria-label="Preview notice" className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[12.5px] font-medium text-warning-ink">
+      <div role="region" aria-label="Preview notice" className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[13px] font-medium text-warning-ink">
         Design preview. Sample data for Brightside Roofing; nothing here is real and buttons that need a server will report an error. Try ?view=overview|domains|history|enquiries|new, ?state=live|draft|unhealthy|submitted, ?role=editor
       </div>
       <main id="main" className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">

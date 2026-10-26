@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <Link href="/login" aria-label="iAcquire home" className="lg:hidden">
             <Logo />
           </Link>
-          <span className="hidden text-[11px] font-medium uppercase tracking-[.16em] text-muted lg:block">Your iAcquire workspace</span>
+          <span className="hidden text-[12px] font-medium uppercase tracking-[.16em] text-muted lg:block">Your iAcquire workspace</span>
           <AuthAppearance />
         </div>
         <div className="flex flex-1 items-center justify-center py-8 sm:py-10">

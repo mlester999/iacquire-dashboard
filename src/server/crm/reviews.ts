@@ -5,16 +5,21 @@ import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { releaseReservation } from "@/server/billing/ledger";
-import { notifyOrgRoles } from "@/server/notifications";
+import type { OutgoingEmail } from "@/server/email";
 import { consumeRateLimit, type RateLimitRule } from "@/server/security/rate-limit";
 import { assertCan, auditActor, crmRead, crmWrite, systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent, recordActivity } from "@/server/crm/events";
-import { createTaskInTx } from "@/server/crm/tasks";
-import { assertAssignable } from "@/server/crm/contacts";
 import { loadApprovedTemplate, tokenValuesFor, type ApprovedTemplateVersion } from "@/server/crm/message-templates";
 import { contactAddress, getConsent, isSuppressed } from "@/server/messaging/contacts";
 import { evaluateSend, queueOutbound } from "@/server/messaging/send";
+import { detectEscalationSignal } from "@/server/messaging/ingest";
 import { REVIEW_LINK_PLACEHOLDER } from "@/server/messaging/redact";
+import { changeFeedbackFollowUp, followThroughLowFeedback, sendFollowThroughEmails } from "@/server/reputation/feedback";
+import { loadSettings, thresholdsOf } from "@/server/reputation/settings";
+import { SURVEYS_NOT_ENABLED_MESSAGE, reviewsPublicDisabled, surveysEnabledIn } from "@/server/reputation/entitlement";
+import { describeScore, isLowScore, isFeedbackScale, isRequestKind, parseScore, type FeedbackScale, type RequestKind } from "@/lib/reputation/scores";
+import { reviewIncentiveFindings } from "@/lib/reputation/incentives";
+import { withoutNegatedComplaints } from "@/lib/reputation/signals";
 import { describeMissing, extractTokens, renderMessage } from "@/lib/messaging/tokens";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 
@@ -23,7 +28,8 @@ import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 //
 //  * Everyone who is asked sees the same public review links, whatever they tell the business privately. Nothing here (or on the
 //    customer's page, src/app/r/[token]) ever hides, delays or reorders the public links because of a rating: feedback never gates who
-//    may leave a public review. A low rating only creates an internal follow-up task for the team.
+//    may leave a public review. A low rating only ADDS an internal follow-up for the team (src/server/reputation/feedback.ts); who is asked for a
+//    review never depends on how they felt (tests/reputation-gating-guard.test.ts reads this file's ask-selection code to keep it so).
 //  * Private feedback stays private (customer_feedback): it is never published, never counted as a review, never shown to customers.
 //    iAcquire never writes, invents or counts public reviews; it only knows whether a customer opened the link to a review site.
 //  * A request is a service message about something the customer already had, sent through the same gated outbound path as every other
@@ -43,6 +49,8 @@ export const isReviewPlatform = (v: unknown): v is ReviewPlatform => typeof v ==
 
 /** crm_review_requests.status. */
 export type ReviewRequestStatus = "pending" | "queued" | "sent" | "opened" | "feedback_received" | "review_link_clicked" | "failed" | "cancelled";
+/** Where a request came from (crm_review_requests.requested_via). Only a person pressing Send is "manual"; a program step or a batch is automatic like a workflow or the API. */
+export type ReviewRequestVia = "manual" | "workflow" | "api" | "program" | "batch";
 export type FeedbackFollowUp = "new" | "acknowledged" | "escalated" | "resolved";
 export const FEEDBACK_FOLLOW_UPS: readonly FeedbackFollowUp[] = ["new", "acknowledged", "escalated", "resolved"];
 
@@ -50,7 +58,10 @@ export const FEEDBACK_FOLLOW_UPS: readonly FeedbackFollowUp[] = ["new", "acknowl
 export const REVIEW_LINK_TTL_DAYS = 60;
 /** One review request per contact in this many days (any channel), so nobody is asked again and again. */
 export const REVIEW_REQUEST_COOLDOWN_DAYS = 30;
-/** Ratings at or below this create an internal follow-up task for the team. They never change what the customer sees. */
+/**
+ * The standing default for "low": ratings at or below this need a person's follow-up. A workspace can choose 1 to 3 (reputation_settings); the choice is made when the feedback
+ * arrives and stored with it (customer_feedback.low_score). Low feedback never changes what the customer sees.
+ */
 export const ESCALATE_AT_OR_BELOW = 2;
 export const MAX_DESTINATIONS = 10;
 export const MAX_ACTIVE_DESTINATIONS = 6;
@@ -367,8 +378,23 @@ export interface ReviewRequestPreview {
   problem: string | null;
 }
 
+/**
+ * The most recent request to this customer (a review request or a survey, from any source) that still counts against the cool-down, or null. A request that never reached
+ * the customer (cancelled, or its message failed or was blocked) doesn't count. One place, so a person's request, a workflow's and a program's all wait the same time.
+ */
+export async function recentReviewRequest(db: Queryable, orgId: string, contactId: string, now: Date): Promise<{ created_at: Date } | null> {
+  const r = (await db.query<{ created_at: Date }>(
+    `select r.created_at from crm_review_requests r left join conversation_messages m on m.id = r.message_id and m.org_id = r.org_id
+     where r.org_id = $1 and r.contact_id = $2 and r.status not in ('failed', 'cancelled') and coalesce(m.status, '') not in ('failed', 'blocked')
+       and r.created_at > $3::timestamptz - make_interval(days => $4::int) order by r.created_at desc limit 1`,
+    [orgId, contactId, now.toISOString(), REVIEW_REQUEST_COOLDOWN_DAYS],
+  )).rows[0];
+  return r ?? null;
+}
+
 interface Prepared {
-  contact: { id: string; name: string; ownerId: string | null };
+  /** paused: a person's own hold on automated messages to this customer (contacts.retention_paused). It stops automated asks, never a person pressing Send. */
+  contact: { id: string; name: string; ownerId: string | null; paused: boolean };
   template: ApprovedTemplateVersion;
   address: string | null;
   checks: ReviewRequestCheck[];
@@ -380,10 +406,10 @@ interface Prepared {
  * review links, the contact's address, opt-outs, consent and how recently they were asked. Quiet hours, frequency limits, the channel and
  * credits are decided by the send path itself.
  */
-async function prepareRequest(db: Queryable, orgId: string, input: { contactId: string; templateId: string; contentHash?: string | null; now: Date }): Promise<Prepared> {
+async function prepareRequest(db: Queryable, orgId: string, input: { contactId: string; templateId: string; contentHash?: string | null; kind?: RequestKind; now: Date }): Promise<Prepared> {
   if (!UUID.test(input.contactId)) throw new AppError("not_found", "Contact not found.");
-  const c = (await db.query<{ id: string; display_name: string; assigned_user_id: string | null; archived_at: Date | null }>(
-    "select id, display_name, assigned_user_id, archived_at from contacts where id = $1 and org_id = $2 and deleted_at is null",
+  const c = (await db.query<{ id: string; display_name: string; assigned_user_id: string | null; archived_at: Date | null; retention_paused: boolean }>(
+    "select id, display_name, assigned_user_id, archived_at, retention_paused from contacts where id = $1 and org_id = $2 and deleted_at is null",
     [input.contactId, orgId],
   )).rows[0];
   if (!c) throw new AppError("not_found", "Contact not found.");
@@ -397,14 +423,29 @@ async function prepareRequest(db: Queryable, orgId: string, input: { contactId: 
   };
   const channelLabel = CHANNEL_LABELS[template.channel];
 
+  // A survey is dormant until a Super Admin switches surveys on for the workspace (src/server/reputation/entitlement.ts). Review requests are not affected.
+  if (input.kind === "survey" && !(await surveysEnabledIn(db, orgId))) {
+    checks.push({ label: "Surveys", ok: false, detail: SURVEYS_NOT_ENABLED_MESSAGE });
+    fail("surveys_not_enabled", SURVEYS_NOT_ENABLED_MESSAGE);
+  }
+
   const linkOk = hasReviewLinkToken(template);
   checks.push({ label: "Review link in the message", ok: linkOk, detail: linkOk ? "The template has {{review.link}}, which becomes this customer's own link." : "The template doesn't have {{review.link}}, so the customer would get no link." });
   if (!linkOk) fail("no_review_link", "The template doesn't contain {{review.link}}. Add it to the template and approve it again.");
   if (template.purpose !== "service") fail("marketing_template", "Review requests are service messages. Choose a template whose purpose is service, not marketing.");
+  // Rule R4: nothing offered in return for feedback or a review, and no asking for a particular rating. Templates can't be saved that way; this stops one that got through
+  // (an older template, or wording changed some other way) from being sent.
+  const wording = reviewIncentiveFindings(`${template.subject ?? ""}\n${template.body}`);
+  if (wording.length) {
+    checks.push({ label: "Wording", ok: false, detail: wording[0].message });
+    fail("incentive_wording", `${wording[0].message} Edit the template and approve it again.`);
+  }
 
+  // A survey may go to customers of a business with no review site yet: the page then shows only the private questions. A review request needs the links it is for.
   const dests = await activeDestinations(db, orgId);
-  checks.push({ label: "Public review links", ok: dests.length > 0, detail: dests.length ? dests.map((d) => d.label).join(", ") : "No review links are switched on yet." });
-  if (!dests.length) fail("no_destinations", "Add at least one public review link first. Every customer you ask sees the same links.");
+  const needsLinks = input.kind !== "survey";
+  checks.push({ label: "Public review links", ok: dests.length > 0 || !needsLinks, detail: dests.length ? dests.map((d) => d.label).join(", ") : needsLinks ? "No review links are switched on yet." : "None switched on: the page shows only the questions." });
+  if (!dests.length && needsLinks) fail("no_destinations", "Add at least one public review link first. Every customer you ask sees the same links.");
 
   if (c.archived_at) {
     checks.push({ label: "Contact", ok: false, detail: `${name} is archived.` });
@@ -428,25 +469,19 @@ async function prepareRequest(db: Queryable, orgId: string, input: { contactId: 
   if (consent === "revoked") fail("no_consent", `${name} withdrew consent to ${channelLabel} messages, so they can't be asked for a review this way.`);
   else if (consent !== "granted") fail("no_consent", `There is no consent on record for ${name} to receive ${channelLabel} messages. Record their consent on the contact first, or use another channel they agreed to.`);
 
-  const recent = (await db.query<{ created_at: Date }>(
-    // A request that never reached the customer (cancelled, or its message failed or was blocked) doesn't count.
-    `select r.created_at from crm_review_requests r left join conversation_messages m on m.id = r.message_id and m.org_id = r.org_id
-     where r.org_id = $1 and r.contact_id = $2 and r.status not in ('failed', 'cancelled') and coalesce(m.status, '') not in ('failed', 'blocked')
-       and r.created_at > $3::timestamptz - make_interval(days => $4::int) order by r.created_at desc limit 1`,
-    [orgId, c.id, input.now.toISOString(), REVIEW_REQUEST_COOLDOWN_DAYS],
-  )).rows[0];
+  const recent = await recentReviewRequest(db, orgId, c.id, input.now);
   const again = recent ? new Date(new Date(recent.created_at).getTime() + REVIEW_REQUEST_COOLDOWN_DAYS * 86_400_000) : null;
   checks.push({ label: "Not asked recently", ok: !recent, detail: recent ? `Asked on ${new Date(recent.created_at).toISOString().slice(0, 10)}.` : `No request in the last ${REVIEW_REQUEST_COOLDOWN_DAYS} days.` });
   if (recent) fail("recently_requested", `${name} was already asked for a review on ${new Date(recent.created_at).toISOString().slice(0, 10)}. They can be asked again from ${again!.toISOString().slice(0, 10)}.`);
 
-  return { contact: { id: c.id, name, ownerId: c.assigned_user_id }, template, address, checks, problem };
+  return { contact: { id: c.id, name, ownerId: c.assigned_user_id, paused: c.retention_paused }, template, address, checks, problem };
 }
 
 /**
  * Read-only: why a review request to this contact with this template would be refused before it reaches the send path (no review link,
  * no public links, no address, opted out, no consent, asked recently), or null. Quiet hours, limits and credits are decided when it sends.
  */
-export async function reviewRequestProblem(db: Queryable, orgId: string, input: { contactId: string; templateId: string; contentHash?: string | null; now?: Date }): Promise<{ reason: string; detail: string } | null> {
+export async function reviewRequestProblem(db: Queryable, orgId: string, input: { contactId: string; templateId: string; contentHash?: string | null; kind?: RequestKind; now?: Date }): Promise<{ reason: string; detail: string } | null> {
   try {
     return (await prepareRequest(db, orgId, { ...input, now: input.now ?? new Date() })).problem;
   } catch (err) {
@@ -456,7 +491,7 @@ export async function reviewRequestProblem(db: Queryable, orgId: string, input: 
 }
 
 /** What a review request to this contact would say and whether it can be sent, before anything is created. */
-export async function previewReviewRequest(actor: CrmActor, input: { contactId: string; templateId: string }): Promise<ReviewRequestPreview> {
+export async function previewReviewRequest(actor: CrmActor, input: { contactId: string; templateId: string; kind?: RequestKind }): Promise<ReviewRequestPreview> {
   assertCan(actor, "reviews.manage", "Sending review requests needs the review management permission.");
   assertCan(actor, "contacts.view");
   // The person can open this contact (checked under their own access first); the rest is read with trusted access.
@@ -467,7 +502,7 @@ export async function previewReviewRequest(actor: CrmActor, input: { contactId: 
   });
   return withSystem(async (db) => {
     const now = new Date();
-    const p = await prepareRequest(db, actor.orgId, { contactId: input.contactId, templateId: input.templateId, now });
+    const p = await prepareRequest(db, actor.orgId, { contactId: input.contactId, templateId: input.templateId, kind: input.kind, now });
     const values = await tokenValuesFor(db, actor.orgId, { contactId: p.contact.id, senderUserId: actor.userId, timezone: actor.timezone, now });
     values.values["review.link"] = "[review link]";
     const out = renderMessage({ subject: p.template.subject, body: p.template.body }, values.values, { customValues: values.customValues });
@@ -503,6 +538,10 @@ export interface ReviewRequestInput {
   opportunityId?: string | null;
   /** Hold the message until business hours (quiet hours always apply). Default true. */
   businessHoursOnly?: boolean;
+  /** A review request (the default) or a survey: the same page and the same send path. */
+  kind?: RequestKind;
+  /** The scale the page asks on: one to five (the default) or zero to ten. */
+  scale?: FeedbackScale;
 }
 
 export type ReviewRequestResult =
@@ -520,7 +559,7 @@ export async function queueReviewRequestInTx(
   db: Queryable,
   actor: CrmActor,
   input: ReviewRequestInput,
-  opts: { via: "manual" | "workflow" | "api"; requestedBy: string | null; dedupeKey?: string | null; causedBy?: { eventId: number; depth: number } | null; throwOnRefusal?: boolean; now?: Date },
+  opts: { via: ReviewRequestVia; requestedBy: string | null; dedupeKey?: string | null; causedBy?: { eventId: number; depth: number } | null; throwOnRefusal?: boolean; now?: Date; batchId?: string | null },
 ): Promise<ReviewRequestResult> {
   const now = opts.now ?? new Date();
   const orgId = actor.orgId;
@@ -528,6 +567,10 @@ export async function queueReviewRequestInTx(
     if (opts.throwOnRefusal) throw new AppError("conflict", detail);
     return { status: "blocked", reason, detail };
   };
+  if (input.kind !== undefined && !isRequestKind(input.kind)) throw new AppError("invalid_input", "Choose a review request or a survey.");
+  if (input.scale !== undefined && !isFeedbackScale(input.scale)) throw new AppError("invalid_input", "Choose a scale of one to five or zero to ten.");
+  const kind: RequestKind = input.kind ?? "review";
+  const scale: FeedbackScale = input.scale ?? "csat5";
   // A retry of the same workflow step (or a double submit with the same key) gets the request it already made.
   if (opts.dedupeKey) {
     const prior = (await db.query<{ id: string; request_id: string | null }>(
@@ -538,8 +581,14 @@ export async function queueReviewRequestInTx(
   }
   // One request per contact at a time: concurrent requests for the same person queue up here, so the cool-down can't be raced.
   await db.query("select 1 from contacts where id = $1 and org_id = $2 for update", [UUID.test(input.contactId) ? input.contactId : "00000000-0000-0000-0000-000000000000", orgId]);
-  const p = await prepareRequest(db, orgId, { contactId: input.contactId, templateId: input.templateId, contentHash: input.contentHash, now });
+  const p = await prepareRequest(db, orgId, { contactId: input.contactId, templateId: input.templateId, contentHash: input.contentHash, kind, now });
   if (p.problem) return refuse(p.problem.reason, p.problem.detail);
+  // A person's own hold on automated messages to this customer (for example during a dispute) stops an automated ask: a workflow, a program or the API. It is that
+  // person's explicit choice, audited when it was set and counted here; nothing sets it automatically, and a person pressing Send is not stopped by it.
+  if (opts.via !== "manual" && p.contact.paused) {
+    await recordAudit({ orgId, ...auditActor(actor), action: "crm.review_request_held", targetType: "contact", targetId: p.contact.id, result: "denied", metadata: { via: opts.via, reason: "held_by_person" } }, db);
+    return refuse("held_by_person", `${p.contact.name} is excluded from automatic messages by a person on your team, so this automatic review request was not sent.`);
+  }
   const t = p.template;
   for (const [table, id, what] of [["appointment_refs", input.appointmentId, "Appointment"], ["crm_opportunities", input.opportunityId, "Deal"]] as const) {
     if (id && (!UUID.test(id) || !(await db.query(`select 1 from ${table} where id = $1 and org_id = $2`, [id, orgId])).rows.length)) throw new AppError("not_found", `${what} not found.`);
@@ -584,9 +633,9 @@ export async function queueReviewRequestInTx(
       return refuse(decision.reason, decision.detail);
     }
     await db.query(
-      `insert into crm_review_requests (id, org_id, contact_id, channel, template_id, token_hash, status, appointment_id, opportunity_id, requested_by, requested_via, created_at, expires_at)
-       values ($12, $1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10::timestamptz, $10::timestamptz + make_interval(days => $11::int))`,
-      [orgId, p.contact.id, t.channel, t.templateId, hashReviewToken(token), input.appointmentId ?? null, input.opportunityId ?? null, opts.requestedBy, opts.via, now.toISOString(), REVIEW_LINK_TTL_DAYS, requestId],
+      `insert into crm_review_requests (id, org_id, contact_id, channel, template_id, token_hash, status, appointment_id, opportunity_id, requested_by, requested_via, created_at, expires_at, kind, scale, batch_id)
+       values ($12, $1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10::timestamptz, $10::timestamptz + make_interval(days => $11::int), $13, $14, $15)`,
+      [orgId, p.contact.id, t.channel, t.templateId, hashReviewToken(token), input.appointmentId ?? null, input.opportunityId ?? null, opts.requestedBy, opts.via, now.toISOString(), REVIEW_LINK_TTL_DAYS, requestId, kind, scale, opts.batchId ?? null],
     );
     const queued = await queueOutbound(db, { ...send, dedupeKey: opts.dedupeKey ?? `review:${requestId}` });
     if (queued.status !== "queued") {
@@ -597,14 +646,14 @@ export async function queueReviewRequestInTx(
     await db.query("release savepoint crm_review_request");
     await emitEvent(db, actor, {
       type: "review.requested", entityType: "review_request", entityId: requestId, contactId: p.contact.id,
-      payload: { requestId, channel: t.channel, templateId: t.templateId, templateVersion: t.version, via: opts.via, appointmentId: input.appointmentId ?? null, opportunityId: input.opportunityId ?? null },
+      payload: { requestId, channel: t.channel, templateId: t.templateId, templateVersion: t.version, via: opts.via, kind, scale, appointmentId: input.appointmentId ?? null, opportunityId: input.opportunityId ?? null },
       dedupeKey: `review.requested:${requestId}`, causedBy: opts.causedBy ?? null,
     });
     await recordActivity(db, actor, {
-      kind: "review.requested", summary: `Review requested by ${CHANNEL_LABELS[t.channel]}${waiting ? " (waiting for the next sending window)" : ""}`, contactId: p.contact.id,
-      opportunityId: input.opportunityId ?? null, refType: "review_request", refId: requestId, metadata: { template: t.name, version: t.version, via: opts.via },
+      kind: "review.requested", summary: `${kind === "survey" ? "Survey" : "Review"} requested by ${CHANNEL_LABELS[t.channel]}${waiting ? " (waiting for the next sending window)" : ""}`, contactId: p.contact.id,
+      opportunityId: input.opportunityId ?? null, refType: "review_request", refId: requestId, metadata: { template: t.name, version: t.version, via: opts.via, kind },
     });
-    await recordAudit({ orgId, ...auditActor(actor), action: "crm.review_requested", targetType: "crm_review_request", targetId: requestId, result: "success", metadata: { channel: t.channel, templateId: t.templateId, version: t.version, via: opts.via } }, db);
+    await recordAudit({ orgId, ...auditActor(actor), action: "crm.review_requested", targetType: "crm_review_request", targetId: requestId, result: "success", metadata: { channel: t.channel, templateId: t.templateId, version: t.version, via: opts.via, kind, scale } }, db);
     return { status: "queued", requestId, messageId: queued.messageId };
   } catch (err) {
     await db.query("rollback to savepoint crm_review_request").catch(() => undefined);
@@ -662,11 +711,17 @@ export async function cancelReviewRequest(actor: CrmActor, id: string): Promise<
 
 export interface FeedbackSummary {
   id: string;
+  /** The one-to-five rating; null when the answer was on the zero-to-ten scale or was only a comment. */
   rating: number | null;
+  /** The zero-to-ten score; null on the other scale or for a comment alone. */
+  npsScore: number | null;
+  scale: FeedbackScale;
   comment: string | null;
   receivedAt: string;
   followUpStatus: FeedbackFollowUp;
   escalatedTaskId: string | null;
+  /** Whether it was low when it arrived, by the workspace's settings of that moment. */
+  lowScore: boolean;
 }
 
 export interface ReviewRequestView {
@@ -674,8 +729,11 @@ export interface ReviewRequestView {
   contact: { id: string; name: string } | null;
   channel: Channel;
   templateName: string | null;
+  /** A review request or a survey, and the scale it asks on. */
+  kind: RequestKind;
+  scale: FeedbackScale;
   status: ReviewRequestStatus;
-  requestedVia: "manual" | "workflow" | "api";
+  requestedVia: ReviewRequestVia;
   requestedByName: string | null;
   createdAt: string;
   sentAt: string | null;
@@ -688,9 +746,10 @@ export interface ReviewRequestView {
 }
 
 interface RequestRow {
-  id: string; contact_id: string | null; contact_name: string | null; channel: Channel; template_name: string | null; status: ReviewRequestStatus; requested_via: "manual" | "workflow" | "api";
+  id: string; contact_id: string | null; contact_name: string | null; channel: Channel; template_name: string | null; status: ReviewRequestStatus; requested_via: ReviewRequestVia;
   requested_by_name: string | null; created_at: Date; sent_at: Date | null; opened_at: Date | null; clicked_at: Date | null; expires_at: Date; message_status: string | null;
   message_sent_at: Date | null; message_detail: string | null; f_id: string | null; f_rating: number | null; f_comment: string | null; f_received_at: Date | null; f_follow_up: FeedbackFollowUp | null; f_task: string | null;
+  f_low: boolean | null; f_nps: number | null; f_scale: FeedbackScale | null; kind: RequestKind; scale: FeedbackScale;
 }
 
 export const REQUEST_FILTERS = ["all", "waiting", "sent", "opened", "feedback", "clicked", "failed"] as const;
@@ -720,13 +779,13 @@ export async function listReviewRequests(actor: CrmActor, opts: { filter?: Reque
       left join crm_message_templates t on t.id = r.template_id and t.org_id = r.org_id
       left join users u on u.id = r.requested_by
       left join conversation_messages m on m.id = r.message_id and m.org_id = r.org_id
-      left join lateral (select id, rating, comment, received_at, follow_up_status, escalated_task_id from customer_feedback f where f.org_id = r.org_id and f.review_request_id = r.id order by received_at limit 1) f on true
+      left join lateral (select id, rating, nps_score, scale, comment, received_at, follow_up_status, escalated_task_id, low_score from customer_feedback f where f.org_id = r.org_id and f.review_request_id = r.id order by received_at limit 1) f on true
       where ${where.join(" and ")}`;
     const total = Number((await db.query<{ n: string }>(`select count(*)::text as n ${from}`, [actor.orgId, opts.contactId ?? null])).rows[0].n);
     const { rows } = await db.query<RequestRow>(
-      `select r.id, c.id as contact_id, c.display_name as contact_name, r.channel, t.name as template_name, r.status, r.requested_via, nullif(u.full_name, '') as requested_by_name,
+      `select r.id, c.id as contact_id, c.display_name as contact_name, r.channel, t.name as template_name, r.status, r.requested_via, r.kind, r.scale, nullif(u.full_name, '') as requested_by_name,
               r.created_at, r.sent_at, r.opened_at, r.clicked_at, r.expires_at, m.status as message_status, m.sent_at as message_sent_at, m.status_detail as message_detail,
-              f.id as f_id, f.rating as f_rating, f.comment as f_comment, f.received_at as f_received_at, f.follow_up_status as f_follow_up, f.escalated_task_id as f_task
+              f.id as f_id, f.rating as f_rating, f.nps_score as f_nps, f.scale as f_scale, f.comment as f_comment, f.received_at as f_received_at, f.follow_up_status as f_follow_up, f.escalated_task_id as f_task, f.low_score as f_low
        ${from} order by r.created_at desc, r.id limit $3 offset $4`,
       [actor.orgId, opts.contactId ?? null, pageSize, (page - 1) * pageSize],
     );
@@ -736,11 +795,11 @@ export async function listReviewRequests(actor: CrmActor, opts: { filter?: Reque
       rows: rows.map((r) => {
         const status = effectiveRequestStatus(r.status, r.message_status);
         return {
-          id: r.id, contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, channel: r.channel, templateName: r.template_name, status,
+          id: r.id, contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, channel: r.channel, templateName: r.template_name, kind: r.kind, scale: r.scale, status,
           requestedVia: r.requested_via, requestedByName: r.requested_by_name, createdAt: iso(r.created_at)!, sentAt: iso(r.sent_at ?? r.message_sent_at), openedAt: iso(r.opened_at),
           clickedAt: iso(r.clicked_at), expiresAt: iso(r.expires_at)!, expired: new Date(r.expires_at).getTime() < now,
           messageDetail: status === "failed" ? r.message_detail : null,
-          feedback: r.f_id ? { id: r.f_id, rating: r.f_rating, comment: r.f_comment, receivedAt: iso(r.f_received_at)!, followUpStatus: r.f_follow_up ?? "new", escalatedTaskId: r.f_task } : null,
+          feedback: r.f_id ? { id: r.f_id, rating: r.f_rating, npsScore: r.f_nps, scale: r.f_scale ?? "csat5", comment: r.f_comment, receivedAt: iso(r.f_received_at)!, followUpStatus: r.f_follow_up ?? "new", escalatedTaskId: r.f_task, lowScore: Boolean(r.f_low) } : null,
         };
       }),
     };
@@ -749,14 +808,34 @@ export async function listReviewRequests(actor: CrmActor, opts: { filter?: Reque
 
 export interface FeedbackView extends FeedbackSummary {
   contact: { id: string; name: string } | null;
+  /**
+   * A survey answer typed next to an existing customer's email or phone that nobody has verified: it may be theirs, and nothing was done for them. A person confirms or dismisses
+   * it (src/server/reputation/survey-feedback.ts). Null for every answer that is attributed, anonymous or already decided.
+   */
+  possibleContact: { id: string; name: string } | null;
   source: "manual" | "review_request" | "survey" | "import";
   reviewRequestId: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByName: string | null;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  resolutionNote: string | null;
+  /** The inbox conversation its escalation lives in, when there is one. */
+  conversationId: string | null;
+  /** Its follow-up task is assigned to the person looking: they may mark it acknowledged or resolved even without the review management permission. */
+  assignedToYou: boolean;
 }
 
 export const FEEDBACK_FILTERS = ["open", "low", "all"] as const;
 export type FeedbackFilter = (typeof FEEDBACK_FILTERS)[number];
 
-/** Private feedback from customers (every source), newest first. "open": not resolved yet; "low": rated at or below the escalation level. */
+/**
+ * "Low" in lists and counts: low when it arrived (customer_feedback.low_score), or hand-recorded on the Retention page with a rating at or below the standing default (those
+ * rows never go through the follow-through, so they carry no stored decision).
+ */
+const lowFeedbackSql = (a = "") => `(${a}low_score or (${a}source = 'manual' and ${a}rating <= ${ESCALATE_AT_OR_BELOW}))`;
+
+/** Private feedback from customers (every source), newest first. "open": not acknowledged or resolved yet; "low": it was low when it arrived (by the workspace's level at that time). */
 export async function listFeedback(actor: CrmActor, opts: { filter?: FeedbackFilter; page?: number; pageSize?: number } = {}): Promise<{ rows: FeedbackView[]; total: number; page: number; pageSize: number }> {
   assertCan(actor, "contacts.view");
   const pageSize = Math.min(100, Math.max(5, opts.pageSize ?? 25));
@@ -765,37 +844,45 @@ export async function listFeedback(actor: CrmActor, opts: { filter?: FeedbackFil
   return withSystem(async (db) => {
     const where = ["f.org_id = $1"];
     if (filter === "open") where.push("f.follow_up_status in ('new', 'escalated')");
-    if (filter === "low") where.push(`f.rating is not null and f.rating <= ${ESCALATE_AT_OR_BELOW}`);
-    const from = `from customer_feedback f left join contacts c on c.id = f.contact_id and c.org_id = f.org_id and c.deleted_at is null where ${where.join(" and ")}`;
+    if (filter === "low") where.push(lowFeedbackSql("f."));
+    const from = `from customer_feedback f left join contacts c on c.id = f.contact_id and c.org_id = f.org_id and c.deleted_at is null
+      left join human_escalations e on e.id = f.escalation_id and e.org_id = f.org_id
+      left join tasks t on t.id = f.escalated_task_id and t.org_id = f.org_id
+      left join lateral (select coalesce((select m.kept_contact_id from contact_merges m where m.merged_contact_id = f.possible_contact_id and m.org_id = f.org_id order by m.created_at desc limit 1), f.possible_contact_id) as id) pk on f.possible_contact_id is not null
+      left join contacts pc on pc.id = pk.id and pc.org_id = f.org_id and pc.deleted_at is null
+      left join users ua on ua.id = f.acknowledged_by left join users ur on ur.id = f.resolved_by where ${where.join(" and ")}`;
     const total = Number((await db.query<{ n: string }>(`select count(*)::text as n ${from}`, [actor.orgId])).rows[0].n);
-    const { rows } = await db.query<{ id: string; rating: number | null; comment: string | null; received_at: Date; follow_up_status: FeedbackFollowUp; escalated_task_id: string | null; contact_id: string | null; contact_name: string | null; source: FeedbackView["source"]; review_request_id: string | null }>(
-      `select f.id, f.rating, f.comment, f.received_at, f.follow_up_status, f.escalated_task_id, c.id as contact_id, c.display_name as contact_name, f.source, f.review_request_id
+    const { rows } = await db.query<{
+      id: string; rating: number | null; nps_score: number | null; scale: FeedbackScale; comment: string | null; received_at: Date; follow_up_status: FeedbackFollowUp; escalated_task_id: string | null; low_score: boolean;
+      contact_id: string | null; contact_name: string | null; possible_id: string | null; possible_name: string | null; source: FeedbackView["source"]; review_request_id: string | null; acknowledged_at: Date | null; acknowledged_by_name: string | null;
+      resolved_at: Date | null; resolved_by_name: string | null; resolution_note: string | null; conversation_id: string | null; assigned_to_you: boolean;
+    }>(
+      `select f.id, f.rating, f.nps_score, f.scale, f.comment, f.received_at, f.follow_up_status, f.escalated_task_id, f.low_score, c.id as contact_id, c.display_name as contact_name, pc.id as possible_id, pc.display_name as possible_name, f.source, f.review_request_id,
+              f.acknowledged_at, nullif(ua.full_name, '') as acknowledged_by_name, f.resolved_at, nullif(ur.full_name, '') as resolved_by_name, f.resolution_note, e.conversation_id,
+              (t.assigned_user_id is not null and t.assigned_user_id = $4::uuid) as assigned_to_you
        ${from} order by f.received_at desc, f.id limit $2 offset $3`,
-      [actor.orgId, pageSize, (page - 1) * pageSize],
+      [actor.orgId, pageSize, (page - 1) * pageSize, actor.kind === "member" ? actor.userId : null],
     );
     return {
       total, page, pageSize,
       rows: rows.map((r) => ({
-        id: r.id, rating: r.rating, comment: r.comment, receivedAt: iso(r.received_at)!, followUpStatus: r.follow_up_status, escalatedTaskId: r.escalated_task_id,
-        contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, source: r.source, reviewRequestId: r.review_request_id,
+        id: r.id, rating: r.rating, npsScore: r.nps_score, scale: r.scale, comment: r.comment, receivedAt: iso(r.received_at)!, followUpStatus: r.follow_up_status, escalatedTaskId: r.escalated_task_id, lowScore: r.low_score,
+        contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, possibleContact: r.possible_id ? { id: r.possible_id, name: r.possible_name || "Unnamed contact" } : null,
+        source: r.source, reviewRequestId: r.review_request_id,
+        acknowledgedAt: iso(r.acknowledged_at), acknowledgedByName: r.acknowledged_by_name, resolvedAt: iso(r.resolved_at), resolvedByName: r.resolved_by_name, resolutionNote: r.resolution_note,
+        conversationId: r.conversation_id, assignedToYou: r.assigned_to_you,
       })),
     };
   });
 }
 
-/** Marks where the team is with a piece of feedback. Escalated is set by the escalation itself, not by hand. */
-export async function setFeedbackFollowUp(actor: CrmActor, id: string, status: FeedbackFollowUp): Promise<void> {
-  assertCan(actor, "reviews.manage", "Updating feedback needs the review management permission.");
+/**
+ * Marks where the team is with a piece of feedback. Escalated is set by the escalation itself, not by hand. Owners and managers can; so can the person the
+ * follow-up task is assigned to (src/server/reputation/feedback.ts). Finishing that task resolves the feedback by itself.
+ */
+export async function setFeedbackFollowUp(actor: CrmActor, id: string, status: FeedbackFollowUp, note?: string | null): Promise<void> {
   if (status !== "new" && status !== "acknowledged" && status !== "resolved") throw new AppError("invalid_input", "Choose new, acknowledged or resolved.");
-  if (!UUID.test(id)) throw new AppError("not_found", "Feedback not found.");
-  await crmWrite(actor, async (db) => {
-    const r = (await db.query<{ contact_id: string | null; follow_up_status: FeedbackFollowUp }>("select contact_id, follow_up_status from customer_feedback where id = $1 and org_id = $2 for update", [id, actor.orgId])).rows[0];
-    if (!r) throw new AppError("not_found", "Feedback not found.");
-    if (r.follow_up_status === status) return;
-    await db.query("update customer_feedback set follow_up_status = $3 where id = $1 and org_id = $2", [id, actor.orgId, status]);
-    if (r.contact_id) await recordActivity(db, actor, { kind: "feedback.follow_up", summary: `Feedback marked ${status}`, contactId: r.contact_id, refType: "customer_feedback", refId: id });
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.feedback_follow_up", targetType: "customer_feedback", targetId: id, result: "success", metadata: { from: r.follow_up_status, to: status } }, db);
-  });
+  await changeFeedbackFollowUp(actor, id, { status, note });
 }
 
 export interface ReviewStats {
@@ -803,8 +890,10 @@ export interface ReviewStats {
   since: string;
   /** Review requests created in the period (cancelled ones not counted), and how far those same requests got. */
   requests: { created: number; waiting: number; sent: number; opened: number; clicked: number; feedback: number; failed: number };
+  /** Automatic asks stopped in the period because a person on the team had excluded that customer from automatic messages. Shown so a pattern is visible. */
+  heldByPerson: number;
   /** Private feedback received in the period, from every source. Never public reviews. */
-  feedback: { count: number; rated: number; average: number | null; byRating: Record<1 | 2 | 3 | 4 | 5, number>; low: number; open: number };
+  feedback: { count: number; rated: number; average: number | null; byRating: Record<1 | 2 | 3 | 4 | 5, number>; low: number; open: number; npsAnswers: number };
   /** Customers who opened a review site's link from their page, by site. Opening a link isn't leaving a review: the sites don't tell us that. */
   clicksByPlatform: Array<{ platform: ReviewPlatform; label: string; clicks: number }>;
 }
@@ -828,25 +917,27 @@ export async function getReviewStats(actor: CrmActor, opts: { days?: number; now
        where r.org_id = $1 and r.created_at >= $2 and r.status <> 'cancelled'`,
       [actor.orgId, since.toISOString()],
     )).rows[0];
-    const f = (await db.query<{ count: string; rated: string; average: string | null; low: string; open: string; r1: string; r2: string; r3: string; r4: string; r5: string }>(
-      `select count(*)::text as count, count(rating)::text as rated, round(avg(rating)::numeric, 2)::text as average,
-              count(*) filter (where rating <= $3)::text as low, count(*) filter (where follow_up_status in ('new', 'escalated'))::text as open,
+    const f = (await db.query<{ count: string; rated: string; nps: string; average: string | null; low: string; open: string; r1: string; r2: string; r3: string; r4: string; r5: string }>(
+      `select count(*)::text as count, count(rating)::text as rated, count(nps_score)::text as nps, round(avg(rating)::numeric, 2)::text as average,
+              count(*) filter (where ${lowFeedbackSql()})::text as low, count(*) filter (where follow_up_status in ('new', 'escalated'))::text as open,
               count(*) filter (where rating = 1)::text as r1, count(*) filter (where rating = 2)::text as r2, count(*) filter (where rating = 3)::text as r3,
               count(*) filter (where rating = 4)::text as r4, count(*) filter (where rating = 5)::text as r5
        from customer_feedback where org_id = $1 and received_at >= $2`,
-      [actor.orgId, since.toISOString(), ESCALATE_AT_OR_BELOW],
+      [actor.orgId, since.toISOString()],
     )).rows[0];
     const clicks = (await db.query<{ platform: string; clicks: string }>(
       `select coalesce(metadata->>'platform', 'other') as platform, count(*)::text as clicks from crm_activities
        where org_id = $1 and kind = 'review.link_clicked' and occurred_at >= $2 group by 1 order by 2 desc`,
       [actor.orgId, since.toISOString()],
     )).rows;
+    const held = (await db.query<{ n: string }>("select count(*)::text as n from audit_logs where org_id = $1 and action = 'crm.review_request_held' and created_at >= $2", [actor.orgId, since.toISOString()])).rows[0];
     return {
       days, since: since.toISOString(),
       requests: { created: Number(r.created), waiting: Number(r.waiting), sent: Number(r.sent), opened: Number(r.opened), clicked: Number(r.clicked), feedback: Number(r.feedback), failed: Number(r.failed) },
+      heldByPerson: Number(held.n),
       feedback: {
         count: Number(f.count), rated: Number(f.rated), average: f.average === null ? null : Number(f.average),
-        byRating: { 1: Number(f.r1), 2: Number(f.r2), 3: Number(f.r3), 4: Number(f.r4), 5: Number(f.r5) }, low: Number(f.low), open: Number(f.open),
+        byRating: { 1: Number(f.r1), 2: Number(f.r2), 3: Number(f.r3), 4: Number(f.r4), 5: Number(f.r5) }, low: Number(f.low), open: Number(f.open), npsAnswers: Number(f.nps),
       },
       clicksByPlatform: clicks.map((c) => {
         const platform = isReviewPlatform(c.platform) ? c.platform : "other";
@@ -875,27 +966,35 @@ export interface PublicReviewDestination {
 }
 
 export interface ReviewPageView {
-  /** open: feedback can be given. closed: the link expired or the request was cancelled (the public links still work). */
-  state: "open" | "closed" | "invalid" | "rate_limited";
+  /** open: feedback can be given. closed: the link expired or the request was cancelled (the public links still work). disabled: the platform-wide switch is on (REVIEWS_PUBLIC_DISABLED). */
+  state: "open" | "closed" | "invalid" | "rate_limited" | "disabled";
   closedReason: "expired" | "cancelled" | null;
+  /** What the request is (a review request or a survey) and the scale its question is asked on. Neither changes which public links are shown. */
+  kind: RequestKind;
+  scale: FeedbackScale;
   business: { name: string; brandColor: string | null; contactEmail: string | null; contactPhone: string | null } | null;
   /**
    * Every active public review link, in the business's order. The same for every customer and every state but invalid: it never depends
    * on whether they left feedback or what rating they gave.
    */
   destinations: PublicReviewDestination[];
-  /** The private feedback already given through this link, if any (only its rating: the comment isn't shown back). */
-  feedback: { rating: number | null } | null;
+  /**
+   * The private feedback already given through this link, if any (only its one-to-five rating: the comment isn't shown back; null on the zero-to-ten scale). `followUp` says a
+   * person on the team will follow up privately; it is the only thing that differs between a low and a high answer, and the page words it as an offer, never as something to
+   * do before posting a review.
+   */
+  feedback: { rating: number | null; followUp: boolean } | null;
 }
 
 interface PublicRequestRow {
   id: string; org_id: string; contact_id: string; status: ReviewRequestStatus; expires_at: Date; opened_at: Date | null; clicked_at: Date | null; message_id: string | null;
+  kind: RequestKind; scale: FeedbackScale;
   org_name: string; org_timezone: string; brand_color: string | null; contact_email: string | null; contact_phone: string | null;
 }
 
 async function requestByToken(db: Queryable, token: string, lock = false): Promise<PublicRequestRow | null> {
   const { rows } = await db.query<PublicRequestRow>(
-    `select r.id, r.org_id, r.contact_id, r.status, r.expires_at, r.opened_at, r.clicked_at, r.message_id, o.name as org_name, o.timezone as org_timezone,
+    `select r.id, r.org_id, r.contact_id, r.status, r.expires_at, r.opened_at, r.clicked_at, r.message_id, r.kind, r.scale, o.name as org_name, o.timezone as org_timezone,
             p.brand_color, p.contact_email, p.contact_phone
      from crm_review_requests r join organizations o on o.id = r.org_id left join company_profiles p on p.org_id = r.org_id
      where r.token_hash = $1${lock ? " for update of r" : ""}`,
@@ -926,7 +1025,9 @@ const customerActor = (r: PublicRequestRow) => systemActor({ id: r.org_id, name:
  * link opens, which can include an email security scanner following the link; it never changes anything else.
  */
 export async function loadReviewPage(token: string, opts: { now?: Date } = {}): Promise<ReviewPageView> {
-  const empty = (state: ReviewPageView["state"]): ReviewPageView => ({ state, closedReason: null, business: null, destinations: [], feedback: null });
+  const empty = (state: ReviewPageView["state"]): ReviewPageView => ({ state, closedReason: null, kind: "review", scale: "csat5", business: null, destinations: [], feedback: null });
+  // The emergency switch comes first: nothing is read, counted or recorded, whatever the address.
+  if (reviewsPublicDisabled()) return empty("disabled");
   if (!looksLikeReviewToken(token)) return empty("invalid");
   if (!(await consumeRateLimit(PAGE_VIEWS, limitKey(token))).allowed) return empty("rate_limited");
   const now = opts.now ?? new Date();
@@ -938,18 +1039,20 @@ export async function loadReviewPage(token: string, opts: { now?: Date } = {}): 
       await advance(db, r, "opened", "opened_at", now);
       await recordActivity(db, customerActor(r), { kind: "review.opened", summary: "Opened their review request", contactId: r.contact_id, refType: "review_request", refId: r.id, occurredAt: now });
     }
-    const fb = (await db.query<{ rating: number | null }>("select rating from customer_feedback where org_id = $1 and review_request_id = $2 order by received_at limit 1", [r.org_id, r.id])).rows[0];
+    const fb = (await db.query<{ rating: number | null; low_score: boolean }>("select rating, low_score from customer_feedback where org_id = $1 and review_request_id = $2 order by received_at limit 1", [r.org_id, r.id])).rows[0];
     return {
       state: reason ? "closed" : "open",
       closedReason: reason,
+      kind: r.kind,
+      scale: r.scale,
       business: { name: r.org_name, brandColor: r.brand_color, contactEmail: r.contact_email, contactPhone: r.contact_phone },
       destinations: (await activeDestinations(db, r.org_id)).map((d) => ({ id: d.id, platform: d.platform, label: d.label, url: d.url })),
-      feedback: fb ? { rating: fb.rating } : null,
+      feedback: fb ? { rating: fb.rating, followUp: fb.low_score } : null,
     };
   });
 }
 
-export type FeedbackOutcome = "saved" | "already" | "closed" | "invalid" | "empty" | "rate_limited";
+export type FeedbackOutcome = "saved" | "already" | "closed" | "invalid" | "empty" | "rate_limited" | "unavailable";
 
 /** Plain text a customer typed: control characters removed, line breaks kept, at most FEEDBACK_COMMENT_MAX characters. */
 export function cleanFeedbackComment(v: unknown): string | null {
@@ -958,68 +1061,75 @@ export function cleanFeedbackComment(v: unknown): string | null {
   return s ? s.slice(0, FEEDBACK_COMMENT_MAX) : null;
 }
 
-/** A rating from the form: a whole number from 1 to 5, or null when none was chosen. Anything else is refused as invalid input. */
+/** A one-to-five rating from the form: a whole number from 1 to 5, or null when none was chosen. Anything else is refused as invalid input. */
 export function parseRating(v: unknown): number | null | "invalid" {
-  if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : typeof v === "string" && /^\d$/.test(v.trim()) ? Number(v.trim()) : NaN;
-  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : "invalid";
+  return parseScore("csat5", v);
 }
 
 /**
- * Saves the private feedback a customer chose to give through their link, once per link. A rating at or below ESCALATE_AT_OR_BELOW
- * creates an internal follow-up task (for the contact's owner, or unassigned) and tells the owner and managers. Nothing about it changes
- * what the customer sees: the page shows the same public review links before and after, whatever the rating.
+ * Saves the private feedback a customer chose to give through their link, once per link. The question is the one the request was made with: one to five, or zero to ten
+ * ("how likely are you to recommend us"); which one applies comes from the request, never from the form. A score at or below the workspace's low level (2 of 5, or 6 of 10,
+ * unless it chose otherwise), or a comment with no score that plainly raises a complaint, is LOW: it opens a follow-up for the team (a task, a notice, an inbox escalation, and
+ * the customer's remaining automatic program messages stop; see src/server/reputation/feedback.ts). Whether it was low is decided now and stored with it. Nothing about it
+ * changes what the customer sees: the page shows the same public review links before and after, whatever the score.
  */
 export async function submitReviewFeedback(token: string, input: { rating?: unknown; comment?: unknown }, opts: { now?: Date } = {}): Promise<{ outcome: FeedbackOutcome; escalated?: boolean; feedbackId?: string }> {
+  if (reviewsPublicDisabled()) return { outcome: "unavailable" };
   if (!looksLikeReviewToken(token)) return { outcome: "invalid" };
-  const rating = parseRating(input.rating);
-  if (rating === "invalid") return { outcome: "invalid" };
+  // The form's number is checked for shape here, and for range once the request (and so its scale) is known.
+  const chosen = parseScore("nps10", input.rating);
+  if (chosen === "invalid") return { outcome: "invalid" };
   const comment = cleanFeedbackComment(input.comment);
-  if (rating === null && !comment) return { outcome: "empty" };
+  if (chosen === null && !comment) return { outcome: "empty" };
   if (!(await consumeRateLimit(FEEDBACK_POSTS, limitKey(token))).allowed) return { outcome: "rate_limited" };
   const now = opts.now ?? new Date();
-  return withSystem(async (db) => {
+  let emails: OutgoingEmail[] = [];
+  const out = await withSystem(async (db) => {
     const r = await requestByToken(db, token, true);
     if (!r) return { outcome: "invalid" as const };
     if (closedReason(r, now)) return { outcome: "closed" as const };
     const prior = await db.query("select 1 from customer_feedback where org_id = $1 and review_request_id = $2", [r.org_id, r.id]);
     if (prior.rows.length) return { outcome: "already" as const };
+    const score = chosen === null ? null : parseScore(r.scale, chosen);
+    if (score === "invalid") return { outcome: "invalid" as const };
     const actor = customerActor(r);
+    // Low is decided here, from the workspace's own settings, and stored. A comment with no score is judged by what it says (the same blunt words the inbox acts on,
+    // with "no complaints at all" not counting); a comment next to a score is judged by the score alone.
+    const settings = await loadSettings(db, r.org_id);
+    const signal = score === null && comment ? detectEscalationSignal(withoutNegatedComplaints(comment)) : null;
+    const low = score !== null ? isLowScore(r.scale, score, thresholdsOf(settings)) : Boolean(signal);
+    const rating = r.scale === "csat5" ? score : null;
+    const npsScore = r.scale === "nps10" ? score : null;
     const { rows } = await db.query<{ id: string }>(
-      `insert into customer_feedback (org_id, rating, comment, received_at, contact_id, review_request_id, source, follow_up_status)
-       values ($1, $2, $3, $4, $5, $6, 'review_request', 'new') returning id`,
-      [r.org_id, rating, comment, now.toISOString(), r.contact_id, r.id],
+      `insert into customer_feedback (org_id, rating, nps_score, comment, received_at, contact_id, review_request_id, source, follow_up_status, scale, low_score)
+       values ($1, $2, $3, $4, $5, $6, $7, 'review_request', 'new', $8, $9) returning id`,
+      [r.org_id, rating, npsScore, comment, now.toISOString(), r.contact_id, r.id, r.scale, low],
     );
     const feedbackId = rows[0].id;
     await advance(db, r, "feedback_received", "opened_at", now);
     const contact = (await db.query<{ display_name: string; assigned_user_id: string | null }>("select display_name, assigned_user_id from contacts where id = $1 and org_id = $2", [r.contact_id, r.org_id])).rows[0];
     const name = contact?.display_name || "A customer";
+    const scoreText = describeScore(r.scale, score);
     await emitEvent(db, actor, {
       type: "feedback.received", entityType: "customer_feedback", entityId: feedbackId, contactId: r.contact_id,
-      payload: { feedbackId, reviewRequestId: r.id, rating, hasComment: Boolean(comment), source: "review_request" }, dedupeKey: `feedback.received:${feedbackId}`, byContact: true,
+      payload: { feedbackId, reviewRequestId: r.id, rating, scale: r.scale, npsScore, hasComment: Boolean(comment), source: "review_request" }, dedupeKey: `feedback.received:${feedbackId}`, byContact: true,
     });
     await recordActivity(db, actor, {
-      kind: "feedback.received", summary: rating ? `Left private feedback: ${rating} of 5` : "Left private feedback", contactId: r.contact_id, refType: "customer_feedback", refId: feedbackId,
-      metadata: { rating, reviewRequestId: r.id }, occurredAt: now,
+      kind: "feedback.received", summary: scoreText ? `Left private feedback: ${scoreText}` : "Left private feedback", contactId: r.contact_id, refType: "customer_feedback", refId: feedbackId,
+      metadata: { rating, scale: r.scale, npsScore, reviewRequestId: r.id }, occurredAt: now,
     });
-    let escalated = false;
-    if (rating !== null && rating <= ESCALATE_AT_OR_BELOW) {
-      let assigneeId: string | null = contact?.assigned_user_id ?? null;
-      if (assigneeId) await assertAssignable(db, r.org_id, assigneeId).catch(() => { assigneeId = null; });
-      const task = await createTaskInTx(db, actor, {
-        title: `Follow up on ${name}'s feedback (${rating} of 5)`.slice(0, 200),
-        description: [`${name} rated their experience ${rating} of 5 through their review request.`, comment ? `They wrote: "${comment.slice(0, 600)}"` : "They didn't leave a comment.", "This is private feedback. Their public review links were shown to them as usual."].join("\n\n"),
-        priority: "high", dueAt: new Date(now.getTime() + 86_400_000).toISOString(), assigneeId, contactId: r.contact_id,
-      }, { source: "system" });
-      await db.query("update customer_feedback set follow_up_status = 'escalated', escalated_task_id = $3 where id = $1 and org_id = $2", [feedbackId, r.org_id, task.id]);
-      await notifyOrgRoles(db, r.org_id, ["owner", "admin"], {
-        kind: "retention_attention", severity: "warning", title: `Low rating from ${name} (${rating} of 5)`.slice(0, 200),
-        body: comment ? comment.slice(0, 180) : "No comment. A follow-up task was created.", link: `/crm/contacts/${r.contact_id}`, dedupeKey: `feedback-low:${feedbackId}`,
+    if (low) {
+      const followUp = await followThroughLowFeedback(db, actor, {
+        feedbackId, reviewRequestId: r.id, contact: { id: r.contact_id, name, assigneeId: contact?.assigned_user_id ?? null }, requestMessageId: r.message_id,
+        scoreText, comment, category: signal?.category, settings, now,
       });
-      escalated = true;
+      emails = followUp.emails;
     }
-    return { outcome: "saved" as const, escalated, feedbackId };
+    return { outcome: "saved" as const, escalated: low, feedbackId };
   });
+  // The emails an escalation produces are sent only now, after everything above committed; one that fails never undoes the customer's saved feedback.
+  if (emails.length) await sendFollowThroughEmails(emails);
+  return out;
 }
 
 /**
@@ -1027,7 +1137,7 @@ export async function submitReviewFeedback(token: string, input: { rating?: unkn
  * them. The address always comes from the business's own active list, never from the request. Null for an unknown token or link.
  */
 export async function recordReviewClick(token: string, destinationId: string, opts: { now?: Date } = {}): Promise<{ url: string } | null> {
-  if (!looksLikeReviewToken(token) || !UUID.test(destinationId)) return null;
+  if (reviewsPublicDisabled() || !looksLikeReviewToken(token) || !UUID.test(destinationId)) return null;
   const now = opts.now ?? new Date();
   const allowed = (await consumeRateLimit(CLICKS, limitKey(token))).allowed;
   return withSystem(async (db) => {

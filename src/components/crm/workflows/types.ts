@@ -182,6 +182,8 @@ export interface EditorOptions {
   connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
   /** False when the workspace does not have the new inbox yet (the rollout): its conversation triggers and the "Update conversation" step can't be published. */
   inboxEnabled?: boolean;
+  /** False when satisfaction surveys aren't switched on for the workspace: a request-a-review step can't be set to send a survey. */
+  surveysEnabled?: boolean;
   folders: FolderOption[];
 }
 

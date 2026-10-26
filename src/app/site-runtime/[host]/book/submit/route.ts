@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { bookingErrorPage, handleSiteBooking } from "@/server/sites/booking";
 import { normalizeHost } from "@/server/sites/runtime";
+import { readBoundedFormData } from "@/server/security/bounded-body";
 
 // The booking form on a customer's site posts here (/__iaq/book, rewritten by the proxy). POST, then redirect, so refreshing the
 // confirmation never books again; the decisions themselves live in handleSiteBooking.
@@ -18,7 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ host: s
   if (Number(req.headers.get("content-length") ?? 0) > 40_000) return html(413, bookingErrorPage("That was too much to send. Shorten your answers and try again."));
   let fields: Record<string, string> = {};
   try {
-    const form = await req.formData();
+    const form = await readBoundedFormData(req, 40_000);
+    if (!form) return html(413, bookingErrorPage("That was too much to send. Shorten your answers and try again."));
     fields = Object.fromEntries([...form].filter((entry): entry is [string, string] => typeof entry[1] === "string").slice(0, 40));
   } catch {
     return html(400, bookingErrorPage("That booking couldn't be read. Go back and try again."));

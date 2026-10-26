@@ -4,6 +4,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { logSafeServerDiagnostic } from "@/server/diagnostics";
 import { assessContact } from "@/server/lead-scoring/service";
 import type { ExtractionDeps } from "@/server/lead-scoring/ai";
+import type { ModelGateReason } from "@/server/llm/gate";
 
 // The reassessment queue. New information about a contact asks for a new look; a burst of asks becomes one assessment after a short quiet period
 // (the debounce), never later than an hour after the first ask. A worker leases a row, assesses, and deletes the row only if nothing newer was asked
@@ -40,6 +41,8 @@ export interface ScoringRun {
   skipped: number;
   errors: number;
   deferred: number;
+  /** Assessments where the model was not asked although the workspace switched it on, by why (not active, paused, no credit). The rules still scored them. */
+  aiSkipped: Partial<Record<ModelGateReason, number>>;
 }
 
 export interface ScoringRunOptions {
@@ -56,7 +59,7 @@ export async function processScoringQueue(opts: ScoringRunOptions = {}): Promise
   const limit = Math.min(200, Math.max(1, opts.limit ?? 40));
   const perOrg = Math.min(50, Math.max(1, opts.perOrgLimit ?? 10));
   const worker = opts.worker ?? `s-${crypto.randomBytes(4).toString("hex")}`;
-  const run: ScoringRun = { claimed: 0, assessed: 0, unchanged: 0, skipped: 0, errors: 0, deferred: 0 };
+  const run: ScoringRun = { claimed: 0, assessed: 0, unchanged: 0, skipped: 0, errors: 0, deferred: 0, aiSkipped: {} };
 
   const claimed = await withSystem(async (db) => {
     const candidates = await db.query<{ contact_id: string }>(
@@ -90,6 +93,7 @@ export async function processScoringQueue(opts: ScoringRunOptions = {}): Promise
       if (r.outcome === "created") run.assessed += 1;
       else if (r.outcome === "unchanged") run.unchanged += 1;
       else run.skipped += 1;
+      if ("aiSkipped" in r && r.aiSkipped) run.aiSkipped[r.aiSkipped] = (run.aiSkipped[r.aiSkipped] ?? 0) + 1;
       // Finished: remove the row unless something newer was asked for while this ran, in which case it stays for another look.
       await withSystem(async (db) => {
         await db.query("delete from lead_score_queue where contact_id = $1 and lease_owner = $2 and generation = $3", [q.contact_id, worker, q.generation]);

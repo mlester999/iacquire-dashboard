@@ -25,7 +25,7 @@ export default async function SupportAnalyticsPage({ searchParams }: { searchPar
     <div className="min-w-0">
       <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Agency client care</p>
       <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.04em] text-ink">Request analytics</h1>
-      <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">How quickly clients are helped, what they ask about, and where the team&apos;s time goes.</p>
+      <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">How quickly clients are helped, what they ask about, and where the team&apos;s time goes.</p>
     </div>
   );
   if (!caps["agency.support.analytics"]) {
@@ -33,7 +33,7 @@ export default async function SupportAnalyticsPage({ searchParams }: { searchPar
       <div className="module-stack">
         {header}
         <SupportSubnav active="requests" caps={caps} />
-        <Card><EmptyState icon={<Lock className="size-5" />} title="Support analytics isn't part of your role" description="A Super Admin can give you access from Agency team. Until then you can keep working in Requests." action={<Link href="/admin/support" className="text-[13px] font-medium text-primary-ink hover:underline">Back to Requests</Link>} /></Card>
+        <Card><EmptyState icon={<Lock className="size-5" />} title="Support analytics isn't part of your role" description="A Super Admin can give you access from Agency team. Until then you can keep working in Requests." action={<Link href="/admin/support" className="text-[14px] font-medium text-primary-ink hover:underline">Back to Requests</Link>} /></Card>
       </div>
     );
   }
@@ -65,10 +65,10 @@ export default async function SupportAnalyticsPage({ searchParams }: { searchPar
           <div className="space-y-1.5"><Label htmlFor="a-cat">Topic</Label><Select id="a-cat" name="category" defaultValue={filters.category ?? ""}><option value="">Every topic</option>{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}</Select></div>
           <div className="space-y-1.5"><Label htmlFor="a-pri">Priority</Label><Select id="a-pri" name="priority" defaultValue={filters.priority ?? ""}><option value="">Every priority</option>{PRIORITIES.map((x) => <option key={x} value={x}>{sentenceCase(x)}</option>)}</Select></div>
           <div className="space-y-1.5"><Label htmlFor="a-status">Status</Label><Select id="a-status" name="status" defaultValue={filters.status ?? ""}><option value="">Every status</option>{TICKET_STATUSES.map((x) => <option key={x} value={x}>{statusLabelForAgency(x)}</option>)}</Select></div>
-          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4"><Button type="submit" variant="brand">Apply filters</Button><Link href="/admin/support/analytics" className="inline-flex min-h-11 items-center rounded-xl px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2">Reset</Link></div>
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4"><Button type="submit" variant="brand">Apply filters</Button><Link href="/admin/support/analytics" className="inline-flex min-h-11 items-center rounded-xl px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2">Reset</Link></div>
         </form>
       </Card>
-      {problem && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink">{problem}</p>}
+      {problem && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">{problem}</p>}
       {data && <AnalyticsView data={data} filterQuery={{ orgId: filters.orgId }} />}
     </div>
   );

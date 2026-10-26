@@ -40,7 +40,7 @@ export function MetricCard({ label, value, detail, icon, tone = "blue", href, cl
 }
 
 export function SectionLabel({ title, description, action, count }: { title: string; description?: React.ReactNode; action?: React.ReactNode; count?: number }) {
-  return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[17px] font-semibold tracking-[-0.025em] text-ink">{title}</h2>{count !== undefined && <span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2">{count}</span>}</div>{description && <div className="mt-1 text-[13px] leading-relaxed text-muted">{description}</div>}</div>{action}</div>;
+  return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[17px] font-semibold tracking-[-0.025em] text-ink">{title}</h2>{count !== undefined && <span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2">{count}</span>}</div>{description && <div className="mt-1 text-[14px] leading-relaxed text-muted">{description}</div>}</div>{action}</div>;
 }
 
 export function DataToolbar({ children, trailing, className }: { children: React.ReactNode; trailing?: React.ReactNode; className?: string }) {

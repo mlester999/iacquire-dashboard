@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Building2, Flame, Keyboard, LifeBuoy, MessageSquare, ThumbsUp, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Building2, Flame, Keyboard, LifeBuoy, MessageSquare, PencilRuler, ThumbsUp, TriangleAlert } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { InfoChip, StatusPill } from "@/components/ui/status";
@@ -18,7 +18,7 @@ import type { AgencyRequestDetail } from "@/server/support/agency";
 import type { AgencyListItem, AgencyViewCounts } from "@/server/support/types";
 import type { FilterOptions } from "@/server/support/directory";
 
-const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp } as const;
+const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp, change: PencilRuler } as const;
 
 export interface WorkspaceList { items: AgencyListItem[]; total: number; page: number; pageSize: number; counts: AgencyViewCounts }
 
@@ -109,7 +109,7 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
   const Icon = t ? TYPE_ICON[t.requestType] : MessageSquare;
   const header = detail && t && (
     <Card className="p-4 sm:p-5">
-      {layout === "split" && <Link href={queueHref(query, { ticket: "" })} className="mb-3 inline-flex min-h-10 items-center gap-1.5 text-[13px] font-medium text-ink-2 hover:text-ink xl:hidden"><ArrowLeft className="size-3.5" aria-hidden /> Back to requests</Link>}
+      {layout === "split" && <Link href={queueHref(query, { ticket: "" })} className="mb-3 inline-flex min-h-10 items-center gap-1.5 text-[14px] font-medium text-ink-2 hover:text-ink xl:hidden"><ArrowLeft className="size-3.5" aria-hidden /> Back to requests</Link>}
       <div className="flex flex-wrap items-center gap-1.5">
         <Icon className="size-4 text-muted" aria-hidden />
         <InfoChip className="font-mono">{t.ref}</InfoChip>
@@ -137,13 +137,23 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
   );
   const details = detail && <DetailsPane key={detail.ticket.id} detail={detail} timeZone={timeZone} meId={meId} onChanged={changed} />;
 
+  // A request with a reply box gives the floating AQi launcher a reason to sit above it on a phone. The stylesheet reads this attribute; no page layout is duplicated.
+  const hasDetail = Boolean(detail);
+  React.useEffect(() => {
+    if (!hasDetail) return;
+    document.body.dataset.aqiComposer = "true";
+    return () => {
+      delete document.body.dataset.aqiComposer;
+    };
+  }, [hasDetail]);
+
   if (layout === "detail") {
     return thread && details ? (
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">{thread}<aside aria-label="Request details">{details}</aside></div>
     ) : null;
   }
 
-  const hasSelection = Boolean(detail);
+  const hasSelection = hasDetail;
   return (
     <div>
       <div className={cn("grid items-start gap-4", "md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_330px]")}>
@@ -170,10 +180,10 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
       <details className="mt-4 text-[12px] text-muted">
         <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"><Keyboard className="size-3.5" aria-hidden /> Keyboard shortcuts</summary>
         <ul className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">/</kbd> search the queue</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">j</kbd> / <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">k</kbd> next / previous request</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">r</kbd> write a reply</li>
-          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">Ctrl</kbd>/<kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">⌘</kbd> + <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">Enter</kbd> send</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">/</kbd> search the queue</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">j</kbd> / <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">k</kbd> next / previous request</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">r</kbd> write a reply</li>
+          <li><kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">Ctrl</kbd>/<kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">⌘</kbd> + <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[12px]">Enter</kbd> send</li>
         </ul>
       </details>
     </div>

@@ -6,8 +6,11 @@ import { AppError } from "@/server/errors";
 // Contract source: PayMongo developer documentation (webhook signing, hosted checkout, event payloads),
 // read 2026-10-14. It has NOT been exercised against a live or test PayMongo account yet.
 
-const API_BASE = "https://api.paymongo.com";
+const OFFICIAL_API = "https://api.paymongo.com";
 const CHECKOUT_HOST = /(^|\.)paymongo\.com$/i;
+
+/** The provider's API address: PayMongo's own, or (development and test only, a key that is a test key, this machine only: env.ts refuses anything else) the simulator's. */
+const apiBase = () => (env().PAYMONGO_API_BASE ?? OFFICIAL_API).replace(/\/$/, "");
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -150,7 +153,7 @@ export async function createCheckoutSession(req: CheckoutRequest, deps: { fetch?
   const doFetch = deps.fetch ?? fetch;
   let res: Response;
   try {
-    res = await doFetch(`${API_BASE}/v2/checkout_sessions`, {
+    res = await doFetch(`${apiBase()}/v2/checkout_sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
       body: JSON.stringify({
@@ -190,6 +193,7 @@ export async function createCheckoutSession(req: CheckoutRequest, deps: { fetch?
   } catch {
     throw new AppError("upstream_error", "The payment provider returned an invalid checkout link.");
   }
-  if (parsed.protocol !== "https:" || !CHECKOUT_HOST.test(parsed.hostname)) throw new AppError("upstream_error", "The checkout link did not point to PayMongo, so it was not used.");
+  const simulated = env().PAYMONGO_API_BASE ? new URL(env().PAYMONGO_API_BASE as string).origin : null;
+  if (!(simulated && parsed.origin === simulated) && (parsed.protocol !== "https:" || !CHECKOUT_HOST.test(parsed.hostname))) throw new AppError("upstream_error", "The checkout link did not point to PayMongo, so it was not used.");
   return { id, checkoutUrl: parsed.toString() };
 }

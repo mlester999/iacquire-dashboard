@@ -96,7 +96,7 @@ export function NewAppointmentDialog({
   if (!types.length) {
     return (
       <Dialog open onOpenChange={(o) => !o && onClose()} title="New appointment" size="sm" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
-        <p className="text-[13px] leading-relaxed text-muted">
+        <p className="text-[14px] leading-relaxed text-muted">
           There are no appointment types to book yet. {scope.can["calendars.manage"] ? "Add them under Calendars & Types." : permissionNeeded("Adding them under Calendars & Types", "calendars.manage")}
         </p>
       </Dialog>
@@ -145,8 +145,8 @@ export function NewAppointmentDialog({
             </Field>
           ) : (
             <div className="space-y-1.5">
-              <p className="text-[13px] font-medium text-ink-2">Host</p>
-              <p className="flex min-h-11 items-center rounded-xl border border-line bg-surface-2 px-3.5 text-[13px] text-ink-2 sm:min-h-10">
+              <p className="text-[14px] font-medium text-ink-2">Host</p>
+              <p className="flex min-h-11 items-center rounded-xl border border-line bg-surface-2 px-3.5 text-[14px] text-ink-2 sm:min-h-10">
                 {cal?.assignment === "collective" ? `Everyone attends: ${calHosts.map((h) => h.name).join(", ")}` : calHosts[0]?.name ?? "No host yet"}
               </p>
             </div>
@@ -154,7 +154,7 @@ export function NewAppointmentDialog({
         </div>
 
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink-2">Time</p>
+          <p className="mb-2 text-[14px] font-medium text-ink-2">Time</p>
           <SlotPicker
             id="na"
             timeZone={timeZone}
@@ -167,12 +167,12 @@ export function NewAppointmentDialog({
             hostNames={hostNames}
             showHost={roundRobin && !hostId}
           />
-          {errors.slot && <p className="mt-1.5 text-[12.5px] text-danger-ink" role="alert">{errors.slot}</p>}
+          {errors.slot && <p className="mt-1.5 text-[13px] text-danger-ink" role="alert">{errors.slot}</p>}
         </div>
 
         <div role="group" aria-labelledby="na-customer" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p id="na-customer" className="text-[13px] font-medium text-ink-2">Customer</p>
+            <p id="na-customer" className="text-[14px] font-medium text-ink-2">Customer</p>
             {canSearch && (
               <Segmented id="na-contact-mode" ariaLabel="Customer" size="sm" value={mode} onChange={(v) => { setMode(v); setErrors({}); }}
                 options={[{ value: "existing", label: "Existing contact" }, { value: "new", label: "New contact" }]} />
@@ -214,7 +214,7 @@ export function NewAppointmentDialog({
 
         {!!type?.questions.length && (
           <fieldset className="space-y-3">
-            <legend className="text-[13px] font-medium text-ink-2">Booking questions</legend>
+            <legend className="text-[14px] font-medium text-ink-2">Booking questions</legend>
             {type.questions.map((q) => {
               const fid = `na-q-${q.key}`;
               const err = errors[`q:${q.key}`];

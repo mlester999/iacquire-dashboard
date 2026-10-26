@@ -63,7 +63,7 @@ export function UsagePanel({ plan, usage, workflows, canManage, connectionsNeedi
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/automation-studio" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-3.5" aria-hidden />Automation Studio</Link>
+        <Link href="/automation-studio" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-3.5" aria-hidden />Automation Studio</Link>
         <h1 className="mt-3 text-[24px] font-semibold tracking-tight text-ink">Usage and plan</h1>
         <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">What your automations used in {usage.periodLabel}, set against the limits that keep every workspace fast and fair.</p>
       </div>
@@ -77,12 +77,12 @@ export function UsagePanel({ plan, usage, workflows, canManage, connectionsNeedi
           <Badge tone={tone}>{plan.state === "active" ? "Active" : plan.state === "past_due" ? "Payment past due" : plan.state === "cancelling" ? "Ending" : plan.state === "expired" ? "Expired" : plan.state === "pending" ? "Awaiting activation" : "Not active"}</Badge>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-[13.5px] leading-relaxed text-ink-2">{plan.detail}</p>
-          {plan.paidThrough && <p className="text-[12.5px] text-muted">Paid through {plan.paidThrough}, as recorded by iAcquire after the payment was verified.</p>}
-          {plan.state === "past_due" && plan.graceEnds && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="status">Automation Studio keeps working until {plan.graceEnds}. After that your automations are paused, never deleted.</p>}
+          <p className="text-[14px] leading-relaxed text-ink-2">{plan.detail}</p>
+          {plan.paidThrough && <p className="text-[13px] text-muted">Paid through {plan.paidThrough}, as recorded by iAcquire after the payment was verified.</p>}
+          {plan.state === "past_due" && plan.graceEnds && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink" role="status">Automation Studio keeps working until {plan.graceEnds}. After that your automations are paused, never deleted.</p>}
           <div className="flex flex-wrap gap-2">
-            <Link href="/maintenance" className="inline-flex h-9 items-center rounded-xl border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:border-primary hover:text-primary">{plan.entitled ? "Manage your plan" : "See how to get the plan"}</Link>
-            {connectionsNeedingAttention > 0 && <Link href="/automation-studio/connections" className="inline-flex h-9 items-center rounded-xl bg-danger-soft px-3 text-[13px] font-medium text-danger-ink">{connectionsNeedingAttention} connection{connectionsNeedingAttention === 1 ? "" : "s"} need{connectionsNeedingAttention === 1 ? "s" : ""} attention</Link>}
+            <Link href="/maintenance" className="inline-flex h-9 items-center rounded-xl border border-line-strong bg-surface px-3 text-[14px] font-medium text-ink hover:border-primary hover:text-primary">{plan.entitled ? "Manage your plan" : "See how to get the plan"}</Link>
+            {connectionsNeedingAttention > 0 && <Link href="/automation-studio/connections" className="inline-flex h-9 items-center rounded-xl bg-danger-soft px-3 text-[14px] font-medium text-danger-ink">{connectionsNeedingAttention} connection{connectionsNeedingAttention === 1 ? "" : "s"} need{connectionsNeedingAttention === 1 ? "s" : ""} attention</Link>}
           </div>
         </CardContent>
       </Card>
@@ -101,7 +101,7 @@ export function UsagePanel({ plan, usage, workflows, canManage, connectionsNeedi
                 <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                   <Link href={`/automation-studio/${w.id}`} className="min-w-0 truncate text-[14px] font-medium text-ink hover:text-primary">{w.name}</Link>
                   <div className="flex items-center gap-2">
-                    <Link href={`/automation-studio/${w.id}`} className="text-[12.5px] font-medium text-primary hover:underline">Review</Link>
+                    <Link href={`/automation-studio/${w.id}`} className="text-[13px] font-medium text-primary hover:underline">Review</Link>
                     {canManage && plan.entitled && (
                       <Button size="sm" variant="secondary" loading={busy(`on-${w.id}`)} onClick={() => void run(`on-${w.id}`, () => setStudioWorkflowStatusAction(w.id, "active"), "Turned on.")}><Play className="size-3.5" aria-hidden />Turn on</Button>
                     )}
@@ -119,8 +119,8 @@ export function UsagePanel({ plan, usage, workflows, canManage, connectionsNeedi
           {usage.lines.map((l) => (
             <li key={l.key} className="rounded-2xl border border-line bg-surface p-4 shadow-soft">
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-[13.5px] font-medium text-ink">{l.label}</p>
-                <p className="tabular-nums text-[13px] text-ink-2">{number(l.used)} of {number(l.limit)}</p>
+                <p className="text-[14px] font-medium text-ink">{l.label}</p>
+                <p className="tabular-nums text-[14px] text-ink-2">{number(l.used)} of {number(l.limit)}</p>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label={l.label} aria-valuemin={0} aria-valuemax={l.limit} aria-valuenow={Math.min(l.used, l.limit)} aria-valuetext={`${number(l.used)} of ${number(l.limit)}. ${STATE_TEXT[l.state]}`}>
                 <div className={cn("h-full rounded-full transition-[width]", BAR[l.state])} style={{ width: `${Math.min(100, Math.max(l.used > 0 ? 2 : 0, l.percent))}%` }} />
@@ -132,7 +132,7 @@ export function UsagePanel({ plan, usage, workflows, canManage, connectionsNeedi
             </li>
           ))}
         </ul>
-        {usage.note && <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-muted"><CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{usage.note}</p>}
+        {usage.note && <p className="mt-3 flex items-start gap-1.5 text-[13px] text-muted"><CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{usage.note}</p>}
       </section>
 
       <section aria-labelledby="usage-activity">

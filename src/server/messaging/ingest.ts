@@ -4,6 +4,7 @@ import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { cancelFollowUps } from "@/server/messaging/followups";
 import { getConsent, KEYWORD_LIFTABLE_SUPPRESSIONS, liftSuppression, recordConsent, resolveContact, suppressAddress } from "@/server/messaging/contacts";
 import { applyDeliveryEvent, cancelPendingAiMessages } from "@/server/messaging/send";
+import { verifyIdentityOnInbound } from "@/server/messaging/consent-identity";
 import { createEscalation } from "@/server/messaging/handoff";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { fetchGhlContact, parseGhlMessageEvent, verifyGhlWebhook, type GhlContactInfo } from "@/server/messaging/provider";
@@ -203,6 +204,11 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
   const when = input.receivedAt ?? new Date();
   const body = withAttachmentNote(input.body, input.attachments);
   const { contactId } = await resolveContact(db, { orgId, channel: input.channel, address: input.address, name: input.name, ghlContactId: input.ghlContactId, verifiedVia: "provider_inbound" });
+  // A proven sender writing from an address proves that address, including one a website visitor had only typed into the chat (src/lib/webchat/identity.ts). A number is
+  // proven by the carrier or Meta. An email is proven only when the receiving mail server says it authenticated the From domain (senderVerified === true); anything
+  // that does not say so, such as a GoHighLevel relay, leaves an email as unverified, as resolveContact already does for a new contact.
+  const proven = input.channel === "email" ? input.senderVerified === true : input.senderVerified !== false;
+  if (proven) await verifyIdentityOnInbound(db, { orgId, contactId, channel: input.channel, address: input.address });
   if (input.ghlContactId) {
     // Link the CRM record unless another contact already holds it (that would be a duplicate for a person to merge).
     await db.query(

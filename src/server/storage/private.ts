@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
 import { assertStorageAllowed } from "@/server/fairuse/service";
 
-export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments";
+export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments" | "social-media" | "proposal-documents" | "staff-messages";
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
@@ -18,6 +18,8 @@ const MIMES: Record<PrivateBucket, string[]> = {
   "project-uploads": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
   "brand-assets": ["image/png", "image/jpeg", "image/webp"],
+  "social-media": ["image/png", "image/jpeg", "image/webp", "video/mp4"], "proposal-documents": ["application/pdf", "image/png", "image/jpeg"],
+  "staff-messages": ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   "aqi-attachments": [
     "image/png", "image/jpeg", "image/webp",
     "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -223,4 +225,22 @@ export async function removePlatformKnowledgeFile(storagePath: string): Promise<
   }
   const { error } = await createSupabaseAdminClient().storage.from("company-documents").remove([storagePath]);
   if (error) throw new AppError("integration_unavailable", "The document metadata changed, but storage cleanup needs another attempt.");
+}
+
+/**
+ * A bearer address for a stored file the caller has ALREADY authorized by other means: a post's picture or video, handed to a social platform that has to fetch
+ * it. It performs no permission check of its own and the address works for anyone who has it until it expires (at most an hour), so it must never be reachable
+ * with a file id taken from a request, and the address must never be logged or shown.
+ */
+export async function signAuthorizedPrivateFile(fileId: string, expiresInSeconds = 3600): Promise<string> {
+  if (!UUID.test(fileId)) throw new AppError("invalid_input", "Invalid file.");
+  const file = (await withSystem((db) => db.query<{ org_id: string; bucket: PrivateBucket; storage_key: string; filename: string }>(
+    "select org_id, bucket, storage_key, filename from private_files where id = $1 and status = 'ready'", [fileId],
+  ))).rows[0];
+  if (!file) throw new AppError("not_found", "File not found.");
+  if (localMode()) return `http://localhost/local-private-files/${fileId}`; // local development has no platform to fetch it
+  const expiresIn = Math.max(60, Math.min(3600, Math.floor(expiresInSeconds)));
+  const { data, error } = await createSupabaseAdminClient().storage.from(file.bucket).createSignedUrl(file.storage_key, expiresIn);
+  if (error || !data) throw new AppError("integration_unavailable", "Private storage could not create a link for the platform.");
+  return data.signedUrl;
 }

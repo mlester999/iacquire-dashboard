@@ -38,7 +38,7 @@ export function ApiKeysSection({ scope, keys, scopes, expiryChoices, maxKeys, ca
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 id="dev-keys" className="text-[15px] font-semibold text-ink">API keys</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
             A key lets one of your apps use the CRM API with only the permissions you give it. Each key belongs to this workspace; it can never reach another.
           </p>
         </div>
@@ -52,7 +52,7 @@ export function ApiKeysSection({ scope, keys, scopes, expiryChoices, maxKeys, ca
               <KeyRound className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
               <div className="min-w-0 flex-1 basis-60">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-[13.5px] font-medium text-ink">{k.name}</p>
+                  <p className="truncate text-[14px] font-medium text-ink">{k.name}</p>
                   <Badge tone={STATE[k.state].tone}>{STATE[k.state].label}</Badge>
                 </div>
                 <p className="mt-0.5 font-mono text-[12px] text-muted">{k.prefix}_…</p>
@@ -159,15 +159,15 @@ function CreateKeyDialog({ scope, scopes, expiryChoices, onClose, onCreated }: {
           <Input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="off" />
         </Field>
         <fieldset>
-          <legend className="text-[13px] font-medium text-ink-2">Permissions</legend>
+          <legend className="text-[14px] font-medium text-ink-2">Permissions</legend>
           <div className="mt-2 space-y-2">
             {scopes.map((s) => (
-              <label key={s.scope} className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[13px] leading-relaxed has-[:checked]:border-primary/50 has-[:checked]:bg-primary-soft/40">
+              <label key={s.scope} className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[14px] leading-relaxed has-[:checked]:border-primary/50 has-[:checked]:bg-primary-soft/40">
                 <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={picked.includes(s.scope)} onChange={(e) => toggle(s.scope, e.target.checked)} />
                 <span className="min-w-0">
                   <span className="font-medium text-ink">{s.label}</span>
-                  <span className="ml-1.5 font-mono text-[11.5px] text-muted">{s.scope}</span>
-                  <span className="block text-[12.5px] text-muted">{s.description}</span>
+                  <span className="ml-1.5 font-mono text-[12px] text-muted">{s.scope}</span>
+                  <span className="block text-[13px] text-muted">{s.description}</span>
                 </span>
               </label>
             ))}

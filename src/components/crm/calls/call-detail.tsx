@@ -73,10 +73,10 @@ function CallDetailBody({ scope, call, onClose, canLog, canFollowUp, members }: 
 
         <section aria-label="Contact" className="rounded-2xl border border-line p-3">
           {call.contact ? (
-            <p className="text-[13.5px] text-ink-2">With <Link href={`${scope.base}/contacts/${call.contact.id}`} className="font-medium text-ink hover:underline">{call.contact.name}</Link></p>
+            <p className="text-[14px] text-ink-2">With <Link href={`${scope.base}/contacts/${call.contact.id}`} className="font-medium text-ink hover:underline">{call.contact.name}</Link></p>
           ) : (
             <div className="space-y-2">
-              <p className="text-[13.5px] text-ink-2">
+              <p className="text-[14px] text-ink-2">
                 {call.customerNumber ? <>{formatPhone(call.customerNumber)} doesn&apos;t belong to exactly one contact, so the call isn&apos;t linked.</> : "The provider didn't report the caller's number, so the call isn't linked to a contact."}
               </p>
               {canLog && (linking ? (
@@ -95,7 +95,7 @@ function CallDetailBody({ scope, call, onClose, canLog, canFollowUp, members }: 
           )}
         </section>
 
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-[14px]">
           {facts.map(([k, v]) => (
             <React.Fragment key={k}>
               <dt className="text-muted">{k}</dt>
@@ -106,29 +106,29 @@ function CallDetailBody({ scope, call, onClose, canLog, canFollowUp, members }: 
 
         {call.summary && (
           <section aria-labelledby={`${ids}-summary`}>
-            <h3 id={`${ids}-summary`} className="text-[13px] font-semibold text-ink">{call.provider === "manual" ? "Summary" : "Summary from the provider"}</h3>
-            <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{call.summary}</p>
+            <h3 id={`${ids}-summary`} className="text-[14px] font-semibold text-ink">{call.provider === "manual" ? "Summary" : "Summary from the provider"}</h3>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{call.summary}</p>
           </section>
         )}
 
         <section aria-labelledby={`${ids}-rec`} className="space-y-2 rounded-2xl border border-line p-3">
-          <h3 id={`${ids}-rec`} className="text-[13px] font-semibold text-ink">Recording and transcript</h3>
-          <p className="text-[12.5px] text-muted">Consent: {CONSENT_LABELS[call.recordingConsent]}</p>
+          <h3 id={`${ids}-rec`} className="text-[14px] font-semibold text-ink">Recording and transcript</h3>
+          <p className="text-[13px] text-muted">Consent: {CONSENT_LABELS[call.recordingConsent]}</p>
           {call.recordingRef ? (
-            <a href={call.recordingRef} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline">
+            <a href={call.recordingRef} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-primary hover:underline">
               Open the recording<ExternalLink className="size-3.5" aria-hidden /><span className="sr-only">(opens in a new tab, where {CALL_PROVIDER_LABELS[call.provider]} keeps it)</span>
             </a>
           ) : (
-            <p className="text-[13px] text-ink-2">{call.provider === "manual" ? "No recording link was added." : "No recording link is kept for this call."}</p>
+            <p className="text-[14px] text-ink-2">{call.provider === "manual" ? "No recording link was added." : "No recording link is kept for this call."}</p>
           )}
           {call.transcriptRef && (
-            <p className="flex items-start gap-1.5 text-[13px] text-ink-2"><FileText className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />The transcript is kept in {CALL_PROVIDER_LABELS[call.provider]} under this call&apos;s id; iAcquire stores only that reference.</p>
+            <p className="flex items-start gap-1.5 text-[14px] text-ink-2"><FileText className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />The transcript is kept in {CALL_PROVIDER_LABELS[call.provider]} under this call&apos;s id; iAcquire stores only that reference.</p>
           )}
         </section>
 
         {canLog ? (
           <section aria-labelledby={`${ids}-notes`} className="space-y-3">
-            <h3 id={`${ids}-notes`} className="text-[13px] font-semibold text-ink">Your team&apos;s notes</h3>
+            <h3 id={`${ids}-notes`} className="text-[14px] font-semibold text-ink">Your team&apos;s notes</h3>
             {call.provider === "manual" && (
               <Field label="Outcome" htmlFor={`${ids}-disp`} optional>
                 <Input id={`${ids}-disp`} maxLength={60} value={disposition} onChange={(e) => setDisposition(e.target.value)} placeholder="For example Booked or Call back" />
@@ -146,15 +146,15 @@ function CallDetailBody({ scope, call, onClose, canLog, canFollowUp, members }: 
           </section>
         ) : call.notes ? (
           <section aria-labelledby={`${ids}-notes`}>
-            <h3 id={`${ids}-notes`} className="text-[13px] font-semibold text-ink">Your team&apos;s notes</h3>
-            <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{call.notes}</p>
+            <h3 id={`${ids}-notes`} className="text-[14px] font-semibold text-ink">Your team&apos;s notes</h3>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{call.notes}</p>
           </section>
         ) : null}
 
         <section aria-labelledby={`${ids}-fu`} className="space-y-3 border-t border-line pt-4">
-          <h3 id={`${ids}-fu`} className="text-[13px] font-semibold text-ink">Follow-up</h3>
+          <h3 id={`${ids}-fu`} className="text-[14px] font-semibold text-ink">Follow-up</h3>
           {call.followUpTaskId ? (
-            <Link href={`${scope.base}/tasks?task=${call.followUpTaskId}`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"><ListTodo className="size-4" aria-hidden />Open the follow-up task</Link>
+            <Link href={`${scope.base}/tasks?task=${call.followUpTaskId}`} className="inline-flex items-center gap-1.5 text-[14px] font-medium text-primary hover:underline"><ListTodo className="size-4" aria-hidden />Open the follow-up task</Link>
           ) : canFollowUp ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Task" htmlFor={`${ids}-task`} optional className="sm:col-span-2">
@@ -177,7 +177,7 @@ function CallDetailBody({ scope, call, onClose, canLog, canFollowUp, members }: 
               </div>
             </div>
           ) : (
-            <p className="text-[13px] text-muted">No follow-up task.</p>
+            <p className="text-[14px] text-muted">No follow-up task.</p>
           )}
         </section>
       </div>

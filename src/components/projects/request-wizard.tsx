@@ -11,15 +11,17 @@ import { Button } from "@/components/ui/button";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { bytesLabel } from "@/components/projects/common";
 import { createProjectRequestAction } from "@/app/actions/projects";
+import { newIdempotencyKey } from "@/lib/support/content";
 import { BUDGET_BANDS, formatDelivery, formatPrice, suggestServices, type ServiceView } from "@/lib/projects";
 import { cn, sentenceCase } from "@/lib/utils";
+import { localDayIso } from "@/lib/local-day";
 
 const STEPS = ["The idea", "How it works today", "Your tools", "Optional details", "Review"] as const;
 const COMMON_TOOLS = ["GoHighLevel", "n8n", "Make.com", "Zapier", "Google Sheets", "Airtable", "Notion", "Slack", "ClickUp", "Shopify", "Stripe", "HubSpot", "Google Calendar", "Gmail", "QuickBooks", "WordPress"];
 const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT = ".pdf,.docx,.png,.jpg,.jpeg,.txt,.md,.csv";
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => localDayIso();
 
 export function RequestWizard({
   services,
@@ -49,6 +51,8 @@ export function RequestWizard({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  // One key per form: sending it twice (a double click, a dropped connection) makes one request.
+  const retryKey = React.useRef(newIdempotencyKey());
 
   const selected = services.find((s) => s.slug === serviceSlug) ?? null;
   const suggestions = React.useMemo(
@@ -95,6 +99,7 @@ export function RequestWizard({
       preferredDeadline: deadline || null,
       budgetRange: (budget || null) as (typeof BUDGET_BANDS)[number] | null,
       serviceSlug,
+      idempotencyKey: retryKey.current,
     });
     if (!res.ok) {
       setPending(false);
@@ -120,10 +125,10 @@ export function RequestWizard({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary-soft/70 via-surface to-surface p-5 sm:p-6">
-        <Link href="/add-ons" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+        <Link href="/add-ons" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" /> Custom Projects &amp; Add-ons
         </Link>
-        <p className="mt-4 text-[10px] font-semibold uppercase tracking-[.16em] text-primary">From your idea to a clear scope</p>
+        <p className="mt-4 text-[12px] font-semibold uppercase tracking-[.16em] text-primary">From your idea to a clear scope</p>
         <h1 className="mt-2 text-balance text-[26px] font-semibold leading-tight tracking-[-0.035em] sm:text-[30px]">What would make your business work better?</h1>
         <p className="mt-1 max-w-2xl text-[14px] text-muted">Describe it in your own words. You don&apos;t need to know the technical platforms. We&apos;ll review it, ask anything we&apos;re missing, and send a written quote. Nothing is charged.</p>
       </div>
@@ -132,8 +137,8 @@ export function RequestWizard({
         <ProgressBar value={((step + 1) / STEPS.length) * 100} label={`Step ${step + 1} of ${STEPS.length}`} />
         <ol className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Steps">
           {STEPS.map((label, i) => (
-            <li key={label} aria-current={i === step ? "step" : undefined} className={cn("flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[11px] font-medium", i === step ? "border-primary/25 bg-primary-soft text-primary-ink" : i < step ? "border-success/20 bg-success-soft/40 text-success-ink" : "border-line bg-surface-2/50 text-muted")}>
-              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[9px]",i===step?"bg-primary text-white":i<step?"bg-success text-white":"bg-surface-3")}>{i<step?<Check className="size-3"/>:i+1}</span>{label}
+            <li key={label} aria-current={i === step ? "step" : undefined} className={cn("flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-medium", i === step ? "border-primary/25 bg-primary-soft text-primary-ink" : i < step ? "border-success/20 bg-success-soft/40 text-success-ink" : "border-line bg-surface-2/50 text-muted")}>
+              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[12px]",i===step?"bg-primary text-primary-on":i<step?"bg-success text-white":"bg-surface-3")}>{i<step?<Check className="size-3"/>:i+1}</span>{label}
             </li>
           ))}
         </ol>
@@ -141,13 +146,13 @@ export function RequestWizard({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="p-5 sm:p-6">
-          <p className="mb-4 border-b border-line pb-3 text-[11px] font-semibold uppercase tracking-[.1em] text-primary">{STEPS[step]} · Step {step+1} of {STEPS.length}</p>
+          <p className="mb-4 border-b border-line pb-3 text-[12px] font-semibold uppercase tracking-[.1em] text-primary">{STEPS[step]} · Step {step+1} of {STEPS.length}</p>
           {/* Enter-only animation: an exit step would block the next one whenever animations are throttled. */}
           <motion.div key={step} initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }} className="space-y-5">
               {step === 0 && (
                 <>
                   {reference && (
-                    <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+                    <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[14px] text-muted">
                       <Info className="mt-0.5 size-4 shrink-0" /> You&apos;re asking for something similar to{" "}
                       <Link href={`/our-work/${reference.slug}`} className="font-medium text-primary hover:underline">
                         {reference.title}
@@ -213,7 +218,7 @@ export function RequestWizard({
                     <ul className="flex flex-wrap gap-2" aria-label="Your tools">
                       {tools.map((t) => (
                         <li key={t}>
-                          <button type="button" onClick={() => setTools(tools.filter((x) => x !== t))} className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-[12.5px] font-medium text-primary-ink hover:bg-primary/15" aria-label={`Remove ${t}`}>
+                          <button type="button" onClick={() => setTools(tools.filter((x) => x !== t))} className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-[13px] font-medium text-primary-ink hover:bg-primary/15" aria-label={`Remove ${t}`}>
                             {t} <X className="size-3" />
                           </button>
                         </li>
@@ -234,7 +239,7 @@ export function RequestWizard({
               )}
               {step === 3 && (
                 <>
-                  <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+                  <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[14px] text-muted">
                     <Info className="mt-0.5 size-4 shrink-0" /> Everything on this page is optional. Share only what helps us scope it well.
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -254,15 +259,15 @@ export function RequestWizard({
                   </div>
                   <Field label="Documents, screenshots or examples" htmlFor="rq-files" optional hint={`Up to ${MAX_FILES} files, 10 MB each (PDF, Word, images, text or CSV). Stored privately; only you and the iAcquire team can see them.`}>
                     <div className="space-y-2">
-                      <label htmlFor="rq-files" className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-6 text-[13px] text-muted transition hover:border-primary hover:text-primary">
+                      <label htmlFor="rq-files" className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-6 text-[14px] text-muted transition hover:border-primary hover:text-primary">
                         <Paperclip className="size-4" /> Choose files to attach
                         <input ref={fileRef} id="rq-files" type="file" multiple accept={ACCEPT} className="sr-only" onChange={(e) => addFiles(e.target.files)} />
                       </label>
                       {files.map((f, i) => (
-                        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                           <FileText className="size-4 shrink-0 text-muted" />
                           <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                          <span className="shrink-0 text-[11.5px] text-faint">{bytesLabel(f.size)}</span>
+                          <span className="shrink-0 text-[12px] text-faint">{bytesLabel(f.size)}</span>
                           <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((_, j) => j !== i))} className="rounded-md p-1 text-muted hover:text-ink">
                             <X className="size-3.5" />
                           </button>
@@ -275,7 +280,7 @@ export function RequestWizard({
               {step === 4 && (
                 <div className="space-y-4">
                   <h3 className="text-[16px] font-semibold">Review your request</h3>
-                  <dl className="divide-y divide-line overflow-hidden rounded-xl bg-surface-2/50 text-[13.5px] ring-1 ring-inset ring-line">
+                  <dl className="divide-y divide-line overflow-hidden rounded-xl bg-surface-2/50 text-[14px] ring-1 ring-inset ring-line">
                     {[
                       ["What to build", title],
                       ["The problem", problem],
@@ -293,11 +298,11 @@ export function RequestWizard({
                       </div>
                     ))}
                   </dl>
-                  <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft/60 p-3.5 text-[13px] leading-relaxed text-success-ink">
+                  <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft/60 p-3.5 text-[14px] leading-relaxed text-success-ink">
                     <ShieldCheck className="mt-0.5 size-4 shrink-0" /> Submitting only sends your request to the iAcquire team. You won&apos;t be charged, and nothing is built until you&apos;ve reviewed and accepted a written quote.
                   </p>
                   {error && (
-                    <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[13px] text-danger-ink">
+                    <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[14px] text-danger-ink">
                       {error}
                     </p>
                   )}
@@ -323,24 +328,24 @@ export function RequestWizard({
 
         <aside aria-label="Suggestions" className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card className="p-4">
-            <h3 className="flex items-center gap-2 text-[13.5px] font-semibold">
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold">
               <Lightbulb className="size-4 text-warning" /> Suggestions
             </h3>
             {suggestions.length === 0 ? (
-              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">As you describe your idea, we&apos;ll point out published services that look related, with their published price ranges.</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted">As you describe your idea, we&apos;ll point out published services that look related, with their published price ranges.</p>
             ) : (
               <ul className="mt-3 space-y-3">
                 <AnimatePresence initial={false}>
                   {suggestions.map(({ service: s, reasons }) => (
-                    <motion.li key={s.id} layout={!reduce} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduce ? undefined : { opacity: 0 }} className="rounded-xl border border-line bg-surface-2/60 p-3">
-                      <p className="flex items-center gap-1.5 text-[13.5px] font-semibold">
+                    <motion.li key={s.id} layout={!reduce} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduce ? undefined : { opacity: 0 }} className="rounded-xl border border-line bg-surface-2/60 p-3">
+                      <p className="flex items-center gap-1.5 text-[14px] font-semibold">
                         <Sparkles className="size-3.5 text-primary" /> {s.name}
                       </p>
-                      <p className="mt-0.5 text-[12.5px] tabular-nums text-ink-2">
+                      <p className="mt-0.5 text-[13px] tabular-nums text-ink-2">
                         {formatPrice(s.price)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5"><InfoChip>Published, not a quote</InfoChip>{reasons.map((r) => <InfoChip key={r}>{r}</InfoChip>)}</div>
-                      {s.coreOverlapNote && <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{s.coreOverlapNote}</p>}
+                      {s.coreOverlapNote && <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{s.coreOverlapNote}</p>}
                       <Button size="sm" variant="soft" className="mt-2" onClick={() => setServiceSlug(s.slug)}>
                         Use this service
                       </Button>
@@ -349,11 +354,11 @@ export function RequestWizard({
                 </AnimatePresence>
               </ul>
             )}
-            {suggestions.length > 0 && <p className="mt-3 text-[11.5px] leading-relaxed text-faint">Whether your project fits a published price is decided after our team reviews it.</p>}
+            {suggestions.length > 0 && <p className="mt-3 text-[12px] leading-relaxed text-faint">Whether your project fits a published price is decided after our team reviews it.</p>}
           </Card>
           {connected.length > 0 && (
             <Card className="p-4">
-              <p className="text-[12.5px] font-semibold">Already connected to your workspace</p>
+              <p className="text-[13px] font-semibold">Already connected to your workspace</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {connected.map((c) => (
                   <StatusPill key={c} size="sm" tone="success">{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI workforce" : c === "ghl_calendar" ? "GoHighLevel calendar" : sentenceCase(c)}</StatusPill>
@@ -363,7 +368,7 @@ export function RequestWizard({
           )}
           <Card className="p-4">
             <StatusPill tone="primary" icon={<Info className="size-3" />}>Good to know</StatusPill>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
           </Card>
         </aside>
       </div>

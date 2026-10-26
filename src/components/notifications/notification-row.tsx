@@ -50,7 +50,7 @@ export function NotificationRow({
       <NotificationTypeIcon kind={item.kind} severity={item.severity} size={full ? "md" : "sm"} className={full ? undefined : "mt-0.5"} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-start gap-2">
-          <span className={cn("min-w-0 flex-1 leading-snug text-ink", full ? "text-[14px] font-semibold" : "text-[13px] font-semibold")}>
+          <span className={cn("min-w-0 flex-1 leading-snug text-ink", full ? "text-[14px] font-semibold" : "text-[14px] font-semibold")}>
             {unread && <span className="sr-only">Unread: </span>}
             {item.title}
           </span>
@@ -58,7 +58,7 @@ export function NotificationRow({
           {unread && <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary ring-2 ring-primary/15" />}
         </span>
         {item.body && (
-          <span className={cn("mt-0.5 line-clamp-2 block leading-relaxed text-muted", full ? "text-[13px]" : "text-[12px]")}>
+          <span className={cn("mt-0.5 line-clamp-2 block leading-relaxed text-muted", full ? "text-[14px]" : "text-[12px]")}>
             {item.body}
           </span>
         )}
@@ -66,7 +66,7 @@ export function NotificationRow({
           <NotificationCategoryChip kind={item.kind} />
           <NotificationTimestamp value={item.created_at} timeZone={timeZone} now={now} />
           {item.link && (
-            <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] font-medium text-faint transition-colors group-hover:text-primary">
+            <span className="ml-auto inline-flex items-center gap-0.5 text-[12px] font-medium text-faint transition-colors group-hover:text-primary">
               Open <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
             </span>
           )}

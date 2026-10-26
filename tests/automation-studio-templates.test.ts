@@ -24,6 +24,7 @@ import { applyOperations } from "@/lib/crm/workflow/operations";
 import { TRIGGERS, deriveEffects, hasErrors, parseDefinition, validateDefinition, validationContextFrom, type WorkflowDefinition } from "@/lib/crm/workflow/spec";
 import { ctxFor } from "./support/fixtures";
 import { studioWorkspace, type StudioWorkspace } from "./support/studio-workspace";
+import { setSurveys } from "./support/reputation";
 
 const SLACK_HOOK = ["https://hooks.slack.com/services", "T0ABCDEFG", "B0HIJKLMN", "AbCdEfGhIjKlMnOpQrStUvWx"].join("/");
 const ok = (body = "{}"): PinnedResponse => ({ status: 200, contentType: "application/json", retryAfterSeconds: null, bytes: body.length, truncated: false, body });
@@ -48,6 +49,8 @@ let fx: Fixture;
 
 async function fixture(): Promise<Fixture> {
   const ws = await studioWorkspace();
+  // The post-visit check-in template sends a satisfaction survey, which a Super Admin switches on per workspace.
+  await setSurveys(ws.o.org.id, true);
   const owner = ws.o.actor("owner");
   vi.spyOn(hostResolver, "lookup").mockResolvedValue(["93.184.216.34"]);
   vi.spyOn(pinnedHttps, "request").mockImplementation(async (r) => ok(r.url.startsWith("https://hooks.slack.com") ? "ok" : "{}"));

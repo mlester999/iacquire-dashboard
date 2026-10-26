@@ -45,7 +45,28 @@ const root = (c: Endpoint) => c.baseUrl.replace(/\/+$/, "");
 export const llmModelsUrl = (c: Endpoint) => (c.format === "anthropic" ? `${root(c)}/v1/models?limit=1000` : `${root(c)}/models`);
 export const llmChatUrl = (c: Endpoint) => (c.format === "anthropic" ? `${root(c)}/v1/messages` : `${root(c)}/chat/completions`);
 
-export type LlmReply = { ok: true; text: string } | { ok: false; status: number };
+/** What the provider says one call consumed. Either side is null when the provider did not report it. */
+export interface LlmUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+/** `usage` is present only when the provider reported token counts; callers that do not meter simply ignore it. */
+export type LlmReply = { ok: true; text: string; usage?: LlmUsage } | { ok: false; status: number; usage?: LlmUsage };
+
+const tokenCount = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
+
+/**
+ * The token counts in a provider's response body: OpenAI-style `usage.prompt_tokens` / `completion_tokens`, or Anthropic-style
+ * `usage.input_tokens` / `output_tokens`. Anything else, or a count that is not a plain non-negative number, is treated as not reported.
+ */
+export function usageFromBody(body: unknown): LlmUsage | null {
+  const u = (body as { usage?: Record<string, unknown> } | null)?.usage;
+  if (!u || typeof u !== "object") return null;
+  const inputTokens = tokenCount(u.prompt_tokens) ?? tokenCount(u.input_tokens);
+  const outputTokens = tokenCount(u.completion_tokens) ?? tokenCount(u.output_tokens);
+  return inputTokens === null && outputTokens === null ? null : { inputTokens, outputTokens };
+}
 
 /** One non-streaming completion. Never throws and never includes the key or upstream body in its result. */
 export async function llmComplete(
@@ -80,7 +101,10 @@ export async function llmComplete(
     if (c.format === "openai" && json.choices?.[0]?.finish_reason === "length") return { ok: false, status: 0 };
     if (c.format === "anthropic" && json.stop_reason === "max_tokens") return { ok: false, status: 0 };
     const text = (c.format === "anthropic" ? json.content?.find((p) => p.type === "text")?.text : json.choices?.[0]?.message?.content)?.trim();
-    return text ? { ok: true, text } : { ok: false, status: 0 };
+    const usage = usageFromBody(json);
+    // An answer with no text still cost what the provider says it did, so a failure carries the counts too.
+    if (!text) return usage ? { ok: false, status: 0, usage } : { ok: false, status: 0 };
+    return usage ? { ok: true, text, usage } : { ok: true, text };
   } catch {
     return { ok: false, status: 0 };
   }

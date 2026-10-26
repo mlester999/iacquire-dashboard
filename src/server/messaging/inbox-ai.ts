@@ -4,12 +4,13 @@ import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { llmComplete, resolveLlmConfig, type LlmUsage } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { assertConversationVisible } from "@/server/messaging/access";
 import { cleanText } from "@/lib/support/content";
 import { draftWarnings, redactForAi } from "@/lib/support/suggest";
-import type { Channel } from "@/lib/messaging";
+import type { ConversationChannel } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // AI help inside the inbox. It is advice for a person, kept apart from the AI employees that answer customers on their own:
@@ -30,16 +31,23 @@ const NOT_CONFIGURED = "AI help isn't set up for this workspace yet.";
 const UNAVAILABLE = "The AI service couldn't answer just now. Try again in a moment.";
 const NOTHING = "There is nothing in this conversation to work from yet.";
 
-export type Complete = (input: { system: string; user: string; maxTokens: number }) => Promise<{ ok: true; text: string } | { ok: false }>;
+export type Complete = (input: { system: string; user: string; maxTokens: number }) => Promise<{ ok: true; text: string; usage?: LlmUsage } | { ok: false; usage?: LlmUsage }>;
 
 async function defaultComplete(): Promise<Complete | null> {
   const config = await resolveLlmConfig();
   if (!config) return null;
   return async (input) => {
     const r = await llmComplete(config, { ...input, temperature: 0.2, timeoutMs: 25_000 });
-    return r.ok ? { ok: true, text: r.text } : { ok: false };
+    return r.ok ? { ok: true, text: r.text, usage: r.usage } : { ok: false, usage: r.usage };
   };
 }
+
+/** Every model call made for a conversation is counted against the workspace, whatever the parse of its answer turns out to be. Metering never fails the call. */
+const metered = (ctx: OrgContext, complete: Complete): Complete => async (input) => {
+  const r = await complete(input);
+  await meterModelUse({ orgId: ctx.org.orgId, feature: "inbox_ai", key: modelCallKey(ctx.user.id), usage: r.usage });
+  return r;
+};
 
 interface Line {
   who: "CUSTOMER" | "TEAM" | "AI EMPLOYEE" | "TEAM NOTE";
@@ -52,9 +60,9 @@ const MAX_MESSAGES = 20;
 const MAX_CHARS = 6000;
 
 /** The latest messages of one conversation, as the person can see them (row-level security), oldest first. */
-async function gather(ctx: OrgContext, conversationId: string, includeNotes: boolean): Promise<{ lines: Line[]; channel: Channel; businessName: string; firstName: string; lastInboundId: string | null }> {
+async function gather(ctx: OrgContext, conversationId: string, includeNotes: boolean): Promise<{ lines: Line[]; channel: ConversationChannel; businessName: string; firstName: string; lastInboundId: string | null }> {
   return withUser(ctx.user.id, async (db) => {
-    const head = await db.query<{ channel: Channel; display_name: string; org_name: string }>(
+    const head = await db.query<{ channel: ConversationChannel; display_name: string; org_name: string }>(
       `select c.channel, k.display_name, o.name as org_name from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id join organizations o on o.id = c.org_id
        where c.id = $1 and c.org_id = $2`,
       [conversationId, ctx.org.orgId],
@@ -98,10 +106,10 @@ async function prepare(ctx: OrgContext, conversationId: string, override?: Compl
   const limit = await consumeRateLimit(RATE_LIMITS.inboxAiByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You've used AI help a lot recently. Please try again later.", { retryAfterSeconds: limit.retryAfterSeconds });
   await assertWithinLimits(ctx.org.orgId, "help_request");
-  if (override) return override;
+  if (override) return metered(ctx, override);
   const complete = await defaultComplete();
   if (!complete) throw new AppError("integration_unavailable", NOT_CONFIGURED);
-  return complete;
+  return metered(ctx, complete);
 }
 
 async function finish(ctx: OrgContext, conversationId: string, kind: string) {
@@ -184,10 +192,10 @@ export interface SuggestedReply {
   generatedAt: string;
 }
 
-const MAX_REPLY: Record<Channel, number> = { sms: 600, whatsapp: 1000, email: 3000 };
+const MAX_REPLY: Record<ConversationChannel, number> = { sms: 600, whatsapp: 1000, email: 3000, web_chat: 800 };
 
 /** What the model returned, as a draft the composer can take: no wrapper text, no markup, no longer than the channel allows. */
-export function cleanDraft(raw: string, channel: Channel): string {
+export function cleanDraft(raw: string, channel: ConversationChannel): string {
   return cleanText(raw, 6000)
     .replace(/^(?:reply|draft|message|response)\s*:\s*/i, "")
     .replace(/^["'“”]+|["'“”]+$/g, "")

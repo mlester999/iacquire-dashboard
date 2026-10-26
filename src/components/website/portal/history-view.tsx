@@ -87,7 +87,7 @@ export function HistoryView({
               {publications.map((p) => (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3.5 transition-colors hover:bg-surface-2/40 sm:-mx-2 sm:rounded-xl sm:px-2">
                   <div className="flex min-w-[min(100%,17rem)] flex-1 items-start gap-3">
-                    <span aria-hidden className={`grid size-10 shrink-0 place-items-center rounded-xl text-[13px] font-semibold tabular-nums ring-1 ring-inset ${p.status === "live" ? "bg-success-soft text-success-ink ring-success/20" : p.status === "failed" ? "bg-danger-soft text-danger-ink ring-danger/20" : "bg-surface-2 text-ink-2 ring-line"}`}>{p.number}</span>
+                    <span aria-hidden className={`grid size-10 shrink-0 place-items-center rounded-xl text-[14px] font-semibold tabular-nums ring-1 ring-inset ${p.status === "live" ? "bg-success-soft text-success-ink ring-success/20" : p.status === "failed" ? "bg-danger-soft text-danger-ink ring-danger/20" : "bg-surface-2 text-ink-2 ring-line"}`}>{p.number}</span>
                     <div className="min-w-0 space-y-1.5">
                       <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
                         Publication {p.number}
@@ -100,8 +100,8 @@ export function HistoryView({
                         {p.publishedByName && <InfoChip icon={<User />}>{p.publishedByName}</InfoChip>}
                         <InfoChip icon={<Palette />}>{styleName(p.templateKey)}</InfoChip>
                       </div>
-                      {p.note && <p className="text-[13px] text-ink-2">“{p.note}”</p>}
-                      {p.status === "live" && p.health !== "healthy" && p.healthDetail && <p className="text-[12.5px] text-warning-ink">{p.healthDetail}</p>}
+                      {p.note && <p className="text-[14px] text-ink-2">“{p.note}”</p>}
+                      {p.status === "live" && p.health !== "healthy" && p.healthDetail && <p className="text-[13px] text-warning-ink">{p.healthDetail}</p>}
                     </div>
                   </div>
                   {canPublish && p.status === "superseded" && (
@@ -133,7 +133,7 @@ export function HistoryView({
               {versions.map((v) => (
                 <li key={v.id} className="flex flex-wrap items-center justify-between gap-3 py-3.5 transition-colors hover:bg-surface-2/40 sm:-mx-2 sm:rounded-xl sm:px-2">
                   <div className="flex min-w-[min(100%,17rem)] flex-1 items-start gap-3">
-                    <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">v{v.version}</span>
+                    <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-[14px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">v{v.version}</span>
                     <div className="min-w-0 space-y-1.5">
                       <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
                         Version {v.version}
@@ -145,7 +145,7 @@ export function HistoryView({
                         {v.createdByName && <InfoChip icon={<User />}>{v.createdByName}</InfoChip>}
                         <InfoChip icon={<Palette />}>{styleName(v.templateKey)}</InfoChip>
                       </div>
-                      {v.note && <p className="text-[13px] text-ink-2">{v.note}</p>}
+                      {v.note && <p className="text-[14px] text-ink-2">{v.note}</p>}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -169,7 +169,7 @@ export function HistoryView({
         <PreviewOverlay
           doc={view.content} title={`Version ${view.version.version}`} subtitle="Nothing here changes your draft" onClose={() => setView(null)}
           resolveAsset={(id) => { const a = id ? assets.find((x) => x.id.toLowerCase() === id.toLowerCase()) : null; return a ? { src: a.url, width: a.width, height: a.height, alt: a.altText } : null; }}
-          actions={canEdit ? <button type="button" onClick={() => setRestoreId(view.version)} className="flex h-8 items-center gap-1.5 rounded-lg bg-[#3b5bdb] px-3 text-[12.5px] font-medium text-white hover:bg-[#4c6ae0]"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined}
+          actions={canEdit ? <button type="button" onClick={() => setRestoreId(view.version)} className="flex h-8 items-center gap-1.5 rounded-lg bg-[#3b5bdb] px-3 text-[13px] font-medium text-white hover:bg-[#4c6ae0]"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined}
         />
       )}
 

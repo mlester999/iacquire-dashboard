@@ -125,14 +125,14 @@ export function NewBlueprintDialog({ open, onOpenChange, blueprints, starters, f
       </>}>
       <div className="space-y-5">
         <fieldset>
-          <legend className="mb-2 text-[13px] font-medium text-ink-2">How do you want to start?</legend>
+          <legend className="mb-2 text-[14px] font-medium text-ink-2">How do you want to start?</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {modes.map((m) => (
               <label key={m.id} className={cn("relative flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary", mode === m.id ? "border-primary/50 bg-primary-soft/50" : "border-line bg-surface hover:bg-surface-2", m.disabled && "cursor-not-allowed opacity-55")}>
                 <input type="radio" name="bp-create-mode" value={m.id} checked={mode === m.id} disabled={Boolean(m.disabled)} onChange={() => setMode(m.id)} className="sr-only" />
-                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", mode === m.id ? "bg-primary text-white" : "bg-surface-2 text-ink-2")} aria-hidden><m.icon className="size-4" /></span>
+                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", mode === m.id ? "bg-primary text-primary-on" : "bg-surface-2 text-ink-2")} aria-hidden><m.icon className="size-4" /></span>
                 <span className="min-w-0">
-                  <span className="block text-[13.5px] font-semibold text-ink">{m.title}</span>
+                  <span className="block text-[14px] font-semibold text-ink">{m.title}</span>
                   <span className="mt-0.5 block text-[12px] leading-snug text-muted">{m.disabled ?? m.text}</span>
                 </span>
               </label>
@@ -141,7 +141,7 @@ export function NewBlueprintDialog({ open, onOpenChange, blueprints, starters, f
         </fieldset>
 
         {mode === "capture" ? (
-          <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-ink-2">
+          <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
             Next, choose a client and review exactly which parts of their CRM configuration to copy. Contacts, companies, deals, messages, appointments, connected accounts, payment details and people are never included.
           </p>
         ) : (

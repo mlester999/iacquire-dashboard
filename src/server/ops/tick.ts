@@ -9,6 +9,13 @@ import { respondToPending } from "@/server/messaging/responder";
 import { scanInboxAttention } from "@/server/messaging/attention";
 import { processMissedCalls } from "@/server/missed-calls/engine";
 import { purgeExpiredPhase2Records } from "@/server/missed-calls/retention";
+import { purgeExpiredWebChats } from "@/server/webchat/retention";
+import { processDueSocialPosts, PUBLISH_BUDGET_MS } from "@/server/social/publisher";
+import { checkAllAccounts, purgeSignInStates } from "@/server/social/accounts";
+import { finishPendingMediaRemovals } from "@/server/social/media";
+import { syncPostMetrics } from "@/server/social/analytics";
+import { expireDueProposals, proposalHousekeeping } from "@/server/proposals/jobs";
+import { runEsignSync } from "@/server/esign/maintenance";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
@@ -21,6 +28,11 @@ import { sendDueReminders } from "@/server/appointments/reminders";
 import { expireBookingHolds } from "@/server/appointments/holds";
 import { expireAllStaleApprovals } from "@/server/approvals/service";
 import { enrollEligible, prepareDueSteps } from "@/server/retention/engine";
+import { runFeedbackSla, runOutcomeNudge } from "@/server/reputation/jobs";
+import { processReviewBatches } from "@/server/reputation/batch-job";
+import { runReviewSync } from "@/server/reputation/sync";
+import { runRenewalReminders } from "@/server/reputation/renewals";
+import { purgeReputationRecords } from "@/server/reputation/housekeeping";
 import { runFairUseChecks } from "@/server/fairuse/service";
 import { runInactivityReview } from "@/server/inactivity/service";
 import { sendDeletionReminders } from "@/server/offboarding/service";
@@ -37,13 +49,25 @@ import { processFormSubmissions } from "@/server/crm/forms/process";
 import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
+import { runMaintenanceRenewalSweep } from "@/server/maintenance/renewal";
+import { runPurchaseCheckoutSweep } from "@/server/purchase-intents/checkout";
+import { RENEWAL_SWEEP_BUDGET_MS } from "@/lib/billing-renewal";
 import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
+import { PROJECT_REVIEW_OVERDUE_BUDGET_MS, runProjectReviewOverdue } from "@/server/projects/jobs";
 import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
+import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
+import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
+import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
+import { runStaffMessagesMaintenance } from "@/server/staff-messages/maintenance";
+import { MAINTENANCE_BUDGET_MS as STAFF_MESSAGES_BUDGET_MS } from "@/lib/staff-messages/limits";
+import { runStaffWorkloadSnapshots } from "@/server/staff-workload/job";
+import { SNAPSHOT_BUDGET_MS as STAFF_WORKLOAD_BUDGET_MS } from "@/lib/staff-workload/alerts";
+import { DEMO_EXPIRY_BUDGET_MS, DEMO_RETENTION_BUDGET_MS, runDemoExpiry, runDemoRetention } from "@/server/demo/jobs";
 
 export interface ScheduledJob {
   name: string;
@@ -83,6 +107,21 @@ export const JOBS: ScheduledJob[] = [
       return e.enrolled + r.queued + r.blocked;
     },
   },
+  // Reputation, internal only (nothing here writes to a customer). Low private feedback nobody acknowledged in the workspace's time is announced to the team once; and, only for
+  // workspaces that switched it on, a daily notice counts finished appointments with no recorded outcome. Neither marks anything attended or contacts anyone.
+  { name: "feedbackSla", everyMinutes: 15, run: () => runFeedbackSla() },
+  { name: "appointmentOutcomeNudge", everyMinutes: 1440, run: () => runOutcomeNudge() },
+  // Review request batches: an owner-approved ask to many customers, only in workspaces a Super Admin switched batches on for. Each approved batch starts (its approval is checked
+  // against what would be sent now; any change stops it) and its customers are asked at the batch's pace, through the same checks as one review request. The messages it queues go
+  // out in the dispatcher run straight after. Nothing happens for a batch nobody approved, and a staged start must name this job to run it.
+  { name: "reviewRequestBatches", run: async () => { const r = await processReviewBatches(); return r.started + r.queued + r.excluded + r.failed + r.paused + r.stopped + r.completed; } },
+  // Public reviews. Every hour the reviews of each connected review site (only in workspaces a Super Admin switched public reviews on for, and only where reading that site is
+  // switched on for this deployment) are read into the mirror, and replies whose result is unknown are checked against the site. Nothing here posts a reply or writes to a customer.
+  // Renewal reminders are a daily internal task and notice for the team, only for workspaces that switched them on. The daily clean-up removes old mirrors and finished sign-ins.
+  // Like every job here they run only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "reviewSync", everyMinutes: 60, run: () => runReviewSync() },
+  { name: "renewalReminders", everyMinutes: 1440, run: async () => (await runRenewalReminders()).tasks },
+  { name: "reputationRetention", everyMinutes: 1440, run: async () => { const r = await purgeReputationRecords(); return r.signIns + r.disconnectedReviews + r.removedReviews + r.replyEvents; } },
   // Native CRM automation: the event outbox is handed to workflows, lead assignment, follow-ups and webhooks; then due workflow runs
   // advance (a message step queues its message, which the dispatcher right after sends in the same run).
   { name: "crmEventDispatch", run: async () => (await crmEventDispatch()).claimed },
@@ -98,6 +137,33 @@ export const JOBS: ScheduledJob[] = [
   // scoring; a model is asked only for workspaces that switched signal extraction on, within their daily limit.
   { name: "leadScoreReassessment", run: async () => { const r = await processScoringQueue(); return r.claimed; } },
   { name: "phase2Retention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredPhase2Records(); return r.cases + r.assessments + r.overrides + r.usage; } },
+  { name: "webChatRetention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredWebChats(); return r.anonymousChats + r.expiredChats; } },
+  // Social media. The publisher takes over jobs a dead worker left, publishes approved posts that are due (real accounts only while META_SOCIAL_WRITES_ENABLED is
+  // on; simulated ones reach nothing) and checks every post whose outcome was unknown. Account health and engagement numbers are read a few times a day.
+  { name: "socialPublisher", run: async () => { const r = await processDueSocialPosts({ budgetMs: PUBLISH_BUDGET_MS }); return r.claimed + r.recovered + r.reconciled; } },
+  { name: "socialAccountHealth", everyMinutes: 360, run: () => checkAllAccounts() },
+  { name: "socialMetrics", everyMinutes: 360, run: () => syncPostMetrics({ budgetMs: 40_000 }) },
+  // The sealed Pages and tokens of a sign-in nobody finished are cleared as soon as its ten minutes are up (the state is deleted a day later), and a removed
+  // library file whose stored copy could not be deleted at the time is finished. Like every job here it runs only when the scheduler does, and in a staged start
+  // only when named in SCHEDULER_JOBS_ONLY.
+  { name: "socialCleanup", everyMinutes: 15, run: async () => { const r = await purgeSignInStates(); return r.cleared + r.deleted + (await finishPendingMediaRemovals()); } },
+  // Proposals (only workspaces a Super Admin switched them on for). Sent proposals past their valid-until date, in the workspace's own calendar, are closed and their links stop
+  // opening; the owner is warned two days ahead. The daily clean-up removes spent emailed codes, sessions and the outbox copies of code emails. Neither contacts a customer.
+  { name: "proposalExpiry", everyMinutes: 60, run: async () => { const r = await expireDueProposals(); return r.expired + r.warned; } },
+  { name: "proposalHousekeeping", everyMinutes: 1440, run: async () => { const r = await proposalHousekeeping(); return r.challenges + r.sessions + r.codeEmails; } },
+  // Electronic signatures (only workspaces a Super Admin switched proposals AND signing on for, that are not paused, and whose connection works). Hands queued signing requests to
+  // the client's own signing service, checks the ones whose answer was lost, reads the ones that are out when no notice came, fetches signed copies, withdraws what was
+  // withdrawn and checks each key a few times a day. A real service is written to only while ESIGN_WRITES_ENABLED is true; the simulated one reaches nothing and does not exist
+  // in production. Every tick, not hourly: a request waits for a pass, and the service takes a few seconds to make a document, so a slower rhythm would stretch one signing request
+  // over many minutes. Its polling and key checks keep their own, slower pace inside the job.
+  { name: "esignSync", run: async () => { const r = await runEsignSync(); return r.claimed + r.recovered + r.reconciled + r.polled + r.copies + r.cancelled + r.checked; } },
+  // The prospect demo (src/server/demo). Neither job sends anything or calls a provider, and neither reads the demo switches: what prospects already have is kept in step whether the
+  // demo is open or not. demoExpiry records the end of demo windows (access is decided from the clock whenever a prospect is read, so a late job never gives anyone time), gives back
+  // messages whose process died, and removes spent links, ended sessions and the outbox copy of each link email an hour after it was sent. demoRetention removes the details and
+  // conversation of prospects past the retention period in the demo settings, and people who never confirmed their address after 7 days. Both are bounded by a time budget, and do
+  // nothing where nobody ever asked for a demo. Like every job here they run only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "demoExpiry", everyMinutes: 15, run: async () => { const r = await runDemoExpiry({ budgetMs: DEMO_EXPIRY_BUDGET_MS }); return r.expired + r.released + r.sessions + r.links + r.emails; } },
+  { name: "demoRetention", everyMinutes: 1440, run: async () => { const r = await runDemoRetention({ budgetMs: DEMO_RETENTION_BUDGET_MS }); return r.deleted + r.erased + r.usageDays; } },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).
@@ -128,6 +194,10 @@ export const JOBS: ScheduledJob[] = [
   { name: "supportEmails", run: () => runSupportEmails() },
   { name: "supportAutoClose", everyMinutes: 60, run: () => autoCloseResolvedRequests() },
   { name: "supportAttachmentCleanup", everyMinutes: 60, run: () => runAttachmentCleanup() },
+  // Custom projects: a review task (the first look at a request, a reply owed, a quote to prepare) that went past its time is announced to the team once. It tells the person the project is
+  // assigned to, or the team members who manage that client's projects; it changes nothing, contacts no client, and spends at most PROJECT_REVIEW_OVERDUE_BUDGET_MS of the tick. Like every job
+  // here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "projectReviewOverdue", everyMinutes: 15, run: () => runProjectReviewOverdue({ budgetMs: PROJECT_REVIEW_OVERDUE_BUDGET_MS }) },
   // Slower rhythms: each runs only when `everyMinutes` have passed since its previous run started; the ticks in between record nothing.
   { name: "fairUseChecks", everyMinutes: 60, run: async () => (await runFairUseChecks()).checked },
   { name: "inactivityReview", everyMinutes: 360, run: async () => (await runInactivityReview()).notified },
@@ -138,6 +208,18 @@ export const JOBS: ScheduledJob[] = [
   // plan isn't active (nothing is deleted or failed; core CRM workflows and AI employees are never selected). Two indexed queries when
   // nothing in the portal uses the plan, so it runs on every tick.
   { name: "studioEntitlementSweep", run: async () => { const r = await sweepStudioEntitlements(); return r.expired + r.workflowsPaused; } },
+  // Maintenance plan renewals (iAcquire's own plan, not a client's invoices). Seven days and one day before a plan's paid-through day the team and the client's owner are
+  // reminded; when the day passes with no payment recorded the team is told; and ONLY while a Super Admin has switched "mark past due automatically" on (it is off) a plan whose
+  // paid period ended two or more days ago is marked past due, as the system, with the usual disclosed grace period. Checkouts nobody completed for 48 hours are closed. It
+  // sends nothing outside the portal, calls no payment provider, and never pauses, expires or revokes anything. It spends at most RENEWAL_SWEEP_BUDGET_MS of the tick (cut off
+  // at 120 seconds). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "maintenanceRenewalSweep", everyMinutes: 360, run: async () => {
+    const r = await runMaintenanceRenewalSweep({ budgetMs: RENEWAL_SWEEP_BUDGET_MS });
+    // The same billing sweep also closes purchase checkouts nobody finished and finishes a workspace whose payment was verified but whose creation did not (it runs only for a
+    // purchase the inviting Super Admin allowed to create its own workspace). It is in this job so the registry, the staged start and the documents keep one billing sweep.
+    const p = await runPurchaseCheckoutSweep();
+    return r.noticed + r.overdue + r.pastDue + r.checkoutsExpired + p.closedUnpaid + p.givenUp + p.recovered;
+  } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", everyMinutes: 180, run: async () => (await syncAllWhatsappTemplates()).synced },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
@@ -179,6 +261,29 @@ export const JOBS: ScheduledJob[] = [
     const r = await runProactiveBriefings();
     return r.generated + r.suppressed + r.held + r.failed;
   } },
+  // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
+  // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
+  // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. It spends at most RECONCILE_BUDGET_MS waiting on providers (the tick is cut off at
+  // 120 seconds and the jobs after it wait): a provider that does not answer is given up on for this run. Like every job here it runs only when the scheduler does, and in a
+  // staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "customerPaymentReconcile", everyMinutes: 15, run: () => runCustomerPaymentReconcile({ budgetMs: RECONCILE_BUDGET_MS }) },
+  // Customer invoices. The overdue sweep notices an unpaid invoice past its due date (one history line, one notice to the owner and one announcement per invoice and due date) and
+  // sends nothing to anyone. The reminders job takes the reminders that have come due and hands each to the consent-gated send chain (scope "billing"); it does nothing for a workspace
+  // whose owner has not authorized the exact wording, and a reminder is never sent more than a day late. Like every job here they run only when the scheduler does, and in a staged
+  // start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "invoiceOverdueSweep", everyMinutes: 60, run: async () => (await runInvoiceOverdueSweep()).marked },
+  { name: "invoiceReminders", everyMinutes: 15, run: () => runInvoiceRemindersJob() },
+  // The agency's internal staff Messages. Hourly clean-up, and nothing at all while a Super Admin has the module switched off: staged files nobody sent are removed after a day,
+  // files of deleted messages are finished off, people who are no longer on the agency team are taken out of their conversations, and messages older than the retention period
+  // are deleted ONLY if a Super Admin chose a period (none by default). It sends nothing to anyone and calls no provider. It spends at most STAFF_MESSAGES_BUDGET_MS (the tick is
+  // cut off at 120 seconds and the jobs after it wait). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "staffMessagesMaintenance", everyMinutes: 60, run: () => runStaffMessagesMaintenance({ budgetMs: STAFF_MESSAGES_BUDGET_MS }) },
+  // Staff workload. Every 15 minutes, and nothing at all while a Super Admin has the module switched off: for each active agency person it writes a row of history when their
+  // label or points changed (and one a day), opens and ends an alert when they are Overloaded or Critical, tells the people who may see everyone's load once for each person,
+  // label and day, tells a person once a day about items past their due time, tidies up after people who left, and removes history older than 400 days. The notices are in-app
+  // only: it sends nothing outside the portal and calls no provider. It spends at most STAFF_WORKLOAD_BUDGET_MS (the tick is cut off at 120 seconds and the jobs after it wait).
+  // Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "staffWorkloadSnapshots", everyMinutes: 15, run: () => runStaffWorkloadSnapshots({ budgetMs: STAFF_WORKLOAD_BUDGET_MS }) },
 ];
 
 /**
@@ -216,21 +321,21 @@ export async function finishSchedulerTick(ok: boolean, error: string | null = nu
   ).catch(() => undefined);
 }
 
-/** The longest scheduler allowlist a tick accepts. This limit is checked here so a bad value stops the tick, not application startup. */
+/** The longest SCHEDULER_JOBS_ONLY a tick accepts. A list naming every job is about 950 characters, so this is generous; a longer value is a mistake, and is refused. */
 export const SCHEDULER_JOBS_ONLY_MAX_LENGTH = 2000;
 
 /**
- * The jobs a tick runs: all of them when SCHEDULER_JOBS_ONLY is unset, otherwise exactly the jobs it names (comma separated, exact names, any order; the registry's order is
- * kept). This is what lets the scheduler be switched on in stages instead of all at once. It fails closed: an empty list, an overlong value, or any unknown name throws before
- * any scheduled job runs. A mistyped or whitespace-only allowlist can never silently select every job.
+ * The jobs a tick runs: all of them when SCHEDULER_JOBS_ONLY is unset (env() reads an empty value as unset, and nothing else), otherwise exactly the jobs it names
+ * (comma separated, exact case-sensitive names, any order; the registry's order is kept and a name given twice runs once). Whatever is not named does not run and leaves no heartbeat.
+ * It fails closed: one unknown name refuses the whole list, as does a value that names nothing or exceeds 2000 characters. This is checked here so a bad value stops the scheduler,
+ * not application startup. Names are matched by membership in a Set, so `__proto__`, `constructor` and similar strings are just unknown names. Unset runs every job only behind
+ * CRON_SECRET and SCHEDULER_ENABLED (see the tick route).
  */
 export function activeJobs(all: readonly ScheduledJob[] = JOBS, only: string | undefined = env().SCHEDULER_JOBS_ONLY): readonly ScheduledJob[] {
   if (only === undefined) return all;
-  if (only.length > SCHEDULER_JOBS_ONLY_MAX_LENGTH) {
-    throw new Error(`SCHEDULER_JOBS_ONLY is longer than ${SCHEDULER_JOBS_ONLY_MAX_LENGTH} characters.`);
-  }
+  if (only.length > SCHEDULER_JOBS_ONLY_MAX_LENGTH) throw new Error(`SCHEDULER_JOBS_ONLY is longer than ${SCHEDULER_JOBS_ONLY_MAX_LENGTH} characters (naming every job takes about 1000).`);
   const names = only.split(",").map((s) => s.trim()).filter(Boolean);
-  if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it to run every job.");
+  if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it (or leave it empty) to run every job.");
   const known = new Set(all.map((j) => j.name));
   const unknown = [...new Set(names.filter((n) => !known.has(n)))];
   if (unknown.length) throw new Error(`SCHEDULER_JOBS_ONLY names a job that does not exist: ${unknown.join(", ")}.`);

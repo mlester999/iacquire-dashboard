@@ -198,7 +198,7 @@ export function FormEditor(props: FormEditorProps) {
   return (
     <div className="space-y-5">
       <div>
-        <Link href={`${scope.base}/forms`} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />All forms</Link>
+        <Link href={`${scope.base}/forms`} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />All forms</Link>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-[20px] font-semibold tracking-[-0.03em] text-ink">{form.name}</h2>
@@ -235,7 +235,7 @@ export function FormEditor(props: FormEditorProps) {
         </div>
       </div>
 
-      {options.contactsProblem && <p className="rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-warning-ink">{options.contactsProblem}</p>}
+      {options.contactsProblem && <p className="rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[14px] leading-relaxed text-warning-ink">{options.contactsProblem}</p>}
       {form.status === "archived" && <ReadOnlyNotice>This form is archived, so it takes no answers. Restore it to edit or publish it again.</ReadOnlyNotice>}
       {!canManage && form.status !== "archived" && <ReadOnlyNotice>{scope.readOnly ? undefined : "You can see this form and its results. Owners and managers change and publish it."}</ReadOnlyNotice>}
 
@@ -262,12 +262,12 @@ export function FormEditor(props: FormEditorProps) {
                 {draft.questions.length ? (
                   <QuestionList questions={draft.questions} selected={selected} onSelect={setSelected} onMove={moveQuestion} issues={issues} readOnly={readOnly} fields={options.contactFields} />
                 ) : (
-                  <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[12.5px] text-muted">No questions yet. Add the first one.</p>
+                  <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[13px] text-muted">No questions yet. Add the first one.</p>
                 )}
               </Card>
               {issues.length > 0 && (
                 <Card className="p-3">
-                  <h3 className="px-2 pb-1 text-[13px] font-semibold text-ink">{errors.length ? `${errors.length} to fix before publishing` : "Worth checking"}</h3>
+                  <h3 className="px-2 pb-1 text-[14px] font-semibold text-ink">{errors.length ? `${errors.length} to fix before publishing` : "Worth checking"}</h3>
                   <IssueList issues={issues} onPick={pickIssue} />
                 </Card>
               )}
@@ -372,7 +372,7 @@ function SettingsPanel({ scope, form, readOnly, hostedUrl }: { scope: CrmScope; 
   return (
     <div className="space-y-4">
       <Section title="Its own page" description="A page with just this form, at its own address: share it in messages, on social media or in a QR code. It works on any phone, even without script.">
-        <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+        <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
           <Switch
             checked={form.hosted}
             disabled={readOnly || busy("hosted")}
@@ -386,17 +386,17 @@ function SettingsPanel({ scope, form, readOnly, hostedUrl }: { scope: CrmScope; 
         </label>
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
           <Globe className="size-4 shrink-0 text-muted" aria-hidden />
-          <code className="min-w-0 flex-1 break-all text-[12.5px] text-ink-2">{hostedUrl}</code>
+          <code className="min-w-0 flex-1 break-all text-[13px] text-ink-2">{hostedUrl}</code>
           <Button size="sm" variant="secondary" onClick={() => void copy()}><Copy className="size-3.5" aria-hidden />Copy</Button>
-          {form.hosted && live && <a href={form.hostedPath} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-primary-ink hover:bg-primary-soft sm:min-h-8"><ExternalLink className="size-3.5" aria-hidden />Open</a>}
+          {form.hosted && live && <a href={form.hostedPath} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium text-primary-ink hover:bg-primary-soft sm:min-h-8"><ExternalLink className="size-3.5" aria-hidden />Open</a>}
         </div>
       </Section>
 
       <Section title="On your website" description="Add an “Enquiry form” element in Website Studio and choose this form in its settings. The website then shows these questions and posts them here.">
         {form.websitePages.length ? (
-          <p className="text-[13px] text-ink-2">Live on: {form.websitePages.join(", ")}.</p>
+          <p className="text-[14px] text-ink-2">Live on: {form.websitePages.join(", ")}.</p>
         ) : (
-          <p className="text-[13px] text-muted">{live ? "Not on your live website yet." : "Publish the form first; the website shows it as soon as it's live."}</p>
+          <p className="text-[14px] text-muted">{live ? "Not on your live website yet." : "Publish the form first; the website shows it as soon as it's live."}</p>
         )}
         <p className="text-[12px] text-muted">Use the address below to choose it: <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2">{form.key}</code></p>
       </Section>
@@ -407,7 +407,7 @@ function SettingsPanel({ scope, form, readOnly, hostedUrl }: { scope: CrmScope; 
             <Input id="fs-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Address" htmlFor="fs-key" hint={form.everPublished ? "This form has been published, so its address is in use and stays the same. Duplicate it to use another." : "Lower-case letters, numbers and hyphens. Used in the page link and on your website."}>
-            <Input id="fs-key" value={key} maxLength={48} disabled={form.everPublished} className="font-mono text-[13px]" onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} />
+            <Input id="fs-key" value={key} maxLength={48} disabled={form.everPublished} className="font-mono text-[14px]" onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} />
           </Field>
           <Field label="Kind" htmlFor="fs-kind">
             <Segmented id="fs-kind" ariaLabel="Kind" value={kind} onChange={setKind} options={[{ value: "form", label: "Form" }, { value: "survey", label: "Survey" }]} />

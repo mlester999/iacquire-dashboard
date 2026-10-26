@@ -2,10 +2,12 @@ import "server-only";
 import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { CREDIT_PRESETS_USD, MICROS_PER_USD, OPERATING_RESERVE_PER_SETUP_USD, SETUP_FEE_USD, UNIT_LABELS, applyMarkup, isUnitType, usdToMicros } from "@/lib/billing";
+import { CREDIT_PRESETS_USD, MICROS_PER_USD, OPERATING_RESERVE_PER_SETUP_USD, SETUP_FEE_USD, applyMarkup, isUnitType, rateUnitLabel, usdToMicros } from "@/lib/billing";
 import { createPaymentCheckout, type CheckoutInput } from "@/server/billing/payments";
 import { paymongoStatus, type FetchLike } from "@/server/billing/paymongo";
 import { adjustCredits, currentRate } from "@/server/billing/ledger";
+import { env } from "@/server/env";
+import { AUTO_PAST_DUE_MIN_DAYS_OVER } from "@/lib/billing-renewal";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 
@@ -188,6 +190,21 @@ export async function confirmLivePaymentsReview(user: AgencyUser, confirmed: boo
   });
 }
 
+/**
+ * Lets the renewal sweep mark a maintenance plan past due by itself when its paid period ended and no payment was recorded. OFF until a Super Admin turns it on (founder
+ * decision, open): the sweep otherwise only tells the team. It never pauses, expires or revokes anything; it starts the same disclosed grace period a person's record does.
+ */
+export async function setAutoPastDue(user: AgencyUser, enabled: boolean) {
+  requireSuper(user);
+  await withSystem(async (db) => {
+    await db.query(
+      "update agency_billing_settings set auto_past_due = $1, auto_past_due_by = $2, auto_past_due_at = now(), updated_at = now()",
+      [enabled, user.id],
+    );
+    await recordAudit({ actorUserId: user.id, actorKind: "agency", action: enabled ? "billing.auto_past_due_enabled" : "billing.auto_past_due_disabled", targetType: "agency_billing_settings", result: "success" }, db);
+  });
+}
+
 export async function adjustOrgCredits(user: AgencyUser, input: { orgId: string; deltaUsd: number; reason: string }) {
   requireSuper(user);
   return withSystem(async (db) => {
@@ -205,16 +222,19 @@ export async function adjustOrgCredits(user: AgencyUser, input: { orgId: string;
 export async function publishUnitRate(user: AgencyUser, input: { provider: string; unitType: string; wholesaleMicrosPerUnit: number; note?: string }) {
   requireSuper(user);
   if (!isUnitType(input.unitType)) throw new AppError("invalid_input", "Choose a known usage unit.");
-  if (!Number.isInteger(input.wholesaleMicrosPerUnit) || input.wholesaleMicrosPerUnit <= 0) throw new AppError("invalid_input", "Enter the provider's wholesale cost per unit in micro-dollars (1 USD = 1,000,000).");
+  if (!Number.isInteger(input.wholesaleMicrosPerUnit) || input.wholesaleMicrosPerUnit <= 0) {
+    const per = input.unitType === "ai_tokens_in" || input.unitType === "ai_tokens_out" ? "per 1,000 tokens" : "per unit";
+    throw new AppError("invalid_input", `Enter the provider's wholesale cost ${per} in micro-dollars (1 USD = 1,000,000).`);
+  }
   return withSystem(async (db) => {
     const rate = await currentRate(db);
     const client = applyMarkup(input.wholesaleMicrosPerUnit, rate.markupBps);
     await db.query(
       `insert into usage_unit_rates (rate_version_id, provider, unit_type, unit_label, wholesale_micros_per_unit, client_micros_per_unit, note)
        values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict (rate_version_id, provider, unit_type) do update set wholesale_micros_per_unit = excluded.wholesale_micros_per_unit,
+       on conflict (rate_version_id, provider, unit_type) do update set unit_label = excluded.unit_label, wholesale_micros_per_unit = excluded.wholesale_micros_per_unit,
          client_micros_per_unit = excluded.client_micros_per_unit, note = excluded.note, published_at = now()`,
-      [rate.id, input.provider.slice(0, 60), input.unitType, UNIT_LABELS[input.unitType] ?? input.unitType, input.wholesaleMicrosPerUnit, client, input.note?.slice(0, 300) ?? null],
+      [rate.id, input.provider.slice(0, 60), input.unitType, rateUnitLabel(input.unitType), input.wholesaleMicrosPerUnit, client, input.note?.slice(0, 300) ?? null],
     );
     await recordAudit({ actorUserId: user.id, actorKind: "agency", action: "billing.unit_rate_published", targetType: "usage_unit_rate", targetId: `${input.provider}:${input.unitType}`, result: "success", metadata: { wholesaleMicrosPerUnit: input.wholesaleMicrosPerUnit, clientMicrosPerUnit: client } }, db);
     return { clientMicrosPerUnit: client };
@@ -237,6 +257,8 @@ export interface AgencyBillingOverview {
   paymongo: { configured: boolean; webhookConfigured: boolean; livemode: boolean | null; problems: string[] };
   fx: { usdPhpRate: number | null; source: string | null; updatedAt: string | null };
   liveReviewConfirmedAt: string | null;
+  /** The renewal sweep's one switch (off unless a Super Admin turned it on), and the numbers it works by. Absent on sample pages that predate it. */
+  planRenewals?: { autoPastDue: boolean; changedAt: string | null; graceDays: number; minDaysOver: number };
   markupBps: number;
   /** Cash and contribution are separate lines; none of them is profit. */
   totals: {
@@ -262,7 +284,9 @@ export async function getAgencyBillingOverview(user: AgencyUser): Promise<Agency
   return withSystem(async (db) => {
     const scope = agencyWide ? "true" : "app.user_can_access_org($1,o.id)";
     const params = agencyWide ? [] : [user.id];
-    const settings = await db.query<{ usd_php_rate: string | null; fx_source: string | null; fx_updated_at: Date | null; live_payments_review_at: Date | null }>("select usd_php_rate, fx_source, fx_updated_at, live_payments_review_at from agency_billing_settings");
+    const settings = await db.query<{ usd_php_rate: string | null; fx_source: string | null; fx_updated_at: Date | null; live_payments_review_at: Date | null; auto_past_due: boolean; auto_past_due_at: Date | null }>(
+      "select usd_php_rate, fx_source, fx_updated_at, live_payments_review_at, auto_past_due, auto_past_due_at from agency_billing_settings",
+    );
     const totals = await db.query<Record<string, string>>(
       `select
          (select count(*) from payments p join organizations o on o.id = p.org_id where ${scope} and p.kind = 'setup_fee' and p.status in ('paid', 'partially_refunded', 'refunded'))::text as setup_count,
@@ -293,7 +317,7 @@ export async function getAgencyBillingOverview(user: AgencyUser): Promise<Agency
     );
     const events = await db.query<{ id: string; event_type: string; outcome: string; detail: string | null; received_at: Date }>(
       `select e.id, e.event_type, e.outcome, e.detail, e.received_at from payment_webhook_events e
-       where (e.outcome in ('rejected', 'error') or (e.outcome = 'ignored' and e.event_type in ('payment.failed', 'refund.succeeded', 'payment.refunded', 'dispute.created')))
+       where (e.outcome in ('rejected', 'error') or (e.outcome = 'ignored' and e.event_type = 'payment.failed') or e.event_type ~* '(refund|dispute|chargeback)')
          and ($2::boolean or exists (
            select 1 from payments p join organizations o on o.id=p.org_id
            where p.id=e.payment_id and app.user_can_access_org($1,o.id)
@@ -307,6 +331,12 @@ export async function getAgencyBillingOverview(user: AgencyUser): Promise<Agency
       paymongo: paymongoStatus(),
       fx: { usdPhpRate: settings.rows[0]?.usd_php_rate ? Number(settings.rows[0].usd_php_rate) : null, source: settings.rows[0]?.fx_source ?? null, updatedAt: settings.rows[0]?.fx_updated_at ? new Date(settings.rows[0].fx_updated_at).toISOString() : null },
       liveReviewConfirmedAt: settings.rows[0]?.live_payments_review_at ? new Date(settings.rows[0].live_payments_review_at).toISOString() : null,
+      planRenewals: {
+        autoPastDue: settings.rows[0]?.auto_past_due === true,
+        changedAt: settings.rows[0]?.auto_past_due_at ? new Date(settings.rows[0].auto_past_due_at).toISOString() : null,
+        graceDays: env().STUDIO_PAYMENT_GRACE_DAYS,
+        minDaysOver: AUTO_PAST_DUE_MIN_DAYS_OVER,
+      },
       markupBps: rate.markupBps,
       totals: {
         setupPaidCount: setupCount,

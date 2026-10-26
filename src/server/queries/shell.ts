@@ -3,7 +3,8 @@ import { withUser } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
 import { isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
-import { entitlementFor, type PlanStatus } from "@/lib/automation-studio/plan";
+import type { PlanStatus } from "@/lib/automation-studio/plan";
+import { studioEntitlementOf } from "@/lib/entitlements";
 
 export interface ShellAgent {
   role: AgentRoleKey;
@@ -35,6 +36,11 @@ export interface ShellData {
    * decides whether the menu item shows a lock, and every page and action checks the plan again. Absent where the person can't see automations.
    */
   automationStudio?: { entitled: boolean };
+  /**
+   * The modules a Super Admin has switched on for this workspace (the enabled rows of org_features, such as "proposals"). Navigation only: it decides whether a menu item is
+   * offered, and every page and action checks the switch again. Modules that are off for a workspace are simply absent.
+   */
+  features?: string[];
 }
 
 export async function getShellData(ctx: OrgContext): Promise<ShellData> {
@@ -97,6 +103,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
       requests_attention: number;
       crm_mode: ShellData["crmMode"];
       studio_plan: { id: string; status: PlanStatus; grace_ends_at: string | null; paid_through_on: string | null; created_at: string } | null;
+      features: string[];
     }>(
       `with preferences as (
          select prefs from notification_preferences where user_id=$2 and org_id=$1 limit 1
@@ -124,7 +131,8 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
          ${inboxProjection},
          ${requestsProjection},
          ${crmProjection},
-         ${studioProjection}`,
+         ${studioProjection},
+         (select coalesce(json_agg(f.feature order by f.feature), '[]'::json) from org_features f where f.org_id=$1 and f.enabled) as features`,
       [ctx.org.orgId, ctx.user.id],
     );
     return rows[0];
@@ -137,8 +145,9 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const inboxAttention = data?.inbox_attention ?? 0;
   const requestsAttention = data?.requests_attention ?? 0;
   const crmMode = data?.crm_mode ?? (includeCrm ? "native" : null);
+  // The same rule the server gates apply (src/lib/entitlements.ts), to the four facts the person's role may read about the plan.
   const plan = data?.studio_plan;
-  const automationStudio = includeStudio ? { entitled: entitlementFor(plan ? { id: plan.id, status: plan.status, graceEndsAt: plan.grace_ends_at, paidThroughOn: plan.paid_through_on } : null).entitled } : undefined;
+  const automationStudio = includeStudio ? { entitled: studioEntitlementOf(plan ? { id: plan.id, status: plan.status, graceEndsAt: plan.grace_ends_at, paidThroughOn: plan.paid_through_on, createdAt: plan.created_at } : null).entitled } : undefined;
   return {
     user: { id: ctx.user.id, name: ctx.user.fullName || ctx.user.email, email: ctx.user.email, platformRole: ctx.user.platformRole },
     org: {
@@ -163,5 +172,6 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     requestsAttention,
     crmMode,
     automationStudio,
+    features: data?.features ?? [],
   };
 }

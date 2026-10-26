@@ -19,10 +19,10 @@ export const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: str
 export const CHANNEL_ORDER: Channel[] = ["email", "sms", "whatsapp"];
 
 export function ChannelLabel({ channel, className }: { channel: Channel | null; className?: string }) {
-  if (!channel) return <span className={cn("inline-flex items-center gap-1.5 text-[12.5px] text-muted", className)}>Any channel</span>;
+  if (!channel) return <span className={cn("inline-flex items-center gap-1.5 text-[13px] text-muted", className)}>Any channel</span>;
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-[12.5px] text-ink-2", className)}>
+    <span className={cn("inline-flex items-center gap-1.5 text-[13px] text-ink-2", className)}>
       <Icon className="size-3.5 text-muted" aria-hidden />
       {CHANNEL_LABELS[channel]}
     </span>
@@ -46,7 +46,7 @@ export function TokenHighlight({ text, className }: { text: string; className?: 
           <span
             key={i}
             className={cn(
-              "mx-px rounded-md px-1 py-px font-mono text-[0.86em]",
+              "mx-px rounded-md px-1 py-px font-mono text-[12px]",
               p.token.known ? "bg-primary-soft text-primary-ink" : "bg-danger-soft text-danger-ink line-through decoration-danger/60",
             )}
             title={p.token.known ? anyTokenLabel(p.token.key, customValues) : "Not a token iAcquire knows"}
@@ -83,7 +83,7 @@ export function RenderedText({ text, values, singleLine, customValues: given }: 
         // An optional configuration value that is empty renders as nothing, exactly as it would be sent.
         if (r.ok) return r.text ? <mark key={i} className="rounded bg-primary-soft/70 px-0.5 text-inherit" title={label}>{r.text}</mark> : null;
         return (
-          <mark key={i} className="rounded border border-dashed border-danger/50 bg-danger-soft/60 px-1 text-[0.9em] text-danger-ink">
+          <mark key={i} className="rounded border border-dashed border-danger/50 bg-danger-soft/60 px-1 text-[12px] text-danger-ink">
             {label ? `${label} missing` : `Unknown ${p.text}`}
           </mark>
         );
@@ -143,8 +143,8 @@ export function TokenPicker({ onPick, disabled, label = "Insert token" }: { onPi
             <MenuLabel>{TOKEN_GROUP_LABELS[g]}</MenuLabel>
             {TEMPLATE_TOKENS.filter((t) => t.group === g).map((t) => (
               <MenuItem key={t.key} onSelect={() => { focus.markPicked(); onPick(t.key); }} className="flex-col items-start gap-0.5">
-                <span className="text-[13px] text-ink">{t.label}</span>
-                <span className="font-mono text-[11px] text-muted">{tokenText(t.key)}</span>
+                <span className="text-[14px] text-ink">{t.label}</span>
+                <span className="font-mono text-[12px] text-muted">{tokenText(t.key)}</span>
               </MenuItem>
             ))}
           </React.Fragment>
@@ -158,9 +158,9 @@ export function TokenPicker({ onPick, disabled, label = "Insert token" }: { onPi
               const emptyRequired = v.required && !(v.value ?? "").trim();
               return (
                 <MenuItem key={key} onSelect={() => { focus.markPicked(); onPick(key); }} className="flex-col items-start gap-0.5">
-                  <span className="text-[13px] text-ink">{v.label}{v.group ? <span className="text-muted"> · {v.group}</span> : null}</span>
-                  <span className="break-all font-mono text-[11px] text-muted">{tokenText(key)}</span>
-                  {emptyRequired && <span className="text-[11px] text-warning-ink">Required and still empty: messages using it are held until it&apos;s filled in.</span>}
+                  <span className="text-[14px] text-ink">{v.label}{v.group ? <span className="text-muted"> · {v.group}</span> : null}</span>
+                  <span className="break-all font-mono text-[12px] text-muted">{tokenText(key)}</span>
+                  {emptyRequired && <span className="text-[12px] text-warning-ink">Required and still empty: messages using it are held until it&apos;s filled in.</span>}
                 </MenuItem>
               );
             })}
@@ -206,14 +206,14 @@ export function ValidationList({ check, onFix }: { check: TemplateValidation; on
     <div className="space-y-1.5">
       <p role="status" aria-live="polite" className="sr-only">{announced}</p>
       {!check.errors.length && !check.warnings.length && (
-        <p className="flex items-center gap-1.5 text-[12.5px] text-success-ink"><CheckCircle2 className="size-3.5" aria-hidden />No problems found.</p>
+        <p className="flex items-center gap-1.5 text-[13px] text-success-ink"><CheckCircle2 className="size-3.5" aria-hidden />No problems found.</p>
       )}
       <ul className="space-y-1.5">
         {issues.map((i, n) => {
           const s = ISSUE_STYLE[i.level];
           const Icon = s.icon;
           return (
-            <li key={`${i.code}-${n}`} className={cn("flex items-start gap-2 text-[12.5px] leading-relaxed", s.cls)}>
+            <li key={`${i.code}-${n}`} className={cn("flex items-start gap-2 text-[13px] leading-relaxed", s.cls)}>
               <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span className="min-w-0 flex-1">
                 <span className="sr-only">{s.label}: </span>

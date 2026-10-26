@@ -391,10 +391,59 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // conversation_events trail (the missed call is written to the conversation), and 0086 follows 0085 so the two never reach a database in the other order.
   "0085_missed_call_recovery": ["0065_support_requests", "0083_unified_inbox"],
   "0086_lead_scoring": ["0065_support_requests", "0085_missed_call_recovery"],
-  "0087_workforce_local_recurrence": ["0078_ai_work_schedules"],
-  "0088_workforce_chat_schedule_previews": ["0087_workforce_local_recurrence"],
-  "0089_workforce_chat_booking_previews": ["0088_workforce_chat_schedule_previews"],
-  "0090_workforce_appointment_changes": ["0089_workforce_chat_booking_previews"],
+  // 0087 extends notifications_kind_check from the live constraint (so 0065 must already be in) and adds a conversation channel and a created-via value
+  // to tables from 0019 and 0027.
+  "0087_website_chat": ["0065_support_requests"],
+  // 0089 extends notifications_kind_check from the live constraint (0065 must already be in) and replaces app.file_permission with 0049's definition plus
+  // one bucket, so 0049 must already be in: applied before it, 0089 would be overwritten by it and managed media would silently lose its access rule.
+  "0089_social_media_manager": ["0049_aqi_attachments", "0065_support_requests"],
+  // 0090 replaces app.file_permission with 0089's definition plus two buckets: applied before 0089 (or before 0049), it would put back a definition that lacks the
+  // social-media rule (and every bucket added since 0049), so 0089 must already be in.
+  "0090_document_buckets": ["0049_aqi_attachments", "0089_social_media_manager"],
+  // 0091 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // nine proposal kinds). It does not replace app.file_permission: the proposal-documents rule is 0090's, so 0090 must be in for the permission names to mean anything.
+  "0091_proposals": ["0065_support_requests", "0090_document_buckets"],
+  // 0092 hangs signature requests off proposals and links proposal_decisions to them, so 0091 must already be in. It extends no notification list (the signature kinds came
+  // with 0091) and does not replace app.file_permission.
+  "0092_esign": ["0091_proposals"],
+  // 0094 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // six reputation kinds). It also alters customer_feedback and crm_review_requests (0033) and points at human_escalations (0019).
+  "0094_reputation_followthrough": ["0033_crm_growth", "0065_support_requests"],
+  // 0093 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // eight invoice and payment kinds). It also adds the 'billing' message scope by reading the live conversation_messages_scope_check (0024), and hangs invoices off
+  // contacts (0027), companies and deals (0028). An invoice made from a proposal points at it (composite keys to proposals and proposal_versions) and a message that delivers one
+  // uses the 'delivery' scope, both 0091's.
+  "0093_customer_invoices_payments": ["0028_crm_sales", "0065_support_requests", "0091_proposals"],
+  // 0095 points at social_accounts (0089: a Facebook review connection reads through the Page connected for Social media) and relies on 0094's three reviews.* permissions and
+  // six notification kinds. It extends no notification list and does not replace app.file_permission.
+  "0095_external_reviews": ["0089_social_media_manager", "0094_reputation_followthrough"],
+  // 0096 extends notifications_kind_check, notifications_audience_check and the two agency permission-override lists from the live constraints, so 0065 (the last to copy those
+  // lists) must already be in. It replaces app.notification_visible with 0067's definition plus one branch, so 0067 must be in. The staff-messages bucket, its file rule and the
+  // use of the agency.messages.use permission in it are 0090's.
+  "0096_staff_messages": ["0065_support_requests", "0067_notification_authorization", "0090_document_buckets"],
+  // 0097 extends the two agency permission-override lists from the live constraints, so 0065 (which copied them) and 0096 (the last to extend them) must already be in: applied
+  // before 0096, 0096 would still read the lists from the live constraint, but applied before 0065, 0065 would put its copied list back and drop the four workload permissions.
+  // The notification kinds staff_workload_alert and staff_work_overdue and the 'staff' audience are 0096's; 0097 changes no notification list.
+  "0097_staff_workload": ["0065_support_requests", "0096_staff_messages"],
+  // 0098 extends the request-type, category and timeline-kind checks of 0065 and 0015 and the notification kinds from the live constraints, so 0065 must already be in (applied
+  // before it, 0065 would put its copied lists back and drop the new values). It hangs change orders and prerequisites off the custom-project tables, so 0015 must be in too.
+  "0098_requests_completion": ["0015_custom_projects", "0065_support_requests"],
+  // 0099 backfills billing_accounts (0004) from client_setup_instances (0008), widens payments (0018), adds a column to maintenance_subscriptions (0015) and extends
+  // notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the four billing kinds).
+  "0099_payment_controls": ["0008_setup_center", "0015_custom_projects", "0018_billing_credits", "0065_support_requests"],
+  // 0100 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the four demo kinds),
+  // and adds role_permissions rows for the agency_manager role, which 0038 (the last to widen that table's role check) makes valid. It points at access_requests (0001) and nothing
+  // that belongs to a workspace except the converted_org_id of a prospect a Super Admin made a client.
+  "0100_demo_funnel": ["0038_agency_team_and_hermes_policies", "0065_support_requests"],
+  // 0102 replaces the check on crm_calendars.origin that 0054 added, adds a column to onboarding_responses (0002, 0020) and adds a step to the default checklist (0008) and to
+  // the checklists that are not activated yet (0013 and 0056 added steps the same way, and 0056 gave the steps their provider column).
+  "0102_onboarding_snapshot": ["0020_onboarding_v2", "0054_crm_blueprints", "0056_crm_setup_native"],
+  // Workforce migrations follow the current master sequence; 0109 records the complete Hermes health probe contract.
+  "0105_workforce_local_recurrence": ["0078_ai_work_schedules"],
+  "0106_workforce_chat_schedule_previews": ["0105_workforce_local_recurrence"],
+  "0107_workforce_chat_booking_previews": ["0106_workforce_chat_schedule_previews"],
+  "0108_workforce_appointment_changes": ["0107_workforce_chat_booking_previews"],
+  "0109_employee_health_probe": ["0059_hermes_tool_inventory", "0060_rls_initplan"],
 };
 
 /**

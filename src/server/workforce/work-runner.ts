@@ -1,8 +1,11 @@
 import "server-only";
 import { runMissedCallReviewJob } from "@/server/workforce/missed-call-review";
 import { runLeadPriorityReviewJob } from "@/server/workforce/lead-priority-review";
+import { runSocialPerformanceReviewJob } from "@/server/workforce/social-review";
+import { runReceivablesReviewJob } from "@/server/workforce/receivables-review";
+import { runReputationReviewJob } from "@/server/workforce/reputation-review";
 import crypto from "node:crypto";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import {
   appendWorkEvent,
@@ -43,6 +46,9 @@ const HANDLERS: Record<string, Handler> = {
   pipeline_followup_drafts: runPipelineFollowUpDraftsJob,
   missed_call_review: runMissedCallReviewJob,
   lead_priority_review: runLeadPriorityReviewJob,
+  social_performance_review: runSocialPerformanceReviewJob,
+  receivables_review: runReceivablesReviewJob,
+  reputation_review: runReputationReviewJob,
   appointment_review: runAppointmentReviewJob,
   appointment_availability: runAppointmentAvailabilityJob,
   performance_snapshot: runPerformanceSnapshotJob,
@@ -87,6 +93,18 @@ async function requesterGate(job: WorkJobRow): Promise<RequesterGateResult> {
     detail: "The requester no longer has the permissions required for this employee work. Nothing was executed.",
   };
 }
+/**
+ * What a capability's own record says when its job was blocked by a pause before it ran. A lead research request that stayed "queued" for a job that will not run would look busy for
+ * ever, so it goes back to "waiting for the agent" with the reason, which is the state the person can retry from.
+ */
+const BLOCKED_HOOKS: Record<string, (db: Queryable, job: WorkJobRow, detail: string) => Promise<void>> = {
+  lead_research: async (db, job, detail) => {
+    await db.query(
+      "update lead_research_requests set status = 'waiting_for_agent', failure_reason = $3 where org_id = $1 and work_job_id = $2 and status = 'queued'",
+      [job.org_id, job.id, detail.slice(0, 500)],
+    );
+  },
+};
 
 function workerId() {
   return `worker-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
@@ -145,14 +163,7 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
             data: { reason: gate.reason },
           },
         });
-        if (finished && claimed.capability === "lead_research") {
-          await db.query(
-            `update lead_research_requests
-                set status = 'waiting_for_agent', failure_reason = $3
-              where org_id = $1 and work_job_id = $2 and status = 'queued'`,
-            [claimed.org_id, claimed.id, gate.detail.slice(0, 500)],
-          );
-        }
+        if (finished) await BLOCKED_HOOKS[claimed.capability]?.(db, claimed, gate.detail);
       });
       return true;
     }

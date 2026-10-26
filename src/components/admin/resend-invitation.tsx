@@ -100,9 +100,9 @@ export function ResendInvitationButton({
               <InfoChip icon={<Mail />}>{outcome.email}</InfoChip>
             </div>
             <div>
-              <p className="mb-1.5 text-[13px] font-medium text-ink-2">Invitation link</p>
+              <p className="mb-1.5 text-[14px] font-medium text-ink-2">Invitation link</p>
               <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
-                <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]" title={outcome.link}>{outcome.link}</code>
+                <code className="min-w-0 flex-1 truncate px-2 font-mono text-[13px]" title={outcome.link}>{outcome.link}</code>
                 <Button
                   size="sm"
                   variant="secondary"

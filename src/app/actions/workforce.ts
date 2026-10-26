@@ -8,6 +8,7 @@ import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-acc
 import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
+import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { prepareConfigPreview } from "@/server/workforce/preview";
 import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { configAttribution } from "@/lib/config-review";
@@ -72,7 +73,7 @@ export async function regenerateEmployeeSettingsAction(role: string) {
       );
       return rows.map((row) => row.content);
     });
-    const generated = (await generateEmployeeSettings(data, knowledge))[agent.role_key];
+    const generated = (await generateEmployeeSettings(data, knowledge, undefined, ctx.org.orgId))[agent.role_key];
     const {
       personality, characterTraits, communicationStyle, responseBehavior,
       operatingProcedures, proactiveResponsibilities, reportingBehavior, responsibilities, goals,
@@ -160,9 +161,9 @@ export async function requestSetupAction() {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
     if (ctx.org.kind !== "client") throw new AppError("forbidden", "Setup requests are available only in client workspaces.");
-    const n = await withSystem((db) => requestProvisioning(db, ctx.org.orgId, ctx.user.id));
+    const { n, paymentCleared } = await withSystem(async (db) => ({ n: await requestProvisioning(db, ctx.org.orgId, ctx.user.id), paymentCleared: await isSetupPaymentCleared(db, ctx.org.orgId) }));
     revalidatePath("/employees");
-    return { ok: true as const, data: { requested: n } };
+    return { ok: true as const, data: { requested: n, paymentCleared } };
   } catch (err) {
     return actionError(err);
   }

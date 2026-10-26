@@ -79,7 +79,7 @@ export function ReviewPanel({
 }) {
   if (loading && !review) {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Preparing your review">
+      <div role="status" className="space-y-4" aria-busy="true" aria-label="Preparing your review">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-40 w-full" />
@@ -105,7 +105,7 @@ export function ReviewPanel({
           <p className="flex items-center gap-2 text-[14px] font-semibold text-warning-ink">
             <AlertTriangle className="size-4" aria-hidden /> Before you can approve
           </p>
-          <ul className="mt-2 list-disc space-y-1 pl-6 text-[13.5px] text-ink-2">
+          <ul className="mt-2 list-disc space-y-1 pl-6 text-[14px] text-ink-2">
             {blockers.map((b) => (
               <li key={b}>{b}</li>
             ))}
@@ -121,7 +121,7 @@ export function ReviewPanel({
           <details key={section.id} className="group overflow-hidden rounded-2xl border border-line bg-surface" open={section.rows.some((r) => (r.state === "outstanding" && r.required) || r.state === "needs_confirmation")}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-[14px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
               <span className="flex min-w-0 items-center gap-2.5">
-                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary-soft text-[11px] font-semibold text-primary">{section.id}</span>
+                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary-soft text-[12px] font-semibold text-primary">{section.id}</span>
                 <span className="truncate">{section.title}</span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
@@ -130,14 +130,14 @@ export function ReviewPanel({
                 <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
               </span>
             </summary>
-            <dl className="divide-y divide-line border-t border-line">
+            <ul className="divide-y divide-line border-t border-line">
               {section.rows.map((row) => {
                 // An optional question nobody answered is simply empty, not a problem.
                 const badge = row.state === "outstanding" && !row.required ? null : STATE_BADGE[row.state];
                 return (
-                  <div key={row.questionId} className="flex items-start gap-3 px-4 py-3">
+                  <li key={row.questionId} className="flex items-start gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <dt className="flex flex-wrap items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-muted">
+                      <p className="flex flex-wrap items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-muted">
                         {row.label}
                         {badge && <StatusPill tone={badge.tone} size="sm" className="normal-case tracking-normal">{badge.label}</StatusPill>}
                         {row.source && row.source !== "user" && row.source !== "prefill" && row.value && (
@@ -145,16 +145,16 @@ export function ReviewPanel({
                             AI-suggested
                           </StatusPill>
                         )}
-                      </dt>
-                      <dd className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value ? <AnswerValue value={row.value} /> : <span className="text-muted">Not answered</span>}</dd>
+                      </p>
+                      <div className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value ? <AnswerValue value={row.value} /> : <span className="text-muted">Not answered</span>}</div>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row.questionId)} aria-label={`Edit ${row.label}`}>
                       <Pencil className="size-3.5" /> Edit
                     </Button>
-                  </div>
+                  </li>
                 );
               })}
-            </dl>
+            </ul>
           </details>
         ))}
       </section>
@@ -170,12 +170,12 @@ export function ReviewPanel({
                 <AgentAvatar role={AGENT_BY_KEY[e.role]} size="md" />
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold">{e.name}</p>
-                  <p className="text-[12.5px] text-muted">{e.tagline}</p>
+                  <p className="text-[13px] text-muted">{e.tagline}</p>
                 </div>
               </div>
-              {e.configuredFrom.length > 0 && <p className="mt-3 text-[12.5px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
+              {e.configuredFrom.length > 0 && <p className="mt-3 text-[13px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
               {e.gaps.map((g) => (
-                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[12.5px] text-warning-ink">
+                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[13px] text-warning-ink">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   {g}
                 </p>
@@ -183,7 +183,7 @@ export function ReviewPanel({
             </div>
           ))}
         </div>
-        <p className="text-[12.5px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
+        <p className="text-[13px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -206,7 +206,7 @@ export function ReviewPanel({
           </h2>
           <ul className="space-y-2 rounded-2xl border border-line bg-surface p-4">
             {review.permissions.map((p) => (
-              <li key={p} className="flex items-start gap-2 text-[13.5px] leading-relaxed">
+              <li key={p} className="flex items-start gap-2 text-[14px] leading-relaxed">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 {p}
               </li>
@@ -220,7 +220,7 @@ export function ReviewPanel({
           Connections that aren&apos;t ready yet
         </h2>
         {review.missingConnections.length === 0 ? (
-          <p className="flex items-center gap-2 rounded-2xl border border-success/30 bg-success-soft/50 p-4 text-[13.5px] text-success-ink">
+          <p className="flex items-center gap-2 rounded-2xl border border-success/30 bg-success-soft/50 p-4 text-[14px] text-success-ink">
             <CheckCircle2 className="size-4" aria-hidden /> Everything your answers need is connected and verified.
           </p>
         ) : (
@@ -233,14 +233,39 @@ export function ReviewPanel({
                     <p className="text-[14px] font-medium">{m.label}</p>
                     <StatusPill tone="warning" size="sm">Not connected</StatusPill>
                   </div>
-                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{m.why}</p>
+                  <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{m.why}</p>
                 </div>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[12.5px] text-muted">These are checked against your real workspace connections. Missing items don&apos;t block approval; they are tracked in your Setup Center.</p>
+        <p className="text-[13px] text-muted">These are checked against your real workspace connections. Missing items don&apos;t block approval; they are tracked in your Setup Center.</p>
       </section>
+
+      {review.optionalConnections.length > 0 && (
+        <section aria-labelledby="rv-optional" className="space-y-2">
+          <h2 id="rv-optional" className="text-[15px] font-semibold">
+            Optional connections
+          </h2>
+          <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+            {review.optionalConnections.map((o) => (
+              <li key={o.key} className="flex items-start gap-3 px-4 py-3">
+                <span aria-hidden className={cn("grid size-9 shrink-0 place-items-center rounded-xl", o.state === "connected" ? "bg-success-soft text-success-ink" : "bg-surface-2 text-muted")}>
+                  {o.state === "connected" ? <CheckCircle2 className="size-4" /> : <PlugZap className="size-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[14px] font-medium">{o.label}</p>
+                    <StatusPill tone={o.state === "connected" ? "success" : "neutral"} size="sm">{o.state === "connected" ? "Connected" : o.state === "waiting" ? "Waiting" : "Not connected"}</StatusPill>
+                  </div>
+                  <p className="mt-0.5 text-[14px] leading-relaxed text-muted">{o.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[13px] text-muted">These are optional. Approving your setup does not depend on any of them.</p>
+        </section>
+      )}
 
       <section aria-labelledby="rv-tasks" className="space-y-2">
         <h2 id="rv-tasks" className="text-[15px] font-semibold">
@@ -249,11 +274,11 @@ export function ReviewPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           {(["you", "iacquire"] as const).map((owner) => (
             <div key={owner} className="rounded-2xl border border-line bg-surface p-4">
-              <p className="flex items-center gap-2 text-[13px] font-semibold">
+              <p className="flex items-center gap-2 text-[14px] font-semibold">
                 {owner === "you" ? <UserRound className="size-4 text-primary" aria-hidden /> : <Wrench className="size-4 text-violet" aria-hidden />}
                 {owner === "you" ? "You" : "The iAcquire team"}
               </p>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed text-ink-2">
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[14px] leading-relaxed text-ink-2">
                 {review.humanTasks
                   .filter((t) => t.owner === owner)
                   .map((t) => (
@@ -276,19 +301,19 @@ export function ReviewPanel({
           </span>
         </label>
         {alreadySubmitted && (
-          <p className="mt-3 text-[13px] leading-relaxed text-muted">
+          <p className="mt-3 text-[14px] leading-relaxed text-muted">
             You&apos;ve approved a setup before. Approving again saves a new version of each employee&apos;s configuration, keeps the changes you made to individual employees, and leaves earlier versions available to restore.
           </p>
         )}
         {error && (
-          <p role="alert" className="mt-3 text-[13px] text-danger-ink">
+          <p role="alert" className="mt-3 text-[14px] text-danger-ink">
             {error}
           </p>
         )}
         {!hideSubmit && <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
           <Sparkles className="size-4" /> {alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
         </Button>}
-        {blockers.length > 0 && <p className="mt-2 text-[12.5px] text-muted">Resolve the items above to continue.</p>}
+        {blockers.length > 0 && <p className="mt-2 text-[13px] text-muted">Resolve the items above to continue.</p>}
       </section>
     </div>
   );

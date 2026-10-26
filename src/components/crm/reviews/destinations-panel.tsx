@@ -57,7 +57,7 @@ export function DestinationsPanel({ scope, destinations, canManage, maxActive, m
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id={`${ids}-title`} className="text-[15px] font-semibold text-ink">Public review links</h2>
-            <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
+            <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-muted">
               Every customer you ask sees these links, in this order, whatever they tell you privately. {active} of {maxActive} shown.
             </p>
           </div>
@@ -75,11 +75,11 @@ export function DestinationsPanel({ scope, destinations, canManage, maxActive, m
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><Link2 className="size-4" aria-hidden /></span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-[13.5px] font-medium text-ink">{d.label}</p>
+                    <p className="truncate text-[14px] font-medium text-ink">{d.label}</p>
                     <Badge tone="outline">{PLATFORM_LABELS[d.platform as ReviewPlatformKey] ?? d.platform}</Badge>
                     {!d.active && <Badge tone="neutral">Hidden</Badge>}
                   </div>
-                  <a href={d.url} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-[12.5px] text-muted hover:text-ink">
+                  <a href={d.url} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-[13px] text-muted hover:text-ink">
                     <span className="truncate">{hostOf(d.url)}</span><ExternalLink className="size-3 shrink-0" aria-hidden /><span className="sr-only">(opens in a new tab)</span>
                   </a>
                 </div>

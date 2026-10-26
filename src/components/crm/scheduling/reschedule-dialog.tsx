@@ -77,11 +77,11 @@ export function RescheduleDialog({
           currentStart={appointment.startAt}
         />
         {newHost && (
-          <p className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink" role="status">
+          <p className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink" role="status">
             {appointment.hosts.map((h) => h.name).join(", ") || "The current host"} isn&apos;t free then, so this time is with {newHost}.
           </p>
         )}
-        <p className="text-[12.5px] text-muted">Hosts are notified and any reminders move to the new time.</p>
+        <p className="text-[13px] text-muted">Hosts are notified and any reminders move to the new time.</p>
       </div>
     </Dialog>
   );

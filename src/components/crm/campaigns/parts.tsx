@@ -44,7 +44,7 @@ export const CHANNEL_ICON: Record<Channel, LucideIcon> = { email: Mail, sms: Mes
 export function ChannelLabel({ channel, className }: { channel: Channel; className?: string }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span className={className ?? "inline-flex items-center gap-1.5 text-[12.5px] text-ink-2"}>
+    <span className={className ?? "inline-flex items-center gap-1.5 text-[13px] text-ink-2"}>
       <Icon className="size-3.5 text-muted" aria-hidden />
       {CHANNEL_LABELS[channel]}
     </span>
@@ -117,7 +117,7 @@ export const handedOver = (c: CampaignCounts) => c.sent + c.delivered + c.unsubs
 
 export function Fingerprint({ hash }: { hash: string | null | undefined }) {
   if (!hash) return null;
-  return <span className="font-mono text-[11.5px] text-muted" title={hash}>#{hash.slice(0, 10)}</span>;
+  return <span className="font-mono text-[12px] text-muted" title={hash}>#{hash.slice(0, 10)}</span>;
 }
 
 /** Counts as a compact, readable row (each with its label), for lists and summaries. */
@@ -130,7 +130,7 @@ export function CountChips({ counts, className }: { counts: CampaignCounts; clas
     { label: "not delivered", value: counts.failed + counts.bounced },
   ];
   return (
-    <p className={className ?? "text-[12.5px] tabular-nums text-muted"}>
+    <p className={className ?? "text-[13px] tabular-nums text-muted"}>
       {items.map((i, n) => (
         <React.Fragment key={i.label}>
           {n > 0 && <span aria-hidden> · </span>}

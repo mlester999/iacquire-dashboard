@@ -151,7 +151,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
   if (!data) {
     return (
       <div className="module-stack">
-        <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Employees</Link>
+        <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Employees</Link>
         <Card className="border-dashed p-8 text-sm text-muted">This internal employee record doesn&apos;t exist in the agency workspace yet.</Card>
       </div>
     );
@@ -181,7 +181,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
 
   return (
     <div className="module-stack space-y-6">
-      <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Employees</Link>
+      <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Employees</Link>
       <EmployeeProfileHero
         dark
         meta={meta}
@@ -191,7 +191,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
         readiness={readiness}
         actions={<AgencyWorkforceControls agentId={agent.id} orgId={agent.org_id} slug={meta.slug} employeeName={agent.display_name} enabled={agent.enabled} dark />}
         footer={
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11.5px] text-slate-300">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-slate-300">
             <span className="inline-flex items-center gap-1.5"><Sparkles className="size-3.5 text-blue-200" /> {agent.config_version ? `Configuration v${agent.config_version}` : "No applied configuration"}</span>
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-blue-200" /> {agent.tool_inventory_tool_count ?? 0} approved tools</span>
             <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} usable knowledge</span>
@@ -206,23 +206,23 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
             <CardHeader><div><CardTitle>Profile and runtime</CardTitle><CardDescription>What is configured and what has actually been verified.</CardDescription></div></CardHeader>
             <CardContent className="space-y-4">
               <dl className="grid gap-4 sm:grid-cols-2">
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Role</dt><dd className="mt-1 text-[13.5px] font-medium">{meta.name}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Assigned organization</dt><dd className="mt-1 text-[13.5px] font-medium">{workspace.name}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Provider runtime</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.hermes_profile ? "Hermes Agent" : "Not connected"}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Profile identifier</dt><dd className="mt-1 break-all font-mono text-[12px]">{agent.hermes_profile ?? "Not mapped"}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Enabled</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.enabled ? "Yes" : "No"}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Operating mode</dt><dd className="mt-1 text-[13.5px] font-medium">{sentenceCase(agent.mode.replaceAll("_", " "))}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Last verified activity</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.last_health_check_at ? formatDateTime(agent.last_health_check_at, workspace.timezone) : "Never checked"}</dd></div>
-                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Connection detail</dt><dd className="mt-1 text-[13px] text-muted">{agent.last_health_detail ?? "No connection check recorded."}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Role</dt><dd className="mt-1 text-[14px] font-medium">{meta.name}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Assigned organization</dt><dd className="mt-1 text-[14px] font-medium">{workspace.name}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Provider runtime</dt><dd className="mt-1 text-[14px] font-medium">{agent.hermes_profile ? "Hermes Agent" : "Not connected"}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Profile identifier</dt><dd className="mt-1 break-all font-mono text-[12px]">{agent.hermes_profile ?? "Not mapped"}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Enabled</dt><dd className="mt-1 text-[14px] font-medium">{agent.enabled ? "Yes" : "No"}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Operating mode</dt><dd className="mt-1 text-[14px] font-medium">{sentenceCase(agent.mode.replaceAll("_", " "))}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Last verified activity</dt><dd className="mt-1 text-[14px] font-medium">{agent.last_health_check_at ? formatDateTime(agent.last_health_check_at, workspace.timezone) : "Never checked"}</dd></div>
+                <div><dt className="text-[12px] font-medium uppercase tracking-wide text-muted">Connection detail</dt><dd className="mt-1 text-[14px] text-muted">{agent.last_health_detail ?? "No connection check recorded."}</dd></div>
               </dl>
               <div className="rounded-xl border border-line bg-surface-2/60 p-3.5">
                 <p className="text-[12px] font-semibold text-ink-2">{agent.last_health_ok ? "Hermes connection verified" : "Hermes connection not verified"}</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{readiness.description}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">{readiness.description}</p>
               </div>
               <div>
                 <p className="mb-2 text-[12px] font-semibold">Configured role guidance</p>
-                <ul className="grid gap-1.5 sm:grid-cols-2">{agent.default_tools.map((tool) => <li key={tool} className="text-[12.5px] text-ink-2">• {agentToolLabel(tool)}</li>)}</ul>
-                <p className="mt-2 text-[11.5px] text-muted">These labels describe instruction guidance, not callable Hermes tools. Internal Operations Manager chat receives a read-only, tenant-scoped snapshot of agency tasks, approvals and persisted workforce activity; it cannot create approvals or save summaries.</p>
+                <ul className="grid gap-1.5 sm:grid-cols-2">{agent.default_tools.map((tool) => <li key={tool} className="text-[13px] text-ink-2">• {agentToolLabel(tool)}</li>)}</ul>
+                <p className="mt-2 text-[12px] text-muted">These labels describe instruction guidance, not callable Hermes tools. Internal Operations Manager chat receives a read-only, tenant-scoped snapshot of agency tasks, approvals and persisted workforce activity; it cannot create approvals or save summaries.</p>
               </div>
             </CardContent>
           </Card>
@@ -231,23 +231,23 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
             <Card>
               <CardHeader><div><CardTitle>Configuration summary</CardTitle><CardDescription>The active version, in plain English.</CardDescription></div></CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-[13px] leading-relaxed text-ink-2">{agent.config_summary ?? "No configuration has been applied yet."}</p>
-                <Link href={`/admin/employees/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-primary hover:bg-surface-2">
+                <p className="text-[14px] leading-relaxed text-ink-2">{agent.config_summary ?? "No configuration has been applied yet."}</p>
+                <Link href={`/admin/employees/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-primary hover:bg-surface-2">
                   Open configuration and knowledge <ArrowUpRight className="size-3.5" />
                 </Link>
-                <p className="text-[11.5px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
+                <p className="text-[12px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader><div><CardTitle>Approved runtime inventory</CardTitle><CardDescription>Recorded by the authenticated health check, never inferred.</CardDescription></div></CardHeader>
-              <CardContent className="space-y-2 text-[12.5px]">
+              <CardContent className="space-y-2 text-[13px]">
                 {agent.tool_inventory_contract ? (
                   <>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Contract</span><span className="text-right font-mono text-[11px]">{agent.tool_inventory_contract}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Contract</span><span className="text-right font-mono text-[12px]">{agent.tool_inventory_contract}</span></div>
                     <div className="flex items-center justify-between gap-3"><span className="text-muted">Tools</span><span className="font-medium">{agent.tool_inventory_tool_count ?? 0}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Digest</span><span className="font-mono text-[11px]">{agent.tool_inventory_digest?.slice(0, 12)}…</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Digest</span><span className="font-mono text-[12px]">{agent.tool_inventory_digest?.slice(0, 12)}…</span></div>
                     <div className="flex items-center justify-between gap-3"><span className="text-muted">Valid until</span><span className="text-right">{agent.tool_inventory_expires_at ? formatDateTime(agent.tool_inventory_expires_at, workspace.timezone) : "Not recorded"}</span></div>
-                    {agent.tool_inventory_detail && <p className="rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted">{agent.tool_inventory_detail}</p>}
+                    {agent.tool_inventory_detail && <p className="rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted">{agent.tool_inventory_detail}</p>}
                   </>
                 ) : (
                   <div className="rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12px] leading-relaxed text-warning-ink">
@@ -267,14 +267,14 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
               {runs.length ? (
                 <ul className="divide-y divide-line">
                   {runs.map((run) => (
-                    <li key={run.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[12.5px]">
+                    <li key={run.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[13px]">
                       <span className="min-w-0 flex-1">{formatDateTime(run.started_at, workspace.timezone)}</span>
                       <Badge tone={run.status === "completed" ? "success" : run.status === "cancelled" ? "neutral" : run.status === "running" ? "primary" : "danger"}>{sentenceCase(run.status)}</Badge>
                       <span className="text-muted">{run.total_tokens ?? "—"} tokens</span>
                     </li>
                   ))}
                 </ul>
-              ) : <p className="py-4 text-[13px] text-muted">No runs recorded yet.</p>}
+              ) : <p className="py-4 text-[14px] text-muted">No runs recorded yet.</p>}
             </CardContent>
           </Card>
         </div>
@@ -284,8 +284,8 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
         <CardHeader><div><CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> SOUL.md (managed by iAcquire)</CardTitle><CardDescription>The profile identity file used by the Hermes administrator. It is not editable from the portal and no portal save rewrites it.</CardDescription></div></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-end"><CopyTextButton text={bundle.soul} label="Copy SOUL.md" /></div>
-          <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[11.5px] leading-relaxed text-ink-2">{bundle.soul}</pre>
-          <p className="text-[11.5px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the employee&apos;s identity or history.</p>
+          <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink-2">{bundle.soul}</pre>
+          <p className="text-[12px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the employee&apos;s identity or history.</p>
         </CardContent>
       </Card>
     </div>

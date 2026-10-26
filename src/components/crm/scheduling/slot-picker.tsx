@@ -91,14 +91,14 @@ export function SlotPicker({
           <Button type="button" size="icon-sm" variant="ghost" aria-label="Previous week" disabled={start <= today} onClick={() => move(addDays(start, -WINDOW_DAYS))}>
             <ChevronLeft className="size-4" />
           </Button>
-          <p className="min-w-[9.5rem] text-center text-[13px] font-medium text-ink" aria-live="polite">
+          <p className="min-w-[9.5rem] text-center text-[14px] font-medium text-ink" aria-live="polite">
             {formatDay(days[0], { month: "short", day: "numeric" })} – {formatDay(days[days.length - 1], { month: "short", day: "numeric", year: "numeric" })}
           </p>
           <Button type="button" size="icon-sm" variant="ghost" aria-label="Next week" onClick={() => move(addDays(start, WINDOW_DAYS))}>
             <ChevronRight className="size-4" />
           </Button>
         </div>
-        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+        <label className="flex items-center gap-2 text-[13px] text-muted">
           <CalendarSearch className="size-4" aria-hidden />
           <span className="sr-only">Jump to a date</span>
           <Input type="date" className="h-11 w-[10.5rem] sm:h-9" min={today} value={start} onChange={(e) => isDateKey(e.target.value) && move(e.target.value)} />
@@ -125,9 +125,9 @@ export function SlotPicker({
                 active ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface hover:bg-surface-2 disabled:opacity-45",
               )}
             >
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted">{formatDay(d, { weekday: "short" })}</span>
+              <span className="text-[12px] font-medium uppercase tracking-wide text-muted">{formatDay(d, { weekday: "short" })}</span>
               <span className="text-[15px] font-semibold tabular-nums">{formatDay(d, { day: "numeric" })}</span>
-              <span className="text-[10.5px] tabular-nums text-faint" aria-hidden>{loading ? "…" : n || "–"}</span>
+              <span className="text-[12px] tabular-nums text-faint" aria-hidden>{loading ? "…" : n || "–"}</span>
             </button>
           );
         })}
@@ -135,17 +135,17 @@ export function SlotPicker({
 
       <div className="min-h-[96px]">
         {loading ? (
-          <p className="flex items-center gap-2 py-6 text-[13px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden />Finding free times…</p>
+          <p className="flex items-center gap-2 py-6 text-[14px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden />Finding free times…</p>
         ) : result?.error ? (
-          <p className="rounded-xl border border-danger/25 bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink" role="alert">{result.error}</p>
+          <p className="rounded-xl border border-danger/25 bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink" role="alert">{result.error}</p>
         ) : !shownDay ? (
-          <div className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[13px] text-muted" role="status">
+          <div className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-[14px] text-muted" role="status">
             No free times this week.
             <Button type="button" variant="secondary" size="sm" className="ml-2" onClick={() => move(addDays(start, WINDOW_DAYS))}>Try next week</Button>
           </div>
         ) : (
           <fieldset>
-            <legend className="mb-2 text-[12.5px] font-medium text-ink-2">{formatDay(shownDay, { weekday: "long", month: "long", day: "numeric" })}</legend>
+            <legend className="mb-2 text-[13px] font-medium text-ink-2">{formatDay(shownDay, { weekday: "long", month: "long", day: "numeric" })}</legend>
             <div role="radiogroup" aria-label="Free start times" className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
               {times.map((s) => {
                 const checked = value === s.start;
@@ -161,9 +161,9 @@ export function SlotPicker({
                     )}
                   >
                     <input type="radio" name={`${id}-slot`} value={s.start} checked={checked} onChange={() => onChange(s)} className="sr-only" />
-                    <span className="text-[13.5px] font-semibold tabular-nums">{timeIn(s.start, timeZone)}</span>
+                    <span className="text-[14px] font-semibold tabular-nums">{timeIn(s.start, timeZone)}</span>
                     {(current || host || s.remaining !== null || s.keepsHost === false) && (
-                      <span className={cn("max-w-full truncate text-[10.5px]", checked ? "text-surface/80" : "text-muted")}>
+                      <span className={cn("max-w-full truncate text-[12px]", checked ? "text-surface/80" : "text-muted")}>
                         {current ? "Current time" : s.keepsHost === false ? "Another host" : host ?? (s.remaining !== null ? `${s.remaining} ${s.remaining === 1 ? "place" : "places"} left` : "")}
                       </span>
                     )}

@@ -66,13 +66,13 @@ export function CommentsPanel({ doc, selection, pageSlug, onJump, active }: { do
     const here = c.nodeId ? findNode(doc, c.nodeId) : null;
     return (
       <li key={c.id} className={cn("rounded-xl border border-line bg-surface p-3", c.resolvedAt && "border-dashed bg-surface-2")}>
-        <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{c.body}</p>
+        <p className="whitespace-pre-wrap text-[14px] leading-relaxed">{c.body}</p>
         {c.nodeId && (
-          <button type="button" disabled={!here} onClick={() => onJump(c.nodeId!)} className="mt-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-md bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium text-primary-ink disabled:bg-surface-3 disabled:text-muted">
+          <button type="button" disabled={!here} onClick={() => onJump(c.nodeId!)} className="mt-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-md bg-primary-soft px-1.5 py-0.5 text-[12px] font-medium text-primary-ink disabled:bg-surface-3 disabled:text-muted">
             <MessageSquare className="size-3 shrink-0" aria-hidden /> <span className="truncate">{here ? `On: ${describeNode(doc, c.nodeId)}` : "On something that has since been removed"}</span>
           </button>
         )}
-        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-line pt-2.5 text-[11px] text-muted">
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-line pt-2.5 text-[12px] text-muted">
           <span className="flex min-w-0 items-center gap-2">
             <AvatarTile name={c.authorName ?? "Someone"} size="sm" />
             <span className="min-w-0">
@@ -91,7 +91,7 @@ export function CommentsPanel({ doc, selection, pageSlug, onJump, active }: { do
       <div className="space-y-2 border-b border-line p-3">
         <AreaControl aria-label="Write a comment" rows={3} value={text} maxLength={2000} placeholder="Leave a note for the team" onChange={(e) => setText(e.target.value)} />
         {selection && (
-          <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-ink-2">
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-2">
             <input type="checkbox" checked={attach} onChange={(e) => setAttach(e.target.checked)} className="size-3.5 accent-[var(--primary)]" />
             <span className="truncate">Attach to: {describeNode(doc, selection)}</span>
           </label>

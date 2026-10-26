@@ -1,4 +1,4 @@
-import { Bot, Cpu, Gauge, Info, Search, Sparkles, TriangleAlert } from "lucide-react";
+import { Bot, Cpu, Gauge, Info, MessagesSquare, Search, Sparkles, TriangleAlert } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { withUser } from "@/server/db";
 import { usageSummary } from "@/server/usage";
@@ -41,6 +41,7 @@ export default async function UsagePage() {
       >
         <div className="grid gap-3 md:grid-cols-2">
           <Meter icon={<Bot />} label="AI employee messages" used={s.agentMessages} limit={l.monthly_agent_messages} warnAt={l.warn_at_percent} hint="Every message you send to an AI employee." />
+          <Meter icon={<MessagesSquare />} label="AI replies to your customers" used={s.customerReplies} limit={l.monthly_customer_replies} warnAt={l.warn_at_percent} hint="Replies your AI employees prepared for customers by text, WhatsApp, email and website chat. No cap is set unless iAcquire sets one." />
           <Meter icon={<Cpu />} label="AI tokens" used={s.tokens} limit={l.monthly_tokens} warnAt={l.warn_at_percent} hint="Reported by the AI service for completed responses." />
           <Meter icon={<Search />} label="Lead research today" used={s.leadResearchToday} limit={l.daily_lead_research} warnAt={l.warn_at_percent} hint="Research requests run by your Lead Hunter today." />
           <Meter icon={<Sparkles />} label="iAcquire Assistant AI answers" used={s.helpRequests} limit={l.monthly_help_requests} warnAt={l.warn_at_percent} hint="Only AI-written help answers count; help-center answers are free." />

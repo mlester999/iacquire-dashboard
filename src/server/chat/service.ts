@@ -49,7 +49,6 @@ import { requestBooking, type BookingResult } from "@/server/appointments/bookin
 import { appointmentChangeExpected } from "@/server/appointments/changes";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
-import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -1448,10 +1447,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     } else if (!ctx.can("workflows.manage")) {
       content = "You can view Automation Studio, but your workspace role can't create or change workflows. Ask an owner or admin to prepare this automation. [Open Automation Studio](/automation-studio) to view workflows available to you. No workflow was created or activated, and no email was sent.";
     } else {
-      const entitlement = await withSystem((db) => studioEntitlement(db, ctx.org.orgId));
-      content = entitlement.entitled
-        ? "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to build a draft and test it, then follow the normal approval process before activation. No email was sent."
-        : `Building automations belongs in Automation Studio, but this workspace doesn't currently have Studio access: ${entitlement.reason} [Open Automation Studio](/automation-studio) to review its access options. This doesn't block supported AI Employee work or schedule settings. No workflow was created or activated, and no email was sent.`;
+      content = "Building automations belongs in Automation Studio. Open it to review access, create and test a draft, then follow the normal approval process before activation. No workflow was created or activated, and no email was sent.";
     }
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,

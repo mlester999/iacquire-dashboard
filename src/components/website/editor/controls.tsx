@@ -18,7 +18,7 @@ export function Group({ title, children, defaultOpen = true, action, hint }: { t
   return (
     <section className="border-b border-line last:border-b-0">
       <div className="flex items-center justify-between gap-2 px-4 pt-3">
-        <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} className="group flex min-h-8 flex-1 items-center gap-1.5 text-left text-[11px] font-semibold uppercase tracking-[.1em] text-muted hover:text-ink">
+        <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} className="group flex min-h-8 flex-1 items-center gap-1.5 text-left text-[12px] font-semibold uppercase tracking-[.1em] text-muted hover:text-ink">
           <ChevronDown className={cn("size-3 transition-transform", !open && "-rotate-90")} aria-hidden />
           {title}
         </button>
@@ -26,7 +26,7 @@ export function Group({ title, children, defaultOpen = true, action, hint }: { t
       </div>
       {open && (
         <div id={id} className="space-y-3 px-4 pb-4 pt-2">
-          {hint && <p className="text-[11.5px] leading-relaxed text-muted">{hint}</p>}
+          {hint && <p className="text-[12px] leading-relaxed text-muted">{hint}</p>}
           {children}
         </div>
       )}
@@ -41,7 +41,7 @@ export function Row({ label, hint, children, onReset, tag, htmlFor }: { label: s
       <div className="flex items-center justify-between gap-2">
         <label htmlFor={htmlFor} className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-ink-2">
           <span className="truncate">{label}</span>
-          {tag && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted">{tag}</span>}
+          {tag && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 py-px text-[12px] font-semibold uppercase tracking-wide text-muted">{tag}</span>}
         </label>
         {onReset && (
           <Tooltip content="Reset to the design's default">
@@ -50,7 +50,7 @@ export function Row({ label, hint, children, onReset, tag, htmlFor }: { label: s
         )}
       </div>
       {children}
-      {hint && <p className="text-[11px] leading-relaxed text-muted">{hint}</p>}
+      {hint && <p className="text-[12px] leading-relaxed text-muted">{hint}</p>}
     </div>
   );
 }
@@ -59,14 +59,14 @@ export function Row({ label, hint, children, onReset, tag, htmlFor }: { label: s
 // Inputs
 // ---------------------------------------------------------------------------
 
-const input = "h-8 w-full rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30";
+const input = "h-8 w-full rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30";
 
 export const TextControl = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function TextControl({ className, ...p }, ref) {
   return <input ref={ref} {...p} className={cn(input, className)} />;
 });
 
 export const AreaControl = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(function AreaControl({ className, rows = 3, ...p }, ref) {
-  return <textarea ref={ref} rows={rows} {...p} className={cn("w-full resize-y rounded-lg border border-line bg-surface px-2.5 py-2 text-[12.5px] leading-relaxed text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30", className)} />;
+  return <textarea ref={ref} rows={rows} {...p} className={cn("w-full resize-y rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] leading-relaxed text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary/30", className)} />;
 });
 
 export function SelectControl<T extends string>({ value, options, onChange, id, label, placeholder }: { value: T | undefined; options: Array<{ value: T; label: string }>; onChange: (v: T) => void; id?: string; label?: string; placeholder?: string }) {
@@ -97,7 +97,7 @@ export function Seg<T extends string>({ value, options, onChange, label, size = 
         return (
           <button
             key={o.value} type="button" role="radio" aria-checked={on} tabIndex={on || (value === undefined && i === 0) ? 0 : -1} aria-label={o.icon ? o.label : undefined} title={o.icon ? o.label : undefined} onClick={() => onChange(o.value)}
-            className={cn("flex min-w-0 flex-1 items-center justify-center rounded-md px-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", size === "sm" ? "h-6 text-[11px]" : "h-7 text-[12px]", on ? "bg-surface text-ink shadow-soft" : "text-ink-2 hover:text-ink")}
+            className={cn("flex min-w-0 flex-1 items-center justify-center rounded-md px-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", size === "sm" ? "h-6 text-[12px]" : "h-7 text-[12px]", on ? "bg-surface text-ink shadow-soft" : "text-ink-2 hover:text-ink")}
           >
             {o.icon ?? <span className="truncate">{o.label}</span>}
           </button>
@@ -113,7 +113,7 @@ export function Toggle({ checked, onChange, label, hint }: { checked: boolean; o
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <label htmlFor={id} className="text-[12px] font-medium text-ink-2">{label}</label>
-        {hint && <p className="text-[11px] leading-relaxed text-muted">{hint}</p>}
+        {hint && <p className="text-[12px] leading-relaxed text-muted">{hint}</p>}
       </div>
       <button id={id} type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={cn("relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", checked ? "bg-primary" : "bg-line-strong")}>
         <span className={cn("absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform", checked && "translate-x-4")} />
@@ -130,7 +130,7 @@ export function NumberControl({ value, min, max, step = 1, unit, onChange, label
       <input type="range" aria-label={label} min={min} max={max} step={step} value={v} onChange={(e) => onChange(Number(e.target.value))} className="h-1.5 flex-1 cursor-pointer accent-[var(--primary)]" />
       <div className="relative w-16 shrink-0">
         <input type="number" aria-label={`${label} value`} min={min} max={max} step={step} value={v} onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) onChange(Math.max(min, Math.min(max, n))); }} className={cn(input, "pr-5 text-right tabular-nums")} />
-        {unit && <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted">{unit}</span>}
+        {unit && <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[12px] text-muted">{unit}</span>}
       </div>
     </div>
   );
@@ -181,7 +181,7 @@ export function ColorControl({ value, onChange, design, label, allowNone = true 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
         {allowNone && (
           <Tooltip content="Default">
-            <button type="button" aria-label="Default colour" aria-pressed={value === undefined} onClick={() => onChange(undefined)} className={cn("relative flex size-6 items-center justify-center rounded-full border border-line-strong bg-surface text-[10px] text-muted", value === undefined && "ring-2 ring-primary ring-offset-1 ring-offset-surface")}>
+            <button type="button" aria-label="Default colour" aria-pressed={value === undefined} onClick={() => onChange(undefined)} className={cn("relative flex size-6 items-center justify-center rounded-full border border-line-strong bg-surface text-[12px] text-muted", value === undefined && "ring-2 ring-primary ring-offset-1 ring-offset-surface")}>
               <span className="block h-px w-4 -rotate-45 bg-danger" />
             </button>
           </Tooltip>

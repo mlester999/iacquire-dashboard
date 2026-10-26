@@ -143,4 +143,53 @@ export const RATE_LIMITS = {
   // hashed client address. Past the limit, that address's requests for that connection are refused before the vault is read. Requests that
   // authenticate never count, so a provider's own traffic (from its own addresses) isn't held back by someone else's forged requests.
   voiceWebhookAuthFailure: { name: "voice-webhook:auth-fail", limit: 20, windowSeconds: 600 },
+  // The customer's proposal page (/proposal/<token>) and its API. The per-address rule is checked on every request BEFORE any token is looked up, so a flood of made-up tokens is
+  // stopped without a database read per guess. The per-token rules hold an address that has the link to a sensible pace. Keys are hashed addresses, hashed tokens and link ids.
+  proposalPublicByIp: { name: "proposal:public:ip", limit: 120, windowSeconds: 60 },
+  proposalPageByToken: { name: "proposal:page:token", limit: 60, windowSeconds: 3600 },
+  proposalViewByToken: { name: "proposal:view:token", limit: 30, windowSeconds: 3600 },
+  proposalPdfByToken: { name: "proposal:pdf:token", limit: 30, windowSeconds: 3600 },
+  // Emailed codes: per link, and per recipient address across links so one mailbox is never flooded. Wrong entries: per hashed address (a code also allows only five tries).
+  proposalCodeByLink: { name: "proposal:code:link", limit: 5, windowSeconds: 3600 },
+  proposalCodeByEmail: { name: "proposal:code:email", limit: 10, windowSeconds: 3600 },
+  proposalVerifyByIp: { name: "proposal:verify:ip", limit: 20, windowSeconds: 600 },
+  proposalDecideByLink: { name: "proposal:decide:link", limit: 20, windowSeconds: 3600 },
+  // Signing (src/server/esign). The webhook route answers a signing service, not a person: the per-address rule is checked before the secret in the address is looked up, so a flood
+  // of made-up addresses is stopped without a database read per guess, and is wide enough for a service that delivers from a few addresses. Asking someone to sign sends an email
+  // from the signing service, so it is held to a pace per workspace; checking a pasted key calls the service, so that is too.
+  esignWebhookByIp: { name: "esign:webhook:ip", limit: 300, windowSeconds: 60 },
+  esignRequestByOrg: { name: "esign:request:org", limit: 20, windowSeconds: 3600 },
+  esignConnectByOrg: { name: "esign:connect:org", limit: 10, windowSeconds: 3600 },
+  // The prospect demo (src/server/demo). Anyone on the internet can reach it, so every rule is checked before the database is asked anything about the person. The per-address rule
+  // counts every request; starting a demo and asking for a new link each send an email, so they are held per address AND per mailbox (a hash of the normalized address, so one
+  // mailbox is never flooded from many addresses); the message rules sit under the prospect's own limit of messages and only stop a burst. Keys are keyed hashes, never raw values.
+  demoPublicByIp: { name: "demo:public:ip", limit: 120, windowSeconds: 60 },
+  demoStartByIp: { name: "demo:start:ip", limit: 6, windowSeconds: 3600 },
+  demoStartByEmail: { name: "demo:start:email", limit: 3, windowSeconds: 3600 },
+  demoVerifyByIp: { name: "demo:verify:ip", limit: 20, windowSeconds: 600 },
+  demoReturnByProspect: { name: "demo:return:prospect", limit: 3, windowSeconds: 3600 },
+  demoMessageByProspect: { name: "demo:message:prospect", limit: 6, windowSeconds: 60 },
+  demoMessageByIp: { name: "demo:message:ip", limit: 40, windowSeconds: 3600 },
+  demoActionByProspect: { name: "demo:action:prospect", limit: 20, windowSeconds: 3600 },
+  // Staff Messages (src/server/staff-messages), per signed-in agency person. Sending, editing and deleting share one rule; reactions, marking read, searching, starting or changing a
+  // conversation and uploading a file each have their own, so a busy channel never uses up someone's search allowance. The numbers are proposals (docs/staff-messages.md).
+  staffMessageSendByUser: { name: "staffmsg:send:user", limit: 90, windowSeconds: 60 },
+  staffMessageReactByUser: { name: "staffmsg:react:user", limit: 120, windowSeconds: 60 },
+  staffMessageReadByUser: { name: "staffmsg:read:user", limit: 240, windowSeconds: 60 },
+  staffMessageSearchByUser: { name: "staffmsg:search:user", limit: 60, windowSeconds: 60 },
+  staffMessageManageByUser: { name: "staffmsg:manage:user", limit: 40, windowSeconds: 3600 },
+  staffMessageUploadByUser: { name: "staffmsg:upload:user", limit: 30, windowSeconds: 3600 },
+  // Staff workload (src/server/staff-workload), per signed-in agency person. Reading the team's load runs the whole engine over every open item, so it is limited; giving work
+  // to someone sends them a notice, and changing a profile, time off or the rules is rare. The numbers are proposals (docs/staff-workload.md).
+  staffWorkloadReadByUser: { name: "staffwork:read:user", limit: 60, windowSeconds: 60 },
+  staffWorkloadAssignByUser: { name: "staffwork:assign:user", limit: 120, windowSeconds: 3600 },
+  staffWorkloadManageByUser: { name: "staffwork:manage:user", limit: 60, windowSeconds: 3600 },
+  // Purchase intents are public links: reading one is cheap, but a malformed token must not become a guessing oracle, and confirming one writes a status. The admin
+  // actions are already behind the agency session and the service's permission check.
+  purchaseIntentViewByIp: { name: "purchase:view:ip", limit: 120, windowSeconds: 900 },
+  purchaseIntentStartByIp: { name: "purchase:start:ip", limit: 10, windowSeconds: 3600 },
+  // Opening an online checkout from a purchase link: a payment page per address and per purchase an hour is generous for a person and a wall for a loop.
+  purchaseCheckoutByIp: { name: "purchase:checkout:ip", limit: 12, windowSeconds: 3600 },
+  purchaseCheckoutByIntent: { name: "purchase:checkout:intent", limit: 8, windowSeconds: 3600 },
+  purchaseReturnByIp: { name: "purchase:return:ip", limit: 120, windowSeconds: 900 },
 } satisfies Record<string, RateLimitRule>;

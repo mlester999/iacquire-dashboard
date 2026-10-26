@@ -16,7 +16,8 @@ export async function measureOrg(db: Queryable, orgId: string): Promise<Record<F
          + (select coalesce(sum(octet_length(bytes)), 0) from website_asset_blobs where org_id = $1))::text as storage_bytes,
        (select coalesce(sum(bytes_served), 0) from website_usage_daily where org_id = $1 and day > current_date - 30)::text as site_bandwidth_bytes_30d,
        (select coalesce(sum(requests), 0) from website_usage_daily where org_id = $1 and day > current_date - 30)::text as site_requests_30d,
-       (select count(*) from agent_runs where org_id = $1 and started_at > now() - interval '30 days')::text as ai_runs_30d,
+       ((select count(*) from agent_runs where org_id = $1 and started_at > now() - interval '30 days')
+         + (select coalesce(sum(quantity), 0) from usage_events where org_id = $1 and kind = 'customer_reply' and created_at > now() - interval '30 days'))::text as ai_runs_30d,
        (select count(*) from lead_research_requests where org_id = $1 and created_at > now() - interval '30 days')::text as research_calls_30d,
        (select count(*) from conversation_messages where org_id = $1)::text as stored_messages`,
     [orgId],

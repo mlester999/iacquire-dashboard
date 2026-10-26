@@ -16,7 +16,7 @@ export default async function SupportSettingsPage() {
       <div className="min-w-0">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Agency client care</p>
         <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.04em] text-ink">Request settings</h1>
-        <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">Response expectations, support hours, how updates are delivered, and the limits on files and reopening.</p>
+        <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Response expectations, support hours, how updates are delivered, and the limits on files and reopening.</p>
       </div>
       <SupportSubnav active="settings" caps={caps} />
       <SettingsForm settings={settings} rules={rules.map((r) => ({ event: r.event, mode: r.mode }))} emailMode={env().EMAIL_PROVIDER} canEdit={caps["agency.support.settings"]} />

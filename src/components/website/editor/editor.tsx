@@ -85,7 +85,7 @@ export function SiteEditor(props: SiteEditorProps) {
   const api = React.useMemo(() => props.api ?? (orgId ? createServerStudioApi(orgId) : serverStudioApi), [props.api, orgId]);
   // The portal shell animates its page with a transform. Rendering the fixed
   // studio below that ancestor confines it to the page instead of the viewport.
-  if (!mounted) return <p role="status" className="p-6 text-[13px] text-muted">Opening website editor…</p>;
+  if (!mounted) return <p role="status" className="p-6 text-[14px] text-muted">Opening website editor…</p>;
   return createPortal(
     <StudioApiProvider value={api}>
       <DragProvider onAnnounce={(m) => toast(m)}>
@@ -594,13 +594,13 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   return (
     <EditorServicesContext.Provider value={services}>
       <div ref={rootRef} tabIndex={-1} role="region" aria-label="Website editor" className="studio-editor fixed inset-0 z-40 flex flex-col bg-bg text-ink outline-none" data-studio="">
-        {notice && <p className="border-b border-warning/20 bg-warning-soft px-4 py-1.5 text-center text-[11.5px] font-medium text-warning-ink">{notice}</p>}
+        {notice && <p className="border-b border-warning/20 bg-warning-soft px-4 py-1.5 text-center text-[12px] font-medium text-warning-ink">{notice}</p>}
         {/* Toolbar */}
         <header className="studio-editor-toolbar flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-3 py-1.5">
-          <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
+          <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
           <div className="min-w-0">
-            <p className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight">{site.name}</p>
-            <p className="max-w-[14rem] truncate text-[10.5px] leading-tight text-muted">{site.clientName ? `${site.clientName} · ` : ""}{lifecycle.label} · {liveLabel}</p>
+            <p className="max-w-[14rem] truncate text-[14px] font-semibold leading-tight">{site.name}</p>
+            <p className="max-w-[14rem] truncate text-[12px] leading-tight text-muted">{site.clientName ? `${site.clientName} · ` : ""}{lifecycle.label} · {liveLabel}</p>
           </div>
           <div className="studio-editor-page w-44 shrink-0"><SelectControl<string> label="Page" value={page.id} onChange={setPage} options={ed.doc.pages.map((p) => ({ value: p.id, label: p.title }))} /></div>
           <span className="flex-1" />
@@ -622,19 +622,19 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={readOnly || !canRedo(ed)}><Redo2 className="size-4" /></IconButton>
           <IconButton label="Save draft (Ctrl+S)" onClick={() => void saveNow()} disabled={readOnly || saverState.status === "saving"}><Save className="size-4" /></IconButton>
           <SaveStatus state={saverState} onRetry={() => void saver.flush()} />
-          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
+          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[13px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
           <IconButton label="Version history" onClick={() => setVersions(true)}><History className="size-4" /></IconButton>
           <IconButton label="Keyboard shortcuts" className="studio-editor-extra" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
-          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
+          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[13px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
           {canPublish ? (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[13px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
           ) : (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("approval")} disabled={readOnly}><Send className="size-3.5" /> {mode === "template" ? "Send for review" : "Send for approval"}</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[13px]" onClick={() => setPublishMode("approval")} disabled={readOnly}><Send className="size-3.5" /> {mode === "template" ? "Send for review" : "Send for approval"}</Button>
           )}
         </header>
 
         {readOnly && (
-          <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink">
+          <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[13px] text-warning-ink">
             <span><strong className="font-semibold">{lock.by}</strong> is editing this website right now. You can look around, but changes are switched off so nothing is overwritten.</span>
             <button type="button" onClick={() => void takeLock(true)} className="font-semibold underline">Take over editing</button>
           </div>
@@ -644,7 +644,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <nav aria-label="Editor tools" className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-2">
             {LEFT_TABS.map((t) => (
               <Tooltip key={t.id} content={t.label} side="right">
-                <button type="button" aria-label={t.label} aria-expanded={narrow ? mobilePanel === "left" && leftTab === t.id : leftOpen && leftTab === t.id} aria-controls="studio-left-panel" aria-pressed={leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen)} onClick={() => openLeftTab(t.id)} className={cn("flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl text-[9.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen) ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
+                <button type="button" aria-label={t.label} aria-expanded={narrow ? mobilePanel === "left" && leftTab === t.id : leftOpen && leftTab === t.id} aria-controls="studio-left-panel" aria-pressed={leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen)} onClick={() => openLeftTab(t.id)} className={cn("flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen) ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                   <t.icon className="size-[18px]" aria-hidden />{t.label}
                 </button>
               </Tooltip>
@@ -656,7 +656,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <main className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface px-2">
               <IconButton label={leftOpen && !narrow ? "Collapse tools panel" : "Open tools panel"} onClick={() => narrow ? setMobilePanel("left") : setLeftOpen((o) => !o)}>{leftOpen && !narrow ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}</IconButton>
-              <p className="min-w-0 truncate text-[11.5px] text-muted">{ed.selection ? describeNode(ed.doc, ed.selection) : `${page.title} · Select an element to edit`}</p>
+              <p className="min-w-0 truncate text-[12px] text-muted">{ed.selection ? describeNode(ed.doc, ed.selection) : `${page.title} · Select an element to edit`}</p>
               <IconButton label={rightOpen && !narrow ? "Collapse properties panel" : "Open properties panel"} onClick={() => narrow ? setMobilePanel("right") : setRightOpen((o) => !o)}>{rightOpen && !narrow ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</IconButton>
             </div>
             {insertAfter && (

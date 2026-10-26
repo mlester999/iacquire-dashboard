@@ -6,6 +6,13 @@ import type { AgentMode } from "@/server/automation/gate";
 import { AGENT_TOOL_NAMES, AGENT_TOOLS, ROLE_SCOPES, SCOPE_INFO, isAgentRole, type AgentToolKind, type AgentToolName } from "@/server/crm/agent-tools/catalog";
 import { liveTokenCounts } from "@/server/crm/agent-tools/tokens";
 
+/**
+ * Whether an AI employee can actually call these tools. It cannot yet: no token issuer is wired to a run (`issueAgentToolToken` has no caller) and the reviewed Hermes toolset
+ * excludes any tool that could reach the endpoint. Until both exist this stays false, so the page says "Not in use yet" however healthy an employee's profile looks; a verified profile
+ * is not a wired tool (docs/ai-employee-readiness-matrix.md). Flip it only with the issuer and the reviewed toolset.
+ */
+export const AGENT_TOOLS_WIRED = false;
+
 /** What a tool does for one employee right now, given its role and mode. */
 export type ToolBehaviour = "runs" | "asks_first" | "always_asks" | "proposes" | "stopped" | "not_for_role";
 
@@ -71,7 +78,7 @@ export async function getAgentToolsOverview(actor: CrmActor): Promise<AgentTools
     let liveRunsVerified = false;
     const employees: EmployeeToolAccess[] = agents.map((a) => {
       const connected = Boolean(a.hermes_base_url && a.credential_id);
-      if (connected) liveRunsVerified ||= agentLiveRunsVerified(a);
+      if (connected && AGENT_TOOLS_WIRED) liveRunsVerified ||= agentLiveRunsVerified(a);
       const scopes = isAgentRole(a.role_key) ? ROLE_SCOPES[a.role_key] : [];
       return {
         id: a.id, roleKey: a.role_key, name: a.display_name, mode: a.mode, enabled: a.enabled, status: a.status, connected, liveTokens: tokens.get(a.id) ?? 0,

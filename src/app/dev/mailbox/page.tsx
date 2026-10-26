@@ -45,7 +45,7 @@ export default async function DevMailbox() {
               </div>
               {/* No allow-scripts and no allow-same-origin, ever: captured bodies are untrusted. Popups are allowed so links can be tested. */}
               <iframe title={m.subject} srcDoc={rendered.html} sandbox="allow-popups allow-popups-to-escape-sandbox" loading="lazy" className="block h-[720px] w-full border-0 bg-white" />
-              <details className="border-t border-line px-5 py-3 text-[13px]">
+              <details className="border-t border-line px-5 py-3 text-[14px]">
                 <summary className="cursor-pointer text-muted">Plain-text version</summary>
                 <p className="mt-2 whitespace-pre-wrap leading-relaxed">{linkify(m.body_text)}</p>
               </details>

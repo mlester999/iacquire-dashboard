@@ -47,7 +47,7 @@ export const SECTION_INFO: Record<ReportSection, SectionInfo> = {
     sources: "iAcquire calendar appointments only (GoHighLevel calendar copies are excluded).",
   },
   deals: {
-    label: "Deals & revenue",
+    label: "Deals and deal value",
     description: "Opportunities created, won and lost, and recorded deal value by currency.",
     needs: ["sales.view"],
     filters: ["member", "source", "pipeline"],

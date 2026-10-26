@@ -10,6 +10,7 @@ import type { TicketCore } from "@/server/support/access";
 import { recordTicketEvent } from "@/server/support/events";
 import { clearResponseClock, ensureResponseClock } from "@/server/support/response-clock";
 import { agencyHandlers, clientParticipants, dispatchSupportNotice } from "@/server/support/notify";
+import { scheduleResolutionSurvey, skipOpenSurveyForTicket } from "@/server/support/surveys";
 
 export interface Actor { userId: string | null; kind: "client" | "agency" | "system" }
 
@@ -66,6 +67,9 @@ export async function applyStatusChange(db: Queryable, t: TicketCore, to: Ticket
   );
 
   const kind = reopened ? "reopened" : to === "resolved" ? "resolved" : to === "closed" ? "closed" : stage !== t.feedback_stage && t.request_type === "feedback" ? "feedback_stage" : "status_changed";
+  // A resolved request may ask its opener one question later; reopening it withdraws an unanswered question. An answered survey stays a record.
+  if (to === "resolved") await scheduleResolutionSurvey(db, t);
+  else if (from === "resolved") await skipOpenSurveyForTicket(db, t.id);
   const eventId = await recordTicketEvent(db, {
     ticketId: t.id, orgId: t.org_id, kind, actorUserId: actor.userId, actorKind: actor.kind,
     from: kind === "feedback_stage" ? t.feedback_stage : from, to: kind === "feedback_stage" ? stage : to, detail: opts.note ?? null,

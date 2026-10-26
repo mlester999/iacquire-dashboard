@@ -14,7 +14,7 @@ const n = (v: number) => v.toLocaleString("en-US");
 function Tile({ label, value, sub, tone }: { label: string; value: number; sub?: string; tone?: "danger" | "warning" }) {
   return (
     <Card className="p-4">
-      <p className="text-[12.5px] font-medium text-muted">{label}</p>
+      <p className="text-[13px] font-medium text-muted">{label}</p>
       <p className={cn("mt-1 text-[22px] font-semibold tracking-[-0.03em] tabular-nums", value && tone === "danger" ? "text-danger-ink" : value && tone === "warning" ? "text-warning-ink" : "text-ink")}>{n(value)}</p>
       {sub && <p className="text-[12px] text-faint">{sub}</p>}
     </Card>
@@ -23,21 +23,21 @@ function Tile({ label, value, sub, tone }: { label: string; value: number; sub?:
 
 /** A count that reads as a problem only when it isn't zero. */
 function Num({ value, tone = "danger", label }: { value: number; tone?: "danger" | "warning"; label?: string }) {
-  if (!value) return <span className="text-faint" aria-label={label ? `${label}: none` : undefined}>0</span>;
-  return <span className={cn("font-medium tabular-nums", tone === "danger" ? "text-danger-ink" : "text-warning-ink")} aria-label={label ? `${label}: ${value}` : undefined}>{n(value)}</span>;
+  if (!value) return <span role={label ? "img" : undefined} className="text-faint" aria-label={label ? `${label}: none` : undefined}>0</span>;
+  return <span role={label ? "img" : undefined} className={cn("font-medium tabular-nums", tone === "danger" ? "text-danger-ink" : "text-warning-ink")} aria-label={label ? `${label}: ${value}` : undefined}>{n(value)}</span>;
 }
 
 function Breakdown({ items }: { items: Array<[string, number]> }) {
   const shown = items.filter(([, v]) => v > 0);
   if (!shown.length) return null;
-  return <span className="mt-0.5 block text-[11.5px] leading-snug text-muted">{shown.map(([k, v]) => `${n(v)} ${k}`).join(" · ")}</span>;
+  return <span className="mt-0.5 block text-[12px] leading-snug text-muted">{shown.map(([k, v]) => `${n(v)} ${k}`).join(" · ")}</span>;
 }
 
 function ModeCell({ r }: { r: AgencyOpsRow }) {
   return (
     <div>
       <Badge tone={r.mode === "native" ? "primary" : r.mode === "ghl" ? "warning" : "violet"}>{CRM_MODE_LABELS[r.mode].label}</Badge>
-      {r.mode === "hybrid" && <span className="mt-0.5 block text-[11.5px] text-muted">{r.ghlCapabilities ? `${n(r.ghlCapabilities)} on GoHighLevel` : "All on iAcquire"}</span>}
+      {r.mode === "hybrid" && <span className="mt-0.5 block text-[12px] text-muted">{r.ghlCapabilities ? `${n(r.ghlCapabilities)} on GoHighLevel` : "All on iAcquire"}</span>}
     </div>
   );
 }
@@ -56,9 +56,9 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/admin/crm" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Client CRMs</Link>
+        <Link href="/admin/crm" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-8"><ArrowLeft className="size-4" aria-hidden />Client CRMs</Link>
         <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-ink">CRM operations</h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-muted">
           What is failing, waiting or needs support across {superAdmin ? "every client" : "the clients assigned to you"}. Counts and flags only: no contact details, messages or amounts.
           Opening a client&rsquo;s records still needs a support session, which the client can see.
         </p>
@@ -103,8 +103,8 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
         </Card>
       ) : (
         <Card className="overflow-hidden p-0">
-          <div className="scrollbar-thin overflow-x-auto">
-            <table className="w-full min-w-[68rem] text-[13px]">
+          <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
+            <table className="w-full min-w-[68rem] text-[14px]">
               <caption className="sr-only">CRM operations by client</caption>
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
@@ -126,8 +126,8 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
                     <th scope="row" className="sticky left-0 z-10 bg-surface px-4 py-2.5 text-left font-medium">
                       <Link href={`/admin/clients/${r.orgId}/crm`} className="text-ink hover:text-primary">{r.name}</Link>
                       <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                        {r.attention && <Badge tone="warning" className="h-5 px-2 text-[11px]"><AlertTriangle className="size-3" aria-hidden />Attention</Badge>}
-                        {r.status !== "active" && <Badge tone="neutral" className="h-5 px-2 text-[11px] capitalize">{r.status}</Badge>}
+                        {r.attention && <Badge tone="warning" className="h-5 px-2 text-[12px]"><AlertTriangle className="size-3" aria-hidden />Attention</Badge>}
+                        {r.status !== "active" && <Badge tone="neutral" className="h-5 px-2 text-[12px] capitalize">{r.status}</Badge>}
                       </span>
                     </th>
                     <td className="px-3 py-2.5"><ModeCell r={r} /></td>
@@ -137,7 +137,7 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
                       {n(r.setup.pending)}
-                      {r.setup.blocked > 0 && <span className="mt-0.5 block text-[11.5px] text-danger-ink">{n(r.setup.blocked)} blocked</span>}
+                      {r.setup.blocked > 0 && <span className="mt-0.5 block text-[12px] text-danger-ink">{n(r.setup.blocked)} blocked</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Num value={r.automation.deadRuns + r.automation.deadLetters + r.automation.deadWebhooks} label="Automation gave up" />
@@ -146,7 +146,7 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
                     <td className="px-3 py-2.5 text-right tabular-nums">
                       {n(r.automation.backlog)}
                       {r.automation.oldestPendingMinutes !== null && (
-                        <span className={cn("mt-0.5 block text-[11.5px]", r.automation.oldestPendingMinutes > 15 ? "text-danger-ink" : "text-muted")}>
+                        <span className={cn("mt-0.5 block text-[12px]", r.automation.oldestPendingMinutes > 15 ? "text-danger-ink" : "text-muted")}>
                           oldest {r.automation.oldestPendingMinutes < 60 ? `${r.automation.oldestPendingMinutes} min` : `${n(Math.floor(r.automation.oldestPendingMinutes / 60))} h`}
                         </span>
                       )}
@@ -154,7 +154,7 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
                     <td className="px-3 py-2.5 text-right"><Num value={r.formFailures} label="Form failures" /></td>
                     <td className="px-3 py-2.5">
                       {r.billing.exhausted ? <Badge tone="danger">Out of credits</Badge> : r.billing.lowBalance ? <Badge tone="warning">Low balance</Badge> : <span className="text-faint">OK</span>}
-                      {r.billing.uncollectedEvents > 0 && <span className="mt-0.5 block text-[11.5px] text-warning-ink">{n(r.billing.uncollectedEvents)} uncollected</span>}
+                      {r.billing.uncollectedEvents > 0 && <span className="mt-0.5 block text-[12px] text-warning-ink">{n(r.billing.uncollectedEvents)} uncollected</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Tooltip content="Open human escalations · support tickets">
@@ -162,7 +162,7 @@ export function AgencyOpsReport({ summary, superAdmin }: { summary: AgencyOpsSum
                           <Num value={r.support.openEscalations} tone="warning" label="Open escalations" /> · <span className="tabular-nums">{n(r.support.openTickets)}</span>
                         </span>
                       </Tooltip>
-                      {r.support.urgentEscalations > 0 && <span className="mt-0.5 block text-[11.5px] text-danger-ink">{n(r.support.urgentEscalations)} urgent</span>}
+                      {r.support.urgentEscalations > 0 && <span className="mt-0.5 block text-[12px] text-danger-ink">{n(r.support.urgentEscalations)} urgent</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right text-[12px] leading-relaxed text-muted">
                       <span className="block"><span className="tabular-nums text-ink">{n(r.activity.newContacts)}</span> contacts</span>

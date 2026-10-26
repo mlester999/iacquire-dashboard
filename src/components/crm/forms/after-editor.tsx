@@ -78,7 +78,7 @@ export function AfterEditor({
           <Textarea id="fa-consent" rows={3} value={draft.consent.text} maxLength={FORM_LIMITS.consentText} onChange={(e) => setConsent({ text: e.target.value })} />
         </Field>
         <div className="space-y-3 rounded-xl border border-line p-3.5">
-          <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+          <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
             <Switch checked={draft.consent.marketing.enabled} onCheckedChange={(v) => setConsent({ marketing: { ...draft.consent.marketing, enabled: v } })} aria-label="Offer a marketing opt-in" />
             <span>
               <span className="block font-medium text-ink">Offer a marketing opt-in</span>
@@ -119,7 +119,7 @@ export function AfterEditor({
           </Field>
 
           <div className="space-y-3 rounded-xl border border-line p-3.5">
-            <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+            <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
               <Switch
                 checked={Boolean(a.opportunity)}
                 disabled={!identity || !options.pipelines.length}
@@ -158,9 +158,9 @@ export function AfterEditor({
                   <Input id="fa-dealname" ref={nameRef} value={a.opportunity.name} maxLength={200} onChange={(e) => setActions({ opportunity: { ...a.opportunity!, name: e.target.value } })} />
                   {!readOnly && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {NAME_TOKENS.map((t) => <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="rounded-full border border-line bg-surface px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-surface-2">+ {t.label}</button>)}
+                      {NAME_TOKENS.map((t) => <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] text-ink-2 hover:bg-surface-2">+ {t.label}</button>)}
                       {draft.questions.filter((q) => q.type !== "hidden").slice(0, 8).map((q) => (
-                        <button key={q.key} type="button" onClick={() => insertToken(`{{answer.${q.key}}}`)} className="max-w-[12rem] truncate rounded-full border border-line bg-surface px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-surface-2">+ {q.label || q.key}</button>
+                        <button key={q.key} type="button" onClick={() => insertToken(`{{answer.${q.key}}}`)} className="max-w-[12rem] truncate rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] text-ink-2 hover:bg-surface-2">+ {q.label || q.key}</button>
                       ))}
                     </div>
                   )}
@@ -195,12 +195,12 @@ export function AfterEditor({
       <Section title="Tell the team" description="An in-app notification for each submission, only to people who can see contacts.">
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {NOTIFY_ROLES.map((r) => (
-            <label key={r} className="inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-9">
+            <label key={r} className="inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-9">
               <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={a.notify.roles.includes(r)} onChange={(e) => setActions({ notify: { ...a.notify, roles: e.target.checked ? [...a.notify.roles, r] : a.notify.roles.filter((x) => x !== r) } })} />
               {ROLE_LABELS[r]}
             </label>
           ))}
-          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-9">
+          <label className="inline-flex min-h-11 items-center gap-2 text-[14px] text-ink-2 sm:min-h-9">
             <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={a.notify.contactOwner} onChange={(e) => setActions({ notify: { ...a.notify, contactOwner: e.target.checked } })} />
             The contact&apos;s owner
           </label>

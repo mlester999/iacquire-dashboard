@@ -23,6 +23,14 @@ import { submitRequest, postClientMessage } from "../src/server/support/service"
 import { agencyPostMessage, assignRequest, changePriority, changeRequestStatus, escalateRequest, setFeedbackStage } from "../src/server/support/agency";
 import { loadSupportSettings, updateSupportSettings } from "../src/server/support/settings";
 import { stageSupportFile } from "../src/server/support/attachments";
+import { createProjectRequest, decideQuote } from "../src/server/projects/client";
+import { saveQuoteDraft, sendQuote, setProjectTerms, updateProjectStatus } from "../src/server/projects/agency";
+import { applyInScopeRevision, classifyChangeOrder, declineChangeOrder, sendChangeQuote, submitChangeOrder } from "../src/server/projects/change-orders";
+import { addPrerequisite } from "../src/server/projects/prerequisites";
+import { classifyChangeRequest } from "../src/server/support/change";
+import { setRequestChangesEnabled } from "../src/server/support/change-feature";
+import { addDays } from "../src/lib/calendars/slots";
+import { todayIn } from "../src/lib/invoices/state";
 
 const DATA_DIR = path.resolve(".data/crm-qa");
 const CRED_FILE = path.join(DATA_DIR, "support-credentials.local.json");
@@ -108,6 +116,67 @@ async function seedAqiConversation() {
   });
 }
 
+/**
+ * Request a Change and a project's change list, for browser QA: the feature switched on for Harbor Dental, an agreed project in development with revisions and a support period
+ * recorded, changes in every state a person can see (received, a quote waiting for the owner, made as a revision, declined), one thing to confirm before handover, and a change
+ * request classified by the team. Nothing is sent or charged. Added once (the project's title is the marker); fictional text.
+ */
+async function seedChangeRequests() {
+  const people = await withSystem((db) => db.query<{ id: string; email: string; full_name: string }>(
+    "select id, email::text as email, full_name from users where email = any($1::text[])",
+    [["support.admin@example.test", "support.staff@example.test", "harbor.owner@example.test"]],
+  ));
+  const byEmail = new Map(people.rows.map((r) => [r.email, { id: r.id, email: r.email, name: r.full_name }]));
+  const org = (await withSystem((db) => db.query<{ id: string; name: string; slug: string }>("select id, name, slug from organizations where slug = 'harbor-dental-qa'"))).rows[0];
+  const adminP = byEmail.get("support.admin@example.test");
+  const staffP = byEmail.get("support.staff@example.test");
+  const ownerP = byEmail.get("harbor.owner@example.test");
+  if (!org || !adminP || !staffP || !ownerP) return;
+  const admin = agencySession(adminP, "agency_super_admin");
+  const staff = agencySession(staffP, "agency_staff");
+  const cOwner = ctxFor(ownerP, org, "owner");
+  await setRequestChangesEnabled(admin, org.id, true);
+  const title = "Appointment reminder follow-ups (QA)";
+  if ((await withSystem((db) => db.query("select 1 from client_project_requests where org_id = $1 and title = $2", [org.id, title]))).rows.length) return;
+
+  const { id: projectId } = await createProjectRequest(cOwner, {
+    title, problem: "Patients forget appointments and our front desk spends hours phoning them.", currentProcess: "The front desk phones every patient the day before.",
+    desiredOutcome: "An automatic text reminder with a reply to confirm or reschedule.", tools: ["Google Calendar"],
+  });
+  await updateProjectStatus(staff, projectId, { status: "under_review" });
+  const draft = await saveQuoteDraft(staff, projectId, {
+    projectName: title, scope: "Build the appointment reminder and confirmation flow, including replies that confirm or ask to reschedule, and connect it to the practice calendar.",
+    deliverables: ["Reminder flow", "Confirmation replies", "Short usage guide"], timelineText: "3 to 4 weeks", estimatedWeeksMin: 3, estimatedWeeksMax: 4, oneTimeCents: 180000,
+    revisionTerms: "Two rounds of revisions are included.", paymentTerms: "50% to begin, 50% on delivery.", warrantyTerms: "30 days of post-launch fixes.",
+  });
+  await sendQuote(staff, projectId, draft.id);
+  await decideQuote(cOwner, draft.id, "accepted");
+  await updateProjectStatus(staff, projectId, { status: "in_development" });
+  await setProjectTerms(staff, projectId, { revisionsIncluded: 2, warrantyDays: 30 });
+
+  // 1. Received and waiting for the team.
+  await submitChangeOrder(cOwner, projectId, { title: "Add a Spanish version of the reminder", description: "About a third of our patients read Spanish. Could the reminder also go out in Spanish?" });
+  // 2. Outside what was agreed, with a quote waiting for the owner.
+  const quoted = await submitChangeOrder(cOwner, projectId, { title: "Second location calendar", description: "We opened a second office and its appointments live in another Google calendar." });
+  await classifyChangeOrder(staff, quoted.id, { classification: "out_of_scope", internalNotes: "QA: they will probably ask for a discount." });
+  // Two weeks from today in the workspace's own calendar (the day a person reads), not the server's UTC day.
+  const validUntil = addDays(todayIn(new Date(), TZ), 14);
+  await sendChangeQuote(staff, quoted.id, { additionalMinor: 45000, currency: "USD", weeksMin: 1, weeksMax: 2, validUntil, termsText: "Reads the second office's calendar and sends its reminders from the same flow. Includes one test with the front desk.", prerequisiteLabel: "Deposit for the second location received" });
+  // 3. A revision the agreement includes, already made.
+  const revision = await submitChangeOrder(cOwner, projectId, { title: "Warmer wording in the first reminder", description: "The first reminder sounds stiff. Could it say hello to the patient by first name?" });
+  await classifyChangeOrder(staff, revision.id, { classification: "in_scope_revision" });
+  await applyInScopeRevision(staff, revision.id, "Wording updated in the next build.");
+  // 4. Declined by the team.
+  const declined = await submitChangeOrder(cOwner, projectId, { title: "Build us a patient mobile app", description: "Could you also build a mobile app where patients see their appointments?" });
+  await declineChangeOrder(staff, declined.id, "That is a new project, so please request it as one and we will scope it properly.");
+  // Something a person confirms before the handover.
+  await addPrerequisite(staff, projectId, { kind: "content", label: "Final reminder wording signed off by the practice manager", blocks: "handover" });
+
+  // A change request on its own, classified by the team.
+  const request = await submitRequest(cOwner, { requestType: "change", subject: "Greet patients by first name on the phone", message: "Our AI receptionist says hello but never uses the patient's name. Can it do that when it knows who is calling?", category: "change_ai_employee" });
+  await classifyChangeRequest(staff, request.id, { classification: "covered", note: "QA: part of the receptionist's own settings." });
+}
+
 it("seeds fictional Support & Requests data for local browser QA", async () => {
   if (!qaDatabaseSelected) {
     console.log("[support-qa seed] skipped: this run is not using the isolated QA database.");
@@ -118,7 +187,8 @@ it("seeds fictional Support & Requests data for local browser QA", async () => {
     const existing = await withSystem((db) => db.query("select 1 from organizations where slug = 'harbor-dental-qa'"));
     if (existing.rows.length) {
       await seedAqiConversation();
-      console.log("[support-qa seed] Harbor Dental (QA) already exists; only the AQi conversation was ensured.");
+      await seedChangeRequests();
+      console.log("[support-qa seed] Harbor Dental (QA) already exists; only the AQi conversation and the Request a Change data were ensured.");
       return;
     }
     const adminP = await person("agency_super_admin", "support.admin@example.test", "Sam Superadmin (QA)", "agency_super_admin");
@@ -197,6 +267,7 @@ it("seeds fictional Support & Requests data for local browser QA", async () => {
     await submitRequest(cOther, { subject: "Oven schedule not appearing in the calendar", message: "Our bakery production schedule isn't showing up.", category: "crm" });
 
     await seedAqiConversation();
+    await seedChangeRequests();
 
     const settings = await loadSupportSettings();
     console.log(`[support-qa seed] done. Targets ${settings.targetsEnabled ? "on" : "off"}; credentials written to ${path.relative(process.cwd(), CRED_FILE)}.`);

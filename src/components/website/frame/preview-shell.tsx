@@ -172,7 +172,7 @@ export function PreviewShell({ title, subtitle, src, onClose, actions, pages, pa
         }} className="flex size-10 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20">{fullscreen ? <Minimize className="size-4" /> : <Expand className="size-4" />}</button>
         <button type="button" onClick={onClose} className="flex min-h-10 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-medium hover:bg-white/20"><X className="size-4" aria-hidden />Close</button>
       </div>
-      {pages && onPageChange && <nav aria-label="Pages in this template" className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 bg-[#0c0f15] px-4 py-2">{pages.map((item) => <button type="button" key={item.slug} aria-current={page === item.slug ? "page" : undefined} onClick={() => { if (item.slug === page) return; setLoading(true); onPageChange(item.slug); }} className={cn("min-h-9 shrink-0 rounded-md px-3 text-xs", page === item.slug ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10")}>{item.title}</button>)}</nav>}
+      {pages && onPageChange && <nav aria-label="Pages in this template" className="relative flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 bg-[#0c0f15] px-4 py-2">{pages.map((item) => <button type="button" key={item.slug} aria-current={page === item.slug ? "page" : undefined} onClick={() => { if (item.slug === page) return; setLoading(true); onPageChange(item.slug); }} className={cn("min-h-9 shrink-0 rounded-md px-3 text-xs", page === item.slug ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10")}>{item.title}</button>)}</nav>}
       <div ref={stage} role="region" aria-label="Website preview area" className="relative min-h-0 flex-1 overflow-hidden">
         {loading && <p role="status" className="absolute left-1/2 top-8 z-10 -translate-x-1/2 rounded-full bg-[#0c0f15] px-4 py-2 text-xs shadow-lg">Opening website…</p>}
         <div className="absolute left-1/2 top-3 -translate-x-1/2" style={{ width: width * scale, height: frameHeight * scale }}>
@@ -196,7 +196,7 @@ export function PreviewShell({ title, subtitle, src, onClose, actions, pages, pa
           }} />
         </div>
       </div>
-      <div className="flex shrink-0 justify-between gap-4 px-4 py-1.5 text-[11px] text-white/65"><span>{width}px viewport · {Math.round(scale * 100)}%</span><span id="preview-help">Scroll anywhere, or use Page Up, Page Down, Home and End · Esc to close</span></div>
+      <div className="flex shrink-0 justify-between gap-4 px-4 py-1.5 text-[12px] text-white/65"><span>{width}px viewport · {Math.round(scale * 100)}%</span><span id="preview-help">Scroll anywhere, or use Page Up, Page Down, Home and End · Esc to close</span></div>
     </dialog>, document.body,
   );
 }

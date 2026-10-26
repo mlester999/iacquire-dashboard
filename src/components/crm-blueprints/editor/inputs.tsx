@@ -76,7 +76,7 @@ export function ColorPicker({ id, value, onChange, nullable, disabled, label }: 
       <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
         {nullable && (
           <button type="button" role="radio" aria-checked={value === null} disabled={disabled} onClick={() => onChange(null)}
-            className={cn("inline-flex h-9 items-center rounded-full border px-3 text-[12.5px] sm:h-8", value === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2 hover:bg-surface-2")}>
+            className={cn("inline-flex h-9 items-center rounded-full border px-3 text-[13px] sm:h-8", value === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2 hover:bg-surface-2")}>
             No colour
           </button>
         )}
@@ -112,8 +112,8 @@ export function ToggleRow({ id, label, hint, checked, onChange, disabled }: { id
   return (
     <div className="flex items-start justify-between gap-4 rounded-xl border border-line px-3.5 py-3">
       <div className="min-w-0">
-        <label htmlFor={id} className="text-[13.5px] font-medium text-ink">{label}</label>
-        {hint && <p id={`${id}-hint`} className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</p>}
+        <label htmlFor={id} className="text-[14px] font-medium text-ink">{label}</label>
+        {hint && <p id={`${id}-hint`} className="mt-0.5 text-[13px] leading-relaxed text-muted">{hint}</p>}
       </div>
       <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} aria-describedby={hint ? `${id}-hint` : undefined} />
     </div>

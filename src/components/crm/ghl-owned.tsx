@@ -15,7 +15,7 @@ export function GhlOwnedNotice({ what, agency, href = "/sales" }: { what: string
           {agency ? " Switching a capability to iAcquire is done from the CRM provider settings." : " An owner can move them to iAcquire from CRM provider settings."}
         </>
       }
-      action={!agency ? <Link href={href} className="text-[13px] font-medium text-primary hover:underline">Open the GoHighLevel view</Link> : undefined}
+      action={!agency ? <Link href={href} className="text-[14px] font-medium text-primary hover:underline">Open the GoHighLevel view</Link> : undefined}
     />
   );
 }

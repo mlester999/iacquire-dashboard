@@ -5,7 +5,8 @@ import { notifyOrgRoles } from "@/server/notifications";
 import { getConsent } from "@/server/messaging/contacts";
 import { queueOutreach } from "@/server/messaging/outreach";
 import { cancelRetention } from "@/server/retention/cancel";
-import { DAILY_ENROLLMENT_CAP, DEFAULT_PROGRAMS, REENGAGEMENT_COOLDOWN_DAYS, renderStep, STALE_STEP_DAYS, STOP_REASONS, stepDueAt, type ProgramKind, type ProgramPurpose, type ProgramStep, type ProgramTrigger } from "@/lib/retention";
+import { queueFeedbackLinkStep } from "@/server/reputation/program-link";
+import { DAILY_ENROLLMENT_CAP, DEFAULT_PROGRAMS, hasFeedbackLink, REENGAGEMENT_COOLDOWN_DAYS, renderStep, STALE_STEP_DAYS, STOP_REASONS, stepDueAt, type ProgramKind, type ProgramPurpose, type ProgramStep, type ProgramTrigger } from "@/lib/retention";
 import { contactAddress } from "@/server/messaging/contacts";
 import type { Channel } from "@/lib/messaging";
 
@@ -179,11 +180,11 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
       const ctx = (await db.query<{
         program_id: string; kind: ProgramKind; purpose: ProgramPurpose; steps: ProgramStep[]; trigger: ProgramTrigger; enabled: boolean; content_hash: string; approved_hash: string | null; approval_id: string | null;
         business_hours_only: boolean; approval_live: boolean | null; contact_id: string; contact_name: string; deleted_at: Date | null; paused: boolean; stage: string; trigger_ref: string; org_name: string;
-        agent_id: string | null; appt_status: string | null;
+        org_timezone: string | null; agent_id: string | null; appt_status: string | null;
       }>(
         `select p.id as program_id, p.kind, p.purpose, p.steps, p.trigger, p.enabled, p.content_hash, p.approved_hash, p.approval_id, p.business_hours_only,
            (select a.status = 'approved' and (a.expires_at is null or a.expires_at > $2) from approval_requests a where a.id = p.approval_id) as approval_live,
-           c.id as contact_id, c.display_name as contact_name, c.deleted_at, c.retention_paused as paused, c.lifecycle_stage as stage, e.trigger_ref, o.name as org_name,
+           c.id as contact_id, c.display_name as contact_name, c.deleted_at, c.retention_paused as paused, c.lifecycle_stage as stage, e.trigger_ref, o.name as org_name, o.timezone as org_timezone,
            (select g.id from agent_instances g where g.org_id = p.org_id and g.role_key = 'crm_manager') as agent_id,
            (select r.status from appointment_refs r where p.trigger = 'appointment_showed' and r.id::text = e.trigger_ref and r.org_id = p.org_id) as appt_status
          from retention_enrollments e join retention_programs p on p.id = e.program_id and p.org_id = e.org_id
@@ -229,10 +230,18 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
       const step = ctx.steps.find((x) => x.key === s.step_key);
       if (!step) return finish("cancelled", "step_removed");
 
-      const res = await queueOutreach(db, {
-        orgId: s.org_id, contactId: ctx.contact_id, agentId: ctx.agent_id, scope: "retention", purpose: ctx.purpose, subject: ctx.org_name, approvalId: ctx.approval_id, now,
-        body: renderStep(step.body, { name: ctx.contact_name, business: ctx.org_name }), dedupeKey: `retention:${s.id}`, disclose: true, businessHoursOnly: ctx.business_hours_only,
-      });
+      // A step with {feedback_link} carries the customer's own private link: it goes by a channel they agreed to service messages on, once per cool-down, and the request behind
+      // the link is created with the message (src/server/reputation/program-link.ts). Every other step is the plain message it always was.
+      const res = hasFeedbackLink(step.body)
+        ? await queueFeedbackLinkStep(db, {
+            orgId: s.org_id, orgName: ctx.org_name, orgTimezone: ctx.org_timezone || "UTC", contactId: ctx.contact_id, contactName: ctx.contact_name, agentId: ctx.agent_id, programKind: ctx.kind,
+            purpose: ctx.purpose, body: step.body, businessHoursOnly: ctx.business_hours_only, approvalId: ctx.approval_id, stepId: s.id,
+            triggerRef: ctx.trigger === "appointment_showed" ? ctx.trigger_ref : null, now,
+          })
+        : await queueOutreach(db, {
+            orgId: s.org_id, contactId: ctx.contact_id, agentId: ctx.agent_id, scope: "retention", purpose: ctx.purpose, subject: ctx.org_name, approvalId: ctx.approval_id, now,
+            body: renderStep(step.body, { name: ctx.contact_name, business: ctx.org_name }), dedupeKey: `retention:${s.id}`, disclose: true, businessHoursOnly: ctx.business_hours_only,
+          });
       if (res.status === "blocked") {
         out.blocked += 1;
         await finish("blocked", res.reason ?? "blocked");

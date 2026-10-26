@@ -43,7 +43,7 @@ export function DealConditions({ id, value, onChange, options, disabled }: { id:
     const op = opsFor(f.kind)[0];
     onChange({ op: value.op, conditions: [...rows, { field: f.key, op, value: defaultValue(f.kind, op) }] });
   };
-  if (nested) return <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">These deal conditions use nested groups, which this editor can&apos;t change. Remove the step and add it again to edit them here.</p>;
+  if (nested) return <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">These deal conditions use nested groups, which this editor can&apos;t change. Remove the step and add it again to edit them here.</p>;
   return (
     <div className="space-y-2">
       {rows.length > 1 && (
@@ -106,7 +106,7 @@ function ValueInput({ id, field, op, value, options, onChange, disabled }: { id:
     return (
       <div className="flex flex-wrap items-center gap-2">
         <Input aria-label="From" type={type} className="w-40" value={String(v.from ?? "")} disabled={disabled} onChange={(e) => onChange({ ...v, from: type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value })} />
-        <span className="text-[12.5px] text-muted">and</span>
+        <span className="text-[13px] text-muted">and</span>
         <Input aria-label="To" type={type} className="w-40" value={String(v.to ?? "")} disabled={disabled} onChange={(e) => onChange({ ...v, to: type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value })} />
       </div>
     );
@@ -115,7 +115,7 @@ function ValueInput({ id, field, op, value, options, onChange, disabled }: { id:
     return (
       <div className="flex items-center gap-2">
         <Input id={id} aria-label="Days" type="number" min={1} step={1} className="w-28" value={String(value ?? "")} disabled={disabled} onChange={(e) => onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value)))} />
-        <span className="text-[12.5px] text-muted">days</span>
+        <span className="text-[13px] text-muted">days</span>
       </div>
     );
   }

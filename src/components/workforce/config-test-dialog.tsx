@@ -245,43 +245,43 @@ export function ConfigTestDialog({
         <div className="rounded-xl border border-line bg-surface-2/60 p-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <FlaskConical className="size-4 text-violet" aria-hidden />
-            <p className="text-[13px] font-semibold">Isolated test session</p>
-            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[10.5px] font-medium text-muted">
+            <p className="text-[14px] font-semibold">Isolated test session</p>
+            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] font-medium text-muted">
               {activeVersion ? `Active v${activeVersion} stays unchanged` : "No active version yet"}
             </span>
           </div>
-          <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
             The draft is compiled with the protected iAcquire policy and the employee&apos;s approved knowledge. A unique test session and memory scope keep the test out of production history and long-term memory. Nothing is written to the employee&apos;s saved configuration or chat.
           </p>
         </div>
 
         {loadingSummary ? (
-          <div className="flex items-center gap-2 rounded-xl border border-line p-3 text-[13px] text-muted" role="status">
+          <div className="flex items-center gap-2 rounded-xl border border-line p-3 text-[14px] text-muted" role="status">
             <Loader2 className="size-4 animate-spin" aria-hidden /> Comparing the draft with the active configuration…
           </div>
         ) : summaryError ? (
-          <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[13px] text-danger-ink" role="alert">
+          <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[14px] text-danger-ink" role="alert">
             <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {summaryError}
           </p>
         ) : summary ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Draft version</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Draft version</p>
                 <p className="mt-1 text-[16px] font-semibold">v{summary.version}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">Would be the next version</p>
+                <p className="mt-0.5 text-[12px] text-muted">Would be the next version</p>
               </div>
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Knowledge included</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Knowledge included</p>
                 <p className="mt-1 text-[16px] font-semibold">{summary.knowledge.entries + summary.knowledge.documents}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">
+                <p className="mt-0.5 text-[12px] text-muted">
                   {summary.knowledge.entries} note{summary.knowledge.entries === 1 ? "" : "s"} · {summary.knowledge.documents} document{summary.knowledge.documents === 1 ? "" : "s"}
                 </p>
               </div>
               <div className="rounded-xl border border-line p-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Provider</p>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Provider</p>
                 <p className="mt-1 text-[16px] font-semibold">{summary.connectionConfigured ? "Hermes Agent" : "Not connected"}</p>
-                <p className="mt-0.5 text-[11.5px] text-muted">{summary.connectionConfigured ? "Real test available" : "Review only"}</p>
+                <p className="mt-0.5 text-[12px] text-muted">{summary.connectionConfigured ? "Real test available" : "Review only"}</p>
               </div>
             </div>
 
@@ -290,28 +290,28 @@ export function ConfigTestDialog({
               {summary.changed.length ? (
                 <ul className="mt-1.5 space-y-1.5">
                   {summary.changed.map((change) => (
-                    <li key={change.key} className="rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px]">
+                    <li key={change.key} className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px]">
                       <span className="font-medium">{change.label}:</span>{" "}
                       <span className="text-muted">{change.before}</span> <span aria-hidden>→</span> <span className="text-ink-2">{change.after}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-1.5 text-[12.5px] text-muted">This draft matches the active configuration.</p>
+                <p className="mt-1.5 text-[13px] text-muted">This draft matches the active configuration.</p>
               )}
             </div>
 
             {summary.warnings.length > 0 && (
               <ul className="space-y-1.5" aria-label="Test warnings">
                 {summary.warnings.map((warning) => (
-                  <li key={warning} className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12.5px] text-warning-ink">
+                  <li key={warning} className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[13px] text-warning-ink">
                     <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> {warning}
                   </li>
                 ))}
               </ul>
             )}
             {summary.riskFlags.length > 0 && (
-              <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12.5px] text-warning-ink">
+              <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[13px] text-warning-ink">
                 <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
                 {summary.decision === "blocked" ? "This draft would be blocked: " : "This draft would need review: "}
                 {describeRiskCodes(summary.riskFlags).map((reason) => reason.label).join(", ")}. This draft was not applied.
@@ -321,35 +321,35 @@ export function ConfigTestDialog({
         ) : null}
 
         {unavailable && (
-          <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[13px] text-warning-ink" role="status">
+          <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[14px] text-warning-ink" role="status">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden /> {unavailable}
           </p>
         )}
         {stopped && (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted" role="status">
+          <p className="flex items-center gap-2 text-[13px] text-muted" role="status">
             <Check className="size-3.5 text-success" aria-hidden /> Test stopped. Nothing was saved.
           </p>
         )}
 
         <div ref={scrollRef} className="scrollbar-thin max-h-72 min-h-24 overflow-y-auto rounded-xl border border-line bg-surface p-3" aria-live="polite" aria-busy={running}>
           {messages.length === 0 ? (
-            <p className="py-6 text-center text-[12.5px] text-muted">Send a message to see how the draft behaves. The reply is produced by the real provider when one is connected.</p>
+            <p className="py-6 text-center text-[13px] text-muted">Send a message to see how the draft behaves. The reply is produced by the real provider when one is connected.</p>
           ) : (
             <ol className="space-y-3">
               {messages.map((message) => (
-                <li key={message.id} className={cn("text-[13px]", message.role === "user" ? "text-right" : "text-left")}>
-                  <p className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">{message.role === "user" ? "You" : agentName}</p>
+                <li key={message.id} className={cn("text-[14px]", message.role === "user" ? "text-right" : "text-left")}>
+                  <p className="mb-1 text-[12px] font-medium uppercase tracking-wide text-muted">{message.role === "user" ? "You" : agentName}</p>
                   {message.role === "assistant" ? (
                     <div className="inline-block max-w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-left">
                       <Markdown>{message.content}</Markdown>
                     </div>
                   ) : (
-                    <p className="inline-block max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-3 py-2 text-left text-white">{message.content}</p>
+                    <p className="inline-block max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-3 py-2 text-left text-primary-on">{message.content}</p>
                   )}
                 </li>
               ))}
               {running && (
-                <li className="flex items-center gap-2 text-[12.5px] text-muted" role="status">
+                <li className="flex items-center gap-2 text-[13px] text-muted" role="status">
                   <Loader2 className="size-3.5 animate-spin" aria-hidden /> {activity ?? "Working…"}
                 </li>
               )}
@@ -357,7 +357,7 @@ export function ConfigTestDialog({
           )}
         </div>
         {error && (
-          <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">
+          <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[13px] text-danger-ink" role="alert">
             <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}
           </p>
         )}
@@ -382,7 +382,7 @@ export function ConfigTestDialog({
             className="border-0 bg-transparent focus:ring-0"
           />
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
-            <span className="text-[11px] text-muted">Enter to send · Shift+Enter for a new line</span>
+            <span className="text-[12px] text-muted">Enter to send · Shift+Enter for a new line</span>
             {running ? (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
                 <Square className="size-3.5 fill-current" aria-hidden /> Stop test
@@ -394,7 +394,7 @@ export function ConfigTestDialog({
             )}
           </div>
         </div>
-        <p className="text-[11.5px] leading-relaxed text-faint">
+        <p className="text-[12px] leading-relaxed text-faint">
           A test does not prove that a production employee is online. Connection health is checked separately, and live use stays gated by the employee&apos;s verified provider permissions.
         </p>
       </div>

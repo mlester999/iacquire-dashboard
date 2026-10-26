@@ -15,12 +15,12 @@ export function TutorialResumePill() {
     <GuidanceCard role="status" tone="soft" icon={<Sparkles className="size-[18px]" aria-hidden />}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-primary-ink">{resume.versionChanged ? "Walkthrough updated" : "Walkthrough paused"}</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-primary-ink">{resume.versionChanged ? "Walkthrough updated" : "Walkthrough paused"}</p>
           <p className="mt-0.5 truncate text-[14px] font-semibold tracking-tight text-ink">{resume.title}</p>
         </div>
         <GuidanceCloseButton label="Hide walkthrough reminder" onClick={dismissResume} />
       </div>
-      <p className="mt-0.5 text-[12.5px] text-muted">{resume.versionChanged ? "Restart with the published version" : `Step ${Math.min(resume.currentStep + 1, resume.stepCount)} of ${resume.stepCount}`}</p>
+      <p className="mt-0.5 text-[13px] text-muted">{resume.versionChanged ? "Restart with the published version" : `Step ${Math.min(resume.currentStep + 1, resume.stepCount)} of ${resume.stepCount}`}</p>
       <div className="mt-3 flex items-center gap-1.5">
         <GuidancePrimaryButton onClick={() => void resumeTutorial()}>
           <Play className="size-3.5" aria-hidden /> {resume.versionChanged ? "Restart" : "Resume"}

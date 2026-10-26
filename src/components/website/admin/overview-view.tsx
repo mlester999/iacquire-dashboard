@@ -58,7 +58,7 @@ export function OverviewView({ o, superAdmin }: { o: StudioOverview; superAdmin:
           </Card>
           <Card>
             <CardHeader><CardTitle>Hosting, last 30 days</CardTitle><CardDescription>Requests and enquiries across the websites you manage.</CardDescription></CardHeader>
-            <CardContent><UsageSummary o={o} /><Link href="/admin/website-studio/domains" className="mt-4 inline-flex items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">Domains and hosting <ArrowRight className="size-3.5" aria-hidden /></Link></CardContent>
+            <CardContent><UsageSummary o={o} /><Link href="/admin/website-studio/domains" className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium text-primary-ink hover:underline">Domains and hosting <ArrowRight className="size-3.5" aria-hidden /></Link></CardContent>
           </Card>
         </div>
         <Card>
@@ -72,7 +72,7 @@ export function OverviewView({ o, superAdmin }: { o: StudioOverview; superAdmin:
                   <li key={`${a.at}-${i}`} className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-surface-2/70">
                     <AvatarTile name={a.orgName ?? a.actor ?? "Agency"} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] font-medium text-ink">{a.label}</p>
+                      <p className="text-[14px] font-medium text-ink">{a.label}</p>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {a.orgName && <InfoChip>{a.orgName}</InfoChip>}
                         <InfoChip>{a.actor ?? "Agency"}</InfoChip>
@@ -89,7 +89,7 @@ export function OverviewView({ o, superAdmin }: { o: StudioOverview; superAdmin:
       {superAdmin && (
         <section aria-label="Setup" className="space-y-3">
           <SectionLabel title="Hosting setup" description="What has to exist outside this application before a website can be served on its own address." />
-          <Card><CardContent className="flex items-start gap-3 pt-5 text-[13.5px] leading-relaxed text-muted"><span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2 ring-1 ring-inset ring-line-strong" aria-hidden><ServerCog className="size-4" /></span><p>Included addresses (<code className="rounded bg-surface-3 px-1 text-ink-2">name.sites…</code>) need a wildcard DNS record and certificate for the sites domain, and a separate sites deployment. Until those exist, websites stay <StatusPill tone="warning" size="sm" className="mx-0.5 align-middle">Pending</StatusPill> and are marked as such. See Domains and hosting for the exact records.</p></CardContent></Card>
+          <Card><CardContent className="flex items-start gap-3 pt-5 text-[14px] leading-relaxed text-muted"><span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2 ring-1 ring-inset ring-line-strong" aria-hidden><ServerCog className="size-4" /></span><p>Included addresses (<code className="rounded bg-surface-3 px-1 text-ink-2">name.sites…</code>) need a wildcard DNS record and certificate for the sites domain, and a separate sites deployment. Until those exist, websites stay <StatusPill tone="warning" size="sm" className="mx-0.5 align-middle">Pending</StatusPill> and are marked as such. See Domains and hosting for the exact records.</p></CardContent></Card>
         </section>
       )}
     </div>

@@ -6,6 +6,16 @@ export const isChannel = (v: unknown): v is Channel => typeof v === "string" && 
 
 export const CHANNEL_LABELS: Record<Channel, string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
 
+/**
+ * What a conversation can be on: the provider channels, plus the website chat. A website chat has no provider, no sender to verify and no consent
+ * ledger of its own: a reply is stored and collected by the visitor's open widget. Code that sends through a provider keeps using `Channel`.
+ */
+export const CONVERSATION_CHANNELS = [...CHANNELS, "web_chat"] as const;
+export type ConversationChannel = (typeof CONVERSATION_CHANNELS)[number];
+export const isConversationChannel = (v: unknown): v is ConversationChannel => typeof v === "string" && (CONVERSATION_CHANNELS as readonly string[]).includes(v);
+export const isWebChat = (v: unknown): v is "web_chat" => v === "web_chat";
+export const CONVERSATION_CHANNEL_LABELS: Record<ConversationChannel, string> = { ...CHANNEL_LABELS, web_chat: "Website chat" };
+
 export type MessageStatus = "received" | "note" | "draft" | "queued" | "sending" | "sent" | "delivered" | "read" | "failed" | "blocked";
 export const MESSAGE_STATUS_LABELS: Record<MessageStatus, string> = {
   received: "Received",
@@ -52,6 +62,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   agent_not_ready: "The AI employee has not passed its connection check",
   suppressed: "The customer opted out or the address is suppressed",
   no_consent: "No consent on record for this kind of message",
+  identity_unverified: "The visitor typed this number or address and it has not been confirmed",
   channel_not_ready: "This channel is not verified or enabled",
   whatsapp_window_closed: "WhatsApp's reply window has closed; an approved template is required",
   template_mismatch: "The message doesn't match its WhatsApp template's approved wording",
@@ -66,6 +77,21 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   provider_error: "The provider rejected the message",
   test_destination_required: "Test messages can only go to approved test destinations",
   contact_unreachable: "The contact has no address for this channel",
+  invoice_link_unavailable: "The invoice's link had stopped working (it was paid, voided, disputed or written off, or the link was replaced), so the message with it was not sent",
+  invoice_changed: "The invoice was paid, voided or written off before this reminder was sent",
+  invoice_voided: "The invoice was voided before this was sent",
+  invoice_paid: "The invoice was paid before this was sent",
+  invoice_disputed: "A payment on the invoice was disputed before this was sent",
+  invoice_written_off: "The invoice was written off before this was sent",
+  invoice_link_replaced: "The customer's link was replaced before this was sent",
+  proposal_link_unavailable: "The proposal's link had stopped working, so its message was not sent",
+  proposal_withdrawn: "The proposal was withdrawn before this was sent",
+  proposal_revised: "The proposal was revised before this was sent",
+  proposal_link_renewed: "The customer's link was replaced before this was sent",
+  proposal_answered: "The proposal was answered before this was sent",
+  proposal_expired: "The proposal expired before this was sent",
+  privacy_request: "The customer asked for their data to be erased",
+  held_by_person: "A person on your team excluded this customer from automatic messages",
 };
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { agentSettingsSchema } from "@/lib/agent-settings";
 import { createConfigVersion } from "@/server/workforce/service";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 const llm = vi.hoisted(() => ({
   config: null as object | null,
@@ -54,6 +55,7 @@ describe("isolated AI-filled client onboarding acceptance", () => {
 
   it("submits six model-personalized employees and preserves a client edit through a later business update", async () => {
     const org = await createOrg({ name: "Juniper Roof Care" });
+    await clearSetupPayment(org.id);
     const owner = await createUser();
     await addMember(org.id, owner.id, "owner");
     const ctx = ctxFor(owner, org, "owner");

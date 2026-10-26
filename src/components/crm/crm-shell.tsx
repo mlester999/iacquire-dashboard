@@ -61,7 +61,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
       {banner}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">CRM workspace</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">CRM workspace</p>
           <h1 className="mt-1 truncate text-[22px] font-semibold tracking-[-0.03em] text-ink">{orgName}</h1>
         </div>
         <span
@@ -77,7 +77,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
       </div>
 
       {/* Mobile and tablet: one scrollable row of every section. */}
-      <nav aria-label="CRM sections" className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
+      <nav aria-label="CRM sections" className="relative scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
         {flat.map((item) => {
           const Icon = ICONS[item.icon] ?? LayoutDashboard;
           const active = isActive(item);
@@ -87,13 +87,13 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
               href={href(item)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors sm:min-h-9",
+                "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[14px] font-medium transition-colors sm:min-h-9",
                 active ? "border-primary/25 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
               )}
             >
               <Icon className="size-4" aria-hidden />
               {item.label}
-              {ownedByGhl(item) && <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
+              {ownedByGhl(item) && <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-[12px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
             </Link>
           );
         })}
@@ -104,7 +104,7 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
           <div className="space-y-5">
             {sections.map((section) => (
               <div key={section.key}>
-                <p className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{section.label}</p>
+                <p className="px-2.5 pb-1.5 text-[12px] font-semibold uppercase tracking-[0.1em] text-faint">{section.label}</p>
                 <ul className="space-y-0.5">
                   {section.items.map((item) => {
                     const Icon = ICONS[item.icon] ?? LayoutDashboard;
@@ -115,14 +115,14 @@ export function CrmShell({ base, sections, mode, capabilityOwners, orgName, bann
                           href={href(item)}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex min-h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13.5px] font-medium transition-colors",
+                            "flex min-h-9 items-center gap-2.5 rounded-xl px-2.5 text-[14px] font-medium transition-colors",
                             active ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
                           )}
                         >
                           <Icon className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted")} aria-hidden />
                           <span className="truncate">{item.label}</span>
-                          {ownedByGhl(item) && <span className="ml-auto rounded-md bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
-                          {item.external && <span className={cn(!ownedByGhl(item) && "ml-auto", "text-[10px] text-faint")} aria-hidden>↗</span>}
+                          {ownedByGhl(item) && <span className="ml-auto rounded-md bg-warning-soft px-1.5 py-0.5 text-[12px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
+                          {item.external && <span className={cn(!ownedByGhl(item) && "ml-auto", "text-[12px] text-faint")} aria-hidden>↗</span>}
                         </Link>
                       </li>
                     );

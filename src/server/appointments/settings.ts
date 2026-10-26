@@ -48,9 +48,10 @@ export async function getPolicyView(ctx: OrgContext): Promise<PolicyView> {
 
 /**
  * Saves the workspace's booking rules. Letting the AI book on its own is the owner's decision (it is a step toward autonomy), and
- * switching reminders on records the owner's standing authorization, which expires and is checked every time one is sent.
+ * switching reminders on records the owner's standing authorization, which expires and is checked every time one is sent. The clock is an argument so a test can
+ * replay a policy change at a fixed moment; production omits it.
  */
-export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySchema>): Promise<void> {
+export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySchema>, now = new Date()): Promise<void> {
   if (!ctx.can("appointments.manage")) throw new AppError("forbidden", "Only owners and managers can change booking rules.");
   const p = policySchema.parse(input);
   if (p.aiBookingEnabled !== undefined && !ctx.can("automation.go_autonomous")) throw new AppError("forbidden", "Only the business owner can let the Appointment Setter book on its own.");
@@ -93,7 +94,7 @@ export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySc
       metadata: { aiBooking: next.aiBookingEnabled, reminders: next.remindersEnabled, offsets: next.reminderOffsetsMinutes } }, db);
     return p.remindersEnabled !== undefined || offsets !== undefined;
   });
-  if (resync) await resyncAllReminders(ctx.org.orgId);
+  if (resync) await resyncAllReminders(ctx.org.orgId, now);
 }
 
 /**

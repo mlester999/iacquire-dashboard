@@ -4,6 +4,8 @@ import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { connectorsFor, connectorSummary } from "@/server/setup/connectors";
+import { mediaStorageStepDescription } from "@/server/setup/storage-step";
+import { MEDIA_STORAGE_STEP_KEY } from "@/lib/onboarding/media-storage-step";
 import { fleetHealth } from "@/lib/setup/health";
 import type { CrmMode } from "@/lib/crm/types";
 import {
@@ -79,6 +81,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
     );
     const tasks = await db.query<{
       id: string;
+      template_key: string;
       title: string;
       client_title: string | null;
       description: string;
@@ -99,7 +102,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       completed_at: Date | null;
       updated_at: Date;
     }>(
-      `select id, title, client_title, description, section, completion_mode, status, required, hidden, service_excluded, sort_order,
+      `select id, template_key, title, client_title, description, section, completion_mode, status, required, hidden, service_excluded, sort_order,
               to_char(estimated_completion_at, 'YYYY-MM-DD') as estimated_completion_at, client_note, blocked_reason, completion_note,
               client_action, client_response, client_responded_at, completed_at, updated_at
        from client_setup_tasks where org_id = $1 order by sort_order`,
@@ -145,6 +148,8 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
   }));
   const byId = new Map(rule.map((r) => [r.id, r]));
   const canRespond = data.canRespond;
+  // The optional storage step shows what the storage policy says today, not the text it was created with (src/server/setup/storage-step.ts).
+  const storageText = data.tasks.some((t) => t.template_key === MEDIA_STORAGE_STEP_KEY) ? await withSystem((db) => mediaStorageStepDescription(db, ctx.org.orgId)) : null;
 
   const tasks: ClientTaskView[] = data.tasks
     .filter((t) => isApplicable({ hidden: t.hidden, serviceExcluded: t.service_excluded }))
@@ -156,7 +161,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       return {
         id: t.id,
         title: clientTitle(t),
-        description: t.description,
+        description: t.template_key === MEDIA_STORAGE_STEP_KEY && storageText ? storageText : t.description,
         section: t.section === "client" || open ? "client" : "agency",
         status: t.status,
         isActivation: t.completion_mode === "activation",
@@ -274,7 +279,10 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
       ? await db.query<{ id: string; name: string }>("select id, coalesce(nullif(full_name, ''), email::text) as name from users where id = any($1::uuid[])", [ids])
       : { rows: [] as Array<{ id: string; name: string }> };
     const connectors = await connectorsFor(db, orgId);
-    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors };
+    const payment = await db.query<{ status: string | null; cleared: boolean }>(
+      "select (select b.setup_payment_status from billing_accounts b where b.org_id = $1) as status, app.setup_payment_cleared($1) as cleared", [orgId],
+    );
+    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors, payment: payment.rows[0] };
   });
   if (!d.org || !d.inst) throw new AppError("not_found", "Client not found.");
 
@@ -294,7 +302,7 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
   }));
   const byId = new Map(rule.map((r) => [r.id, r]));
   const checkStatus = Object.fromEntries(d.checks.map((c) => [c.check_key, c.status])) as Partial<Record<CheckKey, CheckStatus>>;
-  const readiness = evaluateReadiness({ state: d.inst.state, tasks: rule, checks: checkStatus });
+  const readiness = evaluateReadiness({ state: d.inst.state, tasks: rule, checks: checkStatus, payment: { cleared: d.payment.cleared === true } });
   if (d.jobs.length) {
     readiness.canActivate = false;
     readiness.blockers.push({ code: "job_needs_attention", message: `${d.jobs.length} preparation job${d.jobs.length === 1 ? " is" : "s are"} failed or running. Review the provisioning history before agency approval.` });
@@ -389,6 +397,7 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
     checks,
     staff: d.staff,
     canActivate: admin.platformRole === "agency_super_admin" && readiness.canActivate,
+    payment: { status: d.payment.status ?? "not_invoiced", cleared: d.payment.cleared === true },
   };
 }
 

@@ -155,18 +155,18 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
               >
                 {uploading ? <Loader2 className="size-6 animate-spin text-primary" aria-hidden /> : <Upload className="size-6 text-muted" aria-hidden />}
                 <span className="text-[14px] font-medium text-ink">{uploading ? "Reading your file…" : "Choose a CSV file or drop it here"}</span>
-                <span className="text-[12.5px] text-muted">Up to 5 MB and 20,000 rows. The first row must be column names.</span>
+                <span className="text-[13px] text-muted">Up to 5 MB and 20,000 rows. The first row must be column names.</span>
                 <input id="imp-file" type="file" accept=".csv,text/csv" className="sr-only" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
               </label>
-              <p className="text-[12.5px] text-muted">Nothing is imported until you check the file and confirm. Coming from GoHighLevel? Use Migrate from GoHighLevel above once your location is connected, or export your contacts there as CSV; the GoHighLevel ID column keeps re-imports from creating duplicates.</p>
+              <p className="text-[13px] text-muted">Nothing is imported until you check the file and confirm. Coming from GoHighLevel? Use Migrate from GoHighLevel above once your location is connected, or export your contacts there as CSV; the GoHighLevel ID column keeps re-imports from creating duplicates.</p>
             </div>
           )}
 
           {step === "map" && job && (
             <div className="mt-4 space-y-4">
-              <p className="text-[13px] text-muted">{job.totalRows.toLocaleString("en-US")} rows. Match each column to a field. Columns set to “Don’t import” are left out.</p>
-              <div className="overflow-x-auto rounded-xl border border-line">
-                <table className="w-full min-w-[640px] text-[13px]">
+              <p className="text-[14px] text-muted">{job.totalRows.toLocaleString("en-US")} rows. Match each column to a field. Columns set to “Don’t import” are left out.</p>
+              <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
+                <table className="w-full min-w-[640px] text-[14px]">
                   <thead className="bg-surface-2/60 text-[12px] text-muted">
                     <tr><th scope="col" className="px-3 py-2 text-left font-medium">Column in your file</th><th scope="col" className="px-3 py-2 text-left font-medium">Example</th><th scope="col" className="px-3 py-2 text-left font-medium">Import into</th></tr>
                   </thead>
@@ -187,7 +187,7 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
                   </tbody>
                 </table>
               </div>
-              {duplicateTarget && <p role="alert" className="text-[13px] text-danger-ink">Two columns go into the same field. Each field can take one column.</p>}
+              {duplicateTarget && <p role="alert" className="text-[14px] text-danger-ink">Two columns go into the same field. Each field can take one column.</p>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="When a row matches an existing record" htmlFor="imp-dup" hint="Matched by email or phone (contacts) or domain (companies).">
                   <Select id="imp-dup" value={duplicates} onChange={(e) => setDuplicates(e.target.value as typeof duplicates)}>
@@ -210,7 +210,7 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
 
           {step === "running" && job && (
             <div className="mt-4 space-y-3" aria-live="polite">
-              <p className="text-[13px] text-ink-2">
+              <p className="text-[14px] text-ink-2">
                 {job.status === "validating" ? "Checking every row. Nothing is changed yet." : job.status === "importing" ? "Importing. You can leave this page; it carries on in the background." : "Undoing the import."}
               </p>
               <ProgressBar value={progress} label="Progress" />
@@ -250,21 +250,21 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
                   <Count label="Failed" value={s.failed ?? 0} tone={s.failed ? "danger" : undefined} />
                 </div>
               )}
-              {job.status === "rolled_back" && <p className="flex items-center gap-2 text-[13px] text-ink-2"><RotateCcw className="size-4" />Undone: {s.rolledBack ?? 0} records removed or restored{s.keptChanged ? `, ${s.keptChanged} kept because someone changed them after the import` : ""}.</p>}
-              {job.status === "failed" && <p className="flex items-center gap-2 text-[13px] text-danger-ink"><AlertTriangle className="size-4" />{job.error ?? "The import stopped."}</p>}
-              {job.status === "cancelled" && <p className="text-[13px] text-muted">This import was cancelled.</p>}
+              {job.status === "rolled_back" && <p className="flex items-center gap-2 text-[14px] text-ink-2"><RotateCcw className="size-4" />Undone: {s.rolledBack ?? 0} records removed or restored{s.keptChanged ? `, ${s.keptChanged} kept because someone changed them after the import` : ""}.</p>}
+              {job.status === "failed" && <p className="flex items-center gap-2 text-[14px] text-danger-ink"><AlertTriangle className="size-4" />{job.error ?? "The import stopped."}</p>}
+              {job.status === "cancelled" && <p className="text-[14px] text-muted">This import was cancelled.</p>}
               {(job.problems?.length ?? 0) > 0 && <Problems problems={job.problems!} />}
               <div className="flex flex-wrap justify-between gap-2">
                 <div className="flex gap-2">
                   {(job.status === "completed" || job.status === "cancelled") && scope.can["contacts.delete"] && <Button variant="secondary" onClick={() => setRollbackOpen(true)}><RotateCcw className="size-4" />Undo this import</Button>}
-                  {job.status === "completed" && <Link href={`${scope.base}/${job.entity === "company" ? "companies" : "contacts"}?sort=created_at&dir=desc`} className="inline-flex min-h-11 items-center rounded-xl px-3 text-[13px] font-medium text-primary hover:underline sm:min-h-9">See what was imported</Link>}
+                  {job.status === "completed" && <Link href={`${scope.base}/${job.entity === "company" ? "companies" : "contacts"}?sort=created_at&dir=desc`} className="inline-flex min-h-11 items-center rounded-xl px-3 text-[14px] font-medium text-primary hover:underline sm:min-h-9">See what was imported</Link>}
                 </div>
                 <Button onClick={reset}>Import another file</Button>
               </div>
             </div>
           )}
 
-          {uploadError && <p role="alert" className="mt-3 flex items-center gap-2 text-[13px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" />{uploadError}</p>}
+          {uploadError && <p role="alert" className="mt-3 flex items-center gap-2 text-[14px] text-danger-ink"><AlertTriangle className="size-4 shrink-0" />{uploadError}</p>}
         </Card>
       )}
 
@@ -274,7 +274,7 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
         {jobs.length ? (
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
             {jobs.map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-[13px]">
+              <li key={j.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-[14px]">
                 <FileSpreadsheet className="size-4 shrink-0 text-muted" aria-hidden />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{j.fileName ?? "Import"}</span>
@@ -285,20 +285,20 @@ export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: 
               </li>
             ))}
           </ul>
-        ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">No imports yet.</p>}
+        ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[14px] text-muted">No imports yet.</p>}
       </section>}
 
       {exports && (
         <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-[14px] font-semibold text-ink">Exports</h3>
-            <a href={`/api/crm/export${scope.orgId ? `?org=${scope.orgId}` : ""}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:min-h-9"><Download className="size-4" />Export all contacts</a>
+            <a href={`/api/crm/export${scope.orgId ? `?org=${scope.orgId}` : ""}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:min-h-9"><Download className="size-4" />Export all contacts</a>
           </div>
-          <p className="mb-2 text-[12.5px] text-muted">To export part of your contacts, open Contacts, filter or pick a Smart List, and use Export there. Exports include custom fields and tags.</p>
+          <p className="mb-2 text-[13px] text-muted">To export part of your contacts, open Contacts, filter or pick a Smart List, and use Export there. Exports include custom fields and tags.</p>
           {exports.length ? (
             <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
               {exports.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-[13px]">
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
                   <span>{e.rowCount.toLocaleString("en-US")} {e.entity === "contact" ? "contacts" : e.entity} · by {e.requestedBy ?? (e.requestedByKind === "api" ? "API" : "someone")}</span>
                   <span className="flex items-center gap-2 text-[12px] text-muted"><RelativeTime iso={e.createdAt} timezone={scope.timezone} />{e.status !== "completed" && <Badge tone={e.status === "failed" ? "danger" : "primary"}>{e.status === "failed" ? "Failed" : "Running"}</Badge>}</span>
                 </li>
@@ -327,8 +327,8 @@ function Count({ label, value, tone }: { label: string; value: number; tone?: "s
 function Problems({ problems }: { problems: NonNullable<Job["problems"]> }) {
   return (
     <details className="rounded-xl border border-line">
-      <summary className="cursor-pointer px-3 py-2 text-[13px] font-medium text-ink">{problems.length >= 200 ? "First 200 rows" : `${problems.length} ${problems.length === 1 ? "row" : "rows"}`} to look at</summary>
-      <ul className="max-h-72 divide-y divide-line overflow-y-auto border-t border-line text-[12.5px]">
+      <summary className="cursor-pointer px-3 py-2 text-[14px] font-medium text-ink">{problems.length >= 200 ? "First 200 rows" : `${problems.length} ${problems.length === 1 ? "row" : "rows"}`} to look at</summary>
+      <ul className="max-h-72 divide-y divide-line overflow-y-auto border-t border-line text-[13px]">
         {problems.map((p) => (
           <li key={p.row} className="px-3 py-2">
             <span className="font-medium text-ink">Row {p.row}</span>

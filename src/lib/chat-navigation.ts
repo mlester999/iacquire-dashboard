@@ -1,4 +1,4 @@
-import type { AgentStatus } from "@/lib/agents";
+import { SETUP_REQUIRED_LABEL, type AgentStatus } from "@/lib/agents";
 
 /**
  * Where the chat workspace sends people. Every target is an existing route; whether the *viewer* may use it is decided
@@ -40,7 +40,7 @@ export function specialistCaption(status: AgentStatus): string {
     online: "Online",
     busy: "Working now",
     provisioning: "Being set up",
-    setup_required: "Setup required",
+    setup_required: SETUP_REQUIRED_LABEL,
     offline: "Offline",
     error: "Needs attention",
     disabled: "Paused",

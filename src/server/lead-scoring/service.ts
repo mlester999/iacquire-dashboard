@@ -7,6 +7,7 @@ import { notifyOrgRoles } from "@/server/notifications";
 import { scoreLead } from "@/lib/lead-scoring/engine";
 import { ENGINE_VERSION, type AiSignals, type LeadLabel, type ScoreResult } from "@/lib/lead-scoring/types";
 import { extractSignals, type ExtractionDeps, type ExtractionResult } from "@/server/lead-scoring/ai";
+import type { ModelGateReason } from "@/server/llm/gate";
 import { loadLeadFacts, recentInbound } from "@/server/lead-scoring/facts";
 import { getProfile } from "@/server/lead-scoring/profile";
 
@@ -14,9 +15,11 @@ import { getProfile } from "@/server/lead-scoring/profile";
 // messages if extraction is on), extract signals, then score and write under a lock on the contact. The write refuses to replace a newer snapshot with
 // an older one, writes nothing when the result is the same as the current assessment, and never overwrites a person's override.
 
+// `aiSkipped` says why the model was not asked although extraction is on (the workspace is not active, is paused, or has no credit); the rules scored on their own.
 export type AssessOutcome =
-  | { outcome: "created"; assessmentId: string; label: LeadLabel; score: number | null; previousLabel: LeadLabel | null; labelChanged: boolean }
-  | { outcome: "unchanged" | "stale" | "disabled" | "missing" };
+  | { outcome: "created"; assessmentId: string; label: LeadLabel; score: number | null; previousLabel: LeadLabel | null; labelChanged: boolean; aiSkipped?: ModelGateReason }
+  | { outcome: "unchanged"; aiSkipped?: ModelGateReason }
+  | { outcome: "stale" | "disabled" | "missing" };
 
 export interface AssessOptions {
   now?: Date;
@@ -55,6 +58,7 @@ export async function assessContact(orgId: string, contactId: string, opts: Asse
   let ai: AiSignals | null = null;
   let aiStatus: "not_used" | "used" | "fallback" | "failed" | "skipped_limit" = "not_used";
   let aiModel: string | null = null;
+  let aiSkipped: ModelGateReason | undefined;
   if (profile.aiExtractionEnabled && messages.length) {
     const newest = messages[messages.length - 1].at;
     if (prev?.ai_signals && prev.ai_status === "used" && newest.getTime() <= new Date(prev.facts_as_of).getTime()) {
@@ -63,6 +67,7 @@ export async function assessContact(orgId: string, contactId: string, opts: Asse
     } else {
       const r: ExtractionResult = await extractSignals(orgId, messages, { enabled: true, dailyLimit: profile.aiDailyLimit }, now, opts.ai);
       aiStatus = r.status;
+      if (r.status === "fallback" && r.reason !== "no_model") aiSkipped = r.reason;
       if (r.status === "used") {
         ai = r.signals;
         aiModel = r.model;
@@ -89,7 +94,7 @@ export async function assessContact(orgId: string, contactId: string, opts: Asse
     if (cur && cur.inputs_hash === inputsHash) {
       await db.query("update contacts set priority_evaluated_at = $3 where id = $1 and org_id = $2", [contactId, orgId, now]);
       await bumpUsage(db, orgId, now, 0);
-      return { outcome: "unchanged" as const };
+      return { outcome: "unchanged" as const, ...(aiSkipped ? { aiSkipped } : {}) };
     }
 
     const seq = (cur?.seq ?? 0) + 1;
@@ -138,7 +143,7 @@ export async function assessContact(orgId: string, contactId: string, opts: Asse
         });
       }
     }
-    return { outcome: "created" as const, assessmentId: id, label: result.label, score: result.score, previousLabel, labelChanged };
+    return { outcome: "created" as const, assessmentId: id, label: result.label, score: result.score, previousLabel, labelChanged, ...(aiSkipped ? { aiSkipped } : {}) };
   });
 }
 

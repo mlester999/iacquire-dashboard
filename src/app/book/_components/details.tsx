@@ -34,7 +34,7 @@ export function AppointmentDetails({ view, className }: { view: ManagePageView; 
   const cancelled = a.status === "cancelled";
   return (
     <div className={className}>
-      <p className="text-[12.5px] font-medium text-muted">{view.business.name}</p>
+      <p className="text-[13px] font-medium text-muted">{view.business.name}</p>
       <h2 className={cn("mt-1 text-[19px] font-semibold tracking-[-0.025em] text-ink", cancelled && "text-muted line-through decoration-1")}>{a.typeName}</h2>
       <dl className="mt-4 space-y-3 text-[14px]">
         <div>

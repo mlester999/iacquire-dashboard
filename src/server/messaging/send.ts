@@ -3,18 +3,22 @@ import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
-import { automationGate } from "@/server/automation/gate";
+import { automationGate, checkOrgAutomation } from "@/server/automation/gate";
 import { createApproval } from "@/server/approvals/service";
 import { BillingBlockedError, chargeUsage, reserveCredits, releaseReservation, settleReservation, monthToDateSpendMicros, getBalance } from "@/server/billing/ledger";
 import { isSwitching } from "@/server/crm/workspace";
 import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
+import { identityFacts, latestConsentSource } from "@/server/messaging/consent-identity";
+import { dispatchGate, HELD_BY_PERSON_DETAIL } from "@/server/messaging/dispatch-gate";
+import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
-import { fillManageLink, fillReviewLink, hasManageLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
+import { fillInvoiceLink, fillManageLink, fillProposalLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasProposalLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
 import { buildUnsubscribeUrl } from "@/server/messaging/unsubscribe";
 import { transportFromProvider, type GhlTransportRequest } from "@/server/messaging/transports/ghl";
 import { isTransportName, transportFor } from "@/server/messaging/transports";
 import { TRANSPORT_LABELS, type ChannelTransport, type TransportName, type TransportResult, type TransportSender } from "@/server/messaging/transports/types";
+import { queueWebChatOutbound } from "@/server/messaging/web-chat-send";
 import {
   advancesDelivery,
   unconfirmedOutcome,
@@ -33,8 +37,13 @@ import type { UnitType } from "@/lib/billing";
  * reminder: a service message about an appointment the customer already has. Not a reply, and not counted against the follow-up allowance.
  * retention: an approved program message to an existing customer (welcome, check-in, feedback request, re-engagement). It has its own frequency
  * limit, counted across every channel and program for the contact.
+ * billing: a reminder about an invoice the business has already sent the customer (src/server/invoices/reminders.ts). A service message the owner authorized in its exact
+ * wording; it stops at once for a paused or suspended workspace and waits out quiet hours like a reminder does.
+ * delivery: the message a person sends from the product to carry a document to the customer (a proposal's link, src/server/proposals/delivery.ts). Fixed wording the sender read
+ * first, no AI. Like a billing message it stops for a paused or suspended workspace and for a person's hold on the customer, and it waits out quiet hours; it still needs
+ * the consent every service message needs.
  */
-export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention";
+export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention" | "billing" | "delivery";
 /** service: about something the customer has or asked for. marketing: promotional, and needs the customer's explicit marketing consent. */
 export type SendPurpose = "service" | "marketing";
 /**
@@ -229,8 +238,25 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   );
   const conv = rows[0];
   if (!conv) throw new AppError("not_found", "Conversation not found.");
+  // A website chat is never sent through a provider; its replies take queueWebChatOutbound. Anything else that reaches this chain with one is refused.
+  if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
+  // An invoice reminder is automatic and goes to the business's customer about money, and a document a person sent may wait for sending hours and go out later: a pause or a
+  // suspension of the workspace stops either, both when it is queued and right before it is sent. (Other system sends are held to the same rule by the caller that starts
+  // them; these are held here so no caller can forget.)
+  if (req.scope === "billing" || req.scope === "delivery") {
+    for (const gateScope of ["messaging", "outbound"] as const) {
+      const gate = await checkOrgAutomation(db, req.orgId, gateScope);
+      if (!gate.allowed) return deny(gate.reason === "org_inactive" ? "org_inactive" : "automation_paused", gate.detail, { permanent: true });
+    }
+  }
+  // A document's delivery waits for a sending window, so it can go out hours after the person pressed Send. A person's hold on the customer (set during a dispute, say) therefore
+  // stops it, when it is queued and again right before it is sent: the same hold that stops an invoice reminder.
+  if (req.scope === "delivery") {
+    const held = await db.query<{ held: boolean }>("select retention_paused as held from contacts where id = $1 and org_id = $2", [conv.contact_id, req.orgId]);
+    if (held.rows[0]?.held) return deny("held_by_person", HELD_BY_PERSON_DETAIL, { permanent: true });
+  }
   // A missed-call follow-up (its key starts with "mcc:") is automation sent by the system, and a person who has taken the conversation over wins: it is
   // refused when it is queued and again when it is about to be sent, so a takeover in between stops it.
   if (req.actor.kind === "system" && req.dedupeKey?.startsWith("mcc:") && conv.owner_kind === "human") {
@@ -269,17 +295,29 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   );
   const provider: TransportName = chan[0] && isTransportName(chan[0].provider) ? chan[0].provider : "ghl";
   // GoHighLevel addresses its own contact record; native providers send to the address itself, so only GoHighLevel needs the link.
-  if (transportFor(provider).requiresContactRef && !conv.ghl_contact_id) return deny("contact_unreachable", "This contact is not linked to your CRM yet, so the provider cannot deliver to them.");
+  if (transportFor(provider).requiresContactRef && !conv.ghl_contact_id) return deny("contact_unreachable", "This contact is not linked to your CRM yet.");
 
   if (await isSuppressed(db, req.orgId, channel, address)) return deny("suppressed", "This address opted out or bounced, so nothing can be sent to it.", { permanent: true });
   // A WhatsApp template is looked up with the provider carrying the channel. Its category can make the message marketing.
   const waTemplate = channel === "whatsapp" && req.templateId ? await loadWhatsappTemplate(db, req.orgId, req.templateId, provider) : null;
   const purpose: SendPurpose = purposeWith(req.purpose, waTemplate);
+  // A number or address that only a website visitor typed is not reachable by anything automated or promotional until it is confirmed (see src/lib/webchat/identity.ts).
+  // The mark is on the address, not on the contact: a merge into a contact the chat did not create moves the address, and it stays typed.
+  const refusal = unverifiedIdentityRefusal(await identityFacts(db, req.orgId, conv.contact_id, channel, address), {
+    actor: req.actor.kind, approvedByPerson: req.actor.kind === "ai" && Boolean(req.actor.approvalId), scope: req.scope, purpose,
+  });
+  if (refusal) return deny(refusal.reason, refusal.detail, { permanent: true });
   const consent = await getConsent(db, req.orgId, conv.contact_id, channel, purpose);
   if (consent === "revoked") return deny("no_consent", "This customer withdrew consent on this channel.", { permanent: true });
   // Promotional messages need an explicit yes. Anything else needs one on record, or the customer having written to us first.
   if (purpose === "marketing" && consent !== "granted") {
     return deny("no_consent", waTemplate?.category === "marketing" && req.purpose !== "marketing" ? "This WhatsApp template is a marketing template, and this customer has not agreed to promotional messages on WhatsApp." : "This customer has not agreed to promotional messages on this channel.", { permanent: true });
+  }
+  // The box offering promotional messages was ticked by whoever typed the details, possibly before the address was confirmed as theirs. Confirming the address later does not
+  // make that tick the customer's own, so it does not count until the customer or a person of the business records the agreement again. The grant keeps its source when a
+  // merge carries it to another contact, so this holds for whichever contact now owns it.
+  if (purpose === "marketing" && (await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing")) === TYPED_CONSENT_SOURCE) {
+    return deny("no_consent", "The only promotional agreement on record was ticked in the website chat, before this customer confirmed the address. It needs to be recorded again.", { permanent: true });
   }
   if (consent === "unknown" && (req.scope === "followup" || !conv.last_inbound_at)) return deny("no_consent", "There is no consent on record to message this person.", { permanent: true });
 
@@ -360,7 +398,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
 
   // Time rules last: everything else is already known to pass, so waiting is meaningful.
   const tz = conv.contact_tz ?? conv.org_tz;
-  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention") {
+  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention" || req.scope === "billing" || req.scope === "delivery") {
     const { rows: s } = await db.query<{ business_hours: unknown }>("select business_hours from messaging_settings where org_id = $1", [req.orgId]);
     const hours = validateBusinessHours(s[0]?.business_hours ?? {});
     // Follow-ups and program messages default to business hours. A reminder about a booked appointment is useful at any waking hour, so only quiet hours hold it back.
@@ -368,7 +406,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
     const quiet = isQuietHours(policy.quiet_hours_start, policy.quiet_hours_end, now, tz);
     const closed = bhOnly && !isWithinBusinessHours(hours, now, conv.org_tz);
     if (quiet || closed) {
-      return deny(quiet ? "quiet_hours" : "outside_business_hours", quiet ? "Follow-ups are not sent during quiet hours." : "Follow-ups are only sent during business hours.", {
+      return deny(quiet ? "quiet_hours" : "outside_business_hours", quiet ? (req.scope === "delivery" ? "Messages to customers are not sent during quiet hours." : "Follow-ups are not sent during quiet hours.") : "Follow-ups are only sent during business hours.", {
         retryAt: nextSendWindow({ from: now, timeZone: tz, quietStart: policy.quiet_hours_start, quietEnd: policy.quiet_hours_end, businessHours: hours as BusinessHours | null, businessHoursOnly: bhOnly }),
       });
     }
@@ -414,6 +452,9 @@ export interface QueueResult {
  * cannot go is refused with an explanation instead of leaving a failed row behind.
  */
 export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?: string | null; approvalId?: string | null }): Promise<QueueResult> {
+  // A website chat has no provider: its reply is stored for the visitor's open widget (see web-chat-send.ts). Every other channel takes the chain below.
+  const kind = await db.query<{ channel: string }>("select channel from conversations where id = $1 and org_id = $2", [req.conversationId, req.orgId]);
+  if (kind.rows[0]?.channel === "web_chat") return queueWebChatOutbound(db, req);
   const decision = await evaluateSend(db, req);
   const messageId = crypto.randomUUID();
   const author = req.actor.kind === "ai" ? { kind: "ai", userId: null, agentId: req.actor.agentId } : { kind: req.actor.kind, userId: req.actor.userId, agentId: null };
@@ -542,7 +583,7 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
   };
 }
 
-const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
+const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "identity_unverified", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
 
 async function finishBlocked(db: Queryable, m: Pick<MessageRow, "id" | "org_id" | "reservation_id" | "followup_step_id">, reason: string, detail: string) {
   await db.query("update conversation_messages set status = 'blocked', blocked_reason = $2, status_detail = $3 where id = $1", [m.id, reason, detail.slice(0, 300)]);
@@ -746,6 +787,20 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
       ? (await db.query<{ status: string }>("select status from usage_reservations where id = $1 and org_id = $2 for update", [m.reservation_id, m.org_id])).rows[0]?.status ?? null
       : null;
     const held = holdStatus === "held";
+    // The checks that need the message itself (src/server/messaging/dispatch-gate.ts): a paused or inactive workspace holds a program message, and a person's hold on the customer stops
+    // an automatic one.
+    const gate = await dispatchGate(db, m, now);
+    if (gate?.action === "hold") {
+      await db.query("update conversation_messages set status = 'queued', send_after = $2, status_detail = $3, attempt_count = attempt_count - 1 where id = $1", [m.id, gate.retryAt, gate.detail.slice(0, 300)]);
+      if (held) await extendHold(db, m.org_id, m.reservation_id, gate.retryAt);
+      return { done: "queued" };
+    }
+    if (gate?.action === "block") {
+      await finishBlocked(db, m, gate.reason, gate.detail);
+      const { settleHeldAsks } = await import("@/server/retention/hold");
+      await settleHeldAsks(db, m.org_id, [m.id]);
+      return { done: "blocked" };
+    }
     const decision = await evaluateSend(db, { ...requestFor(m, now), hasReservation: held });
     if (!decision.allow) {
       if (decision.retryAt && !decision.permanent && WAITING_REASONS.has(decision.reason)) {
@@ -808,6 +863,41 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
         return { done: "blocked" };
       }
       body = fillReviewLink(body, link);
+    }
+    // An invoice's link to the customer's invoice page is a bearer secret as well. It is derived again here, from the reminder (scope billing) or the delivery (scope delivery) the
+    // message belongs to, and only while that invoice can still be paid through it (issued, not a test, owing, not written off or disputed, its link not replaced). Any other message
+    // that carries the placeholder (one a person or an AI typed it into), or a message for an invoice paid in the meantime, is not sent.
+    if (hasInvoiceLinkPlaceholder(body)) {
+      let link: string | null = null;
+      if (m.scope === "billing") {
+        const { invoiceLinkForMessage } = await import("@/server/invoices/reminders");
+        link = await invoiceLinkForMessage(db, m.org_id, m.id);
+      } else if (m.scope === "delivery") {
+        const { invoiceLinkForDelivery } = await import("@/server/invoices/delivery");
+        link = await invoiceLinkForDelivery(db, m.org_id, m.id, decision.address, decision.channel);
+      }
+      if (!link) {
+        await finishBlocked(
+          db, { ...m, reservation_id: reservationId }, "invoice_link_unavailable",
+          m.scope === "delivery"
+            ? "The invoice's link had stopped working (it was paid, voided, disputed or written off, or the link was replaced), so the message was not sent."
+            : "The invoice can no longer be paid online (it was paid, voided or written off), so the reminder was not sent.",
+        );
+        return { done: "blocked" };
+      }
+      body = fillInvoiceLink(body, link);
+    }
+    // A proposal's link to the customer's page is a bearer secret too. It is derived again here from the delivery this message belongs to, and only while that proposal version
+    // can still be read through that link. Any other message that carries the placeholder (one a person or an AI typed it into), or a delivery whose proposal was answered,
+    // withdrawn, revised or expired, or whose link was replaced in the meantime, is not sent. The address is passed so the delivery records where the message actually went.
+    if (hasProposalLinkPlaceholder(body)) {
+      const { proposalLinkForMessage } = await import("@/server/proposals/delivery");
+      const link = m.scope === "delivery" ? await proposalLinkForMessage(db, m.org_id, m.id, decision.address, decision.channel, now) : null;
+      if (!link) {
+        await finishBlocked(db, { ...m, reservation_id: reservationId }, "proposal_link_unavailable", "The proposal's link had stopped working (the proposal was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so the message was not sent.");
+        return { done: "blocked" };
+      }
+      body = fillProposalLink(body, link);
     }
     // Billing follows what is actually sent: a filled-in link can add an SMS segment.
     const quantity = m.channel === "sms" ? Math.max(1, smsSegments(body)) : decision.quantity;

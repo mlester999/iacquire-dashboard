@@ -1,3 +1,4 @@
+import { recordFormTouch } from "@/server/attribution/touches";
 import "server-only";
 import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -39,7 +40,7 @@ const coversTexting = (consentText: string) => /\b(text|texts|sms|whatsapp|messa
 
 const PURPOSE_LABEL: Record<string, string> = { contact: "Website enquiry", consultation: "Consultation request", lead: "Website lead", appointment: "Appointment request" };
 
-interface Claimed { purpose: string; id: string; org_id: string; website_id: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; marketing_opt_in: boolean; consent_text: string; page_slug: string; host: string }
+interface Claimed { purpose: string; id: string; org_id: string; website_id: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; marketing_opt_in: boolean; consent_text: string; page_slug: string; host: string; utm: Record<string, string>; referrer: string | null; created_at: Date }
 
 async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> {
   if (urlCount(s.message) >= 3 || urlCount(s.name) >= 1) {
@@ -87,6 +88,8 @@ async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> 
     );
     await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, dedupe_key) values ($1, $2, 'internal', 'system', $3, 'note', $4) on conflict (org_id, dedupe_key) do nothing", [s.org_id, conv.rows[0].id, body.slice(0, 4900), `web:${s.id}`]);
     await db.query("update website_form_submissions set status = 'processed', contact_id = $2, processed_at = now(), error = null where id = $1", [s.id, contactId]);
+    // Where this lead came from: the UTM values and referrer the visit carried, and the page they sent the form from. Once per submission.
+    await recordFormTouch(db, { orgId: s.org_id, contactId, kind: "website_form", submissionId: s.id, attribution: { ...s.utm, referrer: s.referrer ?? undefined, landing_page: `/${s.page_slug === "home" ? "" : s.page_slug}` }, occurredAt: s.created_at });
     await notifyOrgRoles(db, s.org_id, ["owner", "admin", "sales_rep", "support"], { kind: "system", severity: "info", title: `New ${label.toLowerCase()} from ${s.name || "a visitor"}`, body: (s.message || `${s.service ?? "General enquiry"}`).slice(0, 200), link: "/inbox", dedupeKey: `site-enquiry:${s.id}` });
     return "processed" as const;
   });
@@ -98,7 +101,7 @@ export async function processSubmissions(opts: { limit?: number } = {}): Promise
     (await db.query<Claimed>(
       `update website_form_submissions set attempts = attempts + 1 where id in (
          select id from website_form_submissions where status = 'received' and attempts < $2 order by created_at limit $1 for update skip locked)
-       returning id, org_id, website_id, name, email, phone, service, message, marketing_opt_in, consent_text, page_slug, host, purpose`,
+       returning id, org_id, website_id, name, email, phone, service, message, marketing_opt_in, consent_text, page_slug, host, purpose, utm, referrer, created_at`,
       [Math.min(50, opts.limit ?? 20), MAX_ATTEMPTS],
     )).rows,
   );

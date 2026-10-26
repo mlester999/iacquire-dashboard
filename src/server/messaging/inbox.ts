@@ -67,7 +67,7 @@ const toMessageView = (m: MessageRow): MessageView => ({
 
 export interface ConversationDetail {
   conversation: ConversationListItem & { subject: string | null; lastInboundAt: string | null; whatsappWindowOpen: boolean | null };
-  contact: { id: string; name: string; lifecycleStage: string; temperature: string | null; source: string; identities: Array<{ kind: string; value: string; verified: boolean }>; consent: Array<{ channel: string; purpose: string; status: string }> };
+  contact: { id: string; name: string; lifecycleStage: string; temperature: string | null; source: string; identities: Array<{ id: string; kind: string; value: string; verified: boolean; typedByVisitor: boolean }>; consent: Array<{ channel: string; purpose: string; status: string }> };
   /** Oldest first: the newest CONVERSATION_MESSAGE_PAGE messages, plus any older drafts still waiting for approval. */
   messages: MessageView[];
   /**
@@ -99,7 +99,13 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
   return withUser(ctx.user.id, async (db) => {
     const conv = await db.query<{ subject: string | null; last_inbound_at: Date | null }>("select subject, last_inbound_at from conversations where id = $1", [conversationId]);
     const k = await db.query<{ id: string; display_name: string; lifecycle_stage: string; temperature: string | null; source: string }>("select id, display_name, lifecycle_stage, temperature, source from contacts where id = $1", [base.contactId]);
-    const ids = await db.query<{ kind: string; value: string; verified: boolean }>("select kind, value, verified from contact_identities where contact_id = $1 order by kind", [base.contactId]);
+    // typed: a website visitor typed this address and nothing has confirmed it, so only a person's own reply can reach it (src/lib/webchat/identity.ts). Read from the
+    // address itself, so it still shows after the contact it was typed for was merged into another.
+    const ids = await db.query<{ id: string; kind: string; value: string; verified: boolean; typed: boolean }>(
+      `select i.id, i.kind, i.value, i.verified, (not i.verified and i.typed_by_visitor) as typed
+       from contact_identities i where i.contact_id = $1 order by i.kind, i.created_at`,
+      [base.contactId],
+    );
     const consent = await db.query<{ channel: string; purpose: string; status: string }>(
       "select distinct on (channel, purpose) channel, purpose, status from contact_consent_events where contact_id = $1 order by channel, purpose, id desc",
       [base.contactId],
@@ -167,7 +173,7 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
     timeline.sort((a, b) => a.at.localeCompare(b.at));
     return {
       conversation: { ...base, subject: conv.rows[0]?.subject ?? null, lastInboundAt: lastIn ? lastIn.toISOString() : null, whatsappWindowOpen: base.channel === "whatsapp" ? Boolean(lastIn && Date.now() - lastIn.getTime() <= policy.rows[0].whatsapp_window_hours * 3600_000) : null },
-      contact: { id: k.rows[0].id, name: k.rows[0].display_name || "Unknown contact", lifecycleStage: k.rows[0].lifecycle_stage, temperature: k.rows[0].temperature, source: k.rows[0].source, identities: ids.rows, consent: consent.rows },
+      contact: { id: k.rows[0].id, name: k.rows[0].display_name || "Unknown contact", lifecycleStage: k.rows[0].lifecycle_stage, temperature: k.rows[0].temperature, source: k.rows[0].source, identities: ids.rows.map((r) => ({ id: r.id, kind: r.kind, value: r.value, verified: r.verified, typedByVisitor: r.typed })), consent: consent.rows },
       messages: msgs.rows.map(toMessageView),
       ...(hasOlder ? { olderMessages: { beforeId: page[0].id } } : {}),
       timeline,
@@ -279,7 +285,8 @@ export async function withDeliveryDetail(userId: string, messages: MessageView[]
     list.push({ status: e.status, rawStatus: e.raw_status, detail: e.detail, at: new Date(e.occurred_at).toISOString() });
     eventsOf.set(e.message_id, list);
   }
-  const label = (p: string | null) => (p ? (TRANSPORT_LABELS[p as TransportName] ?? p) : null);
+  // A website chat has no outside provider to name: the thread already says "Website chat", so the line shows nothing rather than an internal key.
+  const label = (p: string | null) => (p && p !== "web_chat" ? (TRANSPORT_LABELS[p as TransportName] ?? p) : null);
   return messages.map((m) => ({ ...m, provider: providerOf.get(m.id) ?? null, providerLabel: label(providerOf.get(m.id) ?? null), deliveryEvents: eventsOf.get(m.id) ?? [] }));
 }
 

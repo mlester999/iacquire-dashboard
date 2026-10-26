@@ -28,24 +28,24 @@ export function TemplateGallery({ options, canBuild }: { options: EditorOptions;
     <section aria-labelledby="studio-templates">
       <div>
         <h2 id="studio-templates" className="text-[18px] font-semibold text-ink">Ready-made automations</h2>
-        <p className="mt-1 max-w-3xl text-[13.5px] text-muted">Complete automations you set up in a minute. Each one opens in the editor, where you can change anything by chatting or by hand, test it with a real contact, and only then switch it on.</p>
+        <p className="mt-1 max-w-3xl text-[14px] text-muted">Complete automations you set up in a minute. Each one opens in the editor, where you can change anything by chatting or by hand, test it with a real contact, and only then switch it on.</p>
       </div>
       <div className="relative mt-4 max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
         <input
           type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search, for example “slack new lead” or “review”" aria-label="Search ready-made automations"
-          className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-[13.5px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-[14px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         />
       </div>
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Template categories">
-        <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>All ({STUDIO_TEMPLATES.length})</button>
+        <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)} className={cn("rounded-full border px-3 py-1 text-[13px] font-medium transition-colors", category === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>All ({STUDIO_TEMPLATES.length})</button>
         {STUDIO_TEMPLATE_CATEGORIES.map((c) => (
-          <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c === category ? null : c)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{c}</button>
+          <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c === category ? null : c)} className={cn("rounded-full border px-3 py-1 text-[13px] font-medium transition-colors", category === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{c}</button>
         ))}
       </div>
       <p className="sr-only" role="status" aria-live="polite">{shown.length === 1 ? "1 ready-made automation" : `${shown.length} ready-made automations`}</p>
       {shown.length === 0 && (
-        <p className="mt-5 rounded-2xl border border-dashed border-line-strong bg-surface p-5 text-[13.5px] text-muted">
+        <p className="mt-5 rounded-2xl border border-dashed border-line-strong bg-surface p-5 text-[14px] text-muted">
           No ready-made automation matches{query.trim() ? ` “${query.trim()}”` : ""}. Clear the search, or describe what you want in the box above and the builder will make it.
         </p>
       )}
@@ -54,9 +54,9 @@ export function TemplateGallery({ options, canBuild }: { options: EditorOptions;
           const ready = templateReadiness(t, options);
           return (
             <li key={t.key} className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-soft" data-template={t.key}>
-              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{t.category}</p>
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">{t.category}</p>
               <h3 className="mt-1 text-[15px] font-semibold text-ink">{t.name}</h3>
-              <p className="mt-1 flex-1 text-[13px] leading-relaxed text-muted">{t.description}</p>
+              <p className="mt-1 flex-1 text-[14px] leading-relaxed text-muted">{t.description}</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {t.reach.length ? t.reach.map((r) => <Badge key={r} tone="warning">{REACH_LABELS[r]}</Badge>) : <Badge tone="neutral">Stays inside iAcquire</Badge>}
               </div>
@@ -67,7 +67,7 @@ export function TemplateGallery({ options, canBuild }: { options: EditorOptions;
               <div className="mt-3 flex items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setSetup(t)} disabled={!canBuild || !ready.ready}>Set up</Button>
                 {!ready.ready && (t.inputs.some((i) => i.kind === "slack" || i.kind === "http")) && (
-                  <Link href="/automation-studio/connections" className="text-[12.5px] font-medium text-primary hover:underline">Add a connection</Link>
+                  <Link href="/automation-studio/connections" className="text-[13px] font-medium text-primary hover:underline">Add a connection</Link>
                 )}
               </div>
             </li>
@@ -134,7 +134,7 @@ function SetupDialog({ template, options, onClose }: { template: StudioTemplate;
       }
     >
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (!missing.length) void create(); }}>
-        {template.inputs.length === 0 && <p className="text-[13.5px] text-muted">This one needs nothing from you. You can change everything in the editor.</p>}
+        {template.inputs.length === 0 && <p className="text-[14px] text-muted">This one needs nothing from you. You can change everything in the editor.</p>}
         {template.inputs.map((spec) => {
           const choices = choicesFor(spec, options);
           const groups = [...new Set(choices.map((c) => c.group).filter(Boolean))] as string[];
@@ -150,13 +150,13 @@ function SetupDialog({ template, options, onClose }: { template: StudioTemplate;
             </Field>
           );
         })}
-        <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-muted">{template.before}</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-muted">{template.before}</p>
         {template.reach.length > 0 && (
-          <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-warning-ink" role="note">
+          <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink" role="note">
             {template.reach.map((r) => REACH_LABELS[r]).join(". ")}. It does nothing until you test it, publish it and the owner of your workspace approves this exact version.
           </p>
         )}
-        {error && <p role="alert" className="flex items-start gap-1.5 text-[13px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>}
+        {error && <p role="alert" className="flex items-start gap-1.5 text-[14px] text-danger-ink"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>}
       </form>
     </Dialog>
   );

@@ -25,6 +25,7 @@ const BLOCK_REASONS: Record<string, string> = {
   contact_unreachable: "No address to send to",
   suppressed: "Opted out or bounced",
   no_consent: "No consent on record",
+  identity_unverified: "The visitor typed this address and it has not been confirmed",
   authorization_needed: "Waiting for the owner's approval of this version",
   agent_unavailable: "The AI employee isn't available",
   agent_not_ready: "The AI employee hasn't passed its connection check",

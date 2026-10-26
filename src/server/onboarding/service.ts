@@ -18,6 +18,7 @@ import { reconcileSetupAutomation } from "@/server/setup/automation";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { listAssets } from "@/server/assets/service";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { analyzeWebsite, digestAnalysis, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
 import { QUESTION_BY_ID, QUESTIONS, INDUSTRY_OPTIONS, questionOptions } from "@/lib/onboarding/definitions";
 import {
@@ -35,7 +36,6 @@ import {
   toLegacyData,
   toMessagingPreferences,
   validateAnswer,
-  type ConnectionFacts,
   type Progress,
   type ReviewModel,
 } from "@/lib/onboarding/engine";
@@ -43,6 +43,13 @@ import { ONBOARDING_SECTIONS, type AnswerSource, type AnswerValue, type Answers,
 import type { OrgContext } from "@/server/tenancy/context";
 import { ASSISTANCE_FIELDS, assistanceRequestSchema, draftUsesProvidedDetails, missingDetails, sparseDescriptionIsGrounded, type AssistanceOptions, type Clarification } from "@/lib/onboarding/assistance";
 import { buildEmployeeSettings, generateEmployeeSettings, manualOverridesFromHistory, mergeBusinessUpdate, type GeneratedSettings } from "@/server/onboarding/employee-generator";
+import { answerTimes, loadAnswerRows, toStored } from "@/server/onboarding/answers";
+import { connectionFacts } from "@/server/onboarding/connection-facts";
+import { appliedThrough, lockOnboardingRow } from "@/server/onboarding/profile-sync";
+import { proposeSchedulingDrafts } from "@/server/onboarding/scheduling-drafts";
+import { writeBusinessProfile } from "@/server/settings/service";
+import { buildSnapshot, deriveProfile, fieldsToWrite, legacyBaseline, parseProfileSnapshot, type ProfileValues } from "@/lib/onboarding/business-profile";
+import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts";
 
 // ===========================================================================
 // Questionnaire v2: per-answer persistence, server-held position, honest save results
@@ -69,23 +76,7 @@ export interface WebsiteAnalysisSummary {
   suggestions: Array<{ questionId: string; value: AnswerValue; evidence: string }>;
 }
 
-type AnswerRow = { question_id: string; value: unknown; skipped: boolean; source: AnswerSource; needs_confirmation: boolean; updated_at: Date };
-
 const WEBSITE_ANALYSIS_KEY = "x.website_analysis";
-
-function toStored(rows: AnswerRow[]): StoredAnswers {
-  const out: StoredAnswers = {};
-  for (const r of rows) {
-    if (!QUESTION_BY_ID[r.question_id]) continue; // internal rows (website analysis) are not answers
-    out[r.question_id] = { value: r.value as AnswerValue, skipped: r.skipped, source: r.source, needsConfirmation: r.needs_confirmation, updatedAt: new Date(r.updated_at).toISOString() };
-  }
-  return out;
-}
-
-async function loadAnswerRows(db: Queryable, orgId: string) {
-  const { rows } = await db.query<AnswerRow>("select question_id, value, skipped, source, needs_confirmation, updated_at from onboarding_answers where org_id = $1", [orgId]);
-  return rows;
-}
 
 const sectionIndex = (questionId: string) => Math.max(1, ONBOARDING_SECTIONS.findIndex((s) => s.id === QUESTION_BY_ID[questionId]?.section) + 1);
 
@@ -151,8 +142,8 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
       }
     }
     const { rows: sessionRows } = await db.query<{
-      questionnaire_version: number; current_question_id: string | null; status: "draft" | "submitted"; revision: number; completed_at: Date | null; submitted_at: Date | null;
-    }>("select questionnaire_version, current_question_id, status, revision, completed_at, submitted_at from onboarding_responses where org_id = $1", [orgId]);
+      questionnaire_version: number; current_question_id: string | null; status: "draft" | "submitted"; revision: number; completed_at: Date | null; submitted_at: Date | null; submitted_snapshot: unknown;
+    }>("select questionnaire_version, current_question_id, status, revision, completed_at, submitted_at, submitted_snapshot from onboarding_responses where org_id = $1", [orgId]);
     const s = sessionRows[0];
     const { rows: agents } = await db.query<{ role_key: string }>(
       "select a.role_key from agent_instances a join agent_roles r on r.key = a.role_key where a.org_id = $1 and a.enabled order by r.sort_order",
@@ -162,6 +153,8 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
     const analysisRow = rows.find((r) => r.question_id === WEBSITE_ANALYSIS_KEY);
     const newest = rows.filter((r) => QUESTION_BY_ID[r.question_id]).reduce<number>((n, r) => Math.max(n, new Date(r.updated_at).getTime()), 0);
     const submittedAt = s?.submitted_at ? new Date(s.submitted_at) : null;
+    // A Settings edit that left nothing waiting counts as applied (src/server/onboarding/profile-sync.ts), so it is not "unsubmitted changes".
+    const appliedAt = submittedAt ? appliedThrough({ snapshot: parseProfileSnapshot(s?.submitted_snapshot), submittedAt }) : 0;
     return {
       questionnaireVersion: s?.questionnaire_version ?? 1,
       status: s?.status ?? "draft",
@@ -171,7 +164,7 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
       progress: computeProgress(stored),
       completedAt: s?.completed_at ? new Date(s.completed_at).toISOString() : null,
       submittedAt: submittedAt?.toISOString() ?? null,
-      hasUnsubmittedChanges: Boolean(submittedAt && newest > submittedAt.getTime()),
+      hasUnsubmittedChanges: Boolean(submittedAt && newest > appliedAt),
       enabledRoles: agents.map((a) => a.role_key).filter(isAgentRoleKey),
       websiteAnalysis: analysisRow ? summarizeAnalysis(analysisRow.value as StoredAnalysis, stored) : null,
     } satisfies OnboardingSession;
@@ -279,44 +272,8 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
 }
 
 // ---------------------------------------------------------------------------
-// Review: real connection state, not guesses
+// Review: real connection state, not guesses (src/server/onboarding/connection-facts.ts)
 // ---------------------------------------------------------------------------
-
-async function connectionFacts(db: Queryable, orgId: string): Promise<ConnectionFacts> {
-  const one = async (sql: string) => (await db.query<{ n: string }>(sql, [orgId])).rows[0]?.n ?? "0";
-  const crm = Number(await one("select count(*) as n from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null"));
-  const online = Number(await one("select count(*) as n from agent_instances where org_id = $1 and enabled and status in ('online', 'busy')"));
-  const total = Number(await one("select count(*) as n from agent_instances where org_id = $1 and enabled"));
-  const mapped = Number(await one("select count(*) as n from automation_template_mappings where org_id = $1 and status = 'verified'"));
-  const calendars = Number(await one("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'"));
-  const staff = Number(await one(
-    `select (select count(*) from organization_memberships where org_id = $1 and status = 'active' and role <> 'owner')
-          + (select count(*) from invitations where org_id = $1 and accepted_at is null and revoked_at is null and expires_at > now()) as n`,
-  ));
-  const { rows: channels } = await db.query<{ channel: "sms" | "whatsapp" | "email"; enabled: boolean; registration_status: string }>(
-    "select channel, enabled, registration_status from messaging_channels where org_id = $1",
-    [orgId],
-  );
-  const channelMap: ConnectionFacts["channels"] = {
-    sms: { enabled: false, registration: "not_started" },
-    whatsapp: { enabled: false, registration: "not_started" },
-    email: { enabled: false, registration: "not_started" },
-  };
-  for (const c of channels) channelMap[c.channel] = { enabled: c.enabled, registration: c.registration_status };
-  // On iAcquire CRM nothing is "linked": the CRM is set up once an industry Blueprint is applied, and a calendar counts once someone has a
-  // connected calendar or there is an active iAcquire calendar with a host. GoHighLevel (and hybrid) workspaces keep the location facts.
-  const mode = ((await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native");
-  if (mode === "native") {
-    const blueprint = Number(await one("select count(*) as n from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied')"));
-    const calendar = Number(await one(
-      `select (select count(*) from crm_calendar_connections where org_id = $1 and status = 'connected')
-            + (select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
-                 and exists (select 1 from crm_calendar_members m where m.calendar_id = c.id and m.org_id = c.org_id and m.active)) as n`,
-    ));
-    return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, websiteDomainVerified: false, invitedStaff: staff };
-  }
-  return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, websiteDomainVerified: false, invitedStaff: staff };
-}
 
 /** Brand images and knowledge documents already in the workspace, so file questions can show what is uploaded. */
 export async function listOnboardingFiles(ctx: OrgContext) {
@@ -504,6 +461,8 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
       temperature: 0.2,
       timeoutMs: 25_000,
     }, signal);
+    // The tokens are recorded whatever becomes of the answer, a failed call that still cost some included. Never fails the request. No credit is needed: a new workspace has none yet.
+    await meterModelUse({ orgId: ctx.org.orgId, feature: "onboarding_assist", key: modelCallKey(ctx.user.id), usage: reply.usage });
     if (!reply.ok) throw new AppError("integration_unavailable", "The AI assistant couldn't answer right now. You can still answer this yourself.");
     signal?.throwIfAborted();
     const output = outputSchema.safeParse(reply.text.length <= 16000 ? parseJsonObject(reply.text) : null);
@@ -547,7 +506,11 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
 export interface OnboardingOutcome {
   employees: GeneratedEmployee[];
   knowledge: { written: string[]; kept: string[] };
+  /** What the booking answers did: a draft calendar made or extended, or why nothing was (never live: see src/server/onboarding/scheduling-drafts.ts). */
+  scheduling: SchedulingDraftOutcome;
 }
+
+const NO_SCHEDULING: SchedulingDraftOutcome = { state: "skipped", typesAdded: 0, skipped: [] };
 
 export interface GeneratedEmployee {
   role: AgentRoleKey;
@@ -593,6 +556,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     .map((g) => BUSINESS_GOALS.find((x) => x.id === g)?.label ?? g)
     .concat(data.goals.other ? [sanitizeClientText(data.goals.other, 200)] : []);
   const website = b.website.trim() ? (/^https?:\/\//i.test(b.website.trim()) ? b.website.trim() : `https://${b.website.trim()}`) : "";
+  const derived = v2 ? deriveProfile(v2.answers) : null;
   // The business profile is compiled into every employee prompt as quoted context. Hard-block
   // prompt-control/privilege content at the source; sensitive-but-ambiguous instructions are
   // caught by the config classifier when the employee configuration is created.
@@ -612,18 +576,17 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
   }
 
   const outcome = await withSystem(async (db) => {
+    // Locked from here to the end: a Settings edit of the same profile waits for this submission (src/server/onboarding/profile-sync.ts), and the reverse.
+    const prior = await lockOnboardingRow(db, ctx.org.orgId);
     if (v2) {
-      const { rows: submissions } = await db.query<{ status: string; submitted_at: Date | null }>(
-        "select status, submitted_at from onboarding_responses where org_id = $1 for update",
-        [ctx.org.orgId],
-      );
       const { rows: latest } = await db.query<{ changed_at: Date | null }>(
         "select max(updated_at) as changed_at from onboarding_answers where org_id = $1 and question_id <> $2",
         [ctx.org.orgId, WEBSITE_ANALYSIS_KEY],
       );
-      const submittedAt = submissions[0]?.submitted_at?.getTime() ?? 0;
+      // Answers edited before the last submission, or before a Settings edit that left nothing waiting, are already in the live workspace.
+      const appliedAt = appliedThrough(prior);
       const changedAt = latest[0]?.changed_at?.getTime() ?? 0;
-      if (submissions[0]?.status === "submitted" && submittedAt >= changedAt) {
+      if (prior.status === "submitted" && appliedAt >= changedAt) {
         const { rows } = await db.query<{ role_key: AgentRoleKey; display_name: string; summary: string | null; status: string }>(
           `select a.role_key, a.display_name, v.summary, a.status from agent_instances a
            left join agent_config_versions v on v.id = a.active_config_version_id
@@ -633,28 +596,34 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
         return {
           employees: rows.map((row) => ({ role: row.role_key, name: row.display_name, summary: row.summary ?? "Configuration requires review.", configStatus: "unchanged", agentStatus: row.status })),
           knowledge: { written: [], kept: [] },
+          scheduling: { state: "unchanged", typesAdded: 0, skipped: [] },
         } satisfies OnboardingOutcome;
       }
     }
     await db.query(
-      `update organizations set name = $2, industry = nullif($3, ''), website = nullif($4, ''), region = nullif($5, ''),
-         status = case when status in ('invited', 'onboarding') then 'active' else status end,
+      `update organizations set status = case when status in ('invited', 'onboarding') then 'active' else status end,
          onboarding_completed_at = coalesce(onboarding_completed_at, now())
        where id = $1`,
-      [ctx.org.orgId, sanitizeClientText(b.companyName, 120), sanitizeClientText(b.industry, 120), website, sanitizeClientText(b.operatingArea, 200)],
+      [ctx.org.orgId],
+    );
+    // The profile facts go through the one writer Settings uses. A re-submission writes only the facts whose answers changed since the last submission, so a later edit
+    // in Settings > Business profile is not undone by an unrelated change of answers; the first submission writes them all.
+    let baseline: Partial<ProfileValues> | null = null;
+    if (derived && prior.status === "submitted") {
+      baseline = prior.snapshot?.fields ?? legacyBaseline(derived, answerTimes(await loadAnswerRows(db, ctx.org.orgId)), prior.submittedAt?.getTime() ?? 0);
+    }
+    const profile = await writeBusinessProfile(
+      db,
+      ctx,
+      derived
+        ? fieldsToWrite(derived, baseline)
+        : { name: b.companyName, industry: b.industry, website, region: b.operatingArea, description: b.description, services: b.services, idealCustomers: b.idealCustomers },
     );
     await db.query(
-      `insert into company_profiles (org_id, description, services, ideal_customers, operating_area, goals, goals_other, ai_preferences, updated_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       on conflict (org_id) do update set description = excluded.description, services = excluded.services,
-         ideal_customers = excluded.ideal_customers, operating_area = excluded.operating_area, goals = excluded.goals,
-         goals_other = excluded.goals_other, ai_preferences = company_profiles.ai_preferences || excluded.ai_preferences,
-         updated_by = excluded.updated_by`,
-      [
-        ctx.org.orgId, sanitizeClientText(b.description, 4000), sanitizeClientText(b.services, 4000),
-        sanitizeClientText(b.idealCustomers, 4000), sanitizeClientText(b.operatingArea, 1000), goalLabels,
-        sanitizeClientText(data.goals.other, 500), JSON.stringify(data.communication), ctx.user.id,
-      ],
+      `insert into company_profiles (org_id, goals, goals_other, ai_preferences, updated_by) values ($1, $2, $3, $4, $5)
+       on conflict (org_id) do update set goals = excluded.goals, goals_other = excluded.goals_other,
+         ai_preferences = company_profiles.ai_preferences || excluded.ai_preferences, updated_by = excluded.updated_by`,
+      [ctx.org.orgId, goalLabels, sanitizeClientText(data.goals.other, 500), JSON.stringify(data.communication), ctx.user.id],
     );
 
     const knowledge: OnboardingOutcome["knowledge"] = { written: [], kept: [] };
@@ -772,13 +741,18 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       });
       out.push({ role, name: AGENT_BY_KEY[role].name, summary: v.summary, configStatus: v.status, agentStatus: agent.status });
     }
+    // The snapshot is what the answers said about the business at this submission (the same instant as submitted_at: both are this transaction's now()). A later
+    // re-submission writes only the facts that differ from it. The earlier flow has no answers, so it leaves the snapshot as it was.
+    const stamp = new Date((await db.query<{ t: Date }>("select now() as t")).rows[0].t);
     await db.query(
-      `insert into onboarding_responses (org_id, completed_at, status, submitted_at, current_step, updated_by)
-       values ($1, now(), 'submitted', now(), 6, $2)
+      `insert into onboarding_responses (org_id, completed_at, status, submitted_at, current_step, updated_by, submitted_snapshot)
+       values ($1, now(), 'submitted', now(), 6, $2, $3::jsonb)
        on conflict (org_id) do update set completed_at = coalesce(onboarding_responses.completed_at, now()), status = 'submitted', submitted_at = now(),
-         current_step = 6, updated_by = excluded.updated_by`,
-      [ctx.org.orgId, ctx.user.id],
+         current_step = 6, updated_by = excluded.updated_by, submitted_snapshot = coalesce(excluded.submitted_snapshot, onboarding_responses.submitted_snapshot)`,
+      [ctx.org.orgId, ctx.user.id, derived ? JSON.stringify(buildSnapshot(derived, stamp)) : null],
     );
+    // Booking rules become a draft calendar and appointment types, never a live one (src/server/onboarding/scheduling-drafts.ts).
+    const scheduling = v2 ? await proposeSchedulingDrafts(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : NO_SCHEDULING;
     await ensureSetupInstance(db, ctx.org.orgId);
     if (ctx.org.kind === "client" && !ctx.org.isDemo && ctx.user.emailVerified) {
       await requestProvisioning(db, ctx.org.orgId, ctx.user.id);
@@ -792,10 +766,10 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       link: `/admin/clients/${ctx.org.orgId}`,
     });
     await recordAudit(
-      { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success", metadata: { employees: selected, version: v2 ? QUESTIONNAIRE_VERSION : 1 } },
+      { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success", metadata: { employees: selected, version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state } },
       db,
     );
-    return { employees: out, knowledge };
+    return { employees: out, knowledge, scheduling };
   });
   // Submitting company information is verifiable from recorded data, so it can complete its step.
   try {
@@ -827,14 +801,13 @@ async function seedLegacyKnowledge(db: Queryable, ctx: OrgContext, data: Onboard
 async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowledge: OnboardingOutcome["knowledge"]) {
   const a = v2.answers;
   const str = (id: string) => (typeof a[id] === "string" ? (a[id] as string) : "");
-  const tz = str("a.timezone");
-  if (tz) await db.query("update organizations set timezone = $2 where id = $1", [ctx.org.orgId, tz]);
-  const colors = a["e.brand_colors"] as { primary?: string; accent?: string } | undefined;
+  // The time zone and the main brand colour are business-profile facts and go through the one writer (writeBusinessProfile); what is left here has no editor in Settings.
+  const colors = a["e.brand_colors"] as { accent?: string } | undefined;
   await db.query(
     `update company_profiles set contact_email = nullif($2, ''), contact_phone = nullif($3, ''), location = $4,
-       brand_color = coalesce(nullif($5, ''), brand_color), brand_accent_color = coalesce(nullif($6, ''), brand_accent_color)
+       brand_accent_color = coalesce(nullif($5, ''), brand_accent_color)
      where org_id = $1`,
-    [ctx.org.orgId, str("a.contact_email"), str("a.contact_phone"), sanitizeClientText(str("a.location"), 200), colors?.primary ?? "", colors?.accent ?? ""],
+    [ctx.org.orgId, str("a.contact_email"), str("a.contact_phone"), sanitizeClientText(str("a.location"), 200), colors?.accent ?? ""],
   );
 
   // Preferences only. Automatic replies and channel senders stay off until the owner enables them and each sender is verified.
@@ -890,7 +863,7 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
     );
     return rows.map((row) => row.content);
   }) : [];
-  const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge) : null;
+  const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
   return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, firstSubmission, generated });
 }
 

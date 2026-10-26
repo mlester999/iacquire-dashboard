@@ -89,6 +89,17 @@ describe("management navigation (main iAcquire sidebar)", () => {
     expect(screen.queryByRole("link", { name: /Chat with Sales Assistant/ })).toBeNull();
   });
 
+  it("names each employee row from its own visible words, with the state said once (WCAG label-in-name)", () => {
+    renderSidebar();
+    const lead = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/lead-hunter")!;
+    // axe's label-content-name-mismatch failed on these rows when an aria-label replaced the visible text and the state was spoken twice.
+    expect(lead.hasAttribute("aria-label")).toBe(false);
+    expect(lead.textContent?.match(/setup required/gi)).toHaveLength(1);
+    // A role line that only repeats the employee's name is hidden from assistive technology instead of being read twice.
+    const ops = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/operations-manager")!;
+    expect(Array.from(ops.querySelectorAll("span[aria-hidden='true']")).map((e) => e.textContent)).toContain("Operations Manager");
+  });
+
   it("hides every chat shortcut from people who may not use AI employees", () => {
     renderSidebar([]);
     expect(screen.queryByRole("link", { name: /^Chat with/ })).toBeNull();

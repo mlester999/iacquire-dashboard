@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, ChevronLeft, ChevronRight, Inbox, LifeBuoy, MessageSquarePlus, Search, ThumbsUp, TriangleAlert, UserCheck } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Inbox, LifeBuoy, MessageSquarePlus, PencilRuler, Search, ThumbsUp, TriangleAlert, UserCheck } from "lucide-react";
 import { Card, EmptyState, Input, Select } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { InfoChip, StatusPill } from "@/components/ui/status";
@@ -27,7 +27,7 @@ const TABS: Array<{ value: ClientStatusFilter; label: string }> = [
   { value: "waiting", label: "Waiting" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" },
 ];
 
-const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp } as const;
+const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp, change: PencilRuler } as const;
 const tone = (status: string) => (status === "resolved" ? "success" : status === "closed" ? "neutral" : status === "waiting_for_client" ? "warning" : "primary") as "success" | "neutral" | "warning" | "primary";
 
 export function hrefFor(query: ListQuery, patch: Partial<ListQuery>): string {
@@ -103,7 +103,7 @@ export function RequestsList({ data, counts, query, seesAll, timeZone }: {
         )}
       </div>
 
-      <p className="text-[12.5px] text-muted" role="status" aria-live="polite">
+      <p className="text-[13px] text-muted" role="status" aria-live="polite">
         {data.total === 0 ? (filtered ? "No requests match." : "") : `Showing ${start}–${end} of ${data.total} request${data.total === 1 ? "" : "s"}${seesAll && query.scope === "all" ? " in your workspace" : ""}`}
       </p>
 
@@ -129,13 +129,13 @@ export function RequestsList({ data, counts, query, seesAll, timeZone }: {
                     <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink-2 ring-1 ring-inset ring-line" aria-hidden><Icon className="size-4" /></span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-2 ring-1 ring-inset ring-line">{r.ref}</span>
+                        <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{r.ref}</span>
                         <StatusPill tone={tone(r.status)} size="sm">{label}</StatusPill>
                         <InfoChip>{REQUEST_TYPE_LABELS[r.requestType].label}</InfoChip>
-                        {r.hasUnreadReply && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-white"><MessageSquarePlus className="size-3" aria-hidden /> New reply</span>}
+                        {r.hasUnreadReply && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[12px] font-semibold text-primary-on"><MessageSquarePlus className="size-3" aria-hidden /> New reply</span>}
                       </div>
                       <h2 className="mt-2 line-clamp-2 break-words text-[15px] font-semibold leading-snug tracking-tight text-ink group-hover:text-primary-ink" title={r.subject}>{r.subject}</h2>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted">
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
                         <span>{categoryLabel(r.category)}</span>
                         <span className="inline-flex items-center gap-1"><CalendarClock className="size-3.5" aria-hidden /> Sent {formatDate(r.createdAt, timeZone)}</span>
                         <span suppressHydrationWarning>Updated {relativeTime(r.lastActivityAt)}</span>
@@ -157,7 +157,7 @@ export function RequestsList({ data, counts, query, seesAll, timeZone }: {
           <ButtonLink href={hrefFor(query, { page: Math.max(1, data.page - 1) })} variant="secondary" size="sm" aria-disabled={data.page <= 1} tabIndex={data.page <= 1 ? -1 : undefined} className={cn(data.page <= 1 && "pointer-events-none opacity-50")} prefetch={false}>
             <ChevronLeft className="size-4" aria-hidden /> Previous
           </ButtonLink>
-          <span className="text-[12.5px] tabular-nums text-muted">Page {data.page} of {lastPage}</span>
+          <span className="text-[13px] tabular-nums text-muted">Page {data.page} of {lastPage}</span>
           <ButtonLink href={hrefFor(query, { page: Math.min(lastPage, data.page + 1) })} variant="secondary" size="sm" aria-disabled={data.page >= lastPage} tabIndex={data.page >= lastPage ? -1 : undefined} className={cn(data.page >= lastPage && "pointer-events-none opacity-50")} prefetch={false}>
             Next <ChevronRight className="size-4" aria-hidden />
           </ButtonLink>

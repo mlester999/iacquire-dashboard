@@ -1,5 +1,6 @@
 import { Globe, Settings } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
+import { invoicesEnabled } from "@/server/invoices/feature";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { PageHero } from "@/components/ui/workspace";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -7,6 +8,8 @@ import { ROLE_LABELS } from "@/lib/permissions";
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireOrgContext();
+  // Customer payments are a client workspace's own, and only once a Super Admin has switched invoicing on for it.
+  const features = ctx.org.kind === "client" && ctx.can("invoices.connect_payments") && (await invoicesEnabled(ctx.org.orgId)) ? ["invoices"] : [];
   return (
     <div className="space-y-6">
       <PageHero
@@ -34,7 +37,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
       />
       <div className="grid min-w-0 gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
         <div className="min-w-0 self-start lg:sticky lg:top-24">
-          <SettingsNav permissions={ctx.permissions} />
+          <SettingsNav permissions={ctx.permissions} features={features} />
         </div>
         <div className="min-w-0">{children}</div>
       </div>

@@ -34,10 +34,10 @@ export default function StudioPreviewInner({ role, templateKey, content }: { rol
         notice="Design preview. Sample data held only in this tab: nothing is saved or published."
         site={{ name: content.business.name, content, revision: 1, templateKey, platformHost: "preview.sites.localhost", liveHost: null, approval: "draft", isLive: false, clientName: role === "agency" ? "Client workspace (preview)" : undefined }}
       />
-      <div className="fixed bottom-3 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full border border-warning/30 bg-warning-soft px-4 py-1.5 text-[11.5px] font-medium text-warning-ink shadow-lg">
+      <div className="fixed bottom-3 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full border border-warning/30 bg-warning-soft px-4 py-1.5 text-[12px] font-medium text-warning-ink shadow-lg">
         <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={control.fail} onChange={(e) => { setSimulation(control, "fail", e.target.checked); bump((n) => n + 1); }} /> Simulate outage</label>
         <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={control.conflict} onChange={(e) => { setSimulation(control, "conflict", e.target.checked); bump((n) => n + 1); }} /> Simulate edit elsewhere</label>
-        {control.log[0] && <span className="font-mono text-[11px]" data-testid="preview-log">{control.log[0]}</span>}
+        {control.log[0] && <span className="font-mono text-[12px]" data-testid="preview-log">{control.log[0]}</span>}
       </div>
     </>
   );

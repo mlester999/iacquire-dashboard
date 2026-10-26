@@ -35,6 +35,7 @@ import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
 import { IconTile, Notice, Panel, SettingRow, type PanelTone } from "@/components/settings/panel";
 import { approveProviderFeeAction, startTopUpAction, updateBillingSettingsAction } from "@/app/actions/billing";
 import { UNIT_LABELS, formatUsd } from "@/lib/billing";
+import { setupStatusCopy } from "@/lib/billing-clearance";
 import { cn, formatDateTime, formatNumber, sentenceCase } from "@/lib/utils";
 import type { BillingOverview } from "@/server/billing/service";
 
@@ -86,6 +87,7 @@ export function BillingWorkspace({
   legacy: { setupFeeLabel: string; setupStatus: string; activation: string; invoiceUrl: string | null; receiptUrl: string | null; serviceTerms: string | null };
 }) {
   const o = overview;
+  const setupCopy = setupStatusCopy(legacy.setupStatus);
   const hasHistory = o.recentLedger.length > 0;
   const exhausted = o.availableMicros <= 0 && hasHistory;
   const noCreditsYet = o.availableMicros <= 0 && !hasHistory;
@@ -123,7 +125,7 @@ export function BillingWorkspace({
               {noCreditsYet && <StatusPill tone="neutral" size="sm">No credits yet</StatusPill>}
             </div>
             <p className="mt-4 text-[44px] font-semibold leading-none tracking-[-.05em] tabular-nums sm:text-[56px]">{formatUsd(o.availableMicros)}</p>
-            <p className="hero-description mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px]">
+            <p className="hero-description mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[14px]">
               available to spend
               {o.reservedMicros > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--control-room-raised)] px-2.5 py-0.5 text-[12px] font-medium tabular-nums ring-1 ring-inset ring-current/15">
@@ -163,8 +165,8 @@ export function BillingWorkspace({
                   return (
                     <li key={u.unitType} className="py-3 first:pt-0 last:pb-0">
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="min-w-0 text-[13.5px] font-medium text-ink">{UNIT_LABELS[u.unitType] ?? sentenceCase(u.unitType)}</span>
-                        <strong className="shrink-0 text-[13.5px] font-semibold tabular-nums text-ink">{formatUsd(u.chargedMicros)}</strong>
+                        <span className="min-w-0 text-[14px] font-medium text-ink">{UNIT_LABELS[u.unitType] ?? sentenceCase(u.unitType)}</span>
+                        <strong className="shrink-0 text-[14px] font-semibold tabular-nums text-ink">{formatUsd(u.chargedMicros)}</strong>
                       </div>
                       <div className="mt-2 flex items-center gap-3">
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3" aria-hidden>
@@ -205,7 +207,7 @@ export function BillingWorkspace({
                     <li key={l.id} className="management-row flex items-center gap-3.5 px-5 py-3 sm:px-6">
                       <IconTile icon={<meta.icon />} tone={meta.tone} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-medium leading-snug text-ink">{meta.label}</p>
+                        <p className="text-[14px] font-medium leading-snug text-ink">{meta.label}</p>
                         <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
                           <time dateTime={l.createdAt}>{formatDateTime(l.createdAt, timeZone)}</time>
                           {memo && <InfoChip className="max-w-full" >{memo}</InfoChip>}
@@ -251,9 +253,9 @@ export function BillingWorkspace({
                       <div className="flex min-w-0 flex-1 basis-56 items-center gap-3.5">
                         <IconTile icon={<Receipt />} tone={PAYMENT_TONE[p.status] === "success" ? "success" : "neutral"} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <p className="break-words text-[13.5px] font-medium leading-snug text-ink">{p.description}</p>
+                          <p className="break-words text-[14px] font-medium leading-snug text-ink">{p.description}</p>
                           <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
-                            <InfoChip className="font-mono text-[11px]">{p.referenceNumber}</InfoChip>
+                            <InfoChip className="font-mono text-[12px]">{p.referenceNumber}</InfoChip>
                             <time dateTime={p.paidAt ?? p.createdAt}>{formatDateTime(p.paidAt ?? p.createdAt, timeZone)}</time>
                           </p>
                         </div>
@@ -282,7 +284,7 @@ export function BillingWorkspace({
 
           <Panel icon={<ShieldCheck />} title="How you're charged" description="No monthly platform fee. You pay once for setup, then only for what you use." bodyClassName="space-y-4">
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
-              <ChargeRow icon={<Landmark />} title="Setup" aside={<><strong className="text-[14px] font-semibold tabular-nums text-ink">{legacy.setupFeeLabel}</strong><StatusPill tone={statusToneFor(legacy.setupStatus)}>{sentenceCase(legacy.setupStatus)}</StatusPill></>}>
+              <ChargeRow icon={<Landmark />} title="Setup" aside={<><strong className="text-[14px] font-semibold tabular-nums text-ink">{legacy.setupFeeLabel}</strong><StatusPill tone={statusToneFor(legacy.setupStatus)}>{setupCopy.label}</StatusPill></>}>
                 One time, paid once.
               </ChargeRow>
               <ChargeRow icon={<Percent />} title="Usage" aside={<InfoChip>Cost + {((o.rates.markupBps - 10000) / 100).toFixed(0)}%</InfoChip>}>
@@ -297,9 +299,9 @@ export function BillingWorkspace({
             </ul>
             {o.rates.unitRates.length > 0 ? (
               <div className="overflow-hidden rounded-2xl border border-line">
-                <table className="w-full text-left text-[13px]">
+                <table className="w-full text-left text-[14px]">
                   <caption className="sr-only">Published unit rates</caption>
-                  <thead className="bg-surface-2 text-[11px] uppercase tracking-[.08em] text-muted">
+                  <thead className="bg-surface-2 text-[12px] uppercase tracking-[.08em] text-muted">
                     <tr>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Unit</th>
                       <th scope="col" className="px-4 py-2.5 text-right font-semibold">Your rate</th>
@@ -329,9 +331,10 @@ export function BillingWorkspace({
 
           <Panel icon={<FileText />} title="Setup invoice & terms" description="Shared by the iAcquire team when available." bodyClassName="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <StatusPill tone={legacy.setupStatus === "paid" || legacy.setupStatus === "waived" ? "success" : "warning"}>Setup: {sentenceCase(legacy.setupStatus)}</StatusPill>
+              <StatusPill tone={setupCopy.cleared ? "success" : "warning"}>Setup: {setupCopy.label}</StatusPill>
               <StatusPill tone={legacy.activation === "active" ? "success" : legacy.activation === "suspended" ? "danger" : "neutral"}>Activation: {sentenceCase(legacy.activation)}</StatusPill>
             </div>
+            <p role="status" className="text-[13px] leading-relaxed text-muted">{setupCopy.detail}</p>
             <div className="flex flex-wrap gap-2">
               {legacy.invoiceUrl ? (
                 <ButtonLink href={legacy.invoiceUrl} target="_blank" rel="noopener noreferrer" variant="secondary" size="sm">
@@ -351,7 +354,7 @@ export function BillingWorkspace({
                 <p className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.08em] text-muted">
                   <ScrollText className="size-3.5" aria-hidden /> Service terms
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-2">{legacy.serviceTerms}</p>
+                <p className="mt-2 whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{legacy.serviceTerms}</p>
               </div>
             )}
           </Panel>
@@ -369,10 +372,10 @@ function ChargeRow({ icon, title, aside, children }: { icon: React.ReactNode; ti
       <IconTile icon={icon} tone="primary" size="sm" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-          <p className="text-[13.5px] font-semibold text-ink">{title}</p>
+          <p className="text-[14px] font-semibold text-ink">{title}</p>
           {aside && <span className="flex shrink-0 items-center gap-2">{aside}</span>}
         </div>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{children}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted">{children}</p>
       </div>
     </li>
   );
@@ -380,7 +383,7 @@ function ChargeRow({ icon, title, aside, children }: { icon: React.ReactNode; ti
 
 function HeroNotice({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <p role="status" className="mt-4 flex items-start gap-2.5 rounded-2xl bg-[var(--control-room-raised)] p-3.5 text-[13px] leading-relaxed ring-1 ring-inset ring-current/15 [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0">
+    <p role="status" className="mt-4 flex items-start gap-2.5 rounded-2xl bg-[var(--control-room-raised)] p-3.5 text-[14px] leading-relaxed ring-1 ring-inset ring-current/15 [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0">
       {icon}
       <span>{children}</span>
     </p>
@@ -390,7 +393,7 @@ function HeroNotice({ icon, children }: { icon: React.ReactNode; children: React
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-2xl bg-[var(--control-room-raised)]/70 p-3 ring-1 ring-inset ring-current/10">
-      <dt className="hero-description text-[11.5px]">{label}</dt>
+      <dt className="hero-description text-[12px]">{label}</dt>
       <dd className="mt-1 truncate text-[15px] font-semibold tabular-nums sm:text-[16px]">{value}</dd>
     </div>
   );
@@ -419,7 +422,7 @@ function TopUp({ presets, min, max, enabled, blockedReason }: { presets: readonl
         </span>
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold">Add service credits</h2>
-          <p className="hero-description mt-0.5 text-[12.5px] leading-relaxed">You&apos;ll pay on PayMongo&apos;s secure page. Credits are added after PayMongo confirms the payment.</p>
+          <p className="hero-description mt-0.5 text-[13px] leading-relaxed">You&apos;ll pay on PayMongo&apos;s secure page. Credits are added after PayMongo confirms the payment.</p>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2">
@@ -441,7 +444,7 @@ function TopUp({ presets, min, max, enabled, blockedReason }: { presets: readonl
         <Button type="submit" variant="brand" disabled={!enabled || !customValid || busy !== null} loading={busy === "custom"}>Add</Button>
       </form>
       {!enabled && blockedReason && (
-        <p role="status" className="mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed">
+        <p role="status" className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
           {blockedReason}
         </p>
@@ -483,7 +486,7 @@ function SpendingControls({ overview, canConfigure }: { overview: BillingOvervie
             <Button onClick={save} loading={saving}>Save limits</Button>
           </div>
         ) : (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted">
+          <p className="flex items-center gap-2 text-[13px] text-muted">
             <ShieldCheck className="size-4 shrink-0" aria-hidden /> Only owners and managers can change spending limits.
           </p>
         )
@@ -492,7 +495,7 @@ function SpendingControls({ overview, canConfigure }: { overview: BillingOvervie
       {b.monthlyBudgetMicros ? (
         <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[13px] text-muted">
+            <p className="text-[14px] text-muted">
               <span className="text-[18px] font-semibold tracking-tight text-ink tabular-nums">{formatUsd(b.monthSpendMicros)}</span> of {formatUsd(b.monthlyBudgetMicros)}
             </p>
             <StatusPill tone={budgetTone} size="sm">{Math.round(pct)}% used</StatusPill>
@@ -543,7 +546,7 @@ function ProviderFees({ fees, isOwner }: { fees: BillingOverview["providerFees"]
           {fees.map((f) => (
             <li key={f.id} className="management-row flex flex-wrap items-center gap-x-3 gap-y-2.5 px-5 py-3.5 sm:px-6">
               <div className="min-w-0 flex-1 basis-48">
-                <p className="break-words text-[13.5px] font-medium leading-snug text-ink">{f.description}</p>
+                <p className="break-words text-[14px] font-medium leading-snug text-ink">{f.description}</p>
                 <p className="mt-1.5 flex flex-wrap gap-1.5">
                   <InfoChip>{providerLabel(f.provider)}</InfoChip>
                   <InfoChip>{sentenceCase(f.recurrence)}</InfoChip>

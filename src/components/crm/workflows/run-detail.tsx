@@ -36,14 +36,14 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
   return (
     <div className="space-y-5">
       <div>
-        <Link href={back} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-0"><ArrowLeft className="size-4" aria-hidden />{data.workflowName}</Link>
+        <Link href={back} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-0"><ArrowLeft className="size-4" aria-hidden />{data.workflowName}</Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="flex flex-wrap items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-ink">
               {isTest ? "Test run" : "Run"}
               <RunStatusBadge status={data.status} test={isTest} />
             </h2>
-            {lead && <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">{lead}</p>}
+            {lead && <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">{lead}</p>}
           </div>
           {canManage && !isTest && (data.canCancel || data.canRetry || data.canSkip) && (
             <div className="flex flex-wrap gap-2">
@@ -56,14 +56,14 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
       </div>
       {!canManage && scope.readOnly && <ReadOnlyNotice />}
       {data.status === "awaiting_approval" && !scope.agency && (
-        <p className="flex flex-wrap items-center gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <p className="flex flex-wrap items-center gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <ShieldAlert className="size-4 shrink-0" aria-hidden />A person needs to approve this step before it acts.
           <Link href="/approvals" className="font-semibold underline underline-offset-2">Open Approvals</Link>
         </p>
       )}
 
       <Card className="p-0">
-        <dl className="grid gap-x-6 gap-y-3 p-4 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
+        <dl className="grid gap-x-6 gap-y-3 p-4 text-[14px] sm:grid-cols-2 lg:grid-cols-3">
           <Meta label="Contact">
             {data.contactId ? (scope.can["contacts.view"] ? <Link href={`${scope.base}/contacts/${data.contactId}`} className="font-medium text-primary hover:underline">{data.contactName ?? "Open contact"}</Link> : data.contactName ?? "A contact") : "None"}
           </Meta>
@@ -80,14 +80,14 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
           {data.depth > 0 && <Meta label="Chain depth">{data.depth} (started by another workflow&apos;s change)</Meta>}
         </dl>
         {(data.outcome || (data.lastError && data.status !== "completed")) && (
-          <p className={cn("border-t border-line px-4 py-3 text-[13px]", data.status === "cancelled" ? "bg-surface-2 text-ink-2" : "bg-danger-soft/60 text-danger-ink")} role="status">{data.outcome ?? data.lastError}</p>
+          <p className={cn("border-t border-line px-4 py-3 text-[14px]", data.status === "cancelled" ? "bg-surface-2 text-ink-2" : "bg-danger-soft/60 text-danger-ink")} role="status">{data.outcome ?? data.lastError}</p>
         )}
       </Card>
 
       <section aria-labelledby="run-steps-h">
         <h3 id="run-steps-h" className="mb-2 text-[14px] font-semibold text-ink">Steps</h3>
         {!data.steps.length && !data.pending.length ? (
-          <Card className="px-4 py-6 text-center text-[13px] text-muted">No step has run yet. Queued runs start on the scheduler&apos;s next pass.</Card>
+          <Card className="px-4 py-6 text-center text-[14px] text-muted">No step has run yet. Queued runs start on the scheduler&apos;s next pass.</Card>
         ) : (
           <ol className="space-y-3">
             {data.steps.map((s) => (
@@ -101,14 +101,14 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
                         <Badge tone={STEP_STATUS[s.status]?.tone ?? "neutral"}><StepStatusIcon status={s.status} className="size-3.5 text-current" />{isTest && s.status === "skipped" ? "Dry run" : STEP_STATUS[s.status]?.label ?? s.status}</Badge>
                         {s.attempt > 1 && <Badge tone="outline">Attempt {s.attempt}</Badge>}
                       </div>
-                      <p className="mt-0.5 text-[13px] text-ink-2">{s.summary}</p>
+                      <p className="mt-0.5 text-[14px] text-ink-2">{s.summary}</p>
                       <p className="mt-1 text-[12px] text-muted">
                         <time dateTime={s.startedAt}>{formatDateTime(s.startedAt, tz)}</time>
                         {s.finishedAt && s.finishedAt !== s.startedAt ? ` · took ${durationText(s.startedAt, s.finishedAt)}` : ""}
                         {!s.finishedAt && (s.status === "running" || s.status === "waiting" || s.status === "awaiting_approval") ? " · not finished" : ""}
                       </p>
                       {s.details.length > 0 && (
-                        <dl className="mt-2 grid gap-x-4 gap-y-1 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] sm:grid-cols-[max-content_minmax(0,1fr)]">
+                        <dl className="mt-2 grid gap-x-4 gap-y-1 rounded-xl bg-surface-2 px-3 py-2 text-[13px] sm:grid-cols-[max-content_minmax(0,1fr)]">
                           {s.details.map((d, i) => (
                             <React.Fragment key={`${d.label}-${i}`}>
                               <dt className="text-muted">{d.label}</dt>
@@ -117,11 +117,11 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
                           ))}
                         </dl>
                       )}
-                      {s.error && <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-danger-ink">{s.error}</p>}
+                      {s.error && <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{s.error}</p>}
                       {s.links.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {s.links.map((l) => (
-                            <Link key={l.href} href={l.href} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[12.5px] font-medium text-primary hover:bg-primary-soft sm:min-h-8">
+                            <Link key={l.href} href={l.href} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-primary hover:bg-primary-soft sm:min-h-8">
                               {l.label}<ExternalLink className="size-3" aria-hidden />
                             </Link>
                           ))}
@@ -137,8 +137,8 @@ export function RunDetail({ scope, run: data, canManage }: { scope: CrmScope; ru
                 <div className="flex items-start gap-3 rounded-2xl border border-dashed border-line px-4 py-3">
                   <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-muted"><StepIcon kind={p.kind} /></span>
                   <div className="min-w-0">
-                    <p className="text-[13.5px] font-medium text-ink-2">{p.label} <span className="font-normal text-muted">· {data.canCancel ? "not reached yet" : "not run on this path"}</span></p>
-                    <p className="mt-0.5 text-[12.5px] text-muted">{p.summary}</p>
+                    <p className="text-[14px] font-medium text-ink-2">{p.label} <span className="font-normal text-muted">· {data.canCancel ? "not reached yet" : "not run on this path"}</span></p>
+                    <p className="mt-0.5 text-[13px] text-muted">{p.summary}</p>
                   </div>
                 </div>
               </li>

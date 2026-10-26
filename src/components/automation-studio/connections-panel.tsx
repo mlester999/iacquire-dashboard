@@ -38,7 +38,7 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/automation-studio" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-3.5" aria-hidden />Automation Studio</Link>
+        <Link href="/automation-studio" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-3.5" aria-hidden />Automation Studio</Link>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-[24px] font-semibold tracking-tight text-ink">Connections</h1>
@@ -52,8 +52,8 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
             </Button>
           )}
         </div>
-        {planReason && <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink" role="note">{planReason} You can still revoke a connection.</p>}
-        {!canManage && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted" role="note">Setting up connections needs the “Build and change automations” permission. Ask the owner of your workspace.</p>}
+        {planReason && <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink" role="note">{planReason} You can still revoke a connection.</p>}
+        {!canManage && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-muted" role="note">Setting up connections needs the “Build and change automations” permission. Ask the owner of your workspace.</p>}
       </div>
 
       {live.length ? (
@@ -92,19 +92,19 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
                   </div>
 
                   {c.status === "needs_attention" && (
-                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-danger-soft p-2.5 text-[12.5px] leading-relaxed text-danger-ink">
+                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-danger-soft p-2.5 text-[13px] leading-relaxed text-danger-ink">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                       <span>{c.statusDetail ?? "Its recent calls failed."} Automations that use it wait until you check it. Replace the secret if it changed, then send the test again.</span>
                     </p>
                   )}
                   {c.status === "unverified" && (
-                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[12.5px] leading-relaxed text-warning-ink">
+                    <p className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft p-2.5 text-[13px] leading-relaxed text-warning-ink">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                       <span>Not verified yet. Automations that use it wait until you send the test and it goes through.</span>
                     </p>
                   )}
 
-                  <dl className="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px] [&_dd]:min-w-0 [&_dd]:break-words">
+                  <dl className="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
                     {http && (
                       <>
                         <dt className="text-muted">Allowed methods</dt>
@@ -129,7 +129,7 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
 
                   <div aria-live="polite">
                     {result && (
-                      <p className={`mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed ${result.ok ? "text-success-ink" : "text-danger-ink"}`}>
+                      <p className={`mt-3 flex items-start gap-2 text-[13px] leading-relaxed ${result.ok ? "text-success-ink" : "text-danger-ink"}`}>
                         {result.ok ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <XCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                         <span>{result.ok ? "Verified." : "The test didn’t go through."} {result.detail}</span>
                       </p>
@@ -160,7 +160,7 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
         </Card>
       )}
 
-      <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+      <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
         <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         <span>
           Only public https addresses can be called. Private networks, redirects and credentials in an address are refused, calls are limited in size, time and number, and nothing an automation reads from another system is ever treated as an instruction.
@@ -170,28 +170,28 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
 
       <section aria-labelledby="not-yet-title" className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
         <h2 id="not-yet-title" className="text-[14px] font-semibold text-ink">Not available yet</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+        <p className="mt-1 text-[13px] leading-relaxed text-muted">
           These need iAcquire to register an app with the provider first, so they can’t be connected from here today. Nothing below is half-connected.
           Meanwhile an HTTP connection reaches any service that has a web API, and Zapier, Make or n8n can start your automations through a webhook.
         </p>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {NOT_YET_AVAILABLE_CONNECTIONS.map((a) => (
             <li key={a.key} className="min-w-0 rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line">
-              <p className="text-[13px] font-medium text-ink">{a.name}</p>
-              <p className="mt-0.5 text-[12.5px] text-ink-2">{a.what}</p>
+              <p className="text-[14px] font-medium text-ink">{a.name}</p>
+              <p className="mt-0.5 text-[13px] text-ink-2">{a.what}</p>
               <p className="mt-1 text-[12px] leading-relaxed text-muted">{a.needs}</p>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[12.5px] text-muted">Need one of these first? <Link href="/support" className="font-medium text-primary hover:underline">Tell support</Link> which, so it can be planned.</p>
+        <p className="mt-3 text-[13px] text-muted">Need one of these first? <Link href="/support" className="font-medium text-primary hover:underline">Tell support</Link> which, so it can be planned.</p>
       </section>
 
       {revoked.length > 0 && (
         <details className="rounded-2xl border border-line bg-surface p-4">
-          <summary className="cursor-pointer text-[13.5px] font-medium text-ink-2">Revoked connections ({revoked.length})</summary>
+          <summary className="cursor-pointer text-[14px] font-medium text-ink-2">Revoked connections ({revoked.length})</summary>
           <ul className="mt-3 space-y-2">
             {revoked.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px] text-muted">
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-[14px] text-muted">
                 <span className="truncate">{c.name} · {c.host}</span>
                 <span>Revoked {c.revokedAt ? <RelativeTime iso={c.revokedAt} timezone={timezone} /> : ""}. Its secret was erased.</span>
               </li>
@@ -280,7 +280,7 @@ function AddDialog({ onClose }: { onClose: () => void }) {
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }} autoComplete="off">
         <div role="radiogroup" aria-label="Kind of connection" className="grid grid-cols-2 gap-2">
           {(["slack_webhook", "http"] as const).map((k) => (
-            <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[13.5px] font-medium transition-colors ${kind === k ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong"}`}>
+            <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[14px] font-medium transition-colors ${kind === k ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong"}`}>
               {k === "http" ? <Globe className="size-4" aria-hidden /> : <MessageSquareText className="size-4" aria-hidden />}
               {k === "http" ? "HTTP API" : "Slack"}
             </button>
@@ -304,16 +304,16 @@ function AddDialog({ onClose }: { onClose: () => void }) {
               <Input id="conn-base" value={baseUrl} maxLength={300} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" spellCheck={false} />
             </Field>
             <fieldset>
-              <legend className="mb-1.5 text-[13px] font-medium text-ink-2">Allowed methods</legend>
+              <legend className="mb-1.5 text-[14px] font-medium text-ink-2">Allowed methods</legend>
               <div className="flex flex-wrap gap-2">
                 {HTTP_METHODS.map((m) => (
-                  <label key={m} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium ${methods.includes(m) ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2"}`}>
+                  <label key={m} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] font-medium ${methods.includes(m) ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-ink-2"}`}>
                     <input type="checkbox" className="sr-only" checked={methods.includes(m)} onChange={() => setMethods((x) => (x.includes(m) ? x.filter((y) => y !== m) : [...x, m]))} />
                     {m}
                   </label>
                 ))}
               </div>
-              <p className="mt-1.5 text-[12.5px] text-muted">An automation can use only the methods you allow here.</p>
+              <p className="mt-1.5 text-[13px] text-muted">An automation can use only the methods you allow here.</p>
             </fieldset>
             <Field label="How to sign requests" htmlFor="conn-auth">
               <Select id="conn-auth" value={auth} onChange={(e) => setAuth(e.target.value as typeof auth)}>
@@ -424,9 +424,9 @@ function CallsDialog({ connection, timezone, onClose }: { connection: Connection
   }, [connection.id]);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={`Recent calls: ${connection.name}`} description="Where each call went and how it ended, for the last 30 days. What was sent and received isn’t kept." size="lg" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
-      {error ? <p className="text-[13px] text-danger-ink" role="alert">{error}</p> : calls === null ? <p className="text-[13px] text-muted">Loading…</p> : calls.length === 0 ? <p className="text-[13px] text-muted">Nothing has been sent through this connection yet.</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-[12.5px]">
+      {error ? <p className="text-[14px] text-danger-ink" role="alert">{error}</p> : calls === null ? <p className="text-[14px] text-muted">Loading…</p> : calls.length === 0 ? <p className="text-[14px] text-muted">Nothing has been sent through this connection yet.</p> : (
+        <div className="overflow-x-auto" tabIndex={0}>
+          <table className="w-full text-left text-[13px]">
             <caption className="sr-only">Recent calls</caption>
             <thead className="text-muted"><tr><th className="py-1.5 pr-3 font-medium">When</th><th className="pr-3 font-medium">What</th><th className="pr-3 font-medium">Result</th><th className="font-medium">Time</th></tr></thead>
             <tbody>

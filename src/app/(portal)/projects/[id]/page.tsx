@@ -4,6 +4,9 @@ import { ArrowLeft } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getProject } from "@/server/projects/client";
 import { ProjectWorkspace } from "@/components/projects/project-workspace";
+import { requestChangesEnabled } from "@/server/support/change-feature";
+import { loadSupportSettings } from "@/server/support/settings";
+import { projectReviewSentence } from "@/lib/projects";
 
 export const metadata = { title: "Project" };
 
@@ -13,9 +16,13 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const { submitted } = await searchParams;
   const project = await getProject(ctx, id);
   if (!project) notFound();
+  const changesEnabled = ctx.org.kind === "client" && (await requestChangesEnabled(ctx.org.orgId));
+  // A first-look target is told to the client only when the Super Admin set one and chose to show it.
+  const settings = await loadSupportSettings();
+  const reviewExpectation = settings.showProjectTargetsToClients ? projectReviewSentence(settings.projectReviewTargetHours) : null;
   return (
     <div className="space-y-5">
-      <Link href="/projects" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+      <Link href="/projects" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
         <ArrowLeft className="size-3.5" /> My projects
       </Link>
       <ProjectWorkspace
@@ -25,6 +32,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         canApproveQuote={ctx.can("projects.approve_quote")}
         canOpenSupport={ctx.can("support.use")}
         justSubmitted={submitted === "1"}
+        changesEnabled={changesEnabled}
+        reviewExpectation={reviewExpectation}
       />
     </div>
   );

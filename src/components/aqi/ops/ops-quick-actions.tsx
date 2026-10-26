@@ -25,7 +25,7 @@ export function OpsQuickActions({ scope, className }: { scope: OpsScope; classNa
     <>
       <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-ink">{ICON[a.key] ?? <Sparkles className="size-4" aria-hidden />}</span>
       <span className="min-w-0">
-        <span className="block text-[13px] font-semibold leading-snug text-ink">{a.label}</span>
+        <span className="block text-[14px] font-semibold leading-snug text-ink">{a.label}</span>
         <span className="mt-0.5 block text-[12px] leading-snug text-muted">{a.description}</span>
         <span className="sr-only">{KIND_HINT[a.kind]}</span>
       </span>

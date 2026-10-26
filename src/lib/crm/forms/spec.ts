@@ -168,6 +168,20 @@ export const isContactTarget = (v: unknown): v is ContactTarget => typeof v === 
 /** The answers that identify a person: a contact is only created or matched from one of these. */
 export const IDENTITY_TARGETS: readonly ContactTarget[] = ["contact.email", "contact.phone"];
 
+/**
+ * Where a survey answer can be saved as private feedback (the Reviews screen's private feedback list, and its follow-up when the answer is low). Only a survey can; at most
+ * one score (a rating from one to five, or a zero-to-ten recommend score) and one comment. A number question must accept exactly that range, and a choice question's choices must be
+ * those numbers. An answer from someone who gave no email or phone stays anonymous: it is kept and counted, apart from the answers that know who gave them.
+ */
+export const FEEDBACK_TARGETS = {
+  "feedback.rating": { label: "Private feedback: rating from 1 to 5", accepts: ["number", "single_choice"], min: 1, max: 5 },
+  "feedback.nps": { label: "Private feedback: how likely to recommend, 0 to 10", accepts: ["number", "single_choice"], min: 0, max: 10 },
+  "feedback.comment": { label: "Private feedback: comment", accepts: ["long_text", "short_text"], min: 0, max: 0 },
+} as const satisfies Record<string, { label: string; accepts: readonly QuestionType[]; min: number; max: number }>;
+export type FeedbackTarget = keyof typeof FEEDBACK_TARGETS;
+export const FEEDBACK_TARGET_KEYS = Object.keys(FEEDBACK_TARGETS) as FeedbackTarget[];
+export const isFeedbackTarget = (v: unknown): v is FeedbackTarget => typeof v === "string" && v in FEEDBACK_TARGETS;
+
 /** Which question types can fill a custom field of each type. Values are converted and checked with the CRM's own field rules. */
 export const CUSTOM_FIELD_ACCEPTS: Record<FieldType, readonly QuestionType[]> = {
   text: ["short_text", "email", "phone", "number", "date", "single_choice", "hidden"],
@@ -420,6 +434,8 @@ export interface FormContext {
   contactFields: ReadonlyMap<string, { type: FieldType; label: string; options: ReadonlyArray<{ value: string; label: string }> }>;
   /** Active assignment rules. */
   assignmentRules: ReadonlyMap<string, { entity: "contact" | "opportunity" }>;
+  /** False: satisfaction surveys aren't switched on for the workspace, so a question can't be saved as private feedback. Absent: not checked. */
+  feedbackEnabled?: boolean;
 }
 
 export function formContextFrom(o: {
@@ -437,13 +453,14 @@ export function formContextFrom(o: {
 }
 
 const NAME_TOKENS = ["contact.first_name", "contact.last_name", "contact.full_name", "form.name"] as const;
-const TOKEN_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// The key is trimmed in code: a \s* beside [^{}]* made a long run of spaces take minutes to scan.
+const TOKEN_RE = /\{\{([^{}]*)\}\}/g;
 
 /** The placeholders in a deal name template that aren't known (with answer keys checked against the questions). */
 export function unknownNameTokens(template: string, questionKeys: ReadonlySet<string>): string[] {
   const out: string[] = [];
   for (const m of template.matchAll(TOKEN_RE)) {
-    const key = m[1];
+    const key = m[1].trim();
     if ((NAME_TOKENS as readonly string[]).includes(key)) continue;
     if (key.startsWith("answer.") && questionKeys.has(key.slice(7))) continue;
     out.push(m[0]);
@@ -571,6 +588,22 @@ export function validateDraft(input: unknown, ctx: FormContext | null, opts: { k
       if (isContactTarget(q.map)) {
         const t = CONTACT_TARGETS[q.map];
         if (!(t.accepts as readonly string[]).includes(q.type)) add("error", "questions", "invalid_map", `A ${QUESTION_TYPE_LABELS[q.type].toLowerCase()} question can't fill the contact's ${t.label.toLowerCase()}.`, q.key);
+      } else if (isFeedbackTarget(q.map)) {
+        const t = FEEDBACK_TARGETS[q.map];
+        if (kind !== "survey") add("error", "questions", "invalid_map", `“${label}” is saved as private feedback, which only a survey can do.`, q.key);
+        else if (ctx?.feedbackEnabled === false) add("error", "questions", "invalid_map", `“${label}” is saved as private feedback, and satisfaction surveys aren't switched on for this workspace yet. Ask your iAcquire contact to switch them on.`, q.key);
+        else if (!(t.accepts as readonly string[]).includes(q.type)) add("error", "questions", "invalid_map", `A ${QUESTION_TYPE_LABELS[q.type].toLowerCase()} question can't be saved as “${t.label}”.`, q.key);
+        else if (q.map !== "feedback.comment") {
+          if (q.type === "number") {
+            const v = q.validation ?? {};
+            if (!(v.integer && v.min === t.min && v.max === t.max)) {
+              add("error", "questions", "invalid_map", `“${label}” is saved as feedback, so it must accept whole numbers from ${t.min} to ${t.max}: set the smallest answer to ${t.min}, the largest to ${t.max}, and tick whole numbers only.`, q.key);
+            }
+          } else {
+            const bad = (q.options ?? []).find((o) => !/^\d{1,2}$/.test(o.value) || Number(o.value) < t.min || Number(o.value) > t.max);
+            if (bad) add("error", "questions", "invalid_map", `“${label}” is saved as feedback, so each choice needs a stored value that is a whole number from ${t.min} to ${t.max}. “${bad.label}” has “${bad.value}”.`, q.key);
+          }
+        }
       } else if (q.map.startsWith("custom:")) {
         const fieldKey = q.map.slice(7);
         const field = ctx?.contactFields.get(fieldKey);
@@ -587,6 +620,7 @@ export function validateDraft(input: unknown, ctx: FormContext | null, opts: { k
     }
     seen.set(q.key, q);
   });
+  if (mapped.has("feedback.rating") && mapped.has("feedback.nps")) add("error", "questions", "duplicate_map", "A survey saves one score as private feedback: choose either the rating from 1 to 5 or the recommend score from 0 to 10.");
 
   const identity = collectsIdentity(qs);
   if (kind === "form" && !identity) {

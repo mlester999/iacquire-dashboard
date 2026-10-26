@@ -42,6 +42,8 @@ export interface StudioTemplate {
   trigger: TriggerType;
   /** The outside effects the workflow has. Any of them means an owner approves the exact version before it runs. */
   reach: StudioReach[];
+  /** True when the workflow sends a satisfaction survey, which a Super Admin switches on per workspace: the gallery says so instead of offering a draft that can't be published. */
+  needsSurveys?: boolean;
   inputs: StudioInputSpec[];
   /** One sentence on what to look at before switching it on. */
   before: string;
@@ -272,6 +274,34 @@ export const STUDIO_TEMPLATES: StudioTemplate[] = [
     },
   },
 
+  {
+    key: "post-service-check-in",
+    name: "Check in after a visit, then ask how it went",
+    category: "Appointments",
+    description: "A day after someone is marked as having attended, send an approved thank-you and check-in. Three days later, send a short satisfaction survey. Everyone who attended gets both.",
+    trigger: "appointment.showed",
+    reach: ["messages"],
+    needsSurveys: true,
+    inputs: [
+      messageInput("Check-in message", "An approved template that thanks them and offers help after their visit."),
+      { key: "survey", label: "Survey message", help: "An approved service template that contains the survey link.", kind: "review_template", required: true },
+    ],
+    before: "Mark a test appointment as attended and check both messages read well and the survey link opens the customer's page.",
+    build: (i) => {
+      const check = messageOf(i.message) ?? NO_MESSAGE;
+      const survey = messageOf(i.survey) ?? NO_MESSAGE;
+      return {
+        trigger: { type: "appointment.showed" },
+        steps: chain([
+          { key: "wait", kind: "wait", name: "Wait 1 day", config: { mode: "duration", amount: 1, unit: "days" } },
+          sendStep("checkin", "Send the check-in", check),
+          { key: "wait_survey", kind: "wait", name: "Wait 3 days", config: { mode: "duration", amount: 3, unit: "days" } },
+          { key: "survey", kind: "request_review", name: "Send the survey", config: { templateId: survey.templateId, contentHash: survey.contentHash, channel: survey.channel, businessHoursOnly: true, mode: "survey" } },
+        ]),
+      };
+    },
+  },
+
   // ---- Sales ------------------------------------------------------------------------------------------------------------------------
   {
     key: "won-deal-handoff",
@@ -496,9 +526,10 @@ export function templateMatches<T extends Pick<StudioTemplate, "key" | "name" | 
 }
 
 /** Whether the workspace has what a template asks for, from the same lists the editor and the validator use. */
-export function templateReadiness(template: Pick<StudioTemplate, "inputs">, o: EditorOptions): TemplateReadiness {
+export function templateReadiness(template: Pick<StudioTemplate, "inputs" | "needsSurveys">, o: EditorOptions): TemplateReadiness {
   const missing: string[] = [];
   const notes: string[] = [];
+  if (template.needsSurveys && o.surveysEnabled === false) missing.push("satisfaction surveys switched on for your workspace (ask your iAcquire contact)");
   for (const spec of template.inputs) {
     if (!spec.required) continue;
     switch (spec.kind) {

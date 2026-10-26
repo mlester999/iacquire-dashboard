@@ -238,6 +238,13 @@ export const QUOTE_STATUS_LABEL: Record<string, string> = {
   withdrawn: "Withdrawn",
 };
 
+/** The one sentence a client may read about how soon a new request is looked at. It exists only when the Super Admin set a target in hours and chose to show it; it is an aim, never a promise. */
+export function projectReviewSentence(hours: number | null): string | null {
+  if (hours === null || !Number.isInteger(hours) || hours < 1) return null;
+  const when = hours % 24 === 0 ? (hours === 24 ? "1 day" : `${hours / 24} days`) : hours === 1 ? "1 hour" : `${hours} hours`;
+  return `We aim to look at a new project request within ${when}. This is a target, not a promise.`;
+}
+
 export const QUOTE_ACKNOWLEDGEMENT =
   "I confirm I have reviewed this quote. Accepting records my decision against my account and the time it was made. It is not an electronic signature, and no payment is taken. iAcquire will confirm the written agreement and payment terms separately.";
 

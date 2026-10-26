@@ -53,6 +53,20 @@ export const EVENT_TRIGGER_TYPES = [
   // Missed-call recovery (src/server/missed-calls) and lead scoring (src/server/lead-scoring) announce themselves here once each.
   "call.missed", "recovery.eligible", "recovery.failed", "recovery.responded", "recovery.completed",
   "lead.score_updated", "lead.became_hot", "lead.label_changed", "lead.qualification_completed",
+  // The website chat (src/server/webchat) and lead attribution (src/server/attribution), announced once each.
+  "webchat.started", "webchat.lead_captured", "webchat.qualification_completed", "webchat.booking_requested", "lead.source_recorded",
+  // The social media manager (src/server/social): a post was published, failed, or is waiting for approval. Announced once per post and version.
+  "social.post_published", "social.post_failed", "social.approval_requested",
+  // Proposals (src/server/proposals): announced once each per version of a proposal. They carry ids and amounts only, never wording or addresses.
+  "proposal.approval_requested", "proposal.sent", "proposal.viewed", "proposal.accepted", "proposal.declined", "proposal.changes_requested", "proposal.expired",
+  // A signing service reported that a proposal was signed (and it was applied to the proposal), or that a signing request ended without a signature.
+  "signature.completed", "signature.failed",
+  // Reputation (src/server/reputation): low private feedback opened a follow-up for the team (announced once per piece of feedback), and a new public review was read from a connected
+  // review site (announced once per review).
+  "feedback.escalated", "review.external_received",
+  // Customer invoices and payments (src/server/invoices): announced once each. They carry ids and amounts only, never a name, an address or a provider's details. Money that moved in
+  // a payment provider's test mode starts none of them.
+  "invoice.created", "invoice.issued", "invoice.paid", "invoice.overdue", "invoice.voided", "payment.verified", "payment.failed", "payment.refunded",
 ] as const;
 export type EventTriggerType = (typeof EVENT_TRIGGER_TYPES)[number];
 
@@ -164,6 +178,9 @@ export interface TriggerSpec {
 const T = (type: TriggerType, label: string, description: string, group: TriggerSpec["group"], entity: TriggerSpec["entity"], carries: TriggerSpec["carries"], filters: readonly TriggerFilterKey[] = []): TriggerSpec => ({ type, label, description, group, entity, carries, filters });
 const CONTACT_ONLY = { contact: "always", opportunity: "never" } as const;
 const DEAL = { contact: "maybe", opportunity: "always" } as const;
+const PROPOSAL_CARRIES = { contact: "maybe", opportunity: "maybe" } as const;
+/** An invoice has a customer and a deal only when the person who wrote it linked them, so a run may carry either or neither. */
+const INVOICE_CARRIES = { contact: "maybe", opportunity: "maybe" } as const;
 
 export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "contact.created": T("contact.created", "Contact created", "A new contact is added, by hand, an import, a form, a booking or an inbound message.", "Contacts", "contact", CONTACT_ONLY, ["createdVia"]),
@@ -203,6 +220,11 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   // Deliberately no rating filter: every customer who answers is treated alike, so a workflow can't single out happy customers for public
   // reviews (review gating). Low ratings already create a follow-up task by themselves (src/server/crm/reviews.ts).
   "feedback.received": T("feedback.received", "Private feedback received", "A customer sends private feedback from their review request page. Every rating starts it the same way.", "Growth", "contact", CONTACT_ONLY),
+  // This one starts only for low feedback (feedback.received starts for every answer alike), so it has a rule: what it starts may tell people and create tasks, and may not ask anyone
+  // for a review or a survey (validated in stepIssues). Who is asked for a review never depends on a rating. The event carries ids only: no rating, no comment.
+  "feedback.escalated": T("feedback.escalated", "Low private feedback needs a follow-up", "A customer's private feedback was low (or a comment plainly raised a complaint) and a follow-up was opened for your team. It carries the customer and no rating or comment. A workflow started by it can notify people and create tasks, but can't ask anyone for a review: who is asked never depends on how they felt.", "Growth", "contact", CONTACT_ONLY),
+  // A public review is not tied to a customer: reviewers are never matched to contacts, so there is no contact and no star filter. Nothing starts this until a review site is connected.
+  "review.external_received": T("review.external_received", "New public review", "A new review on a connected review site (such as Google) was read into iAcquire. It has no contact, because a reviewer is never matched to a customer; its details name the site and the stars. Nothing starts this until a review site is connected. Announced once per review.", "Growth", "none", { contact: "never", opportunity: "never" }),
   "call.missed": T("call.missed", "Missed call", "A caller was missed: the provider reported no answer, a voicemail, a busy line or a failed connection, or the caller hung up within seconds. Announced once per call. It has a contact when the caller's number matches exactly one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callClasses"]),
   "recovery.eligible": T("recovery.eligible", "Follow-up allowed", "A missed caller passed every rule and a follow-up text may go out (or has been drafted for approval). Announced once per attempt.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
   "recovery.failed": T("recovery.failed", "Follow-up failed", "A missed caller's follow-up text could not be sent, or the case could not be worked. A person has to call them back.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
@@ -212,6 +234,34 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "lead.became_hot": T("lead.became_hot", "Lead became hot", "A lead's label turned Hot (by the scoring rules).", "Contacts", "contact", CONTACT_ONLY),
   "lead.label_changed": T("lead.label_changed", "Lead label changed", "A lead's Hot / Warm / Cold / Insufficient data label changed, by the rules or by a person.", "Contacts", "contact", CONTACT_ONLY, ["leadLabels"]),
   "lead.qualification_completed": T("lead.qualification_completed", "Lead qualified enough to score", "A lead went from Insufficient data to a scored label because enough became known.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.started": T("webchat.started", "Website chat started", "A visitor sends their first message in the chat on your website. It carries the conversation and the new contact the chat created.", "Conversations", "conversation", CONTACT_ONLY),
+  "webchat.lead_captured": T("webchat.lead_captured", "Website visitor shared their details", "A visitor fills in the details form in the website chat. Their details are unverified: anyone can type anyone's address.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.qualification_completed": T("webchat.qualification_completed", "Website visitor answered your questions", "A visitor answers every required qualification question in the website chat's details form.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.booking_requested": T("webchat.booking_requested", "Website visitor asked to book", "The website assistant took a booking request from a visitor. Whether it was booked, is waiting for approval or needs a person is in the booking itself.", "Conversations", "contact", CONTACT_ONLY),
+  "lead.source_recorded": T("lead.source_recorded", "Lead source recorded", "Where a contact came from was recorded: a form, a website chat, a call or a person's choice. Its details say what was recorded and how sure it is.", "Contacts", "contact", CONTACT_ONLY),
+  "social.post_published": T("social.post_published", "Social post published", "A social media post was confirmed published by the platform. It has no contact; its details name the post, the platform and the account. Announced once per post.", "Growth", "none", { contact: "never", opportunity: "never" }),
+  "social.post_failed": T("social.post_failed", "Social post failed", "A social media post could not be published, or the platform could not confirm whether it went out. A person has to look. Announced once per post and version.", "Growth", "none", { contact: "never", opportunity: "never" }),
+  "social.approval_requested": T("social.approval_requested", "Social post waiting for approval", "A social media post was sent for approval (an AI draft or a teammate's post). Announced once per version of the post.", "Growth", "none", { contact: "never", opportunity: "never" }),
+  // A proposal has a contact and a deal only when the person who wrote it linked them, so a run may carry either or neither. There is deliberately no step that sends a proposal: a person does.
+  "proposal.approval_requested": T("proposal.approval_requested", "Proposal sent for approval", "A proposal was sent for approval (an AI draft, or one a teammate wrote that needs a second look). Announced once per version of the proposal.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.sent": T("proposal.sent", "Proposal sent", "A proposal was approved and sent. Announced once per version of the proposal. It does not mean the customer has seen it.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.viewed": T("proposal.viewed", "Proposal opened in a browser", "The customer's proposal page stayed open in a browser and was used. Announced once per version. Link previews and email scanners do not start it, and it does not prove the customer read the proposal.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.accepted": T("proposal.accepted", "Proposal accepted", "The customer accepted a proposal on their page with a verified email address, or a teammate recorded their acceptance. This is a recorded answer, not an electronic signature.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.declined": T("proposal.declined", "Proposal declined", "The customer declined a proposal, or a teammate recorded that they did.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.changes_requested": T("proposal.changes_requested", "Customer asked for changes", "The customer asked for changes to a proposal from their page. Each request starts it. Their message is in the proposal, not in the trigger.", "Deals", "none", PROPOSAL_CARRIES),
+  "proposal.expired": T("proposal.expired", "Proposal expired", "A proposal went past its valid-until date without an answer. Announced once per version.", "Deals", "none", PROPOSAL_CARRIES),
+  "signature.completed": T("signature.completed", "Proposal signed", "The business's signing service reported that the signer signed a proposal, and the signature was applied to the proposal (a signature that arrives for a version that is no longer current is not applied and does not start this). Announced once per proposal version. The proposal.accepted trigger starts as well.", "Deals", "none", PROPOSAL_CARRIES),
+  "signature.failed": T("signature.failed", "Signing request ended without a signature", "A signing request could not be sent, or the signer declined it, or it ran out before they signed. Its details say which. Announced once per request.", "Deals", "none", PROPOSAL_CARRIES),
+  // Customer invoices and payments. There is deliberately no step that sends an invoice, takes a payment, records a refund or marks an invoice paid: a person does, and only a verified
+  // provider fact or a person's recorded payment ever makes an invoice paid.
+  "invoice.created": T("invoice.created", "Invoice drafted", "An invoice draft was started. Nothing has been issued or sent to the customer. Announced once per invoice.", "Deals", "none", INVOICE_CARRIES),
+  "invoice.issued": T("invoice.issued", "Invoice issued", "An invoice was approved and issued with its number. This does not mean the customer has received or seen it. Announced once per invoice.", "Deals", "none", INVOICE_CARRIES),
+  "invoice.paid": T("invoice.paid", "Invoice paid in full", "An invoice was paid in full, by a payment the payment provider confirmed or one a person recorded by hand (its details say which). A provider's test payment does not start it. Announced once per invoice.", "Deals", "none", INVOICE_CARRIES),
+  "invoice.overdue": T("invoice.overdue", "Invoice overdue", "An unpaid invoice went past its due date, as checked when the scheduler runs (not live). Announced once per invoice and due date. Not for an invoice that was written off or has a disputed payment.", "Deals", "none", INVOICE_CARRIES),
+  "invoice.voided": T("invoice.voided", "Invoice voided", "An issued invoice that had taken no payment was voided. It keeps its number. Announced once per invoice.", "Deals", "none", INVOICE_CARRIES),
+  "payment.verified": T("payment.verified", "Payment confirmed by the provider", "The payment provider confirmed a customer's online payment. Not a payment a person recorded by hand, and not a test payment. Announced once per payment.", "Deals", "none", INVOICE_CARRIES),
+  "payment.failed": T("payment.failed", "Payment attempt failed", "A customer's online payment attempt did not go through. The invoice is still owed. Announced once per failed attempt.", "Deals", "none", INVOICE_CARRIES),
+  "payment.refunded": T("payment.refunded", "Refund recorded", "A refund was recorded on a customer's payment, by a person or from the payment provider's notice. This product moves no money for it. Announced once per refund.", "Deals", "none", INVOICE_CARRIES),
   "call.completed": T("call.completed", "Call ended", "A call with your voice assistant ends, or someone in your team logs a call. It has a contact when the caller's number matches one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callStatuses", "callDirections"]),
   schedule: T("schedule", "On a schedule", "Runs every day or on chosen weekdays at a set time in your workspace's time zone. A scheduled run has no contact.", "Other", "none", { contact: "never", opportunity: "never" }),
   inbound_webhook: T("inbound_webhook", "Inbound webhook", "Another system calls this workflow's private, signed URL. The body can be matched to a contact by email or phone.", "Other", "none", { contact: "maybe", opportunity: "never" }),
@@ -420,6 +470,10 @@ const requestReviewSchema = z.strictObject({
   channel: z.enum(["email", "sms", "whatsapp"]),
   /** Hold the message until business hours (quiet hours always apply). */
   businessHoursOnly: z.boolean(),
+  /** A review request (the default) or a satisfaction survey: the same page, the same links, the same send path. Absent means a review request, so a version published before keeps its exact content. */
+  mode: z.enum(["review", "survey"]).optional(),
+  /** A survey's question: one to five (the default) or zero to ten. Only with mode "survey". */
+  scale: z.enum(["csat5", "nps10"]).optional(),
 });
 
 const notifySchema = z.strictObject({
@@ -643,7 +697,7 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
     effects: (c) => [c.channel === "email" ? "send_email" : c.channel === "sms" ? "send_sms" : "send_whatsapp"], defaults: () => ({ sendAs: "sales_assistant", businessHoursOnly: true }),
   }),
   request_review: spec({
-    kind: "request_review", label: "Request a review", description: "Ask the contact how it went with an approved review request template. They get a private feedback page with your public review links; it's sent only if they agreed to messages on that channel.", group: "Messages",
+    kind: "request_review", label: "Request a review", description: "Ask the contact how it went with an approved review request template, or send a short satisfaction survey. They get a private feedback page with your public review links; it's sent only if they agreed to messages on that channel.", group: "Messages",
     schema: requestReviewSchema, branches: false, terminal: false, external: false, emitsEvents: true, approvable: true, needs: () => ({ contact: "required", opportunity: "none" }),
     // Until a template (and so its channel) is chosen the step can't validate, so it sends nothing yet.
     effects: (c) => (c.channel ? [c.channel === "email" ? "send_email" : c.channel === "sms" ? "send_sms" : "send_whatsapp"] : []), defaults: () => ({ businessHoursOnly: true }),
@@ -772,8 +826,8 @@ export interface ValidationContext {
   pipelines: ReadonlyMap<string, { stages: ReadonlyMap<string, { kind: "open" | "won" | "lost" }> }>;
   /** Custom fields by id. */
   fields: ReadonlyMap<string, { entity: "contact" | "company" | "opportunity"; type: FieldType; key: string }>;
-  /** Approved native message templates by id: their approved wording's hash and channel. */
-  templates: ReadonlyMap<string, { contentHash: string; channel: MessageChannel }>;
+  /** Approved native message templates by id: their approved wording's hash and channel, and whether the wording carries the customer's review link (absent: not known). */
+  templates: ReadonlyMap<string, { contentHash: string; channel: MessageChannel; hasReviewLink?: boolean }>;
   /** Verified n8n mappings of this workspace. */
   n8nMappings: ReadonlySet<string>;
   /** Active outbound webhook subscriptions. */
@@ -792,6 +846,8 @@ export interface ValidationContext {
   customValues?: ReadonlySet<string>;
   /** False: the workspace does not have the new inbox yet (the rollout), so the conversation triggers and the "Update conversation" step can't be published. Absent: not checked. */
   inboxEnabled?: boolean;
+  /** False: satisfaction surveys aren't switched on for the workspace, so a request-a-review step can't be set to send a survey. Absent: not checked. */
+  surveysEnabled?: boolean;
 }
 
 export interface ParsedDefinition {
@@ -801,6 +857,9 @@ export interface ParsedDefinition {
 }
 
 const issue = (level: IssueLevel, code: string, message: string, extra: Pick<ValidationIssue, "stepKey" | "path"> = {}): ValidationIssue => ({ level, code, message, ...extra });
+
+/** Why a workflow started by low private feedback can't ask for a review or send a survey: who is asked must never depend on how they felt. */
+const LOW_FEEDBACK_NO_ASK = "A workflow started by low private feedback can't ask anyone for a review or a survey. Who is asked must never depend on how they felt. Notify your team or create a task instead, or start the workflow from something else.";
 
 /** zod's own messages ("Invalid input: expected string…") are for developers; messages written in this file are for people. */
 const GENERIC_ZOD = /^(Invalid|Too small|Too big|Unrecognized|Expected)/;
@@ -1188,6 +1247,7 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
       const s = step.config as SendMessageConfig;
       if (ctx) {
         const t = ctx.templates.get(s.templateId);
+        if (t?.hasReviewLink && def.trigger.type === "feedback.escalated") out.push(issue("error", "review_after_low_feedback", LOW_FEEDBACK_NO_ASK, { ...base, path: "config.templateId" }));
         if (!t) out.push(issue("error", "missing_template", "That template isn't approved for automated messages (or no longer exists).", { ...base, path: "config.templateId" }));
         else if (t.contentHash !== s.contentHash) out.push(issue("error", "template_changed", "The template's approved wording changed. Choose it again to use the new wording.", { ...base, path: "config.templateId" }));
         else if (t.channel !== s.channel) out.push(issue("error", "template_changed", "The template's channel changed. Choose it again.", { ...base, path: "config.channel" }));
@@ -1197,6 +1257,10 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
     }
     case "request_review": {
       const s = step.config as RequestReviewConfig;
+      if (s.scale && s.mode !== "survey") out.push(issue("error", "invalid_config", "A scale is only for a survey. Choose \"Survey\" or remove it.", { ...base, path: "config.scale" }));
+      if (s.mode === "survey" && ctx?.surveysEnabled === false) out.push(issue("error", "surveys_not_enabled", "Satisfaction surveys aren't switched on for this workspace yet. Ask your iAcquire contact to switch them on, or send a review request instead.", { ...base, path: "config.mode" }));
+      // Whoever is asked must not depend on how they felt: nothing started by low feedback may ask for a review or send a survey.
+      if (def.trigger.type === "feedback.escalated") out.push(issue("error", "review_after_low_feedback", LOW_FEEDBACK_NO_ASK, { ...base, path: "config.templateId" }));
       if (ctx) {
         const t = ctx.templates.get(s.templateId);
         if (!t) out.push(issue("error", "missing_template", "That template isn't approved for automated messages (or no longer exists).", { ...base, path: "config.templateId" }));
@@ -1368,7 +1432,7 @@ export function validationContextFrom(o: {
   users: Array<{ id: string }>;
   pipelines: Array<{ id: string; stages: Array<{ id: string; kind: "open" | "won" | "lost" }> }>;
   fields: Array<{ id: string; entity: "contact" | "company" | "opportunity"; type: FieldType; key: string }>;
-  templates: Array<{ id: string; contentHash: string; channel: MessageChannel }>;
+  templates: Array<{ id: string; contentHash: string; channel: MessageChannel; reviewLink?: boolean; body?: string }>;
   n8nMappings: Array<{ id: string }>;
   webhookSubscriptions: Array<{ id: string }>;
   connections?: Array<{ id: string; kind: "http" | "slack_webhook"; status: string; methods?: string[] }>;
@@ -1379,13 +1443,17 @@ export function validationContextFrom(o: {
   forms?: Array<{ id: string }>;
   customValues?: Array<{ key: string }>;
   inboxEnabled?: boolean;
+  surveysEnabled?: boolean;
 }): ValidationContext {
   return {
     tags: new Set(o.tags.map((t) => t.id)),
     users: new Set(o.users.map((u) => u.id)),
     pipelines: new Map(o.pipelines.map((p) => [p.id, { stages: new Map(p.stages.map((s) => [s.id, { kind: s.kind }])) }])),
     fields: new Map(o.fields.map((f) => [f.id, { entity: f.entity, type: f.type, key: f.key }])),
-    templates: new Map(o.templates.map((t) => [t.id, { contentHash: t.contentHash, channel: t.channel }])),
+    templates: new Map(o.templates.map((t) => {
+      const hasReviewLink = t.reviewLink ?? (t.body === undefined ? undefined : /\{\{\s*review\.link\s*\}\}/.test(t.body));
+      return [t.id, { contentHash: t.contentHash, channel: t.channel, ...(hasReviewLink === undefined ? {} : { hasReviewLink }) }];
+    })),
     n8nMappings: new Set(o.n8nMappings.map((m) => m.id)),
     webhookSubscriptions: new Set(o.webhookSubscriptions.map((w) => w.id)),
     connections: new Map((o.connections ?? []).map((c) => [c.id, { kind: c.kind, status: c.status, methods: c.methods ?? [] }])),
@@ -1396,6 +1464,7 @@ export function validationContextFrom(o: {
     ...(o.forms ? { forms: new Set(o.forms.map((f) => f.id)) } : {}),
     ...(o.customValues ? { customValues: new Set(o.customValues.map((v) => v.key)) } : {}),
     ...(o.inboxEnabled !== undefined ? { inboxEnabled: o.inboxEnabled } : {}),
+    ...(o.surveysEnabled !== undefined ? { surveysEnabled: o.surveysEnabled } : {}),
   };
 }
 

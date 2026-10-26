@@ -186,6 +186,27 @@ export async function revokeConnection(actor: CrmActor, id: string): Promise<{ c
   });
 }
 
+/**
+ * Cuts off every connection of a workspace that is being closed (offboarding): each secret is erased exactly as a person's own revoke does, so a workflow that uses one cannot run.
+ * No signed-in member is involved. A failure is returned by name so it is reported, never hidden.
+ */
+export async function revokeWorkspaceAutomationConnections(orgId: string, actorUserId: string): Promise<{ revoked: number; failed: boolean }> {
+  try {
+    return await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string }>(
+        "update automation_connections set status = 'revoked', secret_ciphertext = null, secret_hint = null, status_detail = null, revoked_at = now(), revoked_by = $2 where org_id = $1 and status <> 'revoked' returning id",
+        [orgId, actorUserId],
+      );
+      for (const r of rows) {
+        await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "automation_studio.connection_revoked", targetType: "automation_connection", targetId: r.id, result: "success", metadata: { why: "workspace_closed" } }, db);
+      }
+      return { revoked: rows.length, failed: false };
+    });
+  } catch {
+    return { revoked: 0, failed: true };
+  }
+}
+
 export interface TestOutcome {
   ok: boolean;
   detail: string;

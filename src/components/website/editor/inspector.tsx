@@ -90,7 +90,7 @@ function StyleControls({ doc, id, type, device, actions }: { doc: SiteContent; i
   );
   return (
     <>
-      {t.screen && <p className="mx-4 mt-3 rounded-lg bg-primary-soft p-2.5 text-[11.5px] leading-relaxed text-primary-ink">Editing for {device === "tablet" ? "tablets" : "phones"}. Size, spacing, alignment and width can differ here; everything else applies to all screens.</p>}
+      {t.screen && <p className="mx-4 mt-3 rounded-lg bg-primary-soft p-2.5 text-[12px] leading-relaxed text-primary-ink">Editing for {device === "tablet" ? "tablets" : "phones"}. Size, spacing, alignment and width can differ here; everything else applies to all screens.</p>}
       {groups.includes("type") && (
         <Group title="Text">
           <Row label="Font" tag={tag("font")} onReset={reset("font")}>
@@ -189,7 +189,7 @@ function ElementResponsive({ el, doc, actions }: { el: ElementNode; doc: SiteCon
         {([["d", "Desktop"], ["t", "Tablet"], ["m", "Phone"]] as const).map(([k, label]) => (
           <Toggle key={k} label={label} checked={hide[k] !== true} onChange={(v) => actions.commit(setHide(doc, el.id, k, !v))} />
         ))}
-        <p className="text-[11px] leading-relaxed text-muted">Hidden items stay on the page, dimmed, while you edit. Visitors on that screen won&apos;t see them.</p>
+        <p className="text-[12px] leading-relaxed text-muted">Hidden items stay on the page, dimmed, while you edit. Visitors on that screen won&apos;t see them.</p>
       </Group>
       <Group title="Per-screen settings">
         <Seg label="Screen" value={screen} onChange={setScreen} options={[{ value: "t", label: "Tablet" }, { value: "m", label: "Phone" }]} />
@@ -203,7 +203,7 @@ function ElementResponsive({ el, doc, actions }: { el: ElementNode; doc: SiteCon
             <Seg label="Columns" value={o.cols} onChange={(v) => set({ cols: v })} options={["1", "2", "3", "4"].map((n) => ({ value: n as "1", label: n }))} />
           </Row>
         )}
-        <p className="text-[11.5px] leading-relaxed text-muted">Text size, spacing, width and alignment for this screen are in the Style tab: switch the device at the top of the editor, then change them.</p>
+        <p className="text-[12px] leading-relaxed text-muted">Text size, spacing, width and alignment for this screen are in the Style tab: switch the device at the top of the editor, then change them.</p>
         {customCount > 0 && (
           <button type="button" onClick={() => actions.commit(clearOverrides(doc, el.id))} className="inline-flex h-7 items-center rounded-lg px-2 text-[12px] font-medium text-danger-ink hover:bg-danger-soft">Reset all tablet and phone changes ({customCount})</button>
         )}
@@ -242,7 +242,7 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
           <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/15">{(() => { const I = ELEMENT_ICONS[el.type] ?? Sparkles; return <I className="size-[18px]" />; })()}</span>
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold tracking-tight">{def.label}</p>
-            <p className="truncate text-[11.5px] text-muted" title={def.description}>{def.description}</p>
+            <p className="truncate text-[12px] text-muted" title={def.description}>{def.description}</p>
           </div>
         </div>
         <div className="flex shrink-0">
@@ -314,7 +314,7 @@ function ColumnInspector({ col, doc, actions }: { col: Column; doc: SiteContent;
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
-        <div className="min-w-0"><p className="truncate text-[14px] font-semibold tracking-tight">Column {((node?.index ?? 0) + 1).toString()}</p><p className="text-[11.5px] text-muted">A column holds elements side by side with others.</p></div>
+        <div className="min-w-0"><p className="truncate text-[14px] font-semibold tracking-tight">Column {((node?.index ?? 0) + 1).toString()}</p><p className="text-[12px] text-muted">A column holds elements side by side with others.</p></div>
         <div className="flex shrink-0">
           <IconButton label="Duplicate column" onClick={() => actions.duplicate(col.id)}><Copy className="size-3.5" /></IconButton>
           <IconButton label="Delete column" onClick={() => actions.remove(col.id)}><Trash2 className="size-3.5" /></IconButton>
@@ -359,7 +359,7 @@ function SlugControl({ page, doc, onCommit }: { page: Page; doc: SiteContent; on
         <TextControl aria-label="Page address" value={isHome ? "" : v} disabled={isHome} placeholder={isHome ? "(home page)" : "page-address"} maxLength={40} aria-invalid={clash}
           onChange={(e) => setV(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} onBlur={() => v && v !== page.slug && onCommit(v)} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
       </div>
-      {clash && <p role="alert" className="text-[11px] text-danger-ink">Another page already uses that address. A unique one will be chosen.</p>}
+      {clash && <p role="alert" className="text-[12px] text-danger-ink">Another page already uses that address. A unique one will be chosen.</p>}
     </div>
   );
 }
@@ -371,7 +371,7 @@ function PageInspector({ page, doc, actions }: { page: Page; doc: SiteContent; a
   const sample = `https://${doc.business.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "yourbusiness"}.com${page.slug === "home" ? "" : `/${page.slug}`}`;
   return (
     <>
-      <div className="flex items-start gap-2.5 px-4 pb-1 pt-3"><span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/15"><FileText className="size-[18px]" /></span><div className="min-w-0"><p className="text-[14px] font-semibold tracking-tight">Page settings</p><p className="text-[11.5px] leading-snug text-muted">Select anything on the page to edit it. Nothing selected shows this page.</p></div></div>
+      <div className="flex items-start gap-2.5 px-4 pb-1 pt-3"><span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/15"><FileText className="size-[18px]" /></span><div className="min-w-0"><p className="text-[14px] font-semibold tracking-tight">Page settings</p><p className="text-[12px] leading-snug text-muted">Select anything on the page to edit it. Nothing selected shows this page.</p></div></div>
       <Group title="Page">
         <Row label="Page name" htmlFor="pg-title"><TextControl id="pg-title" value={page.title} maxLength={60} onChange={(e) => set({ title: e.target.value }, "title")} /></Row>
         <Row label="Page address"><SlugControl page={page} doc={doc} onCommit={(slug) => set({ slug })} /></Row>
@@ -383,7 +383,7 @@ function PageInspector({ page, doc, actions }: { page: Page; doc: SiteContent; a
       </Group>
       <Group title="Search and sharing" hint="How this page appears in search results.">
         <div className="rounded-xl border border-line bg-surface p-3">
-          <p className="truncate text-[11px] text-muted">{sample}</p>
+          <p className="truncate text-[12px] text-muted">{sample}</p>
           <p className="mt-0.5 line-clamp-2 text-[14px] font-medium leading-snug text-[#1a0dab] dark:text-[#8ab4f8]">{title}</p>
           <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">{desc || "Add a description so search engines can describe this page."}</p>
         </div>
@@ -403,7 +403,7 @@ function PageInspector({ page, doc, actions }: { page: Page; doc: SiteContent; a
 function Crumbs({ doc, selection, actions }: { doc: SiteContent; selection: string; actions: CanvasActions }) {
   const chain = ancestors(doc, selection).filter((n) => n.kind !== "page");
   return (
-    <nav aria-label="Where this sits" className="scrollbar-thin flex items-center gap-0.5 overflow-x-auto border-b border-line px-3 py-2 text-[11.5px]">
+    <nav aria-label="Where this sits" className="relative scrollbar-thin flex items-center gap-0.5 overflow-x-auto border-b border-line px-3 py-2 text-[12px]">
       <button type="button" onClick={() => actions.select(null)} className="shrink-0 rounded px-1.5 py-0.5 text-muted hover:bg-surface-3 hover:text-ink">Page</button>
       {chain.map((n, i) => (
         <React.Fragment key={n.id}>
@@ -456,7 +456,7 @@ export function Inspector({ doc, selection, pageId, device, actions, advanced }:
     <div className="flex min-h-0 flex-1 flex-col">
       <Crumbs doc={doc} selection={selection} actions={actions} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {body ?? <p className="p-4 text-[12.5px] text-muted">That item is no longer on the page.</p>}
+        {body ?? <p className="p-4 text-[13px] text-muted">That item is no longer on the page.</p>}
         {advanced && body && (node.kind === "section" || node.kind === "element") && (
           <AdvancedGroup key={selection} doc={doc} id={selection} onReplaceSection={(s) => actions.commit(updateSection(doc, selection, (old) => ({ ...s, id: old.id })))} />
         )}

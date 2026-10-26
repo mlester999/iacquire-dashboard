@@ -28,20 +28,20 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
   return (
     <div>
       <AdminPageHeader title="Custom projects" description="Project requests from client workspaces you work on: review, scope, quote, deliver and hand over." />
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px]">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px]">
         {(["submitted", "under_review", "discovery_needed", "quote_preparing", "quote_sent", "awaiting_approval", "in_development", "testing", "ready_for_review"] as const).map((s) => (
           <Link key={s} href={`/admin/projects?status=${s}`} className={`inline-flex min-h-9 items-center rounded-full border px-3.5 py-1 transition ${filter === s ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink"}`}>
             {PROJECT_STATUS_LABEL[s]} <span className="ml-1 tabular-nums text-faint">{stats[s] ?? 0}</span>
           </Link>
         ))}
       </div>
-      <form action="/admin/projects" method="get" className="mb-4 flex flex-wrap items-center gap-2 text-[13px]">
+      <form action="/admin/projects" method="get" className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
         {filter !== "all" && <input type="hidden" name="status" value={filter} />}
         {view && <input type="hidden" name="view" value={view} />}
         <label htmlFor="client-filter" className="text-muted">
           Client
         </label>
-        <select id="client-filter" name="org" defaultValue={orgFilter ?? ""} className="h-10 rounded-xl border border-line-strong bg-surface px-3 text-[13px] text-ink">
+        <select id="client-filter" name="org" defaultValue={orgFilter ?? ""} className="h-10 rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink">
           <option value="">All clients</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -58,14 +58,14 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
           </Link>
         )}
       </form>
-      <div className="scrollbar-thin mb-4 flex gap-1 overflow-x-auto">
+      <div className="relative scrollbar-thin mb-4 flex gap-1 overflow-x-auto lg:flex-wrap lg:overflow-visible">
         {tabs.map((t) => (
-          <Link key={t.key} href={t.href} className={`shrink-0 rounded-xl px-3 py-1.5 text-[13px] font-medium transition ${t.active ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink"}`}>
+          <Link key={t.key} href={t.href} className={`shrink-0 rounded-xl px-3 py-1.5 text-[14px] font-medium transition ${t.active ? "border border-line bg-surface text-ink shadow-soft" : "text-muted hover:text-ink"}`}>
             {t.label}
           </Link>
         ))}
         {filter !== "all" && (
-          <Link href="/admin/projects" className="shrink-0 rounded-xl px-3 py-1.5 text-[13px] text-primary hover:underline">
+          <Link href="/admin/projects" className="shrink-0 rounded-xl px-3 py-1.5 text-[14px] text-primary hover:underline">
             Clear status filter
           </Link>
         )}
@@ -84,7 +84,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                     <AvatarTile name={p.orgName} />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap">
-                        <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted ring-1 ring-inset ring-line">{p.ref}</span>
+                        <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-muted ring-1 ring-inset ring-line">{p.ref}</span>
                         <span className="min-w-0 basis-full text-[14px] font-semibold leading-snug text-ink md:basis-auto md:truncate" title={p.title}>{p.title}</span>
                       </span>
                       <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -97,6 +97,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5 pl-12 md:justify-end md:pl-0">
                     {p.openTasks > 0 && <StatusPill tone="warning" size="sm">{p.openTasks} to do</StatusPill>}
+                    {p.openChanges > 0 && <StatusPill tone="primary" size="sm">{p.openChanges} change{p.openChanges === 1 ? "" : "s"} open</StatusPill>}
                     {p.quoteStatus === "sent" && <StatusPill tone="primary" size="sm">Quote out</StatusPill>}
                     <StatusPill tone={PROJECT_STATUS_TONE[p.status]}>{PROJECT_STATUS_LABEL[p.status]}</StatusPill>
                   </span>

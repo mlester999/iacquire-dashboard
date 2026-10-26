@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { handleGhlWebhook } from "@/server/messaging/ingest";
 import { respondToConversation } from "@/server/messaging/responder";
 import { dispatchDue } from "@/server/messaging/send";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,10 +15,8 @@ const MAX_BODY_BYTES = 256_000;
  * response, so GoHighLevel is acknowledged immediately; a recovery sweep answers anything a restart interrupts.
  */
 export async function POST(req: Request) {
-  const declared = Number(req.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return NextResponse.json({ received: false }, { status: 413 });
-  const rawBody = await req.text();
-  if (rawBody.length > MAX_BODY_BYTES) return NextResponse.json({ received: false }, { status: 413 });
+  const rawBody = await readBoundedText(req, MAX_BODY_BYTES);
+  if (rawBody === null) return NextResponse.json({ received: false }, { status: 413 });
   try {
     const result = await handleGhlWebhook({ rawBody, signature: req.headers.get("x-wh-signature") });
     if (result.aiShouldRespond && result.conversationId) {

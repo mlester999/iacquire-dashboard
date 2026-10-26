@@ -40,6 +40,7 @@ export interface CrmActor {
 /** What an agency person may do in a read-only support session. Never exports, deletes or sends. */
 export const AGENCY_READ_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
   "crm.view", "contacts.view", "companies.view", "sales.view", "appointments.view", "inbox.view", "inbox.view_all", "workflows.view", "analytics.view", "calls.view", "team.view",
+  "proposals.view",
 ]);
 
 /** A support write session adds scoped maintenance. Bulk sends, full data exports and permission administration remain client-controlled. */
@@ -49,6 +50,8 @@ export const AGENCY_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permiss
   "companies.create", "companies.edit", "companies.delete", "tags.manage", "fields.manage", "smartlists.share",
   "pipelines.manage", "opportunities.create", "opportunities.edit", "opportunities.reopen", "calendars.manage", "appointments.book", "appointments.manage",
   "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "forms.manage", "reviews.manage", "analytics.export", "crm.provider.manage",
+  // The price book, tax rates and proposal templates are a setup service. Sending, approving and accepting a proposal are not in this list: they stay with the client.
+  "proposals.catalog",
 ]);
 
 const AGENCY_MEMBER_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([

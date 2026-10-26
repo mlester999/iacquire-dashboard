@@ -6,6 +6,8 @@ import { recommendedSettings } from "@/lib/role-playbooks";
 import { scanInstructionText } from "@/lib/instruction-risk";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { modelGate } from "@/server/llm/gate";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 
 /** Business facts come only from confirmed onboarding and approved tenant knowledge. The model
  * personalizes role behavior, while identity, company facts and protected guardrails stay mapped
@@ -169,15 +171,27 @@ export function manualOverridesFromHistory(versions: Array<{ source: string; set
   return changed;
 }
 
+type Completion = (system: string, user: string) => Promise<string | null>;
+
+/**
+ * Writes the communication preferences for the six roles. With a `completion` (tests) no model is involved. Without one the portal's model is asked once, and that call is
+ * recorded against `orgId`, so the workspace has to be named: the call is recorded whatever the answer, a failed one that still cost tokens included. A suspended or archived
+ * workspace is not sent to the model and gets the safe defaults; an empty balance does not stop it, because this runs while a workspace is being set up.
+ */
+export function generateEmployeeSettings(data: OnboardingData, approvedKnowledge: string[], completion: Completion): Promise<Record<AgentRoleKey, GeneratedSettings>>;
+export function generateEmployeeSettings(data: OnboardingData, approvedKnowledge: string[], completion: undefined, orgId: string): Promise<Record<AgentRoleKey, GeneratedSettings>>;
 export async function generateEmployeeSettings(
   data: OnboardingData,
   approvedKnowledge: string[],
-  completion?: (system: string, user: string) => Promise<string | null>,
+  completion?: Completion,
+  orgId?: string,
 ): Promise<Record<AgentRoleKey, GeneratedSettings>> {
   let complete = completion;
   let retryProviderFailure = false;
   if (!complete) {
-    const config = await resolveLlmConfig().catch(() => null);
+    if (!orgId) throw new Error("generateEmployeeSettings needs the workspace to record the model call against.");
+    const workspace = orgId;
+    const config = (await modelGate(workspace, { credit: false })).allowed ? await resolveLlmConfig().catch(() => null) : null;
     if (config) {
       retryProviderFailure = true;
       complete = async (system, user) => {
@@ -185,6 +199,7 @@ export async function generateEmployeeSettings(
           system, user, maxTokens: 3600, temperature: 0.35, timeoutMs: 35_000,
           responseFormat: "json_object", disableThinking: true,
         });
+        await meterModelUse({ orgId: workspace, feature: "employee_generator", key: modelCallKey(workspace), usage: result.usage });
         return result.ok ? result.text : null;
       };
     } else complete = async () => null;

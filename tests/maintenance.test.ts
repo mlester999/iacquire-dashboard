@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 import {
   activateMaintenance, createMaintenanceRequest, getMaintenanceOverview, listAgencyMaintenance, nextRenewal, requestMaintenanceCancellation,
   requestMaintenanceEnrollment, resolveMaintenanceSubscription, updateMaintenanceRequest,
@@ -44,8 +45,9 @@ describe("optional managed maintenance", () => {
     // Defect corrections are available to everyone, with no plan.
     const defect = await createMaintenanceRequest(ctx(admin, "admin"), { kind: "core_defect", title: "Calendar sync broke", description: "The appointment setter stopped booking on Tuesday." });
     expect(defect.ref).toMatch(/^MNT-\d+$/);
-    const ticket = await withSystem((db) => db.query<{ category: string }>("select category from support_tickets where id = $1", [defect.ticketId]));
-    expect(ticket.rows[0].category).toBe("bug");
+    const ticket = await withSystem((db) => db.query<{ category: string; request_type: string }>("select category, request_type from support_tickets where id = $1", [defect.ticketId]));
+    // A defect is an issue report, so the Issue reports view and the analytics find it.
+    expect(ticket.rows[0]).toEqual({ category: "feature_not_working", request_type: "issue" });
     // Managed changes need an active plan.
     await expect(createMaintenanceRequest(ctx(), { kind: "managed_change", title: "Update the FAQ answers", description: "Please refresh the FAQ answers for the assistant." })).rejects.toThrow(/active maintenance plan/);
     await expect(createMaintenanceRequest(ctx(member, "member"), { kind: "core_defect", title: "Something odd", description: "It looks wrong on the overview page." })).rejects.toThrow(/can't open/);
@@ -53,6 +55,9 @@ describe("optional managed maintenance", () => {
 
   it("requires an owner to opt in explicitly; nothing starts or bills automatically", async () => {
     await withSystem((db) => db.query("insert into client_setup_instances (org_id, state, activated_at) values ($1, 'activated', now())", [org.id]));
+    // Activated but the setup fee is not confirmed: the second paid product waits for the first (tests/payment-gate.test.ts has the full matrix).
+    expect((await getMaintenanceOverview(ctx())).eligible).toBe(false);
+    await clearSetupPayment(org.id);
     expect((await getMaintenanceOverview(ctx())).eligible).toBe(true);
     await expect(requestMaintenanceEnrollment(ctx(admin, "admin"), { acceptTerms: true })).rejects.toThrow(/owner/);
     await expect(requestMaintenanceEnrollment(ctx(), { acceptTerms: false })).rejects.toThrow(/Confirm/);
@@ -80,6 +85,8 @@ describe("optional managed maintenance", () => {
     const o = await getMaintenanceOverview(ctx());
     expect(o.subscription!.status).toBe("active");
     expect(o.subscription!.billingStartOn).toBe("2026-11-01");
+    // The client's page shows the day the plan is paid through, although the client's own database role cannot read that column (0071 keeps it away on purpose).
+    expect(o.subscription!.paidThroughOn).toBe(paidThroughOn);
     expect(o.subscription!.renewalOn).toBeTruthy();
     expect(o.allowance).toEqual(expect.objectContaining({ total: 4, used: 0, remaining: 4 }));
     // The verified payment is on the plan, with who recorded it, and in the audit trail.
@@ -96,6 +103,7 @@ describe("optional managed maintenance", () => {
     const o2 = await createUser();
     await addMember(other2.id, o2.id, "owner");
     await withSystem((db) => db.query("insert into client_setup_instances (org_id, state, activated_at) values ($1, 'activated', now())", [other2.id]));
+    await clearSetupPayment(other2.id);
     await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [other2.id, staff.id]));
     await requestMaintenanceEnrollment(ctxFor(o2, other2, "owner"), { acceptTerms: true });
     const sub = (await listAgencyMaintenance(staff)).subscriptions.find((s) => s.orgId === other2.id)!;

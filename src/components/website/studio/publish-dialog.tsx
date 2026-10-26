@@ -19,11 +19,11 @@ function IssueList({ items, tone }: { items: Issue[]; tone: "danger" | "warning"
   return (
     <ul className={`space-y-2 rounded-xl border p-3 ${styles}`}>
       {items.map((i, n) => (
-        <li key={`${i.code}-${i.where}-${n}`} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
+        <li key={`${i.code}-${i.where}-${n}`} className="flex items-start gap-2.5 text-[14px] leading-relaxed">
           <Icon className={`mt-0.5 size-3.5 shrink-0 ${iconTone}`} aria-hidden />
           <div className="min-w-0">
             <p className="font-medium text-ink">{i.message}</p>
-            <p className="mt-0.5 inline-flex max-w-full rounded-md bg-surface/70 px-1.5 py-0.5 text-[11.5px] text-muted ring-1 ring-inset ring-line">{i.where}</p>
+            <p className="mt-0.5 inline-flex max-w-full rounded-md bg-surface/70 px-1.5 py-0.5 text-[12px] text-muted ring-1 ring-inset ring-line">{i.where}</p>
           </div>
         </li>
       ))}
@@ -137,7 +137,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
           <span className="grid size-12 place-items-center rounded-2xl border border-line bg-surface text-primary shadow-card"><Loader2 className="size-5 animate-spin" aria-hidden /></span>
           <div>
             <p className="text-[14px] font-semibold text-ink">Checking {isTemplate ? "your template" : "your website"}…</p>
-            <p className="mt-1 text-[12.5px] text-muted">Looking for anything that would stop it going out.</p>
+            <p className="mt-1 text-[13px] text-muted">Looking for anything that would stop it going out.</p>
           </div>
           <div className="flex flex-wrap justify-center gap-1.5" aria-hidden>
             {["Required content", "Claims", "Links and images"].map((c) => <StatusPill key={c} tone="neutral" size="sm">{c}</StatusPill>)}
@@ -152,7 +152,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
       {(stage === "review" || stage === "working") && pf && (
         <div className="space-y-5">
           {error && (
-            <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft/50 p-3 text-[13.5px] text-danger-ink">
+            <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft/50 p-3 text-[14px] text-danger-ink">
               {error}
             </p>
           )}
@@ -165,7 +165,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
               <IssueList items={blockers} tone="danger" />
             </section>
           ) : (
-            <p className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success-soft/50 p-3 text-[13.5px] text-success-ink">
+            <p className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success-soft/50 p-3 text-[14px] text-success-ink">
               <CheckCircle2 className="size-4 shrink-0" aria-hidden /> <span className="min-w-0 flex-1">Nothing is blocking this.</span>
               <StatusPill tone="success" size="sm">Ready</StatusPill>
             </p>
@@ -176,10 +176,10 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
                 <AlertTriangle className="size-4" aria-hidden /> Claims on your site
                 <StatusPill tone="warning" size="sm">{claims.length} to confirm</StatusPill>
               </h3>
-              <p className="text-[13px] text-muted">We can&apos;t check these. Anything you publish must be true and something you can prove.</p>
+              <p className="text-[14px] text-muted">We can&apos;t check these. Anything you publish must be true and something you can prove.</p>
               <IssueList items={claims} tone="warning" />
               {mode === "publish" && (
-                <label className="flex cursor-pointer items-start gap-3 text-[13.5px] leading-relaxed">
+                <label className="flex cursor-pointer items-start gap-3 text-[14px] leading-relaxed">
                   <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--primary)]" checked={ack} onChange={(e) => setAck(e.target.checked)} />
                   <span>I&apos;ve read these claims and I can back up each one with proof if asked.</span>
                 </label>
@@ -197,7 +197,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
           )}
           {mode === "publish" && (
             <div>
-              <label htmlFor="pd-note" className="mb-1.5 block text-[13px] font-medium text-ink-2">
+              <label htmlFor="pd-note" className="mb-1.5 block text-[14px] font-medium text-ink-2">
                 Note for your version history <span className="font-normal text-muted">(optional)</span>
               </label>
               <Textarea id="pd-note" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What changed in this update?" />
@@ -217,7 +217,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun =
             {outcome.restoredPrevious ? "That update couldn't be served, so your previous version is still live." : `Published as version ${outcome.number}.`}
           </p>
           {!isTemplate && <StatusPill tone={outcome.restoredPrevious || outcome.health === "unhealthy" ? "warning" : outcome.health === "healthy" ? "success" : "neutral"}>{outcome.restoredPrevious ? "Previous version still live" : outcome.health === "healthy" ? "Confirmed live" : outcome.health === "unchecked" ? "Not yet confirmed" : "Saved, not confirmed"}</StatusPill>}
-          <p className="rounded-xl border border-line bg-surface-2/60 p-3 text-[13.5px] leading-relaxed text-ink-2">
+          <p className="rounded-xl border border-line bg-surface-2/60 p-3 text-[14px] leading-relaxed text-ink-2">
             {isTemplate ? outcome.healthDetail : outcome.restoredPrevious
               ? `${outcome.healthDetail} Nothing was lost; your edits are still in the editor.`
               : outcome.health === "healthy"

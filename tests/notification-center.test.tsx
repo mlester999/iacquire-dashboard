@@ -119,7 +119,7 @@ describe("notification centre", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Notifications, 1 unread/ }));
     await screen.findByText("Sales Assistant update needs review");
-    fireEvent.click(screen.getByRole("button", { name: "Mark all notifications as read" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark all read" }));
 
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
     expect(mocks.toastSuccess).not.toHaveBeenCalled();

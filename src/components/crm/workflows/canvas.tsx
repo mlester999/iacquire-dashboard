@@ -44,7 +44,7 @@ export function WorkflowCanvas(props: CanvasProps) {
   const { trigger, selected, onSelect } = props;
   const triggerSelected = selected === "trigger";
   return (
-    <div className="mx-auto w-full max-w-3xl" aria-label="Workflow steps">
+    <div role="group" className="mx-auto w-full max-w-3xl" aria-label="Workflow steps">
       <div className={cn("rounded-2xl border bg-surface shadow-soft transition-shadow", triggerSelected ? "border-primary ring-4 ring-primary/12" : "border-line")}>
         <button
           type="button"
@@ -55,9 +55,9 @@ export function WorkflowCanvas(props: CanvasProps) {
         >
           <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-ink text-surface dark:bg-ink dark:text-bg"><TriggerIcon /></span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[11.5px] font-semibold uppercase tracking-wider text-faint">Starts when</span>
+            <span className="block text-[12px] font-semibold uppercase tracking-wider text-faint">Starts when</span>
             <span className="block text-[14px] font-semibold text-ink">{trigger.title}</span>
-            {trigger.summary && <span className="mt-0.5 block text-[12.5px] text-muted">{trigger.summary}</span>}
+            {trigger.summary && <span className="mt-0.5 block text-[13px] text-muted">{trigger.summary}</span>}
           </span>
           <IssueMark issues={trigger.issues} />
         </button>
@@ -79,7 +79,7 @@ function IssueMark({ issues }: { issues: CanvasIssue[] }) {
   if (!issues.length) return null;
   const errors = issues.filter((i) => i.severity === "error").length;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold", errors ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold", errors ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
       <AlertTriangle className="size-3.5" aria-hidden />
       <span aria-hidden>{issues.length}</span>
       <span className="sr-only">{issuesText(issues)}</span>
@@ -120,7 +120,7 @@ function Lane(props: CanvasProps & { items: CanvasItem[]; depth: number }) {
                       className={cn("min-w-0 rounded-2xl border border-dashed p-2 sm:p-3", side === "yes" ? "border-success/40 bg-success-soft/25" : "border-line-strong bg-surface-2/40")}
                     >
                       <p className="flex items-center gap-1.5 px-1 text-[12px] font-semibold text-ink-2">
-                        <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-[11px] font-bold uppercase tracking-wider", side === "yes" ? "bg-success-soft text-success-ink" : "bg-surface-3 text-ink-2")}>{side === "yes" ? "Yes" : "No"}</span>
+                        <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-[12px] font-bold uppercase tracking-wider", side === "yes" ? "bg-success-soft text-success-ink" : "bg-surface-3 text-ink-2")}>{side === "yes" ? "Yes" : "No"}</span>
                         <span className="truncate font-normal text-muted">{props.branchLabels?.[it.key]?.[side] ?? ""}</span>
                       </p>
                       <Lane {...props} items={side === "yes" ? it.yes : it.no} depth={depth + 1} />
@@ -193,12 +193,12 @@ function StepCard({ stepKey, kinds, summaries, issues, numbers, asks, selected, 
       >
         <span className={cn("inline-flex size-9 shrink-0 items-center justify-center rounded-xl", stepTone(kind))}><StepIcon kind={kind} /></span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint">
+          <span className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-faint">
             Step {n}
-            {asks?.[stepKey] && <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-px text-[10.5px] normal-case tracking-normal text-warning-ink"><Hand className="size-3" aria-hidden />Asks first</span>}
+            {asks?.[stepKey] && <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-px text-[12px] normal-case tracking-normal text-warning-ink"><Hand className="size-3" aria-hidden />Asks first</span>}
           </span>
           <span className="block text-[14px] font-semibold text-ink">{label}</span>
-          <span className="mt-0.5 block break-words text-[12.5px] text-muted">{summaries[stepKey] || "Not set up yet"}</span>
+          <span className="mt-0.5 block break-words text-[13px] text-muted">{summaries[stepKey] || "Not set up yet"}</span>
         </span>
         <IssueMark issues={stepIssues} />
       </button>

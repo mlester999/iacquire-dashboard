@@ -254,8 +254,37 @@ export function isAgentRoleKey(value: string): value is AgentRoleKey {
 
 export type AgentStatus = "setup_required" | "provisioning" | "online" | "busy" | "offline" | "error" | "disabled";
 
+/**
+ * The one place the "not working yet" status is worded. "Setup required" is what the product has always said; "Pending setup" was offered as the alternative and is the
+ * founder's choice: change this line and nothing else (tests/onboarding-status-wording.test.ts fails for a copy of the words anywhere else in src).
+ */
+export const SETUP_REQUIRED_LABEL = "Setup required";
+
+/** Why an employee that is switched on is not working yet, in the words a client reads after the label. */
+export const SETUP_REASON_TEXT = {
+  setup_payment: "waiting for setup payment",
+  profile_not_connected: "Hermes profile not connected",
+} as const;
+export type SetupReason = keyof typeof SETUP_REASON_TEXT;
+
+/**
+ * The reason behind "Setup required". An employee that is switched on and has no connected profile waits for the setup payment when the payment is known to be unconfirmed, and
+ * otherwise for its Hermes profile. Any other status says nothing here: an employee that is online keeps working when a payment is refunded afterwards (a refund stops new
+ * provisioning, it never pauses a running AI team), and one that is paused or being set up has its own wording. `paymentCleared` undefined means "not asked".
+ */
+export function setupRequiredReason(input: { status: AgentStatus; enabled: boolean; paymentCleared?: boolean | null }): SetupReason | null {
+  if (!input.enabled || input.status !== "setup_required") return null;
+  return input.paymentCleared === false ? "setup_payment" : "profile_not_connected";
+}
+
+/** "Setup required: waiting for setup payment", or null when the status is not "Setup required". */
+export function setupRequiredLine(input: { status: AgentStatus; enabled: boolean; paymentCleared?: boolean | null }): string | null {
+  const reason = setupRequiredReason(input);
+  return reason ? `${SETUP_REQUIRED_LABEL}: ${SETUP_REASON_TEXT[reason]}` : null;
+}
+
 export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
-  setup_required: "Setup required",
+  setup_required: SETUP_REQUIRED_LABEL,
   provisioning: "Being set up",
   online: "Online",
   busy: "Busy",

@@ -21,46 +21,13 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from "@/components/ui/overlays";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
+import { titleFor } from "@/components/shell/titles";
 import { useLogoutConfirmation } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { switchOrgAction } from "@/app/actions/shell";
 import { cn, currentTime, initials } from "@/lib/utils";
-
-const TITLES: Array<[RegExp, string]> = [
-  [/^\/overview/, "Overview"],
-  [/^\/setup/, "Setup"],
-  [/^\/employees\/[^/]+\/configure/, "Configure employee"],
-  [/^\/employees/, "AI Employees"],
-  [/^\/leads/, "Leads"],
-  [/^\/appointments/, "Appointments"],
-  [/^\/sales/, "Sales Pipeline"],
-  [/^\/retention/, "Customer Retention"],
-  [/^\/analytics/, "Analytics"],
-  [/^\/approvals/, "Approval Center"],
-  [/^\/knowledge/, "Knowledge Center"],
-  [/^\/activity/, "Activity"],
-  [/^\/notifications/, "Notifications"],
-  [/^\/support/, "Support"],
-  [/^\/crm\/contacts/, "Contacts"],
-  [/^\/crm\/companies/, "Companies"],
-  [/^\/crm\/smart-lists/, "Smart Lists"],
-  [/^\/crm\/tags/, "Tags & Segments"],
-  [/^\/crm\/fields/, "Custom Fields"],
-  [/^\/crm\/pipelines/, "Pipelines"],
-  [/^\/crm\/opportunities/, "Opportunities"],
-  [/^\/crm\/tasks/, "Tasks"],
-  [/^\/crm\/settings/, "CRM Settings"],
-  [/^\/crm/, "CRM"],
-  [/^\/inbox/, "Inbox"],
-  [/^\/settings/, "Settings"],
-  [/^\/add-ons/, "Custom Projects & Add-ons"],
-  [/^\/projects/, "My Projects"],
-  [/^\/our-work/, "Selected Work"],
-  [/^\/maintenance/, "Maintenance"],
-  [/^\/automation-studio/, "Automation Studio"],
-];
 
 function ThemeMenuItems() {
   const { theme, setTheme } = useTheme();
@@ -78,7 +45,7 @@ function ThemeMenuItems() {
           onClick={() => setTheme(o.v)}
           aria-pressed={theme === o.v}
           className={cn(
-            "flex flex-col items-center gap-1 rounded-lg py-2 text-[11.5px] text-muted transition hover:bg-surface-2",
+            "flex flex-col items-center gap-1 rounded-lg py-2 text-[12px] text-muted transition hover:bg-surface-2",
             theme === o.v && "bg-surface-2 text-ink ring-1 ring-line",
           )}
         >
@@ -98,8 +65,8 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [navigationOpen, setNavigationOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
-  const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? "iAcquire";
-  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && n.label.toLowerCase().includes(search.toLowerCase()));
+  const title = titleFor(pathname);
+  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setNavigationOpen((s) => !s); } };
     document.addEventListener("keydown", key);
@@ -154,7 +121,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </MenuTrigger>
           <MenuContent className="w-64">
             <div className="px-2.5 py-2">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{shell.user.name}</p>
+              <p className="truncate text-[14px] font-semibold text-ink">{shell.user.name}</p>
               <p className="truncate text-[12px] text-muted">{shell.user.email}</p>
             </div>
             <MenuSeparator />
@@ -174,7 +141,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <MenuItem key={m.id} onSelect={() => switchOrg(m.id)} disabled={m.id === shell.org.id}>
                     <Building2 className="size-4" />
                     <span className="flex-1 truncate">{m.name}</span>
-                    {m.id === shell.org.id && <span className="text-[11px] text-primary">Current</span>}
+                    {m.id === shell.org.id && <span className="text-[12px] text-primary">Current</span>}
                   </MenuItem>
                 ))}
               </>
@@ -196,7 +163,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
 export function DemoBanner() {
   return (
-    <aside aria-label="Demo workspace" className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[12.5px] font-medium text-violet-ink">
+    <aside aria-label="Demo workspace" className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[13px] font-medium text-violet-ink">
       Demo workspace — the records here are fictional sample data for previewing the portal, not live business results.
     </aside>
   );
@@ -206,7 +173,7 @@ export function SetupBanner() {
   return (
     <div className="mx-auto mt-4 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft px-4 py-3 sm:flex-row sm:items-center">
-        <p className="text-[13.5px] text-primary-ink">
+        <p className="text-[14px] text-primary-ink">
           <span className="font-semibold">Finish your company setup</span> so we can tailor your AI team. It takes about 3–5 minutes and saves as you go.
         </p>
         <ButtonLink href="/onboarding" size="sm" variant="brand">

@@ -34,7 +34,7 @@ function FontPicker({ value, onChange, label }: { value: FontKey; onChange: (k: 
         <div className="max-h-72 overflow-y-auto">
           {groups.map((g) => (
             <div key={g.c} className="mb-1">
-              <p className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">{g.c === "serif" ? "Serif" : g.c === "sans" ? "Sans serif" : g.c === "display" ? "Display" : "Monospace"}</p>
+              <p className="px-2 pb-0.5 pt-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">{g.c === "serif" ? "Serif" : g.c === "sans" ? "Sans serif" : g.c === "display" ? "Display" : "Monospace"}</p>
               {g.items.map((k) => (
                 <button key={k} type="button" onClick={() => { onChange(k); setOpen(false); }} className={cn("flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[15px] hover:bg-surface-3", k === value && "bg-primary-soft text-primary-ink")} style={{ fontFamily: `var(${FONTS[k].variable}), ${FONTS[k].fallback}` }}>
                   {FONTS[k].label}
@@ -113,7 +113,7 @@ export function DesignPanel({ doc, commit }: { doc: SiteContent; commit: Commit 
             {PAIRINGS.map((p) => (
               <button key={p.name} type="button" onClick={() => set({ fonts: { ...d.fonts, heading: p.heading, body: p.body, accent: p.accent } })} className="rounded-lg border border-line bg-surface px-2 py-1.5 text-left hover:border-line-strong">
                 <span className="block text-[15px] leading-tight" style={{ fontFamily: `var(${FONTS[p.heading].variable}), ${FONTS[p.heading].fallback}` }}>{p.name}</span>
-                <span className="block text-[11px] text-muted" style={{ fontFamily: `var(${FONTS[p.body].variable}), ${FONTS[p.body].fallback}` }}>{FONTS[p.heading].label} + {FONTS[p.body].label}</span>
+                <span className="block text-[12px] text-muted" style={{ fontFamily: `var(${FONTS[p.body].variable}), ${FONTS[p.body].fallback}` }}>{FONTS[p.heading].label} + {FONTS[p.body].label}</span>
               </button>
             ))}
           </div>
@@ -173,7 +173,7 @@ function Validated({ label, value, onCommit, check, message, placeholder, multil
       {multiline
         ? <AreaControl id={id} rows={3} value={v} maxLength={max} placeholder={placeholder} aria-invalid={!ok} onChange={(e) => { setV(e.target.value); if (check(e.target.value)) onCommit(e.target.value); }} />
         : <TextControl id={id} type={type} value={v} maxLength={max} placeholder={placeholder} aria-invalid={!ok} onChange={(e) => { setV(e.target.value); if (check(e.target.value)) onCommit(e.target.value); }} />}
-      {!ok && <p role="alert" className="text-[11px] text-danger-ink">{message}</p>}
+      {!ok && <p role="alert" className="text-[12px] text-danger-ink">{message}</p>}
     </Row>
   );
 }

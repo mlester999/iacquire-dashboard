@@ -71,5 +71,25 @@ export const UNIT_LABELS: Record<string, string> = {
   other: "Other usage",
 };
 
+// A model's tokens are priced per 1,000, not per token: a whole micro-dollar per token is already $1 per million tokens, too coarse for a cheap model.
+// src/server/llm/meter.ts charges ceil(rate x tokens / 1000) for the published rate, so the rate has to be entered, labelled and shown the same way. UNIT_LABELS
+// stays the name of a quantity (a usage line says "AI input tokens"); a published rate carries rateUnitLabel.
+const TOKENS_PER_RATE = 1000;
+const isTokenUnit = (unit: string) => unit === "ai_tokens_in" || unit === "ai_tokens_out";
+
+export const rateUnitLabel = (unit: string): string => `${UNIT_LABELS[unit] ?? unit}${isTokenUnit(unit) ? ` (per ${TOKENS_PER_RATE.toLocaleString("en-US")})` : ""}`;
+export const rateFieldLabel = (unit: string): string => (isTokenUnit(unit) ? `We pay (USD per ${TOKENS_PER_RATE.toLocaleString("en-US")} tokens)` : "We pay (USD per unit)");
+export const rateFieldHint = (unit: string): string | undefined =>
+  isTokenUnit(unit) ? `The provider's price for ${TOKENS_PER_RATE.toLocaleString("en-US")} tokens, not one token. A price quoted per million tokens: divide it by ${TOKENS_PER_RATE.toLocaleString("en-US")}.` : undefined;
+export const ratePlaceholder = (unit: string): string => (isTokenUnit(unit) ? "0.0005" : "0.008");
+
+/** A note for a token rate that is far outside what any model costs, which usually means it was entered per token or per million. It warns; it never blocks. */
+export function rateSanityNote(unit: string, usdPerThousand: number): string | null {
+  if (!isTokenUnit(unit) || !Number.isFinite(usdPerThousand) || usdPerThousand <= 0) return null;
+  if (usdToMicros(usdPerThousand) < 10) return "That is under $0.00001 per 1,000 tokens, far below any model's price. If it is a price per single token, multiply it by 1,000 first.";
+  if (usdPerThousand > 1) return "That is over $1 per 1,000 tokens, far above any model's price. If it is a price per million tokens, divide it by 1,000 first.";
+  return null;
+}
+
 export type UnitType = keyof typeof UNIT_LABELS;
 export const isUnitType = (value: unknown): value is UnitType => typeof value === "string" && value in UNIT_LABELS;

@@ -28,7 +28,7 @@ export default async function ProjectsPage() {
               Request a project <ArrowRight className="size-4" />
             </ButtonLink>
           )}
-      </>} aside={<div className="grid grid-cols-2 gap-5 rounded-2xl border border-primary/15 bg-surface/80 p-5"><div><p className="text-[11px] font-medium text-muted">Active projects</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.status!=="completed"&&p.status!=="cancelled").length}</p></div><div><p className="text-[11px] font-medium text-muted">Waiting for you</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.quoteWaiting||p.approvalsWaiting>0||p.infoRequested).length}</p></div></div>}/>
+      </>} aside={<div className="grid grid-cols-2 gap-5 rounded-2xl border border-primary/15 bg-surface/80 p-5"><div><p className="text-[12px] font-medium text-muted">Active projects</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.status!=="completed"&&p.status!=="cancelled").length}</p></div><div><p className="text-[12px] font-medium text-muted">Waiting for you</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.quoteWaiting||p.approvalsWaiting>0||p.infoRequested).length}</p></div></div>}/>
 
       {sorted.length === 0 ? (
         <Card>
@@ -57,7 +57,7 @@ export default async function ProjectsPage() {
                         <ProjectStatusBadge status={p.status} />
                       </div>
                       <h3 className="mt-2 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>
-                      <p className="mt-0.5 truncate text-[12.5px] text-muted" title={p.serviceName ?? "Custom project"}>{p.serviceName ?? "Custom project"}</p>
+                      <p className="mt-0.5 truncate text-[13px] text-muted" title={p.serviceName ?? "Custom project"}>{p.serviceName ?? "Custom project"}</p>
                     </div>
                   </div>
                   {(p.quoteWaiting || p.approvalsWaiting > 0 || p.infoRequested) && (

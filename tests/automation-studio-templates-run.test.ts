@@ -20,6 +20,7 @@ import { TRIGGERS } from "@/lib/crm/workflow/spec";
 import { createOpportunity } from "@/server/crm/opportunities";
 import { ctxFor } from "./support/fixtures";
 import { studioWorkspace, type StudioWorkspace } from "./support/studio-workspace";
+import { setSurveys } from "./support/reputation";
 
 const SLACK_HOOK = ["https://hooks.slack.com/services", "T0ABCDEFG", "B0HIJKLMN", "AbCdEfGhIjKlMnOpQrStUvWx"].join("/");
 const ok = (body = "{}"): PinnedResponse => ({ status: 200, contentType: "application/json", retryAfterSeconds: null, bytes: body.length, truncated: false, body });
@@ -62,6 +63,7 @@ function inputsFor(t: StudioTemplate, f: Fixture): Record<string, unknown> {
 
 beforeAll(async () => {
   const ws = await studioWorkspace({ name: "Template runs" });
+  await setSurveys(ws.o.org.id, true);
   const owner = ws.o.actor("owner");
   vi.spyOn(hostResolver, "lookup").mockResolvedValue(["93.184.216.34"]);
   vi.spyOn(pinnedHttps, "request").mockImplementation(async (r) => ok(r.url.startsWith("https://hooks.slack.com") ? "ok" : "{}"));

@@ -18,7 +18,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   if (!detail) notFound();
   return (
     <div className="module-stack">
-      <Link href="/admin/support" className="-ml-2.5 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink">
+      <Link href="/admin/support" className="-ml-2.5 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2.5 text-[14px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink">
         <ArrowLeft className="size-3.5" aria-hidden /> Requests
       </Link>
       <AgencyWorkspace list={null} query={EMPTY} options={null} initialDetail={detail} timeZone={user.timezone} meId={user.id} layout="detail" />

@@ -75,15 +75,15 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
       <div className="flex items-start gap-3">
         <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-ink text-surface dark:bg-ink dark:text-bg"><Zap className="size-4" aria-hidden /></span>
         <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Trigger</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Trigger</p>
           <h3 className="text-[16px] font-semibold text-ink">{spec.label}</h3>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{spec.description}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{spec.description}</p>
         </div>
       </div>
       {general.length > 0 && (
         <ul className="space-y-1.5" aria-label="Problems with the trigger">
           {general.map((i, n) => (
-            <li key={`${i.code}-${n}`} className={cn("flex gap-2 rounded-xl px-3 py-2 text-[12.5px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+            <li key={`${i.code}-${n}`} className={cn("flex gap-2 rounded-xl px-3 py-2 text-[13px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{i.message}
             </li>
           ))}
@@ -261,7 +261,7 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
             <Field label="At" htmlFor="wf-tr-time" error={errorAt("trigger.schedule.time")} hint="In your workspace's time zone.">
               <Input id="wf-tr-time" type="time" className="w-36" value={trigger.schedule?.time ?? "09:00"} onChange={(e) => onChange({ ...trigger, schedule: { frequency: trigger.schedule?.frequency ?? "daily", ...trigger.schedule, time: e.target.value } })} />
             </Field>
-            <p className="text-[12.5px] leading-relaxed text-muted">A scheduled run has no contact, so steps that need one (tags, messages) are refused when you check the workflow.</p>
+            <p className="text-[13px] leading-relaxed text-muted">A scheduled run has no contact, so steps that need one (tags, messages) are refused when you check the workflow.</p>
           </>
         )}
 
@@ -281,16 +281,16 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
               onChange={(v) => onChange({ ...trigger, inbound: { nonce: trigger.inbound?.nonce ?? newNonce(), match: trigger.inbound?.match ?? "email_or_phone", createContact: v } })}
             />
             <div className="space-y-2 rounded-2xl border border-line bg-surface-2/50 p-3">
-              <p className="text-[13px] font-medium text-ink-2">Private URL</p>
+              <p className="text-[14px] font-medium text-ink-2">Private URL</p>
               {inboundUrl ? (
                 <div className="flex items-center gap-2">
                   <Input readOnly aria-label="Inbound webhook URL" value={inboundUrl} className="font-mono text-[12px]" onFocus={(e) => e.currentTarget.select()} />
                   <Button variant="secondary" size="icon-sm" aria-label="Copy URL" onClick={() => navigator.clipboard?.writeText(inboundUrl).then(() => toast.success("Copied."), () => toast.error("Couldn't copy. Select the URL and copy it."))}><Copy className="size-4" /></Button>
                 </div>
               ) : inboundHidden ? (
-                <p className="text-[12.5px] text-muted">Only people who can change this workflow can see its URL.</p>
+                <p className="text-[13px] text-muted">Only people who can change this workflow can see its URL.</p>
               ) : (
-                <p className="text-[12.5px] text-muted">The URL appears here once a version with this trigger is published.</p>
+                <p className="text-[13px] text-muted">The URL appears here once a version with this trigger is published.</p>
               )}
               <Button variant="ghost" size="sm" onClick={() => onChange({ ...trigger, inbound: { match: trigger.inbound?.match ?? "email_or_phone", createContact: !!trigger.inbound?.createContact, nonce: newNonce() } })}>
                 <RefreshCw className="size-4" aria-hidden />New URL on next publish

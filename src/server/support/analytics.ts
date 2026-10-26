@@ -40,6 +40,8 @@ export interface SupportAnalytics {
   reopen: { tickets: number; ratePercent: number | null };
   workload: Array<{ userId: string; name: string; active: number; resolvedInRange: number }>;
   feedback: { byStage: CountBy[]; byCategory: CountBy[]; monthly: Array<{ month: string; count: number }> };
+  /** The one-question surveys, when the workspace has them on. Answers are only ever counted; comments stay in the survey record. */
+  satisfaction: { requested: number; answered: number; averageRating: number | null; helpfulPercent: number | null };
   commonIssues: Array<{ category: string; feature: string | null; count: number }>;
   topClients: Array<{ orgId: string; name: string; count: number }>;
 }
@@ -125,6 +127,14 @@ export async function supportAnalytics(user: SessionUser, filters: AnalyticsFilt
               count(*) filter (where ${inRange} and t.reopened_count > 0)::int as reopened_tickets
        from support_tickets t where ${W}`,
     );
+    const [sat] = await q<{ requested: number; answered: number; avg: string | null; helpful: number }>(
+      `select count(*) filter (where s.status in ('requested', 'answered'))::int as requested,
+              count(*) filter (where s.status = 'answered')::int as answered,
+              avg(s.rating) filter (where s.status = 'answered') as avg,
+              count(*) filter (where s.status = 'answered' and s.helpful)::int as helpful
+       from support_surveys s join support_tickets t on t.id = s.ticket_id
+       where ${W} and s.requested_at >= $3::timestamptz and s.requested_at < $4::timestamptz`,
+    );
     const [ev] = await q<{ resolved: number; reopened: number }>(
       `select count(distinct e.ticket_id) filter (where e.kind = 'resolved')::int as resolved, count(*) filter (where e.kind = 'reopened')::int as reopened
        from support_ticket_events e join support_tickets t on t.id = e.ticket_id where ${W} and ${eventInRange}`,
@@ -182,8 +192,16 @@ export async function supportAnalytics(user: SessionUser, filters: AnalyticsFilt
       reopen: { tickets: t.reopened_tickets, ratePercent: t.created > 0 ? Math.round((t.reopened_tickets / t.created) * 1000) / 10 : null },
       workload: workload.map((r) => ({ userId: r.id, name: r.name, active: r.active, resolvedInRange: r.resolved })),
       feedback: { byStage: pairs(stages), byCategory: pairs(fbCategories), monthly: monthly.map((m) => ({ month: m.month, count: m.n })) },
+      satisfaction: {
+        requested: sat.requested,
+        answered: sat.answered,
+        averageRating: sat.avg === null || sat.answered === 0 ? null : Math.round(Number(sat.avg) * 10) / 10,
+        helpfulPercent: sat.answered === 0 ? null : Math.round((sat.helpful / sat.answered) * 1000) / 10,
+      },
       commonIssues: common.map((c) => ({ category: c.category, feature: c.feature, count: c.n })),
       topClients: clients.map((c) => ({ orgId: c.id, name: c.name, count: c.n })),
     };
   });
 }
+
+

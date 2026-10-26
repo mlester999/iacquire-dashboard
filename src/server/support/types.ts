@@ -76,6 +76,8 @@ export interface ClientRequestDetail {
   maxAttachmentMb: number;
   maxAttachments: number;
   reopenWindowDays: number;
+  /** For a change request that was also filed as a change to an agreed project: that entry on the project's change list. Null otherwise. */
+  linkedChange: { id: string; ref: string; title: string; status: string; projectId: string; projectRef: string; projectTitle: string } | null;
 }
 
 export interface AgencyListItem {

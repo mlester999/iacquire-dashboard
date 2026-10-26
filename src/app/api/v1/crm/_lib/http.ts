@@ -8,6 +8,7 @@ import { hashIp, sha256 } from "@/server/security/crypto";
 import { authenticateApiKey, type ApiKeyIdentity, type ApiScope } from "@/server/crm/api-keys";
 import { DuplicateContactError } from "@/server/crm/contacts";
 import type { CrmActor } from "@/server/crm/actor";
+import { readBoundedText } from "@/server/security/bounded-body";
 
 // Shared plumbing for the public CRM API (/api/v1/crm/*, docs/crm-api.md): authentication by API key, scope checks, JSON bodies,
 // consistent errors, rate-limit headers and idempotent creates. The organization always comes from the key.
@@ -110,8 +111,8 @@ export function requireScope(ctx: ApiContext, scope: ApiScope, what: string) {
 export async function readJson<S extends z.ZodType>(req: Request, schema: S): Promise<z.output<S>> {
   if (!/^application\/json\b/i.test(req.headers.get("content-type") ?? "")) throw new ApiError(415, "unsupported_media_type", "Send the body as JSON with Content-Type: application/json.");
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new ApiError(413, "payload_too_large", "The request body is too large (64 KB at most).");
-  const text = await req.text();
-  if (text.length > MAX_BODY) throw new ApiError(413, "payload_too_large", "The request body is too large (64 KB at most).");
+  const text = await readBoundedText(req, MAX_BODY);
+  if (text === null) throw new ApiError(413, "payload_too_large", "The request body is too large (64 KB at most).");
   let raw: unknown;
   try {
     raw = JSON.parse(text);

@@ -24,6 +24,7 @@ import {
   type ReviewModel,
 } from "@/lib/onboarding/engine";
 import { createSavePipeline, type PipelineState, type SavePipeline } from "@/lib/onboarding/save-pipeline";
+import { schedulingDraftMessage } from "@/lib/onboarding/scheduling-drafts";
 import { type AnswerSource, type AnswerValue, type QuestionDef, type SectionId, type StoredAnswers } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
@@ -343,7 +344,10 @@ export function AdaptiveOnboarding({
       setReviewError(res.error);
       return;
     }
-    toast.success("Your AI team is being prepared.");
+    // A draft booking calendar made from the answers is said out loud, with the fact that it is not live.
+    const drafted = res.data.scheduling ? schedulingDraftMessage(res.data.scheduling) : null;
+    if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
+    else toast.success("Your AI team is being prepared.");
     // Stay in the "submitting" state while the page navigates away.
     (onSubmitted ?? (() => router.push("/setup?onboarded=1")))();
   };
@@ -373,14 +377,14 @@ export function AdaptiveOnboarding({
 
         <div className="min-w-0">
           {session.status === "submitted" && (
-            <p className="mb-4 rounded-xl border border-primary/25 bg-primary-soft/50 p-3.5 text-[13px] leading-relaxed text-ink-2">
+            <p className="mb-4 rounded-xl border border-primary/25 bg-primary-soft/50 p-3.5 text-[14px] leading-relaxed text-ink-2">
               <Info className="mr-1.5 inline size-4 align-text-bottom text-primary" aria-hidden />
               Your setup is already approved. You can edit any answer; changes are saved as a draft and only reach your AI employees when you approve again at the end.
             </p>
           )}
 
           {save.staleBase && (
-            <p role="status" className="mb-4 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-[13px] text-warning-ink">
+            <p role="status" className="mb-4 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-[14px] text-warning-ink">
               This setup was also changed on another device or tab. Your answers have been merged. Reload to see everything.{" "}
               <button type="button" className="font-medium underline" onClick={() => router.refresh()}>
                 Reload
@@ -390,7 +394,7 @@ export function AdaptiveOnboarding({
 
           <motion.section
               key={question.id}
-              initial={reduced ? false : { opacity: 0, y: direction * 10 }}
+              initial={{ opacity: 0, y: direction * 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               aria-labelledby="onboarding-title"
@@ -405,7 +409,7 @@ export function AdaptiveOnboarding({
               >
                 <header className="mb-4">
                   {/* The section is named in the progress panel above; the card only says whether this question can be skipped. */}
-                  {!isReview && <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
+                  {!isReview && <p className="mb-2 text-[12px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
                   <h1 id="onboarding-title" ref={headingRef} tabIndex={-1} className="text-[23px] font-semibold leading-tight tracking-[-0.025em] outline-none sm:text-[28px]">
                     {question.title}
                   </h1>
@@ -435,7 +439,7 @@ export function AdaptiveOnboarding({
                 ) : (
                   <fieldset disabled={navigating || submitting} className="m-0 min-w-0 space-y-3 border-0 p-0 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base sm:[&_input]:text-sm sm:[&_select]:text-sm sm:[&_textarea]:text-sm" onBlurCapture={() => { if (pipeline.getState().rejected[question.id]) void validateCurrent(); }}>
                     {aiSourced && (
-                      <p className="flex items-center gap-2 text-[12.5px] text-violet-ink">
+                      <p className="flex items-center gap-2 text-[13px] text-violet-ink">
                         <Sparkles className="size-3.5" aria-hidden />
                         {stored.source === "website_analysis" ? "Website draft added" : "AI draft added"}
                       </p>
@@ -455,14 +459,14 @@ export function AdaptiveOnboarding({
                     />
 
                     {fieldError && (
-                      <p id="onboarding-input-error" role="alert" className="text-[13px] font-medium text-danger-ink">
+                      <p id="onboarding-input-error" role="alert" className="text-[14px] font-medium text-danger-ink">
                         {fieldError}
                       </p>
                     )}
 
                     {stored?.needsConfirmation && (
                       <div className="rounded-xl border border-warning/40 bg-warning-soft/60 p-4">
-                        <p className="text-[13px] leading-relaxed text-warning-ink">Review this wording before it can become approved policy.</p>
+                        <p className="text-[14px] leading-relaxed text-warning-ink">Review this wording before it can become approved policy.</p>
                         <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={confirmSuggestion}>
                           <Check className="size-4" /> I&apos;ve checked this
                         </Button>
@@ -471,17 +475,17 @@ export function AdaptiveOnboarding({
 
                     {question.id === "a.website" && websiteValue && (
                       <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-                        <p className="flex items-center gap-2 text-[13px] font-medium">
+                        <p className="flex items-center gap-2 text-[14px] font-medium">
                           <Globe className="size-4 text-primary" aria-hidden /> Want help filling in the rest?
                         </p>
-                        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+                        <p className="mt-1 text-[13px] leading-relaxed text-muted">
                           We can read the public pages of this website to suggest answers. We only read pages that allow it, never log in, and nothing we find is used until you accept it.
                         </p>
                         <Button type="button" variant="secondary" size="sm" className="mt-3" loading={siteBusy} onClick={() => void readSite()}>
                           {siteRead ? "Read it again" : "Read my website"}
                         </Button>
                         {siteRead && !siteBusy && (
-                          <p className="mt-2 text-[12.5px] text-muted">
+                          <p className="mt-2 text-[13px] text-muted">
                             {siteSuggestions.length ? `${siteSuggestions.length} suggestion${siteSuggestions.length === 1 ? "" : "s"} ready; you'll see them on the matching questions.` : "Read it. There's nothing new to suggest."}
                           </p>
                         )}
@@ -524,7 +528,7 @@ export function AdaptiveOnboarding({
                           {assistBusy === question.id && <Button type="button" variant="ghost" size="sm" onClick={() => { assistSequence.current += 1; assistController.current?.abort(); assistController.current = null; setAssistBusy(null); }}>Cancel</Button>}
                         </div>
                         {assistError?.id === question.id && (
-                          <p role="status" className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                          <p role="status" className="mt-2 text-[13px] leading-relaxed text-muted">
                             {assistError.message}
                           </p>
                         )}
@@ -556,7 +560,7 @@ export function AdaptiveOnboarding({
 /** Sits on the navy progress panel, so it uses that panel's colours rather than the theme tokens. */
 function SaveBadge({ state, onRetry }: { state: PipelineState; onRetry: () => void }) {
   return (
-    <span role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-[var(--stage-muted)] lg:text-[12px]">
+    <span role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--stage-muted)] lg:text-[12px]">
       {state.status === "saving" ? (
         <>
           <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden /> Saving…

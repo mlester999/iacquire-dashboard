@@ -139,7 +139,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><ArrowRightLeft className="size-4 text-muted" aria-hidden />Switch providers, capability by capability</h3>
-          <p className="mt-1 max-w-2xl text-[13px] text-muted">
+          <p className="mt-1 max-w-2xl text-[14px] text-muted">
             Move parts of your CRM between GoHighLevel and iAcquire. You see what changes first, a backup is taken, the records are checked in a dry run, and you can roll back.
             The switch only reads GoHighLevel (GET requests to its official API); it never changes, deletes or sends anything there.
           </p>
@@ -152,7 +152,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
       {!manage && <div className="mt-4"><ReadOnlyNotice>{state.can.readOnlyReason ?? "You can follow the switch here, but your access doesn't include running it."}</ReadOnlyNotice></div>}
 
       {state.switching && (
-        <p role="status" className="mt-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+        <p role="status" className="mt-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
           <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
           A provider switch is in progress. Workflows, follow-ups, campaigns, automatic messages, calendar write-backs, lead assignment and webhooks wait until it finishes, then continue by themselves.
           {sw?.direction === "ghl" && ["cutting_over", "rolling_back"].includes(sw.status) ? " What moves to GoHighLevel is read-only in iAcquire from the cutover on." : " People can keep working."}
@@ -160,13 +160,13 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
       )}
 
       {state.notices.map((n) => (
-        <p key={n} className="mt-4 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+        <p key={n} className="mt-4 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{n}
         </p>
       ))}
 
       {pollFail && sw && MOVING.includes(sw.status) && (
-        <p role="status" className="mt-2 text-[12.5px] text-muted">{pollFail.stop ?? "Couldn't refresh the progress. Retrying…"}</p>
+        <p role="status" className="mt-2 text-[13px] text-muted">{pollFail.stop ?? "Couldn't refresh the progress. Retrying…"}</p>
       )}
 
       {/* 1. Choose */}
@@ -175,7 +175,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
           <h4 id="ps-choose" className="text-[14px] font-semibold text-ink">1. Choose what moves, and where</h4>
           <Segmented id="ps-direction" ariaLabel="Where the capabilities move" value={to} onChange={(v) => { setTo(v); setChosen(new Set()); setPreview(null); }}
             options={[{ value: "native", label: "Move to iAcquire" }, { value: "ghl", label: "Hand back to GoHighLevel" }]} />
-          <p className="text-[12.5px] text-muted">
+          <p className="text-[13px] text-muted">
             {to === "native"
               ? "Contacts, companies, tags, custom fields, pipelines and opportunities bring their records from GoHighLevel. Calendars, appointments, conversations, automations and reporting move as ownership only."
               : "Ownership only: GoHighLevel takes over, iAcquire stops acting on these, and its records stay in iAcquire read-only. Nothing is deleted here and nothing is written to GoHighLevel."}
@@ -188,11 +188,11 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
                 const id = `ps-cap-${c}`;
                 return (
                   <li key={c}>
-                    <label htmlFor={id} className={cn("flex min-h-11 items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px]", already ? "border-line bg-surface-2/40 text-muted" : chosen.has(c) ? "border-primary/40 bg-primary-soft/50" : "border-line hover:bg-surface-2")}>
+                    <label htmlFor={id} className={cn("flex min-h-11 items-center gap-2.5 rounded-xl border px-3 py-2 text-[14px]", already ? "border-line bg-surface-2/40 text-muted" : chosen.has(c) ? "border-primary/40 bg-primary-soft/50" : "border-line hover:bg-surface-2")}>
                       <input id={id} type="checkbox" className="size-4 accent-[var(--primary)]" checked={chosen.has(c)} disabled={already} onChange={() => toggle(c)} />
                       <span className="min-w-0 flex-1">
                         <span className="block font-medium text-ink">{CAPABILITY_LABELS[c]}</span>
-                        <span className="block text-[11.5px] text-muted">{already ? `Already ${ownerName(to)}` : to === "native" && SWITCH_IMPORT_ENTITY[c] ? "Records come across" : "Ownership only"}</span>
+                        <span className="block text-[12px] text-muted">{already ? `Already ${ownerName(to)}` : to === "native" && SWITCH_IMPORT_ENTITY[c] ? "Records come across" : "Ownership only"}</span>
                       </span>
                       <OwnerBadge owner={state.owners[c]} />
                     </label>
@@ -201,7 +201,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
               })}
             </ul>
           </fieldset>
-          {needed.length > 0 && <p className="text-[12.5px] text-ink-2">Also moves: {needed.map((c) => CAPABILITY_LABELS[c]).join(", ")} (the records you chose point at them).</p>}
+          {needed.length > 0 && <p className="text-[13px] text-ink-2">Also moves: {needed.map((c) => CAPABILITY_LABELS[c]).join(", ")} (the records you chose point at them).</p>}
           <div className="flex flex-wrap gap-2">
             <Button onClick={doPreview} loading={busy("preview")} disabled={!chosen.size}><Eye className="size-4" />Preview the switch</Button>
             {startNew && <Button variant="secondary" onClick={() => setStartNew(false)}>Back to the last switch</Button>}
@@ -213,35 +213,35 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
       {showChooser && preview && (
         <section aria-labelledby="ps-preview" className="mt-5 space-y-4">
           <h4 id="ps-preview" className="text-[14px] font-semibold text-ink">2. Preview: what changes</h4>
-          <p className="text-[13px] text-ink-2">
+          <p className="text-[14px] text-ink-2">
             {preview.plan.moving.map((c) => CAPABILITY_LABELS[c]).join(", ") || "Nothing"} {preview.plan.moving.length === 1 ? "moves" : "move"} to {ownerName(preview.to)}. Afterwards the workspace runs as <strong>{CRM_MODE_LABELS[preview.plan.modeAfter].label}</strong>.
             {preview.ghl.read ? ` GoHighLevel was read with ${num(preview.ghl.requests)} GET requests; nothing was stored.` : " GoHighLevel wasn't read (not connected)."}
           </p>
           {preview.blockers.length > 0 && (
-            <ul className="space-y-1 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">
+            <ul className="space-y-1 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">
               {preview.blockers.map((b) => <li key={b} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{b}</li>)}
             </ul>
           )}
-          {preview.warnings.length > 0 && <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{preview.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+          {preview.warnings.length > 0 && <ul className="space-y-1 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">{preview.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
           <PreviewTable preview={preview} />
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
-              <h5 className="text-[13px] font-semibold text-ink">Paused while it switches</h5>
-              <ul className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
+              <h5 className="text-[14px] font-semibold text-ink">Paused while it switches</h5>
+              <ul className="mt-1.5 space-y-1 text-[13px] text-ink-2">
                 {preview.paused.map((p) => <li key={p.key}><span className="font-medium text-ink">{p.label}{p.count !== null ? ` (${num(p.count)})` : ""}:</span> {p.detail}</li>)}
               </ul>
             </div>
             <div>
-              <h5 className="text-[13px] font-semibold text-ink">{preview.imports.length ? "Imported, in this order" : "Nothing is imported"}</h5>
+              <h5 className="text-[14px] font-semibold text-ink">{preview.imports.length ? "Imported, in this order" : "Nothing is imported"}</h5>
               {preview.imports.length > 0 && (
-                <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-[12.5px] text-ink-2">
+                <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-[13px] text-ink-2">
                   {preview.imports.map((i) => <li key={i.entity}>{i.label}: {i.count === null ? "count unknown" : `${i.countKind === "at_least" ? "at least " : ""}${num(i.count)}`}{i.alsoImported ? " (needed by the records you're moving)" : ""}</li>)}
                 </ol>
               )}
               {(preview.notMigrated.length > 0 || preview.unsupportedFields.length > 0) && (
                 <>
-                  <h5 className="mt-3 text-[13px] font-semibold text-ink">What can&rsquo;t come across</h5>
-                  <ul className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
+                  <h5 className="mt-3 text-[14px] font-semibold text-ink">What can&rsquo;t come across</h5>
+                  <ul className="mt-1.5 space-y-1 text-[13px] text-ink-2">
                     {preview.notMigrated.map((x) => <li key={x.what}><span className="font-medium text-ink">{x.what}:</span> {x.why}</li>)}
                     {preview.unsupportedFields.length > 0 && <li><span className="font-medium text-ink">Custom fields of unsupported types:</span> {preview.unsupportedFields.map((f) => `${f.name} (${f.type})`).join(", ")}</li>}
                   </ul>
@@ -270,7 +270,7 @@ export function ProviderSwitchWizard({ scope, initial }: { scope: CrmScope; init
         onStartNew={!active && manage ? () => { setStartNew(true); setChosen(new Set()); setPreview(null); setReview(null); } : null} />}
 
       {state.history.length > 1 && (
-        <details className="mt-5 rounded-xl border border-line px-3 py-2 text-[12.5px]">
+        <details className="mt-5 rounded-xl border border-line px-3 py-2 text-[13px]">
           <summary className="min-h-9 cursor-pointer py-1 font-medium text-ink">Earlier switches ({state.history.length})</summary>
           <ul className="mt-2 divide-y divide-line">
             {state.history.map((h) => (
@@ -340,10 +340,10 @@ function SwitchPanel({
         <Badge tone={label.tone}>{label.label}</Badge>
       </div>
       <p role="status" className="sr-only">{statusLine}</p>
-      {sw.error && <p className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{sw.error}</p>}
+      {sw.error && <p className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[14px] text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{sw.error}</p>}
 
       {sw.backup && (
-        <p className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+        <p className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2">
           <ShieldCheck className="size-4 text-success-ink" aria-hidden />Backup taken {sw.backup.createdAt ? <RelativeTime iso={sw.backup.createdAt} timezone={timezone} /> : ""} ({(sw.backup.bytes / 1024).toLocaleString("en-US", { maximumFractionDigits: 0 })} KB, kept privately).
           {sw.can.downloadBackup && <a href={`/api/crm/provider-switch/backup?switch=${sw.id}`} className="inline-flex min-h-11 items-center gap-1 font-medium text-primary hover:underline sm:min-h-0"><Download className="size-3.5" aria-hidden />Download it</a>}
         </p>
@@ -352,7 +352,7 @@ function SwitchPanel({
       {/* 3. Backed up: start the dry run (or cut over straight away when nothing is imported) */}
       {sw.status === "backed_up" && manage && (
         <div className="space-y-3">
-          <h5 className="text-[13px] font-semibold text-ink">3. Backed up. Next: {sw.preview.entities.length ? "the dry run" : "the cutover (nothing to import)"}</h5>
+          <h5 className="text-[14px] font-semibold text-ink">3. Backed up. Next: {sw.preview.entities.length ? "the dry run" : "the cutover (nothing to import)"}</h5>
           <div className="flex flex-wrap items-end gap-3">
             {sw.preview.entities.length > 0 && (
               <>
@@ -375,11 +375,11 @@ function SwitchPanel({
       {/* 4–5. Dry run and cutover progress */}
       {["dry_run", "cutting_over", "verifying", "completed", "rolling_back", "rolled_back"].includes(sw.status) && (
         <div className="space-y-3">
-          <h5 className="text-[13px] font-semibold text-ink">
+          <h5 className="text-[14px] font-semibold text-ink">
             {sw.status === "dry_run" ? "4. Dry run: reading and checking (nothing is written yet)" : sw.status === "cutting_over" ? "5. Cutting over: importing in order" : sw.status === "rolling_back" ? "Rolling back: undoing newest first" : "Migration steps"}
           </h5>
           {stale.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] text-warning-ink">
               <AlertTriangle className="size-4 shrink-0" aria-hidden />
               <span className="min-w-0 flex-1">{stale.map((s) => s.label).join(", ")} were read more than a day ago. Read {stale.length === 1 ? "that step" : "them"} again before the cutover, so what GoHighLevel created since comes across too.</span>
               {manage && <Button size="sm" variant="secondary" loading={stale.some((s) => busy(`retry-${s.entity}`))} onClick={onRereadStale}>Read {stale.length === 1 ? "it" : "them"} again</Button>}
@@ -387,7 +387,7 @@ function SwitchPanel({
           )}
           <StepsTable steps={sw.steps} timezone={timezone} retry={sw.can.retry} busy={busy} onRetry={manage ? onRetry : undefined} readRest={sw.can.readRest} onReadRest={manage ? onReadRest : undefined} />
           {sw.direction === "native" && sw.steps.length > 0 && ["cutting_over", "verifying", "completed"].includes(sw.status) && (
-            <p className="text-[12.5px] text-ink-2">
+            <p className="text-[13px] text-ink-2">
               The import holds GoHighLevel as it was read{readAt ? <> (<RelativeTime iso={readAt} timezone={timezone} />)</> : ""}. GoHighLevel&rsquo;s forms, funnels and automations keep creating records there after the read and after the switch: point your lead capture at iAcquire, then use <span className="font-medium text-ink">Read the rest</span> on a step to bring over anything created in the meantime.
             </p>
           )}
@@ -405,7 +405,7 @@ function SwitchPanel({
       {/* 6. Verify */}
       {sw.verification && ["verifying", "completed"].includes(sw.status) && (
         <div className="space-y-3">
-          <h5 className="text-[13px] font-semibold text-ink">6. Verification (<RelativeTime iso={sw.verification.checkedAt} timezone={timezone} />)</h5>
+          <h5 className="text-[14px] font-semibold text-ink">6. Verification (<RelativeTime iso={sw.verification.checkedAt} timezone={timezone} />)</h5>
           <VerificationTable verification={sw.verification} timezone={timezone} />
           {sw.status === "verifying" && manage && (
             <div className="flex flex-wrap gap-2">
@@ -420,14 +420,14 @@ function SwitchPanel({
 
       {/* 7. Complete or roll back */}
       {sw.status === "completed" && (
-        <div className="space-y-2 rounded-xl border border-success/30 bg-success-soft px-3 py-3 text-[13px] text-success-ink">
+        <div className="space-y-2 rounded-xl border border-success/30 bg-success-soft px-3 py-3 text-[14px] text-success-ink">
           <p className="font-medium">Completed {sw.times.completed ? <RelativeTime iso={sw.times.completed} timezone={timezone} /> : ""}.{sw.acknowledgedIssues ? " Completed with open points that were reviewed." : ""}</p>
           {sw.ownersAfter && <p className="text-ink-2">{sw.capabilities.map((c) => CAPABILITY_LABELS[c]).join(", ")} now belong to {ownerName(sw.direction)}.</p>}
           {manage && sw.can.rollBack && <Button variant="secondary" size="sm" onClick={() => setConfirm("rollback")}><RotateCcw className="size-4" />Roll back</Button>}
         </div>
       )}
       {sw.status === "rolled_back" && sw.rollbackReport && (
-        <div className="space-y-2 rounded-xl border border-line bg-surface-2/40 px-3 py-3 text-[13px] text-ink-2">
+        <div className="space-y-2 rounded-xl border border-line bg-surface-2/40 px-3 py-3 text-[14px] text-ink-2">
           <p className="font-medium text-ink">Rolled back {sw.times.rolledBack ? <RelativeTime iso={sw.times.rolledBack} timezone={timezone} /> : ""}. The owners from before the switch are restored.</p>
           {(sw.rollbackReport.steps ?? []).length > 0 && (
             <ul className="space-y-0.5">{(sw.rollbackReport.steps ?? []).map((s) => <li key={s.entity}>{s.label}: {num(s.undone)} undone{s.kept ? `, ${num(s.kept)} kept for review (changed since the import)` : ""}</li>)}</ul>
@@ -438,12 +438,12 @@ function SwitchPanel({
           {manage && <Button variant="secondary" size="sm" onClick={onReview}>Show records to review</Button>}
         </div>
       )}
-      {sw.status === "cancelled" && <p className="text-[13px] text-ink-2">This switch was cancelled before the cutover. Nothing about ownership changed.</p>}
+      {sw.status === "cancelled" && <p className="text-[14px] text-ink-2">This switch was cancelled before the cutover. Nothing about ownership changed.</p>}
 
       {review && (
-        <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[600px] text-[12.5px]">
-            <caption className="px-3 py-2 text-left text-[13px] font-semibold text-ink">Records that need a look ({num(review.length)}{review.length >= 200 ? "+" : ""})</caption>
+        <div className="overflow-x-auto rounded-xl border border-line" tabIndex={0}>
+          <table className="w-full min-w-[600px] text-[13px]">
+            <caption className="px-3 py-2 text-left text-[14px] font-semibold text-ink">Records that need a look ({num(review.length)}{review.length >= 200 ? "+" : ""})</caption>
             <thead className="border-y border-line bg-surface-2/60 text-muted">
               <tr><th scope="col" className="px-3 py-1.5 text-left font-medium">Record</th><th scope="col" className="px-3 py-1.5 text-left font-medium">Kind</th><th scope="col" className="px-3 py-1.5 text-left font-medium">Why</th></tr>
             </thead>

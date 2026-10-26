@@ -238,7 +238,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
           onClick={(e) => {
             if (dirty && !window.confirm("You have unsaved changes to this workflow. Leave without saving them?")) e.preventDefault();
           }}
-          className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink sm:min-h-0"
+          className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink sm:min-h-0"
         >
           <ArrowLeft className="size-4" aria-hidden />All workflows
         </Link>
@@ -248,7 +248,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
               <span className="min-w-0 break-words">{workflow.name}</span>
               <WorkflowStatusBadge status={workflow.status} />
             </h2>
-            <p className="mt-1 text-[12.5px] text-muted">
+            <p className="mt-1 text-[13px] text-muted">
               {workflow.publishedVersion ? `Version ${workflow.publishedVersion} is published` : "Not published yet"}
               {dirty ? " · unsaved changes" : workflow.unpublishedChanges && workflow.publishedVersion ? " · draft has unpublished changes" : ""}
               {" · saved "}<RelativeTime iso={workflow.updatedAt} timezone={scope.timezone} />{workflow.updatedByName ? ` by ${workflow.updatedByName}` : ""}
@@ -293,14 +293,14 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
           )}
         </div>
         {canManage && (blocker || dirty) && workflow.status !== "active" && workflow.status !== "archived" && (
-          <p id="wf-activation-why" className="mt-2 text-[12.5px] text-muted">{dirty ? "Save and publish your changes before turning it on." : `Can't turn on yet: ${blocker}`}</p>
+          <p id="wf-activation-why" className="mt-2 text-[13px] text-muted">{dirty ? "Save and publish your changes before turning it on." : `Can't turn on yet: ${blocker}`}</p>
         )}
       </div>
 
       {!canManage && <ReadOnlyNotice>{scope.readOnly ? undefined : "You can see this workflow and its runs. Changing it needs “Build and change automations”."}</ReadOnlyNotice>}
-      {gate.ownerProblem && <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{gate.ownerProblem}</p>}
+      {gate.ownerProblem && <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{gate.ownerProblem}</p>}
       {gate.pausedReason && (
-        <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink" role="status">
+        <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink" role="status">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>{gate.pausedReason} No step of any run acts while it lasts; runs hold and continue when it&apos;s lifted.</span>
         </p>
@@ -311,7 +311,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
           <ShieldAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-semibold text-ink">Version {published.version} needs the owner&apos;s approval before it runs</p>
-            <p className="mt-0.5 text-[13px] text-muted">It {published.effects.map((e) => effectLabel(e).toLowerCase()).join(", ")}. The owner sees exactly what it sends and to whom, and approves this version only.</p>
+            <p className="mt-0.5 text-[14px] text-muted">It {published.effects.map((e) => effectLabel(e).toLowerCase()).join(", ")}. The owner sees exactly what it sends and to whom, and approves this version only.</p>
           </div>
           <div className="flex items-center gap-2">
             {approvalBadge(published.approval)}
@@ -320,7 +320,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
         </Card>
       )}
       {published && published.effects.length > 0 && published.approval === "approved" && (
-        <p className="flex items-center gap-2 text-[12.5px] text-success-ink"><ShieldCheck className="size-4" aria-hidden />Version {published.version} approved{published.approvedByName ? ` by ${published.approvedByName}` : ""}{published.approvedAt ? ` on ${formatDateTime(published.approvedAt, scope.timezone)}` : ""}.</p>
+        <p className="flex items-center gap-2 text-[13px] text-success-ink"><ShieldCheck className="size-4" aria-hidden />Version {published.version} approved{published.approvedByName ? ` by ${published.approvedByName}` : ""}{published.approvedAt ? ` on ${formatDateTime(published.approvedAt, scope.timezone)}` : ""}.</p>
       )}
 
       <Tabs
@@ -357,11 +357,11 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
               />
               {layout.unreachable.length > 0 && (
                 <Card className="p-4">
-                  <p className="text-[13.5px] font-semibold text-ink">Steps that never run</p>
-                  <p className="mt-0.5 text-[12.5px] text-muted">Nothing leads to these steps. Remove them, or rebuild the path that should reach them.</p>
+                  <p className="text-[14px] font-semibold text-ink">Steps that never run</p>
+                  <p className="mt-0.5 text-[13px] text-muted">Nothing leads to these steps. Remove them, or rebuild the path that should reach them.</p>
                   <ul className="mt-2 space-y-1.5">
                     {layout.unreachable.map((k) => (
-                      <li key={k} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+                      <li key={k} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px]">
                         <span className="min-w-0 truncate">{kindLabel(byKey.get(k)?.kind ?? "")}: {summaries[k]}</span>
                         {!readOnly && <Button variant="ghost" size="sm" onClick={() => { edit({ ...def, steps: def.steps.filter((s) => s.key !== k) }); setRefocus({ key: "trigger" }); }}>Remove</Button>}
                       </li>
@@ -421,7 +421,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
         loading={busy("publish") || saving}
         onConfirm={() => void publish()}
       >
-        {issues.warnings > 0 && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">{issues.warnings} {issues.warnings === 1 ? "warning" : "warnings"} to look at, but nothing stops publishing.</p>}
+        {issues.warnings > 0 && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{issues.warnings} {issues.warnings === 1 ? "warning" : "warnings"} to look at, but nothing stops publishing.</p>}
       </ConfirmDialog>
       <ConfirmDialog
         open={!!removing}
@@ -478,7 +478,7 @@ export function WorkflowEditor({ scope, workflow, versions, options, runs, gate,
 
 function ValidationBar({ errors, warnings, effects, unreachable }: { errors: number; warnings: number; effects: string[]; unreachable: number }) {
   return (
-    <div id="wf-validation" className="flex flex-wrap items-center gap-2 text-[12.5px]" role="status" aria-live="polite">
+    <div id="wf-validation" className="flex flex-wrap items-center gap-2 text-[13px]" role="status" aria-live="polite">
       {errors ? (
         <span className="inline-flex items-center gap-1.5 font-medium text-danger-ink"><AlertTriangle className="size-4" aria-hidden />{errors} {errors === 1 ? "problem" : "problems"} to fix before publishing</span>
       ) : (
@@ -486,7 +486,7 @@ function ValidationBar({ errors, warnings, effects, unreachable }: { errors: num
       )}
       {warnings > 0 && <span className="text-warning-ink">· {warnings} {warnings === 1 ? "warning" : "warnings"}</span>}
       {unreachable > 0 && <span className="text-muted">· {unreachable} disconnected</span>}
-      {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+      {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
     </div>
   );
 }
@@ -502,7 +502,7 @@ function Overview({ issues, numbers, onSelect, readOnly }: { issues: ReturnType<
     <div className="space-y-4">
       <div>
         <h3 className="text-[15px] font-semibold text-ink">{readOnly ? "Workflow steps" : "Build your workflow"}</h3>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+        <p className="mt-1 text-[13px] leading-relaxed text-muted">
           {readOnly ? "Select the trigger or a step to see its settings." : "Select the trigger or a step to change it. Use + between steps to add one; use a step's menu to move or remove it. Save the draft as you go, publish when it's ready, then turn it on."}
         </p>
       </div>
@@ -513,18 +513,18 @@ function Overview({ issues, numbers, onSelect, readOnly }: { issues: ReturnType<
             {all.map(({ i, target }, n) => (
               <li key={n}>
                 {target ? (
-                  <button type="button" onClick={() => onSelect(target)} className={cn("w-full rounded-xl px-3 py-2 text-left text-[12.5px] hover:brightness-95", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+                  <button type="button" onClick={() => onSelect(target)} className={cn("w-full rounded-xl px-3 py-2 text-left text-[13px] hover:brightness-95", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
                     <span className="font-semibold">{target === "trigger" ? "Trigger" : `Step ${numbers[target] ?? "?"}`}:</span> {i.message}
                   </button>
                 ) : (
-                  <p className={cn("rounded-xl px-3 py-2 text-[12.5px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>{i.message}</p>
+                  <p className={cn("rounded-xl px-3 py-2 text-[13px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>{i.message}</p>
                 )}
               </li>
             ))}
           </ul>
         </div>
       )}
-      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-muted">
         Every step runs on iAcquire&apos;s scheduler and is checked again when it runs: a paused workspace or AI employee, missing consent, quiet hours and sending limits all still apply. Steps that send messages only send after the owner approves the published version.
       </p>
     </div>
@@ -556,7 +556,7 @@ function VersionViewer({ version, options, timezone, onClose }: { version: Versi
           onSelect={(k) => setSelected(selected === k ? null : k)}
           readOnly
         />
-        {sel && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2">Step {numbers[sel.key]}: {kindLabel(sel.kind)}. {stepSummary(sel, names)}</p>}
+        {sel && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2">Step {numbers[sel.key]}: {kindLabel(sel.kind)}. {stepSummary(sel, names)}</p>}
         <p className="text-[12px] text-muted">Only the current version starts new runs. Runs that started on an older version finish on it.</p>
       </div>
     </Dialog>
@@ -595,7 +595,7 @@ function StartRunDialog({ scope, workflowId, trigger, onClose }: { scope: CrmSco
       {needsContact ? (
         canSearch ? (
           <div className="space-y-1.5">
-            <p className="text-[13px] font-medium text-ink-2">For contact</p>
+            <p className="text-[14px] font-medium text-ink-2">For contact</p>
             <RecordPicker<ContactHit>
               id="wf-start-contact"
               label="Contact"
@@ -606,13 +606,13 @@ function StartRunDialog({ scope, workflowId, trigger, onClose }: { scope: CrmSco
               value={contact ? <span className="font-medium">{contact.name}</span> : undefined}
               onClear={() => setContact(null)}
             />
-            {trigger.reentry && trigger.reentry !== "always" && <p className="text-[12.5px] text-muted">{trigger.reentry === "once" ? "A contact who has been through this workflow before won't start again." : "A contact who is in this workflow right now won't start again."}</p>}
+            {trigger.reentry && trigger.reentry !== "always" && <p className="text-[13px] text-muted">{trigger.reentry === "once" ? "A contact who has been through this workflow before won't start again." : "A contact who is in this workflow right now won't start again."}</p>}
           </div>
         ) : (
-          <p className="text-[13px] text-muted">Choosing a contact needs permission to see contacts.</p>
+          <p className="text-[14px] text-muted">Choosing a contact needs permission to see contacts.</p>
         )
       ) : (
-        <p className="text-[13px] text-muted">This workflow&apos;s trigger has no contact, so the run starts without one.</p>
+        <p className="text-[14px] text-muted">This workflow&apos;s trigger has no contact, so the run starts without one.</p>
       )}
     </Dialog>
   );

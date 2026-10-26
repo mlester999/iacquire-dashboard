@@ -104,10 +104,10 @@ export function DeliveriesSheet({ scope, subscription, canManage, onClose }: { s
           </Button>
         </div>
 
-        {error && <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[13px] text-danger-ink">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-danger-soft p-3 text-[14px] text-danger-ink">{error}</p>}
 
         {!error && !loading && !items.length && (
-          <p className="rounded-2xl border border-dashed border-line-strong p-5 text-center text-[13px] text-muted">
+          <p className="rounded-2xl border border-dashed border-line-strong p-5 text-center text-[14px] text-muted">
             {filter === "all" ? "Nothing sent yet. Use Send test, or wait for one of the chosen events." : filter === "failed" ? "No failed deliveries." : "No delivered events yet."}
           </p>
         )}
@@ -120,7 +120,7 @@ export function DeliveriesSheet({ scope, subscription, canManage, onClose }: { s
               <li key={d.id} className="rounded-xl border border-line p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-mono text-[12.5px] font-medium text-ink">{d.eventType}</p>
+                    <p className="truncate font-mono text-[13px] font-medium text-ink">{d.eventType}</p>
                     <p className="text-[12px] text-muted">{formatDateTime(d.createdAt, scope.timezone)} · <span className="font-mono">{d.eventId}</span></p>
                   </div>
                   <Badge tone={s.tone}>{s.label}</Badge>
@@ -175,7 +175,7 @@ export function DeliveriesSheet({ scope, subscription, canManage, onClose }: { s
         </ul>
 
         {loading && (
-          <p className="flex items-center justify-center gap-2 py-2 text-[13px] text-muted" role="status">
+          <p className="flex items-center justify-center gap-2 py-2 text-[14px] text-muted" role="status">
             <Loader2 className="size-4 animate-spin" aria-hidden />Loading deliveries…
           </p>
         )}

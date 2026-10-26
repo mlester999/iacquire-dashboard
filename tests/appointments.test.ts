@@ -650,7 +650,7 @@ describe("reminders", () => {
     await apply(early);
     expect(await reminders(early.appointmentId)).toEqual([]);
     await expect(savePolicy(m.ctx("support"), { remindersEnabled: true })).rejects.toMatchObject({ code: "forbidden" });
-    await savePolicy(owner(), { remindersEnabled: true, reminderOffsetsMinutes: [120, 1440] });
+    await savePolicy(owner(), { remindersEnabled: true, reminderOffsetsMinutes: [120, 1440] }, NOW);
     const view = await getPolicyView(owner());
     expect(view).toMatchObject({ remindersEnabled: true, remindersAuthorization: "active", reminderOffsetsMinutes: [1440, 120] });
     expect(view.remindersAuthorizedUntil).not.toBeNull();

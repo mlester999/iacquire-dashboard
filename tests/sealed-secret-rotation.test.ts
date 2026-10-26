@@ -176,7 +176,12 @@ describe("the registry of sealed columns", () => {
       "src/server/automation-studio/connections.ts",
       "src/server/calendars/connections.ts",
       "src/server/crm/webhooks.ts",
+      "src/server/customer-payments/credentials.ts",
+      "src/server/esign/credentials.ts",
+      "src/server/reputation/connections.ts",
       "src/server/security/crypto.ts",
+      "src/server/social/accounts.ts",
+      "src/server/social/credentials.ts",
     ]);
   });
 });

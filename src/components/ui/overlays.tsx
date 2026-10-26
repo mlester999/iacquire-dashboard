@@ -97,7 +97,7 @@ export function Dialog({
                     <div className="min-w-0">
                       <D.Title className="text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
                       {description ? (
-                        <D.Description className="mt-1 text-[13px] leading-relaxed text-muted">{description}</D.Description>
+                        <D.Description className="mt-1 text-[14px] leading-relaxed text-muted">{description}</D.Description>
                       ) : (
                         <D.Description className="sr-only">Dialog</D.Description>
                       )}
@@ -193,7 +193,7 @@ export function Sheet({
                   <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
                     <div className="min-w-0">
                       <D.Title className="break-words text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
-                      <D.Description className={description ? "mt-1 text-[13px] text-muted" : "sr-only"}>{description ?? "Panel"}</D.Description>
+                      <D.Description className={description ? "mt-1 text-[14px] text-muted" : "sr-only"}>{description ?? "Panel"}</D.Description>
                     </div>
                     <D.Close className="-mr-1 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink sm:size-8" aria-label="Close">
                       <X className="size-4" />
@@ -224,7 +224,7 @@ export function MenuContent({ className, align = "end", ...props }: React.Compon
         align={align}
         sideOffset={6}
         className={cn(
-          "z-50 min-w-[200px] overflow-hidden rounded-xl border border-line bg-surface p-1 text-[13.5px] shadow-float",
+          "z-50 min-w-[200px] overflow-hidden rounded-xl border border-line bg-surface p-1 text-[14px] shadow-float",
           className,
         )}
         {...props}
@@ -248,7 +248,7 @@ export function MenuItem({ className, destructive, ...props }: React.ComponentPr
 }
 
 export function MenuLabel({ className, ...props }: React.ComponentProps<typeof DM.Label>) {
-  return <DM.Label className={cn("px-2.5 pb-1 pt-2 text-[11.5px] font-medium uppercase tracking-wider text-faint", className)} {...props} />;
+  return <DM.Label className={cn("px-2.5 pb-1 pt-2 text-[12px] font-medium uppercase tracking-wider text-faint", className)} {...props} />;
 }
 
 export function MenuSeparator() {
@@ -329,7 +329,7 @@ export function Tabs({
             value={item.value}
             // No aria-label here: the visible label and count badge already form the accessible name, and a
             // hand-built name drifts from what is on screen (WCAG 2.5.3).
-            className="relative inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium text-muted transition-colors hover:text-ink data-[state=active]:text-ink"
+            className="relative inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium text-muted transition-colors hover:text-ink data-[state=active]:text-ink"
           >
             {value === item.value && (
               <motion.span
@@ -340,7 +340,7 @@ export function Tabs({
             )}
             <span className="relative">{item.label}</span>
             {item.count !== undefined && (
-              <span className="relative rounded-full bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">{item.count}</span>
+              <span className="relative rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">{item.count}</span>
             )}
           </TB.Trigger>
         ))}
@@ -371,13 +371,13 @@ export function Segmented<V extends string>({
 }) {
   const groupName = React.useId();
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5">
+    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex max-w-full overflow-x-auto rounded-xl border border-line bg-surface-2 p-0.5 sm:overflow-visible">
       {options.map((o) => (
         <label
           key={o.value}
           className={cn(
-            "relative inline-flex cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
-            size === "sm" ? "min-h-11 px-2.5 text-[12.5px] sm:min-h-7" : "min-h-11 px-3 text-[13px] sm:min-h-8",
+            "relative inline-flex shrink-0 cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
+            size === "sm" ? "min-h-11 px-2.5 text-[13px] sm:min-h-7" : "min-h-11 px-3 text-[14px] sm:min-h-8",
           )}
         >
           <input type="radio" name={groupName} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} className="sr-only" />

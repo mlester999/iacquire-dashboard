@@ -174,9 +174,9 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
         <div data-aqi-target="crm.workflows.list" className="space-y-5">
           {groups.map((g) => (
             <section key={g.id || "none"} aria-label={g.name || "No folder"}>
-              {(groups.length > 1 || g.name) && <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{g.name || "No folder"}</h3>}
+              {(groups.length > 1 || g.name) && <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">{g.name || "No folder"}</h3>}
               <Card className="overflow-hidden p-0">
-                <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_104px_120px_84px_84px_44px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wider text-faint md:grid">
+                <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_104px_120px_84px_84px_44px] gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-faint md:grid">
                   <span>Workflow</span><span>Status</span><span>Last run</span><span className="text-right">Runs today</span><span className="text-right">Failures</span><span />
                 </div>
                 <ul className="divide-y divide-line">
@@ -184,21 +184,21 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
                     <li key={w.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2/50 md:grid-cols-[minmax(0,1fr)_104px_120px_84px_84px_44px] md:items-center", w.status === "archived" && "opacity-75")}>
                       <div className="col-start-1 row-start-1 min-w-0 md:col-auto md:row-auto">
                         <Link href={`${base}/${w.id}`} className="text-[14px] font-medium text-ink hover:underline">{w.name}</Link>
-                        <p className="mt-0.5 truncate text-[12.5px] text-muted">{w.triggerSummary}{w.stepCount ? ` · ${w.stepCount} ${w.stepCount === 1 ? "step" : "steps"}` : " · no steps yet"}</p>
+                        <p className="mt-0.5 truncate text-[13px] text-muted">{w.triggerSummary}{w.stepCount ? ` · ${w.stepCount} ${w.stepCount === 1 ? "step" : "steps"}` : " · no steps yet"}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="md:hidden"><WorkflowStatusBadge status={w.status} /></span>
-                          {w.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+                          {w.effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
                           {/* Every approval state that keeps it from running: needed, requested, declined, lapsed. */}
-                          {w.approval !== "not_needed" && w.approval !== "approved" && approvalBadge(w.approval, "h-5 px-2 text-[11px]")}
-                          {w.unpublishedChanges && w.publishedVersion && <Badge className="h-5 px-2 text-[11px]">Unpublished changes</Badge>}
+                          {w.approval !== "not_needed" && w.approval !== "approved" && approvalBadge(w.approval, "h-5 px-2 text-[12px]")}
+                          {w.unpublishedChanges && w.publishedVersion && <Badge className="h-5 px-2 text-[12px]">Unpublished changes</Badge>}
                         </div>
                       </div>
                       <div className="hidden md:block"><WorkflowStatusBadge status={w.status} /></div>
-                      <p className="col-span-2 text-[12.5px] text-muted md:col-span-1">
+                      <p className="col-span-2 text-[13px] text-muted md:col-span-1">
                         <span className="md:sr-only">Last run </span>{w.lastRunAt ? <RelativeTime iso={w.lastRunAt} timezone={scope.timezone} /> : "Never"}
                       </p>
-                      <p className="text-[12.5px] tabular-nums text-ink-2 md:text-right"><span className="md:sr-only">Runs today: </span>{w.runsToday}</p>
-                      <p className={cn("text-[12.5px] tabular-nums md:text-right", w.failuresToday ? "font-semibold text-danger-ink" : "text-ink-2")}>
+                      <p className="text-[13px] tabular-nums text-ink-2 md:text-right"><span className="md:sr-only">Runs today: </span>{w.runsToday}</p>
+                      <p className={cn("text-[13px] tabular-nums md:text-right", w.failuresToday ? "font-semibold text-danger-ink" : "text-ink-2")}>
                         <span className="md:sr-only">Failures today: </span>
                         {w.failuresToday ? <Link href={`${base}/activity?workflow=${w.id}&status=failed`} className="hover:underline">{w.failuresToday}</Link> : 0}
                       </p>
@@ -385,13 +385,13 @@ export function TemplateInput({ input, value, options, error, onChange }: { inpu
     const stages = options.pipelines.find((p) => p.id === pipe)?.stages.filter((s) => input.kind === "stage" || s.kind === "open") ?? [];
     return (
       <fieldset className="space-y-1.5">
-        <legend className="text-[13px] font-medium text-ink-2">{label}{!input.required && <span className="ml-1.5 font-normal text-faint">Optional</span>}</legend>
-        <p className="text-[12.5px] text-muted">{input.help}</p>
+        <legend className="text-[14px] font-medium text-ink-2">{label}{!input.required && <span className="ml-1.5 font-normal text-faint">Optional</span>}</legend>
+        <p className="text-[13px] text-muted">{input.help}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <SinglePick id={`${id}-pipe`} label={`${label}: pipeline`} value={pipe || null} onChange={(p) => { setPipe(p ?? ""); onChange(null); }} options={options.pipelines.map((p) => ({ id: p.id, label: p.name }))} placeholder={options.pipelines.length ? "Choose a pipeline" : "No pipelines yet"} />
           <SinglePick id={`${id}-stage`} label={`${label}: stage`} value={chosenStage?.stageId ?? null} disabled={!pipe} onChange={(st) => onChange(st && pipe ? { pipelineId: pipe, stageId: st } : null)} options={stages.map((s) => ({ id: s.id, label: s.name }))} placeholder={pipe ? "Choose a stage" : "Choose a pipeline first"} invalid={!!error} />
         </div>
-        {error && <p className="text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+        {error && <p className="text-[13px] text-danger-ink" role="alert">{error}</p>}
       </fieldset>
     );
   }
@@ -425,15 +425,15 @@ function TemplateCard({ t }: { t: WorkflowTemplateItem }) {
   return (
     <span className="block">
       <span className="block text-[14px] font-semibold text-ink">{t.name}</span>
-      <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{t.description}</span>
+      <span className="mt-1 block text-[13px] leading-relaxed text-muted">{t.description}</span>
       <span className="mt-2 block text-[12px] text-ink-2">{t.triggerSummary}</span>
-      <span className="mt-2 flex flex-wrap items-center gap-1" aria-label={`${t.stepKinds.length} ${t.stepKinds.length === 1 ? "step" : "steps"}`}>
+      <span role="img" className="mt-2 flex flex-wrap items-center gap-1" aria-label={`${t.stepKinds.length} ${t.stepKinds.length === 1 ? "step" : "steps"}`}>
         {t.stepKinds.map((k, i) => <span key={`${k}-${i}`} className="inline-flex size-6 items-center justify-center rounded-md bg-surface-2 text-muted"><StepIcon kind={k} className="size-3.5" /></span>)}
       </span>
       {t.sendsMessages && (
         <span className="mt-2 flex flex-wrap gap-1">
-          <Badge tone="primary" className="h-5 px-2 text-[11px]">{t.sendsMessages === "optional" ? "Can send a message" : "Sends a message"}</Badge>
-          <Badge tone="warning" className="h-5 px-2 text-[11px]"><ShieldAlert className="size-3" aria-hidden />Owner approves first</Badge>
+          <Badge tone="primary" className="h-5 px-2 text-[12px]">{t.sendsMessages === "optional" ? "Can send a message" : "Sends a message"}</Badge>
+          <Badge tone="warning" className="h-5 px-2 text-[12px]"><ShieldAlert className="size-3" aria-hidden />Owner approves first</Badge>
         </span>
       )}
     </span>
@@ -454,7 +454,7 @@ function MoveDialog({ scope, workflow, folders, onClose }: { scope: CrmScope; wo
       {folders.length ? (
         <Field label="Folder" htmlFor="wf-move-folder"><FolderSelect id="wf-move-folder" folders={folders} value={folderId} onChange={setFolderId} /></Field>
       ) : (
-        <p className="text-[13px] text-muted">There are no folders yet. Create one with “New folder”.</p>
+        <p className="text-[14px] text-muted">There are no folders yet. Create one with “New folder”.</p>
       )}
     </Dialog>
   );

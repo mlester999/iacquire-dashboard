@@ -36,7 +36,7 @@ function CoverPlaceholder({ technologies }: { technologies: string[] }) {
       <span className="relative grid size-14 place-items-center rounded-2xl border border-line-strong bg-surface text-primary-ink shadow-card">
         <Icon className="size-6" aria-hidden />
       </span>
-      <span className="relative inline-flex items-center gap-1.5 rounded-full bg-surface/90 px-2.5 py-1 text-[11.5px] font-medium text-ink-2 ring-1 ring-inset ring-line-strong">
+      <span className="relative inline-flex items-center gap-1.5 rounded-full bg-surface/90 px-2.5 py-1 text-[12px] font-medium text-ink-2 ring-1 ring-inset ring-line-strong">
         <ImageOff className="size-3" aria-hidden />
         No screenshot yet
       </span>
@@ -57,13 +57,13 @@ export function PortfolioAdmin({ projects, services }: { projects: AdminPortfoli
       title="Good work deserves a great showcase."
       description="Curate the founder’s projects, prepare their visual story and review what clients will see. Nothing reaches clients without your review."
       action={<Button variant="primary" loading={isPending("import")} onClick={()=>void importNow()}><Download className="size-4"/>Import verified content</Button>}
-      aside={<div className="rounded-2xl border border-line bg-surface p-4 shadow-card"><div className="mb-3 flex items-baseline justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-muted">Showcase at a glance</p><p className="text-[12px] font-medium text-ink-2">{pluralize(projects.length,"project")}</p></div><CoverageBar label="Portfolio review state" parts={[{label:"Published",count:published,color:"var(--success)"},{label:"Pending review",count:pending,color:"var(--warning)"},{label:"Hidden",count:Math.max(0,projects.length-published-pending),color:"var(--faint)"}]}/></div>}
+      aside={<div className="rounded-2xl border border-line bg-surface p-4 shadow-card"><div className="mb-3 flex items-baseline justify-between gap-3"><p className="text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Showcase at a glance</p><p className="text-[12px] font-medium text-ink-2">{pluralize(projects.length,"project")}</p></div><CoverageBar label="Portfolio review state" parts={[{label:"Published",count:published,color:"var(--success)"},{label:"Pending review",count:pending,color:"var(--warning)"},{label:"Hidden",count:Math.max(0,projects.length-published-pending),color:"var(--faint)"}]}/></div>}
     />
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Portfolio projects" value={projects.length} detail="Founder work in the showcase" icon={<Briefcase className="size-4"/>} tone="blue"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Published" value={published} detail="Visible to signed-in clients" icon={<CheckCircle2 className="size-4"/>} tone="green"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Pending review" value={pending} detail="Waiting for a disclosure check" icon={<Clock3 className="size-4"/>} tone="amber"/><MetricCard className="!p-3 sm:!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px] [&>div:last-child]:hidden sm:[&>div:last-child]:block" label="Needs images" value={needsMedia} detail="No stored screenshot yet" icon={<ImageOff className="size-4"/>} tone="neutral"/></div>
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-2.5 shadow-soft lg:flex-row lg:items-center lg:justify-between"><div className="scrollbar-thin flex gap-1 overflow-x-auto">{[{id:"all",label:"All work"},{id:"review",label:"Review queue"},{id:"published",label:"Published"},{id:"hidden",label:"Hidden"},{id:"media",label:"Needs images"}].map(f=><FilterTab key={f.id} active={filter===f.id} onClick={()=>setFilter(f.id)} count={counts[f.id as keyof typeof counts]}>{f.label}</FilterTab>)}</div><div className="relative lg:w-72"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted sm:top-3" aria-hidden/><Input aria-label="Search portfolio projects" placeholder="Search projects or technology…" className="pl-9" value={query} onChange={e=>setQuery(e.target.value)}/></div></div>
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-2.5 shadow-soft lg:flex-row lg:items-center lg:justify-between"><div className="relative scrollbar-thin flex gap-1 overflow-x-auto">{[{id:"all",label:"All work"},{id:"review",label:"Review queue"},{id:"published",label:"Published"},{id:"hidden",label:"Hidden"},{id:"media",label:"Needs images"}].map(f=><FilterTab key={f.id} active={filter===f.id} onClick={()=>setFilter(f.id)} count={counts[f.id as keyof typeof counts]}>{f.label}</FilterTab>)}</div><div className="relative lg:w-72"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted sm:top-3" aria-hidden/><Input aria-label="Search portfolio projects" placeholder="Search projects or technology…" className="pl-9" value={query} onChange={e=>setQuery(e.target.value)}/></div></div>
     <motion.ul layout={!reduce} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{shown.map((p,i)=>{const cover=p.assets.find(a=>a.stored&&a.kind==="cover")??p.assets.find(a=>a.stored);const storedCount=p.assets.filter(a=>a.stored).length;return <motion.li key={p.id} layout={!reduce} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2,delay:i*.025}} className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-soft transition motion-safe:hover:-translate-y-1 hover:border-line-strong hover:shadow-card">
-      <button onClick={()=>setDlg({kind:"images",id:p.id})} aria-label={`Manage images for ${p.title}`} className="relative block overflow-hidden border-b border-line text-left">{cover?<div className="relative aspect-[16/10] bg-surface-2"><Image src={`/api/portfolio/assets/${cover.id}?v=thumb`} alt={cover.alt||p.title} fill unoptimized sizes="(min-width:1280px) 390px,50vw" className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"/></div>:<CoverPlaceholder technologies={p.technologies}/>}<span aria-hidden className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-lg bg-surface/90 text-ink-2 shadow-soft ring-1 ring-inset ring-line-strong backdrop-blur-sm transition group-hover:text-primary"><Images className="size-4"/></span>{p.featured&&<span className="absolute left-3 top-3 inline-flex h-6 items-center gap-1.5 rounded-full bg-surface/90 px-2.5 text-[11.5px] font-semibold text-warning-ink shadow-soft ring-1 ring-inset ring-warning/30 backdrop-blur-sm"><Star className="size-3 fill-current" aria-hidden/>Featured</span>}</button>
-      <div className="flex flex-1 flex-col p-4"><div className="flex flex-wrap items-center gap-1.5">{p.visible?<StatusPill tone="success" icon={<CheckCircle2 className="size-3" aria-hidden/>}>Published</StatusPill>:p.reviewState==="approved"?<StatusPill tone="neutral" icon={<EyeOff className="size-3" aria-hidden/>}>Hidden</StatusPill>:<StatusPill tone="warning" icon={<Clock3 className="size-3" aria-hidden/>}>Pending review</StatusPill>}<StatusPill tone={BUILD_TONE[p.status]}>{p.statusLabel||PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill></div><h3 className="mt-3 line-clamp-2 text-[16px] font-semibold leading-snug tracking-tight text-ink" title={p.title}>{p.title}</h3><p className="mt-1.5 line-clamp-3 text-[12.5px] leading-relaxed text-muted">{p.summary}</p><div className="mt-3 flex flex-wrap gap-1.5">{p.technologies.slice(0,4).map(t=><TechnologyPill name={t} key={t}/>)}</div><div className="mt-3 flex flex-wrap gap-1.5">{storedCount?<InfoChip icon={<Images aria-hidden/>}>{pluralize(storedCount,"stored image")}</InfoChip>:<StatusPill tone="warning" size="sm" icon={<ImageOff className="size-3" aria-hidden/>}>No stored images</StatusPill>}<InfoChip icon={<Layers aria-hidden/>}>{pluralize(p.serviceSlugs.length,"related service")}</InfoChip></div><div className="mt-auto flex items-center gap-2 border-t border-line pt-3 mt-4"><Button size="sm" variant={p.visible?"secondary":"primary"} className="flex-1" onClick={()=>setDlg({kind:"review",id:p.id})}><Rocket className="size-3.5"/>{p.visible?"Visibility":"Review & publish"}</Button><Button size="sm" variant="secondary" aria-label={`Edit ${p.title}`} onClick={()=>setDlg({kind:"edit",id:p.id})}><Pencil className="size-3.5"/>Edit</Button><Button size="icon-sm" variant="ghost" aria-label={`Images for ${p.title}`} title="Manage images" onClick={()=>setDlg({kind:"images",id:p.id})}><Images className="size-4"/></Button></div></div></motion.li>;})}</motion.ul>
+      <button onClick={()=>setDlg({kind:"images",id:p.id})} aria-label={`Manage images for ${p.title}`} className="relative block overflow-hidden border-b border-line text-left">{cover?<div className="relative aspect-[16/10] bg-surface-2"><Image src={`/api/portfolio/assets/${cover.id}?v=thumb`} alt={cover.alt||p.title} fill unoptimized sizes="(min-width:1280px) 390px,50vw" className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"/></div>:<CoverPlaceholder technologies={p.technologies}/>}<span aria-hidden className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-lg bg-surface/90 text-ink-2 shadow-soft ring-1 ring-inset ring-line-strong backdrop-blur-sm transition group-hover:text-primary"><Images className="size-4"/></span>{p.featured&&<span className="absolute left-3 top-3 inline-flex h-6 items-center gap-1.5 rounded-full bg-surface/90 px-2.5 text-[12px] font-semibold text-warning-ink shadow-soft ring-1 ring-inset ring-warning/30 backdrop-blur-sm"><Star className="size-3 fill-current" aria-hidden/>Featured</span>}</button>
+      <div className="flex flex-1 flex-col p-4"><div className="flex flex-wrap items-center gap-1.5">{p.visible?<StatusPill tone="success" icon={<CheckCircle2 className="size-3" aria-hidden/>}>Published</StatusPill>:p.reviewState==="approved"?<StatusPill tone="neutral" icon={<EyeOff className="size-3" aria-hidden/>}>Hidden</StatusPill>:<StatusPill tone="warning" icon={<Clock3 className="size-3" aria-hidden/>}>Pending review</StatusPill>}<StatusPill tone={BUILD_TONE[p.status]}>{p.statusLabel||PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill></div><h3 className="mt-3 line-clamp-2 text-[16px] font-semibold leading-snug tracking-tight text-ink" title={p.title}>{p.title}</h3><p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted">{p.summary}</p><div className="mt-3 flex flex-wrap gap-1.5">{p.technologies.slice(0,4).map(t=><TechnologyPill name={t} key={t}/>)}</div><div className="mt-3 flex flex-wrap gap-1.5">{storedCount?<InfoChip icon={<Images aria-hidden/>}>{pluralize(storedCount,"stored image")}</InfoChip>:<StatusPill tone="warning" size="sm" icon={<ImageOff className="size-3" aria-hidden/>}>No stored images</StatusPill>}<InfoChip icon={<Layers aria-hidden/>}>{pluralize(p.serviceSlugs.length,"related service")}</InfoChip></div><div className="mt-auto flex items-center gap-2 border-t border-line pt-3 mt-4"><Button size="sm" variant={p.visible?"secondary":"primary"} className="flex-1" onClick={()=>setDlg({kind:"review",id:p.id})}><Rocket className="size-3.5"/>{p.visible?"Visibility":"Review & publish"}</Button><Button size="sm" variant="secondary" aria-label={`Edit ${p.title}`} onClick={()=>setDlg({kind:"edit",id:p.id})}><Pencil className="size-3.5"/>Edit</Button><Button size="icon-sm" variant="ghost" aria-label={`Images for ${p.title}`} title="Manage images" onClick={()=>setDlg({kind:"images",id:p.id})}><Images className="size-4"/></Button></div></div></motion.li>;})}</motion.ul>
     {!shown.length&&<div className="rounded-2xl border border-dashed border-line-strong bg-surface"><EmptyState icon={projects.length?<Search className="size-5"/>:<Images className="size-5"/>} title={projects.length?"No projects match this view":"Your showcase is ready for its first story"} description={projects.length?"Choose a different review state or adjust your search.":"Import the founder’s verified portfolio for review, then add permitted screenshots and publish each project intentionally."} action={projects.length?<Button variant="secondary" onClick={()=>{setQuery("");setFilter("all");}}>Clear filters</Button>:<Button variant="primary" loading={isPending("import")} onClick={()=>void importNow()}><Download className="size-4"/> Import verified content</Button>}/></div>}
     <p className="flex items-start gap-2.5 rounded-xl border border-line bg-surface-2/60 px-3.5 py-3 text-[12px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden/>Imported projects remain hidden pending disclosure review. Uploaded images also require individual publication permission; adding media never publishes a project.</p>
     {active&&dlg?.kind==="edit"&&<EditDialog project={active} services={services} onClose={()=>setDlg(null)} onSaved={()=>{setDlg(null);router.refresh();}}/>}
@@ -82,7 +82,7 @@ function ReviewDialog({ project: p, onClose, onDone }: { project: AdminPortfolio
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={p.visible ? "Visibility" : "Review & publish"} description={p.title} footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
       <div className="space-y-4">
-        <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface-2/40 text-[13px]">
+        <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface-2/40 text-[14px]">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-3">
             <dt className="text-muted">Clients would see</dt>
             <dd className="flex min-w-0 flex-wrap items-center justify-end gap-2 font-medium text-ink">
@@ -108,7 +108,7 @@ function ReviewDialog({ project: p, onClose, onDone }: { project: AdminPortfolio
           </div>
         </dl>
         {p.privacyNote && (
-          <div className="flex gap-2.5 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-ink">
+          <div className="flex gap-2.5 rounded-xl bg-warning-soft px-3.5 py-3 text-[14px] leading-relaxed text-warning-ink">
             <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
             <p>
               <strong className="font-semibold">Privacy note on the project.</strong> {p.privacyNote}
@@ -116,7 +116,7 @@ function ReviewDialog({ project: p, onClose, onDone }: { project: AdminPortfolio
           </div>
         )}
         {p.sourceUrl && (
-          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-[13px] font-medium text-primary-ink shadow-soft transition hover:bg-surface-2">
+          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-[14px] font-medium text-primary-ink shadow-soft transition hover:bg-surface-2">
             Compare with the source page <ExternalLink className="size-3.5" aria-hidden />
           </a>
         )}
@@ -219,7 +219,7 @@ function ImagesDialog({ project: p, onClose }: { project: AdminPortfolioRow; onC
                 <div className="relative aspect-[16/10] border-b border-line bg-surface-2">
                   <Image src={`/api/portfolio/assets/${a.id}?v=thumb`} alt={a.alt || "Portfolio image"} fill unoptimized sizes="320px" className="object-cover object-top" />
                 </div>
-                <div className="space-y-3 p-3.5 text-[12.5px]">
+                <div className="space-y-3 p-3.5 text-[13px]">
                   <div className="flex flex-wrap gap-1.5">
                     <StatusPill tone={a.stored ? "success" : "neutral"} size="sm">{a.stored ? "Stored" : "Source link"}</StatusPill>
                     {a.kind === "cover" && <StatusPill tone="primary" size="sm">Cover</StatusPill>}
@@ -328,7 +328,7 @@ function EditDialog({ project: p, services, onClose, onSaved }: { project: Admin
         <Field label="Anonymized title" htmlFor="pe-anon" hint="Shown instead of the real title when the name isn't public.">
           <Input id="pe-anon" value={f.anonymizedTitle} maxLength={200} onChange={text("anonymizedTitle")} />
         </Field>
-        <label className="flex items-center gap-2 self-end pb-2 text-[13px]">
+        <label className="flex items-center gap-2 self-end pb-2 text-[14px]">
           <input type="checkbox" checked={f.clientNamePublic} onChange={(e) => setF({ ...f, clientNamePublic: e.target.checked })} /> The client / project name may be shown publicly
         </label>
         <Field label="Summary" htmlFor="pe-sum" className="sm:col-span-2">
@@ -374,20 +374,20 @@ function EditDialog({ project: p, services, onClose, onSaved }: { project: Admin
           <Textarea id="pe-lim" rows={3} value={f.limitations} onChange={text("limitations")} />
         </Field>
         <Field label="Case study sections" htmlFor="pe-sec" className="sm:col-span-2" hint="Start each section with “## Heading”, then a paragraph, then “- bullet” lines.">
-          <Textarea id="pe-sec" rows={12} className="font-mono text-[12.5px]" value={f.sections} onChange={text("sections")} />
+          <Textarea id="pe-sec" rows={12} className="font-mono text-[13px]" value={f.sections} onChange={text("sections")} />
         </Field>
         <fieldset className="sm:col-span-2">
-          <legend className="mb-2 text-[13px] font-medium">Related services</legend>
+          <legend className="mb-2 text-[14px] font-medium">Related services</legend>
           <div className="flex flex-wrap gap-2">
             {services.map((s) => (
-              <label key={s.slug} className={cn("cursor-pointer rounded-full border px-3 py-1 text-[12.5px] transition", f.serviceSlugs.includes(s.slug) ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-muted")}>
+              <label key={s.slug} className={cn("cursor-pointer rounded-full border px-3 py-1 text-[13px] transition", f.serviceSlugs.includes(s.slug) ? "border-primary bg-primary-soft text-primary-ink" : "border-line text-muted")}>
                 <input type="checkbox" className="sr-only" checked={f.serviceSlugs.includes(s.slug)} onChange={() => setF({ ...f, serviceSlugs: f.serviceSlugs.includes(s.slug) ? f.serviceSlugs.filter((x) => x !== s.slug) : [...f.serviceSlugs, s.slug] })} />
                 {s.name}
               </label>
             ))}
           </div>
         </fieldset>
-        <label className="flex items-center gap-2 text-[13px] sm:col-span-2">
+        <label className="flex items-center gap-2 text-[14px] sm:col-span-2">
           <input type="checkbox" checked={f.featured} onChange={(e) => setF({ ...f, featured: e.target.checked })} /> Featured project
         </label>
       </div>

@@ -20,7 +20,7 @@ function Queue({ title, description, empty, emptyIcon, sites, icon, tone, action
         <div className="flex items-start gap-3">
           <span className={cn("grid size-9 shrink-0 place-items-center rounded-[10px] ring-1 ring-inset", TILE[tone])} aria-hidden>{icon}</span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><CardTitle>{title}</CardTitle><span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2" aria-label={`${sites.length} websites`}>{sites.length}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><CardTitle>{title}</CardTitle><span role="img" className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2" aria-label={`${sites.length} websites`}>{sites.length}</span></div>
             <CardDescription>{description}</CardDescription>
           </div>
         </div>
@@ -33,16 +33,16 @@ function Queue({ title, description, empty, emptyIcon, sites, icon, tone, action
                 <AvatarTile name={s.orgName} />
                 <div className="min-w-0 flex-1 basis-48">
                   <p className="truncate text-[14px] font-semibold text-ink" title={s.orgName}>{s.orgName}</p>
-                  <p className="truncate text-[12.5px] text-muted" title={s.name}>{s.name}</p>
+                  <p className="truncate text-[13px] text-muted" title={s.name}>{s.name}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <InfoChip icon={<Clock className="size-3" />}>Edited {relativeTime(s.draftUpdatedAt)}</InfoChip>
                     {s.openComments > 0 && <InfoChip icon={<MessageSquare className="size-3" />}>{s.openComments} open comment{s.openComments === 1 ? "" : "s"}</InfoChip>}
                   </div>
-                  {s.approvalNote && <p className="mt-2 rounded-lg border-l-2 border-primary/40 bg-surface-2 px-2.5 py-1.5 text-[12.5px] italic leading-relaxed text-ink-2" title={s.approvalNote}>“{s.approvalNote}”</p>}
+                  {s.approvalNote && <p className="mt-2 rounded-lg border-l-2 border-primary/40 bg-surface-2 px-2.5 py-1.5 text-[13px] italic leading-relaxed text-ink-2" title={s.approvalNote}>“{s.approvalNote}”</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2 sm:self-center">
                   <LifecycleBadge state={s.lifecycle} />
-                  <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-10 items-center gap-1 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 shadow-soft transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink">{action}<ArrowRight className="size-3.5" aria-hidden /></Link>
+                  <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-10 items-center gap-1 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink-2 shadow-soft transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink">{action}<ArrowRight className="size-3.5" aria-hidden /></Link>
                 </div>
               </li>
             ))}

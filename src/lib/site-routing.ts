@@ -45,8 +45,13 @@ export function routeRequest(input: { role: DeploymentRole; hostHeader: string |
   return { kind: "site", host, target: `${SITE_PREFIX}/${h}/p${pathname === "/" ? "" : pathname}`, isForm: false };
 }
 
-/** A strict policy for public sites: no third-party anything, no framing, forms only post back to the same site. */
-export function siteContentSecurityPolicy(nonce: string, dev: boolean): string {
+/**
+ * A strict policy for public sites: no third-party anything, no framing, forms only post back to the same site.
+ * The one addition is the portal's own origin for `connect-src`, so the website chat (loaded from the portal by a nonce'd script tag) can talk to its API.
+ * Nothing else is opened, and only an http(s) origin with no path is accepted.
+ */
+export function siteContentSecurityPolicy(nonce: string, dev: boolean, chatOrigin?: string | null): string {
+  const chat = chatOrigin && /^https?:\/\/[a-z0-9.-]+(?::\d{1,5})?$/i.test(chatOrigin) ? ` ${chatOrigin}` : "";
   return [
     "default-src 'none'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
@@ -55,7 +60,7 @@ export function siteContentSecurityPolicy(nonce: string, dev: boolean): string {
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    `connect-src 'self'${dev ? " ws: wss:" : ""}`,
+    `connect-src 'self'${chat}${dev ? " ws: wss:" : ""}`,
     "form-action 'self'",
     "base-uri 'none'",
     "frame-ancestors 'none'",

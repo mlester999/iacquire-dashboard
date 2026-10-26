@@ -23,9 +23,9 @@ const ROLE_LABELS: Record<string, string> = { owner: "Business owner", admin: "M
 
 function Check({ label, hint, checked, onChange, disabled, id }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; id: string }) {
   return (
-    <label htmlFor={id} className="flex min-h-11 items-start gap-3 text-[13.5px] sm:min-h-0">
+    <label htmlFor={id} className="flex min-h-11 items-start gap-3 text-[14px] sm:min-h-0">
       <input id={id} type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span><span className="font-medium text-ink">{label}</span>{hint && <span className="block text-[12.5px] text-muted">{hint}</span>}</span>
+      <span><span className="font-medium text-ink">{label}</span>{hint && <span className="block text-[13px] text-muted">{hint}</span>}</span>
     </label>
   );
 }
@@ -63,14 +63,14 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
   return (
     <div className="space-y-5">
       {scope.readOnly && <ReadOnlyNotice />}
-      {!canConfigure && !scope.readOnly && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted" role="note">Only a workspace owner or manager can change these settings. You can see how they are set.</p>}
+      {!canConfigure && !scope.readOnly && <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted" role="note">Only a workspace owner or manager can change these settings. You can see how they are set.</p>}
 
       <SectionCard title="Is it ready?">
         <ul className="space-y-2.5" aria-label="Readiness checklist">
           {readiness.map((i) => (
-            <li key={i.key} className="flex items-start gap-2.5 text-[13px]">
+            <li key={i.key} className="flex items-start gap-2.5 text-[14px]">
               {i.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" role="img" aria-label="Ready" /> : <Circle className="mt-0.5 size-4 shrink-0 text-warning" role="img" aria-label={i.blocking ? "Needs attention" : "Not yet"} />}
-              <span><span className="font-medium text-ink">{i.label}</span><span className="block text-[12.5px] text-muted">{i.detail}</span></span>
+              <span><span className="font-medium text-ink">{i.label}</span><span className="block text-[13px] text-muted">{i.detail}</span></span>
             </li>
           ))}
         </ul>
@@ -80,7 +80,7 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
             {!activated && canConfigure && !dirty && (
               <Button size="sm" loading={busy("activate")} onClick={async () => { const o = await run("activate", () => activateRecoveryPolicyAction(scope.orgId, version), "Confirmed."); if (o) setVersion(o.version); }}>Confirm and activate</Button>
             )}
-            {!activated && dirty && <span className="text-[12.5px] text-muted">Save your changes first, then confirm.</span>}
+            {!activated && dirty && <span className="text-[13px] text-muted">Save your changes first, then confirm.</span>}
           </div>
         )}
       </SectionCard>
@@ -89,16 +89,16 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
         <div className="space-y-4">
           <Check id="rp-enabled" label="Follow up missed calls" hint="Off by default. While it is off, calls are still listed here but nobody is told and nothing is sent." checked={f.enabled} disabled={disabled} onChange={(v) => set("enabled", v)} />
           <fieldset className="space-y-2" disabled={disabled}>
-            <legend className="mb-1 text-[12.5px] font-medium text-ink-2">What it does</legend>
+            <legend className="mb-1 text-[13px] font-medium text-ink-2">What it does</legend>
             {POLICY_MODES.map((m) => (
-              <label key={m} className="flex min-h-11 items-start gap-3 text-[13.5px] sm:min-h-0">
+              <label key={m} className="flex min-h-11 items-start gap-3 text-[14px] sm:min-h-0">
                 <input type="radio" name="rp-mode" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={f.mode === m} onChange={() => { set("mode", m); set("actionMessage", m !== "manual"); }} />
-                <span><span className="font-medium text-ink">{POLICY_MODE_LABELS[m]}</span><span className="block text-[12.5px] text-muted">{POLICY_MODE_HELP[m]}</span></span>
+                <span><span className="font-medium text-ink">{POLICY_MODE_LABELS[m]}</span><span className="block text-[13px] text-muted">{POLICY_MODE_HELP[m]}</span></span>
               </label>
             ))}
           </fieldset>
           <fieldset className="space-y-1.5" disabled={disabled}>
-            <legend className="mb-1 text-[12.5px] font-medium text-ink-2">Which missed calls</legend>
+            <legend className="mb-1 text-[13px] font-medium text-ink-2">Which missed calls</legend>
             {CALL_CLASSES.map((c: CallClass) => (
               <Check key={c} id={`rp-class-${c}`} label={CALL_CLASS_LABELS[c]} hint={CALL_CLASS_HELP[c]} checked={f.classes.includes(c)} onChange={(v) => set("classes", v ? [...f.classes, c] : f.classes.filter((x) => x !== c))} />
             ))}
@@ -117,7 +117,7 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
           <Check id="rp-notify" label="Tell the team" hint="An in-app notice. It is not emailed unless people chose to be emailed everything." checked={f.actionNotify} disabled={disabled} onChange={(v) => set("actionNotify", v)} />
           {f.actionNotify && (
             <fieldset className="flex flex-wrap gap-x-4 gap-y-1" disabled={disabled}>
-              <legend className="mb-1 text-[12.5px] font-medium text-ink-2">Who</legend>
+              <legend className="mb-1 text-[13px] font-medium text-ink-2">Who</legend>
               {Object.entries(ROLE_LABELS).map(([role, label]) => (
                 <Check key={role} id={`rp-role-${role}`} label={label} checked={f.notifyRoles.includes(role as MissedCallPolicy["notifyRoles"][number])} onChange={(v) => set("notifyRoles", (v ? [...f.notifyRoles, role] : f.notifyRoles.filter((r) => r !== role)) as MissedCallPolicy["notifyRoles"])} />
               ))}
@@ -137,7 +137,7 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
       <SectionCard title="Texting the caller">
         <div className="space-y-4">
           {f.mode === "manual" ? (
-            <p className="flex items-start gap-2 text-[13px] text-muted"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />Texting is off while the setting above is “{POLICY_MODE_LABELS.manual}”. Choose “{POLICY_MODE_LABELS.assisted}” or “{POLICY_MODE_LABELS.automatic}” to write the message.</p>
+            <p className="flex items-start gap-2 text-[14px] text-muted"><Info className="mt-0.5 size-4 shrink-0" aria-hidden />Texting is off while the setting above is “{POLICY_MODE_LABELS.manual}”. Choose “{POLICY_MODE_LABELS.assisted}” or “{POLICY_MODE_LABELS.automatic}” to write the message.</p>
           ) : (
             <>
               <Field label="Message during opening hours" htmlFor="rp-open" hint={`Use {{business_name}} for “${businessName}”. Plain text, no links.`}>
@@ -146,7 +146,7 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
               <Field label="Message outside opening hours" htmlFor="rp-closed">
                 <Textarea id="rp-closed" rows={3} maxLength={480} placeholder={DEFAULT_MESSAGE_AFTER_HOURS} value={f.messageAfterHours ?? ""} disabled={disabled} onChange={(e) => set("messageAfterHours", e.target.value)} />
               </Field>
-              <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2"><span className="font-medium">Preview:</span> {renderWording(f.messageOpen?.trim() || DEFAULT_MESSAGE_OPEN, { businessName })}</p>
+              <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2"><span className="font-medium">Preview:</span> {renderWording(f.messageOpen?.trim() || DEFAULT_MESSAGE_OPEN, { businessName })}</p>
               <Field label="Outside opening hours" htmlFor="rp-ah">
                 <Select id="rp-ah" value={f.afterHoursBehavior} disabled={disabled} onChange={(e) => set("afterHoursBehavior", e.target.value as MissedCallPolicy["afterHoursBehavior"])}>
                   {AFTER_HOURS_BEHAVIORS.map((b) => <option key={b} value={b}>{AFTER_HOURS_LABELS[b]}</option>)}
@@ -158,19 +158,19 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
                 <Field label="Wait for a reply (hours)" htmlFor="rp-window"><Input id="rp-window" type="number" min={1} max={336} value={f.responseWindowHours} disabled={disabled} onChange={(e) => set("responseWindowHours", Number(e.target.value))} /></Field>
               </div>
               <fieldset className="space-y-2" disabled={disabled}>
-                <legend className="mb-1 text-[12.5px] font-medium text-ink-2">Who can be texted</legend>
+                <legend className="mb-1 text-[13px] font-medium text-ink-2">Who can be texted</legend>
                 {(["recorded", "inbound_call"] as const).map((b) => (
-                  <label key={b} className="flex min-h-11 items-start gap-3 text-[13.5px] sm:min-h-0">
+                  <label key={b} className="flex min-h-11 items-start gap-3 text-[14px] sm:min-h-0">
                     <input type="radio" name="rp-basis" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={f.smsConsentBasis === b} onChange={() => set("smsConsentBasis", b)} />
                     <span><span className="font-medium text-ink">{SMS_CONSENT_BASIS_LABELS[b]}</span>
-                      {b === "recorded" && <span className="block text-[12.5px] text-muted">Recommended. A caller who has never agreed to be texted gets a call-back task instead.</span>}
-                      {b === "inbound_call" && <span className="block text-[12.5px] text-muted">One service text about their own call. The rules differ by country and state: check them for where your callers are before choosing this.</span>}
+                      {b === "recorded" && <span className="block text-[13px] text-muted">Recommended. A caller who has never agreed to be texted gets a call-back task instead.</span>}
+                      {b === "inbound_call" && <span className="block text-[13px] text-muted">One service text about their own call. The rules differ by country and state: check them for where your callers are before choosing this.</span>}
                     </span>
                   </label>
                 ))}
               </fieldset>
               {f.smsConsentBasis === "inbound_call" && <Check id="rp-ack" label="I have checked the messaging rules where my callers are" hint="Recorded with your name when you save." checked={ack} disabled={disabled} onChange={setAck} />}
-              <p className="text-[12.5px] text-muted">People who reply STOP, bounced numbers, quiet hours and your opening hours are always respected, and a teammate who takes the conversation stops automatic texts.</p>
+              <p className="text-[13px] text-muted">People who reply STOP, bounced numbers, quiet hours and your opening hours are always respected, and a teammate who takes the conversation stops automatic texts.</p>
             </>
           )}
         </div>
@@ -183,11 +183,11 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
         </div>
       </SectionCard>
 
-      {problems.length > 0 && canConfigure && <ul className="space-y-1 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[12.5px] text-danger-ink" role="alert">{problems.map((p) => <li key={p}>{p}</li>)}</ul>}
+      {problems.length > 0 && canConfigure && <ul className="space-y-1 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger-ink" role="alert">{problems.map((p) => <li key={p}>{p}</li>)}</ul>}
       {canConfigure && !scope.readOnly && (
         <div className="sticky bottom-0 -mx-1 flex items-center gap-3 border-t border-line bg-bg/90 px-1 py-3 backdrop-blur">
           <Button loading={busy("save")} disabled={!dirty || problems.length > 0} onClick={save}>Save settings</Button>
-          {dirty && <span className="text-[12.5px] text-muted">Unsaved changes</span>}
+          {dirty && <span className="text-[13px] text-muted">Unsaved changes</span>}
         </div>
       )}
     </div>

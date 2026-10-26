@@ -48,7 +48,7 @@ export function FieldInput({ def, value, onChange, id, invalid }: { def: FieldDe
       return (
         <div className="flex min-h-10 items-center gap-3">
           <Switch id={id} checked={value === true} onCheckedChange={(c) => onChange(c)} aria-label={def.label} />
-          <span className="text-[13px] text-muted">{value === true ? "Yes" : value === false ? "No" : "Not set"}</span>
+          <span className="text-[14px] text-muted">{value === true ? "Yes" : value === false ? "No" : "Not set"}</span>
           {value !== null && value !== undefined && value !== "" && (
             <button type="button" className="text-[12px] text-muted underline-offset-2 hover:underline" onClick={() => onChange("")}>Clear</button>
           )}
@@ -73,7 +73,7 @@ export function FieldInput({ def, value, onChange, id, invalid }: { def: FieldDe
                 type="button"
                 aria-pressed={on}
                 onClick={() => onChange(on ? arr.filter((v) => v !== o.value) : [...arr, o.value])}
-                className={cn("inline-flex min-h-9 items-center rounded-full border px-3 text-[12.5px] font-medium", on ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
+                className={cn("inline-flex min-h-9 items-center rounded-full border px-3 text-[13px] font-medium", on ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
               >
                 {o.label}
               </button>

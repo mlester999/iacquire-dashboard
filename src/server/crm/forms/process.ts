@@ -1,4 +1,5 @@
 import "server-only";
+import { recordFormTouch } from "@/server/attribution/touches";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
@@ -10,6 +11,7 @@ import { applyContactTags } from "@/server/crm/tags";
 import { createOpportunityInTx } from "@/server/crm/opportunities";
 import { assignWithRule } from "@/server/crm/assignment";
 import { getConsent, recordConsent } from "@/server/messaging/contacts";
+import { saveSurveyFeedback } from "@/server/reputation/survey-feedback";
 import { coerceFieldValue } from "@/lib/crm/fields";
 import { composeDisplayName } from "@/lib/crm/types";
 import { consentChannels, renderDealName, spamReason, type Attribution } from "@/lib/crm/forms/logic";
@@ -120,6 +122,8 @@ async function markProcessed(db: Queryable, s: SubmissionRow, contactId: string 
     "update crm_form_submissions set status = 'processed', contact_id = $3, opportunity_id = $4, processed_at = now(), error = $5 where id = $1 and org_id = $2",
     [s.id, s.org_id, contactId, opportunityId, notes.length ? notes.join(" ").slice(0, NOTE_MAX) : null],
   );
+  // Where this lead came from, as the visit reported it. Recorded once per submission, so a retried run adds nothing.
+  if (contactId) await recordFormTouch(db, { orgId: s.org_id, contactId, kind: "crm_form", submissionId: s.id, attribution: { ...s.attribution }, occurredAt: s.created_at });
 }
 
 /** Which contacts own the email and phone the person gave (exact, normalized identifiers only; never names). */
@@ -342,6 +346,14 @@ export async function processSubmissionInTx(db: Queryable, id: string, orgId: st
         opportunityId = opp.id;
       }
     }
+  }
+
+  // A survey's answers saved as private feedback: attributed to the contact this submission MADE, or to one it matched only when an address it typed is verified for them; an answer
+  // that matches an existing contact only by what was typed waits for a person to confirm the match, and one that gave neither belongs to nobody (the score and the follow-up of a
+  // low one are those of an answer given through a review request's link: src/server/reputation/survey-feedback.ts). Keyed to the submission, so a retry saves nothing twice.
+  if (mapped.feedback && form.kind === "survey") {
+    const saved = await saveSurveyFeedback(db, actor, { submissionId: s.id, formName: form.name, contactId, contactCreated: createdContact, typed: { email, phone }, feedback: mapped.feedback, receivedAt: new Date(s.created_at), now });
+    notes.push(...saved.notes);
   }
 
   // The event workflows and webhooks start from. Its dedupe key is the submission, so it is recorded exactly once.

@@ -5,6 +5,7 @@ import { notifyUser } from "@/server/notifications";
 import { assertCan, crmRead, crmWrite, systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { assertAssignable } from "@/server/crm/contacts";
+import { resolveFeedbackForTask } from "@/server/reputation/task-link";
 
 export type TaskStatus = "open" | "in_progress" | "done" | "cancelled";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
@@ -147,6 +148,8 @@ export async function setTaskStatus(actor: CrmActor, id: string, status: TaskSta
     );
     if (status === "done") {
       await emitEvent(db, actor, { type: "task.completed", entityType: "task", entityId: id, contactId: t.contact_id, dedupeKey: `task.completed:${id}:${Date.now()}` });
+      // Finishing the follow-up task of low private feedback resolves that feedback (nothing happens for any other task).
+      await resolveFeedbackForTask(db, actor.orgId, id, actor.userId);
     }
     return { changed: true };
   });

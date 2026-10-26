@@ -139,7 +139,7 @@ export function LeadsWorkspace(props: {
           <ButtonLink href="/api/leads/export" variant="secondary" prefetch={false}>
             <Download className="size-4" /> Export CSV
           </ButtonLink>
-        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[13px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
+        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[14px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
       <HunterBanner ready={props.hunterReady} status={props.hunterStatus} />
       <div data-aqi-target="leads.tabs">
       <Tabs
@@ -173,7 +173,7 @@ function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }
         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
           Lead Hunter <AgentStatusBadge status={status} />
         </p>
-        <p className="mt-0.5 text-[13px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until the Lead Hunter is connected and online."}</p>
+        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until the Lead Hunter is connected and online."}</p>
       </div>
     </div>
   );
@@ -264,7 +264,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
         {selected.length > 0 && canReview && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-b border-line bg-primary-soft/40">
             <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-              <span className="text-[13px] font-medium">{selected.length} selected{selected.some((id) => !filtered.some((lead) => lead.id === id)) ? " · includes leads hidden by these filters" : ""}</span>
+              <span className="text-[14px] font-medium">{selected.length} selected{selected.some((id) => !filtered.some((lead) => lead.id === id)) ? " · includes leads hidden by these filters" : ""}</span>
               <div className="ml-auto flex flex-wrap gap-2">
                 {selectedLeads.some((l) => l.review_status === "pending") && (
                   <>
@@ -316,8 +316,8 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </article>
         ))}
       </div>
-      <div className="scrollbar-thin hidden overflow-x-auto md:block">
-        <table className="workspace-table w-full min-w-[760px] text-left text-[13.5px]">
+      <div className="scrollbar-thin hidden overflow-x-auto md:block" tabIndex={0}>
+        <table className="workspace-table w-full min-w-[760px] text-left text-[14px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr>
               {canReview && (
@@ -367,7 +367,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
                   </div>
                 </td>
                 <td className="px-3 py-3"><DuplicateChip status={l.duplicate_status} /></td>
-                <td className="px-4 py-3 text-right text-[12.5px] tabular-nums text-muted" title={formatDateTime(l.created_at, timeZone)}><span suppressHydrationWarning>{relativeTime(l.created_at)}</span></td>
+                <td className="px-4 py-3 text-right text-[13px] tabular-nums text-muted" title={formatDateTime(l.created_at, timeZone)}><span suppressHydrationWarning>{relativeTime(l.created_at)}</span></td>
               </tr>
             ))}
           </tbody>
@@ -391,16 +391,16 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
             <div className="text-center">
               <p className="text-[32px] font-semibold leading-none tracking-tight tabular-nums">{lead.score ?? "—"}</p>
-              <p className="mt-1 text-[11.5px] text-muted">of 100</p>
+              <p className="mt-1 text-[12px] text-muted">of 100</p>
             </div>
-            <p className="text-[12.5px] leading-relaxed text-muted">A research-priority score from cited evidence. It is not a measure of interest or consent.</p>
+            <p className="text-[13px] leading-relaxed text-muted">A research-priority score from cited evidence. It is not a measure of interest or consent.</p>
           </div>
           <div className="space-y-2.5">
             {Object.entries(SCORE_LABELS).map(([k, [label, max]]) => {
               const v = lead.score_breakdown?.[k] ?? 0;
               return (
                 <div key={k}>
-                  <div className="mb-1 flex justify-between text-[12.5px]">
+                  <div className="mb-1 flex justify-between text-[13px]">
                     <span className="text-ink-2">{label}</span>
                     <span className="tabular-nums text-muted">
                       {v} / {max}
@@ -416,8 +416,8 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           {lead.qualification_summary && (
             <div>
               <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Lead Hunter’s fit notes</p>
-              <p className="text-[13.5px] leading-relaxed">{lead.qualification_summary}</p>
-              <p className="mt-1 text-[11.5px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
+              <p className="text-[14px] leading-relaxed">{lead.qualification_summary}</p>
+              <p className="mt-1 text-[12px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
             </div>
           )}
           {lead.buying_signals.length > 0 && (
@@ -435,30 +435,30 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <div>
             <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Source evidence</p>
             {lead.evidence.length === 0 ? (
-              <p className="flex items-center gap-2.5 rounded-xl bg-warning-soft p-3 text-[13px] text-warning-ink ring-1 ring-inset ring-warning/25">
+              <p className="flex items-center gap-2.5 rounded-xl bg-warning-soft p-3 text-[14px] text-warning-ink ring-1 ring-inset ring-warning/25">
                 <AlertCircle className="size-4 shrink-0" /> No cited sources — treat with caution.
               </p>
             ) : (
               <ul className="space-y-2">
                 {lead.evidence.map((e, i) => (
                   <li key={i} className="rounded-xl border border-line p-3">
-                    <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1.5 break-all text-[13px] font-medium text-primary hover:underline">
+                    <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1.5 break-all text-[14px] font-medium text-primary hover:underline">
                       {e.url} <ExternalLink className="size-3 shrink-0" />
                     </a>
-                    {e.summary && <p className="mt-1 text-[12.5px] text-muted">{e.summary}</p>}
-                    {e.observed_at && <p className="mt-0.5 text-[11.5px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
+                    {e.summary && <p className="mt-1 text-[13px] text-muted">{e.summary}</p>}
+                    {e.observed_at && <p className="mt-0.5 text-[12px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
                   </li>
                 ))}
               </ul>
             )}
           </div>
-          <dl className="grid grid-cols-2 gap-3 text-[12.5px]">
+          <dl className="grid grid-cols-2 gap-3 text-[13px]">
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">Duplicate check</dt>
               <dd className="mt-1.5">
                 {lead.duplicate_status === "no_match" ? <StatusPill tone="success" size="sm">No match</StatusPill> : <StatusPill tone="warning" size="sm">{sentenceCase(lead.duplicate_status)}</StatusPill>}
                 {Boolean(lead.duplicate_matches?.length) && (
-                  <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-warning-ink">
+                  <ul className="mt-1.5 space-y-0.5 text-[12px] text-warning-ink">
                     {lead.duplicate_matches!.slice(0, 3).map((match) => (
                       <li key={`${match.kind}:${match.id}`}>
                         {match.kind === "crm_company" ? "CRM company" : "Existing lead"}: {match.label}
@@ -484,7 +484,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
               <dd className="mt-1.5"><StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill></dd>
             </div>
           </dl>
-          <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
+          <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
             <IconTile tone="neutral" size="sm"><ShieldAlert /></IconTile>
             <div className="flex flex-wrap items-center gap-1.5">
               <StatusPill tone="warning" size="sm">Contact consent unknown</StatusPill>
@@ -564,12 +564,12 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
             <Textarea id="research-prompt" data-aqi-target="leads.research" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
           </Field>
           {campaign === "influencer" && (
-            <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
+            <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
               <Info className="mt-0.5 size-3.5 shrink-0" /> Influencer research uses public, permitted sources only. iAcquire never scrapes profiles or sends automated DMs.
             </p>
           )}
           {!hunterReady && (
-            <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-[12.5px] text-warning-ink">
+            <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-[13px] text-warning-ink">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" /> The Lead Hunter isn&apos;t online yet, so this request will be saved but not run.
             </p>
           )}
@@ -585,7 +585,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
               }}
             />
           )}
-          {!canResearch && <p className="text-[12.5px] text-muted">Only owners and admins can request research.</p>}
+          {!canResearch && <p className="text-[13px] text-muted">Only owners and admins can request research.</p>}
       </Panel>
       <Panel className="lg:col-span-3" icon={<Clock />} tone="neutral" title="Research history" description="Real status of every request.">
           {requests.length === 0 ? (
@@ -599,7 +599,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
                     {r.campaign_type === "influencer" && <StatusPill tone="violet" dot={false}>Influencer</StatusPill>}
                     <span className="ml-auto"><InfoChip icon={<Clock />}>{formatDateTime(r.created_at, timeZone)}</InfoChip></span>
                   </div>
-                  <p className="mt-2 text-[13.5px] leading-snug text-ink">{r.prompt}</p>
+                  <p className="mt-2 text-[14px] leading-snug text-ink">{r.prompt}</p>
                   {r.job_stage_label && (r.job_status === "running" || r.job_status === "queued") && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-primary-ink">
                       <Loader2 className="size-3.5 animate-spin" aria-hidden /> {r.job_stage_label}…
@@ -645,7 +645,7 @@ function TagInput({ id, label, values, onChange, placeholder, disabled, hint }: 
     <Field label={label} htmlFor={id} optional hint={hint}>
       <div className={cn("flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl border border-line-strong bg-surface px-2 py-1.5 shadow-soft focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12", disabled && "opacity-60")}>
         {values.map((v) => (
-          <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-surface-2 px-2 py-1 text-[12.5px]">
+          <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-surface-2 px-2 py-1 text-[13px]">
             {v}
             {!disabled && (
               <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label={`Remove ${v}`} className="text-muted hover:text-ink">

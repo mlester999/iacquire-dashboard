@@ -208,6 +208,7 @@ export async function runDueTriggers(options: { limit?: number } = {}): Promise<
         && row.status
         && canChat(row.status as AgentStatus),
       );
+      // A pause (the employee's, the agency's) or a suspended workspace skips this event, like an employee that is not ready: the trigger moves on, and no job is created.
       const gate = runnable ? await jobGate(db, { orgId: trigger.org_id, agentId: trigger.agent_instance_id }) : null;
       if (!runnable || (gate && !gate.allowed)) {
         await db.query("update ai_work_triggers set last_event_id = $2 where id = $1", [trigger.id, trigger.event_id]);

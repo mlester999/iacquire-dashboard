@@ -9,9 +9,9 @@ import type { TemplateVersionView } from "@/server/crm/message-templates";
 import { diffSummary, diffText, type DiffPart } from "@/components/crm/templates/diff";
 
 function DiffView({ parts, label }: { parts: DiffPart[]; label: string }) {
-  if (!parts.length) return <p className="text-[12.5px] text-muted">Empty.</p>;
+  if (!parts.length) return <p className="text-[13px] text-muted">Empty.</p>;
   return (
-    <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[13px] leading-relaxed" aria-label={label}>
+    <p className="whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-3 text-[14px] leading-relaxed" aria-label={label}>
       {parts.map((p, i) =>
         p.kind === "same" ? (
           <React.Fragment key={i}>{p.text}</React.Fragment>
@@ -52,7 +52,7 @@ export function VersionHistory({
   if (!versions.length || !v) return null;
   return (
     <section aria-labelledby="tpl-history-h" className="space-y-3">
-      <h3 id="tpl-history-h" className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"><History className="size-4 text-muted" aria-hidden />Version history</h3>
+      <h3 id="tpl-history-h" className="flex items-center gap-1.5 text-[14px] font-semibold text-ink"><History className="size-4 text-muted" aria-hidden />Version history</h3>
       <ol className="flex flex-wrap gap-1.5" aria-label="Versions">
         {versions.map((x) => (
           <li key={x.version}>
@@ -60,11 +60,11 @@ export function VersionHistory({
               type="button"
               onClick={() => setSelected(x.version)}
               aria-pressed={x.version === v.version}
-              className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12.5px] font-medium transition", x.version === v.version ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
+              className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[13px] font-medium transition", x.version === v.version ? "border-primary/40 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}
             >
               v{x.version}
-              {x.version === approvedVersion && <span className="rounded-full bg-success-soft px-1.5 text-[10.5px] text-success-ink">approved</span>}
-              {x.version === currentVersion && x.version !== approvedVersion && <span className="rounded-full bg-surface-3 px-1.5 text-[10.5px] text-ink-2">current</span>}
+              {x.version === approvedVersion && <span className="rounded-full bg-success-soft px-1.5 text-[12px] text-success-ink">approved</span>}
+              {x.version === currentVersion && x.version !== approvedVersion && <span className="rounded-full bg-surface-3 px-1.5 text-[12px] text-ink-2">current</span>}
             </button>
           </li>
         ))}

@@ -157,7 +157,7 @@ function WorkflowBuilder({ workflow }: { workflow: WorkflowAsset }) {
   ) : (
     <div className="space-y-2">
       <h4 className="text-[14px] font-semibold text-ink">{readOnly ? "Workflow steps" : "Build the workflow"}</h4>
-      <p className="text-[12.5px] leading-relaxed text-muted">{readOnly ? "Select the trigger or a step to see its settings." : "Select the trigger or a step to change it. Use + between steps to add one, and a step's menu to move or remove it."}</p>
+      <p className="text-[13px] leading-relaxed text-muted">{readOnly ? "Select the trigger or a step to see its settings." : "Select the trigger or a step to change it. Use + between steps to add one, and a step's menu to move or remove it."}</p>
     </div>
   );
 
@@ -173,14 +173,14 @@ function WorkflowBuilder({ workflow }: { workflow: WorkflowAsset }) {
           ({bridged.unresolved.map((u) => u.value).slice(0, 3).join(", ")}). The builder shows {bridged.unresolved.length === 1 ? "it as missing" : "them as missing"} and keeps {bridged.unresolved.length === 1 ? "it" : "them"} as written; point {bridged.unresolved.length === 1 ? "it" : "them"} at something in this Blueprint before publishing.
         </SectionNote>
       )}
-      <div className="flex flex-wrap items-center gap-2 text-[12.5px]" role="status" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]" role="status" aria-live="polite">
         {issues.errors ? (
           <span className="inline-flex items-center gap-1.5 font-medium text-danger-ink"><AlertTriangle className="size-4" aria-hidden />{issues.errors} {issues.errors === 1 ? "problem" : "problems"} to fix</span>
         ) : (
           <span className="inline-flex items-center gap-1.5 font-medium text-success-ink"><CheckCircle2 className="size-4" aria-hidden />Complete</span>
         )}
         {issues.warnings > 0 && <span className="text-warning-ink">· {issues.warnings} {issues.warnings === 1 ? "warning" : "warnings"}</span>}
-        {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[11px]">{effectLabel(e)}</Badge>)}
+        {effects.map((e) => <Badge key={e} tone={EFFECT_TONE[e] ?? "neutral"} className="h-5 px-2 text-[12px]">{effectLabel(e)}</Badge>)}
       </div>
       {issues.general.length > 0 && <IssueNotes issues={issues.general.map((i) => ({ severity: i.level, code: i.code, path: i.path ?? "", message: i.message, assetId: workflow.id }))} />}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -203,7 +203,7 @@ function WorkflowBuilder({ workflow }: { workflow: WorkflowAsset }) {
             onRemove={askRemove}
           />
           {layout.unreachable.length > 0 && (
-            <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
+            <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
               {layout.unreachable.length} {layout.unreachable.length === 1 ? "step is" : "steps are"} not reachable from the trigger: {layout.unreachable.map((k) => `${kindLabel(byKey.get(k)?.kind ?? "")}`).join(", ")}.
             </p>
           )}

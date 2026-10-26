@@ -72,7 +72,7 @@ const statusLabel = (s: string) => STATUS_LABEL[s] ?? sentenceCase(s);
 function DateTile({ at, timeZone }: { at: string; timeZone: string }) {
   return (
     <div className="grid w-12 shrink-0 place-items-center rounded-xl bg-surface-2 py-1.5 text-center ring-1 ring-inset ring-line">
-      <p className="text-[10px] font-semibold uppercase leading-none tracking-wider text-muted">{new Date(at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
+      <p className="text-[12px] font-semibold uppercase leading-none tracking-wider text-muted">{new Date(at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
       <p className="mt-1 text-[18px] font-semibold leading-none tabular-nums text-ink">{new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone }).format(new Date(at))}</p>
     </div>
   );
@@ -168,7 +168,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
           </div>
           {view === "calendar" ? (
             <div className="p-3 sm:p-4">
-              <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[11.5px] font-medium text-faint">
+              <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[12px] font-medium text-faint">
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                   <span key={d}>
                     <span className="sm:hidden">{d[0]}</span>
@@ -184,21 +184,21 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                   const items = byDay.get(k) ?? [];
                   return (
                     <div key={i} className={cn("min-h-14 rounded-xl border p-1 sm:min-h-24 sm:p-1.5", k === todayKey ? "border-primary/40 bg-primary-soft/30" : "border-line bg-surface")}>
-                      <p className={cn("text-[11.5px] font-medium", k === todayKey ? "text-primary" : "text-muted")}>{d.getDate()}</p>
+                      <p className={cn("text-[12px] font-medium", k === todayKey ? "text-primary" : "text-muted")}>{d.getDate()}</p>
                       <div className="mt-0.5 space-y-0.5">
                         {items.slice(0, 2).map((a) => (
                           <button
                             key={a.id}
                             type="button"
                             onClick={() => setOpen(a)}
-                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium transition-colors sm:text-[11px]", CHIP_TONE[STATUS_TONE[a.status] ?? "neutral"])}
+                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[12px] font-medium transition-colors sm:text-[12px]", CHIP_TONE[STATUS_TONE[a.status] ?? "neutral"])}
                             title={`${a.title} · ${statusLabel(a.status)}`}
                           >
                             <span className="hidden sm:inline">{formatTime(a.start_at, timeZone)} </span>
                             {a.title}
                           </button>
                         ))}
-                        {items.length > 2 && <p className="px-1 text-[10.5px] text-muted">+{items.length - 2} more</p>}
+                        {items.length > 2 && <p className="px-1 text-[12px] text-muted">+{items.length - 2} more</p>}
                       </div>
                     </div>
                   );
@@ -251,7 +251,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                   <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-3 rounded-xl border border-line p-2.5 text-left transition hover:-translate-y-px hover:border-line-strong hover:shadow-card">
                     <DateTile at={a.start_at} timeZone={timeZone} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-semibold" title={a.title}>{a.title}</span>
+                      <span className="block truncate text-[14px] font-semibold" title={a.title}>{a.title}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-1.5">
                         <InfoChip icon={<Clock />}>{formatTime(a.start_at, timeZone)}</InfoChip>
                         <StatusPill tone={STATUS_TONE[a.status] ?? "neutral"} size="sm">{statusLabel(a.status)}</StatusPill>
@@ -268,7 +268,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
             <div>
               <p className="text-[14px] font-semibold">Appointment Setter</p>
-              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
               {setterReady ? (
                 <ButtonLink href="/chat/appointment-setter" variant="secondary" size="sm" className="mt-3">
                   Ask the Appointment Setter
@@ -286,14 +286,14 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
 
       <Sheet open={Boolean(open)} onOpenChange={(o) => !o && setOpen(null)} title={open?.title ?? "Appointment"} description={open ? `${formatDate(open.start_at, timeZone)} · ${formatTime(open.start_at, timeZone)} – ${formatTime(open.end_at, timeZone)}` : undefined}>
         {open && (
-          <div className="space-y-4 p-5 text-[13.5px]">
+          <div className="space-y-4 p-5 text-[14px]">
             <div className="flex flex-wrap gap-1.5">
               <StatusPill tone={STATUS_TONE[open.status] ?? "neutral"}>{statusLabel(open.status)}</StatusPill>
               {flags(open).map((f) => <StatusPill key={f.key} tone={f.tone}>{f.label}</StatusPill>)}
             </div>
-            {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
-            {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
-            {(open.reschedule_count ?? 0) > 0 && open.previous_start_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><MoveRight className="mt-0.5 size-4 shrink-0" aria-hidden />Moved from {formatDate(open.previous_start_at, timeZone)} at {formatTime(open.previous_start_at, timeZone)}.</p>}
+            {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
+            {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[13px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
+            {(open.reschedule_count ?? 0) > 0 && open.previous_start_at && <p className="flex items-start gap-2 text-[13px] text-muted"><MoveRight className="mt-0.5 size-4 shrink-0" aria-hidden />Moved from {formatDate(open.previous_start_at, timeZone)} at {formatTime(open.previous_start_at, timeZone)}.</p>}
             <dl className="space-y-3">
               <div>
                 <dt className="text-[12px] text-muted">Meeting type</dt>
@@ -320,7 +320,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                 <dd>{timeZoneLabel(timeZone)}</dd>
               </div>
             </dl>
-            <p className="rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">To reschedule or cancel, change it in your calendar. This page follows the calendar&apos;s own record, so the change appears here once the calendar confirms it.</p>
+            <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">To reschedule or cancel, change it in your calendar. This page follows the calendar&apos;s own record, so the change appears here once the calendar confirms it.</p>
           </div>
         )}
       </Sheet>

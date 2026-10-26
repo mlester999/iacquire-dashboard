@@ -17,7 +17,7 @@ import type { CrmScope } from "@/server/crm/page";
 
 function OpenLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-8">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[14px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-8">
       Open<ExternalLink className="size-3.5" aria-hidden /><span className="sr-only"> {label} (opens in a new tab)</span>
     </a>
   );
@@ -37,12 +37,12 @@ export function BookingPagesManager({ scope, pages, orgSlug, appUrl }: { scope: 
         actions={<ButtonLink href={`${scope.base}/calendars`} variant="secondary">Calendars &amp; types</ButtonLink>}
       />
       {!canManage && <div className="mb-4"><ReadOnlyNotice>{scope.readOnly ? undefined : permissionNeeded("Turning booking pages on or off", "calendars.manage")}</ReadOnlyNotice></div>}
-      {pages.length > 0 && <p className="mb-3 text-[12.5px] text-muted" role="status">{liveCount} of {pages.length} {pages.length === 1 ? "page is" : "pages are"} live.</p>}
+      {pages.length > 0 && <p className="mb-3 text-[13px] text-muted" role="status">{liveCount} of {pages.length} {pages.length === 1 ? "page is" : "pages are"} live.</p>}
 
       {!pages.length ? (
         <Card>
           <EmptyState icon={<Globe className="size-5" />} title="No booking pages yet" description="Each calendar gets a booking page. Create a calendar and add an appointment type, then turn its page on."
-            action={<Link href={`${scope.base}/calendars`} className="text-[13px] font-medium text-primary hover:underline">Set up a calendar</Link>} />
+            action={<Link href={`${scope.base}/calendars`} className="text-[14px] font-medium text-primary hover:underline">Set up a calendar</Link>} />
         </Card>
       ) : (
         <ul className="space-y-4" aria-label="Booking pages">
@@ -63,7 +63,7 @@ export function BookingPagesManager({ scope, pages, orgSlug, appUrl }: { scope: 
                         <BookingStatusBadge page={p} />
                       </div>
                     </div>
-                    <label className="flex min-h-11 items-center gap-2.5 text-[13px] text-ink-2 sm:min-h-0">
+                    <label className="flex min-h-11 items-center gap-2.5 text-[14px] text-ink-2 sm:min-h-0">
                       <Switch checked={p.public} disabled={!canManage || pending === `cal-${p.calendarId}` || p.status === "draft"} aria-label={`Booking page for ${p.name}`}
                         onCheckedChange={(v) => run(`cal-${p.calendarId}`, () => setCalendarPublicAction(scope.orgId, p.calendarId, v), v ? `${p.name}'s booking page is on.` : `${p.name}'s booking page is off.`)} />
                       <span aria-hidden>{p.public ? "On" : "Off"}</span>
@@ -76,7 +76,7 @@ export function BookingPagesManager({ scope, pages, orgSlug, appUrl }: { scope: 
                     </div>
                   )}
                   {notOffered.length > 0 && p.live && (
-                    <p className="mt-3 text-[12.5px] text-muted">Not offered until they set working hours: {notOffered.map((h) => h.name).join(", ")}.</p>
+                    <p className="mt-3 text-[13px] text-muted">Not offered until they set working hours: {notOffered.map((h) => h.name).join(", ")}.</p>
                   )}
 
                   <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -94,14 +94,14 @@ export function BookingPagesManager({ scope, pages, orgSlug, appUrl }: { scope: 
                           return (
                             <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
                               <div className="min-w-0 flex-1">
-                                <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink">
+                                <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-ink">
                                   <span className="min-w-0 break-words">{t.name}</span>
                                   {!t.public && <Badge tone="neutral">Hidden</Badge>}
                                 </p>
                                 <p className="text-[12px] text-muted">{durationLabel(t.durationMinutes)}{t.capacity > 1 ? ` · group of up to ${t.capacity}` : ""}</p>
                               </div>
                               <div className="flex items-center gap-1.5">
-                                <label className="flex min-h-11 items-center gap-2 text-[12.5px] text-ink-2 sm:min-h-0">
+                                <label className="flex min-h-11 items-center gap-2 text-[13px] text-ink-2 sm:min-h-0">
                                   <Switch checked={t.public} disabled={!canManage || pending === `type-${t.id}`} aria-labelledby={`bp-${t.id}-l`}
                                     onCheckedChange={(v) => run(`type-${t.id}`, () => setAppointmentTypePublicAction(scope.orgId, t.id, v), v ? `${t.name} is shown.` : `${t.name} is hidden.`)} />
                                   <span id={`bp-${t.id}-l`}><span className="sr-only sm:not-sr-only">On page</span><span className="sr-only">: {t.name}</span></span>

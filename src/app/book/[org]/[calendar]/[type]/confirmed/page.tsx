@@ -74,7 +74,7 @@ export default async function BookingConfirmedPage({ params, searchParams }: { p
 
         <Card className="p-5 sm:p-6">
           <CopyLink id="manage-link" value={link} label="Your booking link" />
-          <p className="mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted">
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
               Save this link: it&apos;s how you see this booking{view.allowCustomerChanges ? " and reschedule or cancel it" : ""} later. Anyone with the link can do the same, so keep it to yourself.

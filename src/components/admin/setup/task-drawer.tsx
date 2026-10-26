@@ -59,7 +59,7 @@ function DrawerBody({ orgId, snapshot, task, act, busy, timeZone }: Props & { ta
         {!task.required && <Badge tone="outline">Optional</Badge>}
         {task.hidden && <Badge tone="outline">Hidden from client</Badge>}
         {task.serviceExcluded && <Badge tone="outline">{excludedLabel(task, snapshot.services)}</Badge>}
-        <span className="text-[12.5px] text-muted">Updated {relativeTime(task.updatedAt)}</span>
+        <span className="text-[13px] text-muted">Updated {relativeTime(task.updatedAt)}</span>
       </div>
       <Tabs
         id="setup-drawer"
@@ -129,14 +129,14 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
   return (
     <div className="space-y-5">
       {completionLine(task, timeZone) && (
-        <p className="flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[13px] leading-relaxed text-success-ink">
+        <p className="flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[14px] leading-relaxed text-success-ink">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> {completionLine(task, timeZone)}
         </p>
       )}
-      {task.completionNote && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">Client sees: “{task.completionNote}”</p>}
-      {task.blockedReason && <p className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">Blocked: {task.blockedReason}</p>}
+      {task.completionNote && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-ink-2">Client sees: “{task.completionNote}”</p>}
+      {task.blockedReason && <p className="rounded-xl bg-danger-soft px-3 py-2.5 text-[14px] text-danger-ink">Blocked: {task.blockedReason}</p>}
       {unmet.length > 0 && task.status !== "completed" && (
-        <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+        <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[14px] text-warning-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> Waiting on: {unmet.join(", ")}
         </p>
       )}
@@ -144,11 +144,11 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
       {verified && <VerificationCard {...{ orgId, task, check, act, busy }} />}
 
       {activation ? (
-        <p className="rounded-xl bg-surface-2 px-3 py-3 text-[13px] leading-relaxed text-muted">{MODE_HINT.activation} Use “Mark ready for final review” and “Approve activation” in the readiness panel.</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-3 text-[14px] leading-relaxed text-muted">{MODE_HINT.activation} Use “Mark ready for final review” and “Approve activation” in the readiness panel.</p>
       ) : (
         <div className="space-y-4 rounded-2xl border border-line bg-surface-2/40 p-4">
           <h3 className="text-[14px] font-semibold text-ink">Change status</h3>
-          {verified && <p className="text-[12.5px] leading-relaxed text-muted">A passing system check completes this step. Agency evidence is retained for review and does not verify the connection.</p>}
+          {verified && <p className="text-[13px] leading-relaxed text-muted">A passing system check completes this step. Agency evidence is retained for review and does not verify the connection.</p>}
           <Field label="New status" htmlFor="ts-status">
             <Select id="ts-status" value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
               {options.map((s) => (
@@ -174,7 +174,7 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
           )}
           {notifies && <CheckRow id="ts-notify" label="Notify the client in their portal" checked={notify} onChange={setNotify} />}
           {problem && status !== task.status && (
-            <p role="alert" className="text-[12.5px] text-warning-ink">
+            <p role="alert" className="text-[13px] text-warning-ink">
               {problem}
             </p>
           )}
@@ -214,16 +214,16 @@ function VerificationCard({ orgId, task, check, act, busy }: { orgId: string; ta
         </h3>
         <Badge tone={tone}>{label}</Badge>
       </div>
-      <p className="text-[12.5px] leading-relaxed text-muted">
+      <p className="text-[13px] leading-relaxed text-muted">
         <span className="font-medium text-ink-2">{check?.label ?? "Check"}</span>
         {check?.connectorImplemented && check.detail ? `: ${check.detail}` : "."} Task progress and integration health are tracked separately.
       </p>
-      {check?.status === "attested" && check.attestedBy && <p className="text-[12.5px] text-violet-ink">Attested by {check.attestedBy}. This is a statement by the team, not a system test.</p>}
-      {result && <p className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">{result}</p>}
+      {check?.status === "attested" && check.attestedBy && <p className="text-[13px] text-violet-ink">Attested by {check.attestedBy}. This is a statement by the team, not a system test.</p>}
+      {result && <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{result}</p>}
 
       {check?.connectorImplemented ? (
         task.status === "completed" ? (
-          <p className="text-[12.5px] text-muted">This step is already complete. Re-run the check from the readiness panel to confirm it still passes.</p>
+          <p className="text-[13px] text-muted">This step is already complete. Re-run the check from the readiness panel to confirm it still passes.</p>
         ) : (
           <Button
             variant="secondary"
@@ -238,7 +238,7 @@ function VerificationCard({ orgId, task, check, act, busy }: { orgId: string; ta
         )
       ) : task.status === "completed" ? null : (
         <div className="space-y-3 rounded-xl border border-dashed border-line-strong p-3">
-          <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
+          <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning" />
             {check?.connectorNote ?? "The portal can't test this yet."} If you have confirmed it yourself, record an attestation. It is labelled as an attestation everywhere and never counts as a connected integration.
           </p>
@@ -288,7 +288,7 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
     <div className="space-y-6">
       <section className="space-y-3">
         <h3 className="text-[14px] font-semibold text-ink">Client-visible note</h3>
-        <p className="text-[12.5px] text-muted">Shown on this step in the client&apos;s Setup Center. Leave empty to remove it.</p>
+        <p className="text-[13px] text-muted">Shown on this step in the client&apos;s Setup Center. Leave empty to remove it.</p>
         <Textarea aria-label="Client-visible note" rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
         <CheckRow id="note-notify" label="Also notify the client" checked={notifyNote} onChange={setNotifyNote} disabled={!note.trim()} />
         <Button variant="secondary" size="sm" loading={busy === "note"} disabled={note.trim() === (task.clientNote ?? "")} onClick={() => act("note", () => addTaskNoteAction(orgId, task.id, { body: note, visibility: "client", notifyClient: notifyNote }), "Client note saved")}>
@@ -298,9 +298,9 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
 
       <section className="space-y-3 rounded-2xl border border-line bg-surface-2/40 p-4">
         <h3 className="text-[14px] font-semibold text-ink">Ask the client for something</h3>
-        <p className="text-[12.5px] leading-relaxed text-muted">Moves the step to Waiting for client and gives them one clear button. Their answer sends it to Ready for review. It never completes the step by itself.</p>
+        <p className="text-[13px] leading-relaxed text-muted">Moves the step to Waiting for client and gives them one clear button. Their answer sends it to Ready for review. It never completes the step by itself.</p>
         {task.clientAction && (
-          <p className="rounded-lg bg-surface px-3 py-2 text-[12.5px] text-ink-2">
+          <p className="rounded-lg bg-surface px-3 py-2 text-[13px] text-ink-2">
             Current request: <span className="font-medium">{task.clientAction.label}</span>
             {approvalNeeded && <span className="ml-1 text-warning-ink">· approval required before completion</span>}
           </p>
@@ -330,30 +330,30 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
         >
           Request from client
         </Button>
-        {task.status === "completed" && <p className="text-[12.5px] text-muted">Reopen this step first to ask the client for something.</p>}
+        {task.status === "completed" && <p className="text-[13px] text-muted">Reopen this step first to ask the client for something.</p>}
       </section>
 
       {resp && (
         <section className="rounded-2xl border border-line bg-surface p-4">
           <h3 className="text-[14px] font-semibold text-ink">Client response</h3>
-          <p className="mt-1 text-[13px] text-ink-2">
+          <p className="mt-1 text-[14px] text-ink-2">
             {resp.decision === "request_changes" ? "Asked for changes" : resp.decision === "approve" ? "Approved" : resp.decision === "confirm" ? "Confirmed it is done" : "Sent information"}
             {resp.at ? ` · ${relativeTime(resp.at)}` : ""}
           </p>
-          {resp.message && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{resp.message}</p>}
+          {resp.message && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-surface-2 px-3 py-2 text-[14px] text-ink-2">{resp.message}</p>}
         </section>
       )}
 
       <section className="space-y-3">
         <h3 className="text-[14px] font-semibold text-ink">Links and documentation</h3>
         {task.attachments.length === 0 ? (
-          <p className="text-[12.5px] text-muted">No links or documents yet.</p>
+          <p className="text-[13px] text-muted">No links or documents yet.</p>
         ) : (
           <ul className="space-y-2">
             {task.attachments.map((a) => (
               <li key={a.id} className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
                 <Link2 className="size-4 shrink-0 text-muted" />
-                <a href={a.url} target="_blank" rel="noopener noreferrer nofollow" className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:text-primary">
+                <a href={a.url} target="_blank" rel="noopener noreferrer nofollow" className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink hover:text-primary">
                   {a.label} <ExternalLink className="ml-0.5 inline size-3" />
                 </a>
                 <Badge tone={a.visibility === "client" ? "primary" : "neutral"}>{a.visibility === "client" ? "Client sees" : "Internal"}</Badge>
@@ -401,8 +401,8 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
           </div>
         </div>
         <div className="space-y-3 rounded-2xl border border-dashed border-line-strong p-3">
-          <h4 className="text-[13px] font-semibold text-ink">Attach a private document</h4>
-          <p className="text-[12.5px] text-muted">Documents are stored privately. Downloads require authorized access. PDF, Word, PNG, JPEG, text and CSV; up to 10 MB.</p>
+          <h4 className="text-[14px] font-semibold text-ink">Attach a private document</h4>
+          <p className="text-[13px] text-muted">Documents are stored privately. Downloads require authorized access. PDF, Word, PNG, JPEG, text and CSV; up to 10 MB.</p>
           <Field label="Document" htmlFor="setup-document"><Input id="setup-document" ref={fileRef} type="file" className="h-auto py-2 text-[12px]" accept=".pdf,.docx,.png,.jpg,.jpeg,.txt,.md,.csv" onChange={(e) => { const file = e.target.files?.[0] ?? null; setDocument(file); if (file) setDocumentLabel(file.name.slice(0, 120)); }} /></Field>
           <Field label="Document label" htmlFor="setup-document-label"><Input id="setup-document-label" value={documentLabel} maxLength={120} onChange={(e) => setDocumentLabel(e.target.value)} /></Field>
           <Field label="Document visibility" htmlFor="setup-document-visibility"><Select id="setup-document-visibility" value={documentVisibility} onChange={(e) => setDocumentVisibility(e.target.value as "internal" | "client")}><option value="internal">Team only</option><option value="client">Client and team</option></Select></Field>
@@ -507,7 +507,7 @@ function DetailsTab({ orgId, snapshot, task, act, busy }: TabProps) {
         <section className="space-y-3">
           <h3 className="text-[14px] font-semibold text-ink">Visibility</h3>
           {task.required ? (
-            <p className="text-[12.5px] text-muted">Required steps can&apos;t be hidden. Mark the step optional (above, then save) to hide it.</p>
+            <p className="text-[13px] text-muted">Required steps can&apos;t be hidden. Mark the step optional (above, then save) to hide it.</p>
           ) : (
             <Button variant="secondary" size="sm" loading={busy === "hide"} onClick={() => act("hide", () => setTaskHiddenAction(orgId, task.id, !task.hidden), task.hidden ? "Step is visible again" : "Step hidden from the client")}>
               {task.hidden ? "Show to the client again" : "Hide from the client"}
@@ -518,7 +518,7 @@ function DetailsTab({ orgId, snapshot, task, act, busy }: TabProps) {
 
       <section className="space-y-3">
         <h3 className="text-[14px] font-semibold text-ink">Prerequisites</h3>
-        <p className="text-[12.5px] text-muted">This step can&apos;t be completed (or requested from the client) until these are done. Hidden and out-of-package steps are ignored.</p>
+        <p className="text-[13px] text-muted">This step can&apos;t be completed (or requested from the client) until these are done. Hidden and out-of-package steps are ignored.</p>
         <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
           {others.map((o) => (
             <CheckRow key={o.id} id={`dep-${o.id}`} label={o.title} hint={o.hidden || o.serviceExcluded ? "Not applicable" : STATUS_LABEL[o.status]} checked={deps.includes(o.id)} onChange={(v) => setDeps(v ? [...deps, o.id] : deps.filter((d) => d !== o.id))} />
@@ -561,21 +561,21 @@ function HistoryTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
       <section>
         <h3 className="mb-3 text-[14px] font-semibold text-ink">Change history</h3>
         {events.length === 0 ? (
-          <p className="text-[12.5px] text-muted">No changes recorded yet.</p>
+          <p className="text-[13px] text-muted">No changes recorded yet.</p>
         ) : (
           <ol className="relative space-y-4 border-l border-line pl-4">
             {events.map((e) => (
               <li key={e.id} className="relative">
                 <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" aria-hidden />
-                <p className="text-[13px] leading-snug text-ink">{eventLabel(e, tasks)}</p>
+                <p className="text-[14px] leading-snug text-ink">{eventLabel(e, tasks)}</p>
                 {e.body && (
-                  <p className="mt-1 rounded-lg bg-primary-soft px-2.5 py-1.5 text-[12.5px] text-primary-ink">
+                  <p className="mt-1 rounded-lg bg-primary-soft px-2.5 py-1.5 text-[13px] text-primary-ink">
                     <span className="font-medium">Client sees: </span>
                     {e.body}
                   </p>
                 )}
                 {e.reason && (
-                  <p className="mt-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink-2">
+                  <p className="mt-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[13px] text-ink-2">
                     <span className="font-medium">Internal: </span>
                     {e.reason}
                   </p>

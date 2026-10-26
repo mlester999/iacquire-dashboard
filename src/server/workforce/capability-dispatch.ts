@@ -61,6 +61,8 @@ export async function dispatchCapabilityJob(
     throw new AppError("agent_unavailable", "This AI employee is not available for authorized work yet.");
   }
   if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
+  // A paused employee, an agency pause or a suspended workspace: no new work, and the person is told why.
+  await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
 
   const idempotencyKey = input.idempotencyKey ?? `${input.capability}:${input.agentRole}:${crypto.randomUUID()}`;
   const job = await withSystem(async (db) => {

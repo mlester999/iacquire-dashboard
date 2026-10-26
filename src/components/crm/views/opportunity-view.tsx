@@ -10,6 +10,8 @@ import { listTasks } from "@/server/crm/tasks";
 import { listTags } from "@/server/crm/tags";
 import type { CrmScope } from "@/server/crm/page";
 import { OpportunityProfile } from "@/components/crm/opportunity-profile";
+import { listProposals } from "@/server/proposals/proposals";
+import { invoicesForActor } from "@/server/invoices/search";
 
 export async function OpportunityView({ actor, scope, id }: { actor: CrmActor; scope: CrmScope; id: string }) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -20,16 +22,19 @@ export async function OpportunityView({ actor, scope, id }: { actor: CrmActor; s
     if (err instanceof AppError && err.code === "not_found") notFound();
     throw err;
   }
-  const [pipelines, members, timeline, notes, tasks, tags] = await Promise.all([
+  const [pipelines, members, timeline, notes, tasks, tags, proposals, invoices] = await Promise.all([
     listPipelines(actor),
     listAssignableMembers(actor),
     getTimeline(actor, { opportunityId: id }, { limit: 40 }),
     listNotes(actor, "opportunity", id),
     listTasks(actor, { view: "all", opportunityId: id, limit: 100 }),
     listTags(actor),
+    // Proposals belong to the client's own team: an agency person looking in a support session is not offered them, and a workspace that does not have the module gets no tab.
+    actor.kind === "member" && actor.can("proposals.view") ? listProposals(actor, { opportunityId: id, limit: 50 }).catch(() => null) : Promise.resolve(null),
+    invoicesForActor(actor, { opportunityId: id }),
   ]);
   await auditSupportView(actor, "opportunity", id);
-  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks }));
+  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks, proposals, invoices }));
   return (
     <OpportunityProfile
       scope={scope}

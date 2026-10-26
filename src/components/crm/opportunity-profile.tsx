@@ -23,6 +23,10 @@ import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
 import { RelativeTime } from "@/components/crm/relative-time";
+import { ProposalsPanel } from "@/components/proposals/crm-panel";
+import type { ProposalSummary } from "@/server/proposals/view";
+import { InvoicesPanel } from "@/components/invoices/crm-panel";
+import type { InvoiceView } from "@/server/invoices/views";
 
 function duration(seconds: number | null) {
   if (seconds === null) return null;
@@ -34,7 +38,7 @@ function duration(seconds: number | null) {
 }
 
 export function OpportunityProfile({
-  scope, detail, pipeline, timeline, notes, tasks, members, tags,
+  scope, detail, pipeline, timeline, notes, tasks, members, tags, proposals, invoices,
 }: {
   scope: CrmScope;
   detail: OpportunityDetail;
@@ -44,6 +48,10 @@ export function OpportunityProfile({
   tasks: TaskView[];
   members: Array<{ id: string; name: string }>;
   tags: Array<{ id: string; name: string; color: string }>;
+  /** This deal's proposals; absent when proposals are not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  proposals?: ProposalSummary[] | null;
+  /** This deal's invoices; absent when invoicing is not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  invoices?: InvoiceView[] | null;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -63,7 +71,7 @@ export function OpportunityProfile({
 
   return (
     <div className="space-y-5">
-      <Link href={`${scope.base}/pipelines${pipeline ? `?p=${pipeline.id}` : ""}`} className="inline-flex min-h-9 items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />{pipeline?.name ?? "Pipelines"}</Link>
+      <Link href={`${scope.base}/pipelines${pipeline ? `?p=${pipeline.id}` : ""}`} className="inline-flex min-h-9 items-center gap-1.5 text-[14px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-4" />{pipeline?.name ?? "Pipelines"}</Link>
 
       <section className="rounded-3xl border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -72,7 +80,7 @@ export function OpportunityProfile({
               <h2 className="text-[22px] font-semibold tracking-[-0.03em] text-ink">{detail.name}</h2>
               <Badge tone={STATUS_TONE[detail.status]}>{STATUS_LABEL[detail.status]}</Badge>
             </div>
-            <p className="mt-1 text-[13px] text-muted">
+            <p className="mt-1 text-[14px] text-muted">
               {detail.pipelineName} · {detail.stageName} · in this stage {detail.daysInStage === 0 ? "since today" : `for ${detail.daysInStage} ${detail.daysInStage === 1 ? "day" : "days"}`}
             </p>
             <p className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-ink tabular-nums">{detail.value === null ? <span className="text-[15px] font-normal text-faint">No value recorded</span> : money(detail.value, detail.currency)}</p>
@@ -122,7 +130,7 @@ export function OpportunityProfile({
             })}
           </ol>
         )}
-        {detail.status === "lost" && detail.lostReason && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2"><span className="font-medium">Lost reason:</span> {detail.lostReason}</p>}
+        {detail.status === "lost" && detail.lostReason && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[14px] text-ink-2"><span className="font-medium">Lost reason:</span> {detail.lostReason}</p>}
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -136,8 +144,12 @@ export function OpportunityProfile({
               { value: "notes", label: "Notes", count: notes.length },
               { value: "tasks", label: "Tasks", count: tasks.filter((t) => t.status === "open" || t.status === "in_progress").length },
               { value: "history", label: "Stage history", count: detail.history.length },
+              ...(proposals ? [{ value: "proposals", label: "Proposals", count: proposals.length }] : []),
+              ...(invoices ? [{ value: "invoices", label: "Invoices", count: invoices.length }] : []),
             ]}
           >
+            {tab === "proposals" && proposals && <ProposalsPanel rows={proposals} newHref={`/proposals/new?deal=${detail.id}`} canCreate={Boolean(scope.can["proposals.create"]) && !scope.readOnly && detail.status === "open"} />}
+            {tab === "invoices" && invoices && <InvoicesPanel rows={invoices} newHref={`/invoices/new?deal=${detail.id}`} canCreate={Boolean(scope.can["invoices.create"]) && !scope.readOnly && detail.status !== "lost"} />}
             {tab === "activity" && <Timeline scope={scope} target={{ opportunityId: detail.id }} initial={timeline} />}
             {tab === "notes" && <NotesPanel scope={scope} type="opportunity" recordId={detail.id} notes={notes} />}
             {tab === "tasks" && (
@@ -149,7 +161,7 @@ export function OpportunityProfile({
             {tab === "history" && (
               <ol className="space-y-2">
                 {detail.history.map((h, i) => (
-                  <li key={i} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px]">
+                  <li key={i} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[14px]">
                     <span className="text-ink">
                       {h.fromStage && h.fromStage !== h.toStage ? <>{h.fromStage} → <strong className="font-semibold">{h.toStage}</strong></> : <strong className="font-semibold">{h.toStage ?? "Created"}</strong>}
                       {h.toStatus !== "open" && <Badge tone={STATUS_TONE[h.toStatus]} className="ml-2">{STATUS_LABEL[h.toStatus]}</Badge>}
@@ -159,7 +171,7 @@ export function OpportunityProfile({
                     </span>
                   </li>
                 ))}
-                {!detail.history.length && <li className="text-[13px] text-muted">No stage changes recorded yet.</li>}
+                {!detail.history.length && <li className="text-[14px] text-muted">No stage changes recorded yet.</li>}
               </ol>
             )}
           </Tabs>
@@ -185,13 +197,13 @@ export function OpportunityProfile({
               { label: "Created", value: <>{detail.createdVia && detail.createdVia in CREATED_VIA_LABELS ? `${CREATED_VIA_LABELS[detail.createdVia as CreatedVia]} · ` : ""}<RelativeTime iso={detail.createdAt} timezone={scope.timezone} /></> },
               ...(detail.closedAt ? [{ label: detail.status === "won" ? "Won" : "Closed", value: <RelativeTime iso={detail.closedAt} timezone={scope.timezone} /> }] : []),
             ]} />
-            {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[13px] leading-relaxed text-ink-2">{detail.description}</p>}
+            {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[14px] leading-relaxed text-ink-2">{detail.description}</p>}
           </SectionCard>
 
           <SectionCard title="Tags">
             <div className="flex flex-wrap gap-1.5">
               {detail.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} onRemove={canEdit ? () => run("tag", () => setOpportunityTagsAction(scope.orgId, detail.id, [], [t.id])) : undefined} />)}
-              {!detail.tags.length && <span className="text-[13px] text-muted">No tags</span>}
+              {!detail.tags.length && <span className="text-[14px] text-muted">No tags</span>}
             </div>
             {canEdit && tags.some((t) => !detail.tags.some((x) => x.id === t.id)) && (
               <div className="mt-3 flex gap-2">
@@ -279,7 +291,7 @@ function EditDealSheet({ open, onOpenChange, scope, detail }: { open: boolean; o
         </div>
         {detail.fields.length > 0 && (
           <div className="space-y-3 border-t border-line pt-4">
-            <p className="text-[13px] font-semibold text-ink">Custom fields</p>
+            <p className="text-[14px] font-semibold text-ink">Custom fields</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {detail.fields.map((f) => (
                 <Field key={f.fieldId} label={f.label} htmlFor={`ed-cf-${f.fieldId}`} optional={!f.required} hint={f.helpText ?? undefined} className={f.type === "textarea" || f.type === "multiselect" ? "sm:col-span-2" : undefined}>

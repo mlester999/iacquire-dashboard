@@ -124,9 +124,9 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusPill tone={SEVERITY_TONE[report.severity]} size="sm">{PROACTIVE_SEVERITY_LABELS[report.severity]}</StatusPill>
-            <span className="text-[11.5px] font-medium text-muted">{PROACTIVE_KIND_LABELS[report.kind]}</span>
-            <span className="text-[11.5px] text-faint">·</span>
-            <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
+            <span className="text-[12px] font-medium text-muted">{PROACTIVE_KIND_LABELS[report.kind]}</span>
+            <span className="text-[12px] text-faint">·</span>
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
               {meta && <AgentAvatar role={meta} size="xs" />}
               {meta ? <Link href={`/employees/${meta.slug}`} className="font-medium hover:text-ink hover:underline">{report.employeeName}</Link> : report.employeeName}
             </span>
@@ -135,9 +135,9 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
           </div>
           <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mt-1.5 block w-full text-left">
             <span className="block text-[14px] font-semibold leading-snug text-ink">{report.title}</span>
-            <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">{report.summary}</span>
+            <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{report.summary}</span>
           </button>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
             <InfoChip icon={<Clock3 />}><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span></InfoChip>
             <span className="text-faint" suppressHydrationWarning>{relativeTime(report.createdAt)}</span>
             {report.findings.length > 0 && <span className="text-muted">{report.findings.length} finding{report.findings.length === 1 ? "" : "s"}</span>}
@@ -149,11 +149,11 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                 <dl className="grid gap-3 sm:grid-cols-2">
                   {report.sections.map((section) => (
                     <div key={section.key} className={section.key === "what_happened" ? "sm:col-span-2" : ""}>
-                      <dt className="text-[11px] font-semibold uppercase tracking-[.06em] text-faint">{section.title}</dt>
-                      {section.body && <dd className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{section.body}</dd>}
+                      <dt className="text-[12px] font-semibold uppercase tracking-[.06em] text-faint">{section.title}</dt>
+                      {section.body && <dd className="mt-1 text-[13px] leading-relaxed text-ink-2">{section.body}</dd>}
                       {section.items && section.items.length > 0 && (
                         <dd className="mt-1">
-                          <ul className="list-disc space-y-0.5 pl-4 text-[12.5px] leading-relaxed text-ink-2">
+                          <ul className="list-disc space-y-0.5 pl-4 text-[13px] leading-relaxed text-ink-2">
                             {section.items.map((item, index) => <li key={`${section.key}-${index}`}>{item}</li>)}
                           </ul>
                         </dd>
@@ -165,14 +165,14 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
 
               {report.metrics.length > 0 && (
                 <div className="rounded-xl border border-line bg-surface-2/40 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[.06em] text-faint">Measured values</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-[.06em] text-faint">Measured values</p>
                   <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                     {report.metrics.slice(0, 8).map((metric) => (
-                      <li key={metric.key} className="text-[12.5px]">
+                      <li key={metric.key} className="text-[13px]">
                         <span className="font-semibold text-ink">{metric.label}: {metric.value}{metric.unit ? ` ${metric.unit}` : ""}</span>
-                        <span className="block text-[11.5px] text-muted">{metric.period} · {metric.definition}</span>
+                        <span className="block text-[12px] text-muted">{metric.period} · {metric.definition}</span>
                         {typeof metric.change === "number" && metric.trend && (
-                          <span className={cn("block text-[11.5px]", metric.trend === "flat" ? "text-muted" : "text-ink-2")}>
+                          <span className={cn("block text-[12px]", metric.trend === "flat" ? "text-muted" : "text-ink-2")}>
                             {metric.trend === "up" ? "Up" : metric.trend === "down" ? "Down" : "Unchanged"} {Math.abs(metric.change)}{metric.unit ? ` ${metric.unit}` : ""} from the preceding period
                           </span>
                         )}
@@ -184,7 +184,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
 
               {findings.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[.06em] text-faint">Findings and recommended actions</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-[.06em] text-faint">Findings and recommended actions</p>
                   <ul className="mt-2 space-y-2">
                     {findings.map((finding) => {
                       const key = finding.key;
@@ -192,11 +192,11 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                         <li key={key} className="rounded-xl border border-line bg-surface-2/30 p-3">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <StatusPill tone={SEVERITY_TONE[finding.severity]} size="sm">{PROACTIVE_SEVERITY_LABELS[finding.severity]}</StatusPill>
-                            <span className="text-[12.5px] font-semibold text-ink">{finding.title}</span>
+                            <span className="text-[13px] font-semibold text-ink">{finding.title}</span>
                           </div>
                           <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{finding.detail}</p>
-                          {finding.samples.length > 0 && <p className="mt-1 text-[11.5px] text-muted">Examples: {finding.samples.join("; ")}</p>}
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                          {finding.samples.length > 0 && <p className="mt-1 text-[12px] text-muted">Examples: {finding.samples.join("; ")}</p>}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
                             {finding.recommendedAction && <span className="text-ink-2"><span className="font-medium">Next:</span> {finding.recommendedAction}</span>}
                             <Link href={finding.evidenceHref} className="font-semibold text-primary hover:underline">Open evidence</Link>
                             {report.jobStatus === "completed" && report.canCreateTask && (
@@ -226,7 +226,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
               {report.evidence.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {report.evidence.map((item) => item.href ? (
-                    <Link key={`${item.label}-${item.href}`} href={item.href} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/40">
+                    <Link key={`${item.label}-${item.href}`} href={item.href} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-primary hover:bg-primary-soft/40">
                       {item.label} <ArrowRight className="size-3.5" aria-hidden />
                     </Link>
                   ) : null)}
@@ -242,8 +242,8 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
               )}
 
               <div className="flex flex-wrap items-center gap-2">
-                {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/50 hover:underline">Open work <ArrowRight className="size-3.5" aria-hidden /></Link>}
-                <Link href="/approvals" className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-ink-2 hover:bg-surface-2 hover:underline">
+                {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/50 hover:underline">Open work <ArrowRight className="size-3.5" aria-hidden /></Link>}
+                <Link href="/approvals" className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-ink-2 hover:bg-surface-2 hover:underline">
                   <ShieldCheck className="size-3.5" aria-hidden /> Open Approval Center
                 </Link>
                 {report.status === "open" && (
@@ -251,7 +251,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
                     <Check className="size-3.5" aria-hidden /> Acknowledge
                   </Button>
                 )}
-                <span className="text-[11px] text-faint">Evidence is stored in this workspace; no external message was sent by this report.</span>
+                <span className="text-[12px] text-faint">Evidence is stored in this workspace; no external message was sent by this report.</span>
               </div>
             </div>
           )}
@@ -279,11 +279,11 @@ function CoverageRow({ role, status }: { role: (typeof PROACTIVE_DUTIES)[number]
       <AgentAvatar role={meta} size="sm" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12px] font-semibold text-ink">{meta.shortName}</p>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{role.title}</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{role.title}</p>
       </div>
       <span
         className={cn(
-          "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ring-1 ring-inset",
+          "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[12px] font-semibold ring-1 ring-inset",
           enabled
             ? status.state === "active"
               ? "bg-success-soft text-success-ink ring-success/20"
@@ -344,7 +344,7 @@ export function ProactiveWatch({
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[12px] font-semibold text-ink">Employee coverage</p>
-          <button type="button" onClick={() => setShowCoverage((value) => !value)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/40" aria-expanded={showCoverage}>
+          <button type="button" onClick={() => setShowCoverage((value) => !value)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/40" aria-expanded={showCoverage}>
             {showCoverage ? "Hide duties" : "What each employee watches"} {showCoverage ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
         </div>
@@ -353,14 +353,14 @@ export function ProactiveWatch({
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {PROACTIVE_DUTIES.map((duty) => <CoverageRow key={duty.role} role={duty} status={monitoring} />)}
             </ul>
-            <p className="text-[11.5px] text-muted">
+            <p className="text-[12px] text-muted">
               Each employee is limited to its reviewed capability and tenant. Creating a schedule is always paused first; enabling one still needs the operator switch.
             </p>
           </div>
         )}
 
         {!canManageSchedules && (
-          <p className="text-[11.5px] text-muted">Only an owner or admin can create or enable a monitoring schedule.</p>
+          <p className="text-[12px] text-muted">Only an owner or admin can create or enable a monitoring schedule.</p>
         )}
 
         {visible.length === 0 ? (
@@ -377,7 +377,7 @@ export function ProactiveWatch({
           </ul>
         )}
 
-        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-faint">
+        <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-faint">
           <ListChecks className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           Acknowledging a report records that a person saw it; it does not mark the underlying business problem resolved. Follow-up tasks and approvals remain separate, audited actions.
         </p>

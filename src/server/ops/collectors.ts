@@ -3,6 +3,7 @@ import type { Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { applyCollector, type CollectorResult, type Observation } from "@/server/ops/incidents";
 import { sanitizeErrorText } from "@/lib/ops";
+import { customerPaymentObservations } from "@/server/customer-payments/health";
 
 // Each collector reads recorded evidence only (never calls a provider) and returns the conditions that are unhealthy right now.
 // The incident engine opens what is new and closes what a later run no longer finds. Keys start with the collector's prefix, and no
@@ -273,6 +274,7 @@ export const COLLECTORS: Collector[] = [
   { prefix: "messaging:", collect: failedMessages },
   { prefix: "credits:", collect: credits },
   { prefix: "payments:", collect: payments },
+  { prefix: "customer-payments:", collect: customerPaymentObservations },
   { prefix: "website:", collect: (db) => websites(db) },
   { prefix: "domain:", collect: domains },
   { prefix: "integration:", collect: (db) => integrations(db) },

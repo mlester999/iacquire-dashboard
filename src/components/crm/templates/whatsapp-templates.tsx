@@ -37,7 +37,7 @@ export function WhatsappTemplates({ items, timeZone, q }: { items: WhatsappTempl
   const shown = items.filter((t) => !term || `${t.name} ${t.body}`.toLowerCase().includes(term));
   return (
     <div className="space-y-4">
-      <p className="max-w-3xl text-[13px] leading-relaxed text-muted">
+      <p className="max-w-3xl text-[14px] leading-relaxed text-muted">
         WhatsApp only delivers your own wording within 24 hours of the customer&apos;s last message. Outside that window it delivers only templates Meta approved.
         Those templates are created and submitted for review in WhatsApp Manager, then appear here with their status. They can&apos;t be edited in iAcquire.
       </p>
@@ -58,17 +58,17 @@ export function WhatsappTemplates({ items, timeZone, q }: { items: WhatsappTempl
               <li key={t.templateId}>
                 <Card className="flex h-full flex-col gap-2 p-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-0 truncate font-mono text-[13px] font-medium text-ink">{t.name}</span>
+                    <span className="min-w-0 truncate font-mono text-[14px] font-medium text-ink">{t.name}</span>
                     <Badge tone={s.tone}>{s.label}</Badge>
                     {t.category && <Badge>{CATEGORY[t.category] ?? t.category}</Badge>}
                     <span className="text-[12px] text-muted">{t.language}</span>
                   </div>
-                  <p className="whitespace-pre-wrap break-words rounded-xl bg-surface-2/60 p-3 text-[13px] leading-relaxed text-ink-2">{t.body || "No body text was synced for this template."}</p>
+                  <p className="whitespace-pre-wrap break-words rounded-xl bg-surface-2/60 p-3 text-[14px] leading-relaxed text-ink-2">{t.body || "No body text was synced for this template."}</p>
                   {t.variables.length > 0 && (
                     <p className="text-[12px] text-muted">Values: {t.variables.map((v) => `{{${v.position}}} ${v.label}`).join(", ")}</p>
                   )}
-                  {whyNot && <p className={t.usable && t.status === "rejected" ? "text-[12.5px] text-danger-ink" : "text-[12.5px] text-muted"}>{whyNot}</p>}
-                  <p className="mt-auto text-[11.5px] text-faint">
+                  {whyNot && <p className={t.usable && t.status === "rejected" ? "text-[13px] text-danger-ink" : "text-[13px] text-muted"}>{whyNot}</p>}
+                  <p className="mt-auto text-[12px] text-faint">
                     {t.provider === "meta_whatsapp" ? "WhatsApp Business (Meta)" : "Through GoHighLevel"}
                     {t.checkedAt ? ` · checked ${formatDateTime(t.checkedAt, timeZone)}` : ""}
                   </p>

@@ -18,12 +18,12 @@ export function AttachmentChips({ files, className }: { files: ThreadAttachment[
         <li key={f.id}>
           <a
             href={`/api/support/attachments/${f.id}`}
-            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px] text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title={`Download ${f.filename}`}
           >
             {isImageFile(f.filename) ? <FileImage className="size-3.5 shrink-0 text-muted" aria-hidden /> : <FileText className="size-3.5 shrink-0 text-muted" aria-hidden />}
             <span className="min-w-0 truncate font-medium">{f.filename}</span>
-            <span className="shrink-0 text-[11.5px] text-muted">{formatBytes(f.sizeBytes)}</span>
+            <span className="shrink-0 text-[12px] text-muted">{formatBytes(f.sizeBytes)}</span>
             {f.visibility === "internal" && <Lock className="size-3 shrink-0 text-warning-ink" aria-label="Team only" />}
             <Download className="size-3.5 shrink-0 text-faint" aria-hidden />
           </a>
@@ -78,18 +78,18 @@ export function MessageList({
             <div className={cn("min-w-0 max-w-[88%]", own && "text-right")}>
               <div className={cn(
                 "inline-block max-w-full break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed",
-                m.internal ? "border border-dashed border-warning/50 bg-warning-soft/50" : own ? "bg-primary text-white dark:bg-primary/25 dark:text-ink dark:ring-1 dark:ring-inset dark:ring-primary/40" : "border border-line bg-surface shadow-soft",
+                m.internal ? "border border-dashed border-warning/50 bg-warning-soft/50" : own ? "bg-primary text-primary-on dark:bg-primary/25 dark:text-ink dark:ring-1 dark:ring-inset dark:ring-primary/40" : "border border-line bg-surface shadow-soft",
               )}>
                 {m.internal && (
                   <span className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <StatusPill tone="warning" size="sm" icon={<Lock className="size-3" aria-hidden />}>Internal note</StatusPill>
-                    <span className="text-[11.5px] font-medium text-warning-ink">Not visible to the client</span>
+                    <span className="text-[12px] font-medium text-warning-ink">Not visible to the client</span>
                   </span>
                 )}
                 {m.body}
               </div>
               <AttachmentChips files={m.attachments} className={cn(own && "justify-end")} />
-              <p className={cn("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted", own && "justify-end")}>
+              <p className={cn("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted", own && "justify-end")}>
                 <span className="min-w-0 max-w-full truncate font-medium text-ink-2" title={author}>{author}</span>
                 {viewer === "agency" && <StatusPill tone={m.authorKind === "agency" ? "primary" : "neutral"} size="sm" dot={false}>{m.authorKind === "agency" ? "iAcquire team" : "Client"}</StatusPill>}
                 <time dateTime={m.createdAt}>{formatDateTime(m.createdAt, timeZone)}</time>
@@ -109,9 +109,9 @@ export function MessageList({
           <AvatarTile name="You" className="!size-8 !rounded-[9px] opacity-60" />
           <div className="min-w-0 max-w-[88%] text-right">
             <div className={cn("inline-block max-w-full break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed", p.state === "failed" ? "border border-danger/40 bg-danger-soft/50" : "bg-primary/70 text-white opacity-80 dark:bg-primary/15 dark:text-ink", p.internal && "border border-dashed border-warning/50 bg-warning-soft/50 text-ink")}>{p.body}</div>
-            {p.files.length > 0 && <p className="mt-1 text-[11.5px] text-muted">{p.files.length} file{p.files.length === 1 ? "" : "s"} attached</p>}
+            {p.files.length > 0 && <p className="mt-1 text-[12px] text-muted">{p.files.length} file{p.files.length === 1 ? "" : "s"} attached</p>}
             {p.state === "sending" ? (
-              <p className="mt-1.5 inline-flex items-center justify-end gap-1.5 text-[11.5px] text-muted"><Loader2 className="size-3 animate-spin" aria-hidden /> Sending…</p>
+              <p className="mt-1.5 inline-flex items-center justify-end gap-1.5 text-[12px] text-muted"><Loader2 className="size-3 animate-spin" aria-hidden /> Sending…</p>
             ) : (
               <div className="mt-1.5 flex flex-wrap items-center justify-end gap-2 text-[12px] text-danger-ink" role="alert">
                 <span className="inline-flex items-center gap-1"><AlertCircle className="size-3.5" aria-hidden /> {p.error ?? "This message wasn't sent."}</span>
@@ -152,11 +152,11 @@ export function Timeline({ entries, viewer, timeZone }: { entries: TimelineEntry
   const rows = entries
     .map((e) => ({ e, text: (EVENT_TEXT[e.kind] ?? (() => null))(e, viewer) }))
     .filter((r): r is { e: TimelineEntry; text: string } => Boolean(r.text));
-  if (!rows.length) return <p className="text-[13px] text-muted">Nothing has happened yet beyond the request being sent.</p>;
+  if (!rows.length) return <p className="text-[14px] text-muted">Nothing has happened yet beyond the request being sent.</p>;
   return (
     <ol className="relative space-y-3 border-l border-line pl-5" aria-label="Activity">
       {rows.map(({ e, text }) => (
-        <li key={e.id} className="relative text-[13px] leading-snug text-ink-2">
+        <li key={e.id} className="relative text-[14px] leading-snug text-ink-2">
           <span className="absolute -left-[25px] top-1.5 size-2 rounded-full bg-line-strong ring-4 ring-surface" aria-hidden />
           <span className="font-medium text-ink">{text.replace(/^./, (c) => c.toUpperCase())}</span>
           <span className="ml-2 text-[12px] text-muted"><time dateTime={e.createdAt}>{formatDateTime(e.createdAt, timeZone)}</time></span>

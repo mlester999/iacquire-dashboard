@@ -123,40 +123,40 @@ export function AssistantPanel({
           <Button size="sm" variant="soft" loading={stage === "thinking"} disabled={readOnly || request.trim().length < 3 || stage === "applying"} onClick={() => void suggest()}>
             <Sparkles className="size-3.5" aria-hidden /> Suggest changes
           </Button>
-          <span className="text-[11px] text-muted" aria-hidden>{request.length}/{MAX_REQUEST}</span>
+          <span className="text-[12px] text-muted" aria-hidden>{request.length}/{MAX_REQUEST}</span>
         </div>
         {ai ? (
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 p-2 text-[11.5px] leading-relaxed text-ink-2">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 p-2 text-[12px] leading-relaxed text-ink-2">
             <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="mt-0.5 size-3.5 accent-[var(--primary)]" />
             <span>
               <strong className="font-medium text-ink">Use AI for open-ended requests.</strong> Only a short outline of this page (headings, section names, brand colours) is sent to the AI provider your agency connected. Never phone numbers, emails or customer details.
             </span>
           </label>
         ) : (
-          <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Built-in assistant. It handles everyday requests without sending anything anywhere. Editing by hand always works.</p>
+          <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Built-in assistant. It handles everyday requests without sending anything anywhere. Editing by hand always works.</p>
         )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
-        {stage === "thinking" && <p className="text-[12.5px] text-muted" role="status">Working out what to change…</p>}
+        {stage === "thinking" && <p className="text-[13px] text-muted" role="status">Working out what to change…</p>}
 
         {proposal && (
           <section aria-label="Suggested changes" className="space-y-3 rounded-xl border border-line bg-surface p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className={cn("rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide", proposal.plan.source === "ai" ? "bg-primary-soft text-primary-ink" : "bg-surface-3 text-ink-2")}>
+              <span className={cn("rounded-md px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide", proposal.plan.source === "ai" ? "bg-primary-soft text-primary-ink" : "bg-surface-3 text-ink-2")}>
                 {proposal.plan.source === "ai" ? "AI suggestion" : "Built-in assistant"}
               </span>
-              <span className="text-[11px] text-muted">Nothing has changed yet</span>
+              <span className="text-[12px] text-muted">Nothing has changed yet</span>
             </div>
             {proposal.note && <p className="rounded-lg bg-warning-soft p-2 text-[12px] leading-relaxed text-warning-ink">{proposal.note}</p>}
 
-            {proposal.plan.summary && dry && dry.applied.length > 0 && <p className="text-[13px] font-medium leading-snug">{proposal.plan.summary}</p>}
+            {proposal.plan.summary && dry && dry.applied.length > 0 && <p className="text-[14px] font-medium leading-snug">{proposal.plan.summary}</p>}
 
             {dry && dry.applied.length > 0 && (
               <>
                 <ul className="space-y-1.5" aria-label="What would change">
                   {dry.applied.map((line, i) => (
-                    <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden /><span>{line}</span></li>
+                    <li key={i} className="flex items-start gap-2 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden /><span>{line}</span></li>
                   ))}
                 </ul>
                 {diff && diff.summary.length > 0 && (
@@ -168,7 +168,7 @@ export function AssistantPanel({
                 <div>
                   <button type="button" onClick={() => setPreview((v) => !v)} aria-expanded={preview} className="text-[12px] font-medium text-primary-ink hover:underline">{preview ? "Hide preview" : "Preview this page with the changes"}</button>
                   {preview && (
-                    <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-line" tabIndex={0} aria-label="Preview of the page with the suggested changes">
+                    <div role="region" className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-line" tabIndex={0} aria-label="Preview of the page with the suggested changes">
                       <ScaledPreview content={dry.doc} scope="assistant-pv" maxHeight={8000} pageSlug={pageSlug} />
                     </div>
                   )}
@@ -177,9 +177,9 @@ export function AssistantPanel({
             )}
 
             {dry && dry.applied.length === 0 && !proposal.plan.clarification && (
-              <p className="text-[12.5px] leading-relaxed text-ink-2">{proposal.plan.ops.length === 0 ? "There was nothing I could change for that." : "None of those changes could be made on this page."}</p>
+              <p className="text-[13px] leading-relaxed text-ink-2">{proposal.plan.ops.length === 0 ? "There was nothing I could change for that." : "None of those changes could be made on this page."}</p>
             )}
-            {proposal.plan.clarification && <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-ink-2"><Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> {proposal.plan.clarification}</p>}
+            {proposal.plan.clarification && <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-ink-2"><Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> {proposal.plan.clarification}</p>}
 
             {dry && dry.rejected.length > 0 && (
               <div className="rounded-lg bg-surface-2 p-2.5 text-[12px] leading-relaxed text-ink-2">
@@ -211,7 +211,7 @@ export function AssistantPanel({
 
         {stage === "applied" && done.length > 0 && (
           <section aria-label="Changes applied" className="space-y-2 rounded-xl border border-success/30 bg-success-soft p-3">
-            <p className="flex items-center gap-1.5 text-[13px] font-medium text-success-ink"><Check className="size-4" aria-hidden /> Applied {done.length} change{done.length === 1 ? "" : "s"}</p>
+            <p className="flex items-center gap-1.5 text-[14px] font-medium text-success-ink"><Check className="size-4" aria-hidden /> Applied {done.length} change{done.length === 1 ? "" : "s"}</p>
             <ul className="list-disc space-y-0.5 pl-5 text-[12px] text-ink-2">{done.slice(0, 8).map((l, i) => <li key={i}>{l}</li>)}</ul>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => { undo(); setStage("idle"); setDone([]); }}><Undo2 className="size-3.5" aria-hidden /> Undo these changes</Button>
@@ -222,13 +222,13 @@ export function AssistantPanel({
 
         {(stage === "idle" || stage === "applied") && !proposal && (
           <div>
-            <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-wide text-muted">Try asking</p>
+            <p className="mb-1.5 text-[12px] font-medium uppercase tracking-wide text-muted">Try asking</p>
             <ul className="flex flex-wrap gap-1.5">
               {SUGGESTIONS.filter((s) => !s.includes("select a section") || selection).slice(0, 8).map((s) => (
                 <li key={s}><button type="button" disabled={readOnly} onClick={() => setRequest(s)} className="rounded-full border border-line bg-surface px-2.5 py-1 text-left text-[12px] text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50">{s}</button></li>
               ))}
             </ul>
-            <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
+            <p className="mt-3 text-[12px] leading-relaxed text-muted">
               {sections} section{sections === 1 ? "" : "s"} on this page. I never write testimonials, reviews, awards, prices or guarantees for you: those need your real details, so I add clearly marked placeholders that stop publishing until you replace them.
             </p>
           </div>

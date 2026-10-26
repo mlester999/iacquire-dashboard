@@ -58,7 +58,10 @@ describe("premium onboarding interaction", () => {
     const progress = screen.getByLabelText("Setup sections");
     expect(within(progress).getAllByRole("button")).toHaveLength(6);
     expect(within(progress).getByRole("button", { name: /Business/ }).getAttribute("aria-current")).toBe("step");
-    expect(within(progress).getAllByRole("button").map((button) => button.getAttribute("aria-label")?.split(":")[0])).toEqual(["Business", "Goals", "Voice", "Sales", "Knowledge", "Review"]);
+    expect(within(progress).getAllByRole("button").map((button) => button.querySelector(".onboarding-stage-label")?.textContent)).toEqual(["Business", "Goals", "Voice", "Sales", "Knowledge", "Review"]);
+    // Named from its own words (not an aria-label that would replace what is drawn: WCAG label-in-name), with the state said once.
+    expect(within(progress).getAllByRole("button").every((button) => !button.hasAttribute("aria-label"))).toBe(true);
+    expect(within(progress).getByRole("button", { name: /^Business: current section, (in progress|not started), \d+ of \d+ answered$/ })).toBeTruthy();
     expect(screen.queryByText("Let's set up your workspace.")).toBeNull();
     expect(screen.getByRole("progressbar", { name: "Setup progress" }).getAttribute("aria-valuenow")).not.toBeNull();
   });
@@ -220,5 +223,27 @@ describe("premium onboarding interaction", () => {
     fireEvent.click(approve);
     await waitFor(() => expect(done).toHaveBeenCalledOnce());
     expect(api.submit).toHaveBeenCalledOnce();
+  });
+
+  const approveWith = async (scheduling?: unknown) => {
+    const { api, done } = setup("f.review", { "f.review": row(true) });
+    api.review.mockResolvedValue({ ok: true, data: { ...buildReviewModel({}, facts, []), blockers: [] } });
+    api.submit.mockResolvedValue({ ok: true, data: scheduling ? { scheduling } as never : {} });
+    const approve = await screen.findByRole("button", { name: "Approve setup" });
+    await waitFor(() => expect(approve.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(approve);
+    await waitFor(() => expect(done).toHaveBeenCalledOnce());
+  };
+
+  it("says out loud that a booking calendar was drafted from the answers, and that it is not live", async () => {
+    const { toast } = await import("sonner");
+    await approveWith({ state: "created", typesAdded: 2, skipped: [] });
+    expect(toast.success).toHaveBeenCalledWith("Your AI team is being prepared.", expect.objectContaining({ description: expect.stringMatching(/drafted a booking calendar with 2 appointment types.*takes no bookings until you assign a host and activate it/) }));
+  });
+
+  it("says nothing about a calendar when none was drafted or the draft was skipped", async () => {
+    const { toast } = await import("sonner");
+    await approveWith({ state: "skipped", reason: "You already have a calendar.", typesAdded: 0, skipped: [] });
+    expect(toast.success).toHaveBeenCalledWith("Your AI team is being prepared.");
   });
 });

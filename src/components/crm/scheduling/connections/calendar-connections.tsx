@@ -24,7 +24,7 @@ const DESCRIPTIONS: Record<ProviderOption["key"], string> = {
   ics: "Any calendar's subscription link. Busy times only, read-only, and refreshed on a schedule rather than instantly.",
 };
 
-const anchorButton = "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 text-[13px] font-medium text-surface shadow-soft transition hover:bg-ink/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-9";
+const anchorButton = "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 text-[14px] font-medium text-surface shadow-soft transition hover:bg-ink/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-9";
 
 /** The Calendar connections screen. Data comes from the server view; every change goes through a server action. */
 export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs, canConnect, notice, renderedAt }: {
@@ -56,7 +56,7 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
       />
 
       {notice && showNotice && (
-        <div role="status" className={cn("flex items-start gap-3 rounded-2xl border px-4 py-3 text-[13px]", notice.kind === "error" ? "border-danger/30 bg-danger-soft text-danger-ink" : notice.kind === "success" ? "border-success/30 bg-success-soft text-success-ink" : "border-line bg-surface-2 text-ink-2")}>
+        <div role="status" className={cn("flex items-start gap-3 rounded-2xl border px-4 py-3 text-[14px]", notice.kind === "error" ? "border-danger/30 bg-danger-soft text-danger-ink" : notice.kind === "success" ? "border-success/30 bg-success-soft text-success-ink" : "border-line bg-surface-2 text-ink-2")}>
           {notice.kind === "error" ? <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> : notice.kind === "success" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden /> : <Info className="mt-0.5 size-4 shrink-0" aria-hidden />}
           <p className="flex-1 leading-relaxed">{notice.message}</p>
           <button type="button" onClick={() => setShowNotice(false)} className="-m-1.5 inline-flex size-11 items-center justify-center rounded-lg hover:bg-black/5 sm:size-8" aria-label="Dismiss message">
@@ -66,14 +66,14 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
       )}
 
       {settings.syncPaused && (
-        <div role="status" className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
+        <div role="status" className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">
           <PauseCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p className="leading-relaxed">Calendar sync is paused by iAcquire right now. Connections are kept, but busy times aren&apos;t refreshed and nothing is added to calendars until it resumes.</p>
         </div>
       )}
 
       {scope.agency ? (
-        <Card className="flex items-start gap-3 p-4 text-[13px] leading-relaxed text-ink-2">
+        <Card className="flex items-start gap-3 p-4 text-[14px] leading-relaxed text-ink-2">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <p>Support view. You can see which calendars this team has connected{scope.readOnly ? "" : " and disconnect one that's misbehaving"}, but you can&apos;t connect a calendar for anyone: each person connects their own from their account.</p>
         </Card>
@@ -82,7 +82,7 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
           <section aria-labelledby="my-calendars" className="space-y-3">
             <div>
               <h3 id="my-calendars" className="text-[15px] font-semibold tracking-tight text-ink">Your calendars</h3>
-              <p className="mt-0.5 text-[12.5px] text-muted">Only you can connect or change these. Workspace managers can see that they exist and their status, never their events.</p>
+              <p className="mt-0.5 text-[13px] text-muted">Only you can connect or change these. Workspace managers can see that they exist and their status, never their events.</p>
             </div>
             {mine.length ? (
               <div className="grid gap-4 xl:grid-cols-2">
@@ -98,7 +98,7 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
           <section aria-labelledby="connect-calendar" className="space-y-3">
             <div>
               <h3 id="connect-calendar" className="text-[15px] font-semibold tracking-tight text-ink">Connect a calendar</h3>
-              <p className="mt-0.5 text-[12.5px] text-muted">A calendar shows as connected only after iAcquire has signed in and read it successfully.</p>
+              <p className="mt-0.5 text-[13px] text-muted">A calendar shows as connected only after iAcquire has signed in and read it successfully.</p>
             </div>
             {!canConnect && <ReadOnlyNotice>Your role doesn&apos;t include connecting a calendar. Ask a workspace owner if you need it.</ReadOnlyNotice>}
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -112,7 +112,7 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
                         <ProviderMark provider={p.key === "icloud" ? "caldav" : p.key} icloud={p.key === "icloud"} />
                         <div className="min-w-0">
                           <h4 className="text-[14px] font-semibold text-ink">{p.label}</h4>
-                          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{DESCRIPTIONS[p.key]}</p>
+                          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{DESCRIPTIONS[p.key]}</p>
                         </div>
                       </div>
                       <div className="mt-auto pt-4">
@@ -148,8 +148,8 @@ export function CalendarConnectionsWorkspace({ scope, settings, mine, team, runs
 
       {!scope.agency && runs.length > 0 && <SyncHistory runs={runs} labels={labels} now={now} timezone={scope.timezone} />}
 
-      <Card className="p-4 text-[12.5px] leading-relaxed text-muted sm:p-5">
-        <h3 className="text-[13.5px] font-semibold text-ink">What iAcquire keeps</h3>
+      <Card className="p-4 text-[13px] leading-relaxed text-muted sm:p-5">
+        <h3 className="text-[14px] font-semibold text-ink">What iAcquire keeps</h3>
         <ul className="mt-2 list-disc space-y-1 pl-4">
           <li>From your calendars: only the start and end of busy times, for the period people can book. No titles, guests or descriptions.</li>
           <li>Your sign-in tokens, app-specific passwords and feed addresses, encrypted. They&apos;re never shown again, and disconnecting deletes them.</li>
@@ -175,7 +175,7 @@ function TeamConnections({ scope, team, now }: { scope: CrmScope; team: Connecti
     <section aria-labelledby="team-calendars" className="space-y-3">
       <div>
         <h3 id="team-calendars" className="text-[15px] font-semibold tracking-tight text-ink">Your team&apos;s connections</h3>
-        <p className="mt-0.5 text-[12.5px] text-muted">Who has connected a calendar, and whether it&apos;s working. You can disconnect one, but only its owner can connect or change it.</p>
+        <p className="mt-0.5 text-[13px] text-muted">Who has connected a calendar, and whether it&apos;s working. You can disconnect one, but only its owner can connect or change it.</p>
       </div>
       {!team.length ? (
         <Card className="border-dashed"><EmptyState compact title="No one else has connected a calendar" description="When teammates connect theirs, you'll see them here." /></Card>
@@ -188,8 +188,8 @@ function TeamConnections({ scope, team, now }: { scope: CrmScope; team: Connecti
                 <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap">
                   <ProviderMark provider={c.provider} icloud={providerName(c) === "Apple iCloud"} className="size-9" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-medium text-ink">{c.userName ?? "Teammate"}</p>
-                    <p className="truncate text-[12.5px] text-muted">{providerName(c)} · {c.accountLabel} · {c.lastSuccessAt ? `synced ${relativeTime(c.lastSuccessAt, now)}` : "not synced yet"}</p>
+                    <p className="truncate text-[14px] font-medium text-ink">{c.userName ?? "Teammate"}</p>
+                    <p className="truncate text-[13px] text-muted">{providerName(c)} · {c.accountLabel} · {c.lastSuccessAt ? `synced ${relativeTime(c.lastSuccessAt, now)}` : "not synced yet"}</p>
                   </div>
                   <Badge tone={s.tone}>{s.label}</Badge>
                   {canDisconnect && (
@@ -226,13 +226,13 @@ function SyncHistory({ runs, labels, now, timezone }: { runs: SyncRunView[]; lab
     <section aria-labelledby="sync-history" className="space-y-3">
       <div>
         <h3 id="sync-history" className="text-[15px] font-semibold tracking-tight text-ink">Recent sync activity</h3>
-        <p className="mt-0.5 text-[12.5px] text-muted">The last {runs.length} runs for your calendars. Only counts are recorded, never what your events say.</p>
+        <p className="mt-0.5 text-[13px] text-muted">The last {runs.length} runs for your calendars. Only counts are recorded, never what your events say.</p>
       </div>
       <Card className="overflow-hidden p-0">
         <ul className="divide-y divide-line">
           {runs.map((r) => (
-            <li key={r.id} className="grid gap-1 px-4 py-2.5 text-[13px] sm:grid-cols-[10rem_minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
-              <time dateTime={r.startedAt} title={formatDateTime(r.startedAt, timezone)} className="text-[12.5px] tabular-nums text-muted">{relativeTime(r.startedAt, now)}</time>
+            <li key={r.id} className="grid gap-1 px-4 py-2.5 text-[14px] sm:grid-cols-[10rem_minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
+              <time dateTime={r.startedAt} title={formatDateTime(r.startedAt, timezone)} className="text-[13px] tabular-nums text-muted">{relativeTime(r.startedAt, now)}</time>
               <span className="truncate text-ink">{labels.get(r.connectionId) ?? "Disconnected calendar"}</span>
               <span className="min-w-0 text-ink-2"><span className="font-medium text-ink">{runKindLabel(r.kind)}</span> · <span className="break-words">{runSummary(r)}</span></span>
               <Badge tone={RUN_TONE[r.status]} className="justify-self-start sm:justify-self-end">{RUN_LABEL[r.status]}</Badge>

@@ -22,7 +22,7 @@ export function FounderNotice({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-start gap-3 rounded-2xl bg-surface-2/70 p-4 ring-1 ring-inset ring-line", className)}>
       <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary ring-1 ring-inset ring-primary/15"><Info className="size-4" /></span>
-      <p className="min-w-0 self-center text-[12.5px] leading-relaxed text-muted">
+      <p className="min-w-0 self-center text-[13px] leading-relaxed text-muted">
         <strong className="font-semibold text-ink-2">{FOUNDER_ATTRIBUTION}.</strong> These projects were built by iAcquire&apos;s founder, Mark Lester Acak. They show what can be built. They are not results from iAcquire clients, and they weren&apos;t contracted through iAcquire. Project names and screenshots appear only where public sharing is permitted.
       </p>
     </div>
@@ -53,7 +53,7 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
   const shown = projects.filter((p) => filter === "All" || p.categories.includes(filter));
   return (
     <div className="space-y-6">
-      <div role="tablist" aria-label="Project categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+      <div role="tablist" aria-label="Project categories" className="relative scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
         {["All", ...categories].map((c, index) => {
           const active = filter === c;
           return (
@@ -64,9 +64,9 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
               event.preventDefault();
               setFilter(options[next]);
               event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-            }} onClick={() => setFilter(c)} className={cn("relative inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}>
+            }} onClick={() => setFilter(c)} className={cn("relative inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}>
               {active && <motion.span layoutId="pf-filter" className="absolute inset-0 rounded-xl border border-line bg-surface shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
-              <span className="relative">{c === "All" ? c : categoryLabel(c)}</span><span className="relative rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{c === "All" ? projects.length : projects.filter((p) => p.categories.includes(c)).length}</span>
+              <span className="relative">{c === "All" ? c : categoryLabel(c)}</span><span className="relative rounded-md bg-surface-3 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{c === "All" ? projects.length : projects.filter((p) => p.categories.includes(c)).length}</span>
             </button>
           );
         })}
@@ -77,7 +77,7 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
             <motion.li key={p.id} className={cn("min-w-0",p.featured&&i===0&&"md:col-span-2")} layout={!reduce} initial={false} animate={{ opacity: 1, scale: 1 }} exit={reduce ? undefined : { opacity: 0, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
               <Link href={`/our-work/${p.slug}`} className="group block h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                 <Card className="flex h-full flex-col overflow-hidden transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
-                  <div className="relative"><Cover id={p.coverAssetId} alt={`${p.title} preview`} className={p.featured&&i===0?"aspect-auto h-60 sm:h-72":undefined}/>{p.featured&&<span className="absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full border border-white/15 bg-black/50 px-2.5 text-[11px] font-semibold text-amber-200 backdrop-blur-sm"><Star className="size-3 fill-current"/> Featured work</span>}</div>
+                  <div className="relative"><Cover id={p.coverAssetId} alt={`${p.title} preview`} className={p.featured&&i===0?"aspect-auto h-60 sm:h-72":undefined}/>{p.featured&&<span className="absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full border border-white/15 bg-black/50 px-2.5 text-[12px] font-semibold text-amber-200 backdrop-blur-sm"><Star className="size-3 fill-current"/> Featured work</span>}</div>
                   <div className="flex flex-1 flex-col p-5">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <StatusPill tone={portfolioTone(p.status)}>{p.statusLabel || PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill>
@@ -86,11 +86,11 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
                       ))}
                     </div>
                     <h3 className="mt-3 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>
-                    <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted">{p.summary}</p>
+                    <p className="mt-1.5 line-clamp-3 text-[14px] leading-relaxed text-muted">{p.summary}</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {p.technologies.slice(0, 4).map((t) => <TechnologyPill key={t} name={t}/>)}
                     </div>
-                    <p className="mt-auto inline-flex items-center gap-1 pt-4 text-[13px] font-medium text-primary">
+                    <p className="mt-auto inline-flex items-center gap-1 pt-4 text-[14px] font-medium text-primary">
                       Read the case study <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                     </p>
                   </div>
@@ -149,7 +149,7 @@ export function ImageGallery({ assets, title }: { assets: PortfolioAssetView[]; 
             <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-surface-2">
               <Image key={assets[index].id} src={assetSrc(assets[index].id)} alt={assets[index].alt || title} fill unoptimized sizes="900px" className="object-contain" />
             </div>
-            {(assets[index].caption || assets[index].alt) && <figcaption className="text-[13px] text-muted">{assets[index].caption ?? assets[index].alt}{assets[index].anonymized ? " · anonymized" : ""}</figcaption>}
+            {(assets[index].caption || assets[index].alt) && <figcaption className="text-[14px] text-muted">{assets[index].caption ?? assets[index].alt}{assets[index].anonymized ? " · anonymized" : ""}</figcaption>}
           </figure>
         )}
       </Dialog>

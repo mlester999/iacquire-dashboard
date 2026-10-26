@@ -1,7 +1,7 @@
 import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
-import type { OrgRole } from "@/lib/permissions";
+import type { OrgRole, Permission } from "@/lib/permissions";
 import { NOTIFICATION_GROUPS } from "@/lib/notification-groups";
 
 export type NotificationKind =
@@ -34,6 +34,10 @@ export type NotificationKind =
   | "billing_credits_exhausted"
   | "billing_budget_warning"
   | "billing_reconciliation"
+  | "billing_setup_payment_required"
+  | "billing_setup_cleared"
+  | "billing_renewal_due"
+  | "billing_refund_recorded"
   | "escalation_action_required"
   | "escalation_fyi"
   | "escalation_claimed"
@@ -45,6 +49,35 @@ export type NotificationKind =
   | "conversation_awaiting_reply"
   | "missed_call_follow_up"
   | "hot_lead_detected"
+  | "web_chat_lead"
+  | "social_approval_requested"
+  | "social_approval_decided"
+  | "social_post_published"
+  | "social_post_failed"
+  | "social_account_attention"
+  | "invoice_approval_requested"
+  | "invoice_approval_decided"
+  | "invoice_paid"
+  | "invoice_payment_failed"
+  | "invoice_overdue"
+  | "invoice_refund_recorded"
+  | "payment_connection_attention"
+  | "payment_review_needed"
+  | "proposal_approval_requested"
+  | "proposal_approval_decided"
+  | "proposal_viewed"
+  | "proposal_accepted"
+  | "proposal_declined"
+  | "proposal_changes_requested"
+  | "proposal_expiring"
+  | "signature_completed"
+  | "signature_failed"
+  | "feedback_follow_up_overdue"
+  | "review_needs_reply"
+  | "review_reply_requested"
+  | "review_reply_decided"
+  | "review_reply_failed"
+  | "review_connection_attention"
   | "website_published"
   | "website_publish_failed"
   | "domain_verified"
@@ -73,7 +106,21 @@ export type NotificationKind =
   | "support_assigned"
   | "support_status"
   | "support_escalated"
-  | "support_sla";
+  | "support_sla"
+  | "demo_prospect_verified"
+  | "demo_consultation_requested"
+  | "demo_purchase_started"
+  | "demo_budget_reached"
+  | "staff_message_direct"
+  | "staff_message_mention"
+  | "staff_message_added"
+  | "staff_workload_alert"
+  | "staff_work_overdue"
+  | "support_mention"
+  | "support_survey"
+  | "project_change_order"
+  | "project_prerequisite"
+  | "project_review_overdue";
 
 export interface NotificationInput {
   kind: NotificationKind;
@@ -89,6 +136,9 @@ export interface NotificationInput {
 function safeLink(link?: string) {
   return link && /^\/[A-Za-z0-9/_?=&%.-]*$/.test(link) ? link : null;
 }
+
+/** The audiences an agency account's feed lists. 'staff' (migration 0096) is the team's own mail; the client feed lists 'client' and 'direct' only, so it never reaches one. */
+const AGENCY_AUDIENCES = "('agency','direct','staff')";
 
 /**
  * A direct notification is addressed to one person. Agency recipients of a client-scoped
@@ -127,8 +177,10 @@ export async function notifyOrgRoles(db: Queryable, orgId: string, roles: OrgRol
  * Notifies agency users whose current client scope includes the tenant. The client organisation is
  * stored on the row even though the recipient is an agency user; read authorisation is re-evaluated
  * against the recipient's current scope, so revoking the assignment hides the history too.
+ * With `permission`, only recipients who also hold that permission right now are notified: a person whose access to a module was withdrawn
+ * does not keep hearing about it just because the client is still in their scope.
  */
-export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput) {
+export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput, filter: { permission?: Permission } = {}) {
   await db.query(
     `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
      select 'agency', $1, u.id, $2, $3, $4, $5, $6, $7 from users u
@@ -136,9 +188,57 @@ export async function notifyAgency(db: Queryable, orgId: string | null, n: Notif
        ($1::uuid is null and coalesce(app.user_has_agency_permission(u.id,'agency.security.manage'),false))
        or ($1::uuid is not null and app.user_can_access_org(u.id,$1::uuid))
      )
+     and ($8::text is null or coalesce(app.user_has_agency_permission(u.id, $8::text), false))
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
+    [orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null, filter.permission ?? null],
   );
+}
+
+const STAFF_ROLES = ["agency_staff", "agency_manager", "agency_super_admin"];
+
+export interface StaffNoticeInput extends NotificationInput {
+  userId: string;
+}
+
+/**
+ * Staff notices, for active agency accounts and nobody else (audience 'staff', no workspace). Staff Messages and the workload alerts use this instead of 'direct': a 'direct'
+ * notice would follow the same person into a client workspace if they were later invited into one, while a staff notice is invisible to anyone who is not an active agency
+ * account, whatever else they are. One statement for any number of people. Returns the people who got a notice (a repeat of a dedupe key, a disabled account and a person who
+ * is not on the agency team get none), so a caller knows who was told.
+ */
+export async function notifyStaffBatch(db: Queryable, notices: readonly StaffNoticeInput[]): Promise<string[]> {
+  if (!notices.length) return [];
+  const { rows } = await db.query<{ user_id: string }>(
+    `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
+     select 'staff', null, u.id, t.kind, t.severity, t.title, t.body, t.link, t.dedupe_key
+       from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) as t(user_id, kind, severity, title, body, link, dedupe_key)
+       join users u on u.id = t.user_id and u.status = 'active' and u.platform_role = any($8::text[])
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
+     returning user_id`,
+    [
+      notices.map((n) => n.userId),
+      notices.map((n) => n.kind),
+      notices.map((n) => n.severity ?? "info"),
+      notices.map((n) => n.title.slice(0, 200)),
+      notices.map((n) => n.body?.slice(0, 1000) ?? null),
+      notices.map((n) => safeLink(n.link)),
+      notices.map((n) => n.dedupeKey ?? null),
+      STAFF_ROLES,
+    ],
+  );
+  return [...new Set(rows.map((r) => r.user_id))];
+}
+
+/** One staff notice. Returns its id, or null when a dedupe key already announced the same thing or the person is not an active agency account. */
+export async function notifyStaff(db: Queryable, userId: string, n: NotificationInput): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
+     select 'staff', null, u.id, $2, $3, $4, $5, $6, $7 from users u where u.id = $1 and u.status = 'active' and u.platform_role = any($8::text[])
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
+     returning id`,
+    [userId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null, STAFF_ROLES],
+  );
+  return rows[0]?.id ?? null;
 }
 
 /**
@@ -210,7 +310,7 @@ export async function listNotifications(userId: string, options: ListNotificatio
   const requestedOrgId = options.orgId && /^[0-9a-f-]{36}$/i.test(options.orgId) ? options.orgId : null;
   return withUser(userId, async (db) => {
     const { agency, orgId } = await notificationFeedScope(db, userId, requestedOrgId);
-    const feed = `(($7::boolean and audience in ('agency','direct') and app.notification_visible($4, audience, org_id))
+    const feed = `(($7::boolean and audience in ${AGENCY_AUDIENCES} and app.notification_visible($4, audience, org_id))
       or (not $7::boolean and audience in ('client','direct')
           and ($6::uuid is null or org_id = $6::uuid or org_id is null)
           and app.notification_visible($4, audience, org_id)))`;
@@ -233,7 +333,7 @@ export async function listNotifications(userId: string, options: ListNotificatio
        limit $1`,
       [limit + 1, hidden, before, userId, beforeId, orgId, agency],
     );
-    const unreadFeed = `(($4::boolean and audience in ('agency','direct') and app.notification_visible($2, audience, org_id))
+    const unreadFeed = `(($4::boolean and audience in ${AGENCY_AUDIENCES} and app.notification_visible($2, audience, org_id))
       or (not $4::boolean and audience in ('client','direct')
           and ($3::uuid is null or org_id = $3::uuid or org_id is null)
           and app.notification_visible($2, audience, org_id)))`;
@@ -266,13 +366,13 @@ export async function markNotificationsRead(userId: string, ids: string[] | "all
       if (ids === "all") {
         await db.query(
           `update notifications set read_at = now() where user_id = $1 and read_at is null
-             and audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`,
+             and audience in ${AGENCY_AUDIENCES} and app.notification_visible($1, audience, org_id)`,
           [userId],
         );
       } else if (ids.length) {
         await db.query(
           `update notifications set read_at = now() where user_id = $1 and id = any($2::uuid[]) and read_at is null
-             and audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`,
+             and audience in ${AGENCY_AUDIENCES} and app.notification_visible($1, audience, org_id)`,
           [userId, ids],
         );
       }
@@ -298,7 +398,7 @@ export async function unreadCount(userId: string): Promise<number> {
   return withUser(userId, async (db) => {
     const { agency, orgId } = await notificationFeedScope(db, userId, null);
     const scope = agency
-      ? `audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`
+      ? `audience in ${AGENCY_AUDIENCES} and app.notification_visible($1, audience, org_id)`
       : `audience in ('client','direct') and ($2::uuid is null or org_id = $2::uuid or org_id is null)
          and app.notification_visible($1, audience, org_id)`;
     const params = agency ? [userId] : [userId, orgId];

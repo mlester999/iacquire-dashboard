@@ -1,4 +1,5 @@
 import { submitReviewFeedback } from "@/server/crm/reviews";
+import { reviewsPublicDisabled } from "@/server/reputation/entitlement";
 import { formFields, NO_STORE, pagePath, seeOther } from "@/app/api/public/reviews/shared";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export async function POST(req: Request) {
   const fields = await formFields(req);
   if (!fields) return new Response(null, { status: 413, headers: NO_STORE });
   const token = fields.get("t");
+  // The emergency switch (REVIEWS_PUBLIC_DISABLED): back to the page, which says it is unavailable. Nothing is read or recorded.
+  if (reviewsPublicDisabled()) return seeOther(pagePath(token, "unavailable"));
   try {
     const { outcome } = await submitReviewFeedback(token ?? "", { rating: fields.get("rating"), comment: fields.get("comment") });
     return seeOther(pagePath(token, outcome));

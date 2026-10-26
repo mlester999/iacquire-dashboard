@@ -139,7 +139,6 @@ The CRM Blueprints & Snapshots rows (`/admin/crm-blueprints/*`, `/api/admin/crm-
 | /api/setup/attachments/[id] | src/app/api/setup/attachments/[id]/route.ts |
 | /api/setup | src/app/api/setup/route.ts |
 | /api/setup/stream | src/app/api/setup/stream/route.ts |
-| /api/support/[ticketId]/attachments | src/app/api/support/[ticketId]/attachments/route.ts |
 | /api/support/attachments/[id] | src/app/api/support/attachments/[id]/route.ts |
 | /api/webhooks/ghl | src/app/api/webhooks/ghl/route.ts |
 | /api/webhooks/paymongo | src/app/api/webhooks/paymongo/route.ts |

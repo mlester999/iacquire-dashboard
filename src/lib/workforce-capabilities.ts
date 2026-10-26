@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "pipeline_followup_drafts" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "pipeline_followup_drafts" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review" | "receivables_review" | "reputation_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -127,6 +127,36 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "contacts.view",
     risk: "read_only",
     produces: "Findings about hot leads without a follow-up or an owner, and about how much of the book can be scored, with links to the contacts.",
+    workBoardAction: true,
+  },
+  social_performance_review: {
+    key: "social_performance_review",
+    label: "Social media review",
+    description: "Read stored social posts, the numbers the platforms returned and the leads that arrived through posts' tracked links, then say what needs a person and what the evidence supports. It never drafts, publishes, contacts anyone or changes anything.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "social.view",
+    risk: "read_only",
+    produces: "Findings about failed or unconfirmed posts, approvals waiting, accounts that need reconnecting and, only with enough returned numbers, which post types or weekdays did better; plus tracked leads, each with a link.",
+    workBoardAction: true,
+  },
+  receivables_review: {
+    key: "receivables_review",
+    label: "Receivables review",
+    description: "Read issued customer invoices, the payments and refunds recorded against them, the payment provider's deliveries and the payment account's connection, then say which unpaid invoices are overdue and which payments need a person. It never issues, sends, voids, records or refunds anything, and never contacts a customer or a payment provider.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "invoices.view",
+    risk: "read_only",
+    produces: "Findings about overdue invoices, failed or held payments, deliveries that were not applied, a payment account that needs attention, reminders on hold and reminders that could not be sent, each with a link; plus counts of open, overdue and recently paid invoices.",
+    workBoardAction: true,
+  },
+  reputation_review: {
+    key: "reputation_review",
+    label: "Reputation review",
+    description: "Read private feedback, public reviews a connected review site returned, replies to them, review site connections and review requests, then say what is waiting for a person and what the evidence supports. It never writes, posts, approves or sends anything, never contacts a customer or a review site, and never writes, edits or counts a review or a rating.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "reviews.view",
+    risk: "read_only",
+    produces: "Findings about low private feedback nobody has acknowledged, complaints nobody has taken, public reviews with no reply, replies waiting for approval or not posted, review sites that need reconnecting, customer programs whose approval lapsed and why review requests did not go out, each with a link; plus counts, and a plain caution when there are too few answers to read a trend.",
     workBoardAction: true,
   },
   performance_snapshot: {

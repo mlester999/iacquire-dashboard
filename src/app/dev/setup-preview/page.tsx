@@ -18,7 +18,7 @@ export default async function SetupPreview({ searchParams }: { searchParams: Pro
   const admin = view === "admin";
   return (
     <div className="app-backdrop min-h-dvh">
-      <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[12.5px] font-medium text-warning-ink">
+      <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[13px] font-medium text-warning-ink">
         Design preview — sample data for Bright Homes Realty, not a real client. Actions here do nothing.{" "}
         <a className="underline" href={`?view=${admin ? "client" : "admin"}`}>
           Switch to the {admin ? "client" : "agency"} view

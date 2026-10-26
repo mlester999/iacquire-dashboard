@@ -254,6 +254,8 @@ describe("dedicated employee chat surface", () => {
     await waitFor(() => expect(screen.getByText("Keep this saved message")).toBeInTheDocument());
     expect(loadConversationAction).toHaveBeenCalledWith(history.id);
     expect(within(header()).queryByText(history.title)).toBeNull();
+    // The drawer closes after a conversation is chosen; until it unmounts, its focus lock hides the header buttons from the accessibility tree.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Chat navigation" })).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(screen.queryByText("Keep this saved message")).toBeNull();
     expect(screen.getByRole("textbox", { name: /Message Zeng/ })).toBeInTheDocument();

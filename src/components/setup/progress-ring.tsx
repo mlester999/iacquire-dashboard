@@ -83,12 +83,12 @@ export function ProgressRing({
         ) : (
           <span className="flex items-baseline text-[30px] font-semibold leading-none tracking-tight text-ink" style={{ fontSize: size * 0.24 }}>
             <CountUp value={percent} />
-            <span className="ml-0.5 font-medium text-muted" style={{ fontSize: size * 0.11 }}>
+            <span className="ml-0.5 font-medium text-muted" style={{ fontSize: Math.max(12, size * 0.11) }}>
               %
             </span>
           </span>
         )}
-        {caption && <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted">{caption}</span>}
+        {caption && <span className="mt-1 text-[12px] font-medium uppercase tracking-wider text-muted">{caption}</span>}
       </div>
     </div>
   );

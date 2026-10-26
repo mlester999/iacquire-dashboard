@@ -53,16 +53,16 @@ export function StepPanel({ step, number, definition, options, issues, readOnly,
       <div className="flex items-start gap-3">
         <span className={cn("inline-flex size-10 shrink-0 items-center justify-center rounded-xl", stepTone(step.kind))}><StepIcon kind={step.kind} /></span>
         <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Step {number}</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Step {number}</p>
           <h3 className="text-[16px] font-semibold text-ink">{spec.label}</h3>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{spec.description}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{spec.description}</p>
         </div>
       </div>
 
       {general.length > 0 && (
         <ul className="space-y-1.5" aria-label="Problems with this step">
           {general.map((i, n) => (
-            <li key={`${i.code}-${n}`} className={cn("flex gap-2 rounded-xl px-3 py-2 text-[12.5px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
+            <li key={`${i.code}-${n}`} className={cn("flex gap-2 rounded-xl px-3 py-2 text-[13px]", i.level === "error" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink")}>
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{i.message}
             </li>
           ))}
@@ -136,9 +136,9 @@ function KindFields(p: KindProps) {
     case "internal_note":
       return <NoteFields {...p} />;
     case "request_reassessment":
-      return <p className="text-[13px] leading-relaxed text-muted">Asks for the contact to be scored again. It happens within a few minutes, using everything known by then. Nothing is sent to the customer.</p>;
+      return <p className="text-[14px] leading-relaxed text-muted">Asks for the contact to be scored again. It happens within a few minutes, using everything known by then. Nothing is sent to the customer.</p>;
     case "recovery_check":
-      return <p className="text-[13px] leading-relaxed text-muted">Asks for the contact&apos;s waiting missed call to be looked at now instead of at its next check. Consent, opening hours and follow-up limits are checked again before anything is sent, so this can never skip a rule.</p>;
+      return <p className="text-[14px] leading-relaxed text-muted">Asks for the contact&apos;s waiting missed call to be looked at now instead of at its next check. Consent, opening hours and follow-up limits are checked again before anything is sent, so this can never skip a rule.</p>;
     case "set_priority":
       return <SetPriorityFields {...p} />;
     case "conversation_action":
@@ -154,7 +154,7 @@ function KindFields(p: KindProps) {
     case "ai_task":
       return <AiTaskFields {...p} />;
     case "end":
-      return <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-muted">The run finishes here. Nothing after this step runs on this path.</p>;
+      return <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] text-muted">The run finishes here. Nothing after this step runs on this path.</p>;
     default:
       return null;
   }
@@ -254,7 +254,7 @@ export function ConditionsEditor({ id, subject, value, onChange, options, readOn
   const text = value.conditions.length ? conditionsText(value, subject, names) : emptyText;
   return (
     <div className="space-y-2">
-      <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">{text}</p>
+      <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[14px] text-ink-2">{text}</p>
       <Button variant="secondary" size="sm" disabled={readOnly} onClick={() => { setDraft(value); setOpen(true); }}><ListFilter className="size-4" aria-hidden />{value.conditions.length ? "Edit conditions" : "Add conditions"}</Button>
       <Dialog
         open={open}
@@ -312,7 +312,7 @@ function BranchFields({ step, options, errorAt, replace, readOnly }: KindProps) 
           emptyText={b.reply ? "No other conditions." : "No conditions yet. Add at least one."}
         />
       </Field>
-      <p className="text-[12.5px] leading-relaxed text-muted">Contacts who match continue down the <strong className="font-semibold text-success-ink">Yes</strong> path; everyone else takes the <strong className="font-semibold text-ink-2">No</strong> path. A path with no steps ends the run.</p>
+      <p className="text-[13px] leading-relaxed text-muted">Contacts who match continue down the <strong className="font-semibold text-success-ink">Yes</strong> path; everyone else takes the <strong className="font-semibold text-ink-2">No</strong> path. A path with no steps ends the run.</p>
     </>
   );
 }
@@ -354,11 +354,11 @@ function AssignFields({ step, options, errorAt, config, replace, base }: KindPro
           <SinglePick id="wf-assign-user" value={a.userId} onChange={(v) => config({ userId: v ?? undefined })} options={options.members.map((m) => ({ id: m.id, label: m.name }))} placeholder="Choose a person" />
         </Field>
       ) : options.assignmentRules === null ? (
-        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px] text-muted">Seeing assignment rules needs the “Assign contacts and deals to others” permission.</p>
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-muted">Seeing assignment rules needs the “Assign contacts and deals to others” permission.</p>
       ) : (
         <Field label="Rule" htmlFor="wf-assign-rule" error={errorAt("config.ruleId")} hint="The rule picks the next person (round robin, weighted or by priority) at the moment the step runs.">
           <SinglePick id="wf-assign-rule" value={a.ruleId} onChange={(v) => config({ ruleId: v ?? undefined })} options={rules.map((r) => ({ id: r.id, label: r.name, hint: r.active ? undefined : "off" }))} placeholder={rules.length ? "Choose a rule" : `No ${a.subject === "contact" ? "contact" : "deal"} rules yet`} />
-          {!rules.length && <Link href={`${base}/settings/assignment`} className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Set up assignment rules</Link>}
+          {!rules.length && <Link href={`${base}/settings/assignment`} className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline">Set up assignment rules</Link>}
         </Field>
       )}
       <Toggle id="wf-assign-only" label="Only if it has no owner yet" hint="Leaves records that already have an owner alone." checked={a.onlyIfUnassigned} onChange={(v) => config({ onlyIfUnassigned: v })} />
@@ -407,7 +407,7 @@ function UpdateFieldFields({ step, options, errorAt, config, replace }: KindProp
         ) : cf ? (
           <CustomValue id="wf-uf-value" type={cf.type} options={cf.options} value={u.value} onChange={(value) => config({ value })} />
         ) : (
-          <p className="text-[12.5px] text-muted">Choose a field first.</p>
+          <p className="text-[13px] text-muted">Choose a field first.</p>
         )}
       </Field>
     </>
@@ -569,7 +569,7 @@ function ConversationActionFields({ step, options, errorAt, replace }: KindProps
           <SinglePick id="wf-conv-user" value={c.userId} onChange={(v) => replace(v ? { action: "assign_person", userId: v } : { action: "assign_person" })} options={options.members.map((m) => ({ id: m.id, label: m.name }))} placeholder="Choose a person" />
         </Field>
       )}
-      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-muted">
         {CONVERSATION_ACTION_HELP[c.action]} It acts on the conversation that started this workflow and never sends a message.
       </p>
     </>
@@ -623,7 +623,7 @@ function MoveStageFields({ step, options, errorAt, config }: KindProps) {
           <Input id="wf-lost" value={m.lostReason ?? ""} maxLength={300} placeholder="e.g. No response after three follow-ups" onChange={(e) => config({ lostReason: e.target.value || undefined })} />
         </Field>
       )}
-      <p className="text-[12.5px] leading-relaxed text-muted">Moves the run&apos;s deal. Without one, it moves the contact&apos;s open deal in this pipeline; with neither, the step is skipped.</p>
+      <p className="text-[13px] leading-relaxed text-muted">Moves the run&apos;s deal. Without one, it moves the contact&apos;s open deal in this pipeline; with neither, the step is skipped.</p>
     </>
   );
 }
@@ -657,7 +657,7 @@ function SendMessageFields({ step, options, errorAt, config, replace, base }: Ki
         {options.unapprovedTemplates.length > 0 && (
           <p className="mt-1 text-[12px] text-muted">{options.unapprovedTemplates.length} {options.unapprovedTemplates.length === 1 ? "template isn't" : "templates aren't"} approved yet, so {options.unapprovedTemplates.length === 1 ? "it can't" : "they can't"} be sent automatically. <Link href={`${base}/templates`} className="font-medium text-primary hover:underline">Review templates</Link></p>
         )}
-        {!options.templates.length && !options.unapprovedTemplates.length && <Link href={`${base}/templates`} className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Write a template</Link>}
+        {!options.templates.length && !options.unapprovedTemplates.length && <Link href={`${base}/templates`} className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline">Write a template</Link>}
       </Field>
       {chosen && (
         <div className="space-y-2 rounded-2xl border border-line bg-surface-2/50 p-3">
@@ -665,8 +665,8 @@ function SendMessageFields({ step, options, errorAt, config, replace, base }: Ki
             <Badge tone="success"><ShieldCheck className="size-3" aria-hidden />Approved v{chosen.version}</Badge>
             {CHANNEL_LABELS[chosen.channel]} · {chosen.purpose === "marketing" ? "Marketing" : "Service"} message
           </p>
-          {chosen.subject && <p className="text-[13px] font-medium text-ink">{chosen.subject}</p>}
-          <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{chosen.body}</p>
+          {chosen.subject && <p className="text-[14px] font-medium text-ink">{chosen.subject}</p>}
+          <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{chosen.body}</p>
           <p className="text-[12px] leading-relaxed text-muted">
             Sent only to contacts who agreed to {chosen.purpose === "marketing" ? "marketing" : "service"} messages by {CHANNEL_LABELS[chosen.channel]}, never to anyone who opted out, outside quiet hours, within sending limits and your credits.
             {chosen.purpose === "marketing" ? " Marketing messages need explicit marketing consent." : ""}
@@ -697,11 +697,11 @@ function NotifyFields({ step, options, errorAt, config }: KindProps) {
   return (
     <>
       <fieldset className="space-y-2">
-        <legend className="mb-1 text-[13px] font-medium text-ink-2">Who gets it</legend>
+        <legend className="mb-1 text-[14px] font-medium text-ink-2">Who gets it</legend>
         <Toggle id="wf-notify-owner" label="The business owner" checked={roles.has("owner")} onChange={(v) => setRole("owner", v)} />
         <Toggle id="wf-notify-admin" label="Managers" checked={roles.has("admin")} onChange={(v) => setRole("admin", v)} />
         <Toggle id="wf-notify-contact-owner" label="The contact's owner" checked={!!n.contactOwner} onChange={(v) => config({ contactOwner: v || undefined })} />
-        {errorAt("config.roles") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.roles")}</p>}
+        {errorAt("config.roles") && <p className="text-[13px] text-danger-ink" role="alert">{errorAt("config.roles")}</p>}
       </fieldset>
       <Field label="Also these people" optional error={errorAt("config.userIds")}>
         <MultiPick id="wf-notify-users" label="People" max={20} options={options.members.map((m) => ({ id: m.id, label: m.name }))} value={n.userIds ?? []} onChange={(ids) => config({ userIds: ids.length ? ids : undefined })} empty="There's nobody else in the workspace." />
@@ -713,7 +713,7 @@ function NotifyFields({ step, options, errorAt, config }: KindProps) {
       <Field label="Message" htmlFor="wf-notify-body" optional error={errorAt("config.body")}>
         <Textarea id="wf-notify-body" rows={3} maxLength={600} value={n.body ?? ""} onChange={(e) => config({ body: e.target.value || undefined })} />
       </Field>
-      <p className="text-[12.5px] text-muted">An in-app notification for your team. Customers never see it.</p>
+      <p className="text-[13px] text-muted">An in-app notification for your team. Customers never see it.</p>
     </>
   );
 }
@@ -736,7 +736,7 @@ function N8nFields({ step, options, errorAt, config }: KindProps) {
         {problem && <StateNote id="wf-n8n-state" state={{ state: "blocked", text: problem }} />}
       </Field>
       <Toggle id="wf-n8n-contact" label="Include the contact's name, email and phone" checked={n.includeContact} onChange={(v) => config({ includeContact: v })} />
-      <p className="text-[12.5px] leading-relaxed text-muted">Starts the automation once per run step. If iAcquire can&apos;t tell whether n8n received it, the step is marked for review instead of being sent again.</p>
+      <p className="text-[13px] leading-relaxed text-muted">Starts the automation once per run step. If iAcquire can&apos;t tell whether n8n received it, the step is marked for review instead of being sent again.</p>
     </>
   );
 }
@@ -748,10 +748,10 @@ function WebhookFields({ step, options, errorAt, config, base }: KindProps) {
     <>
       <Field label="Endpoint" htmlFor="wf-webhook" error={errorAt("config.subscriptionId")}>
         <SinglePick id="wf-webhook" value={w.subscriptionId} onChange={(v) => config({ subscriptionId: v ?? "" })} options={active.map((x) => ({ id: x.id, label: x.name, hint: x.host }))} placeholder={active.length ? "Choose an endpoint" : "No active endpoints"} />
-        {!active.length && <Link href={`${base}/settings/api`} className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Add a webhook endpoint</Link>}
+        {!active.length && <Link href={`${base}/settings/api`} className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline">Add a webhook endpoint</Link>}
       </Field>
       <Toggle id="wf-webhook-contact" label="Include the contact's name, email and phone" checked={w.includeContact} onChange={(v) => config({ includeContact: v })} />
-      <p className="text-[12.5px] leading-relaxed text-muted">Sent signed with the endpoint&apos;s secret, and retried if the endpoint is down.</p>
+      <p className="text-[13px] leading-relaxed text-muted">Sent signed with the endpoint&apos;s secret, and retried if the endpoint is down.</p>
     </>
   );
 }
@@ -769,7 +769,7 @@ function PairList({ id, label, pairs, onChange, namePlaceholder, valuePlaceholde
 }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-medium text-ink">{label}</legend>
+      <legend className="text-[14px] font-medium text-ink">{label}</legend>
       {hint && <p className="text-[12px] text-muted">{hint}</p>}
       {pairs.map((p, i) => (
         <div key={i} className="flex items-start gap-2">
@@ -796,7 +796,7 @@ function HttpRequestFields({ step, options, errorAt, config, base }: KindProps) 
           options={connections.map((c) => ({ id: c.id, label: c.name, hint: `${c.host} · ${c.status === "active" ? "verified" : c.status === "unverified" ? "not verified yet" : "needs attention"}` }))}
           placeholder={connections.length ? "Choose a connection" : "No HTTP connection yet"}
         />
-        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Set up a connection</Link>}
+        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline">Set up a connection</Link>}
         {conn && <p className="mt-1 text-[12px] text-muted">Calls only {conn.host}. The credentials are kept on the connection and never appear here.</p>}
       </Field>
       <div className="grid grid-cols-[110px_1fr] gap-3">
@@ -806,11 +806,11 @@ function HttpRequestFields({ step, options, errorAt, config, base }: KindProps) 
           </Select>
         </Field>
         <Field label="Path" htmlFor="wf-http-path" error={errorAt("config.path")} hint="Starts with /. May hold placeholders, which are filled in safely.">
-          <Input id="wf-http-path" value={h.path} maxLength={300} placeholder="/v1/orders" onChange={(e) => config({ path: e.target.value })} className="font-mono text-[12.5px]" />
+          <Input id="wf-http-path" value={h.path} maxLength={300} placeholder="/v1/orders" onChange={(e) => config({ path: e.target.value })} className="font-mono text-[13px]" />
         </Field>
       </div>
       <PairList id="wf-http-query-add" label="Query values" pairs={h.query ?? []} onChange={(query) => config({ query })} namePlaceholder="name" valuePlaceholder="value or {{placeholder}}" max={20} />
-      {errorAt("config.query") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.query")}</p>}
+      {errorAt("config.query") && <p className="text-[13px] text-danger-ink" role="alert">{errorAt("config.query")}</p>}
       {h.method !== "GET" && (
         <>
           <Field label="Body" htmlFor="wf-http-bodytype" error={errorAt("config.bodyType")}>
@@ -818,23 +818,23 @@ function HttpRequestFields({ step, options, errorAt, config, base }: KindProps) 
           </Field>
           {(h.bodyType === "json" || h.bodyType === "text") && (
             <Field label={h.bodyType === "json" ? "JSON body" : "Text body"} htmlFor="wf-http-body" error={errorAt("config.body")} hint={h.bodyType === "json" ? "Put placeholders inside quotes. Their values are escaped for you." : undefined}>
-              <Textarea id="wf-http-body" rows={6} maxLength={4000} value={h.body ?? ""} onChange={(e) => config({ body: e.target.value })} className="font-mono text-[12.5px]" placeholder={h.bodyType === "json" ? '{"name": "{{contact.full_name}}", "email": "{{contact.email}}"}' : ""} />
+              <Textarea id="wf-http-body" rows={6} maxLength={4000} value={h.body ?? ""} onChange={(e) => config({ body: e.target.value })} className="font-mono text-[13px]" placeholder={h.bodyType === "json" ? '{"name": "{{contact.full_name}}", "email": "{{contact.email}}"}' : ""} />
               <div className="mt-1.5"><TokenInsert id="wf-http-token" groups={["contact", "appointment"]} customValues={options.customValues} onInsert={(tok) => config({ body: `${h.body ?? ""}${tok}` })} /></div>
             </Field>
           )}
           {h.bodyType === "form" && <PairList id="wf-http-form-add" label="Form fields" pairs={h.form ?? []} onChange={(form) => config({ form })} namePlaceholder="field" valuePlaceholder="value or {{placeholder}}" max={20} />}
-          {errorAt("config.form") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.form")}</p>}
+          {errorAt("config.form") && <p className="text-[13px] text-danger-ink" role="alert">{errorAt("config.form")}</p>}
         </>
       )}
       <PairList id="wf-http-header-add" label="Extra headers" pairs={h.headers ?? []} onChange={(headers) => config({ headers })} namePlaceholder="X-Source" valuePlaceholder="value" max={8} hint="Only Accept, If-None-Match and headers starting with X-. Credentials go on the connection." />
-      {errorAt("config.headers") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.headers")}</p>}
+      {errorAt("config.headers") && <p className="text-[13px] text-danger-ink" role="alert">{errorAt("config.headers")}</p>}
       <div className="grid grid-cols-[120px_1fr] items-end gap-3">
         <Field label="Time limit (s)" htmlFor="wf-http-timeout">
           <Input id="wf-http-timeout" type="number" min={1} max={30} value={h.timeoutSeconds ?? 15} onChange={(e) => config({ timeoutSeconds: Math.max(1, Math.min(30, Math.round(Number(e.target.value) || 15))) })} />
         </Field>
         <Toggle id="wf-http-repeat" label="The other system ignores a repeat of the same request" checked={h.safeToRepeat === true} onChange={(v) => config({ safeToRepeat: v })} />
       </div>
-      <p className="text-[12.5px] leading-relaxed text-muted">Each attempt carries an Idempotency-Key. If the request may have reached the other system and we can&apos;t tell, it is marked for review instead of being sent again, unless you say repeats are safe. Redirects aren&apos;t followed and private networks are never called. {base ? "" : ""}</p>
+      <p className="text-[13px] leading-relaxed text-muted">Each attempt carries an Idempotency-Key. If the request may have reached the other system and we can&apos;t tell, it is marked for review instead of being sent again, unless you say repeats are safe. Redirects aren&apos;t followed and private networks are never called. {base ? "" : ""}</p>
     </>
   );
 }
@@ -850,7 +850,7 @@ function SlackMessageFields({ step, options, errorAt, config }: KindProps) {
           options={connections.map((c) => ({ id: c.id, label: c.name, hint: c.status === "active" ? "verified" : c.status === "unverified" ? "not verified yet" : "needs attention" }))}
           placeholder={connections.length ? "Choose a connection" : "No Slack connection yet"}
         />
-        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Set up a Slack connection</Link>}
+        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline">Set up a Slack connection</Link>}
       </Field>
       <Field label="Message" htmlFor="wf-slack-text" error={errorAt("config.text")} hint="Mentions and links in the text are made harmless, so a customer's name can't ping a channel.">
         <Textarea id="wf-slack-text" rows={4} maxLength={1500} value={m.text ?? ""} onChange={(e) => config({ text: e.target.value })} placeholder="New lead: {{contact.full_name}} ({{contact.email}})" />
@@ -876,7 +876,7 @@ function AiTaskFields({ step, options, errorAt, config }: KindProps) {
       <Field label="What to do" htmlFor="wf-ai-instruction" error={errorAt("config.instruction")}>
         <Textarea id="wf-ai-instruction" rows={4} maxLength={2000} placeholder="Review this lead's details and add a short note on how qualified they look." value={a.instruction ?? ""} onChange={(e) => config({ instruction: e.target.value })} />
       </Field>
-      <p className="text-[12.5px] leading-relaxed text-muted">It works only on this workspace&apos;s CRM, through tools scoped to this run.</p>
+      <p className="text-[13px] leading-relaxed text-muted">It works only on this workspace&apos;s CRM, through tools scoped to this run.</p>
     </>
   );
 }
@@ -885,7 +885,7 @@ function AiTaskFields({ step, options, errorAt, config }: KindProps) {
 function StateNote({ id, state }: { id: string; state: ReadyState }) {
   if (state.state === "ok") return <p id={id} className="mt-1 text-[12px] text-muted">{state.text}</p>;
   return (
-    <p id={id} className="mt-1.5 flex gap-1.5 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">
+    <p id={id} className="mt-1.5 flex gap-1.5 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />{state.text}
     </p>
   );

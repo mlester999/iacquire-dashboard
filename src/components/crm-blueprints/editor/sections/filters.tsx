@@ -40,9 +40,9 @@ function ConditionsEditor({ id, filter, entity, onChange, title, emptyText }: { 
   return (
     <section aria-labelledby={`${id}-title`} className="space-y-2">
       <h4 id={`${id}-title`} className="text-[14px] font-semibold text-ink">{title}</h4>
-      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-2"><span className="font-medium text-ink">In words: </span>{summary || emptyText}</p>
+      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] leading-relaxed text-ink-2"><span className="font-medium text-ink">In words: </span>{summary || emptyText}</p>
       {problem ? (
-        <p className="flex gap-2 text-[12.5px] leading-relaxed text-muted"><Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />{problem} It is kept exactly as it is; it can be changed in a client&apos;s CRM after applying.</p>
+        <p className="flex gap-2 text-[13px] leading-relaxed text-muted"><Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />{problem} It is kept exactly as it is; it can be changed in a client&apos;s CRM after applying.</p>
       ) : readOnly ? null : (
         <FilterBuilder entity={builderEntity} value={builderValue} options={options} onChange={(g) => onChange(filterFromBuilder(g, builderEntity, content))} />
       )}
@@ -226,14 +226,14 @@ function MembersEditor({ rule, onChange }: { rule: AssignmentRuleAsset; onChange
   const setAt = (i: number, patch: Partial<AssignmentRuleAsset["members"][number]>) => onChange(rule.members.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-medium text-ink-2">Member roles</legend>
-      {!rule.members.length && <p className="text-[12.5px] text-muted">No roles yet: each client adds its people to this rule. Add roles here when the rule should name who takes part (for example Closer).</p>}
+      <legend className="text-[14px] font-medium text-ink-2">Member roles</legend>
+      {!rule.members.length && <p className="text-[13px] text-muted">No roles yet: each client adds its people to this rule. Add roles here when the rule should name who takes part (for example Closer).</p>}
       <ul className="space-y-2">
         {rule.members.map((m, i) => (
           <li key={m.member} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2">
-            <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{refName(content, m.member)}</span>
-            {rule.strategy === "weighted" && <label className="flex items-center gap-2 text-[12.5px] text-muted">Weight <NumberInput id={`ar-w-${i}`} ariaLabel={`Weight for ${refName(content, m.member)}`} value={m.weight} min={1} max={100} disabled={readOnly} onChange={(v) => v !== null && setAt(i, { weight: v })} /></label>}
-            {rule.strategy === "priority" && <label className="flex items-center gap-2 text-[12.5px] text-muted">Priority <NumberInput id={`ar-p-${i}`} ariaLabel={`Priority for ${refName(content, m.member)}`} value={m.priority} min={0} max={100} disabled={readOnly} onChange={(v) => v !== null && setAt(i, { priority: v })} /></label>}
+            <span className="min-w-0 flex-1 text-[14px] font-medium text-ink">{refName(content, m.member)}</span>
+            {rule.strategy === "weighted" && <label className="flex items-center gap-2 text-[13px] text-muted">Weight <NumberInput id={`ar-w-${i}`} ariaLabel={`Weight for ${refName(content, m.member)}`} value={m.weight} min={1} max={100} disabled={readOnly} onChange={(v) => v !== null && setAt(i, { weight: v })} /></label>}
+            {rule.strategy === "priority" && <label className="flex items-center gap-2 text-[13px] text-muted">Priority <NumberInput id={`ar-p-${i}`} ariaLabel={`Priority for ${refName(content, m.member)}`} value={m.priority} min={0} max={100} disabled={readOnly} onChange={(v) => v !== null && setAt(i, { priority: v })} /></label>}
             {!readOnly && <Button variant="ghost" size="icon-sm" onClick={() => onChange(rule.members.filter((_, j) => j !== i))} aria-label={`Remove ${refName(content, m.member)} from the rule`}><Trash2 className="size-4" /></Button>}
           </li>
         ))}

@@ -47,7 +47,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
         icon={<ShieldCheck className="size-5" />}
         title="Agency AI workforce"
         description="The six existing iAcquire Hermes employees mapped to the shared protected gateway. Each keeps its own profile identity and API key; nothing here creates or overwrites a profile."
-        action={<Link href="/admin/employees/open" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 text-[12.5px] font-medium text-white hover:bg-white/15">Open internal workspace <ArrowRight className="size-3.5" aria-hidden /></Link>}
+        action={<Link href="/admin/employees/open" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15">Open internal workspace <ArrowRight className="size-3.5" aria-hidden /></Link>}
         aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Profiles mapped" value={`${mapped}/${agents.length || 6}`} detail="Existing identities only" icon={<Bot className="size-4" />} /><MetricCard label="Ready for authorized work" value={verified} detail="Expired inventory refreshes before chat" tone="green" icon={<ShieldCheck className="size-4" />} /></div>}
       />
       {agents.length ? (
@@ -68,7 +68,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
                 <p className="text-[12px] leading-relaxed text-muted">{readiness.title}. {readiness.description}</p>
                 <div className="rounded-xl border border-line bg-surface-2/70 p-3 text-xs">
                   <p className="font-medium text-ink-2">Hermes profile</p>
-                  <p className="mt-1 break-all font-mono text-[11px] text-muted">{agent.hermes_profile || "Not mapped"}</p>
+                  <p className="mt-1 break-all font-mono text-[12px] text-muted">{agent.hermes_profile || "Not mapped"}</p>
                   <p className="mt-2 leading-relaxed text-muted">{agent.last_health_detail || "No profile health check recorded."}</p>
                   <div className="mt-2 border-t border-line pt-2">
                     <p className="font-medium text-ink-2">Approved runtime inventory</p>
@@ -78,7 +78,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Link href={`/admin/employees/${role.slug}`} className="inline-flex min-h-9 items-center gap-1.5 text-[12.5px] font-medium text-primary hover:underline">Open employee profile <ArrowRight className="size-3" aria-hidden /></Link>
+                  <Link href={`/admin/employees/${role.slug}`} className="inline-flex min-h-9 items-center gap-1.5 text-[13px] font-medium text-primary hover:underline">Open employee profile <ArrowRight className="size-3" aria-hidden /></Link>
                   <AgencyWorkforceControls agentId={agent.id} orgId={agent.org_id} slug={role.slug} employeeName={agent.display_name || role.name} enabled={agent.enabled} />
                 </div>
                 {canManage && <HermesProfileMapper agentId={agent.id} roleKey={agent.role_key} currentProfile={agent.hermes_profile} currentGatewayId={agent.hermes_gateway_id} hasCredential={agent.has_credential} gateways={gateways} canManage={canManage} canReviewTools={canManage} timeZone={timeZone} />}

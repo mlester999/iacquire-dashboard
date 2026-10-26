@@ -83,7 +83,7 @@ export function ConnectionChips({ r, compact = false }: { r: ClientSetupRow; com
     <div className={compact ? "grid grid-cols-2 gap-x-3 gap-y-1" : "flex flex-wrap gap-1.5"}>
       {chips.map((c) => (
         <Tooltip key={c.key} content={c.detail}>
-          <span className={cn("inline-flex items-center gap-1.5 text-[11.5px] font-medium text-ink-2", !compact && "h-6 rounded-full bg-surface px-2.5 ring-1 ring-inset ring-line-strong")}>
+          <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium text-ink-2", !compact && "h-6 rounded-full bg-surface px-2.5 ring-1 ring-inset ring-line-strong")}>
             <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", c.tone === "neutral" ? "bg-transparent ring-1 ring-inset ring-faint" : toneDotClass(c.tone))} />
             {c.label}
           </span>
@@ -104,7 +104,7 @@ export function ServiceChips({ services, max = 3 }: { services: ClientSetupRow["
       {shown.map((key) => {
         const Icon = SERVICE_ICONS[key] ?? Sparkles;
         return (
-          <span key={key} className="inline-flex h-6 items-center gap-1.5 rounded-lg bg-surface-2/80 px-2 text-[11.5px] font-medium text-ink-2">
+          <span key={key} className="inline-flex h-6 items-center gap-1.5 rounded-lg bg-surface-2/80 px-2 text-[12px] font-medium text-ink-2">
             <Icon className="size-3 text-muted" aria-hidden />
             {label(key)}
           </span>
@@ -112,7 +112,7 @@ export function ServiceChips({ services, max = 3 }: { services: ClientSetupRow["
       })}
       {rest.length > 0 && (
         <Tooltip content={rest.map(label).join(" · ")}>
-          <span className="inline-flex h-6 items-center rounded-lg bg-surface-2/80 px-2 text-[11.5px] font-medium text-muted">+{rest.length} more</span>
+          <span className="inline-flex h-6 items-center rounded-lg bg-surface-2/80 px-2 text-[12px] font-medium text-muted">+{rest.length} more</span>
         </Tooltip>
       )}
     </div>
@@ -172,12 +172,12 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
 
           <div className="min-w-0">
             <h2 className="truncate text-[18px] font-semibold leading-snug tracking-[-0.025em] text-ink">{r.name}</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Onboarding not submitted"}</p>
+            <p className="mt-0.5 text-[13px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Onboarding not submitted"}</p>
             <div className="mt-3 min-h-6">
               {r.contact ? (
                 <div className="flex min-w-0 items-center gap-2">
                   <AvatarTile name={r.contact.name} size="sm" className="!shadow-none" />
-                  <span className="min-w-0 truncate text-[13px] text-ink-2">
+                  <span className="min-w-0 truncate text-[14px] text-ink-2">
                     <span className="font-medium">{r.contact.name}</span>
                     {r.contact.name !== r.contact.email && <span className="text-muted"> · {r.contact.email}</span>}
                   </span>
@@ -191,7 +191,7 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
           <div className="flex items-center gap-4 rounded-2xl bg-surface-2/70 p-3.5 ring-1 ring-inset ring-line">
             <ProgressRing percent={r.setup.started ? r.setup.percent : null} tone={ringTone} label={`${r.name} setup progress`} />
             <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Setup journey</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted">Setup journey</p>
               {!r.setup.started ? (
                 <p className="mt-1 text-[14px] font-medium text-ink-2">Checklist not started</p>
               ) : r.setup.percent === null ? (
@@ -241,7 +241,7 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
 
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Connections</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted">Connections</p>
               <StatusPill tone={health.tone} icon={r.health.level === "issue" ? <TriangleAlert className="size-3" aria-hidden /> : undefined}>
                 {health.label}
               </StatusPill>
@@ -254,8 +254,8 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
           <div className="mt-auto flex items-center gap-3 border-t border-line pt-4">
             {r.responsible ? <AvatarTile name={r.responsible.name} size="sm" /> : <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-lg border border-dashed border-line-strong text-faint"><UserRound className="size-3.5" /></span>}
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-[13px] font-medium text-ink-2">{r.responsible ? r.responsible.name : "Unassigned"}</p>
-              <p className="truncate text-[11.5px] text-muted">{r.lastActivityAt ? <RelativeTime value={r.lastActivityAt} prefix="Active " /> : "No activity yet"}</p>
+              <p className="truncate text-[14px] font-medium text-ink-2">{r.responsible ? r.responsible.name : "Unassigned"}</p>
+              <p className="truncate text-[12px] text-muted">{r.lastActivityAt ? <RelativeTime value={r.lastActivityAt} prefix="Active " /> : "No activity yet"}</p>
             </div>
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 ring-1 ring-inset ring-line transition duration-300 group-hover:bg-primary group-hover:text-white group-hover:ring-primary" aria-hidden>
               <ArrowUpRight className="size-4 transition-transform duration-300 group-hover:translate-x-px group-hover:-translate-y-px" />

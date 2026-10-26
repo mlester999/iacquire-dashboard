@@ -12,7 +12,7 @@ import { IconTile } from "@/components/overview/panel";
 import { SectionLabel } from "@/components/ui/workspace";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
-import { MAX_BODY, PROGRAM_STATE_LABEL, reasonText, type ProgramStep, type StepIssue } from "@/lib/retention";
+import { hasFeedbackLink, MAX_BODY, PROGRAM_STATE_LABEL, programMayCarryLink, reasonText, type ProgramStep, type StepIssue } from "@/lib/retention";
 import type { LifecycleOverview, ProgramView, RetentionActivityRow } from "@/server/retention/service";
 
 const STATE_TONE = { off: "neutral", needs_approval: "warning", on: "success", lapsed: "warning" } as const;
@@ -71,14 +71,20 @@ function ProgramEditor({ program, onClose }: { program: ProgramView; onClose: ()
                 label={`Message ${i + 1}: wording`}
                 htmlFor={`body-${s.key}`}
                 error={own[0]?.message ?? null}
-                hint={<>Use <code>{"{name}"}</code> for their first name and <code>{"{business}"}</code> for your business. {s.body.length}/{MAX_BODY}</>}
+                hint={
+                  <>
+                    Use <code>{"{name}"}</code> for their first name and <code>{"{business}"}</code> for your business.
+                    {programMayCarryLink(program.kind, program.purpose) && <> Put <code>{"{feedback_link}"}</code> where the customer&apos;s own private feedback link goes. It is sent only to people who agreed to service messages on that channel, and never offers anything in return.</>}
+                    {" "}{s.body.length}/{MAX_BODY}
+                  </>
+                }
               >
                 <Textarea id={`body-${s.key}`} rows={3} value={s.body} maxLength={MAX_BODY + 40} aria-invalid={own.length > 0} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))} />
               </Field>
             </div>
           );
         })}
-        {issues.some((x) => x.step === -1) && <p className="text-[12.5px] text-danger-ink" role="alert">{issues.find((x) => x.step === -1)?.message}</p>}
+        {issues.some((x) => x.step === -1) && <p className="text-[13px] text-danger-ink" role="alert">{issues.find((x) => x.step === -1)?.message}</p>}
         {program.trigger === "inactive" && (
           <Field label="Quiet for at least" htmlFor="inactive-days" hint="Customers with no conversation for this long.">
             <Select id="inactive-days" value={inactive} onChange={(e) => setInactive(Number(e.target.value))}>
@@ -89,7 +95,7 @@ function ProgramEditor({ program, onClose }: { program: ProgramView; onClose: ()
         <label className="flex items-start justify-between gap-4 rounded-2xl border border-line p-4">
           <span>
             <span className="block text-[14px] font-medium">Only send during business hours</span>
-            <span className="mt-0.5 block text-[12.5px] text-muted">Quiet hours always apply as well.</span>
+            <span className="mt-0.5 block text-[13px] text-muted">Quiet hours always apply as well.</span>
           </span>
           <Switch checked={hoursOnly} aria-label="Only send during business hours" onCheckedChange={setHoursOnly} />
         </label>
@@ -140,27 +146,28 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
         />
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden />{program.audience}{program.inactiveDays ? ` Quiet for ${program.inactiveDays}+ days.` : ""}</p>
+        <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success-ink" aria-hidden />{program.audience}{program.inactiveDays ? ` Quiet for ${program.inactiveDays}+ days.` : ""}</p>
 
         <details className="group rounded-xl border border-line bg-surface-2/30 p-3">
-        <summary className="cursor-pointer rounded-lg text-[12.5px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">Review {program.steps.length} message{program.steps.length === 1 ? "" : "s"}</summary>
+        <summary className="cursor-pointer rounded-lg text-[13px] font-medium text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">Review {program.steps.length} message{program.steps.length === 1 ? "" : "s"}</summary>
         <ol className="mt-3 space-y-2">
           {program.steps.map((s) => (
             <li key={s.key} className="rounded-xl bg-surface-2 px-3.5 py-2.5">
-              <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted"><Clock className="size-3" aria-hidden />{s.delayDays === 0 ? "Right away" : `${s.delayDays} day${s.delayDays === 1 ? "" : "s"} later`}</p>
-              <p className="mt-1 text-[13.5px] leading-relaxed">{s.body}</p>
+              <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Clock className="size-3" aria-hidden />{s.delayDays === 0 ? "Right away" : `${s.delayDays} day${s.delayDays === 1 ? "" : "s"} later`}</p>
+              <p className="mt-1 text-[14px] leading-relaxed">{s.body}</p>
+              {hasFeedbackLink(s.body) && <p className="mt-1 text-[12px] text-muted">Each customer gets their own private link here, once every 30 days at most.</p>}
             </li>
           ))}
         </ol>
         </details>
 
-        {program.state === "needs_approval" && <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The wording changed, so this has stopped sending. The owner needs to approve the new words.{canActivate && <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setConfirm(true)}>Review and approve</Button>}</p>}
-        {program.state === "lapsed" && <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The owner&apos;s approval ran out{program.authorizedUntil ? ` ${relativeTime(program.authorizedUntil)}` : ""}, so nothing is being sent.{canActivate && <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setConfirm(true)}>Renew approval</Button>}</p>}
+        {program.state === "needs_approval" && <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[14px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The wording changed, so this has stopped sending. The owner needs to approve the new words.{canActivate && <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setConfirm(true)}>Review and approve</Button>}</p>}
+        {program.state === "lapsed" && <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3.5 py-3 text-[14px] text-warning-ink" role="status"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />The owner&apos;s approval ran out{program.authorizedUntil ? ` ${relativeTime(program.authorizedUntil)}` : ""}, so nothing is being sent.{canActivate && <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setConfirm(true)}>Renew approval</Button>}</p>}
         {on && program.authorizedUntil && <p className="flex items-center gap-1.5 text-[12px] text-muted"><CheckCircle2 className="size-3.5 text-success-ink" aria-hidden />Approved by the owner until {formatDate(program.authorizedUntil, "UTC")}.</p>}
 
         <dl className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6" aria-label="Last 30 days">
           {([["Enrolled", program.stats.enrolled30d, ""], ["Sent", program.stats.sent30d, ""], ["Delivered", program.stats.delivered30d, "success"], ["Replied", program.stats.replied30d, "success"], ["Held back", program.stats.held30d, "warning"], ["Stopped", program.stats.stopped30d, "neutral"]] as const).map(([label, n, tone]) => (
-            <div key={label} className={cn("flex flex-col rounded-xl px-2 py-2.5 ring-1 ring-inset", n > 0 && tone === "success" ? "bg-success-soft/60 ring-success/20" : n > 0 && tone === "warning" ? "bg-warning-soft/60 ring-warning/25" : "bg-surface-2/60 ring-line")}><dt className="order-2 mt-1 text-[11px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none tabular-nums">{n}</dd></div>
+            <div key={label} className={cn("flex flex-col rounded-xl px-2 py-2.5 ring-1 ring-inset", n > 0 && tone === "success" ? "bg-success-soft/60 ring-success/20" : n > 0 && tone === "warning" ? "bg-warning-soft/60 ring-warning/25" : "bg-surface-2/60 ring-line")}><dt className="order-2 mt-1 text-[12px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none tabular-nums">{n}</dd></div>
           ))}
         </dl>
 
@@ -180,7 +187,7 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
           </>
         }
       >
-        <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-muted">
+        <ul className="list-disc space-y-1.5 pl-5 text-[14px] leading-relaxed text-muted">
           <li>Messages go out only through your connected channels, never to anyone who opted out{program.purpose === "marketing" ? ", and only to people who agreed to marketing" : ""}, and never during quiet hours.</li>
           <li>Each message uses your service credits at the published rate. A customer gets at most four program messages a month, whichever programs they&apos;re in.</li>
           <li>A reply, an opt-out, or a team member taking over ends the program for that customer. You can switch it off at any time and nothing further is sent.</li>
@@ -211,7 +218,7 @@ function Lifecycle({ data }: { data: LifecycleOverview }) {
           {data.stages.map((s) => (
             <li key={s.stage} className={cn("rounded-xl border px-3 py-2.5", s.stage === "customer" || s.stage === "retention" ? "border-primary/30 bg-primary-soft/40" : "border-line bg-surface")}>
               <p className="text-[18px] font-semibold leading-none">{s.count}</p>
-              <p className="mt-1 text-[11.5px] leading-tight text-muted">{s.label}</p>
+              <p className="mt-1 text-[12px] leading-tight text-muted">{s.label}</p>
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden><div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((s.count / max) * 100)}%` }} /></div>
             </li>
           ))}
@@ -226,6 +233,8 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
   const [query, setQuery] = React.useState("");
   const [found, setResults] = React.useState<Array<{ id: string; name: string; detail: string; stage: string }>>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [excluding, setExcluding] = React.useState<{ id: string; name: string } | null>(null);
+  const [reason, setReason] = React.useState("");
 
   React.useEffect(() => {
     if (!canEdit || query.trim().length < 2) return;
@@ -257,7 +266,7 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Matching contacts">
                 {results.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2">
-                    <span className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]"><span className="font-medium">{r.name}</span><InfoChip>{r.detail}</InfoChip><InfoChip>{r.stage}</InfoChip></span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-2 text-[14px]"><span className="font-medium">{r.name}</span><InfoChip>{r.detail}</InfoChip><InfoChip>{r.stage}</InfoChip></span>
                     <Button size="sm" variant="secondary" loading={busy === r.id} onClick={async () => { setBusy(r.id); const res = await markCustomerAction(r.id); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(`${r.name} is now a customer.`); setQuery(""); router.refresh(); }}><UserPlus className="size-3.5" /> Mark as customer</Button>
                   </li>
                 ))}
@@ -280,7 +289,24 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
                   </div>
                 </div>
                 {canEdit && (
-                  <Button size="sm" variant="secondary" loading={busy === c.id} onClick={async () => { setBusy(c.id); const res = await setRetentionPausedAction(c.id, !c.paused); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(c.paused ? "Included again" : "Excluded. Anything planned was stopped."); router.refresh(); }}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={busy === c.id}
+                    onClick={async () => {
+                      // Excluding someone is a deliberate choice with a reason of your own; including them again is not.
+                      if (!c.paused) {
+                        setReason("");
+                        return void setExcluding({ id: c.id, name: c.name });
+                      }
+                      setBusy(c.id);
+                      const res = await setRetentionPausedAction(c.id, false);
+                      setBusy(null);
+                      if (!res.ok) return void toast.error(res.error);
+                      toast.success("Included again");
+                      router.refresh();
+                    }}
+                  >
                     {c.paused ? <><Play className="size-3.5" /> Include again</> : <><Pause className="size-3.5" /> Exclude</>}
                   </Button>
                 )}
@@ -289,6 +315,39 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
           </ul>
         )}
       </CardContent>
+      <Dialog
+        open={Boolean(excluding)}
+        onOpenChange={(o) => !o && setExcluding(null)}
+        size="sm"
+        title={`Exclude ${excluding?.name ?? "this customer"} from automatic messages?`}
+        description="Customer programs stop for them, and so do automatic review requests from workflows and the API. A teammate can still message them or ask them for a review by hand. You can include them again at any time."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setExcluding(null)}>Cancel</Button>
+            <Button
+              variant="brand"
+              loading={Boolean(excluding && busy === excluding.id)}
+              disabled={reason.trim().length < 5}
+              onClick={async () => {
+                if (!excluding) return;
+                setBusy(excluding.id);
+                const res = await setRetentionPausedAction(excluding.id, true, reason.trim());
+                setBusy(null);
+                if (!res.ok) return void toast.error(res.error);
+                toast.success("Excluded. Anything planned was stopped.");
+                setExcluding(null);
+                router.refresh();
+              }}
+            >
+              Exclude
+            </Button>
+          </>
+        }
+      >
+        <Field label="Why are you excluding them?" htmlFor="exclude-reason" hint="At least a few words. It is kept in the audit trail and nothing is sent to the customer.">
+          <Textarea id="exclude-reason" rows={3} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} className="text-[16px] sm:text-[14px]" />
+        </Field>
+      </Dialog>
     </Card>
   );
 }
@@ -314,7 +373,7 @@ function Activity({ rows }: { rows: RetentionActivityRow[] }) {
               <li key={r.id} className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface-2/50">
                 <AvatarTile name={r.contactName} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold" title={`${r.contactName} · ${r.program}`}>{r.contactName}</p>
+                  <p className="truncate text-[14px] font-semibold" title={`${r.contactName} · ${r.program}`}>{r.contactName}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <InfoChip>{r.program}</InfoChip>
                     <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(r.at)}</span></InfoChip>

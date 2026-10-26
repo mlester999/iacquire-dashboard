@@ -41,7 +41,7 @@ export function FieldsManager({ scope, entity, fields, entities }: { scope: CrmS
       <nav aria-label="Record type" className="mb-4 flex gap-1">
         {entities.map((e) => (
           <Link key={e} href={`${scope.base}/fields${e === "contact" ? "" : `?entity=${e}`}`} aria-current={e === entity ? "page" : undefined}
-            className={cn("inline-flex min-h-11 items-center rounded-xl px-3.5 text-[13.5px] font-medium sm:min-h-9", e === entity ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:text-ink")}>
+            className={cn("inline-flex min-h-11 items-center rounded-xl px-3.5 text-[14px] font-medium sm:min-h-9", e === entity ? "bg-surface text-ink shadow-soft ring-1 ring-line" : "text-muted hover:text-ink")}>
             {ENTITY_LABEL[e]}
           </Link>
         ))}
@@ -61,7 +61,7 @@ export function FieldsManager({ scope, entity, fields, entities }: { scope: CrmS
                   {f.groupName && <span className="text-[12px] font-normal text-muted">in {f.groupName}</span>}
                 </p>
                 <p className="mt-0.5 truncate text-[12px] text-muted">
-                  <code className="rounded bg-surface-2 px-1 py-0.5 text-[11.5px]">{f.key}</code>
+                  <code className="rounded bg-surface-2 px-1 py-0.5 text-[12px]">{f.key}</code>
                   {f.options.length ? ` · ${f.options.map((o) => o.label).join(", ")}` : ""}
                   {` · ${f.valueCount.toLocaleString("en-US")} ${f.valueCount === 1 ? "record has" : "records have"} a value`}
                 </p>
@@ -81,13 +81,13 @@ export function FieldsManager({ scope, entity, fields, entities }: { scope: CrmS
 
       {archived.length > 0 && (
         <div className="mt-5">
-          <button type="button" className="text-[13px] font-medium text-muted hover:text-ink" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
+          <button type="button" className="text-[14px] font-medium text-muted hover:text-ink" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
             {showArchived ? "Hide" : "Show"} {archived.length} archived {archived.length === 1 ? "field" : "fields"}
           </button>
           {showArchived && (
             <ul className="mt-2 divide-y divide-line rounded-2xl border border-dashed border-line">
               {archived.map((f) => (
-                <li key={f.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[13px]">
+                <li key={f.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
                   <span className="text-muted">{f.label} · {FIELD_TYPE_LABELS[f.type]} · {f.valueCount} values kept</span>
                   {canManage && <Button size="sm" variant="ghost" onClick={() => run(`arch-${f.id}`, () => archiveFieldAction(scope.orgId, f.id, false), "Field restored.")}><ArchiveRestore className="size-4" />Restore</Button>}
                 </li>
@@ -136,7 +136,7 @@ function FieldDialog({ scope, entity, field, onClose }: { scope: CrmScope; entit
           </Field>
         )}
         <Field label="Help text" htmlFor="cf-help" optional className="sm:col-span-2"><Input id="cf-help" value={helpText} onChange={(e) => setHelpText(e.target.value)} maxLength={200} /></Field>
-        <label className="flex items-center gap-2.5 text-[13px] text-ink-2 sm:col-span-2">
+        <label className="flex items-center gap-2.5 text-[14px] text-ink-2 sm:col-span-2">
           <Switch checked={required} onCheckedChange={setRequired} aria-label="Required" />
           Required when someone adds or edits a record by hand (imports and automations may leave it empty)
         </label>

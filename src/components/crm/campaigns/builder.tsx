@@ -200,7 +200,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
     <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-4">
         {(pending || approvedNotStarted) && canEdit && (
-          <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[12.5px] leading-relaxed text-warning-ink">
+          <p className="flex gap-2 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             {pending ? "Saving a change to the list, message, schedule or pace withdraws the approval request, and the owner is asked again." : "This campaign is approved. Saving a change to the list, message, schedule or pace withdraws the approval and puts it back to draft."}
           </p>
@@ -213,9 +213,9 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             </Field>
 
             <div className="space-y-1.5">
-              <p className="text-[13px] font-medium text-ink-2">Channel</p>
+              <p className="text-[14px] font-medium text-ink-2">Channel</p>
               <Segmented id="cb-channel" ariaLabel="Channel" value={form.channel} onChange={(v) => set("channel", v)} options={CHANNELS.map((ch) => ({ value: ch, label: CHANNEL_LABELS[ch] }))} />
-              {channelProblem ? <p className="text-[12.5px] text-warning-ink">{channelProblem}</p> : <p className="text-[12.5px] text-muted">It reaches only people who agreed to receive marketing by {CHANNEL_LABELS[form.channel]}.</p>}
+              {channelProblem ? <p className="text-[13px] text-warning-ink">{channelProblem}</p> : <p className="text-[13px] text-muted">It reaches only people who agreed to receive marketing by {CHANNEL_LABELS[form.channel]}.</p>}
             </div>
 
             <Field
@@ -251,9 +251,9 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.approvedVersion ? ` (v${t.approvedVersion})` : ""}{t.problem ? ` · ${t.problem.toLowerCase()}` : ""}</option>)}
               </Select>
             </Field>
-            {templates.length === 0 && <p className="-mt-3 text-[12.5px] text-muted">There are no {CHANNEL_LABELS[form.channel]} templates yet. Write one in Templates and have it approved for marketing.</p>}
+            {templates.length === 0 && <p className="-mt-3 text-[13px] text-muted">There are no {CHANNEL_LABELS[form.channel]} templates yet. Write one in Templates and have it approved for marketing.</p>}
             {canEdit && !dirty && chosenTemplate && chosenTemplate.id === campaign.templateId && chosenTemplate.approvedVersion && campaign.templateVersion && chosenTemplate.approvedVersion !== campaign.templateVersion && (
-              <div className="-mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink">
+              <div className="-mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">
                 <span>This campaign uses v{campaign.templateVersion}; “{chosenTemplate.name}” now has approved wording v{chosenTemplate.approvedVersion}.</span>
                 <Button size="sm" variant="secondary" loading={busy("version")} onClick={() => switchToApprovedVersion(chosenTemplate.id)}>Use v{chosenTemplate.approvedVersion}</Button>
               </div>
@@ -261,12 +261,12 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             {chosenTemplate && message && (
               <div className="-mt-2 rounded-2xl border border-line bg-surface-2/60 p-3">
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <p className="text-[11.5px] font-semibold uppercase tracking-wider text-faint">Exact wording · v{message.version}</p>
-                  {message.whatsappTemplate && <Badge className="h-5 px-2 text-[11px]">WhatsApp template “{message.whatsappTemplate.name}”</Badge>}
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-faint">Exact wording · v{message.version}</p>
+                  {message.whatsappTemplate && <Badge className="h-5 px-2 text-[12px]">WhatsApp template “{message.whatsappTemplate.name}”</Badge>}
                 </div>
-                {message.subject && <p className="text-[13px] font-medium text-ink">{message.subject}</p>}
-                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{message.body}</p>
-                <details className="mt-2 text-[12.5px]">
+                {message.subject && <p className="text-[14px] font-medium text-ink">{message.subject}</p>}
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{message.body}</p>
+                <details className="mt-2 text-[13px]">
                   <summary className="cursor-pointer font-medium text-primary">With sample contact details</summary>
                   <div className="mt-1.5 rounded-xl bg-surface p-2.5">
                     {message.sampleSubject && <p className="font-medium text-ink">{message.sampleSubject}</p>}
@@ -277,7 +277,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             )}
 
             <div className="space-y-1.5">
-              <p className="text-[13px] font-medium text-ink-2">When it starts</p>
+              <p className="text-[14px] font-medium text-ink-2">When it starts</p>
               <Segmented id="cb-mode" ariaLabel="When it starts" value={form.mode} onChange={(v) => set("mode", v)} options={[{ value: "now", label: "As soon as it's approved" }, { value: "later", label: "At a set time" }]} />
               {form.mode === "later" && (
                 <div className="grid gap-3 pt-1 sm:grid-cols-2">
@@ -294,7 +294,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             <Field label="Pace" htmlFor="cb-rate" error={errors.rate ?? null} hint="The most messages it queues in any minute. Your channel's own limits still apply.">
               <div className="flex items-center gap-2">
                 <Input id="cb-rate" type="number" inputMode="numeric" min={1} max={600} step={1} value={form.rate} onChange={(e) => set("rate", e.target.value)} className="max-w-32" aria-invalid={errors.rate ? true : undefined} />
-                <span className="text-[13px] text-muted">messages a minute</span>
+                <span className="text-[14px] text-muted">messages a minute</span>
               </div>
             </Field>
           </fieldset>
@@ -303,7 +303,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
               <Button onClick={save} loading={busy("save")} disabled={!dirty}><Save className="size-4" aria-hidden />Save draft</Button>
               {dirty && <Button variant="ghost" onClick={() => { setForm(saved); setErrors({}); }}><Undo2 className="size-4" aria-hidden />Discard changes</Button>}
               {onDone && !dirty && <Button variant="ghost" onClick={onDone}>Done</Button>}
-              <span className="text-[12.5px] text-muted" aria-live="polite">{dirty ? "Unsaved changes. The preview shows them; approval covers the saved campaign." : "All changes saved."}</span>
+              <span className="text-[13px] text-muted" aria-live="polite">{dirty ? "Unsaved changes. The preview shows them; approval covers the saved campaign." : "All changes saved."}</span>
             </div>
           )}
         </Card>
@@ -313,11 +313,11 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
         <PreviewPanel preview={preview} channel={form.channel} ratePerMinute={Number(form.rate) || campaign.ratePerMinute} loading={loading} error={previewError} />
 
         <Card className="p-4">
-          <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden />Owner approval</h3>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+          <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink"><ShieldCheck className="size-4 text-muted" aria-hidden />Owner approval</h3>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">
             Sending needs the workspace owner&apos;s approval of exactly this: the channel, the list and its filter, the message version and the business details and configuration values it uses, when it starts and its pace. Any change voids it.
           </p>
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
             <span className={campaign.approval === "approved" ? "text-success-ink" : campaign.approval === "pending" ? "text-warning-ink" : "text-ink-2"}>{APPROVAL_STATE[campaign.approval].label}</span>
             {campaign.approvalInfo?.requestedByName && campaign.approval === "pending" && <span className="text-muted">· asked by {campaign.approvalInfo.requestedByName}</span>}
             {preview?.fingerprint && <Fingerprint hash={preview.fingerprint} />}
@@ -337,7 +337,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             </div>
           )}
           {pending && !canSend && (
-            <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
+            <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
               The owner decides here or in <Link href="/approvals" className="font-medium text-primary hover:underline">Approvals<ExternalLink className="ml-0.5 inline size-3" aria-hidden /></Link>.
             </p>
           )}
@@ -354,7 +354,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
         onConfirm={confirm === "approve" && pending ? approve : request}
       >
         {preview && (
-          <dl className="grid gap-x-3 gap-y-1.5 text-[13px] sm:grid-cols-[max-content_minmax(0,1fr)]">
+          <dl className="grid gap-x-3 gap-y-1.5 text-[14px] sm:grid-cols-[max-content_minmax(0,1fr)]">
             <dt className="text-muted">Channel</dt><dd className="text-ink">{CHANNEL_LABELS[form.channel]}</dd>
             <dt className="text-muted">Audience</dt><dd className="text-ink">{preview.list?.name}: {(preview.eligible ?? 0).toLocaleString("en-US")} of {(preview.list?.total ?? 0).toLocaleString("en-US")} can receive it now</dd>
             <dt className="text-muted">Message</dt><dd className="text-ink">{message?.templateName} (v{message?.version})</dd>
@@ -364,7 +364,7 @@ export function CampaignBuilder({ scope, campaign, options, filterOptions, initi
             <dt className="text-muted">Fingerprint</dt><dd><Fingerprint hash={preview.fingerprint} /></dd>
           </dl>
         )}
-        <p className="mt-3 text-[12.5px] leading-relaxed text-muted">Consent, opt-outs, quiet hours, business hours, the frequency limit and credits are still checked for each person when it sends.</p>
+        <p className="mt-3 text-[13px] leading-relaxed text-muted">Consent, opt-outs, quiet hours, business hours, the frequency limit and credits are still checked for each person when it sends.</p>
       </ConfirmDialog>
 
       <Dialog

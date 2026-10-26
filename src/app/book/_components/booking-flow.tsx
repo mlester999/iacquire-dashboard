@@ -173,7 +173,7 @@ export function BookingFlow({
   };
 
   const facts = (
-    <ul className="mt-4 space-y-2.5 text-[13.5px] text-ink-2">
+    <ul className="mt-4 space-y-2.5 text-[14px] text-ink-2">
       <li className="flex items-center gap-2.5"><Clock className="size-4 shrink-0 text-muted" aria-hidden />{durationLabel(type.durationMinutes)}</li>
       {type.locationLabel && <li className="flex items-center gap-2.5"><LocationIcon kind={type.locationKind} className="size-4 shrink-0 text-muted" />{type.locationLabel}</li>}
       {type.capacity > 1 && <li className="flex items-center gap-2.5"><Users className="size-4 shrink-0 text-muted" aria-hidden />Group session, up to {type.capacity} people</li>}
@@ -186,16 +186,16 @@ export function BookingFlow({
       <div className="grid lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="border-b border-line p-4 sm:p-6 lg:border-b-0 lg:border-r">
           {typeCount > 1 && (
-            <Link href={bookingUrl(slugs.org, slugs.calendar)} className="mb-4 inline-flex min-h-11 items-center gap-1.5 rounded-lg text-[13px] font-medium text-primary-ink hover:underline sm:min-h-0">
+            <Link href={bookingUrl(slugs.org, slugs.calendar)} className="mb-4 inline-flex min-h-11 items-center gap-1.5 rounded-lg text-[14px] font-medium text-primary-ink hover:underline sm:min-h-0">
               <ArrowLeft className="size-4" aria-hidden />All appointment types
             </Link>
           )}
-          <p className="text-[12.5px] font-medium text-muted">{calendar.name}</p>
+          <p className="text-[13px] font-medium text-muted">{calendar.name}</p>
           <h1 className="mt-1 text-[22px] font-semibold leading-tight tracking-[-0.03em] text-ink">{type.name}</h1>
           {facts}
-          {type.description && <p className="mt-4 whitespace-pre-line text-[13.5px] leading-relaxed text-muted">{type.description}</p>}
+          {type.description && <p className="mt-4 whitespace-pre-line text-[14px] leading-relaxed text-muted">{type.description}</p>}
           {slot && step !== "time" && (
-            <div className="mt-5 rounded-xl border border-primary/20 bg-primary-soft px-3.5 py-3 text-[13px] text-primary-ink">
+            <div className="mt-5 rounded-xl border border-primary/20 bg-primary-soft px-3.5 py-3 text-[14px] text-primary-ink">
               <p className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4" aria-hidden />{formatDate(slot.start, timeZone)}</p>
               <p className="mt-1 tabular-nums">{formatTimeRange(slot.start, slot.end, timeZone)}</p>
               <p className="mt-0.5 text-[12px] opacity-80">{zoneLabel(timeZone)}</p>
@@ -209,7 +209,7 @@ export function BookingFlow({
               <li key={s} className="flex items-center gap-2" aria-current={step === s ? "step" : undefined}>
                 {i > 0 && <span aria-hidden className="h-px w-4 bg-line-strong" />}
                 <span className={cn("inline-flex items-center gap-1.5", step === s && "text-ink")}>
-                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full border text-[11px]", step === s ? "border-primary bg-primary text-white" : "border-line-strong")}>{i + 1}</span>
+                  <span className={cn("inline-flex size-5 items-center justify-center rounded-full border text-[12px]", step === s ? "border-primary bg-primary text-primary-on" : "border-line-strong")}>{i + 1}</span>
                   {s === "time" ? "Time" : s === "details" ? "Details" : "Confirm"}
                 </span>
               </li>
@@ -217,7 +217,7 @@ export function BookingFlow({
           </ol>
 
           {banner && (
-            <div role="alert" className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">
+            <div role="alert" className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[14px] text-danger-ink">
               <p className="flex min-w-0 items-start gap-2"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /><span>{banner.text}</span></p>
               {banner.reload && <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()}>Reload page</Button>}
             </div>
@@ -235,7 +235,7 @@ export function BookingFlow({
               />
               {slot && (
                 <div className="sticky bottom-0 -mx-4 mt-6 flex flex-col gap-3 border-t border-line bg-surface/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                  <p className="text-[13.5px] text-ink-2"><span className="font-semibold text-ink">{formatShortDate(slot.start, timeZone)}</span> at <span className="font-semibold text-ink tabular-nums">{formatTime(slot.start, timeZone)}</span></p>
+                  <p className="text-[14px] text-ink-2"><span className="font-semibold text-ink">{formatShortDate(slot.start, timeZone)}</span> at <span className="font-semibold text-ink tabular-nums">{formatTime(slot.start, timeZone)}</span></p>
                   <Button type="button" onClick={() => go("details")}>Continue</Button>
                 </div>
               )}
@@ -286,7 +286,7 @@ export function BookingFlow({
                 <label htmlFor="bf-website">Website</label>
                 <input id="bf-website" name="website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
               </div>
-              <p className="mt-5 text-[12.5px] leading-relaxed text-muted">
+              <p className="mt-5 text-[13px] leading-relaxed text-muted">
                 {business.name} will use these details to manage this appointment and to contact you about it. After you book, keep the link
                 on the next page: it&apos;s how you see this booking later.
               </p>
@@ -301,7 +301,7 @@ export function BookingFlow({
               <div className="mb-5 flex items-center justify-between gap-3">
                 <h2 id="bf-step-heading" ref={headingRef} tabIndex={-1} className="text-[17px] font-semibold tracking-[-0.02em] text-ink outline-none">Review and confirm</h2>
               </div>
-              <dl className="divide-y divide-line rounded-xl border border-line text-[13.5px]">
+              <dl className="divide-y divide-line rounded-xl border border-line text-[14px]">
                 {([
                   ["Appointment", type.name],
                   ["Date", formatDate(slot.start, timeZone)],
@@ -320,7 +320,7 @@ export function BookingFlow({
                 ))}
               </dl>
               {type.requiresConfirmation && (
-                <p className="mt-4 rounded-xl bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">{business.name} confirms each booking. You&apos;ll see it as a request until they do.</p>
+                <p className="mt-4 rounded-xl bg-warning-soft px-4 py-3 text-[14px] text-warning-ink">{business.name} confirms each booking. You&apos;ll see it as a request until they do.</p>
               )}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button type="button" variant="secondary" onClick={() => go("details")} disabled={submitting}>Edit details</Button>

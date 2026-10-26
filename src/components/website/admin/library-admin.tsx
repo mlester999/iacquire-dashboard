@@ -78,10 +78,10 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
     <div className="space-y-5">
       <GalleryFilters cards={templates} value={filters} onChange={setFilters} actions={<Button variant="brand" className="h-11" onClick={() => setCreating(true)}><Plus className="size-4" /> New template</Button>} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Template collection" className="scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+        <div role="group" aria-label="Template collection" className="relative scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {TABS.map((t) => {
             const n = scope.filter(t.match).length;
-            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
+            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[12px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3 text-ink-2")}>{n}</span></button>;
           })}
         </div>
         <p role="status" className="text-[12px] text-muted">{list.length} template{list.length === 1 ? "" : "s"} <span className="text-faint">· counts match your filters</span></p>
@@ -99,26 +99,26 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                     <TemplateThumb card={t} frameBase={frameBase} priority={index < 3} draft={t.kind === "custom"} />
                   </button>
                   <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
-                    {t.featured && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink/85 px-2.5 text-[11px] font-semibold text-white shadow-soft backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
-                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[11px] font-semibold text-white shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
+                    {t.featured && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink/85 px-2.5 text-[12px] font-semibold text-white shadow-soft backdrop-blur"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
+                    {t.kind === "custom" && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary px-2.5 text-[12px] font-semibold text-primary-on shadow-soft"><Sparkles className="size-3" aria-hidden /> Agency design</span>}
                   </div>
                 </div>
                 <div className="flex flex-1 flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0"><p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted" title={t.familyName}>{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight" title={t.name}>{t.name}</h2></div>
+                    <div className="min-w-0"><p className="truncate text-[12px] font-semibold uppercase tracking-[.12em] text-muted" title={t.familyName}>{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight" title={t.name}>{t.name}</h2></div>
                     <StatusPill tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</StatusPill>
                   </div>
-                  <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted" title={t.description || undefined}>{t.description || "No description yet."}</p>
+                  <p className="line-clamp-2 text-[13px] leading-relaxed text-muted" title={t.description || undefined}>{t.description || "No description yet."}</p>
                   {t.unpublishedChanges && <div><StatusPill tone="warning" size="sm">Changes awaiting publication</StatusPill></div>}
                   {(t.industries.length > 0 || t.tags.length > 0) && (
                     <ul className="flex flex-wrap gap-1.5" aria-label="Industries and tags">
-                      {t.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).map((x) => <li key={x} className="max-w-full"><span className="inline-flex h-6 max-w-full items-center rounded-lg bg-primary-soft px-2 text-[11.5px] font-medium text-primary-ink ring-1 ring-inset ring-primary/15"><span className="truncate">{x}</span></span></li>)}
+                      {t.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).map((x) => <li key={x} className="max-w-full"><span className="inline-flex h-6 max-w-full items-center rounded-lg bg-primary-soft px-2 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-primary/15"><span className="truncate">{x}</span></span></li>)}
                       {t.tags.slice(0, 3).map((x) => <li key={x} className="max-w-full"><InfoChip className="capitalize">{x}</InfoChip></li>)}
                     </ul>
                   )}
                   <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-4">
                     <Button size="sm" variant="secondary" className="max-sm:h-10" onClick={() => setPreview(t)}><Eye className="size-3.5" /> Preview</Button>
-                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Customize</Link>}
+                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[14px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Customize</Link>}
                     {t.kind === "builtin" && <Button size="sm" variant="soft" className="max-sm:h-10" loading={busy === `dup-${t.key}`} onClick={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Created an editable copy.")}><Copy className="size-3.5" /> Customize</Button>}
                     <Menu>
                       <MenuTrigger asChild><Button size="sm" variant="ghost" className="ml-auto max-sm:h-10" aria-label={`More for ${t.name}`}><MoreHorizontal className="size-4" /> More</Button></MenuTrigger>
@@ -211,14 +211,14 @@ function EditDialog({ t, showUsage, onClose, onSaved }: { t: TemplateView; /** U
           <div><dt className="text-muted">Current version</dt><dd className="mt-1 font-medium">{t.version || "Unpublished"}</dd></div>
           {showUsage && <div><dt className="text-muted">Websites started from it</dt><dd className="mt-1 font-medium">{t.sitesUsing} <span className="font-normal text-muted">across all clients</span></dd></div>}
           <div><dt className="text-muted">Last updated</dt><dd className="mt-1 font-medium">{t.updatedAt ? relativeTime(t.updatedAt) : "Built-in collection"}{t.updatedByName ? ` by ${t.updatedByName}` : ""}</dd></div>
-          <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1.5"><code className="block break-all rounded-lg bg-surface px-2 py-1.5 font-mono text-[11px] text-ink-2 ring-1 ring-inset ring-line">{t.key}</code></dd></div>
+          <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1.5"><code className="block break-all rounded-lg bg-surface px-2 py-1.5 font-mono text-[12px] text-ink-2 ring-1 ring-inset ring-line">{t.key}</code></dd></div>
         </dl>
         {t.kind === "custom" && <Row label="Name" htmlFor="ed-name"><TextControl id="ed-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></Row>}
         {t.kind === "custom" && <Row label="Short description" htmlFor="ed-desc"><AreaControl id="ed-desc" rows={2} value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} /></Row>}
         <Row label="Industries">
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Industries">
             {INDUSTRY_FILTERS.map((i) => (
-              <button key={i.id} type="button" aria-pressed={industries.includes(i.id)} onClick={() => setIndustries((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} className={cn("h-10 rounded-full border px-3.5 text-[12px] font-medium transition-colors sm:h-8", industries.includes(i.id) ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2")}>{i.label}</button>
+              <button key={i.id} type="button" aria-pressed={industries.includes(i.id)} onClick={() => setIndustries((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} className={cn("h-10 rounded-full border px-3.5 text-[12px] font-medium transition-colors sm:h-8", industries.includes(i.id) ? "border-primary bg-primary text-primary-on" : "border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2")}>{i.label}</button>
             ))}
           </div>
         </Row>
@@ -239,11 +239,11 @@ function HistoryDialog({ t, onClose, onRestored }: { t: TemplateView; onClose: (
   }, [t.id]);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Versions of ${t.name}`} description="Each publication is kept. Restoring one puts it into the working copy; it isn't offered to clients until it is published again.">
-      {!list ? <p className="py-6 text-center text-[13px] text-muted" role="status">Loading versions…</p> : list.length === 0 ? <EmptyState compact icon={<History className="size-5" />} title="Not published yet" description="There are no versions until this template is published." /> : (
+      {!list ? <p className="py-6 text-center text-[14px] text-muted" role="status">Loading versions…</p> : list.length === 0 ? <EmptyState compact icon={<History className="size-5" />} title="Not published yet" description="There are no versions until this template is published." /> : (
         <ul className="divide-y divide-line">
           {list.map((v) => (
             <li key={v.version} className="flex items-center justify-between gap-3 py-3">
-              <div><p className="text-[14px] font-semibold">Version {v.version}</p><div className="mt-1 flex flex-wrap gap-1.5"><InfoChip><RelativeTime value={v.createdAt} /></InfoChip>{v.createdByName && <InfoChip>{v.createdByName}</InfoChip>}</div>{v.note && <p className="mt-1.5 text-[12.5px] italic text-ink-2">“{v.note}”</p>}</div>
+              <div><p className="text-[14px] font-semibold">Version {v.version}</p><div className="mt-1 flex flex-wrap gap-1.5"><InfoChip><RelativeTime value={v.createdAt} /></InfoChip>{v.createdByName && <InfoChip>{v.createdByName}</InfoChip>}</div>{v.note && <p className="mt-1.5 text-[13px] italic text-ink-2">“{v.note}”</p>}</div>
               <Button size="sm" variant="secondary" loading={busy === v.version} onClick={async () => { setBusy(v.version); const r = await restoreTemplateVersionAction(t.id!, v.version); setBusy(null); if (!r.ok) return void toast.error(r.error); toast.success(`Version ${v.version} is back in the working copy.`); onRestored(); }}>Restore to working copy</Button>
             </li>
           ))}

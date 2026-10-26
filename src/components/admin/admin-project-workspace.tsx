@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Calendar, Check, CircleDollarSign, Download, FileText, FolderOpen, Lock, Plus, Receipt, Send, Trash2, MessageSquare, Flag, ClipboardCheck, UserRound, Clock, ListChecks, Megaphone, Paperclip, Inbox } from "lucide-react";
+import { Calendar, Check, CircleDollarSign, Download, FileText, FolderOpen, Lock, PencilRuler, Plus, Receipt, Send, Trash2, MessageSquare, Flag, ClipboardCheck, UserRound, Clock, ListChecks, Megaphone, Paperclip, Inbox } from "lucide-react";
+import { AdminChangePanel, AdminPrerequisitesPanel, AdminTermsCard } from "@/components/admin/admin-change-panel";
 import { MetricCard } from "@/components/ui/workspace";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -44,17 +45,20 @@ export function AdminProjectWorkspace({ project: p, currentUserId }: { project: 
     <div className="space-y-5">
       <HeaderCard project={p} currentUserId={currentUserId} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard label="Delivery milestones" value={p.milestones.length?`${p.milestones.filter(m=>m.status==="completed").length}/${p.milestones.length}`:"Not set"} detail="Completed against agreed scope" tone="green" icon={<Flag className="size-4"/>}/><MetricCard label="Conversation" value={p.messages.length} detail="Client and internal messages" tone="blue" icon={<MessageSquare className="size-4"/>}/><MetricCard label="Agency tasks" value={p.tasks.length} detail="Outstanding work for this request" tone="amber" icon={<ClipboardCheck className="size-4"/>}/><MetricCard label="Assigned owner" value={<span className="text-lg">{p.assignedTo?.name??"Unassigned"}</span>} detail={p.orgName} tone="neutral" icon={<UserRound className="size-4"/>}/></div>
-      <nav aria-label="Project workspace sections" className="scrollbar-thin flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1.5 shadow-soft">{[{id:"conversation",label:"Conversation",icon:MessageSquare},{id:"quote",label:"Quote builder",icon:Receipt},{id:"milestones",label:"Milestones",icon:Flag},{id:"updates",label:"Progress updates",icon:Megaphone}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink [&>svg]:size-3.5 [&>svg]:text-muted"><s.icon />{s.label}</a>)}</nav>
+      <nav aria-label="Project workspace sections" className="relative scrollbar-thin flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1.5 shadow-soft lg:flex-wrap lg:overflow-visible">{[{id:"conversation",label:"Conversation",icon:MessageSquare},{id:"quote",label:"Quote builder",icon:Receipt},{id:"changes",label:p.changes.length?`Changes (${p.changes.length})`:"Changes",icon:PencilRuler},{id:"prerequisites",label:"Before work starts",icon:ClipboardCheck},{id:"milestones",label:"Milestones",icon:Flag},{id:"updates",label:"Progress updates",icon:Megaphone}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink [&>svg]:size-3.5 [&>svg]:text-muted"><s.icon />{s.label}</a>)}</nav>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <div id="agency-project-conversation" className="scroll-mt-24"><Conversation project={p} closed={closed}/></div>
           <div id="agency-project-quote" className="scroll-mt-24"><QuoteBuilder project={p}/></div>
+          <div id="agency-project-changes" className="scroll-mt-24"><AdminChangePanel project={p}/></div>
+          <div id="agency-project-prerequisites" className="scroll-mt-24"><AdminPrerequisitesPanel project={p}/></div>
           <div id="agency-project-milestones" className="scroll-mt-24"><MilestonesEditor project={p} closed={closed}/></div>
           <div id="agency-project-updates" className="scroll-mt-24"><UpdatesPanel project={p} closed={closed}/></div>
           {r.status === "ready_for_review" && <HandoverCard project={p} />}
         </div>
         <aside className="min-w-0 space-y-5">
           {p.tasks.length > 0 && <TasksCard project={p} />}
+          <AdminTermsCard project={p} />
           <RequestInfo project={p} />
           <NotesCard project={p} />
           <FilesPanel project={p} closed={closed} />
@@ -87,14 +91,14 @@ function HeaderCard({ project: p, currentUserId }: { project: AgencyProjectDetai
       <CardContent className="grid gap-5 pt-5 lg:grid-cols-[1fr_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-muted ring-1 ring-inset ring-line">{r.ref}</span>
+            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-muted ring-1 ring-inset ring-line">{r.ref}</span>
             <StatusPill tone={PROJECT_STATUS_TONE[r.status]}>{PROJECT_STATUS_LABEL[r.status]}</StatusPill>
             {r.serviceName && <InfoChip>{r.serviceName}</InfoChip>}
           </div>
           <h1 className="mt-2 text-[24px] font-semibold leading-tight tracking-[-0.02em]">{r.title}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <Link href={`/admin/clients/${r.orgId}`} className="inline-flex h-7 items-center gap-2 rounded-lg bg-surface pl-1 pr-2.5 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-line hover:bg-primary-soft">
-              <AvatarTile name={p.orgName} size="sm" className="!size-5 !rounded-md !text-[8.5px]" />
+              <AvatarTile name={p.orgName} size="sm" className="!size-5 !rounded-md !text-[12px]" />
               {p.orgName}
             </Link>
             {p.createdByName && <InfoChip icon={<UserRound />}>Requested by {p.createdByName}</InfoChip>}
@@ -149,7 +153,7 @@ function HeaderCard({ project: p, currentUserId }: { project: AgencyProjectDetai
               </Button>
             </div>
           ) : (
-            <p className="text-[12.5px] text-muted">This project is closed.</p>
+            <p className="text-[13px] text-muted">This project is closed.</p>
           )}
         </div>
       </CardContent>
@@ -171,10 +175,10 @@ function TasksCard({ project: p }: { project: AgencyProjectDetail }) {
       <CardContent>
         <ul className="space-y-2">
           {p.tasks.map((t) => (
-            <li key={t.id} className="flex items-start gap-2 rounded-xl bg-warning-soft/50 p-3 text-[13px]">
+            <li key={t.id} className="flex items-start gap-2 rounded-xl bg-warning-soft/50 p-3 text-[14px]">
               <span className="min-w-0 flex-1">
                 {t.title}
-                <span className="block text-[11.5px] text-muted">{t.dueAt ? `Due ${formatDate(t.dueAt)}` : "No due date"}</span>
+                <span className="block text-[12px] text-muted">{t.dueAt ? `Due ${formatDate(t.dueAt)}` : "No due date"}</span>
               </span>
               <Button
                 size="sm"
@@ -208,14 +212,14 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
             .filter((x) => x.answer)
             .map((x) => (
               <div key={x.key}>
-                <dt className="text-[11.5px] font-medium text-muted">{x.label}</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{/^\d{4}-\d{2}-\d{2}$/.test(x.answer ?? "") ? formatDate(x.answer as string) : x.answer}</dd>
+                <dt className="text-[12px] font-medium text-muted">{x.label}</dt>
+                <dd className="mt-0.5 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{/^\d{4}-\d{2}-\d{2}$/.test(x.answer ?? "") ? formatDate(x.answer as string) : x.answer}</dd>
               </div>
             ))}
         </dl>
         {p.suggestedServices.length > 0 && (
           <div className="border-t border-line pt-3">
-            <p className="text-[11.5px] font-medium text-muted">Matching published services</p>
+            <p className="text-[12px] font-medium text-muted">Matching published services</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {p.suggestedServices.map((s) => (
                 <Badge key={s.id} tone="outline">
@@ -223,7 +227,7 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
                 </Badge>
               ))}
             </div>
-            <p className="mt-1.5 text-[11.5px] text-faint">Keyword matches only. Review fit before quoting.</p>
+            <p className="mt-1.5 text-[12px] text-faint">Keyword matches only. Review fit before quoting.</p>
           </div>
         )}
         {(r.budgetRange || r.preferredDeadline) && (
@@ -292,15 +296,15 @@ function Conversation({ project: p, closed }: { project: AgencyProjectDetail; cl
         ) : (
           <ul className="space-y-3">
             {p.messages.map((m) => (
-              <li key={m.id} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed", m.internal ? "border border-dashed border-warning/50 bg-warning-soft/40" : m.authorKind === "client" ? "bg-primary-soft text-primary-ink" : "ml-auto bg-surface-2 text-ink-2")}>
+              <li key={m.id} className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed", m.internal ? "border border-dashed border-warning/50 bg-warning-soft/40" : m.authorKind === "client" ? "bg-primary-soft text-primary-ink" : "ml-auto bg-surface-2 text-ink-2")}>
                 {m.internal && (
-                  <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[.08em] text-warning-ink">
+                  <p className="mb-1 flex items-center gap-1 text-[12px] font-semibold uppercase tracking-[.08em] text-warning-ink">
                     <Lock className="size-3" /> Internal note
                   </p>
                 )}
-                {m.kind === "info_request" && <p className="mb-1 text-[11px] font-semibold uppercase tracking-[.08em] text-warning-ink">Information requested</p>}
+                {m.kind === "info_request" && <p className="mb-1 text-[12px] font-semibold uppercase tracking-[.08em] text-warning-ink">Information requested</p>}
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                <p className="mt-1.5 text-[11.5px]">
+                <p className="mt-1.5 text-[12px]">
                   {m.authorKind === "client" ? (m.authorName ?? "Client") : m.authorKind === "system" ? "System" : (m.authorName ?? "iAcquire")} · {formatDateTime(m.createdAt)}
                 </p>
               </li>
@@ -309,7 +313,7 @@ function Conversation({ project: p, closed }: { project: AgencyProjectDetail; cl
         )}
         {!closed && (
           <div className="space-y-2 border-t border-line pt-4">
-            <div role="radiogroup" aria-label="Message type" className="flex flex-wrap gap-1.5 text-[12.5px]">
+            <div role="radiogroup" aria-label="Message type" className="flex flex-wrap gap-1.5 text-[13px]">
               {(
                 [
                   ["message", "Reply to client"],
@@ -416,7 +420,7 @@ function QuoteBuilder({ project: p }: { project: AgencyProjectDetail }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {p.quotes.length === 0 && !editing && <EmptyState compact icon={<Receipt className="size-5" />} title="No quote yet" description="Only agency staff can set pricing; the client sees a quote only after you send it." />}
-        {locked && <p className="text-[12.5px] text-muted">A quote can&apos;t be added now that the project is {PROJECT_STATUS_LABEL[p.request.status].toLowerCase()}.</p>}
+        {locked && <p className="text-[13px] text-muted">A quote can&apos;t be added now that the project is {PROJECT_STATUS_LABEL[p.request.status].toLowerCase()}.</p>}
         {p.quotes.length > 0 && (
           <ul className="space-y-2">
             {p.quotes.map((q) => (
@@ -503,14 +507,14 @@ function QuoteRow({ q, requestId, live }: { q: QuoteView; requestId: string; liv
   const router = useRouter();
   const { run, isPending } = useRunner();
   return (
-    <li className="rounded-xl border border-line p-3.5 text-[13px]">
+    <li className="rounded-xl border border-line p-3.5 text-[14px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">
           v{q.version} · {formatMoney(q.oneTimeCents, q.currency)}
           {q.ongoingMonthlyCents ? ` + ${formatMoney(q.ongoingMonthlyCents, q.currency)}/mo` : ""}
         </span>
         <StatusPill tone={q.status === "accepted" ? "success" : q.status === "sent" ? "warning" : q.status === "declined" ? "danger" : "neutral"}>{QUOTE_STATUS_LABEL[q.status] ?? q.status}</StatusPill>
-        {q.firstViewedAt && live && <span className="text-[11.5px] text-muted">viewed {relativeTime(q.firstViewedAt)}</span>}
+        {q.firstViewedAt && live && <span className="text-[12px] text-muted">viewed {relativeTime(q.firstViewedAt)}</span>}
         {(live || q.status === "draft") && (
           <Button
             size="sm"
@@ -572,7 +576,7 @@ function MilestonesEditor({ project: p, closed }: { project: AgencyProjectDetail
             {p.milestones.map((m) => (
               <li key={m.id} className="flex flex-col gap-2 rounded-xl border border-line p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-medium">{m.title}</p>
+                  <p className="text-[14px] font-medium">{m.title}</p>
                   <p className="text-[12px] text-muted">
                     {m.requiresClientApproval ? "Needs client approval" : "No client approval"}
                     {m.dueOn ? ` · target ${formatDate(m.dueOn)}` : ""}
@@ -613,7 +617,7 @@ function MilestonesEditor({ project: p, closed }: { project: AgencyProjectDetail
             <Field label="Target date" htmlFor="ms-due" optional>
               <Input id="ms-due" type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />
             </Field>
-            <label className="flex items-center gap-2 text-[13px] text-ink-2 sm:col-span-2">
+            <label className="flex items-center gap-2 text-[14px] text-ink-2 sm:col-span-2">
               <input type="checkbox" checked={needsApproval} onChange={(e) => setNeedsApproval(e.target.checked)} /> The client must approve this milestone
             </label>
             <div className="sm:col-span-2">
@@ -643,7 +647,7 @@ function UpdatesPanel({ project: p, closed }: { project: AgencyProjectDetail; cl
           <div className="space-y-2">
             <Textarea aria-label="Progress update" rows={3} value={body} maxLength={4000} placeholder="Share what changed since the last update." onChange={(e) => setBody(e.target.value)} />
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+              <label className="flex items-center gap-2 text-[13px] text-ink-2">
                 <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} /> Visible to the client
               </label>
               <Button
@@ -669,7 +673,7 @@ function UpdatesPanel({ project: p, closed }: { project: AgencyProjectDetail; cl
             <li key={u.id} className="flex gap-3">
               <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", u.visibility === "internal" ? "bg-warning" : "bg-primary/60")} />
               <div className="min-w-0">
-                <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{u.body}</p>
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-2">{u.body}</p>
                 <p className="mt-0.5 text-[12px] text-faint">
                   {u.visibility === "internal" ? "Internal · " : ""}
                   {u.authorName ? `${u.authorName} · ` : ""}
@@ -688,20 +692,26 @@ function HandoverCard({ project: p }: { project: AgencyProjectDetail }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
   const [notes, setNotes] = React.useState("");
+  const [warranty, setWarranty] = React.useState(p.delivery?.warrantyDays != null ? String(p.delivery.warrantyDays) : "");
+  const [revisions, setRevisions] = React.useState(p.delivery?.revisionsIncluded != null ? String(p.delivery.revisionsIncluded) : "");
   return (
     <Card className="border-success/30">
       <CardHeader>
         <SectionTitle icon={<ClipboardCheck />} tone="success">Record completion &amp; handover</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-[13px] text-muted">Completes the project and shows these notes to the client: what was delivered, where it lives, and how to use it. All client-approval milestones must be complete first.</p>
+        <p className="text-[14px] text-muted">Completes the project and shows these notes to the client: what was delivered, where it lives, and how to use it. All client-approval milestones must be complete first, and so must anything asked for before the handover and every open change.</p>
         <Textarea aria-label="Handover notes" rows={5} value={notes} maxLength={4000} onChange={(e) => setNotes(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Support days after handover" htmlFor="ho-war" optional hint="The client sees the date it ends."><Input id="ho-war" type="number" inputMode="numeric" min={0} max={3650} value={warranty} onChange={(e) => setWarranty(e.target.value)} /></Field>
+          <Field label="Revisions included" htmlFor="ho-rev" optional hint="Fixed at handover."><Input id="ho-rev" type="number" inputMode="numeric" min={0} max={100} value={revisions} onChange={(e) => setRevisions(e.target.value)} /></Field>
+        </div>
         <Button
           variant="brand"
           loading={isPending("handover")}
           disabled={notes.trim().length < 10}
           onClick={async () => {
-            const ok = await run("handover", () => handoverAction(p.request.id, notes), "Project completed");
+            const ok = await run("handover", () => handoverAction(p.request.id, notes, { warrantyDays: warranty === "" ? null : Number(warranty), revisionsIncluded: revisions === "" ? null : Number(revisions) }), "Project completed");
             if (ok !== null) router.refresh();
           }}
         >
@@ -750,11 +760,11 @@ function FilesPanel({ project: p, closed }: { project: AgencyProjectDetail; clos
           <ul className="space-y-2">
             {p.files.map((f) => (
               <li key={f.id}>
-                <a href={`/api/projects/files/${f.id}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] hover:bg-surface-3">
+                <a href={`/api/projects/files/${f.id}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[14px] hover:bg-surface-3">
                   <FileText className="size-4 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{f.filename}</span>
-                    <span className="block text-[11px] text-faint">
+                    <span className="block text-[12px] text-faint">
                       {f.uploadedByKind === "client" ? "Client" : "Agency"} · {f.kind}
                       {f.visibility === "internal" ? " · internal" : ""} · {bytesLabel(f.sizeBytes)}
                     </span>
@@ -779,7 +789,7 @@ function FilesPanel({ project: p, closed }: { project: AgencyProjectDetail; clos
               </Select>
             </div>
             <input ref={ref} type="file" aria-label="Upload a file" accept=".pdf,.docx,.png,.jpg,.jpeg,.txt,.md,.csv" disabled={busy} onChange={(e) => void upload(e.target.files?.[0])} className="block w-full min-w-0 text-[12px] file:mr-3 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-ink" />
-            <p className="text-[11.5px] text-faint">Up to 10 MB. Stored privately.</p>
+            <p className="text-[12px] text-faint">Up to 10 MB. Stored privately.</p>
           </div>
         )}
       </CardContent>

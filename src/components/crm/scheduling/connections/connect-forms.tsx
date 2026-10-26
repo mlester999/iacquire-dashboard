@@ -68,7 +68,7 @@ export function CalDavDialog({ scope, preset, open, onOpenChange, initialLabel }
     >
       <form id={`${id}-form`} className="space-y-4" onSubmit={submit} noValidate>
         {icloud && (
-          <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+          <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px] leading-relaxed text-ink-2">
             <p className="font-medium text-ink">Create an app-specific password first</p>
             <ol className="mt-1 list-decimal space-y-0.5 pl-4">
               <li>Sign in at account.apple.com (two-factor authentication must be on).</li>

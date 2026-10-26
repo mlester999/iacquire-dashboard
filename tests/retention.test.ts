@@ -7,7 +7,7 @@ import { onBooking } from "@/server/messaging/followups";
 import { recordConsent, suppressAddress } from "@/server/messaging/contacts";
 import { JOBS } from "@/server/ops/tick";
 import { enrollEligible, prepareDueSteps } from "@/server/retention/engine";
-import { getLifecycleOverview, listPrograms, markCustomer, recentActivity, saveProgram, setProgramEnabled, setRetentionPaused } from "@/server/retention/service";
+import { getLifecycleOverview, listPrograms, markCustomer, recentActivity, saveProgram, searchNonCustomers, setProgramEnabled, setRetentionPaused } from "@/server/retention/service";
 import { DAILY_ENROLLMENT_CAP, DEFAULT_PROGRAMS, PROGRAM_KINDS, renderStep, stepDueAt, validateSteps, type ProgramKind } from "@/lib/retention";
 import { inbound, messagingOrg, recordingProvider, type MessagingOrg } from "./support/messaging";
 
@@ -454,5 +454,44 @@ describe("lifecycle, access and the scheduler", () => {
     const names = JOBS.map((j) => j.name);
     expect(names).toContain("retentionPrograms");
     expect(names.indexOf("retentionPrograms")).toBeLessThan(names.indexOf("messagesDispatched"));
+  });
+});
+
+describe("finding a contact to mark as a customer", () => {
+  // A mangled escape in the search made the whole query fail at run time (three placeholders, two values), so the Retention page's "add a customer" search never worked.
+  it("finds people who are not customers yet by name, email or the digits of their phone, in any case, and only them", async () => {
+    const quill = await inbound(m.org.id, { name: "Zedekiah Quillfeather" });
+    await withSystem((db) => db.query("update contacts set email = 'zed.quill@example.test' where id = $1", [quill.contactId]));
+    const names = async (q: string) => (await searchNonCustomers(m.ctx("sales"), q)).map((r) => r.name);
+    expect(await names("quillfeather")).toEqual(["Zedekiah Quillfeather"]);
+    expect(await names("ZEDEKIAH")).toEqual(["Zedekiah Quillfeather"]);
+    expect(await names("zed.quill@")).toEqual(["Zedekiah Quillfeather"]);
+    expect(await names(quill.address.slice(-7))).toContain("Zedekiah Quillfeather");
+    expect(await names(`+${quill.address.slice(1, 5)} ${quill.address.slice(5)}`)).toContain("Zedekiah Quillfeather");
+    const found = (await searchNonCustomers(m.ctx("sales"), "quillfeather"))[0];
+    expect(found).toMatchObject({ id: quill.contactId, detail: `Phone ending ${quill.address.slice(-3)}`, stage: expect.any(String) });
+    // Once they are a customer they are not offered again.
+    await markCustomer(m.ctx("sales"), quill.contactId);
+    expect(await names("quillfeather")).toEqual([]);
+  });
+
+  it("treats the search characters of LIKE as plain characters, and does not match every phone number when only letters are typed", async () => {
+    await inbound(m.org.id, { name: "Percent Pat" });
+    const names = async (q: string) => (await searchNonCustomers(m.ctx("sales"), q)).map((r) => r.name);
+    for (const wildcard of ["%%", "__", "%_", "\\\\", "%a%"]) expect(await names(wildcard), wildcard).toEqual([]);
+    // Two letters that match no name or email find nobody, although every contact here has a phone number.
+    expect(await names("zq")).toEqual([]);
+    // Fewer than two characters, and the empty search, are not searches.
+    expect(await names("a")).toEqual([]);
+    expect(await names("   ")).toEqual([]);
+    // Two digits are a name search only (no phone is matched on so little).
+    expect(await names("91")).toEqual([]);
+  });
+
+  it("is for people who may edit contacts, and shows each workspace only its own contacts", async () => {
+    const mine = await inbound(m.org.id, { name: "Isolated Ivo Pennywhistle" });
+    await expect(searchNonCustomers(m.ctx("viewer"), "pennywhistle")).rejects.toMatchObject({ code: "forbidden" });
+    expect((await searchNonCustomers(other.ctx("owner"), "pennywhistle"))).toEqual([]);
+    expect((await searchNonCustomers(m.ctx("owner"), "pennywhistle")).map((r) => r.id)).toEqual([mine.contactId]);
   });
 });

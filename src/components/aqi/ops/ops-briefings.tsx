@@ -101,11 +101,11 @@ export function OpsBriefings({ open, onOpenChange }: { open: boolean; onOpenChan
     <Sheet open={open} onOpenChange={onOpenChange} title="Operations briefings" description="Optional summaries of platform health, incidents, approvals, support and costs. Nothing is sent unless you turn it on here.">
       <div className="space-y-5 p-4">
         {status === "loading" && <div className="space-y-3" aria-busy="true"><Skeleton className="h-24" /><Skeleton className="h-40" /></div>}
-        {status === "error" && <p className="text-[13px] text-danger-ink" role="alert">Briefing settings could not be loaded. Close and reopen to try again.</p>}
+        {status === "error" && <p className="text-[14px] text-danger-ink" role="alert">Briefing settings could not be loaded. Close and reopen to try again.</p>}
         {settings && status === "ready" && (
           <>
             {!settings.schedulerConfigured && (
-              <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/50 px-3 py-2.5 text-[12.5px] leading-relaxed text-warning-ink" role="note">
+              <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/50 px-3 py-2.5 text-[13px] leading-relaxed text-warning-ink" role="note">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span>The scheduler is not configured for this deployment (it needs CRON_SECRET and SCHEDULER_ENABLED, and something calling /api/internal/tick). Scheduled and alert briefings will not run until it is. You can still generate one now.</span>
               </div>
@@ -118,7 +118,7 @@ export function OpsBriefings({ open, onOpenChange }: { open: boolean; onOpenChan
                 ["criticalAlertsEnabled", "Critical incident alerts", "One alert per critical incident. These ignore quiet hours."],
               ] as const).map(([key, label, hint]) => (
                 <div key={key} className="flex items-start justify-between gap-3">
-                  <div><p id={`sw-${key}`} className="text-[13px] font-medium text-ink">{label}</p><p className="text-[12px] text-muted">{hint}</p></div>
+                  <div><p id={`sw-${key}`} className="text-[14px] font-medium text-ink">{label}</p><p className="text-[12px] text-muted">{hint}</p></div>
                   <Switch checked={settings[key]} onCheckedChange={(v) => patch({ [key]: v } as Partial<Settings>)} aria-labelledby={`sw-${key}`} />
                 </div>
               ))}
@@ -135,7 +135,7 @@ export function OpsBriefings({ open, onOpenChange }: { open: boolean; onOpenChan
                 </Field>
               </div>
               <fieldset className="rounded-xl border border-line p-3">
-                <legend className="px-1 text-[12.5px] font-medium text-ink-2">Quiet hours (optional)</legend>
+                <legend className="px-1 text-[13px] font-medium text-ink-2">Quiet hours (optional)</legend>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="From" htmlFor="quiet-start"><Select id="quiet-start" value={settings.quietStart ?? ""} onChange={(e) => patch({ quietStart: e.target.value === "" ? null : Number(e.target.value), quietEnd: e.target.value === "" ? null : settings.quietEnd ?? 22 })}><option value="">Off</option>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{hourLabel(h)}</option>)}</Select></Field>
                   <Field label="Until" htmlFor="quiet-end"><Select id="quiet-end" value={settings.quietEnd ?? ""} disabled={settings.quietStart === null} onChange={(e) => patch({ quietEnd: e.target.value === "" ? null : Number(e.target.value) })}><option value="">Off</option>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{hourLabel(h)}</option>)}</Select></Field>
@@ -151,13 +151,13 @@ export function OpsBriefings({ open, onOpenChange }: { open: boolean; onOpenChan
             <section aria-labelledby="briefing-now" className="space-y-3 border-t border-line pt-4">
               <h3 id="briefing-now" className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Newspaper className="size-4 text-primary" aria-hidden />Briefings</h3>
               <Button variant="secondary" onClick={() => void generate()} disabled={generating}>{generating ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}Generate one now</Button>
-              {message && <p className={message.tone === "ok" ? "text-[12.5px] text-success-ink" : "text-[12.5px] text-danger-ink"} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</p>}
-              {list.length === 0 ? <p className="text-[13px] text-muted">No briefings yet.</p> : (
+              {message && <p className={message.tone === "ok" ? "text-[13px] text-success-ink" : "text-[13px] text-danger-ink"} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</p>}
+              {list.length === 0 ? <p className="text-[14px] text-muted">No briefings yet.</p> : (
                 <ul className="space-y-1.5">
                   {list.map((b) => (
                     <li key={b.id}>
                       <button type="button" onClick={() => void show(b.id)} className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-left hover:bg-surface-2">
-                        <span className="block text-[13px] font-medium text-ink">{b.title}</span>
+                        <span className="block text-[14px] font-medium text-ink">{b.title}</span>
                         <span className="block text-[12px] text-muted">{STATUS_LABEL[b.status] ?? b.status} · {relativeTime(b.createdAt)}</span>
                         <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted">{b.summary}</span>
                       </button>
