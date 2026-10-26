@@ -119,6 +119,7 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
             --env PYTHONDONTWRITEBYTECODE=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/repository/services/hermes-provisioner,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/.github/workflows,target=/repository/.github/workflows,readonly" \
             --workdir /repository/services/hermes-provisioner --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
             test_worker test_deployment test_acceptance_harness test_portal_security_boundary test_runtime_diagnostics >"$test_log" 2>&1; then
