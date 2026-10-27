@@ -118,7 +118,7 @@ async function sendLink(to: string, token: string, purpose: LinkPurpose): Promis
       template: "demo_link",
       subject: first ? "Your iAcquire demo link" : "Your link back to the iAcquire demo",
       text: [
-        first ? "Your iAcquire demo is ready to open. It shows what the AI team does, with sample data only." : "Here is your link back to the iAcquire demo.",
+        first ? "Take a quick look at how the iAcquire AI team works with sample data only." : "Continue exploring the iAcquire demo with sample data.",
         `Open your demo: ${appUrl(`/demo/verify?token=${token}`)}`,
         `The link works once and expires in ${env().DEMO_VERIFICATION_TTL_HOURS} hours. If you did not ask for it, you can ignore this email.`,
       ].join("\n\n"),

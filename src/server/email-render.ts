@@ -58,7 +58,7 @@ const META: Record<EmailTemplate, { tag: string; cta: string; headline: string }
   // Sent to a business's customer, not to an iAcquire user: it carries a one-time code and no link.
   proposal_code: { tag: "Your code", cta: "Open in iAcquire", headline: "Your code" },
   // Sent to a prospect who asked for the demo, not to an iAcquire user: one link that works once. Opening it only shows a button; pressing the button starts the demo.
-  demo_link: { tag: "Your demo", cta: "Open your demo", headline: "Your iAcquire demo" },
+  demo_link: { tag: "Demo access", cta: "Open your demo", headline: "See the AI team in action" },
 };
 
 const SETTINGS_LINK_TEMPLATES = new Set<EmailTemplate>(["notification", "escalation_alert", "setup_update", "support_reply"]);
@@ -244,6 +244,8 @@ interface LayoutInput {
   showImage: boolean;
   subject: string;
   preheader: string;
+  /** Most clients show non-breaking spaces appended here as a blank gap in the inbox preview. */
+  padPreheader?: boolean;
   tag: string;
   tone: HeaderTone;
   headlineHtml: string;
@@ -295,7 +297,7 @@ function layout(i: LayoutInput) {
 </style>
 </head>
 <body class="em-bg" style="margin:0;padding:0;background:${C.page};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all;">${esc(i.preheader)}${"&nbsp;&zwnj;".repeat(40)}</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all;">${esc(i.preheader)}${i.padPreheader === false ? "" : "&nbsp;&zwnj;".repeat(40)}</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="em-bg" style="background:${C.page};">
 <tr><td align="center" class="em-outer" style="padding:40px 16px 48px 16px;">
 <!--[if mso]><table role="presentation" align="center" width="560" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
@@ -457,7 +459,12 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
 
     const hero = email.template === "setup_update" && email.tone === "success" && showImage ? iconTile(asset("circle-check.png"), C.successSoft) : undefined;
     // Body text never goes in the preheader: it shows in inbox lists and on lock screens.
-    html = layout({ ...common, preheader: clip(headline, 110), tag, tone, headlineHtml: esc(headline), headlineText: headline, hero, sections });
+    // A useful demo preview avoids repeating the subject and omits nbsp padding, which Gmail shows as a large gap.
+    const demoExpiry = email.template === "demo_link" ? expiryOf(parsed) : undefined;
+    const preheader = email.template === "demo_link"
+      ? `Explore how iAcquire's AI team works in a private, sample-data preview. Your link works once${demoExpiry ? ` and expires in ${demoExpiry}` : ""}.`
+      : clip(headline, 110);
+    html = layout({ ...common, preheader, padPreheader: email.template !== "demo_link", tag, tone, headlineHtml: esc(headline), headlineText: headline, hero, sections });
   }
   return { subject: email.subject, html, text: email.text };
 }
