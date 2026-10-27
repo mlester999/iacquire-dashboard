@@ -97,7 +97,7 @@ const POSTS: Post[] = [
     why: "no-referrer page; the demo API uses sameSiteRequest, which accepts Origin: null from a same-origin form",
   },
   {
-    form: "src/components/demo/landing.tsx", target: "/api/public/demo/return-link", route: "src/server/demo/http.ts", check: "same-site",
+    form: "src/components/demo/landing-sections.tsx", target: "/api/public/demo/return-link", route: "src/server/demo/http.ts", check: "same-site",
     pages: [{ dir: "src/app/demo", addresses: ["/demo"] }],
     why: "same endpoint as above",
   },

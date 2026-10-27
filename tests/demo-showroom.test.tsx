@@ -239,3 +239,25 @@ describe("the showroom follows the portal's design system", () => {
     expect(html).toMatch(/System<\/span>/);
   });
 });
+
+describe("the public entry pages follow the portal's design system too", () => {
+  const ENTRY = ["src/components/demo/landing.tsx", "src/components/demo/landing-sections.tsx", "src/components/demo/request-form.tsx", "src/components/demo/shell.tsx", "src/components/demo/verify-panel.tsx"].map((f) => ({
+    file: f,
+    text: readFileSync(path.join(ROOT, f), "utf8"),
+  }));
+  it("draw from theme tokens only, with no hard-coded colour and no theme of their own", () => {
+    for (const { file, text } of ENTRY) {
+      expect(code(text), file).not.toMatch(/(bg|from|via|to|border|text|ring)-\[#[0-9a-fA-F]{3,8}\]/);
+      expect(code(text), file).not.toMatch(/iaq-theme|data-theme|dataset\.theme|color-scheme/);
+    }
+  });
+  it("send details only to the demo's own endpoints and show no sample as fact", () => {
+    for (const { file, text } of ENTRY) {
+      const c = code(text);
+      for (const m of c.matchAll(/(?:action|fetch\()\s*=?\s*["']([^"']+)["']/g)) if (m[1].startsWith("/")) expect(m[1], file).toMatch(/^\/api\/public\/demo\//);
+    }
+    const sections = ENTRY.find((e) => e.file.endsWith("landing-sections.tsx"))!.text;
+    expect(sections).toMatch(/Sample preview/);
+    expect(sections).toMatch(/An invented example/);
+  });
+});

@@ -49,6 +49,9 @@ export interface EmployeeProfile {
 
 const meta = (role: AgentRoleKey): AgentRoleMeta => AGENT_ROLES.find((r) => r.key === role) as AgentRoleMeta;
 
+/** The order a business meets the six: find, coordinate, book, follow up, keep clean, explain. */
+export const EMPLOYEE_ORDER: readonly AgentRoleKey[] = ["lead_hunter", "operations_manager", "appointment_setter", "sales_assistant", "crm_manager", "performance_analyst"];
+
 export const SCOPE_NOTE =
   "Which of the six AI Employees are configured and switched on for your business, and what each is set up to do, is decided in your implementation agreement. The examples here show what each role is for, not a promise about your setup.";
 

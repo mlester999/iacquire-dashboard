@@ -31,6 +31,16 @@ The landing page and the emailed-link page keep their narrow frame (`PublicFrame
 * Studio belongs to the optional Managed Maintenance plan; the CRM, the AI Employees, the inbox, booking and the website never wait on it; a core client can connect n8n, Zapier or Make
   through APIs and webhooks. No tier, discount or number of employees is stated beyond what the code and the catalog say.
 
+## The request page (`/demo`)
+
+Where a prospect asks for a demo. Two columns on a laptop (the pitch on the left, the form on the right, sticky while the page scrolls) and one on a phone, where the form comes straight after
+the headline. Left: a "Free guided demo" chip, the headline, the three things a demo is (a tour, the AI chat with its real allowance or a note that it is closed, the 24-hour window) and a small
+invented "one enquiry, three AI Employees" hand-off labelled "Sample preview". Right: the form (field icons, a three-step strip, the consent box in its own panel, a gradient button, the notice
+lines), then "Already started? Get a new link". Below: the six AI Employees by role name, what else is inside, and a link to `/demo/why`. Everything the old page said is still there, and the
+form's fields, labels, consent text, hidden campaign fields, trap field and JSON/native behaviour are unchanged (`tests/demo-interactive.test.tsx`, `tests/demo-pages.test.tsx`). It is built
+only from the form's own view: the allowance and window come from the settings in force, so it cannot promise more than they do. The closed and stopped states show only the message.
+Design QA without a database: `/dev/demo-landing-preview` (`state=open|full|ai_off|session|closed|stopped`, `r=`, `f=`, `theme=`).
+
 ## Theme and typography
 
 The showroom has no colour scheme of its own. The page background, cards, text and chart colours are the portal's tokens (`--bg`, `--surface`, `--ink`, `--primary`, `--violet`, ...), so the

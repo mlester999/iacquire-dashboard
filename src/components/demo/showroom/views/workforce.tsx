@@ -5,7 +5,7 @@ import { Check, MessageSquareText, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/brand";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
-import { OVERSIGHT_FOOTER, SCOPE_NOTE, profiles, scenarioOf } from "@/lib/demo/showroom/employees";
+import { EMPLOYEE_ORDER, OVERSIGHT_FOOTER, SCOPE_NOTE, profiles, scenarioOf } from "@/lib/demo/showroom/employees";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { StepNav } from "@/components/demo/showroom/journey";
 import { ContextCta } from "@/components/demo/showroom/cta";
@@ -14,9 +14,6 @@ import { SectionHead, SimTag } from "@/components/demo/showroom/ui";
 
 // Step 1: the six AI Employees. A rail to pick one, a profile that answers "what is it for, what does it do all day, what does it need from me", and a simulated scenario that shows the
 // work instead of describing it.
-
-// The order a business meets them in: find, coordinate, book, follow up, keep clean, explain.
-const ORDER: AgentRoleKey[] = ["lead_hunter", "operations_manager", "appointment_setter", "sales_assistant", "crm_manager", "performance_analyst"];
 
 const questionsFor = (short: string) => [`What would the ${short} do in a typical week?`, `What does the ${short} need me to approve?`, `How does the ${short} work with the other AI Employees?`];
 
@@ -41,7 +38,7 @@ export function WorkforceView() {
       <div className="grid gap-6 @5xl:grid-cols-[260px_minmax(0,1fr)]">
         <nav aria-label="AI Employees" className="sx-noscrollbar relative -mx-4 overflow-x-auto px-4 @5xl:mx-0 @5xl:overflow-visible @5xl:px-0">
           <ul className="flex gap-2 @5xl:flex-col">
-            {ORDER.map((key) => {
+            {EMPLOYEE_ORDER.map((key) => {
               const m = AGENT_BY_KEY[key];
               const on = key === role;
               return (

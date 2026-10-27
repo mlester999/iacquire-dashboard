@@ -39,6 +39,30 @@
   color: #fff;
 }
 
+/* The soft brand glow and faint dot grid behind the first screen of the request page. Tokens only, so it reads in both themes; it fades out before the content ends. */
+.sx-hero-glow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 720px;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 62% at 80% 0%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 72%),
+    radial-gradient(46% 56% at 4% 8%, color-mix(in srgb, var(--violet) 14%, transparent), transparent 72%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.sx-hero-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(60% 70% at 75% 0%, #000, transparent 70%);
+  mask-image: radial-gradient(60% 70% at 75% 0%, #000, transparent 70%);
+}
+
 /* A panel: the one surface the showroom is built from. It is the portal's card. */
 .sx-panel {
   background: var(--surface);

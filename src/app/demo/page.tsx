@@ -31,7 +31,7 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
   const notice = startNotice(one(q.r), { hasSession: view.ok && view.form.hasSession });
   const utm = cleanUtm(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, one(v)])));
   return (
-    <PublicFrame>
+    <PublicFrame wide>
       <DemoLanding view={view} notice={notice} fieldErrors={parseFieldWords(one(q.f))} utm={utm} />
     </PublicFrame>
   );

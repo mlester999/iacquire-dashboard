@@ -5,18 +5,19 @@ import { Logo } from "@/components/brand";
 import { Badge } from "@/components/ui/primitives";
 import { ThemeSwitch } from "@/components/demo/showroom/theme-switch";
 import type { Notice } from "@/lib/demo/outcomes";
+import "@/components/demo/showroom/showroom.css";
 
-// The frame every public demo page shares: the iAcquire mark, a "Demo" label, the page, and a quiet footer. No portal navigation and nothing about the signed-in app: a prospect has
-// no account. Designed for a 375 px phone first; the page is one column that widens to a readable measure.
+// The frame every public demo page shares: the iAcquire mark, a "Demo" label, the theme control, the page, and a quiet footer. No portal navigation and nothing about the signed-in app: a
+// prospect has no account. Designed for a 375 px phone first; the page is one column that widens to a readable measure (or, for the request page, to a two-column layout).
 
 export function DemoShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
-  const measure = wide ? "max-w-5xl" : "max-w-2xl";
+  const measure = wide ? "max-w-6xl" : "max-w-2xl";
   return (
     <div className="flex min-h-dvh flex-col">
       <a href="#demo-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:text-ink focus:shadow-float">
         Skip to content
       </a>
-      <header className={`mx-auto w-full ${measure} px-4 pt-5 sm:px-6 sm:pt-8`}>
+      <header className={`mx-auto w-full ${measure} px-4 pt-5 sm:px-6 sm:pt-7`}>
         <div className="flex min-w-0 items-center justify-between gap-3">
           <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
             <Logo />
@@ -27,7 +28,7 @@ export function DemoShell({ children, wide = false }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main id="demo-main" tabIndex={-1} className={`mx-auto w-full ${measure} flex-1 px-4 py-5 outline-none sm:px-6 sm:py-8`}>
+      <main id="demo-main" tabIndex={-1} className={`mx-auto w-full ${measure} flex-1 px-4 py-6 outline-none sm:px-6 sm:py-10`}>
         {children}
       </main>
       <footer className={`mx-auto w-full ${measure} px-4 pb-8 pt-2 text-center text-[12px] text-muted sm:px-6`}>
@@ -37,11 +38,17 @@ export function DemoShell({ children, wide = false }: { children: React.ReactNod
   );
 }
 
-/** The narrow, single-column frame of the pages that ask for something (the request page, the emailed link, a message): the mark, the page, a quiet footer. */
-export function PublicFrame({ children }: { children: React.ReactNode }) {
+/**
+ * The frame of the pages that ask for something (the request page, the emailed link, a message): the mark, the page, a quiet footer. The request page asks for the wide frame, which
+ * adds the soft brand glow behind the first screen; the narrow one is a single readable column.
+ */
+export function PublicFrame({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="app-backdrop min-h-dvh">
-      <DemoShell>{children}</DemoShell>
+    <div className="app-backdrop relative min-h-dvh overflow-x-clip">
+      {wide && <div aria-hidden className="sx-hero-glow" />}
+      <div className="relative">
+        <DemoShell wide={wide}>{children}</DemoShell>
+      </div>
     </div>
   );
 }
@@ -61,8 +68,9 @@ export function DemoNotice({ notice, id }: { notice: Notice | null; id?: string 
 /** A page that has only a message to give: the demo is closed, the link is no good, the session ended. */
 export function DemoMessage({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: React.ReactNode }) {
   return (
-    <div className="mx-auto mt-4 max-w-md text-center sm:mt-10">
-      <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-line bg-surface text-primary shadow-card">
+    <div className="sx-panel relative mx-auto mt-4 max-w-md overflow-hidden p-7 text-center sm:mt-12 sm:p-9">
+      <span aria-hidden className="brand-gradient absolute inset-x-0 top-0 h-1" />
+      <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary-soft text-primary-ink">
         <Icon className="size-5" aria-hidden />
       </div>
       <h1 className="mt-5 text-[22px] font-semibold tracking-[-0.03em] text-ink">{title}</h1>

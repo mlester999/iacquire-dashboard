@@ -154,6 +154,58 @@ describe("/demo, where a prospect asks", () => {
     expect(markup).toMatch(/<label[^>]*for="return-email"/);
   });
 
+  it("shows the pitch around the form: the form first on a phone, an invented sample labelled as one, the six roles by their role names, what can be explored, and a way to the public page", async () => {
+    state.model = { ready: true };
+    // The agency's own Operations Manager is called Zeng: a name belongs to one company, so the public page shows role labels only.
+    await rows("update agent_instances set display_name = 'Zeng' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
+    try {
+      const markup = await demoPage();
+      const t = text(markup);
+      expect(markup).not.toContain("Zeng");
+      expect(t).toContain("Free guided demo");
+      // The form comes straight after the headline in the page's order, and the benefits after it, so a phone shows the form first.
+      expect(t.indexOf("Ask for your demo")).toBeGreaterThan(t.indexOf("See your AI team at work"));
+      expect(t.indexOf("Walk through each role")).toBeGreaterThan(t.indexOf("Ask for your demo"));
+      // The three steps, the first one current.
+      expect(markup).toMatch(/aria-label="How you get your demo"/);
+      expect((markup.match(/aria-current="step"/g) ?? []).length).toBe(1);
+      for (const step of ["Details", "Confirm email", "Demo opens"]) expect(t).toContain(step);
+      // The sample hand-off says it is invented, and that a person approves what reaches a customer.
+      expect(t).toContain("Sample preview");
+      expect(t).toContain("An invented example. Nothing here is real");
+      expect(t).toContain("Waiting for your approval");
+      // Who the visitor will meet, by role name (never a company's chosen name), and what else is inside.
+      for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
+      expect(t).toContain("Meet the six AI Employees");
+      for (const v of ["CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing"]) expect(t, v).toContain(v);
+      expect(markup).toMatch(/href="\/demo\/why"/);
+      // The theme control is the portal's own.
+      expect(markup).toMatch(/aria-label="Colour theme"/);
+      // No claim about results, prices or promotions on the page that asks for details.
+      expect(t).not.toMatch(/\$\s?\d|\d+\s?%|discount|guarantee|limited time/i);
+    } finally {
+      await rows("update agent_instances set display_name = 'Operations Manager' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
+    }
+  });
+
+  it("keeps the pitch when today's places are taken, and shows nothing but the message when the demo is closed", async () => {
+    await openDemo(people.superAdmin, { dailyStartCap: 0 });
+    try {
+      const full = await demoPage();
+      expect(text(full)).toContain(PUBLIC_COPY.daily_cap);
+      expect(text(full)).toContain("Meet the six AI Employees");
+      expect(full).not.toContain('name="consent"');
+    } finally {
+      await openDemo(people.superAdmin, { dailyStartCap: 10_000 });
+    }
+    demoEnv({ DEMO_ENABLED: "false" });
+    const closed = await demoPage();
+    expect(text(closed)).toContain("The demo is not open");
+    expect(text(closed)).not.toContain("Meet the six AI Employees");
+    expect(text(closed)).not.toContain("Free guided demo");
+    expect((closed.match(/<h1\b/g) ?? []).length).toBe(1);
+  });
+
   it("offers every industry the questionnaire offers, and no other", async () => {
     const markup = await demoPage();
     const { INDUSTRY_OPTIONS } = await import("@/lib/onboarding/definitions");

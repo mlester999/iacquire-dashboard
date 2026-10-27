@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MailCheck } from "lucide-react";
+import { ArrowRight, Briefcase, Building2, Lock, Mail, MailCheck, UserRound, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/primitives";
 import { FIELD_COPY, LINK_SENT_COPY } from "@/lib/demo/copy";
@@ -23,8 +23,20 @@ export interface RequestFormProps {
 type Errors = Partial<Record<FormField, string>>;
 type State = { status: "idle" } | { status: "sending" } | { status: "sent" } | { status: "error"; message: string | null };
 
-const checkboxRow = "flex min-h-11 cursor-pointer items-start gap-3 rounded-xl py-1.5 text-[14px] leading-relaxed text-ink-2";
+const checkboxRow = "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-1 py-1.5 text-[14px] leading-relaxed text-ink-2";
 const checkbox = "mt-0.5 size-5 shrink-0 rounded border-line-strong accent-primary";
+
+/** A control with a small icon at its left edge. The icon is decoration: the label and the control keep their own association. */
+function Adorned({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <Icon aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-faint" />
+      {children}
+    </div>
+  );
+}
+
+const STEPS_AFTER = ["Open the email from iAcquire.", "Press the button inside it. Your demo window starts when you press it.", "Look around: the AI team, the CRM and Automation Studio."];
 
 export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }: RequestFormProps) {
   const [state, setState] = React.useState<State>({ status: "idle" });
@@ -74,12 +86,24 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
 
   if (state.status === "sent") {
     return (
-      <div ref={statusRef} tabIndex={-1} role="status" className="rounded-2xl border border-success/25 bg-success-soft p-5 text-success-ink outline-none">
-        <p className="flex items-center gap-2 text-[16px] font-semibold">
-          <MailCheck className="size-5 shrink-0" aria-hidden />
-          Check your email
-        </p>
-        <p className="mt-2 text-[14px] leading-relaxed">{LINK_SENT_COPY}</p>
+      <div ref={statusRef} tabIndex={-1} role="status" className="space-y-4 rounded-2xl border border-success/25 bg-success-soft p-5 text-success-ink outline-none">
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success/15">
+            <MailCheck className="size-5" aria-hidden />
+          </span>
+          <div>
+            <p className="text-[17px] font-semibold leading-snug">Check your email</p>
+            <p className="mt-1 text-[14px] leading-relaxed">{LINK_SENT_COPY}</p>
+          </div>
+        </div>
+        <ol className="space-y-2 border-t border-success/20 pt-4 text-[14px] leading-relaxed">
+          {STEPS_AFTER.map((t, i) => (
+            <li key={t} className="flex gap-3">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-success/20 text-[11px] font-semibold">{i + 1}</span>
+              {t}
+            </li>
+          ))}
+        </ol>
       </div>
     );
   }
@@ -96,25 +120,33 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       <Field label="Your name" htmlFor="demo-name" error={errors.name}>
-        <Input id="demo-name" name="name" required maxLength={120} autoComplete="name" aria-invalid={errors.name ? true : undefined} />
+        <Adorned icon={UserRound}>
+          <Input id="demo-name" name="name" required maxLength={120} autoComplete="name" className="pl-10" aria-invalid={errors.name ? true : undefined} />
+        </Adorned>
       </Field>
       <Field label="Work email" htmlFor="demo-email" hint="We email your demo link here. Please use your work address." error={errors.email}>
-        <Input id="demo-email" name="email" type="email" inputMode="email" required maxLength={254} autoComplete="email" aria-invalid={errors.email ? true : undefined} />
+        <Adorned icon={Mail}>
+          <Input id="demo-email" name="email" type="email" inputMode="email" required maxLength={254} autoComplete="email" className="pl-10" aria-invalid={errors.email ? true : undefined} />
+        </Adorned>
       </Field>
       <Field label="Business name" htmlFor="demo-business" error={errors.business}>
-        <Input id="demo-business" name="business" required maxLength={160} autoComplete="organization" aria-invalid={errors.business ? true : undefined} />
+        <Adorned icon={Building2}>
+          <Input id="demo-business" name="business" required maxLength={160} autoComplete="organization" className="pl-10" aria-invalid={errors.business ? true : undefined} />
+        </Adorned>
       </Field>
       <Field label="Industry" htmlFor="demo-industry" error={errors.industry}>
-        <Select id="demo-industry" name="industry" required defaultValue="" aria-invalid={errors.industry ? true : undefined}>
-          <option value="" disabled>
-            Choose the closest
-          </option>
-          {industries.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
+        <Adorned icon={Briefcase}>
+          <Select id="demo-industry" name="industry" required defaultValue="" className="pl-10" aria-invalid={errors.industry ? true : undefined}>
+            <option value="" disabled>
+              Choose the closest
             </option>
-          ))}
-        </Select>
+            {industries.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </Adorned>
       </Field>
 
       {/* A field no person sees or tabs to. A program that fills every field fills it, and is told it worked. */}
@@ -125,13 +157,13 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
         </label>
       </div>
 
-      <div className="space-y-1">
+      <div className="sx-panel-flat space-y-0.5 p-2.5">
         <label className={checkboxRow}>
           <input type="checkbox" name="consent" required className={checkbox} aria-invalid={errors.consent ? true : undefined} />
           <span>{notice.consent}</span>
         </label>
         {errors.consent && (
-          <p className="text-[13px] text-danger-ink" role="alert">
+          <p className="px-1 pb-1 text-[13px] text-danger-ink" role="alert">
             {errors.consent}
           </p>
         )}
@@ -141,17 +173,27 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
         </label>
       </div>
 
-      <Button type="submit" size="lg" className="w-full" loading={sending}>
-        {sending ? "Sending" : "Email me my demo link"}
+      <Button type="submit" variant="brand" size="lg" className="w-full" loading={sending}>
+        {sending ? (
+          "Sending"
+        ) : (
+          <>
+            Email me my demo link
+            <ArrowRight className="size-4" aria-hidden />
+          </>
+        )}
       </Button>
       {sending && (
         <p className="sr-only" role="status">
           Sending your request
         </p>
       )}
-      <ul className="space-y-1.5 text-[13px] leading-relaxed text-muted">
+      <ul className="space-y-2 border-t border-line pt-4 text-[12.5px] leading-relaxed text-muted">
         {notice.details.map((d) => (
-          <li key={d}>{d}</li>
+          <li key={d} className="flex gap-2.5">
+            <Lock className="mt-0.5 size-3.5 shrink-0 text-faint" aria-hidden />
+            <span>{d}</span>
+          </li>
         ))}
       </ul>
     </form>
