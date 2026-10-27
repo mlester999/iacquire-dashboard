@@ -174,16 +174,17 @@ export function ConversionPanel({ title = "Ready to talk about your business?", 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="sx-panel-flat space-y-3 p-4">
           <p className="text-[15px] font-semibold text-ink">Talk to a person</p>
-          <ConsultCta size="lg" />
+          <ConsultCta size="lg" className="w-full justify-center" />
           {!consultationRequested && <p className="text-[13px] leading-relaxed text-muted">{ROOM_COPY.consultationNote}</p>}
         </div>
         <div className="sx-panel-flat space-y-3 p-4">
           <p className="text-[15px] font-semibold text-ink">Start your implementation</p>
-          <StartCta size="lg" />
+          <StartCta size="lg" className="w-full justify-center" />
           {!purchaseStarted && <p className="text-[13px] leading-relaxed text-muted">{ROOM_COPY.buyNote}</p>}
         </div>
       </div>
-      <RequestStatus />
+      {/* Empty until a request is made (it is a live region, so it stays in the page); until then it must not add a gap of its own under the two panels. */}
+      <RequestStatus className="empty:-mt-5" />
     </section>
   );
 }

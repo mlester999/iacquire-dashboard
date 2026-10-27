@@ -1,8 +1,8 @@
 import * as React from "react";
-import { Check, ChevronDown, ShieldCheck, X } from "lucide-react";
+import { Check, ShieldCheck, X } from "lucide-react";
 import { DIY_ROWS, IMPLEMENTATION_SETS, NEXT_STEPS, WHY_BLOCKS, faqs } from "@/lib/demo/showroom/content";
 import { SCOPE_NOTE } from "@/lib/demo/showroom/employees";
-import { ScrollRegion, SectionHead, dollars } from "@/components/demo/showroom/ui";
+import { FaqItem, ScrollRegion, SectionHead, dollars } from "@/components/demo/showroom/ui";
 
 // "Why iAcquireOS?": the case, in order, with the objections answered. It has no state, no session and no client code, so it renders the same inside the demo room and on its own public
 // page (/demo/why), which stays open after a demo window ends. It states no competitor price, no percentage, no hours saved and no result: where it compares, it compares in words, and says
@@ -174,15 +174,11 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
       <section aria-labelledby="faq-heading" className="space-y-5">
         <SectionHead as="h2" eyebrow="Questions people ask" title="Straight answers" />
         <h3 id="faq-heading" className="sr-only">Frequently asked questions</h3>
-        <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+        <div className="space-y-3">
           {faqs(setup, monthly).map((f) => (
-            <details key={f.q} className="group bg-surface/60 px-5 py-4 open:bg-surface-2/70">
-              <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-                {f.q}
-                <ChevronDown className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
-              </summary>
-              <p className="mt-3 max-w-3xl text-[14px] leading-relaxed text-ink-2">{f.a}</p>
-            </details>
+            <FaqItem key={f.q} question={f.q}>
+              <p className="max-w-3xl text-[14px] leading-relaxed text-ink-2">{f.a}</p>
+            </FaqItem>
           ))}
         </div>
       </section>

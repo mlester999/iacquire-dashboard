@@ -405,7 +405,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain("Explore freely");
     // The six employees, the four steps of the tour, and every area a visitor can open.
     for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
-    expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
+    expect((markup.match(/aria-label="Open (?!AQi)[A-Za-z ]+"/g) ?? []).length).toBe(6);
     for (const j of JOURNEY) expect(t, j.short).toContain(j.short);
     for (const v of VIEWS) expect(t, v.label).toContain(v.label);
     // AQi is the public demo guide.
@@ -533,7 +533,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain(REFUSAL_COPY.ai_off);
     expect(markup).not.toContain('name="clientMessageId"');
     expect(markup).not.toContain("demo-message");
-    expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
+    expect((markup.match(/aria-label="Open (?!AQi)[A-Za-z ]+"/g) ?? []).length).toBe(6);
     expect(t).toContain("Explore your AI team");
     expect(t).not.toContain("messages left");
     expect(actionsOf(markup)).not.toContain("/api/public/demo/message");

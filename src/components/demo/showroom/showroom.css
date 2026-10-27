@@ -264,6 +264,28 @@
   display: none;
 }
 
+/* A question that opens in place (a native <details>, so it works without scripts). Where the browser can animate the opening of a <details>, its height eases open and shut. */
+@supports selector(::details-content) {
+  .sx-faq {
+    interpolate-size: allow-keywords;
+  }
+  .sx-faq::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      content-visibility 280ms allow-discrete;
+  }
+  .sx-faq[open]::details-content {
+    block-size: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sx-faq::details-content {
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   @keyframes sx-rise {
     from {

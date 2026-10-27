@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BarChart3, Flag, Inbox, LayoutDashboard, SquareKanban, Sparkles, Tag, Users, Workflow } from "lucide-react";
+import { BarChart3, ChevronDown, Flag, Inbox, LayoutDashboard, SquareKanban, Sparkles, Tag, Users, Workflow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tone } from "@/lib/demo/showroom/employees";
 import type { ViewDef } from "@/lib/demo/showroom/content";
@@ -58,6 +58,24 @@ export function PlanTag({ plan }: { plan: "core" | "maintenance" }) {
 /** "US$1,499": the price as the offer states it, with the currency named. */
 export const usd = (n: number) => `US${dollars(n)}`;
 export const dollars = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+
+/**
+ * One question and its answer: a native <details>, so it opens without scripts and without any state. Opening it changes the card's border and turns its arrow, and the height eases open
+ * where the browser can animate a <details> (showroom.css); it never changes the page's background.
+ */
+export function FaqItem({ question, children, className }: { question: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <details className={cn("sx-faq group rounded-2xl border border-line bg-surface shadow-[var(--shadow-sm)] transition-[border-color,box-shadow] duration-200 open:border-primary/45 open:shadow-[var(--shadow-md)]", className)}>
+      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-5 py-3.5 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+        <span>{question}</span>
+        <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-muted transition-[transform,background-color,color] duration-200 group-open:rotate-180 group-open:bg-primary-soft group-open:text-primary-ink">
+          <ChevronDown className="size-4" />
+        </span>
+      </summary>
+      <div className="sx-fade px-5 pb-5">{children}</div>
+    </details>
+  );
+}
 
 /** A sideways-scrolling area (a wide table, a board) that a keyboard can reach: it is focusable, named, and scrolls with the arrow keys. */
 export function ScrollRegion({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {

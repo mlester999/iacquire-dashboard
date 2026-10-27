@@ -171,6 +171,11 @@ describe("the showroom's source", () => {
     }
   });
 
+  it("never turns the page grey when a question is opened: a <details> changes its own border and arrow, with no open: background of its own", () => {
+    // (`group-open:bg-` on the arrow's little tile is fine: it is the tile, not the question or the page.)
+    for (const { file, text } of FILES.filter((f) => f.file.endsWith(".tsx"))) expect(code(text), file).not.toMatch(/(?<![\w-])open:bg-/);
+  });
+
   it("keeps the visitor's journey in this browser as step numbers only", () => {
     const journey = FILES.find((f) => f.file.endsWith("journey.tsx"))!.text;
     expect(journey).toMatch(/iaq-demo-journey-v1/);

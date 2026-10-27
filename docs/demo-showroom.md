@@ -43,6 +43,20 @@ form's fields, labels, consent text, hidden campaign fields, trap field and JSON
 only from the form's own view: the allowance and window come from the settings in force, so it cannot promise more than they do. The closed and stopped states show only the message.
 Design QA without a database: `/dev/demo-landing-preview` (`state=open|full|ai_off|session|closed|stopped`, `r=`, `f=`, `theme=`).
 
+## Plans & pricing (`?view=pricing`)
+
+Two cards of one anatomy, side by side from 768 px of content width and stacked below it: the plan's name and its chip, the price, one sentence of what it is, **the buttons directly under the
+price, as wide as the card and centred**, what is included (a ticked list), and a tinted panel at the bottom that takes up whatever height the other card needs, so neither card has an empty
+stretch at any width. The core implementation's panel shows the six AI Employees by role name; Managed Maintenance's says it is never needed to use the core system and, when the published plan
+gives one, how many change requests a month it covers (nothing is stated when the catalog could not be read). Under the cards: how the costs fit together (one time, optional monthly, billed
+separately, then what is in neither plan), a side-by-side table (each option's price in its header, the rows grouped into "In every implementation" and "Added by Managed Maintenance", every
+cell said in words for a screen reader), and five pricing questions with three buttons that put the same questions to AQi without sending them.
+
+The questions are `FaqItem` in `ui.tsx` (shared with `/demo/why`): a native `<details>`, so it works without scripts. Opening one changes its border and turns its arrow, and its height eases open
+where the browser can animate a `<details>` (`showroom.css`); it never changes the page's background (`tests/demo-showroom.test.tsx` fails on an `open:bg-` utility anywhere in the showroom).
+The closing panel's two buttons fill their panels too, and its live region for the result, being empty until a request is made, takes back the gap it would leave (`empty:-mt-5`).
+`tests/demo-pricing-view.test.tsx` holds the words, the prices, the buttons' width and place, the table and the questions.
+
 ## Theme and typography
 
 The showroom has no colour scheme of its own. The page background, cards, text and chart colours are the portal's tokens (`--bg`, `--surface`, `--ink`, `--primary`, `--violet`, ...), so the
@@ -127,3 +141,12 @@ place, the button hidden). A bug the browser pass found: under React's developme
 `StrictMode` and fails on the old logic.
 
 Not checked: Safari and Firefox; a screen reader; a real touch device; a slow connection (the server draws the rail open, so a visitor who left it folded sees it open until the page is live).
+
+**The Plans & pricing redesign (added afterwards).** Checked: type-check, ESLint, 84 test files (1,155 tests, with `tests/demo-pricing-view.test.tsx` and a source guard against an `open:bg-`
+utility), and a production build (`npm run build:clean`). axe-core with no violations in light (questions closed, all open, and with AQi open) and in dark with the rail folded (closed and all
+open). In a browser: the questions easing open (57 to 145 px in about 260 ms, the card staying white with an accent border), a pricing question opening AQi with the question in the box and
+sending nothing, "Compare the two plans" landing just under the tour strip, the core plan's consultation button opening its confirmation and recording nothing, and the page at 390, 820 and
+1440 px in light and dark with equal cards, aligned dividers, no sideways scroll and no empty stretch in either card. The check also found a failing test from the AQi change: the AI-off
+state's launcher, labelled "Open AQi", was counted as a seventh AI Employee button in `tests/demo-pages.test.tsx` (test only; the count now ignores AQi).
+
+Not checked: Safari and Firefox (the easing relies on `::details-content`; where it is missing a question simply opens without it); a screen reader.
