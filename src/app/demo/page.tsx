@@ -5,6 +5,7 @@ import { getFormView } from "@/server/demo/public";
 import { demoModelState } from "@/server/demo/generator";
 import { DEMO_COOKIE } from "@/server/demo/tokens";
 import { DemoLanding } from "@/components/demo/landing";
+import { PublicFrame } from "@/components/demo/shell";
 import { parseFieldWords, startNotice } from "@/lib/demo/outcomes";
 import { cleanUtm } from "@/lib/demo/rules";
 
@@ -29,5 +30,9 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
   });
   const notice = startNotice(one(q.r), { hasSession: view.ok && view.form.hasSession });
   const utm = cleanUtm(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, one(v)])));
-  return <DemoLanding view={view} notice={notice} fieldErrors={parseFieldWords(one(q.f))} utm={utm} />;
+  return (
+    <PublicFrame>
+      <DemoLanding view={view} notice={notice} fieldErrors={parseFieldWords(one(q.f))} utm={utm} />
+    </PublicFrame>
+  );
 }

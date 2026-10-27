@@ -33,6 +33,15 @@ export function DemoShell({ children, wide = false }: { children: React.ReactNod
   );
 }
 
+/** The narrow, single-column frame of the pages that ask for something (the request page, the emailed link, a message): the mark, the page, a quiet footer. */
+export function PublicFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="app-backdrop min-h-dvh">
+      <DemoShell>{children}</DemoShell>
+    </div>
+  );
+}
+
 /** The outcome of what the person just did. An error is announced as an alert, a good outcome as a status. */
 export function DemoNotice({ notice, id }: { notice: Notice | null; id?: string }) {
   if (!notice) return null;

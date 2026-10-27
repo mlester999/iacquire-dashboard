@@ -112,12 +112,12 @@ const POSTS: Post[] = [
     why: "same endpoint as above",
   },
   {
-    form: "src/components/demo/actions.tsx", target: "/api/public/demo/cta", route: "src/server/demo/http.ts", check: "same-site",
+    form: "src/components/demo/showroom/cta.tsx", target: "/api/public/demo/cta", route: "src/server/demo/http.ts", check: "same-site",
     pages: [{ dir: "src/app/demo/room", addresses: ["/demo/room"] }],
     why: "same endpoint as above",
   },
   {
-    form: "src/components/demo/room.tsx", target: "/api/public/demo/leave", route: "src/server/demo/http.ts", check: "same-site",
+    form: "src/components/demo/showroom/workspace.tsx", target: "/api/public/demo/leave", route: "src/server/demo/http.ts", check: "same-site",
     pages: [{ dir: "src/app/demo/room", addresses: ["/demo/room"] }],
     why: "same endpoint as above",
   },

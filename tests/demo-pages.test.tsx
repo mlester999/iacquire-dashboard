@@ -55,7 +55,8 @@ import { CTA_COPY, HOLD_COPY, PRIVACY_EMAIL, ROOM_COPY } from "@/lib/demo/outcom
 import { FIELD_COPY, LINK_SENT_COPY, PUBLIC_COPY } from "@/lib/demo/copy";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
 import { demoNotice } from "@/lib/demo/notice";
-import { TOUR } from "@/lib/demo/tour";
+import { AGENT_ROLES } from "@/lib/agents";
+import { JOURNEY, VIEWS, VIEW_IDS } from "@/lib/demo/showroom/content";
 import { addNote, assignOwner, blockProspect, eraseProspect, extendDemo } from "@/server/demo/admin";
 import { recordCta, registerProspect } from "@/server/demo/public";
 import { count, demoEnv, formInput, hashOf, ipFor, linkTokenFor, messagePace, openDemo, rows, say, startDemo, team, type Team } from "./support/demo";
@@ -335,7 +336,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(await redirectOf(() => roomPage())).toBe("REDIRECT:/demo?r=no_session");
   });
 
-  it("shows the window, the tour, the prices and the two buttons, with the chat when a model is connected", async () => {
+  it("opens on a headline about the prospect's own business, with the window, the messages, the six employees, the four steps and the two requests, and the AI guide when a model is connected", async () => {
     state.model = { ready: true };
     const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals", industry: "home_services" });
     state.cookie = s.sessionToken;
@@ -344,28 +345,25 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).not.toMatch(BAD);
     expect((markup.match(/<h1\b/g) ?? []).length).toBe(1);
     expect(t).toContain("Welcome, Rosalind");
-    expect(t).toContain("Roomy Rentals");
+    expect(t).toMatch(/Meet the AI team that could help run Roomy Rentals ?\./);
     expect(t).toContain(ROOM_COPY.sampleBanner);
-    expect(t).toContain("Open");
     expect(t).toMatch(/Your demo is open until .* UTC ?\./);
     expect(t).toContain("You have 10 of 10 messages left.");
-    // The tour: six employees, each with a sample, and no seventh.
-    expect((markup.match(/<details\b/g) ?? []).length).toBe(6);
-    for (const step of TOUR) expect(t, step.meta.name).toContain(step.meta.name);
-    expect((markup.match(/>Sample</g) ?? []).length).toBe(6);
-    // The chat.
-    expect(t).toContain(ROOM_COPY.chatHeading);
+    expect(t).toContain("Explore your AI team");
+    expect(t).toContain("Explore freely");
+    // The six employees, the four steps of the tour, and every area a visitor can open.
+    for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
+    expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
+    for (const j of JOURNEY) expect(t, j.title).toContain(j.title);
+    for (const v of VIEWS) expect(t, v.label).toContain(v.label);
+    // The AI guide.
+    expect(t).toContain("Your AI guide");
+    expect(t).toContain(ROOM_COPY.chatIntro);
     expect(markup).toMatch(/<label[^>]*for="demo-message"/);
     expect(markup).toMatch(/<label[^>]*for="demo-employee"/);
     expect(markup).toContain('role="log"');
     expect(markup).toMatch(/aria-label="Conversation"/);
-    // The prices come from the one place they live.
-    expect(t).toContain(`$${SETUP_FEE_USD.toLocaleString("en-US")}`);
-    expect(t).toContain(`$${MAINTENANCE_MONTHLY_USD}`);
-    expect(t).toContain("paid once");
-    expect(t).toContain("per month, only if you choose it");
-    expect(t).toContain(ROOM_COPY.planNote);
-    // The buttons say what they do before they are pressed.
+    // The two requests say what they do before they are pressed.
     expect(t).toContain(ROOM_COPY.consultationButton);
     expect(t).toContain(ROOM_COPY.consultationNote);
     expect(t).toContain(ROOM_COPY.buyButton);
@@ -374,20 +372,60 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain(PRIVACY_EMAIL);
   });
 
+  it("states the published prices and the plan on the pricing view, from the one place they live, with the monthly plan optional", async () => {
+    state.model = { ready: true };
+    const s = await startDemo();
+    state.cookie = s.sessionToken;
+    const markup = await roomPage({ view: "pricing" });
+    const t = text(markup);
+    expect(t).not.toMatch(BAD);
+    expect((markup.match(/<h1\b/g) ?? []).length).toBe(1);
+    expect(t).toContain(`$${SETUP_FEE_USD.toLocaleString("en-US")}`);
+    expect(t).toContain(`$${MAINTENANCE_MONTHLY_USD}`);
+    expect(t).toContain("Starting at");
+    expect(t).toContain("paid once");
+    expect(t).toContain("a month, only if you choose it");
+    expect(t).toContain(ROOM_COPY.planNote);
+    expect(t).toContain("No mandatory subscription");
+    expect(t).toContain("Core + Managed Maintenance");
+    expect(t).toContain("Automation Studio");
+    expect(t).toContain("Usage-based costs");
+  });
+
+  it("opens each view named in the address, falls back to the overview for any other word, and keeps every view free of the prospect's address, ids and credentials", async () => {
+    state.model = { ready: true };
+    const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals" });
+    state.cookie = s.sessionToken;
+    const id = (await rows<{ id: string }>("select id from demo_prospects where email_normalized = $1", [s.email]))[0].id;
+    for (const view of VIEW_IDS) {
+      const markup = await roomPage({ view });
+      expect((markup.match(/<h1\b/g) ?? []).length, view).toBe(1);
+      expect(text(markup), view).not.toMatch(BAD);
+      for (const secret of [s.email, id, s.sessionToken, s.token, s.ip]) expect(markup, `${view} ${secret.slice(0, 8)}`).not.toContain(secret);
+    }
+    expect(text(await roomPage({ view: "workforce" }))).toContain("Six AI Employees. One job each.");
+    expect(text(await roomPage({ view: "nonsense" }))).toMatch(/Meet the AI team that could help run Roomy Rentals ?\./);
+    expect(text(await roomPage({ view: "<script>" }))).not.toContain("<script>");
+  });
+
   it("posts only to the demo's own endpoints, each form with a method, and carries no address, id or credential of the prospect", async () => {
     state.model = { ready: true };
     const s = await startDemo({ name: "Rosalind Roomy" });
     state.cookie = s.sessionToken;
     const markup = await roomPage();
-    expect(actionsOf(markup).sort()).toEqual(["/api/public/demo/cta", "/api/public/demo/cta", "/api/public/demo/leave", "/api/public/demo/message"]);
+    expect([...new Set(actionsOf(markup))].sort()).toEqual(["/api/public/demo/cta", "/api/public/demo/leave", "/api/public/demo/message"]);
     for (const f of forms(markup)) expect(f).toMatch(/method="post"/);
+    // The only thing a request form carries is which request it is.
+    const kinds = [...markup.matchAll(/<input[^>]*name="kind"[^>]*>/g)].map((m) => /value="([^"]*)"/.exec(m[0])?.[1]);
+    expect(kinds.length).toBeGreaterThan(0);
+    for (const k of kinds) expect(["consultation", "buy"]).toContain(k);
     const id = (await rows<{ id: string }>("select id from demo_prospects where email_normalized = $1", [s.email]))[0].id;
     for (const secret of [s.email, id, s.sessionToken, s.token, s.ip]) expect(markup, secret.slice(0, 8)).not.toContain(secret);
     // The idempotency key of a form without scripts is already in it.
     expect(markup).toMatch(/name="clientMessageId" value="[0-9a-f-]{36}"/);
   });
 
-  it("shows the guided tour and says the AI chat is not open when there is no model, with no chat form", async () => {
+  it("says the AI chat is not open when there is no model, keeps the tour, and has no chat form", async () => {
     state.model = { ready: false };
     const s = await startDemo();
     state.cookie = s.sessionToken;
@@ -397,9 +435,12 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain(REFUSAL_COPY.ai_off);
     expect(markup).not.toContain('name="clientMessageId"');
     expect(markup).not.toContain("demo-message");
-    expect((markup.match(/<details\b/g) ?? []).length).toBe(6);
+    expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
+    expect(t).toContain("Explore your AI team");
     expect(t).not.toContain("messages left");
     expect(actionsOf(markup)).not.toContain("/api/public/demo/message");
+    // Without the chat, the page still offers a person.
+    expect(t).toContain(ROOM_COPY.consultationButton);
   });
 
   it("says the AI chat is not open when the Super Admin switched it off, whatever the model", async () => {
@@ -416,7 +457,7 @@ describe("/demo/room, the prospect's own demo", () => {
     }
   });
 
-  it("keeps the conversation readable after the window ended, says it ended, and offers no way to send", async () => {
+  it("keeps the conversation readable after the window ended, says it ended, offers no way to send, and keeps the sales views open", async () => {
     state.model = { ready: true };
     const longAgo = new Date(Date.now() - 25 * 3_600_000);
     const s = await startDemo({}, longAgo);
@@ -424,15 +465,17 @@ describe("/demo/room, the prospect's own demo", () => {
     state.cookie = s.sessionToken;
     const markup = await roomPage();
     const t = text(markup);
-    expect(t).toContain("Ended");
+    expect(t).toContain("Interactive window ended");
     expect(t).toContain(REFUSAL_COPY.window_ended);
-    expect(t).toMatch(/It ended .* UTC ?\./);
+    expect(t).toMatch(/Ended .* UTC/);
     expect(t).toContain("What does the Lead Hunter do?");
     expect(t).toContain("Answer to: What does the Lead Hunter do?");
     expect(markup).not.toContain("demo-message");
     expect(t).not.toContain("Your demo is open until");
-    // Asking to talk to a person is still offered.
+    // Asking to talk to a person is still offered, and the pricing and the case for iAcquireOS are still there to read.
     expect(t).toContain(ROOM_COPY.consultationButton);
+    expect(text(await roomPage({ view: "pricing" }))).toContain(`$${SETUP_FEE_USD.toLocaleString("en-US")}`);
+    expect(text(await roomPage({ view: "why" }))).toContain("Why iAcquireOS?");
   });
 
   it("says all the messages are used, and offers a consultation, when none are left", async () => {

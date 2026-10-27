@@ -3,6 +3,7 @@ import { requestMeta } from "@/server/auth/session";
 import { peekVerification } from "@/server/demo/public";
 import { looksLikeDemoToken } from "@/server/demo/tokens";
 import { VerifyPanel } from "@/components/demo/verify-panel";
+import { PublicFrame } from "@/components/demo/shell";
 import { linkStillGood, verifyNotice } from "@/lib/demo/outcomes";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,18 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
   const q = await searchParams;
   const token = one(q.token);
   const notice = verifyNotice(one(q.e));
-  if (!looksLikeDemoToken(token)) return <VerifyPanel token="" peek={null} notice={notice ?? { tone: "error", text: "That link is not valid. Ask for a new one from the demo page." }} linkUnused={linkStillGood(one(q.e))} />;
+  if (!looksLikeDemoToken(token)) {
+    return (
+      <PublicFrame>
+        <VerifyPanel token="" peek={null} notice={notice ?? { tone: "error", text: "That link is not valid. Ask for a new one from the demo page." }} linkUnused={linkStillGood(one(q.e))} />
+      </PublicFrame>
+    );
+  }
   const meta = await requestMeta();
   const peek = await peekVerification(token, { ip: meta.ip, userAgent: meta.userAgent });
-  return <VerifyPanel token={token} peek={peek} notice={null} linkUnused={false} />;
+  return (
+    <PublicFrame>
+      <VerifyPanel token={token} peek={peek} notice={null} linkUnused={false} />
+    </PublicFrame>
+  );
 }
