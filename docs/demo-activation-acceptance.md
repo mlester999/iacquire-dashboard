@@ -123,3 +123,22 @@ Use one address you own. It writes real rows to the production database (one pro
 * The Resend domain query used the key in the local environment file; the production variable is hidden, so it is assumed, not proved, to be the same key.
 * "Four-step" (item 10) needs your definition.
 * The landing page's `DEMO_REGISTRATION_TIMEOUT_MS` is hidden; its default (13 s, with one retry using the same request id) fits inside the portal's own 10 s email ceiling.
+
+## 12. Production smoke test result (2026-10-27, one address, approved)
+
+Run with one address owned by the founder, with the Super Admin switch on only for the test (daily start cap 3, daily message cap 25, AI off until step 9) and off again afterwards.
+
+| Step | Result |
+| --- | --- |
+| Environment | New signing secret set on both projects in one step; `APP_URL` on `https://www.iacquire.online`; the three demo switches set; both projects redeployed. A signed request from the landing page was accepted by the portal's signature check (the portal log shows 401 for an unsigned probe and 503 for the signed one, refused at the gate), so the secrets match |
+| Registration | Through the live landing route: `202 {"ok":true}`; one prospect `unverified`, allowance 10, no clock |
+| Email | Resend accepted it (outbox `sent`, no error); the founder received it and opened the link |
+| Confirmation | The button started the demo: first access 01:46:53 UTC, window end exactly **86,400 s** later, events `registered`, `verified`, `accessed`, one session |
+| Return link | A second email was sent and recorded (`return_link`); the window and the message count did not change (**the return link was not opened**, so a second session was not exercised in production) |
+| AI chat | After a refresh the chat answered; 1 of 10 messages used. The first "not available" was a stale room page loaded before AI was switched on |
+| Buy button | Recorded `cta_buy` and moved the prospect to `purchase_started`; **no purchase intent and no payment** were created |
+| Finish | The demo was ended early through the Super Admin service (window end set to now, status kept), the Super Admin switch and AI switched off (settings version 3); `/api/public/demo/history` answers 404 not open, the landing form answers 503, health ok |
+
+Not exercised in production: the full ten messages (proved in isolation), the consultation button (no link configured), opening a return link, and the receiver-side SPF, DKIM and DMARC results and spam placement, which the founder checks in the email's headers.
+
+An incident during the test: a diagnostic of mine printed the model provider's API credential into the working session. It was not written to a file or committed, and it should be rotated.
