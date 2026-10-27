@@ -61,6 +61,7 @@ const ALLOW_DB_WRITE = flag("--allow-db-write") || env.E2E_ALLOW_DB_WRITE === "t
 const CLEANUP = flag("--cleanup") || env.E2E_CLEANUP === "true";
 const DRY = flag("--dry-run");
 
+let db = null;
 const report = { startedAt: new Date().toISOString(), target: BASE || null, viaLanding: Boolean(LANDING), checks: [], skipped: [], notes: [], cleanup: null };
 let failed = false;
 
@@ -151,10 +152,12 @@ if (LANDING) {
   // The landing page's server route signs with IACQUIREOS_BACKEND_SIGNING_SECRET itself; this proves its signer end to end.
   const landingRes = await jsonRequest(LANDING, {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(BODY),
+    // The landing route refuses a request without its own Origin (a same-origin browser always sends it) and answers 202, not 200.
+    headers: { "content-type": "application/json", accept: "application/json", origin: new URL(LANDING).origin },
+    // The landing form speaks its own field names (fullName, businessName); the page maps them to the backend contract (name, business) and signs that body.
+    body: JSON.stringify({ fullName: BODY.name, email: BODY.email, businessName: BODY.business, industry: BODY.industry, consent: BODY.consent, marketingOptIn: BODY.marketingOptIn, company_website: "" }),
   });
-  record("1a: the landing page accepted the registration form", landingRes.status === 200 && landingRes.body?.ok === true, `${landingRes.status} ${landingRes.text.slice(0, 200)}`);
+  record("1a: the landing page accepted the registration form (202 {ok:true})", landingRes.status === 202 && landingRes.body?.ok === true, `${landingRes.status} ${landingRes.text.slice(0, 200)}`);
   raw = JSON.stringify(BODY);
 } else {
   raw = JSON.stringify(BODY);
@@ -180,7 +183,6 @@ console.log(`registered a synthetic prospect: ${maskedEmail(EMAIL)}`);
 // 2-3. The email, and the GET that must not consume it
 // ---------------------------------------------------------------------------
 
-let db = null;
 async function database() {
   if (db) return db;
   const ssl = /localhost|127\.0\.0\.1/.test(hostOf(DB_URL)) ? undefined : { rejectUnauthorized: false };
@@ -197,7 +199,7 @@ async function dbRows(sql, params = []) {
 async function linkFromDb() {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const rows = await dbRows("select body_text, status, provider from email_outbox where to_email = $1 and template = 'demo_link' order by id desc limit 1", [EMAIL]);
+    const rows = await dbRows("select body_text, status, provider from email_outbox where to_email = $1 and template = 'demo_link' order by created_at desc limit 1", [EMAIL]);
     if (rows[0] && rows[0].provider === "resend" && rows[0].status === "sent" && EMAIL_DELIVERY === "capture") {
       throw new Error("the staging app sent a live Resend email; this run expected the capturing provider");
     }
@@ -305,25 +307,96 @@ if (!ALLOW_AI) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Server-side expiry, without waiting 24 hours
+// 5.5 Return access: the same mailbox asking again inside the window gets a fresh link and the SAME clock
+// ---------------------------------------------------------------------------
+
+async function registerAgain() {
+  if (LANDING) {
+    return jsonRequest(LANDING, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", origin: new URL(LANDING).origin },
+      body: JSON.stringify({ fullName: BODY.name, email: BODY.email, businessName: BODY.business, industry: BODY.industry, consent: BODY.consent, marketingOptIn: BODY.marketingOptIn, company_website: "" }),
+    });
+  }
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const requestId = `e2e_${crypto.randomUUID().replace(/-/g, "")}`;
+  return jsonRequest(`${BASE}/api/public/demo/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json", "iacquireos-request-id": requestId, "iacquireos-timestamp": timestamp, "iacquireos-signature": `t=${timestamp},v1=${sign(timestamp, requestId, raw)}` },
+    body: raw,
+  });
+}
+const outboxCount = async () => Number((await dbRows("select count(*)::int as n from email_outbox where to_email = $1 and template = 'demo_link'", [EMAIL]))[0]?.n ?? 0);
+
+if (!DB_URL) {
+  skip("5.5: return access", "needs the database to read the second captured email");
+} else {
+  const before = (await dbRows("select verified_at, window_ends_at, messages_used from demo_prospects where email_normalized = $1", [EMAIL.toLowerCase()]))[0];
+  const mailsBefore = await outboxCount();
+  const again = await registerAgain();
+  record("5.5a: asking again inside the window is accepted with the same answer", again.status === 202, `${again.status}`);
+  let second = null;
+  for (let i = 0; i < 30 && !second; i += 1) {
+    if ((await outboxCount()) > mailsBefore) second = await linkFromDb();
+    else await sleep(2000);
+  }
+  record("5.5b: a fresh return link was captured", Boolean(second?.token) && second.token !== token, second ? "new token" : "no second email");
+  if (second?.token) {
+    const back = await jsonRequest(`${BASE}/api/public/demo/verify`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: new URLSearchParams({ token: second.token }).toString() });
+    const cookie2 = /(?:^|,\s*)(iaq_demo=[^;]+)/.exec(back.cookie)?.[1] ?? "";
+    record("5.5c: the return link opens the room on a new session", [200, 303].includes(back.status) && Boolean(cookie2), `status ${back.status}`);
+    const after = (await dbRows("select verified_at, window_ends_at, messages_used from demo_prospects where email_normalized = $1", [EMAIL.toLowerCase()]))[0];
+    record("5.5d: first access, window end and messages used are unchanged (never a new clock)", +new Date(after.verified_at) === +new Date(before.verified_at) && +new Date(after.window_ends_at) === +new Date(before.window_ends_at) && after.messages_used === before.messages_used, JSON.stringify({ before, after }));
+    const replay = await jsonRequest(`${BASE}/api/public/demo/verify`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: new URLSearchParams({ token: second.token }).toString() });
+    record("5.5e: the used link cannot be used again", [400, 410].includes(replay.status), `status ${replay.status}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Server-side expiry at the exact 24-hour boundary, without waiting 24 hours
+//    Migration 0113 forbids moving first access or shortening the window, so the clock is moved the way only a test may: with triggers off, inside one
+//    transaction, on this synthetic prospect only, so that it was confirmed exactly 24 hours before a moment six seconds from now.
 // ---------------------------------------------------------------------------
 
 if (!ALLOW_DB_WRITE) {
   skip("6: server-side expiry", "the clock move needs --allow-db-write (or E2E_ALLOW_DB_WRITE=true)");
 } else {
-  const updated = await dbRows(
-    "update demo_prospects set window_ends_at = now() - interval '1 minute', status = 'expired' where email_normalized = $1 and status in ('active', 'consultation_requested', 'purchase_started') returning id",
-    [EMAIL.toLowerCase()],
-  );
-  record("6a: the synthetic staging prospect's window was moved into the past (early end)", updated.length === 1, `rows=${updated.length}`);
+  const client = await database();
+  await client.query("begin");
+  let moved;
+  try {
+    await client.query("set local session_replication_role = replica");
+    moved = await client.query("update demo_prospects set window_ends_at = now() + interval '6 seconds', verified_at = now() + interval '6 seconds' - interval '24 hours' where email_normalized = $1 and status = 'active' returning extract(epoch from (window_ends_at - verified_at))::int as span_seconds", [EMAIL.toLowerCase()]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+  record("6a: the synthetic prospect now has six seconds left of an exactly 24-hour window", moved.rowCount === 1 && moved.rows[0].span_seconds === 86400, JSON.stringify(moved.rows[0]));
+  const open = await jsonRequest(`${BASE}/api/public/demo/history`, { headers: { cookie, accept: "application/json" } });
+  // The ten messages are already used at this point, so chat.canSend is false for that reason (limit_reached); only the access state tells the clock.
+  record("6b: with seconds left the window is still open", open.body?.room?.access === "open", `${open.body?.room?.access}`);
+  await sleep(8000);
   const ended = await jsonRequest(`${BASE}/api/public/demo/history`, { headers: { cookie, accept: "application/json" } });
-  record("6b: the room now reads ended and the chat is refused server-side", ended.body?.room?.access === "ended" && ended.body?.room?.chat?.canSend === false && ended.body?.room?.chat?.refusal === "window_ended", `${ended.status} ${JSON.stringify(ended.body?.room?.chat ?? {}).slice(0, 160)}`);
+  record("6c: the moment the 24 hours are up the room reads ended and the chat is refused server-side", ended.body?.room?.access === "ended" && ended.body?.room?.chat?.canSend === false && ended.body?.room?.chat?.refusal === "window_ended", JSON.stringify({ access: ended.body?.room?.access, canSend: ended.body?.room?.chat?.canSend, refusal: ended.body?.room?.chat?.refusal }));
   const late = await jsonRequest(`${BASE}/api/public/demo/message`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json", cookie },
     body: JSON.stringify({ text: "After the window", clientMessageId: `e2e_${crypto.randomUUID().replace(/-/g, "")}` }),
   });
-  record("6c: a message after expiry is refused with window_ended", late.status === 409 && late.body?.error?.code === "window_ended", `${late.status} ${late.text.slice(0, 160)}`);
+  record("6d: a message after expiry is refused with window_ended", late.status === 409 && late.body?.error?.code === "window_ended", `${late.status} ${late.text.slice(0, 160)}`);
+  if (DB_URL) {
+    const row = (await dbRows("select status, window_ends_at from demo_prospects where email_normalized = $1", [EMAIL.toLowerCase()]))[0];
+    const mails = await outboxCount();
+    const asked = await registerAgain();
+    await sleep(3000);
+    const mailsAfter = await outboxCount();
+    record("6e: after expiry, asking again is answered the same (202) but no return link is sent", asked.status === 202 && mailsAfter === mails, `status ${asked.status}, mails ${mails} -> ${mailsAfter}`);
+    const row2 = (await dbRows("select status, window_ends_at from demo_prospects where email_normalized = $1", [EMAIL.toLowerCase()]))[0];
+    // status stays "active" until the retention sweep marks it expired; what matters is that the window did not move and the room still reads ended.
+    const still = await jsonRequest(`${BASE}/api/public/demo/history`, { headers: { cookie, accept: "application/json" } });
+    record("6f: asking again after expiry does not reopen or extend the window", +new Date(row2.window_ends_at) === +new Date(row.window_ends_at) && still.body?.room?.access === "ended", JSON.stringify({ windowMoved: +new Date(row2.window_ends_at) !== +new Date(row.window_ends_at), access: still.body?.room?.access }));
+  }
 }
 
 // ---------------------------------------------------------------------------

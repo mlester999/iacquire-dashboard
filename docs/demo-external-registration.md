@@ -4,11 +4,12 @@ Status: **implemented and tested locally; not production-ready until the real se
 now create a pending Demo Prospect through one signed server-to-server call, and the prospect then follows the existing emailed-link flow. No second prospect store, no second
 authentication system, no client workspace and no demo clock at registration.
 
-- Endpoint: `POST https://iacquire.online/api/public/demo/register` (source: `src/app/api/public/demo/register/route.ts`)
+- Endpoint: `POST https://www.iacquire.online/api/public/demo/register` (source: `src/app/api/public/demo/register/route.ts`)
 - Service: `src/server/demo/registration.ts` → `registerProspect` in `src/server/demo/public.ts`
-- Verification link: `https://iacquire.online/demo/verify?token=…` (page). The button on that page POSTs to `/api/public/demo/verify`; only that POST consumes the link.
-- Demo room: `https://iacquire.online/demo/room`
+- Verification link: `https://www.iacquire.online/demo/verify?token=…` (page). The button on that page POSTs to `/api/public/demo/verify`; only that POST consumes the link.
+- Demo room: `https://www.iacquire.online/demo/room`
 - Super Admin: `/admin/prospects` and `/admin/prospects/<id>`
+- **Use the canonical host `www.iacquire.online` everywhere.** The apex `iacquire.online` answers a POST with a 308 redirect to `www`, which the landing page refuses on purpose (`redirect: "error"`), and links emailed from an apex `APP_URL` cost visitors an extra redirect. Set `APP_URL=https://www.iacquire.online` (no trailing slash).
 - Migration: `0113_demo_registration_requests.sql` (+ rollback)
 
 ## What was already there, and what this adds
@@ -34,7 +35,7 @@ authentication system, no client workspace and no demo clock at registration.
 
 ```
 POST /api/public/demo/register HTTP/1.1
-Host: iacquire.online
+Host: www.iacquire.online
 Content-Type: application/json
 IACQUIREOS-Request-Id: 5f0c1a2b9d8e4c7fa1b2c3d4e5f60718
 IACQUIREOS-Timestamp: 1793002800
