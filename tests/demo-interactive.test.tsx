@@ -112,9 +112,10 @@ describe("the chat", () => {
         ],
       }),
     });
-    const log = screen.getByRole("log", { name: "Conversation" });
+    const log = screen.getByRole("log", { name: "AQi conversation" });
     expect(within(log).getAllByText("You")).toHaveLength(3);
     expect(within(log).getByText("AI Lead Hunter (AI)")).toBeTruthy();
+    // An answer that is not from one named employee is AQi's, the demo guide.
     expect(within(log).getByText("AQi")).toBeTruthy();
     expect(within(log).getByText("Not counted: no answer came.")).toBeTruthy();
     expect(within(log).getByText("Waiting for an answer.")).toBeTruthy();
@@ -124,7 +125,7 @@ describe("the chat", () => {
 
   it("invites a first question when there is nothing yet", () => {
     chat();
-    expect(screen.getByText(/Nothing here yet\. Ask a question/)).toBeTruthy();
+    expect(screen.getByText(/Nothing here yet\. Ask AQi/)).toBeTruthy();
     expect(screen.getByText("10 of 10 messages left")).toBeTruthy();
   });
 
@@ -156,6 +157,56 @@ describe("the chat", () => {
     expect(question().value).toBe("");
     // The focus goes back to the box so the next question can be typed at once.
     await waitFor(() => expect(document.activeElement).toBe(question()));
+  });
+
+  it("shows the visitor's own message at once, empties the box, and shows the employee they asked, not AQi, as the one writing", async () => {
+    let finish: (v: unknown) => void = () => undefined;
+    fetchMock.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    chat();
+    fireEvent.change(screen.getByLabelText("Ask"), { target: { value: "appointment_setter" } });
+    fireEvent.change(question(), { target: { value: "What do you do?" } });
+    fireEvent.click(sendButton());
+    const log = screen.getByRole("log", { name: "AQi conversation" });
+    // Before any answer: the message is already in the conversation, the box is empty, and it cannot be edited while the message is on its way.
+    expect(within(log).getByText("What do you do?")).toBeTruthy();
+    expect(within(log).getByText("You")).toBeTruthy();
+    expect(question().value).toBe("");
+    expect(question().readOnly).toBe(true);
+    // The employee that was asked is the one writing, with their own name, and it is said aloud once.
+    expect(within(log).getByText("AI Appointment Setter (AI)")).toBeTruthy();
+    expect(within(log).getByText("AI Appointment Setter is writing an answer.")).toBeTruthy();
+    expect(within(log).queryByText("AQi")).toBeNull();
+    finish(reply({ ok: true, kind: "answered", room: roomAfter() }));
+    await waitFor(() => expect(screen.getByText("Here is the answer.")).toBeTruthy());
+    // The record replaces the picture of the message, so nothing is shown twice, and nobody is writing any more.
+    expect(within(log).queryByText("What do you do?")).toBeNull();
+    expect(within(log).getAllByText("Hello")).toHaveLength(1);
+    expect(within(log).queryByText(/is writing an answer/)).toBeNull();
+    expect(question().readOnly).toBe(false);
+  });
+
+  it("shows AQi as the one writing when no one in particular was asked", () => {
+    fetchMock.mockImplementation(() => new Promise(() => undefined));
+    chat();
+    fireEvent.change(question(), { target: { value: "Hi there" } });
+    fireEvent.click(sendButton());
+    const log = screen.getByRole("log", { name: "AQi conversation" });
+    expect(within(log).getByText("Hi there")).toBeTruthy();
+    expect(within(log).getByText("AQi")).toBeTruthy();
+    expect(within(log).getByText("AQi is writing an answer.")).toBeTruthy();
+  });
+
+  it("takes the message back out of the conversation and into the box when it did not go through, ready to send again", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+    chat();
+    fireEvent.change(question(), { target: { value: "Will this arrive?" } });
+    fireEvent.click(sendButton());
+    await screen.findByText(/could not confirm your message was sent/i);
+    const log = screen.getByRole("log", { name: "AQi conversation" });
+    expect(within(log).queryByText("Will this arrive?")).toBeNull();
+    expect(within(log).queryByText(/is writing an answer/)).toBeNull();
+    expect(question().value).toBe("Will this arrive?");
+    expect(question().readOnly).toBe(false);
   });
 
   it("does not send an empty question, or one of only spaces", () => {

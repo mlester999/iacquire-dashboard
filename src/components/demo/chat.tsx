@@ -15,6 +15,9 @@ import { newClientMessageId, type RoomChatState, type RoomLine } from "@/lib/dem
 //
 // A message that may not have arrived (the connection dropped) keeps its key, so pressing Send again can never count it twice. A question put in the box from elsewhere on the page
 // (a suggestion, a button on a feature) only fills the box: it is sent when the visitor presses Send, and only then does it count.
+//
+// While an answer is on its way the visitor's own message is already in the conversation (and the box is empty), and the one shown writing is the employee they asked, or AQi when they
+// asked no one in particular. That message is only a picture of what was sent: the record the server returns replaces it, and if the message did not go through it goes back into the box.
 
 export interface DemoChatProps {
   initial: RoomChatState;
@@ -42,11 +45,37 @@ function speaker(line: RoomLine, roles: DemoChatProps["roles"]): string {
 
 const isRole = (k: string | null): k is AgentRoleKey => !!k && k in AGENT_BY_KEY;
 
+/** Who is writing the answer: the employee the visitor asked, or AQi, the demo guide, when they asked no one in particular. Said aloud once; the dots are only a picture. */
+function Writing({ employee, roles }: { employee: string; roles: DemoChatProps["roles"] }) {
+  const role = isRole(employee) ? AGENT_BY_KEY[employee] : null;
+  const name = role ? (roles.find((r) => r.key === employee)?.name ?? role.name) : "AQi";
+  return (
+    <div className="flex gap-2.5">
+      <span className="mt-5 shrink-0" aria-hidden>
+        {role ? <AgentAvatar role={role} size="xs" eager thinking /> : <LogoMark className="size-6" title="AQi" />}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[12px] font-medium text-muted" aria-hidden>
+          {role ? `${name} (AI)` : name}
+        </p>
+        <span className="sr-only">{name} is writing an answer.</span>
+        <span aria-hidden className="sx-typing mt-0.5 inline-flex gap-1 rounded-2xl rounded-tl-md bg-surface-2 px-3.5 py-3 ring-1 ring-inset ring-line">
+          <i className="size-1.5 rounded-full bg-muted" />
+          <i className="size-1.5 rounded-full bg-muted" />
+          <i className="size-1.5 rounded-full bg-muted" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft = null, suggestions = [], closedFooter, className }: DemoChatProps) {
   const [state, setState] = React.useState<RoomChatState>(initial);
   const [text, setText] = React.useState("");
   const [employee, setEmployee] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  /** The message on its way: what was sent and who it was asked of, so the conversation can show it and the right employee writing. */
+  const [outgoing, setOutgoing] = React.useState<{ body: string; employee: string } | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(pageNotice);
   const pendingKey = React.useRef<string | null>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
@@ -56,7 +85,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
   React.useEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [state.transcript.length, sending]);
+  }, [state.transcript.length, sending, outgoing]);
 
   // A question put in the box from elsewhere: only a new nonce is a new draft, so the same question can be asked for again. It fills the box when the form is open and sends nothing.
   const nonce = draft?.nonce;
@@ -77,6 +106,13 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
     pendingKey.current = key;
     setSending(true);
     setNotice(null);
+    // The message shows at once and the box empties; anything that does not go through gives it back to the box, to be sent again with the same key.
+    setOutgoing({ body, employee });
+    setText("");
+    const giveBack = () => {
+      setOutgoing(null);
+      setText((current) => current || body);
+    };
     try {
       const res = await fetch("/api/public/demo/message", {
         method: "POST",
@@ -94,18 +130,25 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         // The server answered for this key, so the next message is a new one.
         pendingKey.current = null;
         if (json.room) setState({ transcript: json.room.transcript, messagesLeft: json.room.messagesLeft, messageAllowance: json.room.messageAllowance, canSend: json.room.chat.canSend, refusalMessage: json.room.chat.refusalMessage });
-        if (json.kind === "held") setNotice({ tone: "error", text: json.message ?? "That message was not counted. Please try again." });
-        else setText("");
+        // The record now holds the message (and its answer), so the picture of it goes; a message that was given back (not counted) also returns to the box.
+        setOutgoing(null);
+        if (json.kind === "held") {
+          setNotice({ tone: "error", text: json.message ?? "That message was not counted. Please try again." });
+          setText((current) => current || body);
+        }
       } else if (json?.error) {
         pendingKey.current = null;
+        giveBack();
         const message = json.error.message ?? "That message could not be sent.";
         // A refusal that is about the demo itself (not a busy moment) ends the form, and the sentence takes its place: it is said once, where the form was.
         if (["limit_reached", "window_ended", "ai_off", "closed", "blocked", "not_verified", "no_session"].includes(json.error.code ?? "")) setState((s) => ({ ...s, canSend: false, refusalMessage: message }));
         else setNotice({ tone: "error", text: message });
       } else {
+        giveBack();
         setNotice({ tone: "error", text: "We could not confirm your message was sent. Press Send again; it will not be counted twice." });
       }
     } catch {
+      giveBack();
       setNotice({ tone: "error", text: "We could not confirm your message was sent. Check your connection and press Send again; it will not be counted twice." });
     } finally {
       setSending(false);
@@ -158,15 +201,17 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
             </div>
           </div>
         ))}
-        {sending && (
-          <div className="flex items-center gap-2.5" aria-hidden>
-            <LogoMark className="size-6" title="AQi" />
-            <span className="sx-typing inline-flex gap-1 rounded-2xl rounded-tl-md bg-surface-2 px-3.5 py-3 ring-1 ring-inset ring-line">
-              <i className="size-1.5 rounded-full bg-muted" />
-              <i className="size-1.5 rounded-full bg-muted" />
-              <i className="size-1.5 rounded-full bg-muted" />
-            </span>
-          </div>
+        {outgoing && (
+          <>
+            {/* A picture of what was just sent: hidden from assistive technology, which hears the record's own line once the answer comes back. */}
+            <div className="flex flex-row-reverse gap-2.5" aria-hidden>
+              <div className="min-w-0 max-w-[88%] text-right">
+                <p className="text-[12px] font-medium text-muted">You</p>
+                <p className="mt-0.5 whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-gradient-to-br from-[#3856e8] to-[#6945e2] px-3.5 py-2.5 text-left text-[14px] leading-relaxed text-white">{outgoing.body}</p>
+              </div>
+            </div>
+            <Writing employee={outgoing.employee} roles={roles} />
+          </>
         )}
       </div>
 
@@ -216,6 +261,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
                 rows={2}
                 maxLength={MAX}
                 value={text}
+                readOnly={sending}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
