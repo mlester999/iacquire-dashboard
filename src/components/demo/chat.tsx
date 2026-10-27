@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentAvatar } from "@/components/brand";
+import { AgentAvatar, LogoMark } from "@/components/brand";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { DemoNotice } from "@/components/demo/shell";
 import type { Notice } from "@/lib/demo/outcomes";
@@ -36,7 +36,7 @@ const MAX = 1000;
 function speaker(line: RoomLine, roles: DemoChatProps["roles"]): string {
   if (line.role === "user") return "You";
   const role = roles.find((r) => r.key === line.employeeRole);
-  return role ? `${role.name} (AI)` : "AI assistant";
+  return role ? `${role.name} (AI)` : "AQi";
 }
 
 const isRole = (k: string | null): k is AgentRoleKey => !!k && k in AGENT_BY_KEY;
@@ -120,26 +120,24 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         ref={logRef}
         role="log"
         tabIndex={0}
-        aria-label="Conversation"
+        aria-label="AQi conversation"
         aria-live="polite"
         aria-relevant="additions"
         className="sx-scroll min-h-40 flex-1 space-y-4 overflow-y-auto rounded-2xl border border-line bg-surface-2/60 p-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         {state.transcript.length === 0 && (
           <div className="space-y-3 py-1">
-            <p className="text-[14px] leading-relaxed text-ink-2">Nothing here yet. Ask a question about what the AI team does or what it costs.</p>
+            <p className="text-[14px] leading-relaxed text-ink-2">Nothing here yet. Ask AQi what the AI team does or what it costs.</p>
           </div>
         )}
         {state.transcript.map((l) => (
           <div key={l.id} className={cn("flex gap-2.5", l.role === "user" ? "flex-row-reverse" : "")}>
             {l.role !== "user" && (
-              <span className="mt-5 shrink-0">
+              <span className="mt-5 shrink-0" aria-hidden>
                 {isRole(l.employeeRole) ? (
                   <AgentAvatar role={AGENT_BY_KEY[l.employeeRole]} size="xs" eager />
                 ) : (
-                  <span className="grid size-6 place-items-center rounded-lg bg-gradient-to-br from-primary to-violet text-primary-on" aria-hidden>
-                    <Sparkles className="size-3.5" />
-                  </span>
+                  <LogoMark className="size-6" title="AQi" />
                 )}
               </span>
             )}
@@ -160,9 +158,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         ))}
         {sending && (
           <div className="flex items-center gap-2.5" aria-hidden>
-            <span className="grid size-6 place-items-center rounded-lg bg-gradient-to-br from-primary to-violet text-primary-on">
-              <Sparkles className="size-3.5" />
-            </span>
+            <LogoMark className="size-6" title="AQi" />
             <span className="sx-typing inline-flex gap-1 rounded-2xl rounded-tl-md bg-surface-2 px-3.5 py-3 ring-1 ring-inset ring-line">
               <i className="size-1.5 rounded-full bg-muted" />
               <i className="size-1.5 rounded-full bg-muted" />
@@ -209,7 +205,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
             <label htmlFor="demo-message" className="sr-only">
               Your question
             </label>
-            <div className="flex items-end gap-2 rounded-2xl border border-line-strong bg-surface-2/80 p-2 focus-within:border-primary-hover focus-within:shadow-[var(--glow)]">
+            <div className="demo-chat-composer flex items-end gap-2 rounded-2xl border border-line-strong bg-surface-2/80 p-2 focus-within:border-primary-hover focus-within:shadow-[var(--glow)]">
               <textarea
                 ref={boxRef}
                 id="demo-message"
@@ -226,7 +222,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
                   }
                 }}
                 placeholder="For example: what does the Appointment Setter do?"
-                className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-faint"
+                className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none focus-visible:ring-0"
               />
               <button type="submit" disabled={sending} aria-label={sending ? "Sending" : "Send"} className="sx-btn-primary grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-60">
                 <Send className="size-[18px]" aria-hidden />

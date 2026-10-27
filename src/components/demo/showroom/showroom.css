@@ -15,6 +15,12 @@
   outline-offset: 2px;
 }
 
+/* The composer provides its own focus-within border and glow. Keep the inner textarea from adding a second outline. */
+.demo-stage .demo-chat-composer textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 /* Content that sits on the portal's navy navigation rail: the tokens are re-stated for dark chrome (as the portal does for .workspace-nav), so a clock, a meter or a button there
    reads correctly whichever theme the page is in. */
 .sx-on-nav {

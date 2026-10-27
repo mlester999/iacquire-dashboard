@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MessageSquareText, Sparkles, X } from "lucide-react";
+import { MessageSquareText, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Logo } from "@/components/brand";
+import { Logo, LogoMark } from "@/components/brand";
 import { AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
 import { DemoChat } from "@/components/demo/chat";
 import { DemoNotice } from "@/components/demo/shell";
@@ -259,7 +259,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                         className="sx-btn-quiet inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[14px] font-semibold lg:flex-none 2xl:hidden"
                       >
                         <MessageSquareText className="size-4" aria-hidden />
-                        Ask the AI guide
+                        Ask AQi
                       </button>
                     </div>
                   </div>
@@ -301,11 +301,11 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               </div>
             </div>
 
-            {/* The AI guide: docked on very wide screens, a sheet otherwise */}
+            {/* AQi: docked on very wide screens, a sheet otherwise */}
             {chatOpen && <button type="button" tabIndex={-1} aria-hidden onClick={() => setChatOpen(false)} className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] dark:bg-black/60 2xl:hidden" />}
             <aside
               id="showroom-chat"
-              aria-label="AI guide"
+              aria-label="AQi demo guide"
               className={cn(
                 "fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col border-l border-line bg-surface shadow-float transition-[transform,visibility] duration-300 sm:w-[420px]",
                 "2xl:sticky 2xl:top-0 2xl:z-10 2xl:h-dvh 2xl:w-auto 2xl:max-w-none 2xl:translate-x-0 2xl:visible 2xl:bg-surface/80 2xl:shadow-none 2xl:backdrop-blur-xl",
@@ -313,14 +313,21 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               )}
             >
               <header className="flex items-start gap-3 border-b border-line p-5">
-                <span className="brand-gradient grid size-10 shrink-0 place-items-center rounded-xl text-white shadow-glow">
-                  <Sparkles className="size-5" aria-hidden />
+                <span className="brand-gradient grid size-10 shrink-0 place-items-center rounded-xl text-white shadow-glow" aria-hidden>
+                  <LogoMark className="size-6" title="AQi" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-[16px] font-semibold leading-tight text-ink">{state.aiEnabled ? "Your AI guide" : ROOM_COPY.chatOffHeading}</h2>
+                  <h2 className="flex items-center gap-2 text-[16px] font-semibold leading-tight text-ink">
+                    {state.aiEnabled ? (
+                      <>
+                        <span>AQi</span>
+                        <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-ink">Demo guide</span>
+                      </>
+                    ) : ROOM_COPY.chatOffHeading}
+                  </h2>
                   <p className="mt-1 text-[12.5px] leading-snug text-muted">{state.aiEnabled ? ROOM_COPY.chatIntro : REFUSAL_COPY.ai_off}</p>
                 </div>
-                <button ref={chatCloseRef} type="button" onClick={() => { setChatOpen(false); chatToggleRef.current?.focus(); }} className="sx-btn-quiet grid size-10 shrink-0 place-items-center rounded-lg 2xl:hidden" aria-label="Close the AI guide">
+                <button ref={chatCloseRef} type="button" onClick={() => { setChatOpen(false); chatToggleRef.current?.focus(); }} className="sx-btn-quiet grid size-10 shrink-0 place-items-center rounded-lg 2xl:hidden" aria-label="Close AQi">
                   <X className="size-4" aria-hidden />
                 </button>
               </header>
@@ -349,14 +356,14 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
             </aside>
           </div>
 
-          {/* Bottom bar on phones: the consultation action and the AI guide stay one tap away */}
+          {/* Bottom bar on phones: the consultation action and AQi stay one tap away */}
           {!chatOpen && (
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-3 py-2.5 backdrop-blur-xl md:hidden">
               <div className="mx-auto flex max-w-xl items-center gap-2">
                 <ConsultCta size="md" className="min-w-0 flex-1" />
                 <button type="button" onClick={() => setChatOpen(true)} aria-controls="showroom-chat" aria-expanded={chatOpen} className="sx-btn-quiet inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[14px] font-semibold">
                   <MessageSquareText className="size-4" aria-hidden />
-                  Ask AI
+                  Ask AQi
                 </button>
               </div>
             </div>

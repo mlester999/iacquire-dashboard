@@ -164,7 +164,7 @@ export function WorkforceView() {
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
               <span className="mr-1 flex items-center gap-1.5 text-[13px] font-medium text-muted">
                 <MessageSquareText className="size-4" aria-hidden />
-                {canAsk ? "Ask the guide:" : "Questions to ask the team:"}
+                {canAsk ? "Ask AQi:" : "Questions to ask the team:"}
               </span>
               {questionsFor(meta.shortName).map((q) => (
                 <button key={q} type="button" onClick={() => ask(q)} className="sx-btn-quiet rounded-full px-3 py-1.5 text-left text-[13px] font-medium">

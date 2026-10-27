@@ -336,7 +336,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(await redirectOf(() => roomPage())).toBe("REDIRECT:/demo?r=no_session");
   });
 
-  it("opens on a headline about the prospect's own business, with the window, the messages, the six employees, the four steps and the two requests, and the AI guide when a model is connected", async () => {
+  it("opens on a headline about the prospect's own business, with the window, the messages, the six employees, the four steps and the two requests, and AQi when a model is connected", async () => {
     state.model = { ready: true };
     const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals", industry: "home_services" });
     state.cookie = s.sessionToken;
@@ -356,13 +356,14 @@ describe("/demo/room, the prospect's own demo", () => {
     expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
     for (const j of JOURNEY) expect(t, j.short).toContain(j.short);
     for (const v of VIEWS) expect(t, v.label).toContain(v.label);
-    // The AI guide.
-    expect(t).toContain("Your AI guide");
+    // AQi is the public demo guide.
+    expect(t).toContain("AQi");
+    expect(t).toContain("Demo guide");
     expect(t).toContain(ROOM_COPY.chatIntro);
     expect(markup).toMatch(/<label[^>]*for="demo-message"/);
     expect(markup).toMatch(/<label[^>]*for="demo-employee"/);
     expect(markup).toContain('role="log"');
-    expect(markup).toMatch(/aria-label="Conversation"/);
+    expect(markup).toMatch(/aria-label="AQi conversation"/);
     // The two requests say what they do before they are pressed.
     expect(t).toContain(ROOM_COPY.consultationButton);
     expect(t).toContain(ROOM_COPY.consultationNote);
