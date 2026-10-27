@@ -46,7 +46,7 @@ export function AutomationView() {
       </section>
 
       <section aria-labelledby="modes-heading" className="space-y-5">
-        <h2 id="modes-heading" className="sx-display text-[28px] leading-tight text-ink @xl:text-[32px]">
+        <h2 id="modes-heading" className="sx-display text-[22px] leading-tight text-ink @xl:text-[24px]">
           Built to be safe to use
         </h2>
         <ul className="grid gap-4 @2xl:grid-cols-2">

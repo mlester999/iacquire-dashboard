@@ -13,10 +13,11 @@ import { REFUSAL_COPY } from "@/lib/demo/rules";
 import type { RoomChatState } from "@/lib/demo/room-types";
 import { VIEWS, isViewId, type ViewId } from "@/lib/demo/showroom/content";
 import { MessageMeter, WindowClock } from "@/components/demo/showroom/clock";
-import { ShowroomProvider, type ShowroomState } from "@/components/demo/showroom/context";
-import { ConsultCta } from "@/components/demo/showroom/cta";
+import { ShowroomProvider, useShowroom, type ShowroomState } from "@/components/demo/showroom/context";
+import { ConfirmHost, ConfirmStatic, ConsultCta } from "@/components/demo/showroom/cta";
 import { JourneyBar, JourneyProvider } from "@/components/demo/showroom/journey";
-import { ViewIcon } from "@/components/demo/showroom/ui";
+import { ThemeSwitch } from "@/components/demo/showroom/theme-switch";
+import { Chip, ViewIcon } from "@/components/demo/showroom/ui";
 import { AutomationView } from "@/components/demo/showroom/views/automation";
 import { CrmView } from "@/components/demo/showroom/views/crm";
 import { InboxView } from "@/components/demo/showroom/views/inbox";
@@ -28,9 +29,10 @@ import { WhyView } from "@/components/demo/showroom/views/why";
 import { WorkforceView } from "@/components/demo/showroom/views/workforce";
 import "@/components/demo/showroom/showroom.css";
 
-// The demo room as a workspace: a navigation rail, the view the visitor is on, the guided-tour strip, and the AI guide docked on the right (a sheet on smaller screens). Everything here is
-// the record's: the window, the messages, the conversation and the two requests come from the server's view of this one demo, and moving between views changes none of them and counts no
-// message. The address carries the view (?view=...), so a view can be opened directly and the page works without scripts.
+// The demo room as a safe preview of the real portal: the same navy navigation rail, the same themed page, cards and buttons, the same light/dark/system choice. It is a public component
+// set: it never mounts the portal's own shell, and nothing here reads a workspace. Everything shown is the record's: the window, the messages, the conversation and the two requests
+// come from the server's view of this one demo, and moving between views changes none of them and counts no message. The address carries the view (?view=...), so a view can be
+// opened directly and the page works without scripts.
 
 const ROLES = AGENT_ROLES.map((r) => ({ key: r.key as string, name: r.name }));
 
@@ -46,6 +48,11 @@ const SUGGESTIONS: Record<ViewId, string[]> = {
   summary: ["What happens after I book a consultation?", "What would you set up for me first?", "How long does setup take?"],
 };
 
+const GROUPS: Array<{ label: string; ids: ViewId[] }> = [
+  { label: "Explore the product", ids: ["overview", "workforce", "crm", "inbox", "automation", "reports"] },
+  { label: "Plans and next steps", ids: ["pricing", "why"] },
+];
+
 export interface WorkspaceProps {
   state: ShowroomState;
   initialView: ViewId;
@@ -55,6 +62,52 @@ export interface WorkspaceProps {
 function viewOf(search: string): ViewId {
   const v = new URLSearchParams(search).get("view");
   return isViewId(v) ? v : "overview";
+}
+
+const noSubscribe = () => () => {};
+
+/** The confirmation of a link followed without scripts, drawn on the page until the page is live; then the dialog takes over. */
+function StaticConfirmation() {
+  const { confirming } = useShowroom();
+  const live = React.useSyncExternalStore(noSubscribe, () => true, () => false);
+  if (live || !confirming) return null;
+  return <ConfirmStatic kind={confirming} />;
+}
+
+function NavLinks({ view, go, className }: { view: ViewId; go: (v: ViewId) => void; className?: string }) {
+  return (
+    <div className={cn("space-y-4", className)}>
+      {GROUPS.map((g) => (
+        <div key={g.label} className="space-y-1">
+          <p className="workspace-nav-section px-3 pb-1">{g.label}</p>
+          <ul className="space-y-0.5">
+            {g.ids.map((id) => {
+              const v = VIEWS.find((x) => x.id === id)!;
+              return (
+                <li key={v.id}>
+                  <a
+                    href={v.id === "overview" ? "/demo/room" : `/demo/room?view=${v.id}`}
+                    aria-current={view === v.id ? "page" : undefined}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                      e.preventDefault();
+                      go(v.id);
+                    }}
+                    className="nav-row min-h-10 px-2 text-[14px] font-medium"
+                  >
+                    <span className="nav-icon-box">
+                      <ViewIcon name={v.icon} className="size-[17px]" />
+                    </span>
+                    {v.label}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function Workspace({ state, initialView, chat }: WorkspaceProps) {
@@ -120,58 +173,52 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
   return (
     <ShowroomProvider state={state} view={view} go={go} ask={ask} focusRole={focusRole}>
       <JourneyProvider view={view}>
-        <div className="demo-stage">
-          <a href="#demo-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:text-ink">
+        <div className="demo-stage app-backdrop grain">
+          <a href="#demo-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:text-ink focus:shadow-float">
             Skip to content
           </a>
 
-          <div className="lg:grid lg:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[264px_minmax(0,1fr)_380px]">
-            {/* Navigation rail (large screens) */}
-            <aside aria-label="Demo navigation" className="hidden border-r border-line bg-[#070c1c]/80 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:gap-4 lg:overflow-y-auto lg:p-4 sx-scroll">
-              <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
-                <Logo tone="inverse" />
-              </Link>
-              <div className="sx-panel-flat space-y-0.5 px-3.5 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-ink">Your demo</p>
-                <p className="break-words text-[15px] font-semibold leading-snug text-ink">{state.business?.trim() || `${state.firstName}'s business`}</p>
-                {state.industryLabel && <p className="text-[12.5px] text-muted">{state.industryLabel}</p>}
+          <div className="relative z-10 lg:grid lg:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[264px_minmax(0,1fr)_380px]">
+            {/* Navigation rail (large screens): the portal's navy sidebar, with demo labels */}
+            <aside aria-label="Demo navigation" className="workspace-nav sx-on-nav sx-scroll hidden lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:overflow-y-auto">
+              <div className="flex h-[68px] shrink-0 items-center justify-between px-5">
+                <Link href="/demo" aria-label="iAcquire demo home" className="workspace-nav-brand -m-1 inline-flex items-center p-1">
+                  <Logo tone="inverse" />
+                </Link>
+                <span className="rounded-full border border-white/15 bg-white/[.07] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#cdd8ee]">Demo</span>
               </div>
-              <ConsultCta size="md" className="[&_button]:w-full" />
-              <nav aria-label="Sections">
-                <ul className="space-y-1">
-                  {VIEWS.map((v) => (
-                    <li key={v.id}>
-                      <a
-                        href={v.id === "overview" ? "/demo/room" : `/demo/room?view=${v.id}`}
-                        aria-current={view === v.id ? "page" : undefined}
-                        onClick={(e) => {
-                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                          e.preventDefault();
-                          go(v.id);
-                        }}
-                        className="sx-nav-item flex min-h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium text-ink-2 hover:bg-white/5 hover:text-ink"
-                      >
-                        <ViewIcon name={v.icon} className={view === v.id ? "text-primary-ink" : "text-muted"} />
-                        {v.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+              <div className="mx-4 mb-3 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#91a0ba]">Your demo</p>
+                <p className="mt-0.5 break-words text-[14px] font-semibold leading-snug text-white">{state.business?.trim() || `${state.firstName}'s business`}</p>
+                {state.industryLabel && <p className="text-[12.5px] text-[#b6c1d4]">{state.industryLabel}</p>}
+              </div>
+              <div className="mx-4 mb-4">
+                <ConsultCta size="md" className="w-full" />
+              </div>
+              <nav aria-label="Sections" className="min-h-0 flex-1 px-3">
+                <NavLinks view={view} go={go} />
               </nav>
-              <div className="sx-panel-flat mt-auto space-y-3.5 p-3.5">
-                <WindowClock compact />
-                <MessageMeter compact />
+              <div className="mt-4 space-y-3 p-4">
+                <div className="space-y-3.5 rounded-xl border border-white/10 bg-white/[.035] p-3.5">
+                  <WindowClock compact />
+                  <MessageMeter compact />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] font-medium text-[#91a0ba]">Appearance</span>
+                  <ThemeSwitch tone="nav" />
+                </div>
               </div>
             </aside>
 
             <div className="min-w-0">
               {/* Header and section pills (smaller screens) */}
-              <header className="sticky top-0 z-30 border-b border-line bg-[#060a17]/90 backdrop-blur-xl lg:hidden">
-                <div className="flex items-center justify-between gap-3 px-4 pt-3">
-                  <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
-                    <Logo tone="inverse" />
+              <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur-xl lg:hidden">
+                <div className="flex items-center justify-between gap-3 px-4 pt-2.5">
+                  <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center gap-2.5">
+                    <Logo />
+                    <Chip tone="info">Demo</Chip>
                   </Link>
-                  <p className="min-w-0 truncate text-right text-[13px] font-medium text-muted">{state.business?.trim() || state.firstName}</p>
+                  <ThemeSwitch />
                 </div>
                 <nav aria-label="Sections" className="sx-noscrollbar relative overflow-x-auto px-3 py-2.5">
                   <ul className="flex gap-1.5">
@@ -185,7 +232,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                             e.preventDefault();
                             go(v.id);
                           }}
-                          className="sx-nav-item inline-flex min-h-10 items-center gap-2 rounded-full border border-line px-3.5 text-[13px] font-medium text-ink-2 aria-[current=page]:border-primary/50 aria-[current=page]:text-ink"
+                          className="sx-nav-item inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2"
                         >
                           <ViewIcon name={v.icon} className="size-4" />
                           {v.short}
@@ -198,11 +245,11 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
 
               <div className="px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-16 lg:pt-0">
                 {/* Tour strip and the persistent consultation action */}
-                <div className="z-20 -mx-4 mb-6 bg-gradient-to-b from-[#060a17] via-[#060a17]/90 to-transparent px-4 pb-3 pt-0 sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:-mx-8 lg:px-8 lg:pt-5">
+                <div className="z-20 -mx-4 mb-6 bg-gradient-to-b from-[var(--bg)] via-[var(--bg)]/90 to-transparent px-4 pb-3 pt-0 sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:-mx-8 lg:px-8 lg:pt-5">
                   <div className="flex flex-wrap items-stretch gap-3">
                     <JourneyBar className="min-w-0 basis-full lg:flex-1 lg:basis-0" />
                     <div className="hidden w-full items-center gap-2 md:flex lg:w-auto">
-                      <ConsultCta size="md" className="flex-1 lg:hidden [&_button]:w-full" />
+                      <ConsultCta size="md" className="flex-1 lg:hidden" />
                       <button
                         ref={chatToggleRef}
                         type="button"
@@ -228,6 +275,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                   <p className="sr-only" aria-live="polite">
                     Showing {label}
                   </p>
+                  <StaticConfirmation />
                   <div key={view} className="sx-rise">
                     {view === "overview" && <OverviewView />}
                     {view === "workforce" && <WorkforceView key={focusRole ?? "any"} />}
@@ -253,19 +301,19 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               </div>
             </div>
 
-            {/* The AI guide: docked on wide screens, a sheet otherwise */}
-            {chatOpen && <button type="button" tabIndex={-1} aria-hidden onClick={() => setChatOpen(false)} className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm 2xl:hidden" />}
+            {/* The AI guide: docked on very wide screens, a sheet otherwise */}
+            {chatOpen && <button type="button" tabIndex={-1} aria-hidden onClick={() => setChatOpen(false)} className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] dark:bg-black/60 2xl:hidden" />}
             <aside
               id="showroom-chat"
               aria-label="AI guide"
               className={cn(
-                "fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col border-l border-line bg-[#080e1f] shadow-[var(--shadow-lg)] transition-[transform,visibility] duration-300 sm:w-[420px]",
-                "2xl:sticky 2xl:top-0 2xl:z-10 2xl:h-dvh 2xl:w-auto 2xl:max-w-none 2xl:translate-x-0 2xl:visible 2xl:bg-[#070c1c]/80 2xl:shadow-none 2xl:backdrop-blur-xl",
+                "fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col border-l border-line bg-surface shadow-float transition-[transform,visibility] duration-300 sm:w-[420px]",
+                "2xl:sticky 2xl:top-0 2xl:z-10 2xl:h-dvh 2xl:w-auto 2xl:max-w-none 2xl:translate-x-0 2xl:visible 2xl:bg-surface/80 2xl:shadow-none 2xl:backdrop-blur-xl",
                 chatOpen ? "visible translate-x-0" : "invisible translate-x-full",
               )}
             >
               <header className="flex items-start gap-3 border-b border-line p-5">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-violet text-primary-on shadow-[var(--glow)]">
+                <span className="brand-gradient grid size-10 shrink-0 place-items-center rounded-xl text-white shadow-glow">
                   <Sparkles className="size-5" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -286,7 +334,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                     draft={draft}
                     suggestions={SUGGESTIONS[view]}
                     className="min-h-0 flex-1"
-                    closedFooter={<ConsultCta size="md" className="[&_button]:w-full" />}
+                    closedFooter={<ConsultCta size="md" className="w-full" />}
                   />
                 ) : (
                   <div className="space-y-3">
@@ -294,7 +342,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                     <p role="status" className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
                       {chat.initial.refusalMessage ?? REFUSAL_COPY.ai_off}
                     </p>
-                    <ConsultCta size="md" className="[&_button]:w-full" />
+                    <ConsultCta size="md" className="w-full" />
                   </div>
                 )}
               </div>
@@ -303,9 +351,9 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
 
           {/* Bottom bar on phones: the consultation action and the AI guide stay one tap away */}
           {!chatOpen && (
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-[#060a17]/95 px-3 py-2.5 backdrop-blur-xl md:hidden">
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-3 py-2.5 backdrop-blur-xl md:hidden">
               <div className="mx-auto flex max-w-xl items-center gap-2">
-                <ConsultCta size="md" className="min-w-0 flex-1 [&_button]:w-full" />
+                <ConsultCta size="md" className="min-w-0 flex-1" />
                 <button type="button" onClick={() => setChatOpen(true)} aria-controls="showroom-chat" aria-expanded={chatOpen} className="sx-btn-quiet inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[14px] font-semibold">
                   <MessageSquareText className="size-4" aria-hidden />
                   Ask AI
@@ -313,6 +361,8 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               </div>
             </div>
           )}
+
+          <ConfirmHost />
 
           <noscript>
             <style>{`#showroom-chat{position:static!important;visibility:visible!important;transform:none!important;width:auto!important;max-width:none!important;height:auto!important}`}</style>

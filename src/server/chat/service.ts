@@ -1310,12 +1310,12 @@ export interface SendResult {
 async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
   const agent = await withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
-      id: string; org_id: string; status: AgentStatus; enabled: boolean; active_config_version_id: string | null;
+      id: string; org_id: string; display_name: string; status: AgentStatus; enabled: boolean; active_config_version_id: string | null;
       last_health_check_at: Date | null; last_health_ok: boolean | null; tool_inventory_contract: string | null;
       tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
       tool_inventory_tool_count: number | null;
     }>(
-      `select id,org_id,status,enabled,active_config_version_id,last_health_check_at,last_health_ok,
+      `select id,org_id,display_name,status,enabled,active_config_version_id,last_health_check_at,last_health_ok,
               tool_inventory_contract,tool_inventory_digest,tool_inventory_verified_at,tool_inventory_expires_at,tool_inventory_tool_count
          from agent_instances where org_id=$1 and role_key=$2`,
       [ctx.org.orgId, role],
@@ -1474,7 +1474,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   }
 
   const refusal = !input.regenerateMessageId && input.content
-    ? workforceChatRefusal(input.agentRole, input.content)
+    ? workforceChatRefusal(input.agentRole, input.content, agent.display_name)
     : null;
   const namedOtherRole = !input.regenerateMessageId
     ? explicitlyAddressedWorkforceRole(input.agentRole, prepared.userContent)

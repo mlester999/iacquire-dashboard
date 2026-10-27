@@ -1,16 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Check, Play, ShieldCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ArrowRight, Play, ShieldCheck } from "lucide-react";
 import { ROOM_COPY } from "@/lib/demo/outcomes";
-import { JOURNEY, VIEWS } from "@/lib/demo/showroom/content";
+import { VIEWS } from "@/lib/demo/showroom/content";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { useJourney } from "@/components/demo/showroom/journey";
 import { BusinessHub } from "@/components/demo/showroom/hub-diagram";
 import { MessageMeter, WindowClock } from "@/components/demo/showroom/clock";
 import { ConversionPanel } from "@/components/demo/showroom/cta";
-import { Chip, Eyebrow, PlanTag, SectionHead, ViewIcon } from "@/components/demo/showroom/ui";
+import { Eyebrow, PlanTag, SectionHead, ViewIcon } from "@/components/demo/showroom/ui";
 
 // The first screen of the demo, and the one a visitor returns to: a headline about THEIR business (the name they gave us, nothing inferred), a picture of the six AI Employees around it,
 // the live state of the demo, the four-step journey, and a way to just look around.
@@ -25,14 +24,14 @@ export function OverviewView() {
   const seen = visited.length;
 
   return (
-    <div className="space-y-12 @xl:space-y-16">
+    <div className="space-y-10">
       <section aria-labelledby="hero-heading" className="grid items-center gap-8 @4xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] @4xl:gap-10">
         <div className="sx-rise space-y-6">
           <Eyebrow>
             Welcome, {firstName}
             {industryLabel ? <span className="text-muted"> · {industryLabel}</span> : null}
           </Eyebrow>
-          <h1 id="hero-heading" className="sx-display text-[38px] leading-[1.05] text-ink @xl:text-[46px] @5xl:text-[56px]">
+          <h1 id="hero-heading" className="sx-display text-[30px] leading-[1.1] text-ink @xl:text-[38px] @5xl:text-[44px]">
             Meet the AI team that could help run{" "}
             <span className="sx-gradient-text break-words">{name ? name : "your business"}</span>.
           </h1>
@@ -85,37 +84,14 @@ export function OverviewView() {
         </div>
       </section>
 
-      <section aria-labelledby="journey-heading" className="space-y-6">
-        <SectionHead eyebrow="Four steps, in any order" title="A guided tour of your system" as="h2" lead="Each step is short, interactive and skippable. Your progress is kept on this device, so you can leave and come back." />
-        <ol className="grid gap-4 @2xl:grid-cols-2 @5xl:grid-cols-4">
-          {JOURNEY.map((j, i) => {
-            const done = visited.includes(j.step);
-            return (
-              <li key={j.step} className={cn("sx-panel sx-rise flex flex-col gap-3 p-5", `sx-delay-${i + 1}`)}>
-                <div className="flex items-center justify-between">
-                  <span className={cn("grid size-9 place-items-center rounded-full text-[14px] font-semibold", done ? "bg-success text-[#04140b]" : "bg-primary-soft text-primary-ink")}>{done ? <Check className="size-4" aria-hidden /> : j.step}</span>
-                  {done ? <Chip tone="ok">Seen</Chip> : j.step === nextStep.step ? <Chip tone="info">Up next</Chip> : null}
-                </div>
-                <h3 className="text-[18px] font-semibold leading-snug tracking-[-0.01em] text-ink">{j.title}</h3>
-                <p className="flex-1 text-[14px] leading-relaxed text-ink-2">{j.blurb}</p>
-                <button type="button" onClick={() => go(j.view)} className="inline-flex h-10 items-center gap-1.5 self-start text-[14px] font-semibold text-primary-ink hover:text-ink">
-                  {done ? "Revisit" : "Start"} step {j.step}
-                  <ArrowRight className="size-4" aria-hidden />
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-
       <section id="areas" aria-labelledby="areas-heading" className="scroll-mt-24 space-y-6">
-        <SectionHead eyebrow="Or look around yourself" title="What would you like to see?" as="h2" lead="Everything is one click away. Moving around never uses an AI message." />
+        <SectionHead eyebrow="Look around" title="What would you like to see?" as="h2" lead="Everything is one click away, in any order. Moving around never uses an AI message." />
         <ul className="grid gap-4 @xl:grid-cols-2 @5xl:grid-cols-3">
           {AREAS.map((a) => {
             const plan = AREA_PLAN[a.id];
             return (
               <li key={a.id}>
-                <button type="button" onClick={() => go(a.id)} className="sx-panel group flex h-full w-full flex-col gap-3 p-5 text-left transition-transform hover:-translate-y-0.5 hover:border-line-strong">
+                <button type="button" onClick={() => go(a.id)} className="sx-panel group flex h-full w-full flex-col gap-2.5 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-line-strong">
                   <span className="flex items-center justify-between">
                     <span className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary-ink">
                       <ViewIcon name={a.icon} className="size-5" />

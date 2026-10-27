@@ -14,8 +14,8 @@ export function SectionHead({ eyebrow, title, lead, className, as: Tag = "h2" }:
   return (
     <header className={cn("max-w-3xl", className)}>
       {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-      <Tag className="sx-display mt-2 text-[30px] leading-[1.1] text-ink @xl:text-[38px]">{title}</Tag>
-      {lead && <p className="mt-3 text-[16px] leading-relaxed text-ink-2">{lead}</p>}
+      <Tag className="sx-display mt-1.5 text-[26px] leading-[1.15] text-ink @xl:text-[30px]">{title}</Tag>
+      {lead && <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{lead}</p>}
     </header>
   );
 }
@@ -55,6 +55,8 @@ export function PlanTag({ plan }: { plan: "core" | "maintenance" }) {
   );
 }
 
+/** "US$1,499": the price as the offer states it, with the currency named. */
+export const usd = (n: number) => `US${dollars(n)}`;
 export const dollars = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 
 /** A sideways-scrolling area (a wide table, a board) that a keyboard can reach: it is focusable, named, and scrolls with the arrow keys. */

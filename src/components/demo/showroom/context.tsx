@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Notice } from "@/lib/demo/outcomes";
+import type { ConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 import type { SampleScenario } from "@/lib/demo/showroom/industry";
 import type { ViewId } from "@/lib/demo/showroom/content";
 import type { AgentRoleKey } from "@/lib/agents";
@@ -36,6 +37,8 @@ export interface ShowroomState {
   plan: PlanFacts;
   /** What a button without scripts did, only where the record agrees (src/lib/demo/outcomes.ts). */
   ctaNotice: Notice | null;
+  /** A confirmation the address asked to be open (the link a button without scripts follows). It opens only if that request is still unrecorded. */
+  initialConfirm: ConfirmKind | null;
 }
 
 export interface ShowroomApi extends ShowroomState {
@@ -47,7 +50,11 @@ export interface ShowroomApi extends ShowroomState {
   /** Puts a question in the chat's box and opens the chat. It sends nothing and counts no message: the visitor presses Send. */
   ask: (question: string) => void;
   /** Tells the team the visitor wants to talk to a person (or is ready to start). The server records it once; a second press changes nothing. */
-  request: (kind: "consultation" | "buy", source: string) => Promise<void>;
+  request: (kind: "consultation" | "buy", source: string) => Promise<boolean>;
+  /** The request the visitor is being asked to confirm, if any. Nothing is recorded until they confirm. */
+  confirming: "consultation" | "buy" | null;
+  openConfirm: (kind: "consultation" | "buy") => void;
+  closeConfirm: () => void;
   requesting: "consultation" | "buy" | null;
   /** Why the last request did not go through, and which button it was pressed from (that button shows it, so it is never out of sight). */
   requestError: { source: string; text: string } | null;
@@ -81,10 +88,16 @@ export function ShowroomProvider({
   const router = useRouter();
   const [requesting, setRequesting] = React.useState<"consultation" | "buy" | null>(null);
   const [requestError, setRequestError] = React.useState<{ source: string; text: string } | null>(null);
+  const [confirming, setConfirming] = React.useState<"consultation" | "buy" | null>(state.initialConfirm);
+  const openConfirm = React.useCallback((kind: "consultation" | "buy") => {
+    setRequestError(null);
+    setConfirming(kind);
+  }, []);
+  const closeConfirm = React.useCallback(() => setConfirming(null), []);
 
   const request = React.useCallback(
-    async (kind: "consultation" | "buy", source: string) => {
-      if (requesting) return;
+    async (kind: "consultation" | "buy", source: string): Promise<boolean> => {
+      if (requesting) return false;
       setRequesting(kind);
       setRequestError(null);
       try {
@@ -94,10 +107,15 @@ export function ShowroomProvider({
           body: JSON.stringify({ kind }),
         });
         const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: { message?: string } } | null;
-        if (json?.ok) router.refresh();
-        else setRequestError({ source, text: json?.error?.message ?? "That could not be recorded just now. Please try again in a moment." });
+        if (json?.ok) {
+          router.refresh();
+          return true;
+        }
+        setRequestError({ source, text: json?.error?.message ?? "That could not be recorded just now. Please try again in a moment." });
+        return false;
       } catch {
         setRequestError({ source, text: "We could not reach the server. Check your connection and try again." });
+        return false;
       } finally {
         setRequesting(null);
       }
@@ -106,8 +124,8 @@ export function ShowroomProvider({
   );
 
   const value = React.useMemo<ShowroomApi>(
-    () => ({ ...state, view, go, focusRole, ask, request, requesting, requestError, ended: state.access !== "open" }),
-    [state, view, go, focusRole, ask, request, requesting, requestError],
+    () => ({ ...state, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, ended: state.access !== "open" }),
+    [state, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

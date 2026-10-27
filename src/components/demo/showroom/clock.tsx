@@ -124,7 +124,7 @@ export function MessageMeter({ left: leftOverride, className, compact = false }:
       </p>
       <div className="flex gap-1" aria-hidden>
         {Array.from({ length: pips }, (_, i) => (
-          <span key={i} className={cn("h-1.5 flex-1 rounded-full", i < left ? "bg-gradient-to-r from-primary to-violet" : "bg-white/10")} />
+          <span key={i} className={cn("h-1.5 flex-1 rounded-full", i < left ? "bg-gradient-to-r from-primary to-violet" : "bg-surface-3")} />
         ))}
       </div>
       {!compact && <p className="sr-only">You have {left} of {messageAllowance} messages left.</p>}

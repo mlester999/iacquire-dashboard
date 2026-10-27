@@ -31,7 +31,7 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
       <ol className="space-y-5">
         {WHY_BLOCKS.map((b, i) => (
           <li key={b.id} className="sx-panel grid gap-5 p-6 @xl:p-8 @4xl:grid-cols-[72px_minmax(0,1fr)_minmax(0,0.9fr)]">
-            <span className="sx-display text-[48px] leading-none text-primary-ink/70" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
+            <span className="sx-display text-[36px] leading-none text-primary-ink/60" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
             <div className="space-y-2">
               <h2 className="text-[21px] font-semibold leading-snug tracking-[-0.01em] text-ink">{b.title}</h2>
               <p className="text-[15px] leading-relaxed text-ink-2">{b.lead}</p>
@@ -101,7 +101,7 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
 
       <section aria-labelledby="price-why" className="sx-panel sx-panel-hot grid gap-6 p-6 @xl:p-8 @4xl:grid-cols-[minmax(0,1fr)_auto] @4xl:items-center">
         <div className="space-y-2">
-          <h2 id="price-why" className="sx-display text-[28px] leading-tight text-ink @xl:text-[34px]">Pricing that is easy to read</h2>
+          <h2 id="price-why" className="sx-display text-[24px] leading-tight text-ink @xl:text-[28px]">Pricing that is easy to read</h2>
           <p className="max-w-2xl text-[15px] leading-relaxed text-ink-2">
             The implementation starts at {setup}, paid once, and you use your system without a mandatory subscription. Managed Maintenance, at {monthly} a month, is optional: it adds monitoring, troubleshooting and Automation Studio. Usage-based costs are separate and shown in your portal.
           </p>
@@ -109,11 +109,11 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
         <dl className="flex gap-8">
           <div>
             <dt className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">From, once</dt>
-            <dd className="sx-display text-[44px] leading-none text-ink">{setup}</dd>
+            <dd className="sx-display text-[36px] leading-none text-ink">{setup}</dd>
           </div>
           <div>
             <dt className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Optional</dt>
-            <dd className="sx-display text-[44px] leading-none text-ink">{monthly}<span className="ml-1 text-[14px] text-muted">/mo</span></dd>
+            <dd className="sx-display text-[36px] leading-none text-ink">{monthly}<span className="ml-1 text-[14px] text-muted">/mo</span></dd>
           </div>
         </dl>
       </section>

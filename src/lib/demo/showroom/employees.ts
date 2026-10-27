@@ -38,8 +38,6 @@ export interface Scenario {
 export interface EmployeeProfile {
   role: AgentRoleKey;
   meta: AgentRoleMeta;
-  /** A nickname the product uses for the role, shown beside the name. */
-  alias?: string;
   /** The problem it takes off your plate, in a sentence. */
   solves: string;
   typicalDay: string[];
@@ -70,7 +68,6 @@ export function profiles(): EmployeeProfile[] {
       needsApproval: ["Contacting any lead", "Adding leads to your pipeline in bulk"],
     },
     operations_manager: {
-      alias: "Zeng",
       solves: "Work gets lost between tools and people. The Operations Manager keeps the AI team coordinated and tells you what only a person should decide.",
       typicalDay: ["Looks across queues, approvals, failed runs and integration problems each morning", "Lines up what each AI Employee should work on and flags anything blocked or overdue", "Writes a short summary for you with the decisions that are waiting"],
       capabilities: ["On-demand operations review", "Spots blocked or overdue work, failed runs and missing approvals", "Coordinates hand-offs between the AI Employees", "Daily and weekly operating summaries"],

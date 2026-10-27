@@ -90,7 +90,7 @@ export function SummaryView() {
           <div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
             <AgentAvatar role={AGENT_BY_KEY.operations_manager} size="md" eager />
             <p className="text-[14px] leading-relaxed text-ink-2">
-              <strong className="font-semibold text-ink">Operations Manager (Zeng)</strong> watches the whole flow: what is blocked, what is overdue, and what is waiting for you.
+              <strong className="font-semibold text-ink">Operations Manager</strong> watches the whole flow: what is blocked, what is overdue, and what is waiting for you.
             </p>
           </div>
         </div>

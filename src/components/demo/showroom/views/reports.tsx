@@ -17,9 +17,9 @@ const H = 280;
 const PAD = { l: 40, r: 64, t: 16, b: 32 };
 const MAX = 30;
 const SERIES = [
-  { key: "enquiries", label: "Enquiries", color: "#6d8dff", data: REPORT_SERIES.enquiries },
-  { key: "booked", label: "Appointments booked", color: "#a58bff", data: REPORT_SERIES.booked },
-  { key: "won", label: "Deals won", color: "#34c476", data: REPORT_SERIES.won },
+  { key: "enquiries", label: "Enquiries", color: "var(--primary)", ink: "var(--primary-ink)", data: REPORT_SERIES.enquiries },
+  { key: "booked", label: "Appointments booked", color: "var(--violet)", ink: "var(--violet-ink)", data: REPORT_SERIES.booked },
+  { key: "won", label: "Deals won", color: "var(--success)", ink: "var(--success-ink)", data: REPORT_SERIES.won },
 ] as const;
 
 const x = (i: number) => PAD.l + (i * (W - PAD.l - PAD.r)) / (REPORT_WEEKS.length - 1);
@@ -62,29 +62,29 @@ export function ReportsView() {
             <desc id="trend-desc">All three measures rise over the six weeks. The last week shows {REPORT_SERIES.enquiries[last]} enquiries, {REPORT_SERIES.booked[last]} appointments booked and {REPORT_SERIES.won[last]} deals won. These are invented figures.</desc>
             <defs>
               <linearGradient id="area-enq" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#6d8dff" stopOpacity="0.32" />
-                <stop offset="1" stopColor="#6d8dff" stopOpacity="0" />
+                <stop offset="0" style={{ stopColor: "var(--primary)" }} stopOpacity="0.28" />
+                <stop offset="1" style={{ stopColor: "var(--primary)" }} stopOpacity="0" />
               </linearGradient>
             </defs>
             {[0, 10, 20, 30].map((t) => (
               <g key={t}>
-                <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke="rgb(148 166 224 / 0.14)" strokeWidth="1" />
-                <text x={PAD.l - 10} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#98a3c0">{t}</text>
+                <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} style={{ stroke: "var(--line)" }} strokeWidth="1" />
+                <text x={PAD.l - 10} y={y(t) + 4} textAnchor="end" fontSize="11" fill="currentColor" className="text-muted">{t}</text>
               </g>
             ))}
             {REPORT_WEEKS.map((w, i) => (
-              <text key={w} x={x(i)} y={H - 10} textAnchor="middle" fontSize="11" fill="#98a3c0">{w}</text>
+              <text key={w} x={x(i)} y={H - 10} textAnchor="middle" fontSize="11" fill="currentColor" className="text-muted">{w}</text>
             ))}
             <path d={`M ${x(0)} ${y(0)} ${SERIES[0].data.map((v, i) => `L ${x(i)} ${y(v)}`).join(" ")} L ${x(last)} ${y(0)} Z`} fill="url(#area-enq)" />
             {SERIES.map((s) => (
               <g key={s.key}>
                 <polyline points={s.data.map((v, i) => `${x(i)},${y(v)}`).join(" ")} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
                 {s.data.map((v, i) => (
-                  <circle key={i} cx={x(i)} cy={y(v)} r={i === last ? 4.5 : 3} fill="#0c1326" stroke={s.color} strokeWidth="2">
+                  <circle key={i} cx={x(i)} cy={y(v)} r={i === last ? 4.5 : 3} style={{ fill: "var(--surface)", stroke: s.color }} strokeWidth="2">
                     <title>{`${s.label}, ${REPORT_WEEKS[i]}: ${v}`}</title>
                   </circle>
                 ))}
-                <text x={x(last) + 10} y={y(s.data[last]) + 4} fontSize="12" fontWeight="600" fill={s.color}>{s.data[last]}</text>
+                <text x={x(last) + 10} y={y(s.data[last]) + 4} fontSize="12" fontWeight="600" fill={s.ink}>{s.data[last]}</text>
               </g>
             ))}
           </svg>
@@ -170,7 +170,7 @@ export function ReportsView() {
 
       <ContextCta
         plan="core"
-        title="Get reports built on my own pipeline"
+        title="See how your own pipeline performs."
         body="Reports and the Performance Analyst are part of your core implementation. They read your own CRM, so the numbers describe your business, with the source and definition beside each one."
         consultLabel="Book a free consultation"
         secondary={{ view: "pricing", label: "See what it costs" }}

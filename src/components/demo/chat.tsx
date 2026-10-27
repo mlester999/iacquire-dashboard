@@ -123,7 +123,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         aria-label="Conversation"
         aria-live="polite"
         aria-relevant="additions"
-        className="sx-scroll min-h-40 flex-1 space-y-4 overflow-y-auto rounded-2xl border border-line bg-black/20 p-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="sx-scroll min-h-40 flex-1 space-y-4 overflow-y-auto rounded-2xl border border-line bg-surface-2/60 p-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         {state.transcript.length === 0 && (
           <div className="space-y-3 py-1">

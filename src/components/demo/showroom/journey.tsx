@@ -106,7 +106,7 @@ export function JourneyBar({ className }: { className?: string }) {
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
                     "group flex w-full min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors sm:justify-start",
-                    isCurrent ? "bg-primary-soft text-ink" : "text-ink-2 hover:bg-white/5",
+                    isCurrent ? "bg-primary-soft text-ink" : "text-ink-2 hover:bg-surface-2",
                   )}
                 >
                   <span

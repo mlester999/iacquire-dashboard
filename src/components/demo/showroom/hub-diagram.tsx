@@ -23,18 +23,18 @@ export function BusinessHub({ className }: { className?: string }) {
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full" aria-hidden>
         <defs>
           <linearGradient id="hub-line" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#6d8dff" stopOpacity="0.9" />
-            <stop offset="1" stopColor="#a58bff" stopOpacity="0.9" />
+            <stop offset="0" style={{ stopColor: "var(--primary)" }} stopOpacity="0.9" />
+            <stop offset="1" style={{ stopColor: "var(--violet)" }} stopOpacity="0.9" />
           </linearGradient>
         </defs>
-        <ellipse cx="50" cy="50" rx="38" ry="37" fill="none" stroke="rgb(148 166 224 / 0.12)" strokeWidth="1" vectorEffect="non-scaling-stroke" strokeDasharray="2 6" />
+        <ellipse cx="50" cy="50" rx="38" ry="37" fill="none" style={{ stroke: "var(--line-strong)" }} strokeWidth="1" vectorEffect="non-scaling-stroke" strokeDasharray="2 6" />
         {SPOTS.map((p, i) => (
           <line key={i} x1="50" y1="50" x2={p.x} y2={p.y} stroke="url(#hub-line)" strokeWidth="1.5" strokeOpacity="0.55" vectorEffect="non-scaling-stroke" className="sx-flow" />
         ))}
         {/* The hand-offs between neighbours: the order in which the roles pass work along. */}
         {SPOTS.map((p, i) => {
           const q = SPOTS[(i + 1) % 6];
-          return <line key={`n${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="rgb(148 166 224 / 0.22)" strokeWidth="1" vectorEffect="non-scaling-stroke" />;
+          return <line key={`n${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} style={{ stroke: "var(--line-strong)" }} strokeWidth="1" vectorEffect="non-scaling-stroke" />;
         })}
       </svg>
 
@@ -59,7 +59,7 @@ export function BusinessHub({ className }: { className?: string }) {
             className="group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 rounded-2xl p-1.5 text-center outline-offset-2 transition-transform hover:scale-105"
             aria-label={`Open ${role.shortName}`}
           >
-            <span className={cn("rounded-2xl shadow-[0_8px_26px_-8px_rgb(0_0_0/0.7)] ring-1 ring-white/10", i % 2 ? "sx-bob" : "sx-bob [animation-delay:-2.5s]")}>
+            <span className={cn("rounded-2xl shadow-md ring-1 ring-line", i % 2 ? "sx-bob" : "sx-bob [animation-delay:-2.5s]")}>
               <AgentAvatar role={role} size="lg" eager />
             </span>
             <span className="max-w-[92px] text-[12px] font-semibold leading-tight text-ink-2 group-hover:text-ink @xl:max-w-[120px] @xl:text-[13px]">{role.shortName}</span>

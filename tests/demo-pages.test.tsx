@@ -354,7 +354,7 @@ describe("/demo/room, the prospect's own demo", () => {
     // The six employees, the four steps of the tour, and every area a visitor can open.
     for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
     expect((markup.match(/aria-label="Open [A-Za-z ]+"/g) ?? []).length).toBe(6);
-    for (const j of JOURNEY) expect(t, j.title).toContain(j.title);
+    for (const j of JOURNEY) expect(t, j.short).toContain(j.short);
     for (const v of VIEWS) expect(t, v.label).toContain(v.label);
     // The AI guide.
     expect(t).toContain("Your AI guide");
@@ -383,11 +383,13 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain(`$${SETUP_FEE_USD.toLocaleString("en-US")}`);
     expect(t).toContain(`$${MAINTENANCE_MONTHLY_USD}`);
     expect(t).toContain("Starting at");
-    expect(t).toContain("paid once");
-    expect(t).toContain("a month, only if you choose it");
+    expect(t).toContain("Paid once");
+    expect(t).toContain("One-time implementation");
+    expect(t).toContain("per month, only if you choose it");
+    expect(t).toContain("Optional add-on");
     expect(t).toContain(ROOM_COPY.planNote);
     expect(t).toContain("No mandatory subscription");
-    expect(t).toContain("Core + Managed Maintenance");
+    expect(t).toContain("Managed Maintenance");
     expect(t).toContain("Automation Studio");
     expect(t).toContain("Usage-based costs");
   });
@@ -397,6 +399,17 @@ describe("/demo/room, the prospect's own demo", () => {
     const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals" });
     state.cookie = s.sessionToken;
     const id = (await rows<{ id: string }>("select id from demo_prospects where email_normalized = $1", [s.email]))[0].id;
+    // The agency's own Operations Manager is called Zeng. That is one company's choice: the public demo shows role labels and never reads a name from any workforce.
+    await rows("update agent_instances set display_name = 'Zeng' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
+    try {
+      for (const view of VIEW_IDS) {
+        const shown = await roomPage({ view });
+        expect(shown, view).not.toContain("Zeng");
+        expect(text(shown), view).not.toMatch(/Known as/);
+      }
+    } finally {
+      await rows("update agent_instances set display_name = 'Operations Manager' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
+    }
     for (const view of VIEW_IDS) {
       const markup = await roomPage({ view });
       expect((markup.match(/<h1\b/g) ?? []).length, view).toBe(1);
@@ -413,16 +426,48 @@ describe("/demo/room, the prospect's own demo", () => {
     const s = await startDemo({ name: "Rosalind Roomy" });
     state.cookie = s.sessionToken;
     const markup = await roomPage();
-    expect([...new Set(actionsOf(markup))].sort()).toEqual(["/api/public/demo/cta", "/api/public/demo/leave", "/api/public/demo/message"]);
+    // A request button is a link that asks for a confirmation first; the only forms on the page are the chat and leaving.
+    expect([...new Set(actionsOf(markup))].sort()).toEqual(["/api/public/demo/leave", "/api/public/demo/message"]);
     for (const f of forms(markup)) expect(f).toMatch(/method="post"/);
-    // The only thing a request form carries is which request it is.
-    const kinds = [...markup.matchAll(/<input[^>]*name="kind"[^>]*>/g)].map((m) => /value="([^"]*)"/.exec(m[0])?.[1]);
-    expect(kinds.length).toBeGreaterThan(0);
-    for (const k of kinds) expect(["consultation", "buy"]).toContain(k);
+    expect(markup).toMatch(/href="\/demo\/room\?view=overview&amp;confirm=consultation#confirm"/);
+    expect(markup).toMatch(/href="\/demo\/room\?view=overview&amp;confirm=buy#confirm"/);
     const id = (await rows<{ id: string }>("select id from demo_prospects where email_normalized = $1", [s.email]))[0].id;
     for (const secret of [s.email, id, s.sessionToken, s.token, s.ip]) expect(markup, secret.slice(0, 8)).not.toContain(secret);
     // The idempotency key of a form without scripts is already in it.
     expect(markup).toMatch(/name="clientMessageId" value="[0-9a-f-]{36}"/);
+  });
+
+  it("asks before it records: a request link opens a confirmation that says what it does, with the real form only inside that confirmation, and nothing is recorded by looking", async () => {
+    state.model = { ready: true };
+    const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals" });
+    state.cookie = s.sessionToken;
+    const before = await rows<{ n: number }>("select count(*)::int as n from demo_events where prospect_id = $1 and kind in ('cta_consultation', 'cta_buy')", [s.prospectId]);
+    const consult = await roomPage({ view: "pricing", confirm: "consultation" });
+    const tc = text(consult);
+    expect(tc).toContain("Let's talk about your business.");
+    expect(tc).toContain("Roomy Rentals");
+    expect(tc).toContain("The consultation is free.");
+    expect(tc).toContain("does not itself reserve a meeting");
+    expect(tc).toContain("Confirm my request");
+    expect(actionsOf(consult)).toContain("/api/public/demo/cta");
+    expect(consult).toMatch(/<input[^>]*name="kind"[^>]*value="consultation"/);
+    const buy = await roomPage({ view: "pricing", confirm: "buy" });
+    const tb = text(buy);
+    expect(tb).toContain(`US$${SETUP_FEE_USD.toLocaleString("en-US")}`);
+    expect(tb).toContain(`US$${MAINTENANCE_MONTHLY_USD}`);
+    expect(tb).toContain("one-time charge");
+    expect(tb).toContain("billed by those providers");
+    expect(tb).toContain("Nothing is charged, no subscription starts and no workspace is created by confirming.");
+    expect(tb).toContain("Confirm my interest");
+    expect(tb).not.toMatch(/order confirmed|payment received|thank you for your purchase|your workspace is ready/i);
+    expect(buy).toMatch(/<input[^>]*name="kind"[^>]*value="buy"/);
+    // Another word is ignored, and looking at a confirmation recorded nothing.
+    expect(actionsOf(await roomPage({ confirm: "<script>" }))).not.toContain("/api/public/demo/cta");
+    const after = await rows<{ n: number }>("select count(*)::int as n from demo_events where prospect_id = $1 and kind in ('cta_consultation', 'cta_buy')", [s.prospectId]);
+    expect(after[0].n).toBe(before[0].n);
+    // Once a request is recorded, its confirmation does not open again.
+    await recordCta("consultation", { sessionToken: s.sessionToken, ip: ipFor() });
+    expect(actionsOf(await roomPage({ confirm: "consultation" }))).not.toContain("/api/public/demo/cta");
   });
 
   it("says the AI chat is not open when there is no model, keeps the tour, and has no chat form", async () => {
@@ -530,8 +575,10 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(text(markup)).toContain(CTA_COPY.consultation);
     expect(markup).toMatch(new RegExp(`<a[^>]*href="${CONSULT.replace(/[.]/g, "\\.")}"[^>]*rel="noopener noreferrer"|<a[^>]*rel="noopener noreferrer"[^>]*href="${CONSULT.replace(/[.]/g, "\\.")}"`));
     expect(markup).toContain('target="_blank"');
-    // The consultation button is gone once it was pressed, and the buy button is still there.
-    expect(actionsOf(markup).filter((a) => a === "/api/public/demo/cta")).toHaveLength(1);
+    // The consultation button is gone once it was confirmed, the way to the scheduling page is there, and the buy button is still there.
+    expect((markup.match(/confirm=consultation/g) ?? []).length).toBe(0);
+    expect((markup.match(/confirm=buy/g) ?? []).length).toBeGreaterThan(0);
+    expect(text(markup)).toContain("Choose a meeting time");
     await openDemo(people.superAdmin, { consultationUrl: null });
     try {
       expect(text(await roomPage())).toContain(ROOM_COPY.consultationNoLink);

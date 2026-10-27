@@ -57,7 +57,7 @@ export function InboxView() {
               const I = CHANNEL[th.channel].Icon;
               return (
                 <li key={th.id}>
-                  <button type="button" onClick={() => setOpen(th.id)} aria-current={th.id === open ? "true" : undefined} className={cn("flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors", th.id === open ? "bg-primary-soft" : "hover:bg-white/5")}>
+                  <button type="button" onClick={() => setOpen(th.id)} aria-current={th.id === open ? "true" : undefined} className={cn("flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors", th.id === open ? "bg-primary-soft" : "hover:bg-surface-2")}>
                     <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-primary-ink">
                       <I className="size-4" aria-hidden />
                       <span className="sr-only">{CHANNEL[th.channel].label}</span>
@@ -113,7 +113,7 @@ export function InboxView() {
 
       <ContextCta
         plan="core"
-        title="Get one inbox and calendar for my business"
+        title="Want one inbox and calendar for your own business?"
         body="The unified inbox, booking and the Appointment Setter are part of your core implementation, connected to the channels and calendar you choose, where supported."
         consultLabel="Book a free consultation"
         secondary={{ view: "automation", label: "See Automation Studio" }}

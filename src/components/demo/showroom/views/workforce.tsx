@@ -10,7 +10,7 @@ import { useShowroom } from "@/components/demo/showroom/context";
 import { StepNav } from "@/components/demo/showroom/journey";
 import { ContextCta } from "@/components/demo/showroom/cta";
 import { ScenarioPlayer } from "@/components/demo/showroom/scenario-player";
-import { Chip, SectionHead, SimTag } from "@/components/demo/showroom/ui";
+import { SectionHead, SimTag } from "@/components/demo/showroom/ui";
 
 // Step 1: the six AI Employees. A rail to pick one, a profile that answers "what is it for, what does it do all day, what does it need from me", and a simulated scenario that shows the
 // work instead of describing it.
@@ -70,8 +70,7 @@ export function WorkforceView() {
               <AgentAvatar role={meta} size="xl" eager />
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="sx-display text-[30px] leading-none text-ink @xl:text-[36px]">{meta.shortName}</h2>
-                  {p.alias && <Chip tone="info">Known as {p.alias}</Chip>}
+                  <h2 className="sx-display text-[26px] leading-none text-ink @xl:text-[30px]">{meta.shortName}</h2>
                 </div>
                 <p className="text-[15px] text-ink-2">{meta.tagline}</p>
               </div>
@@ -185,9 +184,9 @@ export function WorkforceView() {
 
       <ContextCta
         plan="core"
-        title="Get this AI team for my business"
+        title="Want your own AI team configured for your business?"
         body="The six AI Employees are part of the core implementation. We configure them to your business, test them with you and switch them on, with your approval in charge."
-        consultLabel="Book a free consultation"
+        consultLabel="Get this AI team for my business"
         secondary={{ view: "pricing", label: "See what it costs" }}
       />
 

@@ -13,6 +13,7 @@ import { DemoMessage, PublicFrame, linkClass } from "@/components/demo/shell";
 import { ctaNotice, messageNotice } from "@/lib/demo/outcomes";
 import { newClientMessageId } from "@/lib/demo/room-types";
 import { isViewId } from "@/lib/demo/showroom/content";
+import { isConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,9 @@ export default async function DemoRoomPage({ searchParams }: { searchParams: Pro
   const room = result.room;
   const facts = { access: room.access, messagesLeft: room.messagesLeft, chatRefusal: room.chat.refusal, consultationRequested: room.consultationRequested, purchaseStarted: room.purchaseStarted };
   const view = one(q.view);
+  const asked = one(q.confirm);
+  // A confirmation the address asks for opens only while that request has not been recorded.
+  const initialConfirm = isConfirmKind(asked) && !(asked === "consultation" ? room.consultationRequested : room.purchaseStarted) ? asked : null;
   return (
     <Workspace
       initialView={isViewId(view) ? view : "overview"}
@@ -84,6 +88,7 @@ export default async function DemoRoomPage({ searchParams }: { searchParams: Pro
         monthlyPlanUsd: room.pricing.monthlyPlanUsd,
         plan: await planFacts(),
         ctaNotice: ctaNotice(one(q.c), facts),
+        initialConfirm,
       }}
       chat={{
         initial: { transcript: room.transcript, messagesLeft: room.messagesLeft, messageAllowance: room.messageAllowance, canSend: room.chat.canSend, refusalMessage: room.chat.refusalMessage },

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/brand";
+import { ThemeSwitch } from "@/components/demo/showroom/theme-switch";
 import { WhyContent } from "@/components/demo/showroom/why-content";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 import "@/components/demo/showroom/showroom.css";
@@ -15,19 +16,22 @@ export const metadata: Metadata = { title: "Why iAcquireOS?", description: "What
  */
 export default function WhyPage() {
   return (
-    <div className="demo-stage">
+    <div className="demo-stage app-backdrop grain">
       <a href="#demo-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:text-ink">
         Skip to content
       </a>
-      <header className="mx-auto flex w-full max-w-[1120px] items-center justify-between gap-4 px-4 pt-5 sm:px-8 sm:pt-8">
+      <header className="relative z-10 mx-auto flex w-full max-w-[1120px] items-center justify-between gap-4 px-4 pt-5 sm:px-8 sm:pt-8">
         <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
-          <Logo tone="inverse" />
+          <Logo />
         </Link>
-        <Link href="/demo/room" className="sx-btn-quiet inline-flex h-11 items-center rounded-xl px-4 text-[14px] font-semibold">
-          Back to your demo
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeSwitch />
+          <Link href="/demo/room" className="sx-btn-quiet inline-flex h-11 items-center rounded-xl px-4 text-[14px] font-semibold">
+            Back to your demo
+          </Link>
+        </div>
       </header>
-      <main id="demo-main" tabIndex={-1} className="@container mx-auto w-full max-w-[1120px] px-4 py-10 outline-none sm:px-8 sm:py-14">
+      <main id="demo-main" tabIndex={-1} className="@container relative z-10 mx-auto w-full max-w-[1120px] px-4 py-10 outline-none sm:px-8 sm:py-14">
         <WhyContent
           setupFeeUsd={SETUP_FEE_USD}
           monthlyPlanUsd={MAINTENANCE_MONTHLY_USD}
@@ -50,7 +54,7 @@ export default function WhyPage() {
           }
         />
       </main>
-      <footer className="mx-auto w-full max-w-[1120px] px-4 pb-10 text-[13px] text-muted sm:px-8">
+      <footer className="relative z-10 mx-auto w-full max-w-[1120px] px-4 pb-10 text-[13px] text-muted sm:px-8">
         <p>iAcquire demo. Sample data only.</p>
       </footer>
     </div>

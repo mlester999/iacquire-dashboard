@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { env } from "@/server/env";
 import { Workspace } from "@/components/demo/showroom/workspace";
+import { ForceTheme } from "./force-theme";
 import { DEMO_INDUSTRIES, demoIndustryLabel } from "@/lib/demo/industries";
 import { isViewId } from "@/lib/demo/showroom/content";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
@@ -20,6 +21,8 @@ const endsIn = (hours: number): string => new Date(Date.now() + hours * 3_600_00
  *   view=overview|workforce|crm|inbox|automation|reports|pricing|why|summary
  *   state=open (default) | ended | ai_off | exhausted
  *   left=0..10 (messages left), hours=0.1..24 (window left), industry=<questionnaire value>
+ *   confirm=consultation|buy (open the confirmation dialog)
+ *   theme=light|dark|system (the colour theme to open in)
  *   consult=1 (consultation requested), buy=1 (purchase started), link=1 (a scheduling page is set), history=1 (a short conversation), plan=0 (the catalog could not be read)
  * Sending a message or pressing a request posts to the real demo endpoints, which answer "no session" here: that is the error path, not a bug.
  */
@@ -46,7 +49,11 @@ export default async function ShowroomPreview({ searchParams }: { searchParams: 
           { id: "l4", seq: 4, role: "assistant" as const, employeeRole: null, body: "No. The implementation is paid once and the system is yours to use. Managed Maintenance is optional.", state: null, at },
         ]
       : [];
+  const theme = one(q.theme);
+  const confirm = one(q.confirm);
   return (
+    <>
+    <ForceTheme theme={theme === "light" || theme === "dark" || theme === "system" ? theme : null} />
     <Workspace
       initialView={isViewId(view) ? view : "overview"}
       state={{
@@ -67,6 +74,7 @@ export default async function ShowroomPreview({ searchParams }: { searchParams: 
         monthlyPlanUsd: MAINTENANCE_MONTHLY_USD,
         plan: one(q.plan) === "0" ? { included: null, monthlyRequestAllowance: null } : { included: null, monthlyRequestAllowance: 4 },
         ctaNotice: null,
+        initialConfirm: confirm === "consultation" || confirm === "buy" ? confirm : null,
       }}
       chat={{
         initial: { transcript, messagesLeft: left, messageAllowance: 10, canSend: !refusal, refusalMessage: refusal },
@@ -75,5 +83,6 @@ export default async function ShowroomPreview({ searchParams }: { searchParams: 
         show: !aiOff || transcript.length > 0,
       }}
     />
+    </>
   );
 }

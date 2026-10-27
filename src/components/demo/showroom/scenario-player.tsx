@@ -111,7 +111,7 @@ export function ScenarioPlayer({ scenario, onAsk, askLabel }: { scenario: Scenar
             )}
           </div>
 
-          <aside aria-label="Steps" className="border-t border-line bg-black/10 p-5 @4xl:border-l @4xl:border-t-0">
+          <aside aria-label="Steps" className="border-t border-line bg-surface-2/60 p-5 @4xl:border-l @4xl:border-t-0">
             <ol className="space-y-1">
               {scenario.steps.map((s, i) => (
                 <li key={s.title}>
@@ -122,7 +122,7 @@ export function ScenarioPlayer({ scenario, onAsk, askLabel }: { scenario: Scenar
                       setAt(i);
                     }}
                     aria-current={i === at ? "step" : undefined}
-                    className={cn("flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-snug transition-colors", i === at ? "bg-primary-soft text-ink" : i < at ? "text-ink-2 hover:bg-white/5" : "text-muted hover:bg-white/5")}
+                    className={cn("flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-snug transition-colors", i === at ? "bg-primary-soft text-ink" : i < at ? "text-ink-2 hover:bg-surface-2" : "text-muted hover:bg-surface-2")}
                   >
                     <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold", i <= at ? "bg-primary text-primary-on" : "border border-line-strong text-muted")}>{i + 1}</span>
                     <span>{s.title}</span>

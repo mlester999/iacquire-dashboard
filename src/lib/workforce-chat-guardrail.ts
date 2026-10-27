@@ -27,7 +27,7 @@ const follows = (text: string, action: RegExp, object: RegExp) => action.test(te
  * that a non-Lead-Hunter never performs prospect research. This guard runs before any Hermes
  * submission; authorized read-only jobs are handled separately by the capability allowlist.
  */
-export function workforceChatRefusal(role: AgentRoleKey, content: string): WorkforceChatRefusal | null {
+export function workforceChatRefusal(role: AgentRoleKey, content: string, employeeName?: string): WorkforceChatRefusal | null {
   const text = normalize(content);
   if (!text) return null;
 
@@ -92,7 +92,8 @@ export function workforceChatRefusal(role: AgentRoleKey, content: string): Workf
   )) {
     return {
       reason: "unsupported_internal_write",
-      message: "Zeng can review and recommend operational work, but this chat has no approved task-assignment action. No task or assignment was changed.",
+      // The employee's own display name for this company, or its role label: a name belongs to one company and is never a default.
+      message: `${employeeName?.trim() || "The Operations Manager"} can review and recommend operational work, but this chat has no approved task-assignment action. No task or assignment was changed.`,
     };
   }
 

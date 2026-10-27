@@ -9,6 +9,7 @@ import { DEMO_INDUSTRIES } from "@/lib/demo/industries";
 import { CORE_INCLUDES, DIY_ROWS, IMPLEMENTATION_SETS, JOURNEY, NEXT_STEPS, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, VIEWS, VIEW_IDS, WHY_BLOCKS, faqs, isViewId, sampleDeals } from "@/lib/demo/showroom/content";
 import { OVERSIGHT_FOOTER, SCOPE_NOTE, profiles, scenarioOf } from "@/lib/demo/showroom/employees";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
+import { BUY_CONFIRM, CONSULT_CONFIRM, isConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 
 // What the prospect showroom may say, and the lines it must never cross. The showroom is a sales page that talks about a visitor's own business, so the tests here are about honesty:
 // no invented result, price or percentage; every simulation labelled; the optional plan never presented as the price of the core system; and nothing in the showroom's code that could
@@ -24,7 +25,8 @@ describe("the six AI Employees in the showroom", () => {
   it("presents every role once, with what it needs a person for, and states no price, percentage or result", () => {
     const all = profiles();
     expect(all.map((p) => p.role).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
-    expect(all.find((p) => p.role === "operations_manager")?.alias).toBe("Zeng");
+    // A role has no nickname of its own: names belong to the company that chose them (see the naming tests below).
+    for (const p of all) expect(Object.keys(p), p.role).not.toContain("alias");
     for (const p of all) {
       expect(p.needsApproval.length, p.role).toBeGreaterThan(0);
       expect(p.worksWith.length, p.role).toBeGreaterThan(0);
@@ -173,5 +175,67 @@ describe("the showroom's source", () => {
     const journey = FILES.find((f) => f.file.endsWith("journey.tsx"))!.text;
     expect(journey).toMatch(/iaq-demo-journey-v1/);
     expect(journey).toMatch(/JSON\.stringify\(\{ visited \}\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The confirmations and the portal's own theme
+// ---------------------------------------------------------------------------
+
+describe("the two confirmations", () => {
+  const all = (v: unknown) => flat(v).join(" ");
+  it("say what they do, promise no payment, subscription, workspace or booking, and use no number of their own", () => {
+    expect(CONSULT_CONFIRM.title).toBe("Let's talk about your business.");
+    expect(CONSULT_CONFIRM.free).toMatch(/free/i);
+    expect(CONSULT_CONFIRM.next(true).join(" ")).toMatch(/does not itself reserve a meeting/);
+    expect(CONSULT_CONFIRM.next(false).join(" ")).toMatch(/no time is offered/);
+    expect(CONSULT_CONFIRM.success(true)).toMatch(/not booked until you choose a time/);
+    expect(CONSULT_CONFIRM.success(false)).toMatch(/No appointment has been booked/);
+    expect(CONSULT_CONFIRM.schedule).toBe("Choose a meeting time");
+    expect(BUY_CONFIRM.description).toMatch(/only informs the team/);
+    expect(BUY_CONFIRM.oneTimeVsMonthly).toMatch(/one-time/);
+    expect(BUY_CONFIRM.usageNote).toMatch(/Separate from both prices/);
+    expect(BUY_CONFIRM.confirm).toBe("Confirm my interest");
+    expect(all(BUY_CONFIRM.next)).toMatch(/Nothing is charged, no subscription starts and no workspace is created/);
+    expect(BUY_CONFIRM.success).toMatch(/Nothing was charged, no subscription started and no workspace was created/);
+    // The prices are passed in from the billing configuration, never written into the words.
+    for (const t of flat([CONSULT_CONFIRM, BUY_CONFIRM].map((c) => Object.values(c).filter((v) => typeof v !== "function")))) expect(t, t).not.toMatch(/[$€£]\s?\d|\d+\s?%|discount|limited|guarantee/i);
+    for (const t of flat([CONSULT_CONFIRM, BUY_CONFIRM].map((c) => Object.values(c).filter((v) => typeof v !== "function")))) expect(t, t).not.toMatch(/order confirmed|payment received|you have purchased|booked for you/i);
+  });
+  it("accept only the two requests the demo records", () => {
+    expect(isConfirmKind("consultation")).toBe(true);
+    expect(isConfirmKind("buy")).toBe(true);
+    for (const bad of ["", "purchase", "<script>", undefined, null, 1]) expect(isConfirmKind(bad)).toBe(false);
+  });
+});
+
+describe("the showroom follows the portal's design system", () => {
+  const css = FILES.filter((f) => f.file.endsWith(".css"));
+  it("defines no colour theme of its own: no forced dark scheme, and no token redefined outside the navigation rail", () => {
+    for (const { file, text } of css) {
+      expect(code(text), file).not.toMatch(/color-scheme:\s*dark/);
+      const outside = code(text).replace(/\.sx-on-nav\s*\{[^}]*\}/, "");
+      expect(outside, file).not.toMatch(/--(bg|surface|surface-2|surface-3|ink|ink-2|muted|line|primary|violet)\s*:/);
+    }
+  });
+  it("draws its pages from theme tokens, with a hard-coded colour only on the portal's navy rail and the brand gradient", () => {
+    const allowed = ["workspace.tsx", "theme-switch.tsx", "journey.tsx", "overview.tsx"];
+    for (const { file, text } of FILES.filter((f) => f.file.endsWith(".tsx"))) {
+      if (allowed.some((a) => file.endsWith(a))) continue;
+      expect(code(text), file).not.toMatch(/(bg|from|via|to|border)-\[#[0-9a-fA-F]{3,8}\]/);
+    }
+  });
+  it("uses the shared theme control, so the demo and the portal agree on light, dark and system", () => {
+    const sw = FILES.find((f) => f.file.endsWith("theme-switch.tsx"))!.text;
+    expect(sw).toMatch(/from "@\/components\/providers"/);
+    expect(sw).toMatch(/useTheme/);
+    expect(sw).toMatch(/"light"[\s\S]*"dark"[\s\S]*"system"/);
+    // One theme system: the demo never reads or writes the stored preference itself.
+    for (const { file, text } of FILES) if (!file.endsWith("journey.tsx")) expect(code(text), file).not.toMatch(/iaq-theme|data-theme|dataset\.theme/);
+    const html = renderToStaticMarkup(<WhyPage />);
+    expect(html).toMatch(/aria-label="Colour theme"/);
+    expect(html).toMatch(/Light<\/span>/);
+    expect(html).toMatch(/Dark<\/span>/);
+    expect(html).toMatch(/System<\/span>/);
   });
 });

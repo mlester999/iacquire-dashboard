@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CircleAlert, CircleCheck, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Badge } from "@/components/ui/primitives";
+import { ThemeSwitch } from "@/components/demo/showroom/theme-switch";
 import type { Notice } from "@/lib/demo/outcomes";
 
 // The frame every public demo page shares: the iAcquire mark, a "Demo" label, the page, and a quiet footer. No portal navigation and nothing about the signed-in app: a prospect has
@@ -20,7 +21,10 @@ export function DemoShell({ children, wide = false }: { children: React.ReactNod
           <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
             <Logo />
           </Link>
-          <Badge tone="primary">Demo</Badge>
+          <div className="flex items-center gap-2">
+            <Badge tone="primary">Demo</Badge>
+            <ThemeSwitch />
+          </div>
         </div>
       </header>
       <main id="demo-main" tabIndex={-1} className={`mx-auto w-full ${measure} flex-1 px-4 py-5 outline-none sm:px-6 sm:py-8`}>

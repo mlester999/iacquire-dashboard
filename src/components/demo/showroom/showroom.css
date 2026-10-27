@@ -1,173 +1,139 @@
 /*
- * The prospect demo showroom: one scoped theme (a deep navy stage with cool blue and refined violet), so the demo looks the same whatever the visitor's own theme is.
- * Everything is scoped under .demo-stage: it redefines the same tokens the portal's components read, so Buttons, Badges and the rest follow without changes.
+ * The prospect demo showroom. It is the real portal's design language (src/app/globals.css) seen through safe public components, so it follows the portal's light and dark themes
+ * (data-theme on <html>, set by the shared theme script and ThemeProvider) and reads the same tokens: --bg, --surface, --ink, --primary, --violet and the rest. Nothing here redefines
+ * a token. The helpers below are the few shapes the demo repeats; each is built only from tokens so it is correct in both themes.
  * Motion is decoration only and is switched off for people who ask for reduced motion.
  */
 
 .demo-stage {
-  color-scheme: dark;
-  --bg: #060a17;
-  --surface: #0c1326;
-  --surface-2: #111a33;
-  --surface-3: #18244a;
-  --surface-inverse: #eef2ff;
-  --line: rgb(148 166 224 / 0.15);
-  --line-strong: rgb(148 166 224 / 0.28);
-  --ink: #f1f4fd;
-  --ink-2: #c6cde2;
-  --muted: #98a3c0;
-  --faint: #8792b2;
-
-  --primary: #6d8dff;
-  --primary-hover: #88a3ff;
-  --primary-soft: rgb(109 141 255 / 0.16);
-  --primary-ink: #aebfff;
-  --primary-on: #06102a;
-  --violet: #a58bff;
-  --violet-soft: rgb(165 139 255 / 0.16);
-  --violet-ink: #cbbfff;
-  --success: #34c476;
-  --success-soft: rgb(52 196 118 / 0.14);
-  --success-ink: #74e0a2;
-  --warning: #f2a52a;
-  --warning-soft: rgb(242 165 42 / 0.14);
-  --warning-ink: #f8c978;
-  --danger: #f2555a;
-  --danger-soft: rgb(242 85 90 / 0.14);
-  --danger-ink: #ff9a9d;
-  --danger-on: #071226;
-
-  --ring: rgb(109 141 255 / 0.6);
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -10px rgb(0 0 0 / 0.6);
-  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.3), 0 28px 70px -18px rgb(0 0 0 / 0.75);
-  --glow: 0 0 0 1px rgb(109 141 255 / 0.25), 0 10px 36px -10px rgb(109 141 255 / 0.5);
-
   position: relative;
-  isolation: isolate;
   min-height: 100dvh;
-  background-color: var(--bg);
-  background-image:
-    radial-gradient(1100px 560px at 8% -10%, rgb(70 110 255 / 0.2), transparent 62%),
-    radial-gradient(900px 520px at 104% 0%, rgb(140 100 255 / 0.16), transparent 58%),
-    radial-gradient(800px 600px at 50% 120%, rgb(40 70 180 / 0.14), transparent 60%);
   color: var(--ink);
 }
-
-/* A faint engineering grid behind everything, fading out toward the bottom: structure without noise. */
-.demo-stage::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right, rgb(148 166 224 / 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(148 166 224 / 0.05) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: linear-gradient(to bottom, #000 0%, transparent 70%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 70%);
-}
-
 .demo-stage :focus-visible {
-  outline: 2px solid var(--primary-hover);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-/* A panel: the one surface the showroom is built from. */
-.sx-panel {
-  background: linear-gradient(180deg, rgb(22 33 68 / 0.62), rgb(12 19 38 / 0.82));
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgb(255 255 255 / 0.05);
+/* Content that sits on the portal's navy navigation rail: the tokens are re-stated for dark chrome (as the portal does for .workspace-nav), so a clock, a meter or a button there
+   reads correctly whichever theme the page is in. */
+.sx-on-nav {
+  --ink: #ffffff;
+  --ink-2: #c3cde0;
+  --muted: #a2b0c9;
+  --faint: #91a0ba;
+  --surface: rgb(255 255 255 / 0.05);
+  --surface-2: rgb(255 255 255 / 0.07);
+  --surface-3: rgb(255 255 255 / 0.16);
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.2);
+  --primary-ink: #a9c2ff;
+  --success-ink: #74e0a2;
+  --warning-ink: #f8c978;
+  color: #fff;
 }
+
+/* A panel: the one surface the showroom is built from. It is the portal's card. */
+.sx-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
+}
+/* A flat panel: for what sits inside a panel, or a quiet strip. */
 .sx-panel-flat {
-  background: rgb(15 23 46 / 0.93);
-  backdrop-filter: blur(10px);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 14px;
 }
+/* The one thing to look at on a page (the recommended plan, the confirmation). */
 .sx-panel-hot {
-  border-color: rgb(109 141 255 / 0.45);
-  box-shadow: var(--glow), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+  box-shadow: var(--glow), var(--shadow-md);
 }
 
+/* Headings use the product's own typeface; "display" here only means a little more weight and tighter tracking. */
 .sx-display {
-  font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-family: var(--font-sans);
+  font-weight: 650;
+  letter-spacing: -0.035em;
 }
 .sx-gradient-text {
-  color: #f1f4fd;
-  background-image: linear-gradient(100deg, #ffffff 0%, #bccaff 48%, #cdbcff 100%);
+  background-image: linear-gradient(100deg, var(--primary) 10%, var(--violet) 90%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
 }
-
 .sx-eyebrow {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--primary-ink);
 }
 
-/* The primary action: blue to violet, dark enough for white text at 5:1. */
+/* The primary action: the portal's brand gradient, white text at 5:1 or better in both themes. */
 .sx-btn-primary {
-  background-image: linear-gradient(120deg, #3856e8 0%, #6945e2 100%);
+  background: linear-gradient(135deg, #2c5bff 0%, #5b4dff 55%, #7945e8 100%);
   color: #fff;
-  border: 1px solid rgb(255 255 255 / 0.16);
-  box-shadow: 0 10px 28px -10px rgb(88 90 255 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.22);
+  box-shadow: var(--glow);
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
 }
 .sx-btn-primary:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 14px 34px -10px rgb(100 96 255 / 0.85), inset 0 1px 0 rgb(255 255 255 / 0.28);
+  filter: brightness(1.08);
 }
 .sx-btn-primary:active {
   transform: scale(0.98);
 }
+.sx-btn-primary:disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
 .sx-btn-quiet {
-  background: rgb(255 255 255 / 0.05);
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-sm);
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 .sx-btn-quiet:hover {
-  background: rgb(255 255 255 / 0.09);
-  border-color: rgb(174 191 255 / 0.5);
+  background: var(--surface-2);
+  border-color: var(--line-strong);
 }
 .sx-btn-quiet:active {
   transform: scale(0.98);
 }
+.sx-btn-quiet:disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
 
-/* Navigation items. */
+/* Navigation chips on a phone, and hover rows. */
 .sx-nav-item {
-  transition: background 150ms ease, color 150ms ease;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 .sx-nav-item[aria-current="page"] {
-  background: linear-gradient(90deg, rgb(109 141 255 / 0.2), rgb(109 141 255 / 0.06));
-  color: var(--ink);
-  box-shadow: inset 2px 0 0 var(--primary-hover);
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 /* A thin progress track. */
 .sx-track {
   height: 6px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.08);
+  background: var(--surface-3);
   overflow: hidden;
 }
 .sx-track > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background-image: linear-gradient(90deg, #5a7bff, #a58bff);
+  background-image: linear-gradient(90deg, var(--primary), var(--violet));
   transition: width 500ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* Hub diagram connectors and pulses. */
 .sx-flow {
   stroke-dasharray: 3 7;
 }
@@ -180,28 +146,28 @@
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--line-strong);
-  background: rgb(255 255 255 / 0.05);
+  background: var(--surface-2);
   color: var(--ink-2);
 }
 .sx-chip[data-tone="ok"] {
   color: var(--success-ink);
   background: var(--success-soft);
-  border-color: rgb(52 196 118 / 0.35);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
 }
 .sx-chip[data-tone="warn"] {
   color: var(--warning-ink);
   background: var(--warning-soft);
-  border-color: rgb(242 165 42 / 0.35);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
 }
 .sx-chip[data-tone="info"] {
   color: var(--primary-ink);
   background: var(--primary-soft);
-  border-color: rgb(109 141 255 / 0.4);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
 }
 .sx-chip[data-tone="violet"] {
   color: var(--violet-ink);
   background: var(--violet-soft);
-  border-color: rgb(165 139 255 / 0.4);
+  border-color: color-mix(in srgb, var(--violet) 40%, transparent);
 }
 
 /* A locked-feature preview: readable, but clearly behind a door. */
@@ -214,20 +180,26 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(135deg, rgb(165 139 255 / 0.05) 0 8px, transparent 8px 16px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--violet) 7%, transparent) 0 8px, transparent 8px 16px);
 }
 
-/* The chat transcript scroller. */
 .sx-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(148 166 224 / 0.35) transparent;
+  scrollbar-color: var(--line-strong) transparent;
+}
+/* Horizontal rows of chips scroll without a visible bar (the edge of the row says there is more). */
+.sx-noscrollbar {
+  scrollbar-width: none;
+}
+.sx-noscrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   @keyframes sx-rise {
     from {
       opacity: 0;
-      transform: translateY(14px);
+      transform: translateY(10px);
     }
     to {
       opacity: 1;
@@ -276,7 +248,7 @@
       transform: translateY(0);
     }
     50% {
-      transform: translateY(-5px);
+      transform: translateY(-4px);
     }
   }
   @keyframes sx-typing {
@@ -292,13 +264,13 @@
     }
   }
   .sx-rise {
-    animation: sx-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation: sx-rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
   .sx-fade {
-    animation: sx-fade 420ms ease both;
+    animation: sx-fade 360ms ease both;
   }
   .sx-pop {
-    animation: sx-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: sx-pop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
   .sx-flow {
     animation: sx-dash 1.4s linear infinite;
@@ -333,12 +305,4 @@
   .sx-delay-5 {
     animation-delay: 350ms;
   }
-}
-
-/* Horizontal rows of chips scroll without a visible bar (the edge of the row says there is more). */
-.sx-noscrollbar {
-  scrollbar-width: none;
-}
-.sx-noscrollbar::-webkit-scrollbar {
-  display: none;
 }
