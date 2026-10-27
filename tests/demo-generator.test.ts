@@ -63,9 +63,9 @@ describe("an answered message", () => {
     const m = model(SAFE);
     answered(await send(s, "Hello there", m.deps, { at: new Date(DAY(1).getTime() + 60_000) }));
     const call = m.calls[0];
-    expect(call.system).toContain("## Rules");
+    expect(call.system).toContain("## Demo rules");
     expect(call.system).toContain("cannot send, book, call, email, charge, create or change anything");
-    expect(call).toMatchObject({ maxTokens: 400, temperature: 0.3, timeoutMs: 20_000, apiKey: CONFIG.apiKey });
+    expect(call).toMatchObject({ maxTokens: 240, temperature: 0.3, timeoutMs: 20_000, apiKey: CONFIG.apiKey });
     expect(call.system).not.toContain(CONFIG.apiKey);
     expect(call.user).not.toContain(CONFIG.apiKey);
   });

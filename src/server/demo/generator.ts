@@ -1,6 +1,7 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { llmComplete, resolveLlmConfig, type LlmConfig } from "@/server/llm/client";
+import { DEFAULT_AQI_CONFIG, effectiveAqiModel, getPublishedAqiConfig, type AqiConfig } from "@/server/aqi/config";
 import { modelGate } from "@/server/llm/gate";
 import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { getPublicMaintenancePlan, listPublicServices } from "@/server/catalog/service";
@@ -14,12 +15,12 @@ import { loadProspect } from "@/server/demo/core";
 
 // The demo chat's model call, and the only place it happens. A prospect's message goes through these steps, in this order:
 //
-//   1. Is there a model to ask? The platform's AI connection and the agency workspace the platform's own usage is recorded against. Checked BEFORE the message is reserved, so a demo
+//   1. Is there a model to ask? The platform's AI connection, AQi's published model selection and the agency workspace the platform's own usage is recorded against. Checked BEFORE the message is reserved, so a demo
 //      with no model connected counts nothing and takes none of the day's budget: the prospect is told the chat is not available and the tour is what they get.
 //   2. reserveDemoMessage (chat.ts): the prospect's allowance, the window, the pace and the platform's daily budget, atomically. A repeated message returns what was stored.
 //   3. The message itself is looked at: text that tries to change the assistant's rules is not sent to it (the message is given back, nothing was spent).
 //   4. modelGate: the agency workspace must be active. (No credit check: the platform pays for the demo, and its limits are the prospect's allowance and the daily budget.)
-//   5. The model is asked, with a fixed prompt, no tools, no workspace data and no Hermes (prompt.ts). Metered as the feature demo_chat, whatever becomes of the answer.
+//   5. The model is asked, with AQi's public identity/style settings and the fixed demo prompt, no tools, no workspace data and no Hermes (prompt.ts). Metered as the feature demo_chat, whatever becomes of the answer.
 //   6. The answer is checked (reply-check.ts). One that states a price other than the two published ones, an amount in words, a percentage, a promise, a claim the facts do not back or
 //      an action it did not take is held back: the message is given back, and the day's budget unit stays spent because the model was asked.
 //   7. completeDemoMessage stores the answer.
@@ -31,13 +32,18 @@ export interface DemoModelDeps {
   /** Tests replace the model call; nothing real is ever reached from a test. */
   complete?: typeof llmComplete;
   config?: () => Promise<LlmConfig | null>;
+  /** Test override for the published AQi config. When the LLM itself is injected, defaults are used unless this is supplied. */
+  aqiConfig?: () => Promise<AqiConfig>;
   /** The workspace the platform's own AI usage is recorded against. */
   agencyOrg?: () => Promise<string | null>;
   /** The published catalog, by name. */
   catalog?: () => Promise<PromptCatalog>;
 }
 
-export type ModelState = { ready: true; config: LlmConfig; orgId: string } | { ready: false; reason: "no_llm" | "no_agency" };
+export type DemoAqiSettings = Pick<AqiConfig, "identity" | "description" | "tone" | "responseVerbosity" | "greetingBehavior" | "maxTokens" | "temperature">;
+export type ModelState = { ready: true; config: LlmConfig; orgId: string; aqi: DemoAqiSettings } | { ready: false; reason: "no_llm" | "no_agency" };
+
+const DEMO_MAX_REPLY_TOKENS = 240;
 
 async function agencyOrgId(): Promise<string | null> {
   const { rows } = await withSystem((db) => db.query<{ id: string }>("select id from organizations where kind = 'agency' and status = 'active' order by created_at limit 1"));
@@ -53,9 +59,38 @@ export async function demoModelState(deps: DemoModelDeps = {}): Promise<ModelSta
     config = null;
   }
   if (!config) return { ready: false, reason: "no_llm" };
+  let aqiConfig = DEFAULT_AQI_CONFIG;
+  if (deps.aqiConfig) {
+    try {
+      aqiConfig = await deps.aqiConfig();
+    } catch {
+      aqiConfig = DEFAULT_AQI_CONFIG;
+    }
+  } else if (!deps.config) {
+    try {
+      aqiConfig = (await getPublishedAqiConfig()).config;
+    } catch {
+      // The demo can still use the verified integration model and AQi's defaults if the global config is temporarily unavailable.
+      aqiConfig = DEFAULT_AQI_CONFIG;
+    }
+  }
   const orgId = await (deps.agencyOrg ?? agencyOrgId)();
   if (!orgId) return { ready: false, reason: "no_agency" };
-  return { ready: true, config, orgId };
+  const model = effectiveAqiModel(aqiConfig, config.model);
+  return {
+    ready: true,
+    config: model === config.model ? config : { ...config, model },
+    orgId,
+    aqi: {
+      identity: aqiConfig.identity,
+      description: aqiConfig.description,
+      tone: aqiConfig.tone,
+      responseVerbosity: aqiConfig.responseVerbosity,
+      greetingBehavior: aqiConfig.greetingBehavior,
+      maxTokens: aqiConfig.maxTokens,
+      temperature: aqiConfig.temperature,
+    },
+  };
 }
 
 async function publishedCatalog(): Promise<PromptCatalog> {
@@ -110,9 +145,16 @@ export async function sendDemoMessage(input: ReserveInput, ctx: DemoContext, dep
       history,
       message: reserved.text,
       catalog,
+      aqi: model.aqi,
     });
 
-    const res = await (deps.complete ?? llmComplete)(model.config, { system: prompt.system, user: prompt.user, maxTokens: 400, temperature: 0.3, timeoutMs: 20_000 });
+    const res = await (deps.complete ?? llmComplete)(model.config, {
+      system: prompt.system,
+      user: prompt.user,
+      maxTokens: Math.min(model.aqi.maxTokens, DEMO_MAX_REPLY_TOKENS),
+      temperature: model.aqi.temperature,
+      timeoutMs: 20_000,
+    });
     // Metered whatever becomes of the answer: a reply the checks refuse still cost what the provider says. Never fails the prospect's message.
     await meterModelUse({ orgId: model.orgId, feature: "demo_chat", key: modelCallKey(`demo:${reserved.messageId}`), usage: res.usage });
     if (!res.ok) return give("provider_failed", true);

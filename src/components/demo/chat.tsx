@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar, LogoMark } from "@/components/brand";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { DemoNotice } from "@/components/demo/shell";
+import { Markdown } from "@/components/markdown";
 import type { Notice } from "@/lib/demo/outcomes";
 import { newClientMessageId, type RoomChatState, type RoomLine } from "@/lib/demo/room-types";
 
@@ -143,14 +144,15 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
             )}
             <div className={cn("min-w-0 max-w-[88%]", l.role === "user" ? "text-right" : "")}>
               <p className="text-[12px] font-medium text-muted">{speaker(l, roles)}</p>
-              <p
-                className={cn(
-                  "mt-0.5 whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left text-[14px] leading-relaxed",
-                  l.role === "user" ? "rounded-tr-md bg-gradient-to-br from-[#3856e8] to-[#6945e2] text-white" : "rounded-tl-md bg-surface-2 text-ink ring-1 ring-inset ring-line",
-                )}
-              >
-                {l.body}
-              </p>
+              {l.role === "user" ? (
+                <p className="mt-0.5 whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-gradient-to-br from-[#3856e8] to-[#6945e2] px-3.5 py-2.5 text-left text-[14px] leading-relaxed text-white">
+                  {l.body}
+                </p>
+              ) : (
+                <div className="mt-0.5 break-words rounded-2xl rounded-tl-md bg-surface-2 px-3.5 py-2.5 text-left text-ink ring-1 ring-inset ring-line">
+                  <Markdown className="prose-aqi">{l.body}</Markdown>
+                </div>
+              )}
               {l.state === "failed" && <p className="mt-1 text-[12px] text-warning-ink">Not counted: no answer came.</p>}
               {l.state === "pending" && <p className="mt-1 text-[12px] text-muted">Waiting for an answer.</p>}
             </div>

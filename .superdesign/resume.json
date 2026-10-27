@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "demo-chat": {
+      "targetKind": "existing-ui",
+      "projectId": "041ae648-8513-4059-9193-a96a8946c3b1",
+      "baselineDraftId": "52a0c881-79e9-441c-825a-20f85383ff97",
+      "activeDraftId": "52a0c881-79e9-441c-825a-20f85383ff97",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "dfa75ff4-da68-41ba-a0f7-e022ef6c3959"
+      ],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/components/demo/showroom/workspace.tsx",
+        "src/components/demo/chat.tsx",
+        "src/components/demo/shell.tsx",
+        "src/components/brand.tsx",
+        "src/components/markdown.tsx",
+        "src/app/globals.css",
+        "src/lib/utils.ts"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b0d75d545eb79f4ce5f2a7948dfdb2bd496f353147b425727ad4b180f3bcc9b8",
+        "src/components/demo/showroom/workspace.tsx": "ce8da7aefbbdcd99fd9da28c060e216ece8c5198346c780ff23d75478f7c4d1d",
+        "src/components/demo/chat.tsx": "4baeb80a99ace1c7dd767fe8654a38356be737fa441b5bc1806987861de96be3",
+        "src/components/demo/shell.tsx": "339b04cf431afbf425430852404ff36e98f66cf3cc8b5018cc13904b59abae13",
+        "src/components/brand.tsx": "096092214d62733db8295a0c6bd752db569e6f405d7bbffb556df4c3788a54f6",
+        "src/components/markdown.tsx": "5da5e5234a7fbf9d5fe2dca577c44119f2b8fd7b9c19253daa5eb301288a848e",
+        "src/app/globals.css": "aedf128b54cb8bb400b95f0a7fb4549b44d4da922ea2a28396dfee8c9d578a34",
+        "src/lib/utils.ts": "c5e690fa1d07458f98d2ceddcec30d3cf1627b7c1adc9df37a0b5b483bd62efb"
+      },
+      "components": [],
+      "drafts": {
+        "52a0c881-79e9-441c-825a-20f85383ff97": {
+          "title": "Refined AQi Demo Chat",
+          "visualDirection": "Compact mobile AQi chat with concise, spaced Markdown replies and a single composer focus border",
+          "currentVersion": 3
+        }
+      },
+      "updatedAt": "2026-10-27T06:24:41.0567992Z"
+    }
+  }
+}

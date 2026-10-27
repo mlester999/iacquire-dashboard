@@ -115,7 +115,7 @@ describe("the chat", () => {
     const log = screen.getByRole("log", { name: "Conversation" });
     expect(within(log).getAllByText("You")).toHaveLength(3);
     expect(within(log).getByText("AI Lead Hunter (AI)")).toBeTruthy();
-    expect(within(log).getByText("AI assistant")).toBeTruthy();
+    expect(within(log).getByText("AQi")).toBeTruthy();
     expect(within(log).getByText("Not counted: no answer came.")).toBeTruthy();
     expect(within(log).getByText("Waiting for an answer.")).toBeTruthy();
     expect(log.getAttribute("aria-live")).toBe("polite");
