@@ -209,7 +209,7 @@ export function ChatRail(props: ChatRailProps) {
       {/* A. Workspace identity */}
       <div className="flex h-[76px] shrink-0 items-center justify-between gap-2 px-5 [@media(max-height:700px)]:h-16">
         <Link href={targets.home} onClick={props.onNavigate} aria-label={`iAcquire ${targets.homeLabel.toLowerCase()}`} className="workspace-nav-brand -ml-1.5 inline-flex p-1.5">
-          <Logo />
+          <Logo tone="inverse" />
         </Link>
         <div className="flex items-center gap-1">
           {shell.org.isDemo && (

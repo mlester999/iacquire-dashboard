@@ -21,14 +21,21 @@ export function LogoMark({ className, title = "iAcquire" }: { className?: string
   );
 }
 
-/** The supplied full lockup sits on a white tile for contrast; compact placements use the standalone mark. */
+/** The supplied artwork stays transparent; compact placements use the standalone mark. */
 export function Logo({ className, compact, tone = "auto" }: { className?: string; compact?: boolean; tone?: "auto" | "inverse" }) {
   return (
-    <span data-tone={tone} className={cn("logo inline-flex items-center", className)}>
+    <span data-tone={tone} className={cn("logo inline-flex items-center gap-2.5", className)}>
       {compact ? (
         <LogoMark className="size-8" />
+      ) : tone === "inverse" ? (
+        <>
+          <LogoMark className="size-8" />
+          <span className="logo-word text-[17px] font-semibold leading-none tracking-tight">
+            i<span className="logo-accent">AcquireOS</span>
+          </span>
+        </>
       ) : (
-        <span className="inline-flex h-11 w-[150px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-1 ring-1 ring-black/5 shadow-sm">
+        <span className="inline-flex h-11 w-[150px] shrink-0 items-center justify-center overflow-hidden">
           <Image
             src="/brand/iacquire-lockup.png"
             alt="iAcquireOS"
