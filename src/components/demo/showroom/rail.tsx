@@ -18,9 +18,9 @@ import { ViewIcon } from "@/components/demo/showroom/ui";
 // assistive technology and shows them in a tooltip. The choice is remembered in this browser (rail-preference.ts).
 
 export const RAIL_WIDE = 264;
-export const RAIL_FOLDED = 68;
-// The rail's side padding (12 px) plus a 6 px gap, so a tip clears the rail's edge instead of sitting half on it.
-const TIP_GAP = 18;
+export const RAIL_FOLDED = 76;
+// The rail's side padding (16 px) plus a 6 px gap, so a tip clears the rail's edge instead of sitting half on it.
+const TIP_GAP = 22;
 
 const GROUPS: Array<{ label: string; ids: ViewId[] }> = [
   { label: "Explore the product", ids: ["overview", "workforce", "crm", "inbox", "automation", "reports"] },
@@ -68,7 +68,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
       className="workspace-nav sx-on-nav sx-rail sx-scroll hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden"
     >
       {/* The mark, the "Demo" label and the fold button. One set of elements in both states, so focus stays on the button when the rail folds. */}
-      <div className={cn("flex shrink-0 px-3", collapsed ? "flex-col items-start gap-1 pb-2 pt-3" : "h-[68px] items-center gap-2")}>
+      <div className={cn("flex shrink-0", collapsed ? "flex-col items-start gap-1 px-4 pb-2 pt-3" : "h-[68px] items-center gap-2 px-3")}>
         <Link href="/demo" aria-label="iAcquire demo home" className="workspace-nav-brand inline-flex shrink-0 items-center p-1.5">
           <Logo tone="inverse" compact={collapsed} />
         </Link>
@@ -88,7 +88,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
         </Tooltip>
       </div>
 
-      <div className="mx-3 mb-3 shrink-0">
+      <div className={cn("mb-3 shrink-0", collapsed ? "mx-4" : "mx-3")}>
         <Tooltip content={name} side="right" sideOffset={TIP_GAP} disabled={!collapsed}>
           <div className="flex h-11 items-center overflow-hidden rounded-xl bg-white/[.035] ring-1 ring-inset ring-white/10 data-[folded=true]:ring-0" data-folded={collapsed}>
             <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/10 text-[16px] font-semibold text-white">
@@ -103,7 +103,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
         </Tooltip>
       </div>
 
-      <div className="mx-3 mb-4 shrink-0">
+      <div className={cn("mb-4 shrink-0", collapsed ? "mx-4" : "mx-3")}>
         <Tooltip content="Book a free consultation" side="right" sideOffset={TIP_GAP} disabled={!collapsed}>
           <div>
             <ConsultRail />
@@ -111,7 +111,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
         </Tooltip>
       </div>
 
-      <nav aria-label="Sections" className="min-h-0 flex-1 overflow-y-auto px-3 sx-scroll">
+      <nav aria-label="Sections" className={cn("min-h-0 flex-1 overflow-y-auto sx-scroll", collapsed ? "px-4" : "px-3")}>
         <div className="space-y-1">
           {GROUPS.map((g) => (
             <div key={g.label}>
@@ -129,7 +129,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
         </div>
       </nav>
 
-      <div className="mt-4 shrink-0 space-y-3 px-3 pb-4">
+      <div className={cn("mt-4 shrink-0 space-y-3 pb-4", collapsed ? "px-4" : "px-3")}>
         <div key={collapsed ? "mini" : "full"} className="sx-fade">
           {collapsed ? (
             <MiniStats />
