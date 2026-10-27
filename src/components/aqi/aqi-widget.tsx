@@ -1131,7 +1131,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                   {view === "history" ? (
                     <button type="button" onClick={() => setView("chat")} className="flex size-9 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2" aria-label="Back to AQi chat"><ArrowLeft className="size-4" /></button>
                   ) : (
-                    <span className="grid size-9 place-items-center rounded-xl brand-gradient text-white"><LogoMark className="size-5" /></span>
+                    <span className="grid size-9 place-items-center rounded-xl bg-white ring-1 ring-black/5 shadow-soft"><LogoMark className="size-8" /></span>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-ink">{view === "history" ? "Conversations" : "AQi"} {view === "chat" && <span className="rounded-full bg-primary-soft px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Platform guide</span>}</p>

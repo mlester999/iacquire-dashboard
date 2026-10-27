@@ -111,7 +111,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
         </Tooltip>
       </div>
 
-      <nav aria-label="Sections" className="min-h-0 flex-1 px-3">
+      <nav aria-label="Sections" className="min-h-0 flex-1 overflow-y-auto px-3 sx-scroll">
         <div className="space-y-1">
           {GROUPS.map((g) => (
             <div key={g.label}>

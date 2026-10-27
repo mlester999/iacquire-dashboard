@@ -27,7 +27,7 @@ describe("branded email rendering", () => {
     expect(out).toContain(`href="${BASE}/invite/${TOKEN}"`);
     expect(out).toContain("Accept invitation");
     expect(out).toContain("expires in 7 days");
-    expect(out).toContain(`${BASE}/brand/email-icon-v1.png`);
+    expect(out).toContain(`${BASE}/brand/iacquire-mark.png`);
     expect(out).toContain("prefers-color-scheme:dark");
   });
 

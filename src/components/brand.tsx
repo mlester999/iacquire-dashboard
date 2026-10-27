@@ -1,47 +1,44 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { StatusPill, type StatusTone } from "@/components/ui/status";
 import { AGENT_STATUS_LABEL, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 
 export function LogoMark({ className, title = "iAcquire" }: { className?: string; title?: string }) {
-  const id = React.useId();
   return (
-    <svg viewBox="0 0 32 32" className={cn("size-8", className)} role="img" aria-label={title}>
-      <defs>
-        <linearGradient id={`g${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2C5BFF" />
-          <stop offset="0.55" stopColor="#5B4DFF" />
-          <stop offset="1" stopColor="#8B5CFF" />
-        </linearGradient>
-        <linearGradient id={`h${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity="0.28" />
-          <stop offset="0.5" stopColor="#fff" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill={`url(#g${id})`} />
-      <rect width="32" height="32" rx="9" fill={`url(#h${id})`} />
-      <path d="M9.5 23.5 16 8.8l6.5 14.7" fill="none" stroke="#fff" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.6 18.6h6.8" stroke="#fff" strokeOpacity="0.55" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="24.2" cy="8.9" r="2.3" fill="#fff" />
-    </svg>
+    <Image
+      src="/brand/iacquire-mark.png"
+      alt={title}
+      width={1280}
+      height={1280}
+      sizes="48px"
+      draggable={false}
+      className={cn("size-8 shrink-0 object-contain drop-shadow-[0_3px_10px_rgba(91,77,255,0.2)]", className)}
+    />
   );
 }
 
-/**
- * The iAcquire lockup. `tone="auto"` follows the theme tokens (--ink and the primary/violet gradient). The sidebars are
- * dark navy in BOTH themes, so inside `.workspace-nav` (and wherever `tone="inverse"` is set) the wordmark uses fixed
- * on-dark colours from globals.css instead. Callers never need to override the text colour.
- */
+/** The supplied full lockup sits on a white tile for contrast; compact placements use the standalone mark. */
 export function Logo({ className, compact, tone = "auto" }: { className?: string; compact?: boolean; tone?: "auto" | "inverse" }) {
   return (
-    <span data-tone={tone} className={cn("logo inline-flex items-center gap-2.5", className)}>
-      <LogoMark className="size-8 shrink-0 drop-shadow-[0_6px_16px_rgba(44,91,255,0.35)]" />
-      {!compact && (
-        <span className="logo-word text-[17px] font-semibold leading-none tracking-tight">
-          i<span className="logo-accent">Acquire</span>
+    <span data-tone={tone} className={cn("logo inline-flex items-center", className)}>
+      {compact ? (
+        <LogoMark className="size-8" />
+      ) : (
+        <span className="inline-flex h-11 w-[150px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-1 ring-1 ring-black/5 shadow-sm">
+          <Image
+            src="/brand/iacquire-lockup.png"
+            alt="iAcquireOS"
+            width={1456}
+            height={1024}
+            sizes="150px"
+            loading="eager"
+            draggable={false}
+            className="h-full w-full object-cover object-[50%_52%]"
+          />
         </span>
       )}
     </span>

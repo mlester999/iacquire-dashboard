@@ -14,7 +14,10 @@ export const metadata: Metadata = {
   title: { default: "iAcquire Client Portal", template: "%s · iAcquire" },
   description: "Manage leads, appointments, sales and customer relationships with a team of AI employees built around your business.",
   robots: { index: false, follow: false },
-  icons: { icon: "/brand/icon.svg" },
+  icons: {
+    icon: [{ url: "/brand/iacquire-mark.png", type: "image/png", sizes: "1280x1280" }],
+    apple: [{ url: "/brand/iacquire-mark.png", type: "image/png", sizes: "1280x1280" }],
+  },
 };
 
 export const viewport: Viewport = {
