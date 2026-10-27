@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Hourglass, MessageSquareText } from "lucide-react";
+import { Clock, Hourglass, MessageSquareText, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocalTime } from "@/components/demo/local-time";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
@@ -128,6 +128,45 @@ export function MessageMeter({ left: leftOverride, className, compact = false }:
         ))}
       </div>
       {!compact && <p className="sr-only">You have {left} of {messageAllowance} messages left.</p>}
+    </div>
+  );
+}
+
+/** The window's remaining time in one short unit, for a place with room for three or four characters. */
+function shortLeft(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  if (total >= 3600) return `${Math.floor(total / 3600)}h`;
+  if (total >= 60) return `${Math.floor(total / 60)}m`;
+  return `${total}s`;
+}
+
+function MiniTile({ icon: Icon, value, label }: { icon: LucideIcon; value: string; label: string }) {
+  return (
+    <div title={label} className="flex h-[52px] w-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-white/10 bg-white/[.035] text-white">
+      <Icon className="size-3.5 text-[#a9c2ff]" aria-hidden />
+      <span aria-hidden className="text-[11px] font-semibold leading-none tabular-nums">
+        {value}
+      </span>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * The window and the AI messages at a glance, as two small tiles, for the folded navigation rail. The same facts as the full counters, from the same record: the time is drawn toward the
+ * end time the server gave, and the messages are the count the server last returned.
+ */
+export function MiniStats() {
+  const { access, windowEndsAt, messagesLeft, messageAllowance, aiEnabled } = useShowroom();
+  const open = access === "open";
+  const ms = useMsLeft(windowEndsAt, open);
+  const time = !open ? "Ended" : ms === null ? "Open" : shortLeft(ms);
+  const timeLabel = !open ? "Your interactive window has ended." : ms === null ? "Your demo window is open." : `Your demo window has ${formatLeft(ms)} left.`;
+  const chatOn = open && aiEnabled;
+  return (
+    <div role="group" aria-label="Your demo at a glance" className="flex flex-col items-center gap-2">
+      <MiniTile icon={open ? Clock : Hourglass} value={time} label={timeLabel} />
+      <MiniTile icon={MessageSquareText} value={chatOn ? String(messagesLeft) : "Off"} label={chatOn ? `${messagesLeft} of ${messageAllowance} AI messages left.` : "The AI chat is closed."} />
     </div>
   );
 }

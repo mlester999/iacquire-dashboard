@@ -22,6 +22,7 @@ const endsIn = (hours: number): string => new Date(Date.now() + hours * 3_600_00
  *   state=open (default) | ended | ai_off | exhausted
  *   left=0..10 (messages left), hours=0.1..24 (window left), industry=<questionnaire value>
  *   confirm=consultation|buy (open the confirmation dialog)
+ *   rail=compact|full (the navigation rail folded to icons, or open), aqi=open (AQi's panel open)
  *   theme=light|dark|system (the colour theme to open in)
  *   consult=1 (consultation requested), buy=1 (purchase started), link=1 (a scheduling page is set), history=1 (a short conversation), plan=0 (the catalog could not be read)
  * Sending a message or pressing a request posts to the real demo endpoints, which answer "no session" here: that is the error path, not a bug.
@@ -53,7 +54,7 @@ export default async function ShowroomPreview({ searchParams }: { searchParams: 
   const confirm = one(q.confirm);
   return (
     <>
-    <ForceTheme theme={theme === "light" || theme === "dark" || theme === "system" ? theme : null} />
+    <ForceTheme theme={theme === "light" || theme === "dark" || theme === "system" ? theme : null} rail={one(q.rail) === "compact" || one(q.rail) === "full" ? (one(q.rail) as "compact" | "full") : null} aqi={one(q.aqi) === "open"} />
     <Workspace
       initialView={isViewId(view) ? view : "overview"}
       state={{

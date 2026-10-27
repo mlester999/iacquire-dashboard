@@ -283,14 +283,30 @@ export function TooltipProvider({ children }: { children: React.ReactNode }) {
   return <T.Provider delayDuration={250}>{children}</T.Provider>;
 }
 
-export function Tooltip({ content, children, side = "top" }: { content: React.ReactNode; children: React.ReactNode; side?: "top" | "right" | "bottom" | "left" }) {
+export function Tooltip({
+  content,
+  children,
+  side = "top",
+  sideOffset = 6,
+  disabled = false,
+}: {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  /** Gap between the trigger and the tip, in px. */
+  sideOffset?: number;
+  /** Keeps the child where it is in the tree and simply never shows the tip (a label that is already on screen). */
+  disabled?: boolean;
+}) {
+  // Always controlled, so switching `disabled` never remounts the child or flips Radix between controlled and uncontrolled.
+  const [open, setOpen] = React.useState(false);
   return (
-    <T.Root>
+    <T.Root open={disabled ? false : open} onOpenChange={setOpen}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
         <T.Content
           side={side}
-          sideOffset={6}
+          sideOffset={sideOffset}
           collisionPadding={8}
           className="z-[60] max-w-xs rounded-lg bg-inverse px-2.5 py-1.5 text-[12px] leading-snug text-bg shadow-float"
         >

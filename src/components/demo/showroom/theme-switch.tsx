@@ -43,3 +43,24 @@ export function ThemeSwitch({ className, tone = "surface" }: { className?: strin
     </div>
   );
 }
+
+const NEXT: Record<ThemePreference, ThemePreference> = { light: "dark", dark: "system", system: "light" };
+
+/** The same choice as one button, for the folded navigation rail: it shows the current theme and moves to the next (light, dark, system) when pressed. */
+export function ThemeCycle({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme();
+  const live = React.useSyncExternalStore(noSubscribe, () => true, () => false);
+  const current = OPTIONS.find((o) => o.v === (live ? theme : "light")) ?? OPTIONS[0];
+  const Icon = current.icon;
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(NEXT[current.v])}
+      aria-label={`Colour theme: ${current.label}. Press to change it.`}
+      title={`Theme: ${current.label}. Press to change it.`}
+      className={cn("grid size-11 place-items-center rounded-xl text-[#b6c1d4] transition-colors hover:bg-white/10 hover:text-white", className)}
+    >
+      <Icon className="size-[18px]" aria-hidden />
+    </button>
+  );
+}

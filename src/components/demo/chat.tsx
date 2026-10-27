@@ -32,6 +32,8 @@ export interface DemoChatProps {
   suggestions?: readonly string[];
   /** Shown under the sentence that says why a message cannot be sent (for example, a way to talk to a person). */
   closedFooter?: React.ReactNode;
+  /** Told what the server returned after a message (the messages left, whether another can be sent), so the rest of the page can show the same number. */
+  onRecord?: (chat: { messagesLeft: number; canSend: boolean }) => void;
   className?: string;
 }
 
@@ -69,7 +71,7 @@ function Writing({ employee, roles }: { employee: string; roles: DemoChatProps["
   );
 }
 
-export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft = null, suggestions = [], closedFooter, className }: DemoChatProps) {
+export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft = null, suggestions = [], closedFooter, onRecord, className }: DemoChatProps) {
   const [state, setState] = React.useState<RoomChatState>(initial);
   const [text, setText] = React.useState("");
   const [employee, setEmployee] = React.useState("");
@@ -129,7 +131,10 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
       if (json?.ok) {
         // The server answered for this key, so the next message is a new one.
         pendingKey.current = null;
-        if (json.room) setState({ transcript: json.room.transcript, messagesLeft: json.room.messagesLeft, messageAllowance: json.room.messageAllowance, canSend: json.room.chat.canSend, refusalMessage: json.room.chat.refusalMessage });
+        if (json.room) {
+          setState({ transcript: json.room.transcript, messagesLeft: json.room.messagesLeft, messageAllowance: json.room.messageAllowance, canSend: json.room.chat.canSend, refusalMessage: json.room.chat.refusalMessage });
+          onRecord?.({ messagesLeft: json.room.messagesLeft, canSend: json.room.chat.canSend });
+        }
         // The record now holds the message (and its answer), so the picture of it goes; a message that was given back (not counted) also returns to the box.
         setOutgoing(null);
         if (json.kind === "held") {

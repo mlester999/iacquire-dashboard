@@ -375,3 +375,37 @@ export function ConfirmStatic({ kind }: { kind: ConfirmKind }) {
     </section>
   );
 }
+
+/**
+ * "Book a free consultation" in the navigation rail. It is the same request as everywhere else (it asks first, then records once); in the folded rail it is one icon, with the words kept
+ * for assistive technology and fading in as the rail opens.
+ */
+export function ConsultRail() {
+  const { consultationRequested } = useShowroom();
+  const link = useLink();
+  if (consultationRequested) {
+    return (
+      <div className="space-y-1.5">
+        <p role="status" className="flex h-11 items-center overflow-hidden rounded-xl text-success-ink">
+          <span className="grid size-11 shrink-0 place-items-center">
+            <CircleCheck className="size-[18px]" aria-hidden />
+          </span>
+          <span className="sx-rail-label whitespace-nowrap pr-3 text-[14px] font-medium">Request received</span>
+        </p>
+        {link && (
+          <a href={link} target="_blank" rel="noopener noreferrer" className="sx-btn-primary flex h-11 w-full items-center overflow-hidden rounded-xl font-semibold">
+            <span className="grid size-11 shrink-0 place-items-center">
+              <ExternalLink className="size-[18px]" aria-hidden />
+            </span>
+            <span className="sx-rail-label whitespace-nowrap pr-3 text-[14px]">{CONSULT_CONFIRM.schedule}</span>
+          </a>
+        )}
+      </div>
+    );
+  }
+  return (
+    <RequestTrigger kind="consultation" className="h-11 w-full justify-start gap-0 overflow-hidden" icon={<span className="grid size-11 shrink-0 place-items-center"><CalendarCheck className="size-[18px]" aria-hidden /></span>}>
+      <span className="sx-rail-label whitespace-nowrap pr-3 text-[14px]">{ROOM_COPY.consultationButton}</span>
+    </RequestTrigger>
+  );
+}

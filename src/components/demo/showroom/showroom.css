@@ -63,6 +63,45 @@
   mask-image: radial-gradient(60% 70% at 75% 0%, #000, transparent 70%);
 }
 
+/* The navigation rail folds to icons. The rail's width and the page's left padding animate together (one duration, one curve); every row is a fixed icon cell plus a label, so icons never
+   move, and the labels fade. Nothing animates until the page is live (data-ready), so a remembered choice does not play on load. */
+.sx-rail {
+  width: var(--sidebar-w);
+  transition: width 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sx-rail-label {
+  transition: opacity 180ms ease 90ms;
+}
+.sx-rail[data-collapsed="true"] .sx-rail-label {
+  opacity: 0;
+  pointer-events: none;
+  transition-delay: 0ms;
+}
+.sx-rail-divider {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.sx-rail[data-collapsed="true"] .sx-rail-divider {
+  opacity: 1;
+}
+@media (min-width: 1024px) {
+  .sx-shift {
+    padding-left: var(--sidebar-w);
+    transition: padding-left 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+.showroom-layout:not([data-ready]) :is(.sx-rail, .sx-shift, .sx-rail-label, .sx-rail-divider) {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sx-rail,
+  .sx-shift,
+  .sx-rail-label,
+  .sx-rail-divider {
+    transition: none !important;
+  }
+}
+
 /* A panel: the one surface the showroom is built from. It is the portal's card. */
 .sx-panel {
   background: var(--surface);

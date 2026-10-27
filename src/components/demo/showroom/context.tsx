@@ -60,6 +60,8 @@ export interface ShowroomApi extends ShowroomState {
   requestError: { source: string; text: string } | null;
   /** The record says the interactive window is over: every sales view still works, the chat does not. */
   ended: boolean;
+  /** The chat tells the page what the server last returned, so every counter on the page (the rail, the launcher, the chat's own) shows the same number. */
+  reportChat: (chat: { messagesLeft: number; canSend: boolean }) => void;
 }
 
 const Ctx = React.createContext<ShowroomApi | null>(null);
@@ -88,6 +90,11 @@ export function ShowroomProvider({
   const router = useRouter();
   const [requesting, setRequesting] = React.useState<"consultation" | "buy" | null>(null);
   const [requestError, setRequestError] = React.useState<{ source: string; text: string } | null>(null);
+  // The messages left as the chat last heard it from the server. It stands in for the page's number only while that number is the one it was reported against: a fresh page from the
+  // server (after a request is recorded) is authoritative again.
+  const [live, setLive] = React.useState<{ base: number; left: number } | null>(null);
+  const reportChat = React.useCallback((chat: { messagesLeft: number; canSend: boolean }) => setLive({ base: state.messagesLeft, left: chat.messagesLeft }), [state.messagesLeft]);
+  const messagesLeft = live && live.base === state.messagesLeft ? live.left : state.messagesLeft;
   const [confirming, setConfirming] = React.useState<"consultation" | "buy" | null>(state.initialConfirm);
   const openConfirm = React.useCallback((kind: "consultation" | "buy") => {
     setRequestError(null);
@@ -124,8 +131,8 @@ export function ShowroomProvider({
   );
 
   const value = React.useMemo<ShowroomApi>(
-    () => ({ ...state, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, ended: state.access !== "open" }),
-    [state, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError],
+    () => ({ ...state, messagesLeft, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, ended: state.access !== "open", reportChat }),
+    [state, messagesLeft, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, reportChat],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

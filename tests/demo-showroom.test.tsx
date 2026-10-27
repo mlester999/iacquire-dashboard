@@ -158,13 +158,13 @@ describe("the showroom's source", () => {
     }
   });
 
-  it("sends a visitor's details nowhere but the demo's own endpoints, renders no raw markup, and keeps browser storage to the tour's progress", () => {
+  it("sends a visitor's details nowhere but the demo's own endpoints, renders no raw markup, and keeps browser storage to the tour's progress and the navigation rail's fold", () => {
     for (const { file, text } of FILES) {
       const c = code(text);
       expect(c, file).not.toMatch(/dangerouslySetInnerHTML|innerHTML|eval\(|new Function/);
       for (const m of c.matchAll(/fetch\(\s*["'`]([^"'`]+)["'`]/g)) expect(m[1], file).toMatch(/^\/api\/public\/demo\//);
       for (const m of c.matchAll(/action="([^"]+)"/g)) expect(m[1], file).toMatch(/^\/api\/public\/demo\//);
-      if (!file.endsWith("journey.tsx")) expect(c, file).not.toMatch(/localStorage|sessionStorage|document\.cookie|indexedDB/);
+      if (!/(journey\.tsx|rail-preference\.ts)$/.test(file)) expect(c, file).not.toMatch(/localStorage|sessionStorage|document\.cookie|indexedDB/);
       expect(c, file).not.toMatch(/navigator\.sendBeacon|XMLHttpRequest|WebSocket|window\.open/);
       // A link that leaves the site must not hand the visitor's browser context to the other page.
       for (const m of c.matchAll(/<a\b[^>]*target="_blank"[^>]*>/g)) expect(m[0], file).toMatch(/rel="noopener noreferrer"/);
@@ -175,6 +175,16 @@ describe("the showroom's source", () => {
     const journey = FILES.find((f) => f.file.endsWith("journey.tsx"))!.text;
     expect(journey).toMatch(/iaq-demo-journey-v1/);
     expect(journey).toMatch(/JSON\.stringify\(\{ visited \}\)/);
+  });
+
+  it("keeps whether the navigation rail is folded in this browser as one of two words, and nothing about the visitor", () => {
+    const rail = code(FILES.find((f) => f.file.endsWith("rail-preference.ts"))!.text);
+    expect(rail).toMatch(/iaq-demo-nav-v1/);
+    expect(rail).toMatch(/type RailPreference = "compact" \| "full"/);
+    // The only thing ever written is the value the type allows.
+    const writes = [...rail.matchAll(/setItem\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(writes).toEqual(["KEY, value"]);
+    expect(rail).not.toMatch(/getItem\([^)]*\)[^;]*JSON\.parse|document\.cookie|fetch\(/);
   });
 });
 
@@ -219,7 +229,7 @@ describe("the showroom follows the portal's design system", () => {
     }
   });
   it("draws its pages from theme tokens, with a hard-coded colour only on the portal's navy rail and the brand gradient", () => {
-    const allowed = ["workspace.tsx", "theme-switch.tsx", "journey.tsx", "overview.tsx"];
+    const allowed = ["workspace.tsx", "rail.tsx", "theme-switch.tsx", "journey.tsx", "overview.tsx"];
     for (const { file, text } of FILES.filter((f) => f.file.endsWith(".tsx"))) {
       if (allowed.some((a) => file.endsWith(a))) continue;
       expect(code(text), file).not.toMatch(/(bg|from|via|to|border)-\[#[0-9a-fA-F]{3,8}\]/);
