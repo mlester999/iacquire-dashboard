@@ -61,11 +61,11 @@ async function waitForMessage(id: string, timeoutMs = 10_000) {
   throw new Error("assistant message did not finish");
 }
 
-async function ask(role: AgentRoleKey) {
+async function ask(role: AgentRoleKey, content: string = QUESTIONS[role]) {
   await withSystem((db) => db.query("delete from rate_limit_buckets where bucket_key = $1", [`${RATE_LIMITS.agentMessageByUser.name}:${owner.id}`]));
   const ctx = ctxFor(owner, org, "owner");
   ctx.org.timezone = "Asia/Manila";
-  const sent = await sendChatMessage(ctx, { agentRole: role, content: QUESTIONS[role], clientMessageId: crypto.randomUUID() });
+  const sent = await sendChatMessage(ctx, { agentRole: role, content, clientMessageId: crypto.randomUUID() });
   expect(sent.runId, `${role} should be answered by its Hermes run, not queued as background work`).toEqual(expect.any(String));
   const message = await waitForMessage(sent.assistantMessageId);
   const { rows } = await withSystem((db) => db.query<{ hermes_run_id: string; status: string }>("select hermes_run_id, status from agent_runs where id = $1", [sent.runId]));
@@ -126,6 +126,16 @@ describe("the six acceptance questions reach a Hermes run that carries verified,
     const states = Object.fromEntries(evidence.sections.map((s) => [s.id, s.state]));
     expect(states).toMatchObject({ calendar: "not_configured", appointments: "not_configured" });
     expect(evidence.sections.find((s) => s.id === "appointments")!.records).toEqual([]);
+  }, 60_000);
+
+  // Found in production on 2026-10-29: "...and is the booking calendar set up?" got the fixed booking-preview reply and never reached the employee.
+  it.each([
+    "What appointments do we have this week, and is the booking calendar set up?",
+    "Is the booking calendar set up yet?",
+  ])("Appointment Setter asked a calendar status question (%s) is answered by its run, not by the fixed booking reply", async (question) => {
+    const { message, evidence } = await ask("appointment_setter", question);
+    expect(evidence.sections.map((s) => s.id)).toEqual(expect.arrayContaining(EXPECTED_SECTIONS.appointment_setter));
+    expect(message.content).not.toContain("I can prepare a booking preview");
   }, 60_000);
 
   it("CRM Manager with a set-up but empty CRM: the facts say set up and empty, not disconnected", async () => {
