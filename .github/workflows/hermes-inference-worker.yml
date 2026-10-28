@@ -1,4 +1,5 @@
 name: Hermes inference worker verification
+run-name: Synthetic worker isolation checks (${{ github.ref_name }})
 
 on:
   # A branch-scoped push run keeps verification possible without adding this workflow to master.
