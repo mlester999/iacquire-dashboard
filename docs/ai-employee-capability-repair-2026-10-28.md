@@ -101,19 +101,19 @@ The same reader runs for client workspaces (verified in tests): the knowledge bl
 
 | Item | State |
 | --- | --- |
-| Production (`iacquire.online`) | Serving `21b3f6a0` (first commit, without the section 10 fixes). Deployment `dpl_37NeVCTyTfrT4ud4psqvsJPyQJaq`, built from `master`, Ready ~19:49 +08. |
+| Production (`iacquire.online`) | Was serving `21b3f6a0` (first commit, without the section 10 fixes) from ~19:49 +08 (deployment `dpl_37NeVCTyTfrT4ud4psqvsJPyQJaq`). At 22:50 a separate, unrelated commit (`a8708414`, transactional email branding, pushed by the founder's git account) went to `master` on top of it; production now serves that (deployment `iacquire-dashboard-i03vpkj4b`), which still contains the unhardened `21b3f6a0`. |
 | Previous production deployment (the way back) | `iacquire-dashboard-kmzo210pj-mlester999s-projects.vercel.app` = `dpl_GcfzGttUhCdhVRB1HEim1BNZmoi5`, built from `d4adb4fd`, Ready since 14:08 +08. |
-| `origin/master` | `21b3f6a0`. |
-| Review branch | `fix/employee-real-capabilities`: `21b3f6a0` plus one hardening commit (the section 10 fixes, tests and this document). Not on master, not deployed. |
+| `origin/master` | `a8708414` (= `21b3f6a0` plus the email branding commit). |
+| Review branch | `fix/employee-real-capabilities`: the section 10 fixes, tests and this document, merged with current `master` so that it fast-forwards onto it. Against current `master` it changes exactly four files (`src/lib/employee-evidence.ts`, `src/server/workforce/employee-evidence.ts`, `tests/employee-evidence-hardening.test.ts`, this document). Not on master, not deployed. |
 | Vercel Preview environment | Has **no environment variables** (checked with `vercel env ls preview`; production has 44). A Preview build of the review branch therefore compiles but has no database, no credentials and no model key: it cannot read or write any real workspace. |
 
 **Proposed release (needs the founder's explicit approval, nothing below has been done):**
 
 1. Push `fix/employee-real-capabilities` to `origin` as the review branch. Vercel builds a Preview (compile-only, see above). No effect on production.
-2. On approval, fast-forward `master` to the hardening commit (`git push origin fix/employee-real-capabilities:master`, no force). Vercel builds production from it (about 4 minutes). No migration, no Hermes or VPS step, no credential change, no environment change.
+2. On approval, fast-forward `master` to the review branch tip (`git push origin fix/employee-real-capabilities:master`, no force; it is a fast-forward because the branch contains current `master`. If `master` moves again first, merge it into the branch again). Vercel builds production from it (about 4 minutes). No migration, no Hermes or VPS step, no credential change, no environment change.
 3. Production acceptance (section 11 and the founder's step 3) runs only after step 2.
 
-**Rollback (any time, nothing to clean up):** `vercel rollback iacquire-dashboard-kmzo210pj-mlester999s-projects.vercel.app` (or promote it from the dashboard) puts `d4adb4fd` back in about a minute; stored configurations, acknowledgements, policy text and SOUL files were never touched, and the audit rows the new code writes are additive and harmless. Vercel turns off automatic promotion of new production builds after a rollback until a deployment is promoted again, which is useful while a decision is pending. The code-side alternative is `git revert` of the two commits and a push.
+**Rollback (any time, nothing to clean up):** `vercel rollback iacquire-dashboard-kmzo210pj-mlester999s-projects.vercel.app` (or promote it from the dashboard) puts `d4adb4fd` back in about a minute; stored configurations, acknowledgements, policy text and SOUL files were never touched, and the audit rows the new code writes are additive and harmless. Because `master` now also carries the email branding commit, rolling back to the `d4adb4fd` build would also take that email change out of production until the next deploy; the code-side alternative (revert only the two employee-snapshot commits, keep the email commit) avoids that. Vercel turns off automatic promotion of new production builds after a rollback until a deployment is promoted again, which is useful while a decision is pending. The code-side alternative is `git revert` of the two commits and a push.
 
 **If the exposure of the current production build is a concern before approval:** rolling back now is the conservative option. The unhardened build is read-only, scoped to the signed-in person's workspace and covered by the tenant-isolation tests, but it ignores an employee's switched-off "Allowed actions", can describe an unreadable setup as "not set up", and lets record text shape the data block (section 10, findings 1 to 4).
 
@@ -146,7 +146,7 @@ Reviewed: every file in the change, the read paths, what is sent to the model, t
 
 ## 11. Verification of the hardened branch
 
-Run on commit `6b77d56f` (the review branch, `origin/fix/employee-real-capabilities`), 2026-10-28:
+Run on commit `6b77d56f` (the hardening commit), 2026-10-28. After that, `master` moved (email branding, 4 unrelated files) and was merged into the review branch; the merged tree was re-checked with the TypeScript compiler and the affected tests (see the last rows). The full suite and the production build were **not** repeated on the merged tree.
 
 | Check | Result |
 | --- | --- |
@@ -160,7 +160,9 @@ Run on commit `6b77d56f` (the review branch, `origin/fix/employee-real-capabilit
 | Full suite (`npx vitest run`) | 695 files pass, 8 fail, 1 skipped; 11,088 tests pass, 8 fail, 2 skipped |
 | The same 8 failures on clean production `d4adb4fd` | Yes. Re-run 2026-10-28 in a temporary worktree of `d4adb4fd`: the same 8 tests fail with the same assertions. |
 | Real-model acceptance (synthetic data, deepseek-flash, two runs; not a Hermes run) | Before the fix 0 of 13; after 25 of 26 (see section 10, last residual risk) |
-| Vercel Preview build of the review branch | Ready (compile-only: the Preview environment has no variables) |
+| Vercel Preview build of `6b77d56f` | Ready (compile-only: the Preview environment has no variables) |
+| After merging current `master` (`a8708414`): TypeScript | Pass |
+| After merging current `master`: the six evidence suites, workforce config, `proposals-crm` and `email-render` (8 files) | 117 of 118 tests pass. The one failure is `tests/email-render.test.ts` ("renders the invitation ..." expects the old logo URL): a ninth failure that comes from `master`'s own commit `a8708414`, which changed the email branding without updating the test. This work does not touch email rendering; not fixed here. |
 
 **The eight failures, unrelated to this work (they fail identically on production `d4adb4fd`):**
 
