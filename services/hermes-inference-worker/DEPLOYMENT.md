@@ -61,8 +61,14 @@ docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/h
 ```
 
 Do not proceed to deployment unless the build reports the pinned Hermes version, passes all
-worker tests, and ends with a successful pinned-runtime synthetic smoke. That runtime smoke has not
-yet run in this workspace because Docker/Podman is unavailable here.
+worker tests, and ends with a successful pinned-runtime synthetic smoke. This gate passed in
+GitHub Actions run #7 (40714444403) at commit 0ecd7d8b7279a60047095112f8e79df6ce4f4295
+on a temporary Ubuntu 24.04 Docker runner. The job built the pinned v0.22.5 image, passed the
+pinned Hermes smoke with a synthetic local provider under --network none, passed all 10 worker
+unit tests, and validated the six-profile Compose isolation layout. The smoke reported one provider
+request, zero tool schemas, zero tool dispatches, and a 128-token output cap. No real DeepSeek call,
+production credential, employee profile, or published image artifact was used. Docker remains
+unavailable in the local Windows workspace; production deployment has not been tested.
 
 Before any production change, perform read-only checks without printing file contents or secrets:
 
@@ -83,10 +89,12 @@ Before any production change, perform read-only checks without printing file con
 
 ## Approval-gated deployment order
 
-1. Deploy only the reviewed, focused application commit from the isolated branch through the
-   existing Vercel release path, with the inference flag false and no new DeepSeek environment
-   variable. Roll back to production SHA `d4adb4fd8759d1206ee981d408c185d351b24364` if deployment
-   health checks fail.
+1. Deploy only the reviewed workforce/Hermes application diff from the isolated branch through
+   the existing Vercel release path, with the inference flag false and no new DeepSeek environment
+   variable. The current rollback anchor observed on 2026-10-28 is Vercel Production deployment
+   C4EQQRNVzihSUFZCu5mj18hKxYNF at commit
+   a870841485971be21cc241fdbb900f384c294db9. Recheck the active Production deployment
+   immediately before release and restore that exact deployment if health checks fail.
 2. Build the pinned image on the existing VPS only after its non-production image smoke passes.
    Create one private HMAC secret for the app-to-worker call and install it with mode `0400`, owned
    so UID/GID `10000:10000` can read it. Do not display it in command output or shell history.
@@ -100,17 +108,22 @@ Before any production change, perform read-only checks without printing file con
 5. Set the URL prefix and HMAC secret in Vercel while keeping the flag false. Verify unauthenticated,
    non-Super-Admin, wrong-role, replayed and oversized requests are denied. Then enable the flag for
    the approved canary window.
-6. Run one fixed provider-only request for each profile, then one fixed persisted Chat canary for
-   each employee whose normal readiness check passes. Run sequentially. Verify provider/model,
-   exact actual usage, zero tool schemas/calls and persisted message/run IDs. Turn the flag off as
-   soon as verification finishes.
+6. Run one fixed provider-only request per profile, followed by one fixed no-tool Chat canary per
+   employee through the normal authenticated Chat view. Run sequentially. Verify provider/model,
+   actual usage, zero tool schemas/calls, and persisted message/run IDs for the Chat canary. Turn
+   the inference flag off when this acceptance pass ends.
+7. Only after the no-tool Chat pass, verify one role-authorized business read per employee through
+   the application MCP bridge. Keep HERMES_BUSINESS_MCP_WRITES_ENABLED=false, use internal agency
+   data only, and do not allow schedules, outreach, bookings, CRM edits, or other writes. Before
+   adding the MCP entry to the six existing profile configs, record each original file hash and
+   prepare/review each complete diff and restore copy; preserve every unrelated setting. The bridge
+   remains off until HERMES_BUSINESS_MCP_ENABLED is explicitly enabled.
 
-Each request is capped at 8,192 provider-reported input tokens and 128 output tokens. Twelve calls
-(one provider-only plus one Chat call per employee) therefore have a hard reported-usage ceiling of
-98,304 input and 1,536 output tokens. At DeepSeek's currently published peak rates, that is about
-$0.032 if all profiles use Flash or $0.136 if all use Pro; actual model configuration and published
-rates must be checked again immediately before approval. This excludes Vercel usage. No additional
-paid hosting product is created.
+The twelve inference and no-tool Chat calls are each capped at 8,192 provider-reported input tokens
+and 128 output tokens: at most 98,304 input and 1,536 output tokens total. Actual cost depends on
+the six profiles' configured DeepSeek models and current provider pricing; recheck both immediately
+before approval. No real provider request has been made. This worker adds no paid hosting product
+and does not publish an image to a registry.
 
 ## Rollback
 
@@ -121,7 +134,9 @@ paid hosting product is created.
    `iacquire-deepseek-egress-proxy` using this Compose file. Remove the new private networks only
    after confirming they have no remaining endpoints. Do not stop or reconfigure the Hermes gateway.
 5. Remove the inference URL and HMAC environment value from Vercel. If the focused app deployment
-   itself must be reverted, restore the recorded previous Vercel deployment at production SHA
-   `d4adb4fd8759d1206ee981d408c185d351b24364`.
+   itself must be reverted, restore the Vercel Production deployment recorded immediately before
+   release. At this checkpoint that is deployment C4EQQRNVzihSUFZCu5mj18hKxYNF at commit
+   `a870841485971be21cc241fdbb900f384c294db9`; recheck it immediately before release.
 6. Delete the new HMAC file after the workers are stopped. The existing Hermes profile directories,
    keys, SOULs, tools and employee records are not changed by this worker.
+
