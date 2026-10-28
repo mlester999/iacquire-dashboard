@@ -17,6 +17,8 @@ import { sanitizeClientText } from "@/server/workforce/compiler";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
 import { roleToolEnforcement, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
+import { env } from "@/server/env";
+import { HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 
 /**
  * Generates the agency runbook for provisioning a dedicated Hermes profile for one tenant employee.
@@ -110,6 +112,33 @@ export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLO
   ].join("\n");
 }
 
+/** Config preview for an existing internal profile. The flag is off by default; when on, the first-party HTTP bridge is added without changing any other tools. */
+export function buildInternalAgencyConfigYaml(): string {
+  const e = env();
+  const enabled = e.HERMES_BUSINESS_MCP_ENABLED;
+  const apiToolsets = [...PORTAL_SAFE_TOOLSETS, enabled ? HERMES_BUSINESS_MCP_TOOLSET : "no_mcp"];
+  const lines = [
+    "# Add only after approving the internal business tools bridge and verifying the installed Hermes runtime supports Streamable HTTP MCP.",
+    "platform_toolsets:",
+    "  api_server:",
+    ...apiToolsets.map((toolset) => `    - ${toolset}`),
+  ];
+  if (enabled) {
+    const mcpUrl = new URL("/api/internal/hermes-business/mcp", e.APP_URL).toString();
+    lines.push(
+      "",
+      "mcp_servers:",
+      "  iacquire_business:",
+      `    url: ${mcpUrl}`,
+      "    headers:",
+      '      Authorization: "Bearer ${API_SERVER_KEY}"',
+      "    tool_timeout: 12",
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 export async function getProvisioningBundle(agentId: string): Promise<ProvisioningBundle> {
   const row = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: AgentRoleKey; org_id: string; org_name: string; slug: string; kind: WorkforceOrganizationKind; hermes_profile: string | null; blocked_toolsets: string[] }>(
@@ -133,7 +162,8 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
     profile,
     soul,
     soulSha256,
-    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key) : buildConfigYaml(),
+    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key)
+      : row.kind === "agency" ? buildInternalAgencyConfigYaml() : buildConfigYaml(),
     envTemplate: [
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
       "API_SERVER_ENABLED=true",

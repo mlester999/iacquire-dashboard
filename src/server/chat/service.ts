@@ -23,6 +23,8 @@ import {
 } from "@/server/integrations/hermes/client";
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
+import { prepareEmployeeEvidence } from "@/server/workforce/employee-evidence";
+import { insertEvidenceBlock } from "@/lib/employee-evidence";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createResearchRequest } from "@/server/leads/service";
@@ -1843,6 +1845,10 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         knowledgeDocumentIds: string[];
       };
 
+  // Read the facts this role needs as the signed-in person, outside the setup transaction (these are separate, row-level-security reads). The employee has no way to call
+  // iAcquireOS itself, so every run is handed a verified snapshot instead of being left to guess. It never throws: a section that cannot be read says so.
+  const workspaceEvidence = await prepareEmployeeEvidence(ctx, { agentId: agent.id, roleKey: input.agentRole });
+
   const setup: ChatSetupResult = await withSystem(async (db) => {
     if (input.regenerateMessageId) {
       await db.query("update chat_messages set status = 'superseded' where id = $1 and conversation_id = $2", [
@@ -1851,7 +1857,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       ]);
     }
     const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id);
-    let instructions = runInstructions.instructions;
+    let instructions = insertEvidenceBlock(runInstructions.instructions, workspaceEvidence.block);
     if (ctx.org.kind === "agency" && input.agentRole === "operations_manager") {
       const capabilityContext = await prepareInternalEmployeeContext(db, {
         orgId: ctx.org.orgId,

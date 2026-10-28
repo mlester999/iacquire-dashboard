@@ -13,6 +13,8 @@ import { listClientPayments, type AgencyPaymentView } from "@/server/billing/pay
 import { runtimeReadySql } from "@/lib/employee-runtime";
 import { clientContentAccess } from "@/server/admin/client-content-policy";
 import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
+import { loadCapabilityActivity } from "@/server/workforce/capability-status";
+import type { CapabilityActivity } from "@/lib/employee-capability-status";
 
 export interface TenantDetail {
   access: {
@@ -332,7 +334,7 @@ export async function listAgencyAgents(user: SessionUser) {
   const { rows } = await withUser(user.id, async (db) => {
     return db.query<{
       id: string; org_id: string; org_name: string; role_key: AgentRoleKey; display_name: string;
-      enabled: boolean; status: AgentStatus; hermes_profile: string | null;
+      enabled: boolean; status: AgentStatus; mode: "paused" | "approval_required" | "autonomous"; hermes_profile: string | null;
       last_health_check_at: Date | null; last_health_detail: string | null;
       last_health_ok: boolean | null; hermes_gateway_id: string | null; gateway_status: string | null;
       credential_id: string | null; has_config: boolean; pending_approvals: number; runs_30d: number;
@@ -348,7 +350,7 @@ export async function listAgencyAgents(user: SessionUser) {
       tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
       tool_inventory_tool_count: number | null; tool_inventory_detail: string | null;
     }>(
-      `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
+      `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.mode,a.hermes_profile,
               a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
               a.credential_id,
               (a.active_config_version_id is not null) as has_config,a.active_config_version_id,v.version as config_version,v.applied_at as config_applied_at,
@@ -391,6 +393,7 @@ export async function listAgencyAgents(user: SessionUser) {
     [credentialIds],
   ))).rows.map((credential) => credential.id));
   const extras = await readinessExtrasFor(agencyId, rows);
+  const activity = await loadCapabilityActivity(agencyId, rows.map((agent) => agent.id)).catch(() => new Map<string, CapabilityActivity>());
   return rows.map(({ credential_id, ...agent }) => {
     const credentialReady = credential_id !== null && activeCredentialIds.has(credential_id);
     const identityEvidence = {
@@ -426,6 +429,7 @@ export async function listAgencyAgents(user: SessionUser) {
       full_capabilities_acknowledged,
       has_credential: credentialReady,
       readiness_extras: extras.get(agent.id),
+      capability_activity: activity.get(agent.id),
     };
   });
 }

@@ -43,7 +43,10 @@ describe("configuration compiler", () => {
     expect(c.instructions).toContain("iAcquireOS authorization controls what you may do");
     expect(c.instructions).not.toContain("Never discuss iAcquire's internal systems");
     expect(c.instructions.indexOf("## Agency policy")).toBeGreaterThan(c.instructions.indexOf("</workspace_context>"));
-    expect(c.instructions).toContain("- crm.read_contacts");
+    // Portal capability labels are described in plain words, never listed as callable tools.
+    expect(c.instructions).toContain("Abilities this workspace has allowed for you: crm · read contacts");
+    expect(c.instructions).not.toContain("- crm.read_contacts");
+    expect(c.instructions).not.toContain("Tools you may use");
   });
 
   it("gives only the internal Sales Assistant the approved iAcquire commercial context", () => {
@@ -97,8 +100,8 @@ describe("configuration compiler", () => {
     const s = defaultSettings("lead_hunter");
     s.disabledTools = ["research.public_web"];
     const c = compileAgentConfig({ role: "lead_hunter", settings: s, company, version: 1, allowedTools: ["research.public_web", "leads.stage_for_review"] });
-    expect(c.instructions).toContain("- leads.stage_for_review");
-    expect(c.instructions).not.toContain("- research.public_web");
+    expect(c.instructions).toContain("Abilities this workspace has allowed for you: Add leads to your review queue.");
+    expect(c.instructions).not.toContain("Research approved public sources");
   });
 
   it("produces human-readable summaries", () => {
@@ -186,7 +189,7 @@ describe("provisioning safety", () => {
     const soul = buildSoul("lead_hunter", "Lakeside Dental");
     expect(soul).toContain("You work only for Lakeside Dental");
     expect(soul).toContain("Public research is not consent");
-    expect(soul).toContain("iAcquire policy (2026-10-21.1)");
+    expect(soul).toContain("iAcquire policy (2026-10-28.1)");
     const config = buildConfigYaml();
     expect(config).toMatch(/platform_toolsets:\s*\n\s+api_server:/);
     expect(config).toMatch(/disabled_toolsets:/);
@@ -205,7 +208,7 @@ describe("provisioning safety", () => {
 
   it("builds an internal-agency SOUL that allows authorized iAcquire operations", () => {
     const soul = buildSoul("operations_manager", "iAcquire", "agency");
-    expect(soul).toContain("Internal iAcquire policy (2026-10-25.1)");
+    expect(soul).toContain("Internal iAcquire policy (2026-10-28.1)");
     expect(soul).toContain("You work only inside iAcquire's internal agency organization");
     expect(soul).toContain("You may discuss iAcquire's internal systems and operations with authorized iAcquire staff");
     expect(soul).toContain("Never access, infer, mention or disclose data from any client tenant.");

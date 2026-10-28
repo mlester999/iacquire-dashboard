@@ -25,7 +25,10 @@ type PerformancePeriod = {
 
 /** Use calendar-month boundaries in the workspace's own time zone when the person asks for a month. */
 async function resolvePeriod(db: Queryable, job: WorkJobRow): Promise<PerformancePeriod> {
-  const currentMonth = job.input.period === "current_month";
+  return resolvePeriodFor(db, job.org_id, job.input.period === "current_month");
+}
+
+async function resolvePeriodFor(db: Queryable, orgId: string, currentMonth: boolean): Promise<PerformancePeriod> {
   const { rows } = await db.query<{
     current_start: Date;
     current_end: Date;
@@ -46,12 +49,12 @@ async function resolvePeriod(db: Queryable, job: WorkJobRow): Promise<Performanc
        case when $2::boolean then timezone(tz, month_start - interval '1 month') else now() - interval '60 days' end as previous_start,
        case when $2::boolean then timezone(tz, month_start) else now() - interval '30 days' end as previous_end
        from month_anchor`,
-    [job.org_id, currentMonth],
+    [orgId, currentMonth],
   );
   const bounds = rows[0];
   if (!bounds) throw new Error("performance_period_unavailable");
   return {
-    orgId: job.org_id,
+    orgId,
     label: currentMonth ? "Current calendar month" : "Last 30 days",
     previousLabel: currentMonth ? "Previous calendar month" : "Previous 30 days",
     currentStart: bounds.current_start,
@@ -241,6 +244,19 @@ async function metrics(db: Queryable, period: PerformancePeriod): Promise<Review
     { key: "ai_runs_completed", label: "AI runs completed", value: n(runs?.completed), period: period.label, definition: "Agent runs recorded as completed in the period.", source: "agent_runs", ...compare(n(runs?.completed), n(runs?.completed_previous), true) },
     { key: "ai_runs_failed", label: "AI runs failed", value: n(runs?.failed), period: period.label, definition: "Agent runs recorded as failed, timed out or interrupted in the period.", source: "agent_runs", ...compare(n(runs?.failed), n(runs?.failed_previous), false) },
   ];
+}
+
+/**
+ * The same measured KPIs the Performance Snapshot work job records, for one workspace and period, so a chat answer and the job's report use one set of definitions. Read-only; the caller
+ * has already authorized the person, and `db` should be a row-level-security connection for that person.
+ */
+export async function readPerformanceMetrics(
+  db: Queryable,
+  orgId: string,
+  period: "last_30_days" | "current_month" = "last_30_days",
+): Promise<{ period: string; previousPeriod: string; metrics: ReviewMetric[] }> {
+  const resolved = await resolvePeriodFor(db, orgId, period === "current_month");
+  return { period: resolved.label, previousPeriod: resolved.previousLabel, metrics: await metrics(db, resolved) };
 }
 
 export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {

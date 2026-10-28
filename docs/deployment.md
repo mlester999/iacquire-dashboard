@@ -35,6 +35,21 @@ Also set `APP_URL`, `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM` (v
 authorize an email provider, and optionally `SLACK_SUPPORT_WEBHOOK_URL` and the help-assistant LLM
 variables. Keep `GHL_WRITES_ENABLED=false`.
 
+### Sender logo in inboxes
+
+The logo in the email header is included by the app. A logo beside the sender in an inbox is controlled
+by the sending domain and the recipient's mail provider; Resend cannot set it on an individual message.
+The BIMI-ready iAcquire mark is hosted at `/brand/iacquire-bimi.svg`. To request inbox logo display:
+
+1. Make sure SPF and DKIM align with the domain in `EMAIL_FROM`, and its DMARC policy is enforced with
+   `p=quarantine` or `p=reject`.
+2. Serve the SVG at a stable public HTTPS URL with the `image/svg+xml` content type.
+3. Publish a TXT record at `default._bimi.<EMAIL_FROM-domain>` with
+   `v=BIMI1; l=<public-SVG-URL>` (add `a=<certificate-URL>` if your provider requires a VMC or CMC).
+
+Mailbox providers decide whether to display the logo, and some require a mark certificate. Publishing
+the record does not guarantee that every recipient sees it.
+
 ## First deployment (after you authorize each step)
 
 ```bash
