@@ -115,7 +115,9 @@ def main() -> None:
                     result = agent.run_conversation("Say hello in one short sentence.")
                     request_rows = FakeDeepSeekHandler.requests
                     if len(request_rows) != 1:
-                        raise SystemExit("pinned Hermes did not make exactly one provider request")
+                        raise SystemExit(
+                            f"pinned Hermes made {len(request_rows)} synthetic provider request(s); expected exactly one"
+                        )
                     request = request_rows[0]
                     if request.get("tools") not in (None, []) or request.get("tool_choice") not in (None, "none"):
                         raise SystemExit("pinned Hermes sent a callable tool schema")
