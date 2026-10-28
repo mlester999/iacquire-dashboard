@@ -234,9 +234,9 @@ function header(base: string, showImage: boolean, tag: string, tone: HeaderTone)
   const dotColor = tone === "urgent" ? "#ff5a60" : tone === "warning" ? "#f2a52a" : tone === "success" ? "#2fbf6a" : null;
   const dot = dotColor ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dotColor};margin-right:8px;vertical-align:middle;"></span>` : "";
   const mark = showImage
-    ? `<img src="${esc(base)}/brand/iacquire-mark.png" width="28" height="28" alt="" style="display:block;border:0;border-radius:8px;">`
-    : `<div style="font:700 15px/28px ${FONT};color:#ffffff;text-align:center;">A</div>`;
-  return `<tr><td class="em-head" bgcolor="${C.navy}" style="background:${C.navy};background-image:${band};padding:20px 38px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" width="1" style="white-space:nowrap;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" width="28" height="28" bgcolor="${C.primary}" style="width:28px;height:28px;border-radius:8px;background:${C.primary};">${mark}</td><td valign="middle" style="padding-left:10px;font:700 16px/1 ${FONT};color:#ffffff;letter-spacing:-.02em;">iAcquire</td></tr></table></td><td align="right" valign="middle" style="font:600 11px/1.2 ${FONT};letter-spacing:.12em;text-transform:uppercase;color:${tagColor};">${dot}${esc(tag)}</td></tr></table></td></tr>`;
+    ? `<img src="${esc(base)}/brand/iacquire-email-mark.png" width="36" height="36" alt="" style="display:block;border:0;">`
+    : `<div style="font:700 18px/36px ${FONT};color:#a9b6ff;text-align:center;">A</div>`;
+  return `<tr><td class="em-head" bgcolor="${C.navy}" style="background:${C.navy};background-image:${band};padding:20px 38px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" width="1" style="white-space:nowrap;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" width="36" height="36" style="width:36px;height:36px;">${mark}</td><td valign="middle" style="padding-left:10px;font:700 16px/1 ${FONT};color:#ffffff;letter-spacing:-.02em;">iAcquire</td></tr></table></td><td align="right" valign="middle" style="font:600 11px/1.2 ${FONT};letter-spacing:.12em;text-transform:uppercase;color:${tagColor};">${dot}${esc(tag)}</td></tr></table></td></tr>`;
 }
 
 interface LayoutInput {
