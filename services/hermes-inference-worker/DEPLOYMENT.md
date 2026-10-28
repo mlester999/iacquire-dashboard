@@ -61,24 +61,28 @@ docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/h
 ```
 
 Do not proceed to deployment unless the build reports the pinned Hermes version, passes all
-worker tests, and ends with a successful pinned-runtime synthetic smoke. The preceding worker-branch
-gate passed in GitHub Actions run #8 (40717247242) at
-`77fa5d62a2f6f83da28efce60dd7f75c44dec8cb` on a temporary Ubuntu 24.04 Docker runner. It built the
-pinned v0.22.5 image, ran the pinned Hermes smoke with a synthetic local provider under
-`--network none`, passed all 10 worker unit tests, and validated the six-profile Compose isolation
-layout. The smoke reported one provider request, zero tool schemas, zero tool dispatches, and a
-128-token output cap. No real DeepSeek call, production credential, employee profile, or published
-image artifact was used. This run is evidence for the prior worker branch only; the reconciled
-candidate must pass the same workflow at its own SHA before deployment. Docker remains unavailable
-in the local Windows workspace.
+worker tests, and ends with a successful pinned-runtime synthetic smoke. The reconciled candidate
+passed GitHub Actions run #9 (`40783282406`) at
+`9744ca778dfd1d74e36602243088fc92925c810b` on a temporary Ubuntu 24.04 Docker runner:
+<https://github.com/mlester999/iacquire-dashboard/actions/runs/40783282406>. It built the pinned
+v0.22.5 image; the real pinned Hermes `AIAgent` smoke used a synthetic local provider under
+`--network none`, `--read-only`, and UID/GID `10000:10000`; all 10 worker policy/failure tests
+passed; and Compose validation confirmed six one-profile workers, no published ports, and external
+egress only on the proxy. The smoke reported one provider request, zero tool schemas, zero tool
+dispatches, and a 128-token output cap. No real DeepSeek call, production credential, employee
+profile, or published image artifact was used. Docker remains unavailable in the local Windows
+workspace.
 
 Before any production change, perform read-only checks without printing file contents or secrets:
 
 1. Verify the six existing profile directories and their exact role mapping. Confirm the configured
    provider is DeepSeek and the model is one of the supported IDs without emitting key material.
-2. Confirm the existing profile files and the new HMAC file are readable by UID/GID `10000:10000`
-   through read-only mounts. Do not broaden profile permissions globally; stop if this cannot be
-   achieved with a narrowly scoped ACL or owner mapping.
+2. Confirm the six existing profile files are readable by UID/GID `10000:10000` through their
+   individual read-only mounts. This was checked for the existing files; the running worker mounts
+   still require deployment-time verification. The HMAC secret does not exist yet: create it only
+   during approved worker deployment, then verify that its read-only secret mount is readable by
+   UID/GID `10000:10000` without printing its value. Do not broaden profile permissions globally;
+   stop if this cannot be achieved with a narrowly scoped ACL or owner mapping.
 3. Confirm free VPS memory and disk can accommodate six worker limits (3 GiB total), the proxy
    (64 MiB), and the image. These are caps, not reservations. Do not resize the VPS for this test.
 4. Confirm the existing Tunnel type, current route order, Access service-token coverage, and
