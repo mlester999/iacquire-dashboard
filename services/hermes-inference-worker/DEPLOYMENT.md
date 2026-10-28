@@ -19,11 +19,12 @@ actions. The code is disabled in the application until `HERMES_INFERENCE_WORKER_
 - Requests require a timestamped HMAC signature, expire after 30 seconds, reject replayed request
   IDs, and are limited to six requests per actor per minute, two per actor/profile per minute,
   and one active call per profile.
-- Each prompt is capped at 6,144 UTF-8 bytes. The provider request sets `max_tokens=128`, disables
-  reasoning, omits tool schemas, permits exactly one upstream request, and has a 25-second provider
-  timeout. The runtime rejects responses reporting over 8,192 input or 128 output tokens. That
-  input-token check is based on the provider's returned usage; the pre-request input bound is the
-  6,144-byte context limit.
+- The combined text content of all effective provider messages is capped at 6,144 UTF-8 bytes
+  before the provider call. The request sets `max_tokens=128`, disables reasoning, omits tool
+  schemas, permits exactly one upstream request, and has a 25-second provider timeout. The runtime
+  rejects responses reporting over 6,144 input or 128 output tokens. The input-token check uses
+  provider-reported usage after the call; the pre-request bound is the 6,144-byte limit on the
+  complete message content, including profile instructions.
 - Worker and app requests time out at 32 and 36 seconds respectively. Chat and provider-only routes
   declare a 45-second maximum. Logs contain request/actor/role IDs, model and token counts only;
   prompt, SOUL, model response, API key and HMAC secret are not logged.
@@ -153,13 +154,14 @@ Read-only preflight snapshot taken on 2026-10-29:
    prepare/review each complete diff and restore copy; preserve every unrelated setting. The bridge
    remains off until HERMES_BUSINESS_MCP_ENABLED is explicitly enabled.
 
-Each request rejects prompts above 6,144 UTF-8 bytes before the provider call, requests at most 128
-output tokens, and rejects any response reporting over 8,192 input tokens. Across twelve approved
-calls, the requested output cap totals 1,536 tokens. The 8,192 input-token check is validated against
-provider-reported usage after the call; the pre-call control is the byte limit. Report actual token
-usage for each response. Recheck the six configured models and current DeepSeek pricing immediately
-before approval. No real provider request has been made. This worker adds no paid hosting product
-and does not publish an image to a registry.
+Each request rejects combined effective message text above 6,144 UTF-8 bytes before the provider
+call, requests at most 128 output tokens, and rejects any response reporting over 6,144 input
+tokens. Across twelve approved calls, the requested output cap totals 1,536 tokens. The input-token
+ceiling is validated against provider-reported usage after the call, so it is not a strict
+pre-call token or dollar cap; the complete-message byte limit is the pre-call bound. Report actual
+token usage for every response. Recheck the six configured models and current DeepSeek pricing
+immediately before approval. No real provider request has been made. This worker adds no paid
+hosting product and does not publish an image to a registry.
 
 ## Rollback
 
