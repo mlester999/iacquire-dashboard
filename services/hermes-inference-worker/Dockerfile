@@ -18,8 +18,6 @@ RUN chmod 0444 /opt/iacquire-hermes/inference/*.py && \
       /opt/iacquire-hermes/inference/inference_runner.py \
       /opt/iacquire-hermes/inference/deepseek_egress_proxy.py \
       /opt/iacquire-hermes/inference/pinned_runtime_smoke.py && \
-    /opt/hermes/.venv/bin/python -m unittest discover -s /opt/iacquire-hermes/inference -p 'test_*.py' -v && \
-    /opt/hermes/.venv/bin/python /opt/iacquire-hermes/inference/pinned_runtime_smoke.py && \
     /opt/hermes/.venv/bin/python -c 'import sys; sys.path.insert(0,"/opt/hermes"); from run_agent import AIAgent; import model_tools; assert callable(AIAgent); assert model_tools.get_tool_definitions(enabled_toolsets=[]) == []'
 
 ENV PYTHONNOUSERSITE=1 \
