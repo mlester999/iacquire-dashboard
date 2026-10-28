@@ -5,6 +5,8 @@ import { recordAudit } from "@/server/audit";
 import { randomToken, sha256 } from "@/server/security/crypto";
 import { assertCan, auditActor, type CrmActor } from "@/server/crm/actor";
 import { AGENT_TOOL_SCOPES, effectiveScopes, isAgentToolScope, type AgentToolScope } from "@/server/crm/agent-tools/catalog";
+import { env } from "@/server/env";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 
 /**
  * Short-lived bearer tokens for a client's own AI employee to call CRM tools during one run.
@@ -51,12 +53,19 @@ export async function issueAgentToolToken(
   if (unknown.length) throw new AppError("invalid_input", `Unknown tool scope: ${unknown[0].slice(0, 40)}.`);
   const ttl = input.ttlMinutes ?? DEFAULT_TOKEN_MINUTES;
   if (!Number.isInteger(ttl) || ttl < 1 || ttl > MAX_TOKEN_MINUTES) throw new AppError("invalid_input", "A tool token lasts between 1 minute and 24 hours.");
-  const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; kind: string }>(
-    `select a.id, a.role_key, a.enabled, o.kind from agent_instances a join organizations o on o.id = a.org_id where a.id = $1 and a.org_id = $2`,
+  const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; kind: string; is_internal_agency: boolean; hermes_profile: string | null }>(
+    `select a.id,a.role_key,a.enabled,o.kind,
+            (o.id=(select id from organizations where kind='agency' order by created_at asc limit 1)) as is_internal_agency,a.hermes_profile
+       from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2`,
     [input.agentInstanceId, input.orgId],
   );
   const agent = rows[0];
-  if (!agent || agent.kind !== "client") throw new AppError("not_found", "AI employee not found.");
+  const agencyBridgeAllowed = Boolean(
+    agent?.kind === "agency" && agent.is_internal_agency && env().HERMES_BUSINESS_MCP_ENABLED
+    && AGENT_ROLE_KEYS.includes(agent.role_key as AgentRoleKey)
+    && agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key as AgentRoleKey],
+  );
+  if (!agent || (agent.kind !== "client" && !agencyBridgeAllowed)) throw new AppError("not_found", "AI employee not found.");
   if (!agent.enabled) throw new AppError("conflict", "This AI employee is not included in the workspace.");
   if (input.runId) {
     const run = await db.query<{ status: string }>("select status from agent_runs where id = $1 and org_id = $2 and agent_instance_id = $3", [input.runId, input.orgId, input.agentInstanceId]);
@@ -103,6 +112,23 @@ export async function verifyAgentToolToken(db: Queryable, presented: string | nu
 export async function revokeAgentToolTokensForRun(db: Queryable, runId: string): Promise<number> {
   const res = await db.query("update crm_agent_tokens set revoked_at = now() where run_id = $1 and revoked_at is null", [runId]);
   return res.rowCount ?? 0;
+}
+
+/** Revokes one ephemeral bridge credential without disturbing any other Chat or tool invocation. */
+export async function revokeAgentToolToken(db: Queryable, tokenId: string): Promise<boolean> {
+  const { rows } = await db.query<{ org_id: string; agent_instance_id: string; run_id: string | null }>(
+    `update crm_agent_tokens set revoked_at=now() where id=$1 and revoked_at is null
+     returning org_id,agent_instance_id,run_id`,
+    [tokenId],
+  );
+  const row = rows[0];
+  if (!row) return false;
+  await recordAudit({
+    orgId: row.org_id, actorKind: "system", agentInstanceId: row.agent_instance_id,
+    action: "crm.agent_tool_ephemeral_access_revoked", targetType: "crm_agent_token", targetId: tokenId,
+    result: "success", metadata: { runId: row.run_id },
+  }, db);
+  return true;
 }
 
 /** Revokes tokens whose run is no longer queued or running, and forgets nothing else. Safe to run on any schedule. */

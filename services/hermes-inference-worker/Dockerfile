@@ -11,6 +11,7 @@ COPY --chown=0:0 services/hermes-inference-worker/inference_runner.py /opt/iacqu
 COPY --chown=0:0 services/hermes-inference-worker/deepseek_egress_proxy.py /opt/iacquire-hermes/inference/deepseek_egress_proxy.py
 COPY --chown=0:0 services/hermes-inference-worker/pinned_runtime_smoke.py /opt/iacquire-hermes/inference/pinned_runtime_smoke.py
 COPY --chown=0:0 services/hermes-inference-worker/test_worker.py /opt/iacquire-hermes/inference/test_worker.py
+COPY --chown=0:0 services/hermes-inference-worker/Dockerfile /opt/iacquire-hermes/inference/Dockerfile
 RUN chmod 0444 /opt/iacquire-hermes/inference/*.py && \
     /opt/hermes/.venv/bin/python -m py_compile \
       /opt/iacquire-hermes/inference/worker.py \

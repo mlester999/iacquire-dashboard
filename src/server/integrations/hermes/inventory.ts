@@ -16,6 +16,8 @@ import {
 import { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { requiredRuntimeToolsFor, roleToolEnforcement, runtimeToolsFor, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
 import type { AgentRoleKey } from "@/lib/agents";
+import { env } from "@/server/env";
+import { businessMcpRuntimeNamesForRole, HERMES_BUSINESS_MCP_SERVER, HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 export { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
 
 /**
@@ -174,8 +176,12 @@ function policyRoleOf(conn: HermesConnection, options: VerifyToolInventoryOption
   return conn.orgKind === "client" ? conn.roleKey ?? null : null;
 }
 
-function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: AgentRoleKey | null = null): void {
-  const safe = new Set<string>(role ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS);
+function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: AgentRoleKey | null = null, businessRole: AgentRoleKey | null = null): void {
+  const allowBusinessMcp = businessRole !== null && env().HERMES_BUSINESS_MCP_ENABLED;
+  const safe = new Set<string>([
+    ...(role ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS),
+    ...(allowBusinessMcp ? [HERMES_BUSINESS_MCP_TOOLSET] : []),
+  ]);
   if (!catalog.complete) {
     failure(
       "inventory_incomplete",
@@ -226,12 +232,17 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: 
 
   const mcp = catalog.tools.filter((tool) => tool.provenance.source === "mcp" || tool.provenance.sourceServer !== null);
   if (mcp.length) {
-    failure(
-      "inventory_unsafe",
-      profile,
-      `The effective inventory includes ${mcp.length} MCP tool${mcp.length === 1 ? "" : "s"} (${mcp.slice(0, 8).map((t) => t.name).join(", ")}${mcp.length > 8 ? ", …" : ""}). MCP tools must be disabled or explicitly reviewed and allowlisted before live use.`,
-      { tools: mcp.map((t) => t.name) },
-    );
+    const expected = new Set(allowBusinessMcp && businessRole ? businessMcpRuntimeNamesForRole(businessRole, env().HERMES_BUSINESS_MCP_WRITES_ENABLED) : []);
+    const unexpected = mcp.filter((tool) => tool.provenance.source !== "mcp" || tool.provenance.sourceServer !== HERMES_BUSINESS_MCP_SERVER
+      || tool.provenance.toolset !== HERMES_BUSINESS_MCP_TOOLSET || !expected.has(tool.name));
+    if (!allowBusinessMcp || unexpected.length) {
+      failure(
+        "inventory_unsafe",
+        profile,
+        `The effective inventory includes an unapproved MCP tool${unexpected.length === 1 ? "" : " access"}${unexpected.length ? ` (${unexpected.slice(0, 8).map((t) => t.name).join(", ")}${unexpected.length > 8 ? ", …" : ""})` : ""}. Only the explicitly enabled iAcquire business service for this employee's role is reviewed.`,
+        { tools: (unexpected.length ? unexpected : mcp).map((t) => t.name) },
+      );
+    }
   }
 
   const injected = catalog.tools.filter((tool) => tool.provenance.addedBelowExplicitConfig || tool.provenance.source === "recently_shipped" || tool.provenance.source === "default_injected");
@@ -267,8 +278,9 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: 
 
   // getToolCatalog already rejects a repeated tool name, so each reviewed name appears at most once here.
   const names = catalog.tools.map((tool) => tool.name);
-  const required = role ? requiredRuntimeToolsFor(role) : REQUIRED_INVENTORY_TOOLS;
-  const reviewed = new Set(role ? runtimeToolsFor(role) : [...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS]);
+  const mcpNames = allowBusinessMcp && businessRole ? businessMcpRuntimeNamesForRole(businessRole, env().HERMES_BUSINESS_MCP_WRITES_ENABLED) : [];
+  const required = [...(role ? requiredRuntimeToolsFor(role) : REQUIRED_INVENTORY_TOOLS), ...mcpNames];
+  const reviewed = new Set([...(role ? runtimeToolsFor(role) : [...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS]), ...mcpNames]);
   const unreviewedTools = catalog.tools.filter((tool) => !reviewed.has(tool.name));
   if (unreviewedTools.length) {
     failure(
@@ -360,6 +372,7 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
   }
   const now = options.now ?? new Date();
   const policyRole = policyRoleOf(conn, options);
+  const businessRole = conn.orgKind === "agency" && env().HERMES_BUSINESS_MCP_ENABLED ? conn.roleKey ?? null : null;
   const reads = Math.max(1, Math.min(3, options.stabilityReads ?? 1));
   let first: ToolInventorySnapshot | null = null;
   for (let index = 0; index < reads; index++) {
@@ -400,7 +413,7 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
     if (catalog.contract !== TOOL_INVENTORY_CONTRACT) {
       failure("inventory_incomplete", profile, `The gateway did not identify the supported tool-catalog contract (${TOOL_INVENTORY_CONTRACT}).`);
     }
-    assertCatalogPolicy(catalog, profile, policyRole);
+    assertCatalogPolicy(catalog, profile, policyRole, businessRole);
     const digest = toolCatalogDigest(catalog, profile);
     verifySignature(catalog, profile, challenge, digest, conn.apiKey);
     const snapshot = buildSnapshot(catalog, profile, challenge, now, caps.contract);

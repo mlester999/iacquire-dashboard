@@ -286,6 +286,23 @@ describe("operating modes", () => {
     expect(await call(t.token, "update_contact", { contactId: c.id, changes: { email: "new@example.test" } })).toMatchObject({ ok: false, httpStatus: 400 });
   });
 
+  it("the internal MCP path can force a write into approval even when an employee is autonomous", async () => {
+    const agent = await ready(a, "crm_manager", "autonomous");
+    const t = await tokenFor(a, agent);
+    const c = await createContact(a.actor("owner"), { firstName: "Approval", lastName: "Boundary" });
+    const reply = await callAgentTool({
+      token: t.token,
+      tool: "update_contact",
+      callId: "mcp-forced-approval-test",
+      forceApprovalWrites: true,
+      readArgs: async () => ({ contactId: c.id, changes: { city: "Cebu" } }),
+    });
+    expect(reply).toMatchObject({ ok: true, status: "pending_approval" });
+    expect(await one<{ action: Record<string, unknown> }>("select action from approval_requests where id=$1", [reply.ok ? reply.approvalId : null]))
+      .toMatchObject({ action: { forcedApproval: true } });
+    expect(await one("select city from contacts where id=$1", [c.id])).toEqual({ city: null });
+  });
+
   it("a change the workspace can't make here (managed in GoHighLevel) is refused, not sent for approval", async () => {
     const g = await crmOrg();
     const agent = await ready(g, "crm_manager", "approval_required");
