@@ -18,6 +18,7 @@ REPLY = "Synthetic pinned-Hermes response."
 
 class FakeDeepSeekHandler(http.server.BaseHTTPRequestHandler):
     requests: list[dict[str, Any]] = []
+    request_summaries: list[dict[str, Any]] = []
     server_version = "iAcquirePinnedHermesSmoke/1"
     sys_version = ""
 
@@ -28,6 +29,18 @@ class FakeDeepSeekHandler(http.server.BaseHTTPRequestHandler):
         size = int(self.headers.get("Content-Length", "0"))
         request = json.loads(self.rfile.read(size))
         self.requests.append(request)
+        messages = request.get("messages")
+        self.request_summaries.append({
+            "path": self.path,
+            "model": request.get("model"),
+            "stream": request.get("stream"),
+            "maxTokens": request.get("max_tokens"),
+            "maxCompletionTokens": request.get("max_completion_tokens"),
+            "toolSchemaCount": len(request.get("tools", [])) if isinstance(request.get("tools", []), list) else -1,
+            "toolChoice": request.get("tool_choice"),
+            "messageCount": len(messages) if isinstance(messages, list) else -1,
+            "messageRoles": [row.get("role") for row in messages if isinstance(row, dict)] if isinstance(messages, list) else [],
+        })
         if self.path != "/v1/chat/completions" or request.get("model") != MODEL:
             self.send_error(404)
             return
@@ -116,7 +129,9 @@ def main() -> None:
                     request_rows = FakeDeepSeekHandler.requests
                     if len(request_rows) != 1:
                         raise SystemExit(
-                            f"pinned Hermes made {len(request_rows)} synthetic provider request(s); expected exactly one"
+                            "pinned Hermes made "
+                            f"{len(request_rows)} synthetic provider request(s); expected exactly one; "
+                            f"request metadata={json.dumps(FakeDeepSeekHandler.request_summaries, separators=(',', ':'))}"
                         )
                     request = request_rows[0]
                     if request.get("tools") not in (None, []) or request.get("tool_choice") not in (None, "none"):
