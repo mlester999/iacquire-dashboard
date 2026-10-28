@@ -4,7 +4,7 @@ import { hasExplicitTargeting } from "@/lib/leads-targeting";
 import { formatSlot } from "@/lib/appointments";
 import { addDays, weekdayOf, zonedDate, zonedToInstant } from "@/lib/calendars/slots";
 import {
-  evidenceText, formatEmployeeEvidence, noPermissionSection, unavailableSection, weeklyHoursText,
+  evidenceText, formatEmployeeEvidence, noPermissionSection, switchedOffSection, unavailableSection, weeklyHoursText,
   type EmployeeEvidence, type EvidenceRecord, type EvidenceSection,
 } from "@/lib/employee-evidence";
 import type { WorkspaceFacts } from "@/lib/employee-requirements";
@@ -12,9 +12,10 @@ import { recordAudit } from "@/server/audit";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import { hostMeetingSupport, listCalendars, listHostAvailability, type CalendarView } from "@/server/calendars/setup";
 import { appointmentsAreNative, listSchedule, type ScheduleItem } from "@/server/calendars/schedule";
-import { memberActor, crmRead, type CrmActor } from "@/server/crm/actor";
+import { memberActor, type CrmActor } from "@/server/crm/actor";
 import { getCrmOverview } from "@/server/crm/overview";
-import { readSystem, withUser } from "@/server/db";
+import { readSystem, withUser, type Queryable } from "@/server/db";
+import { hasDbErrorCode } from "@/server/diagnostics";
 import { AppError } from "@/server/errors";
 import { getTargeting } from "@/server/leads/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -31,25 +32,87 @@ import { listWorkBoardJobs, workBoardSummary } from "@/server/workforce/work-boa
  * guessed. Which sections a role receives is fixed in code below; nothing in a request, a record or a conversation can widen it.
  */
 
+/** How long one area is waited for, how long the whole read may take before the remaining areas are reported as unavailable, and how long the database may spend on one statement. */
 const SECTION_TIMEOUT_MS = 6_000;
+const TOTAL_BUDGET_MS = 12_000;
+const STATEMENT_TIMEOUT = "5s";
 const DAY_MS = 86_400_000;
+
+/**
+ * The abilities (the employee's Allowed actions) that let a role read each area. An area is read only when the employee still has at least one of them switched on, in addition to
+ * the signed-in person's own permission. The role's list applies to every area unless the role names a narrower one.
+ */
+const ROLE_ABILITIES: Record<AgentRoleKey, readonly string[]> = {
+  operations_manager: ["tasks.read"],
+  lead_hunter: ["leads.stage_for_review", "research.public_web"],
+  appointment_setter: ["calendar.read_availability", "appointments.read", "appointments.request_change"],
+  sales_assistant: ["crm.read_opportunities"],
+  crm_manager: ["crm.read"],
+  performance_analyst: ["analytics.read"],
+};
+const SECTION_ABILITIES: Partial<Record<AgentRoleKey, Record<string, readonly string[]>>> = {
+  appointment_setter: {
+    calendar: ["calendar.read_availability"],
+    open_times: ["calendar.read_availability"],
+    appointments: ["appointments.read", "appointments.request_change"],
+    booking_requests: ["appointments.read", "appointments.request_change"],
+  },
+};
 
 interface Build {
   ctx: OrgContext;
   roleKey: AgentRoleKey;
   now: Date;
   timeZone: string;
+  /** What this employee may still do in this workspace (its role's abilities minus the ones switched off). Null when that could not be confirmed, in which case nothing is read. */
+  abilities: ReadonlySet<string> | null;
+  /** When the whole read stops waiting. */
+  deadline: number;
+  sectionTimeoutMs: number;
   /** Null when this person has no native CRM access in this workspace (an agency member who is not the internal Super Admin owner). */
   actor: CrmActor | null;
   facts: WorkspaceFacts | null;
   /** Which system holds this workspace's customer records. Only "native" is read here; anything else is reported as not readable, never as empty. */
   crmMode: "native" | "ghl" | "hybrid" | null;
   nativeAppointments: boolean;
-  /** Section failures for the audit entry. Per call, so two chats never share a list. */
+  /** Section failures for the audit entry: the area and a category, never an error message. Per call, so two chats never share a list. */
   problems: Array<{ id: string; reason: string }>;
 }
 
+/** A short category for a failure. Error messages can carry record values, so only the category is logged or audited. */
+export function failureReason(error: unknown): string {
+  if (error instanceof Error && error.message === "evidence_section_timeout") return "timeout";
+  if (hasDbErrorCode(error, "57014")) return "timeout";
+  if (error instanceof AppError) return error.code === "forbidden" ? "forbidden" : "service_error";
+  return "failed";
+}
+
+/** The reason an area may not be read for this employee, or null when it may. Checked before any record is read. */
+function gateSection(b: Build, id: string, title: string): EvidenceSection | null {
+  if (b.abilities === null) return unavailableSection(id, title, "What this employee is allowed to read could not be confirmed just now, so nothing was read.");
+  const needed = SECTION_ABILITIES[b.roleKey]?.[id] ?? ROLE_ABILITIES[b.roleKey];
+  return needed.some((ability) => b.abilities?.has(ability)) ? null : switchedOffSection(id, title);
+}
+
+/** One member's read, as that person (row-level security), with the database stopping any statement that runs long. */
+function memberRead<T>(actor: CrmActor, fn: (db: Queryable) => Promise<T>): Promise<T> {
+  if (!actor.userId) throw new AppError("forbidden", "No signed-in person.");
+  return withUser(actor.userId, fn, { statementTimeout: STATEMENT_TIMEOUT });
+}
+
+/** Same, for the areas that check the person's permission through the workspace context. */
+function asUser<T>(ctx: OrgContext, fn: (db: Queryable) => Promise<T>): Promise<T> {
+  return withUser(ctx.user.id, fn, { statementTimeout: STATEMENT_TIMEOUT });
+}
+
+/** The time one area may still take: its own limit, or what is left of the whole read, whichever is shorter. Zero or less means the read has run out of time. */
+function timeLeft(b: Build): number {
+  return Math.min(b.sectionTimeoutMs, b.deadline - Date.now());
+}
+
 const OTHER_SYSTEM = "This workspace keeps this information in another system that is not connected to your assistant yet, so it cannot be read here.";
+/** Used when the workspace's own setup could not be read. It must never be reported as "not set up", because nobody knows. */
+const SETUP_UNKNOWN = "Whether this has been set up could not be checked just now, so nothing is claimed about it.";
 
 function section(id: string, title: string, state: EvidenceSection["state"], summary: string, parts: Partial<Pick<EvidenceSection, "facts" | "records" | "recordsTotal">> = {}): EvidenceSection {
   return { id, title, state, summary, facts: parts.facts ?? {}, records: parts.records ?? [], recordsTotal: parts.recordsTotal ?? null };
@@ -65,13 +128,21 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 
 /** Runs one section builder in isolation. A failure becomes "unavailable" (or "no_permission"), never an exception for the chat. */
 async function guard(b: Build, id: string, title: string, work: () => Promise<EvidenceSection | EvidenceSection[]>): Promise<EvidenceSection[]> {
+  const closed = gateSection(b, id, title);
+  if (closed) return [closed];
+  const allowed = timeLeft(b);
+  if (allowed <= 0) {
+    b.problems.push({ id, reason: "out_of_time" });
+    return [unavailableSection(id, title, "It could not be read in time just now.")];
+  }
   try {
-    const out = await withTimeout(work(), SECTION_TIMEOUT_MS);
+    const out = await withTimeout(work(), allowed);
     return Array.isArray(out) ? out : [out];
   } catch (error) {
     if (error instanceof AppError && error.code === "forbidden") return [noPermissionSection(id, title)];
-    b.problems.push({ id, reason: error instanceof Error ? error.message.slice(0, 120) : "failed" });
-    if (process.env.NODE_ENV !== "test") console.error("[iacquire] employee evidence section failed", id, error);
+    const reason = failureReason(error);
+    b.problems.push({ id, reason });
+    if (process.env.NODE_ENV !== "test") console.error("[iacquire] employee evidence section failed", id, reason);
     return [unavailableSection(id, title, "It could not be read just now.")];
   }
 }
@@ -95,7 +166,8 @@ const CRM_TITLE = "Customer records (CRM)";
 
 async function crmSection(b: Build): Promise<EvidenceSection> {
   if (!b.actor) return noPermissionSection("crm", CRM_TITLE);
-  if (!b.facts?.crmReady) {
+  if (!b.facts) return unavailableSection("crm", CRM_TITLE, SETUP_UNKNOWN);
+  if (!b.facts.crmReady) {
     return section("crm", CRM_TITLE, "not_configured", "The CRM has not been set up for this workspace yet.");
   }
   if (b.crmMode !== "native") return unavailableSection("crm", CRM_TITLE, OTHER_SYSTEM);
@@ -103,13 +175,14 @@ async function crmSection(b: Build): Promise<EvidenceSection> {
   const { counts } = overview;
   if (counts.contacts === null) return noPermissionSection("crm", CRM_TITLE);
   const deals = overview.deals;
-  const empty = counts.contacts === 0 && (counts.companies ?? 0) === 0 && (deals?.open ?? 0) === 0 && (deals?.wonThisMonth ?? 0) === 0;
+  // Deals the person is not allowed to see are not "none": the CRM is only called empty when everything this person can see is empty, and the summary then names only that.
+  const empty = counts.contacts === 0 && (counts.companies ?? 0) === 0 && (deals === null || ((deals.open ?? 0) === 0 && (deals.wonThisMonth ?? 0) === 0));
   const activity: EvidenceRecord[] = overview.activity.slice(0, 6).map((a) => ({ when: local(a.at, b.timeZone), what: evidenceText(a.summary, 200), by: a.actor }));
   return section(
     "crm",
     CRM_TITLE,
     empty ? "empty" : "ready",
-    empty ? "The CRM is set up and ready. It has no contacts, companies or deals yet." : `The CRM has ${counts.contacts} contact${counts.contacts === 1 ? "" : "s"}.`,
+    empty ? `The CRM is set up and ready. It has no contacts, companies${deals === null ? "" : " or deals"} yet.` : `The CRM has ${counts.contacts} contact${counts.contacts === 1 ? "" : "s"}.`,
     {
       facts: {
         contacts: counts.contacts,
@@ -134,11 +207,12 @@ async function pipelineSection(b: Build): Promise<EvidenceSection> {
   const actor = b.actor;
   if (!actor) return noPermissionSection("pipeline", PIPELINE_TITLE);
   if (!actor.can("sales.view")) return noPermissionSection("pipeline", PIPELINE_TITLE);
-  if (!b.facts?.crmReady || !b.facts.pipelineReady) {
+  if (!b.facts) return unavailableSection("pipeline", PIPELINE_TITLE, SETUP_UNKNOWN);
+  if (!b.facts.crmReady || !b.facts.pipelineReady) {
     return section("pipeline", PIPELINE_TITLE, "not_configured", "There is no sales pipeline set up in the CRM yet.");
   }
   if (b.crmMode !== "native") return unavailableSection("pipeline", PIPELINE_TITLE, OTHER_SYSTEM);
-  const data = await crmRead(actor, async (db) => {
+  const data = await memberRead(actor, async (db) => {
     const pipelines = await db.query<{ name: string; is_default: boolean; stages: Array<{ name: string; kind: string; openDeals: number }> }>(
       `select p.name, p.is_default,
               coalesce(jsonb_agg(jsonb_build_object('name', s.name, 'kind', s.kind,
@@ -229,9 +303,10 @@ const QUALITY_TITLE = "Customer record quality";
 async function dataQualitySection(b: Build): Promise<EvidenceSection> {
   const actor = b.actor;
   if (!actor || !actor.can("contacts.view")) return noPermissionSection("crm_quality", QUALITY_TITLE);
-  if (!b.facts?.crmReady) return section("crm_quality", QUALITY_TITLE, "not_configured", "The CRM has not been set up yet, so there are no records to review.");
+  if (!b.facts) return unavailableSection("crm_quality", QUALITY_TITLE, SETUP_UNKNOWN);
+  if (!b.facts.crmReady) return section("crm_quality", QUALITY_TITLE, "not_configured", "The CRM has not been set up yet, so there are no records to review.");
   if (b.crmMode !== "native") return unavailableSection("crm_quality", QUALITY_TITLE, OTHER_SYSTEM);
-  const q = await crmRead(actor, async (db) => {
+  const q = await memberRead(actor, async (db) => {
     const totals = await db.query<{ contacts: number; no_contact_method: number; no_owner: number; no_name: number; stale_90d: number }>(
       `select count(*)::int as contacts,
               count(*) filter (where (email is null or email::text = '') and (phone is null or phone = ''))::int as no_contact_method,
@@ -380,9 +455,69 @@ async function calendarSetup(b: Build): Promise<CalendarSetup> {
 
 const STATUS_WORDS: Record<string, string> = { new: "waiting for confirmation", confirmed: "confirmed", showed: "attended", noshow: "no-show", cancelled: "cancelled", invalid: "invalid" };
 
+/** The appointments this week and over the next two weeks, as the signed-in person. An empty list is only "not set up" when the calendar's setup was actually checked. */
+async function readAppointments(b: Build, actor: CrmActor, calendar: { ready: boolean; known: boolean }): Promise<EvidenceSection> {
+  const closed = gateSection(b, "appointments", APPOINTMENTS_TITLE);
+  if (closed) return closed;
+  if (!actor.can("appointments.view")) return noPermissionSection("appointments", APPOINTMENTS_TITLE);
+  const week = weekBounds(b.now, b.timeZone);
+  const windowEnd = new Date(Math.max(week.end.getTime(), b.now.getTime() + 14 * DAY_MS));
+  const allowed = timeLeft(b);
+  if (allowed <= 0) {
+    b.problems.push({ id: "appointments", reason: "out_of_time" });
+    return unavailableSection("appointments", APPOINTMENTS_TITLE, "Appointments could not be read just now.");
+  }
+  let items: ScheduleItem[];
+  try {
+    items = await withTimeout(listSchedule(actor, { from: week.start, to: windowEnd }), allowed);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "forbidden") return noPermissionSection("appointments", APPOINTMENTS_TITLE);
+    b.problems.push({ id: "appointments", reason: failureReason(error) });
+    return unavailableSection("appointments", APPOINTMENTS_TITLE, "Appointments could not be read just now.");
+  }
+  const live = items.filter((i) => i.status !== "cancelled" && i.status !== "invalid");
+  const inWeek = live.filter((i) => new Date(i.startAt) >= week.start && new Date(i.startAt) < week.end);
+  const upcoming = live.filter((i) => new Date(i.endAt) > b.now);
+  const records: EvidenceRecord[] = live.slice(0, 12).map((i) => ({
+    when: local(i.startAt, b.timeZone),
+    title: evidenceText(i.title, 120),
+    status: STATUS_WORDS[i.status] ?? i.status,
+    contact: i.contact?.name ?? null,
+    calendar: i.calendar?.name ?? null,
+    host: i.hosts.map((h) => h.name).join(", ") || null,
+    meetingLinkPresent: Boolean(i.meetingLink),
+    thisWeek: new Date(i.startAt) >= week.start && new Date(i.startAt) < week.end,
+    alreadyHappened: new Date(i.endAt) <= b.now,
+  }));
+  const noneAtAll = live.length === 0;
+  return section(
+    "appointments",
+    APPOINTMENTS_TITLE,
+    noneAtAll ? (calendar.ready || !calendar.known ? "empty" : "not_configured") : "ready",
+    noneAtAll
+      ? calendar.ready
+        ? "The calendar is active and there are no appointments this week or in the next two weeks."
+        : calendar.known
+          ? "There are no verified appointments to show, because the booking calendar is not fully set up."
+          : "There are no appointments this week or in the next two weeks. Whether the calendar itself is fully set up could not be checked just now."
+      : `There ${inWeek.length === 1 ? "is" : "are"} ${inWeek.length} appointment${inWeek.length === 1 ? "" : "s"} this week.`,
+    {
+      facts: {
+        thisWeek: `${week.startDate} to ${addDays(week.endDate, -1)} (Monday to Sunday, ${b.timeZone})`,
+        appointmentsThisWeek: inWeek.length,
+        upcomingAppointmentsNext14Days: upcoming.length,
+        cancelledInThisWindow: items.filter((i) => i.status === "cancelled").length,
+      },
+      records,
+      recordsTotal: live.length,
+    },
+  );
+}
+
 async function appointmentSections(b: Build): Promise<EvidenceSection[]> {
   const actor = b.actor;
   if (!actor) return [noPermissionSection("calendar", CALENDAR_TITLE), noPermissionSection("appointments", APPOINTMENTS_TITLE)];
+  if (!b.facts) return [unavailableSection("calendar", CALENDAR_TITLE, SETUP_UNKNOWN), unavailableSection("appointments", APPOINTMENTS_TITLE, SETUP_UNKNOWN)];
   if (b.crmMode === null) {
     return [
       section("calendar", CALENDAR_TITLE, "not_configured", "No booking calendar is set up yet, so there are no verified appointments or availability to show."),
@@ -397,58 +532,12 @@ async function appointmentSections(b: Build): Promise<EvidenceSection[]> {
     return [calendarSection, noPermissionSection("appointments", APPOINTMENTS_TITLE)];
   }
   const calendarReady = calendarSection.state === "ready";
-  const week = weekBounds(b.now, b.timeZone);
-  const windowEnd = new Date(Math.max(week.end.getTime(), b.now.getTime() + 14 * DAY_MS));
-  let items: ScheduleItem[] = [];
-  let scheduleFailed = false;
-  try {
-    items = await withTimeout(listSchedule(actor, { from: week.start, to: windowEnd }), SECTION_TIMEOUT_MS);
-  } catch (error) {
-    if (error instanceof AppError && error.code === "forbidden") return [calendarSection, noPermissionSection("appointments", APPOINTMENTS_TITLE)];
-    scheduleFailed = true;
-    b.problems.push({ id: "appointments", reason: error instanceof Error ? error.message.slice(0, 120) : "failed" });
-  }
-  if (scheduleFailed) {
-    out.push(unavailableSection("appointments", APPOINTMENTS_TITLE, "Appointments could not be read just now."));
-  } else {
-    const live = items.filter((i) => i.status !== "cancelled" && i.status !== "invalid");
-    const inWeek = live.filter((i) => new Date(i.startAt) >= week.start && new Date(i.startAt) < week.end);
-    const upcoming = live.filter((i) => new Date(i.endAt) > b.now);
-    const records: EvidenceRecord[] = live.slice(0, 12).map((i) => ({
-      when: local(i.startAt, b.timeZone),
-      title: evidenceText(i.title, 120),
-      status: STATUS_WORDS[i.status] ?? i.status,
-      contact: i.contact?.name ?? null,
-      calendar: i.calendar?.name ?? null,
-      host: i.hosts.map((h) => h.name).join(", ") || null,
-      meetingLinkPresent: Boolean(i.meetingLink),
-      thisWeek: new Date(i.startAt) >= week.start && new Date(i.startAt) < week.end,
-      alreadyHappened: new Date(i.endAt) <= b.now,
-    }));
-    const noneAtAll = live.length === 0;
-    out.push(section(
-      "appointments",
-      APPOINTMENTS_TITLE,
-      noneAtAll ? (calendarReady ? "empty" : "not_configured") : "ready",
-      noneAtAll
-        ? calendarReady
-          ? "The calendar is active and there are no appointments this week or in the next two weeks."
-          : "There are no verified appointments to show, because the booking calendar is not fully set up."
-        : `There ${inWeek.length === 1 ? "is" : "are"} ${inWeek.length} appointment${inWeek.length === 1 ? "" : "s"} this week.`,
-      {
-        facts: {
-          thisWeek: `${week.startDate} to ${addDays(week.endDate, -1)} (Monday to Sunday, ${b.timeZone})`,
-          appointmentsThisWeek: inWeek.length,
-          upcomingAppointmentsNext14Days: upcoming.length,
-          cancelledInThisWindow: items.filter((i) => i.status === "cancelled").length,
-        },
-        records,
-        recordsTotal: live.length,
-      },
-    ));
-  }
+  // Whether the calendar's own setup could be checked. When it could not (read failed, or switched off), an empty week is reported as empty, never as "not set up".
+  const setupKnown = calendarSection.state === "ready" || calendarSection.state === "not_configured";
+  out.push(await readAppointments(b, actor, { ready: calendarReady, known: setupKnown }));
   const requests = await guard(b, "booking_requests", "Booking requests waiting", async () => {
-    const rows = await crmRead(actor, async (db) => {
+    if (!actor.can("appointments.view")) return noPermissionSection("booking_requests", "Booking requests waiting");
+    const rows = await memberRead(actor, async (db) => {
       const counts = await db.query<{ waiting: number; needs_manual: number }>(
         `select count(*) filter (where status in ('awaiting_approval', 'requested'))::int as waiting, count(*) filter (where status = 'needs_manual')::int as needs_manual
            from appointment_bookings where org_id = $1 and status in ('awaiting_approval', 'requested', 'needs_manual')`,
@@ -484,6 +573,7 @@ async function appointmentSections(b: Build): Promise<EvidenceSection[]> {
 
   if (calendarReady) {
     const slots = await guard(b, "open_times", "Open times", async () => {
+      if (!actor.can("appointments.view")) return noPermissionSection("open_times", "Open times");
       const result = await nativeAvailability(b.ctx.org.orgId, { from: b.now, to: new Date(b.now.getTime() + 7 * DAY_MS), limit: 8, now: b.now });
       if (!result.ok) return section("open_times", "Open times", "not_configured", result.detail);
       return section(
@@ -509,7 +599,7 @@ async function leadSections(b: Build): Promise<EvidenceSection[]> {
   const { ctx } = b;
   if (!ctx.can("leads.view")) return [noPermissionSection("leads", LEADS_TITLE), noPermissionSection("targeting", "Lead targeting rules")];
   const leads = await guard(b, "leads", LEADS_TITLE, async () => {
-    const data = await withUser(ctx.user.id, async (db) => {
+    const data = await asUser(ctx, async (db) => {
       const counts = await db.query<{
         total: number; pending: number; approved: number; rejected: number; possible_dup: number; dup: number; not_checked: number; awaiting: number; synced: number; created_7d: number;
       }>(
@@ -627,7 +717,7 @@ async function operationsSections(b: Build): Promise<EvidenceSection[]> {
   }));
   out.push(...await guard(b, "schedules", "Scheduled AI work", async () => {
     if (!ctx.can("activity.view")) return noPermissionSection("schedules", "Scheduled AI work");
-    const rows = await withUser(ctx.user.id, async (db) => {
+    const rows = await asUser(ctx, async (db) => {
       const { rows: r } = await db.query<{ enabled: number; paused: number; skipped: number; next_run_at: Date | null; last_run_at: Date | null }>(
         `select count(*) filter (where enabled)::int as enabled, count(*) filter (where not enabled)::int as paused,
                 count(*) filter (where enabled and last_skipped_reason is not null)::int as skipped,
@@ -651,7 +741,7 @@ async function operationsSections(b: Build): Promise<EvidenceSection[]> {
   if (ctx.org.kind !== "agency") {
     out.push(...await guard(b, "operations", "Tasks, approvals and the AI team", async () => {
       if (!ctx.can("approvals.view") || !ctx.can("activity.view")) return noPermissionSection("operations", "Tasks, approvals and the AI team");
-      const snap = await withUser(ctx.user.id, (db) => readOperationsSnapshot(db, ctx.org.orgId, b.now.toISOString()));
+      const snap = await asUser(ctx, (db) => readOperationsSnapshot(db, ctx.org.orgId, b.now.toISOString()));
       const records: EvidenceRecord[] = [
         ...snap.openTasks.map((t): EvidenceRecord => ({ kind: "task", title: t.title, priority: t.priority, due: iso(t.dueAt), overdue: t.overdue, assignee: t.assignee })),
         ...snap.pendingApprovals.map((a): EvidenceRecord => ({ kind: "approval waiting", title: a.title, risk: a.risk, since: a.createdAt })),
@@ -670,7 +760,7 @@ async function operationsSections(b: Build): Promise<EvidenceSection[]> {
     }));
   }
   out.push(...await guard(b, "handoffs", "Work waiting on other teammates", async () => {
-    const waiting = await withUser(ctx.user.id, async (db) => {
+    const waiting = await asUser(ctx, async (db) => {
       const leads = ctx.can("leads.view") ? await db.query<{ n: number }>("select count(*)::int as n from leads where org_id = $1 and review_status = 'pending'", [ctx.org.orgId]) : null;
       const bookings = ctx.can("appointments.view")
         ? await db.query<{ n: number }>("select count(*)::int as n from appointment_bookings where org_id = $1 and status in ('awaiting_approval', 'requested', 'needs_manual')", [ctx.org.orgId])
@@ -678,7 +768,11 @@ async function operationsSections(b: Build): Promise<EvidenceSection[]> {
       return { leads: leads ? leads.rows[0]?.n ?? 0 : null, bookings: bookings ? bookings.rows[0]?.n ?? 0 : null };
     });
     return section("handoffs", "Work waiting on other teammates", "ready", "Counts of work other employees or people could pick up.", {
-      facts: { leadsWaitingForHumanReview: waiting.leads, bookingRequestsWaiting: waiting.bookings, setUp: moduleStates(b.facts) },
+      facts: {
+        leadsWaitingForHumanReview: waiting.leads,
+        bookingRequestsWaiting: waiting.bookings,
+        setUp: b.facts ? moduleStates(b.facts) : "could not be checked just now, so do not say whether any of these are set up",
+      },
     });
   }));
   return out;
@@ -706,7 +800,7 @@ async function performanceSection(b: Build): Promise<EvidenceSection[]> {
   return guard(b, "performance", "Business performance", async () => {
     if (!ctx.can("analytics.view")) return noPermissionSection("performance", "Business performance");
     const includeRuns = ctx.can("activity.view");
-    const result = await withUser(ctx.user.id, (db) => readPerformanceMetrics(db, ctx.org.orgId, "last_30_days"));
+    const result = await asUser(ctx, (db) => readPerformanceMetrics(db, ctx.org.orgId, "last_30_days"));
     const business = result.metrics.filter((m) => includeRuns || !m.key.startsWith("ai_runs_"));
     const activity = business.filter((m) => m.key !== "leads_pending").reduce((sum, m) => sum + (typeof m.value === "number" ? m.value : 0) + (typeof m.previous === "number" ? m.previous : 0), 0);
     const records: EvidenceRecord[] = business.map((m) => ({
@@ -757,6 +851,7 @@ const ROLE_SECTIONS: Record<AgentRoleKey, (b: Build) => Promise<EvidenceSection[
     ...await guard(b, "crm", CRM_TITLE, () => crmSection(b)),
     ...await guard(b, "pipeline", PIPELINE_TITLE, () => pipelineSection(b)),
     ...await guard(b, "calendar", CALENDAR_TITLE, async () => {
+      if (!b.facts) return unavailableSection("calendar", CALENDAR_TITLE, SETUP_UNKNOWN);
       if (b.crmMode === null) return section("calendar", CALENDAR_TITLE, "not_configured", "No booking calendar is set up yet.");
       return b.nativeAppointments ? (await calendarSetup(b)).section : unavailableSection("calendar", CALENDAR_TITLE, OTHER_SYSTEM);
     }),
@@ -769,50 +864,94 @@ export interface PreparedEmployeeEvidence {
 }
 
 /**
+ * What this employee may still do in this workspace: its role's abilities minus the ones a workspace owner switched off in Allowed actions (read from the active configuration).
+ * Null when the employee cannot be found for this workspace and role, or the read fails, so that nothing is read on a guess.
+ */
+async function readAbilities(ctx: OrgContext, agentId: string, roleKey: AgentRoleKey): Promise<ReadonlySet<string> | null> {
+  const { rows } = await readSystem((db) => db.query<{ default_tools: unknown; disabled: unknown }>(
+    `select r.default_tools, v.settings -> 'disabledTools' as disabled
+       from agent_instances a
+       join agent_roles r on r.key = a.role_key
+       left join agent_config_versions v on v.id = a.active_config_version_id
+      where a.id = $1 and a.org_id = $2 and a.role_key = $3`,
+    [agentId, ctx.org.orgId, roleKey],
+  ));
+  const row = rows[0];
+  if (!row) return null;
+  const names = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+  const off = new Set(names(row.disabled));
+  return new Set(names(row.default_tools).filter((tool) => !off.has(tool)));
+}
+
+/**
  * Reads the facts one AI employee needs for the next message, as the signed-in person, and formats them for the run instructions. Never throws: a failure becomes an "unavailable"
  * section so the employee says it cannot read something right now instead of guessing. Writes one audit entry listing the areas read and their states, never record contents.
+ *
+ * `limits` exists so tests can exercise the time limits quickly; callers leave it out.
  */
-export async function prepareEmployeeEvidence(ctx: OrgContext, input: { agentId: string; roleKey: AgentRoleKey; now?: Date }): Promise<PreparedEmployeeEvidence> {
+export async function prepareEmployeeEvidence(
+  ctx: OrgContext,
+  input: { agentId: string; roleKey: AgentRoleKey; now?: Date; limits?: { sectionMs?: number; totalMs?: number } },
+): Promise<PreparedEmployeeEvidence> {
   const started = Date.now();
   const now = input.now ?? new Date();
   const problems: Build["problems"] = [];
-  let actor: CrmActor | null = null;
-  try {
-    actor = memberActor(ctx);
-  } catch {
-    actor = null;
-  }
-  let facts: WorkspaceFacts | null = null;
-  let crmMode: Build["crmMode"] = null;
-  let nativeAppointments = true;
-  try {
-    const base = await withTimeout(
-      readSystem(async (db) => {
-        const modeRows = await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [ctx.org.orgId]);
-        return { facts: await loadWorkspaceFacts(db, ctx.org.orgId), mode: modeRows.rows[0]?.mode ?? null, native: await appointmentsAreNative(db, ctx.org.orgId) };
-      }),
-      SECTION_TIMEOUT_MS,
-    );
-    facts = base.facts;
-    // The internal agency workspace is native by design and its CRM row is created lazily when the owner first opens CRM, so a missing row there is still native.
-    const lazyInternal = base.mode === null && ctx.org.kind === "agency";
-    crmMode = lazyInternal ? "native" : base.mode;
-    nativeAppointments = base.native || lazyInternal;
-  } catch (error) {
-    problems.push({ id: "workspace_facts", reason: error instanceof Error ? error.message.slice(0, 120) : "failed" });
-  }
-  const build: Build = { ctx, roleKey: input.roleKey, now, timeZone: ctx.org.timezone || "UTC", actor, facts, crmMode, nativeAppointments, problems };
+  const timeZone = ctx.org.timezone || "UTC";
   let sections: EvidenceSection[];
   try {
-    sections = await ROLE_SECTIONS[input.roleKey](build);
+    const sectionTimeoutMs = input.limits?.sectionMs ?? SECTION_TIMEOUT_MS;
+    const deadline = started + (input.limits?.totalMs ?? TOTAL_BUDGET_MS);
+    let actor: CrmActor | null = null;
+    try {
+      actor = memberActor(ctx);
+    } catch {
+      actor = null;
+    }
+    // The employee's own abilities and the workspace's setup are separate small reads; run them together.
+    const [abilitiesRead, baseRead] = await Promise.allSettled([
+      withTimeout(readAbilities(ctx, input.agentId, input.roleKey), sectionTimeoutMs),
+      withTimeout(
+        readSystem(async (db) => {
+          const modeRows = await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [ctx.org.orgId]);
+          return { facts: await loadWorkspaceFacts(db, ctx.org.orgId), mode: modeRows.rows[0]?.mode ?? null, native: await appointmentsAreNative(db, ctx.org.orgId) };
+        }),
+        sectionTimeoutMs,
+      ),
+    ]);
+    let abilities: ReadonlySet<string> | null = null;
+    if (abilitiesRead.status === "fulfilled") abilities = abilitiesRead.value;
+    else problems.push({ id: "abilities", reason: failureReason(abilitiesRead.reason) });
+    if (abilitiesRead.status === "fulfilled" && abilities === null) problems.push({ id: "abilities", reason: "employee_not_found" });
+    let facts: WorkspaceFacts | null = null;
+    let crmMode: Build["crmMode"] = null;
+    let nativeAppointments = true;
+    if (baseRead.status === "fulfilled") {
+      facts = baseRead.value.facts;
+      // The internal agency workspace is native by design and its CRM row is created lazily when the owner first opens CRM, so a missing row there is still native.
+      const lazyInternal = baseRead.value.mode === null && ctx.org.kind === "agency";
+      crmMode = lazyInternal ? "native" : baseRead.value.mode;
+      nativeAppointments = baseRead.value.native || lazyInternal;
+    } else {
+      // Left null on purpose: every area that depends on it then says "could not be checked", never "not set up".
+      problems.push({ id: "workspace_facts", reason: failureReason(baseRead.reason) });
+    }
+    const build: Build = { ctx, roleKey: input.roleKey, now, timeZone, abilities, deadline, sectionTimeoutMs, actor, facts, crmMode, nativeAppointments, problems };
+    try {
+      sections = await ROLE_SECTIONS[input.roleKey](build);
+      // Whatever a section builder returned, an area this employee may not read is reported as switched off, and nothing else about it is kept.
+      sections = sections.map((section) => gateSection(build, section.id, section.title) ?? section);
+    } catch (error) {
+      problems.push({ id: "role_sections", reason: failureReason(error) });
+      sections = [unavailableSection("workspace", "Workspace information", "It could not be read just now.")];
+    }
   } catch (error) {
-    problems.push({ id: "role_sections", reason: error instanceof Error ? error.message.slice(0, 120) : "failed" });
+    problems.push({ id: "evidence", reason: failureReason(error) });
     sections = [unavailableSection("workspace", "Workspace information", "It could not be read just now.")];
   }
   const evidence: EmployeeEvidence = {
     role: input.roleKey,
     generatedAt: now.toISOString(),
-    timeZone: build.timeZone,
+    timeZone,
     workspace: { name: ctx.org.name, kind: ctx.org.kind },
     sections,
   };
@@ -826,6 +965,7 @@ export async function prepareEmployeeEvidence(ctx: OrgContext, input: { agentId:
       targetType: "workspace_evidence",
       targetId: ctx.org.orgId,
       result: problems.length ? "failure" : "success",
+      // Area names, their states and failure categories only. No record, name, count or message text.
       metadata: {
         capability: "workspace_evidence.read",
         role: input.roleKey,
@@ -837,5 +977,10 @@ export async function prepareEmployeeEvidence(ctx: OrgContext, input: { agentId:
   } catch {
     // The read already happened; a missing audit row must not stop the person's chat.
   }
-  return { evidence, block: formatEmployeeEvidence(evidence) };
+  try {
+    return { evidence, block: formatEmployeeEvidence(evidence) };
+  } catch {
+    const fallback: EmployeeEvidence = { ...evidence, sections: [unavailableSection("workspace", "Workspace information", "It could not be read just now.")] };
+    return { evidence: fallback, block: formatEmployeeEvidence(fallback) };
+  }
 }
