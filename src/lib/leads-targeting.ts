@@ -27,3 +27,15 @@ export const targetingSchema = z.object({
     .default({ enabled: false, platform: "instagram", niche: "", region: "", minFollowers: 0, engagementCriteria: "", objective: "" }),
 });
 export type Targeting = z.infer<typeof targetingSchema>;
+
+/** True only when saved targeting adds a real constraint beyond the form's defaults. */
+export function hasExplicitTargeting(value: unknown): boolean {
+  const parsed = targetingSchema.safeParse(value ?? {});
+  if (!parsed.success) return false;
+  const t = parsed.data;
+  return Boolean(
+    t.industries.length || t.countries.length || t.regions.length || t.servicesNeeded.length || t.keywords.length ||
+    t.buyingSignals.length || t.excluded.length || t.minimumCriteria || t.businessSize !== "any" ||
+    t.customerType !== "b2b" || t.influencer.enabled,
+  );
+}

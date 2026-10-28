@@ -39,7 +39,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
     evaluatedAt,
   });
   const mapped = agents.filter((agent) => agent.hermes_profile).length;
-  const verified = agents.filter((agent) => readinessFor(agent).chatAvailable).length;
+  const verified = agents.filter((agent) => readinessFor(agent).stage === "ready").length;
   return (
     <section className="module-stack" aria-labelledby="agency-workforce-heading">
       <PageHero

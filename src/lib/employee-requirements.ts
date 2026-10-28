@@ -5,6 +5,24 @@
 // A requirement is either BLOCKING (the employee cannot do the job it is named for without it, so it reads "Configuration incomplete", not "Ready") or ADVISORY (it makes the
 // employee better, but the work it does without it is honest: the capability says what is missing). Nothing here grants a permission or opens a tool; it only decides what to say.
 import type { AgentRoleKey } from "@/lib/agents";
+import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
+
+export interface CrmReadinessEvidence {
+  organizationKind: "agency" | "client" | null;
+  workspaceExists: boolean;
+  mode: CrmMode | null;
+  contactsProvider: CapabilityProvider | null;
+  verifiedGhlConnection: boolean;
+}
+
+/** CRM availability depends on its configured source, never on whether contacts or deals already exist. */
+export function crmReadyFromEvidence(evidence: CrmReadinessEvidence): boolean {
+  // The internal agency workspace is native by design; its CRM workspace row is created lazily when the owner opens CRM.
+  if (evidence.organizationKind === "agency" && !evidence.workspaceExists) return true;
+  if (!evidence.workspaceExists) return false;
+  const owner = evidence.mode === "hybrid" ? (evidence.contactsProvider ?? "native") : (evidence.mode ?? "native");
+  return owner === "native" || evidence.verifiedGhlConnection;
+}
 
 /** The workspace facts a requirement is judged from. All plain values, so a test can write them by hand. */
 export interface WorkspaceFacts {
@@ -12,7 +30,7 @@ export interface WorkspaceFacts {
   knowledgeApproved: boolean;
   /** An active calendar with a host that can take bookings, or a connected calendar. */
   calendarReady: boolean;
-  /** The CRM is set up: an industry Blueprint was applied (iAcquire CRM) or the location is connected (GoHighLevel). */
+  /** A native CRM workspace is available or its external provider connection is verified. Record count is not part of readiness. */
   crmReady: boolean;
   /** At least one active sales pipeline with a stage. */
   pipelineReady: boolean;
@@ -59,8 +77,8 @@ const CALENDAR: Omit<RequirementDef, "blocking"> = {
 };
 const CRM: Omit<RequirementDef, "blocking"> = {
   key: "crm", label: "CRM set up", fact: "crmReady",
-  met: "The CRM is set up.",
-  missing: "The CRM has not been set up yet, so there are no records for this employee to read.",
+  met: "The CRM data source is available. It may contain no records yet.",
+  missing: "The CRM data source is not configured or connected yet.",
   fixHref: "/crm",
 };
 const PIPELINE: Omit<RequirementDef, "blocking"> = {

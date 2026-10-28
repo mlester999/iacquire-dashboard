@@ -70,8 +70,15 @@ async function agencyPermissionSet(userId: string, db?: Queryable): Promise<Set<
   return new Set(rows.map((row) => row.permission).filter((permission): permission is Permission => permission in PERMISSION_MATRIX));
 }
 
+/** Only the signed-in agency Super Admin's own owner membership may use the internal native CRM. */
+export function isInternalAgencyCrmMember(ctx: Pick<OrgContext, "org" | "role" | "user">): boolean {
+  return ctx.org.kind === "agency" && ctx.role === "owner" && ctx.user.platformRole === "agency_super_admin";
+}
+
 export function memberActor(ctx: OrgContext): CrmActor {
-  if (ctx.org.kind !== "client") throw new AppError("invalid_input", "The CRM belongs to client workspaces.");
+  if (ctx.org.kind !== "client" && !isInternalAgencyCrmMember(ctx)) {
+    throw new AppError("forbidden", "Native CRM access requires a client membership or the internal agency owner's Super Admin membership.");
+  }
   return {
     kind: "member",
     orgId: ctx.org.orgId,

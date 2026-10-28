@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
+import { isInternalAgencyCrmMember } from "@/server/crm/actor";
 import { nativeAppointmentsHome } from "@/server/calendars/schedule";
 import { getAppointments } from "@/server/queries/business";
 import { getAgentByRole } from "@/server/workforce/service";
@@ -15,6 +16,8 @@ export const metadata = { title: "Appointments" };
 
 export default async function AppointmentsPage() {
   const ctx = await requireOrgContext("appointments.view");
+  // Internal iAcquire appointments are configured in its tenant-scoped native CRM calendar.
+  if (isInternalAgencyCrmMember(ctx) && ctx.can("crm.view")) redirect("/crm/calendars");
   // When iAcquire's own calendar owns appointments, they are managed in the CRM calendar; GoHighLevel workspaces keep this view.
   if (ctx.org.kind === "client" && ctx.can("crm.view")) {
     const home = await nativeAppointmentsHome(ctx.org.orgId);

@@ -5,6 +5,9 @@ import { evaluateRequirements, type WorkspaceFacts } from "@/lib/employee-requir
 import { runtimeToolExposure } from "@/lib/employee-tool-policy";
 import type { HealthSummary, ReadinessExtras } from "@/lib/workforce-readiness";
 import { healthProbeSchemaReady } from "@/server/workforce/health-alerts";
+import { hasExplicitTargeting } from "@/lib/leads-targeting";
+import { crmReadyFromEvidence, type CrmReadinessEvidence } from "@/lib/employee-requirements";
+import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 
 // The workspace facts behind the role prerequisites, and the probe record behind "Degraded" / "Unavailable", read once per listing and handed to every screen as `readiness_extras`,
 // so the gallery, the employee page, the chat header, the setup banner and the Super Admin all judge an employee from the same evidence (the pure rules are in
@@ -12,35 +15,49 @@ import { healthProbeSchemaReady } from "@/server/workforce/health-alerts";
 
 export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<WorkspaceFacts> {
   const { rows } = await db.query<{
-    knowledge: boolean; calendar: boolean; crm: boolean; pipeline: boolean; targeting: boolean; channel: boolean;
+    org_kind: "agency" | "client" | null;
+    crm_workspace_exists: boolean;
+    crm_mode: CrmMode | null;
+    crm_contacts_provider: CapabilityProvider | null;
+    crm_ghl_verified: boolean;
+    knowledge: boolean; calendar: boolean; pipeline: boolean; targeting: unknown; channel: boolean;
   }>(
-    `with ws as (select coalesce((select mode from crm_workspaces where org_id = $1), 'native') as mode)
+    `with ws as (select org_id, mode from crm_workspaces where org_id = $1),
+     org as (select kind from organizations where id = $1)
      select
+       (select kind from org) as org_kind,
+       exists (select 1 from ws) as crm_workspace_exists,
+       (select mode from ws) as crm_mode,
+       (select provider from crm_capability_providers where org_id = $1 and capability = 'contacts') as crm_contacts_provider,
+       exists (select 1 from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null) as crm_ghl_verified,
        exists (select 1 from company_knowledge k where k.org_id = $1 and k.review_status = 'approved' and k.content <> '') as knowledge,
-       (case when (select mode from ws) = 'native'
+       (case when coalesce((select mode from ws), 'native') = 'native'
           then (select count(*) from crm_calendar_connections where org_id = $1 and status = 'connected')
              + (select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
                   and exists (select 1 from crm_calendar_members m where m.calendar_id = c.id and m.org_id = c.org_id and m.active))
           else (select coalesce(sum(cardinality(calendar_ids)), 0) from ghl_location_mappings where org_id = $1 and status = 'connected')
         end) > 0 as calendar,
-       (case when (select mode from ws) = 'native'
-          then exists (select 1 from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied'))
-          else exists (select 1 from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null)
-        end) as crm,
        (exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
                   and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id))
         or exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider <> 'native' and p.archived_at is null)) as pipeline,
-       exists (select 1 from lead_targeting_profiles where org_id = $1 and criteria <> '{}'::jsonb) as targeting,
+       (select criteria from lead_targeting_profiles where org_id = $1) as targeting,
        exists (select 1 from messaging_channels where org_id = $1 and enabled) as channel`,
     [orgId],
   );
   const r = rows[0];
+  const crmEvidence: CrmReadinessEvidence = {
+    organizationKind: r?.org_kind ?? null,
+    workspaceExists: r?.crm_workspace_exists === true,
+    mode: r?.crm_mode ?? null,
+    contactsProvider: r?.crm_contacts_provider ?? null,
+    verifiedGhlConnection: r?.crm_ghl_verified === true,
+  };
   return {
     knowledgeApproved: r?.knowledge === true,
     calendarReady: r?.calendar === true,
-    crmReady: r?.crm === true,
+    crmReady: crmReadyFromEvidence(crmEvidence),
     pipelineReady: r?.pipeline === true,
-    leadTargetingSet: r?.targeting === true,
+    leadTargetingSet: hasExplicitTargeting(r?.targeting),
     customerChannelReady: r?.channel === true,
   };
 }

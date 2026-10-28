@@ -47,12 +47,15 @@ export function resolveCapabilities(mode: CrmMode, rows: Array<{ capability: str
   return out;
 }
 
-/** Loads (and if missing, creates) a client's CRM workspace. New workspaces are native. */
-export async function loadWorkspace(db: Queryable, orgId: string): Promise<CrmWorkspace> {
+/** Loads (and if missing, creates) a tenant CRM workspace. New workspaces use the native provider. */
+export async function loadWorkspace(db: Queryable, orgId: string, options: { allowAgencyBootstrap?: boolean } = {}): Promise<CrmWorkspace> {
   let { rows } = await db.query<WorkspaceRow>(WORKSPACE_SQL, [orgId]);
   if (!rows[0]) {
     const org = await db.query<{ kind: string }>("select kind from organizations where id = $1", [orgId]);
-    if (org.rows[0]?.kind !== "client") throw new AppError("not_found", "This workspace has no CRM.");
+    const kind = org.rows[0]?.kind;
+    if (kind !== "client" && !(kind === "agency" && options.allowAgencyBootstrap === true)) {
+      throw new AppError("not_found", "This workspace has no CRM.");
+    }
     await db.query("insert into crm_workspaces (org_id, mode) values ($1, 'native') on conflict (org_id) do nothing", [orgId]);
     ({ rows } = await db.query<WorkspaceRow>(WORKSPACE_SQL, [orgId]));
   }
@@ -75,12 +78,15 @@ export async function loadWorkspace(db: Queryable, orgId: string): Promise<CrmWo
  * they each opened a trusted transaction on every customer navigation. React's cache is scoped to
  * the current server render, so a provider change is visible on the next request.
  */
-const workspaceForRequest = cache((orgId: string) => withSystem((db) => loadWorkspace(db, orgId)));
+const workspaceForRequest = cache((orgId: string, allowAgencyBootstrap: boolean) => withSystem((db) => loadWorkspace(db, orgId, { allowAgencyBootstrap })));
 
 export async function getWorkspace(actor: CrmActor): Promise<CrmWorkspace> {
   assertCan(actor, "crm.view");
   // The workspace row is created on demand, so this uses the trusted path; the actor was already authorized for this organization.
-  return workspaceForRequest(actor.orgId);
+  // Only a member actor can bootstrap the internal agency workspace. memberActor accepts an
+  // agency member only after checking their Super Admin owner membership; background/system
+  // callers cannot create this workspace merely by knowing the agency org id.
+  return workspaceForRequest(actor.orgId, actor.kind === "member" && actor.userId !== null);
 }
 
 /**
@@ -116,7 +122,7 @@ export async function updateWorkspaceSettings(actor: CrmActor, input: { defaultC
   if (input.defaultCurrency !== undefined && !/^[A-Z]{3}$/.test(input.defaultCurrency)) throw new AppError("invalid_input", "Use a three-letter currency code such as USD or PHP.");
   if (input.defaultCallingCode && !/^[0-9]{1,3}$/.test(input.defaultCallingCode)) throw new AppError("invalid_input", "Use the country calling code digits only, for example 63.");
   await crmWrite(actor, async (db) => {
-    await loadWorkspace(db, actor.orgId);
+    await loadWorkspace(db, actor.orgId, { allowAgencyBootstrap: actor.kind === "member" && actor.userId !== null });
     await db.query(
       `update crm_workspaces set default_currency = coalesce($2, default_currency),
          default_calling_code = case when $3::boolean then $4 else default_calling_code end, updated_by = $5 where org_id = $1`,

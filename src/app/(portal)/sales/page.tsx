@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
+import { isInternalAgencyCrmMember } from "@/server/crm/actor";
 import { withUser } from "@/server/db";
 import { getSalesPipeline } from "@/server/queries/business";
 import { nativeCrmOwners } from "@/server/queries/dashboard";
@@ -13,6 +14,8 @@ export const metadata = { title: "Sales Pipeline" };
 
 export default async function SalesPage() {
   const ctx = await requireOrgContext("sales.view");
+  // The internal iAcquire agency workspace uses the native CRM. Its pipeline belongs to the signed-in Super Admin's owner membership.
+  if (isInternalAgencyCrmMember(ctx) && ctx.can("crm.view")) redirect("/crm/opportunities");
   // This is the GoHighLevel read-only sales view. A client whose opportunities capability is owned by iAcquire CRM goes to the native
   // opportunities workspace; a GoHighLevel-owned capability (including a hybrid) keeps this view. Agency workspaces never redirect here.
   if (ctx.org.kind === "client" && ctx.can("crm.view")) {

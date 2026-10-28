@@ -22,8 +22,8 @@ beforeAll(async () => {
 });
 
 describe("workspace facts", () => {
-  it("are all false for a workspace that has set nothing up", async () => {
-    expect(await facts(w.org.id)).toEqual({ knowledgeApproved: false, calendarReady: false, crmReady: false, pipelineReady: false, leadTargetingSet: false, customerChannelReady: false });
+  it("treats the default native CRM as available even when the workspace has no records", async () => {
+    expect(await facts(w.org.id)).toEqual({ knowledgeApproved: false, calendarReady: false, crmReady: true, pipelineReady: false, leadTargetingSet: false, customerChannelReady: false });
   });
 
   it("count approved company knowledge, not knowledge held for review or left empty", async () => {
@@ -55,8 +55,8 @@ describe("workspace facts", () => {
     expect((await facts(other.org.id)).calendarReady).toBe(false);
   });
 
-  it("count the CRM as set up once a Blueprint is applied, and not for another workspace", async () => {
-    expect((await facts(w.org.id)).crmReady).toBe(false);
+  it("counts native CRM readiness independently of Blueprint applications and record counts", async () => {
+    expect((await facts(w.org.id)).crmReady).toBe(true);
     const bp = await insertPublishedBlueprint(sampleContent());
     await withSystem((db) => db.query(
       `insert into crm_blueprint_applications (org_id, blueprint_id, version_id, version, blueprint_name, mode, strategy, status, plan_digest, idempotency_key)
@@ -64,7 +64,7 @@ describe("workspace facts", () => {
       [w.org.id, bp.blueprintId, bp.versionId, "a".repeat(64)],
     ));
     expect((await facts(w.org.id)).crmReady).toBe(true);
-    expect((await facts(other.org.id)).crmReady).toBe(false);
+    expect((await facts(other.org.id)).crmReady).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
-import { agencyActor, endSupportSession, startSupportSession } from "@/server/crm/actor";
+import { agencyActor, endSupportSession, memberActor, startSupportSession } from "@/server/crm/actor";
 import { assertNativeOwner, getWorkspace, loadWorkspace, resolveCapabilities } from "@/server/crm/workspace";
 import { addContactIdentity, assignContacts, createContact, DuplicateContactError, eraseContact, findDuplicateCandidates, getContactDetail, linkContactCompany, mergeCrmContacts, setContactConsent, setContactsArchived, updateContact } from "@/server/crm/contacts";
 import { createTag, deleteTag, listTags, mergeTags, tagContacts, updateTag } from "@/server/crm/tags";
@@ -14,7 +14,7 @@ import { effectivePermission, PERMISSION_MATRIX } from "@/lib/permissions";
 import { updateAgencyUserPermission } from "@/server/admin/team";
 import { coerceFieldValue } from "@/lib/crm/fields";
 import { agencyPeople, crmOrg, eventsFor, type CrmOrg } from "./support/crm";
-import { createUser, addMember } from "./support/fixtures";
+import { createOrg, createUser, addMember, ctxFor } from "./support/fixtures";
 
 let a: CrmOrg;
 let b: CrmOrg;
@@ -55,6 +55,29 @@ describe("workspace and provider ownership", () => {
     await withSystem((db) => db.query("delete from crm_workspaces where org_id = $1", [c.org.id]));
     const ws = await withSystem((db) => loadWorkspace(db, c.org.id));
     expect(ws.mode).toBe("native");
+  });
+
+  it("limits the internal native CRM to the agency Super Admin's owner membership and keeps reads tenant-scoped", async () => {
+    const internal = await createOrg({ name: "Internal iAcquire CRM", kind: "agency" });
+    const admin = await createUser({ platformRole: "agency_super_admin", name: "Internal CRM Owner" });
+    await addMember(internal.id, admin.id, "owner");
+    const ctx = ctxFor(admin, internal, "owner");
+    ctx.org.kind = "agency";
+    ctx.user.platformRole = "agency_super_admin";
+
+    const actor = memberActor(ctx);
+    await expect(withSystem((db) => loadWorkspace(db, internal.id))).rejects.toThrow(/no CRM/);
+    expect((await getWorkspace(actor)).mode).toBe("native");
+    await createContact(actor, { firstName: "Internal", lastName: "Record" });
+    await createContact(a.actor("owner"), { firstName: "Client", lastName: "Record" });
+    const visible = await withUser(admin.id, (db) => db.query<{ org_id: string }>("select org_id from contacts"));
+    expect(visible.rows).toEqual([{ org_id: internal.id }]);
+
+    const staff = await createUser({ platformRole: "agency_staff", name: "Internal CRM Staff" });
+    const denied = ctxFor(staff, internal, "owner");
+    denied.org.kind = "agency";
+    denied.user.platformRole = "agency_staff";
+    expect(() => memberActor(denied)).toThrow(/Super Admin membership/);
   });
 });
 

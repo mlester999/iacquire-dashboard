@@ -1,7 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
-import { memberActor, type CrmActor } from "@/server/crm/actor";
+import { isInternalAgencyCrmMember, memberActor, type CrmActor } from "@/server/crm/actor";
 import { getWorkspace } from "@/server/crm/workspace";
 import { PERMISSION_MATRIX, type Permission } from "@/lib/permissions";
 
@@ -36,9 +36,9 @@ export async function scopeFor(actor: CrmActor, base: string): Promise<CrmScope>
   };
 }
 
-/** The signed-in member's CRM actor for a client portal page. Agency people without a client workspace go to the agency console. */
+/** The signed-in member's CRM actor. Agency staff still use audited client sessions; only the Super Admin's own agency workspace is internal CRM. */
 export async function clientCrmActor(permission: Permission = "crm.view"): Promise<CrmActor> {
   const ctx = await requireOrgContext(permission);
-  if (ctx.org.kind !== "client") redirect("/admin/crm");
+  if (ctx.org.kind !== "client" && !isInternalAgencyCrmMember(ctx)) redirect("/admin/crm");
   return memberActor(ctx);
 }
