@@ -45,6 +45,8 @@ import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { auditRoleConfiguration, recommendedSettings } from "@/lib/role-playbooks";
 import { deriveEmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
+import { capabilityChecksFor, type CapabilityActivity } from "@/lib/employee-capability-status";
+import { CapabilityChecklist } from "@/components/workforce/capability-checklist";
 import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
 import { OperatingModeCard, type AgentMode } from "@/components/workforce/operating-controls";
 import { ConfigTestDialog } from "@/components/workforce/config-test-dialog";
@@ -83,6 +85,8 @@ interface Props {
     credentialReady: boolean;
     taskExecuting: boolean;
     readinessExtras?: ReadinessExtras;
+    /** Recorded evidence of what the employee has actually done, for the "what it can do right now" list. */
+    capabilityActivity?: CapabilityActivity | null;
   };
   canPause: boolean;
   canGoAutonomous: boolean;
@@ -238,12 +242,16 @@ export function EmployeeDetail(props: Props) {
   );
 }
 
-function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta, readiness, onConfigure, runs, canConfigure, adminManageHref, canPause, canGoAutonomous, autonomousBlockedReason, agencyPaused, isInternalWorkspace }: Props & { readiness: ReturnType<typeof deriveEmployeeReadiness>; onConfigure: () => void }) {
+function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta, readiness, onConfigure, runs, canConfigure, adminManageHref, canPause, canGoAutonomous, autonomousBlockedReason, agencyPaused, isInternalWorkspace, now }: Props & { readiness: ReturnType<typeof deriveEmployeeReadiness>; onConfigure: () => void }) {
   const operationsNotice = operationsManagerRuntimeNotice(meta.key, isInternalWorkspace ? "agency" : "client");
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_365px]">
       <div className="space-y-6">
         <ReadinessChecklist readiness={readiness} action={canConfigure && readiness.cta !== "chat" ? <Button size="sm" variant="brand" onClick={onConfigure}>Continue setup <ArrowUpRight className="size-3.5" /></Button> : undefined} />
+        <CapabilityChecklist
+          audience={adminManageHref ? "admin" : "customer"}
+          checks={capabilityChecksFor({ readiness, configVersion: agent.configVersion, enabled: agent.enabled, status: agent.status, mode: agent.mode, inventoryToolCount: agent.inventoryToolCount, activity: agent.capabilityActivity, now: new Date(now) })}
+        />
         {agent.enabled && <OperatingModeCard agentId={agent.id} displayName={agent.displayName} mode={agent.mode} canPause={canPause} canGoAutonomous={canGoAutonomous} autonomousBlockedReason={autonomousBlockedReason} agencyPaused={agencyPaused} />}
 
         <Card className="overflow-hidden">

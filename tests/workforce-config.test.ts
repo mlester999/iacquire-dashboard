@@ -43,7 +43,10 @@ describe("configuration compiler", () => {
     expect(c.instructions).toContain("iAcquireOS authorization controls what you may do");
     expect(c.instructions).not.toContain("Never discuss iAcquire's internal systems");
     expect(c.instructions.indexOf("## Agency policy")).toBeGreaterThan(c.instructions.indexOf("</workspace_context>"));
-    expect(c.instructions).toContain("- crm.read_contacts");
+    // Portal capability labels are described in plain words, never listed as callable tools.
+    expect(c.instructions).toContain("Abilities this workspace has allowed for you: crm · read contacts");
+    expect(c.instructions).not.toContain("- crm.read_contacts");
+    expect(c.instructions).not.toContain("Tools you may use");
   });
 
   it("gives only the internal Sales Assistant the approved iAcquire commercial context", () => {
@@ -97,8 +100,8 @@ describe("configuration compiler", () => {
     const s = defaultSettings("lead_hunter");
     s.disabledTools = ["research.public_web"];
     const c = compileAgentConfig({ role: "lead_hunter", settings: s, company, version: 1, allowedTools: ["research.public_web", "leads.stage_for_review"] });
-    expect(c.instructions).toContain("- leads.stage_for_review");
-    expect(c.instructions).not.toContain("- research.public_web");
+    expect(c.instructions).toContain("Abilities this workspace has allowed for you: Add leads to your review queue.");
+    expect(c.instructions).not.toContain("Research approved public sources");
   });
 
   it("produces human-readable summaries", () => {

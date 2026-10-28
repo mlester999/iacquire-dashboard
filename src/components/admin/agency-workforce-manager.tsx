@@ -6,6 +6,8 @@ import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { HermesProfileMapper } from "@/components/admin/hermes-profile-mapper";
 import { AgencyWorkforceControls } from "@/components/admin/agency-workforce-controls";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
+import { CapabilityChecklist } from "@/components/workforce/capability-checklist";
+import { capabilityChecksFor } from "@/lib/employee-capability-status";
 import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { currentTime } from "@/lib/utils";
@@ -67,6 +69,15 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
                 </div>
                 <ReadinessInline readiness={readiness} />
                 <p className="text-[12px] leading-relaxed text-muted">{readiness.title}. {readiness.description}</p>
+                <details className="group rounded-xl border border-line bg-surface-2/40 p-3">
+                  <summary className="cursor-pointer text-[12px] font-medium text-ink-2">What it can actually do right now</summary>
+                  <div className="mt-3">
+                    <CapabilityChecklist
+                      audience="admin"
+                      checks={capabilityChecksFor({ readiness, configVersion: agent.config_version, enabled: agent.enabled, status: agent.status, mode: agent.mode, inventoryToolCount: agent.tool_inventory_tool_count, activity: agent.capability_activity, now: new Date(evaluatedAt) })}
+                    />
+                  </div>
+                </details>
                 <div className="rounded-xl border border-line bg-surface-2/70 p-3 text-xs">
                   <p className="font-medium text-ink-2">Hermes profile</p>
                   <p className="mt-1 break-all font-mono text-[12px] text-muted">{agent.hermes_profile || "Not mapped"}</p>

@@ -217,7 +217,7 @@ function bindInternalSnapshotPolicy(instructions: string, snapshotContext: strin
   return [instructions.slice(0, policyStart).trimEnd(), snapshotContext, scopedPolicy].filter(Boolean).join("\n\n");
 }
 
-async function readOperationsSnapshot(db: Queryable, orgId: string, fetchedAt: string): Promise<OperationsManagerSnapshot> {
+export async function readOperationsSnapshot(db: Queryable, orgId: string, fetchedAt: string): Promise<OperationsManagerSnapshot> {
   const { rows: taskRows } = await db.query<{
     open_task_count: number;
     overdue_task_count: number;
