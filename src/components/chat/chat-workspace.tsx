@@ -43,6 +43,7 @@ import { detectBrowserTimeZone, resolveChatTimeZone } from "@/lib/chat-timezone"
 import { chatDateSeparatorLabel, conversationDateKey, formatChatTime } from "@/lib/conversation-time";
 import { WorkJobPanel } from "@/components/work/job-progress";
 import { cn } from "@/lib/utils";
+import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
 
 export interface ChatMessage {
   id: string;
@@ -84,6 +85,8 @@ interface Props {
   preferredTimeZone: string | null;
   /** The kind of workspace the viewer is in (client or agency), so "back" and "home" go to the right place. */
   orgKind: string;
+  /** Enabled only for the internal Super Admin while the server-side restricted worker flag is on. */
+  allowRestrictedInferenceMode: boolean;
   /** The server's clock at render time, so grouped dates and relative times hydrate identically. */
   nowIso: string;
   /** Pre-filled composer text (e.g. from "Ask Performance Analyst"). Never auto-sent. */
@@ -423,7 +426,7 @@ export function ChatWorkspace(props: Props) {
     [conversationId, refreshList],
   );
 
-  const send = async (text: string, opts?: { regenerateMessageId?: string }) => {
+  const send = async (text: string, opts?: { regenerateMessageId?: string; inferenceOnly?: boolean }) => {
     const content = text.trim();
     if ((!content && !opts?.regenerateMessageId) || streaming || !ready) return;
     stickRef.current = true;
@@ -438,11 +441,14 @@ export function ChatWorkspace(props: Props) {
     }
     setStreaming({ runId: null, assistantId: null });
     let res: Response;
+    const restrictedInference = opts?.inferenceOnly === true;
     try {
-      res = await fetch("/api/chat/send", {
+      res = await fetch(restrictedInference ? "/api/internal/hermes-inference/chat" : "/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: meta.key, conversationId, content: opts?.regenerateMessageId ? undefined : content, clientMessageId, regenerateMessageId: opts?.regenerateMessageId }),
+        body: JSON.stringify(restrictedInference
+          ? { role: meta.key, clientMessageId }
+          : { role: meta.key, conversationId, content: opts?.regenerateMessageId ? undefined : content, clientMessageId, regenerateMessageId: opts?.regenerateMessageId }),
       });
     } catch {
       setStreaming(null);
@@ -668,6 +674,8 @@ export function ChatWorkspace(props: Props) {
             placeholder={`Message ${props.agentName}…`}
             awaitingFirstToken={awaitingFirstToken}
             operationsReadOnly={Boolean(operationsNotice)}
+            allowRestrictedInferenceMode={props.allowRestrictedInferenceMode && !conversationId}
+            onRestrictedInferenceCheck={() => send(HERMES_INFERENCE_ONLY_CHAT_CANARY, { inferenceOnly: true })}
           />
         ) : messages.length > 0 ? (
           <ChatUnavailableDock meta={meta} readiness={readiness} configured={props.configured} canConfigure={props.canConfigure} />
@@ -991,6 +999,8 @@ function Composer({
   placeholder,
   awaitingFirstToken,
   operationsReadOnly,
+  allowRestrictedInferenceMode,
+  onRestrictedInferenceCheck,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -1004,6 +1014,8 @@ function Composer({
   placeholder: string;
   awaitingFirstToken: boolean;
   operationsReadOnly: boolean;
+  allowRestrictedInferenceMode: boolean;
+  onRestrictedInferenceCheck: () => void;
 }) {
   React.useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -1050,6 +1062,11 @@ function Composer({
               </span>
             </Tooltip>
             <div className="flex items-center gap-2">
+              {allowRestrictedInferenceMode && !streaming && (
+                <Button type="button" size="sm" variant="secondary" onClick={onRestrictedInferenceCheck} disabled={disabled} className="rounded-xl" aria-label="Run restricted no-tool Chat check">
+                  <ShieldCheck className="mr-1.5 size-3.5" />Restricted Chat check
+                </Button>
+              )}
               <span className="hidden text-[12px] text-faint sm:inline">{disabled?"Chat is unavailable until the employee is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
               {streaming ? (
                 <Button type="button" size="icon" variant="secondary" onClick={onStop} disabled={!canStop} aria-label="Stop generating" className="rounded-xl">
@@ -1064,7 +1081,7 @@ function Composer({
           </div>
         </div>
         <p className="mt-2 text-center text-[12px] text-faint">
-          {operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI employees can make mistakes. Customer-facing actions always need your approval."}
+          {allowRestrictedInferenceMode ? "Restricted Chat check sends one fixed internal prompt to DeepSeek with zero tools and no business actions." : operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI employees can make mistakes. Customer-facing actions always need your approval."}
         </p>
       </div>
     </div>

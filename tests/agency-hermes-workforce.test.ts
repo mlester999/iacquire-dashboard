@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { permissionsFor, roleHasPermission } from "@/lib/permissions";
 import { withServiceRole, withSystem } from "@/server/db";
@@ -19,6 +19,9 @@ import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { acknowledgeInternalFullCapabilities, getHermesToolPolicyView } from "@/server/workforce/tool-policies";
 import { AgentRunNotReadyError, startAgentRun } from "@/server/integrations/hermes/client";
 import { sendChatMessage } from "@/server/chat/service";
+import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
+import { resetEnvCache } from "@/server/env";
+import { signInferenceOnlyRequest } from "@/server/integrations/hermes/inference-only";
 import type { OrgContext } from "@/server/tenancy/context";
 import { addMember, agencyUser, agentId, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -755,5 +758,122 @@ describe("agency Hermes workforce isolation", () => {
        values($1,$2,'not_configured','synthetic client row',$3)`,
       [clientOrg.id, clientAgent[0].id, admin.id],
     ))).rejects.toThrow(/agency_profile_check_wrong_scope/);
+  });
+
+  it("persists a Super Admin no-tool Chat response in a new internal conversation", async () => {
+    const gateway = (await withServiceRole(listHermesGateways)).find((entry) => entry.id === gatewayId)!;
+    await saveIntegrationConnection(admin, null, {
+      provider: "hermes",
+      label: gateway.label,
+      environment: gateway.environment,
+      gatewayRevision: gateway.revision,
+      accessClientId: "synthetic-access-client-id",
+      accessClientSecret: "synthetic-access-client-secret-0123456789",
+      config: { gatewayId, baseUrl: gateway.baseUrl, gatewayType: gateway.gatewayType },
+    });
+    mock.setInventory(AGENCY_HERMES_PROFILE_IDS.sales_assistant, { tools: [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "vision_analyze", toolset: "vision" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ] });
+    await runHealthCheck(salesAgentId, { userId: admin.id, kind: "system" }, { skipSetupSync: true });
+    await testAgencyHermesProfile(admin, salesAgentId);
+    await acknowledgeInternalFullCapabilities(admin, await acknowledgementTargets([salesAgentId]));
+
+    vi.stubEnv("HERMES_INFERENCE_WORKER_ENABLED", "true");
+    vi.stubEnv("HERMES_INFERENCE_WORKER_URL", `${mock.url}/internal/inference/v1`);
+    const workerSecret = "synthetic-chat-inference-hmac-secret-0123456789";
+    vi.stubEnv("HERMES_INFERENCE_WORKER_SECRET", workerSecret);
+    resetEnvCache();
+    let workerRequestBody: Record<string, unknown> | null = null;
+    let workerRequestCount = 0;
+    const realFetch = globalThis.fetch.bind(globalThis);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+      if (url.pathname === "/internal/inference/v1/sales_assistant/infer") {
+        const body = String(init?.body ?? "");
+        const parsedBody = JSON.parse(body) as Record<string, unknown>;
+        workerRequestBody = parsedBody;
+        workerRequestCount += 1;
+        const timestamp = new Headers(init?.headers).get("X-Iacquire-Timestamp") ?? "";
+        expect(new Headers(init?.headers).get("X-Iacquire-Signature")).toBe(signInferenceOnlyRequest(workerSecret, timestamp, body));
+        expect(new Headers(init?.headers).get("CF-Access-Client-Id")).toBe("synthetic-access-client-id");
+        expect(new Headers(init?.headers).get("CF-Access-Client-Secret")).toBe("synthetic-access-client-secret-0123456789");
+        return new Response(JSON.stringify({
+          requestId: parsedBody.requestId,
+          ok: true,
+          provider: "deepseek",
+          model: "deepseek-flash",
+          content: "Synthetic model response for the internal Sales Assistant.",
+          usage: { inputTokens: 41, outputTokens: 10, totalTokens: 51 },
+          toolSchemas: 0,
+          toolCalls: 0,
+        }), { headers: { "Content-Type": "application/json" } });
+      }
+      return realFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const before = mock.requests.length;
+    try {
+      const internalCtx = internalContextForAdmin();
+      await expect(sendChatMessage(internalCtx, {
+        agentRole: "sales_assistant",
+        conversationId: crypto.randomUUID(),
+        content: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        inferenceOnly: true,
+      })).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(sendChatMessage({ ...internalCtx, user: staff }, {
+        agentRole: "sales_assistant",
+        content: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        inferenceOnly: true,
+      })).rejects.toMatchObject({ code: "forbidden" });
+
+      const clientMessageId = crypto.randomUUID();
+      const sent = await sendChatMessage(internalCtx, {
+        agentRole: "sales_assistant",
+        content: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        clientMessageId,
+        inferenceOnly: true,
+      });
+      expect(sent.runId).toBeTruthy();
+      const assistantStatus = await waitForAssistantMessage(sent.assistantMessageId);
+      expect(workerRequestCount).toBe(1);
+      expect(assistantStatus).toBe("complete");
+      expect(workerRequestBody).toMatchObject({
+        actorId: admin.id,
+        role: "sales_assistant",
+        input: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        history: [],
+      });
+      expect(mock.requests.slice(before).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+      const persisted = (await withSystem((db) => db.query<{
+        user_content: string; assistant_content: string; assistant_status: string; run_status: string;
+      }>(
+        `select u.content as user_content,a.content as assistant_content,a.status as assistant_status,r.status as run_status
+           from chat_messages a join chat_messages u on u.conversation_id=a.conversation_id and u.role='user'
+           join agent_runs r on r.id=a.run_id where a.id=$1 and u.client_message_id=$2`,
+        [sent.assistantMessageId, clientMessageId],
+      ))).rows[0];
+      expect(persisted).toEqual({
+        user_content: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        assistant_content: "Synthetic model response for the internal Sales Assistant.",
+        assistant_status: "complete",
+        run_status: "completed",
+      });
+
+      const audit = (await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+        "select metadata from audit_logs where action='hermes.inference_only_chat' and target_id=$1",
+        [sent.runId],
+      ))).rows[0];
+      expect(audit.metadata).toMatchObject({ provider: "deepseek", model: "deepseek-flash", usageUnit: "tokens", actualUsage: { input: 41, output: 10, total: 51 }, toolSchemas: 0, toolCalls: 0 });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      resetEnvCache();
+    }
   });
 });

@@ -98,6 +98,7 @@ function renderChat(overrides: Partial<ChatProps> = {}) {
     status: "online",
     statusDetail: null,
     configVersion: 4,
+    allowRestrictedInferenceMode: false,
     lastHealthCheckAt: "2026-10-21T03:59:00.000Z",
     lastHealthOk: true,
     inventoryContract: "hermes.api_server.tool_catalog.v1",
@@ -343,5 +344,31 @@ describe("dedicated employee chat surface", () => {
     resolveFetch(new Response(JSON.stringify({ error: "Permission denied for this workspace." }), { status: 403, headers: { "Content-Type": "application/json" } }));
     await waitFor(() => expect(screen.queryByText("Verifying access before the run starts…")).toBeNull());
     expect(toast.error).toHaveBeenCalledWith("Permission denied for this workspace.");
+  });
+
+  it("offers the restricted no-tool check only when enabled and starts it with the fixed prompt", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Synthetic test response." }), { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderChat({ allowRestrictedInferenceMode: true });
+
+    const button = screen.getByRole("button", { name: "Run restricted no-tool Chat check" });
+    fireEvent.click(button);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/internal/hermes-inference/chat");
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      role: "operations_manager",
+      clientMessageId: expect.any(String),
+    });
+    expect(body).not.toHaveProperty("content");
+    expect(body).not.toHaveProperty("inferenceOnly");
+
+    cleanup();
+    renderChat({ allowRestrictedInferenceMode: true, initialConversation: history });
+    expect(screen.queryByRole("button", { name: "Run restricted no-tool Chat check" })).toBeNull();
+    cleanup();
+    renderChat({ allowRestrictedInferenceMode: false });
+    expect(screen.queryByRole("button", { name: "Run restricted no-tool Chat check" })).toBeNull();
   });
 });

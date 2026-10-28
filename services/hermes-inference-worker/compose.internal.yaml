@@ -1,0 +1,199 @@
+name: iacquire-hermes-inference
+
+x-worker-environment: &worker-environment
+  IACQUIRE_INFERENCE_WORKER_HOST: 0.0.0.0
+  IACQUIRE_INFERENCE_WORKER_PORT: "8786"
+  IACQUIRE_INFERENCE_WORKER_SECRET_FILE: /run/secrets/inference_hmac
+  IACQUIRE_HERMES_INFERENCE_RUNNER: /opt/iacquire-hermes/inference/inference_runner.py
+  IACQUIRE_INTERNAL_PROFILE_ROOT: /profiles
+  IACQUIRE_DEEPSEEK_EGRESS_PROXY: http://iacquire-deepseek-egress-proxy:3128
+
+x-worker-base: &worker-base
+  image: iacquire/hermes-inference-worker:0.22.5-v1
+  build:
+    context: ../..
+    dockerfile: services/hermes-inference-worker/Dockerfile
+    args:
+      HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
+      HERMES_SOURCE_COMMIT: bf0203a794a07aac3ff764972ab9087baa4e4f4e
+  restart: unless-stopped
+  init: true
+  user: "10000:10000"
+  read_only: true
+  expose: ["8786"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m]
+  mem_limit: 512m
+  cpus: 0.5
+  pids_limit: 64
+  stop_grace_period: 10s
+  logging:
+    driver: local
+    options: {max-size: 5m, max-file: "3"}
+  healthcheck:
+    test:
+      - CMD
+      - /opt/hermes/.venv/bin/python
+      - -c
+      - >-
+        import urllib.request;
+        r=urllib.request.urlopen('http://127.0.0.1:8786/healthz', timeout=2);
+        raise SystemExit(0 if r.status == 200 else 1)
+    interval: 20s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+  depends_on:
+    iacquire-deepseek-egress-proxy:
+      condition: service_healthy
+
+x-hmac-mount: &hmac-mount
+  type: bind
+  source: ${IACQUIRE_INFERENCE_HMAC_FILE:?Set the private worker HMAC file}
+  target: /run/secrets/inference_hmac
+  read_only: true
+
+x-profile-mounts:
+  operations_manager: &operations-manager-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-operations-manager
+    target: /profiles/iacquire-operations-manager
+    read_only: true
+  lead_hunter: &lead-hunter-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-lead-hunter
+    target: /profiles/iacquire-lead-hunter
+    read_only: true
+  appointment_setter: &appointment-setter-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-appointment-setter
+    target: /profiles/iacquire-appointment-setter
+    read_only: true
+  sales_assistant: &sales-assistant-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-sales-assistant
+    target: /profiles/iacquire-sales-assistant
+    read_only: true
+  crm_manager: &crm-manager-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-crm-manager
+    target: /profiles/iacquire-crm-manager
+    read_only: true
+  performance_analyst: &performance-analyst-profile
+    type: bind
+    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-analyst
+    target: /profiles/iacquire-analyst
+    read_only: true
+
+services:
+  iacquire-hermes-inference-worker-operations-manager:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: operations_manager
+    volumes: [*operations-manager-profile, *hmac-mount]
+    networks: [operations_manager_ingress, operations_manager_policy]
+
+  iacquire-hermes-inference-worker-lead-hunter:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: lead_hunter
+    volumes: [*lead-hunter-profile, *hmac-mount]
+    networks: [lead_hunter_ingress, lead_hunter_policy]
+
+  iacquire-hermes-inference-worker-appointment-setter:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: appointment_setter
+    volumes: [*appointment-setter-profile, *hmac-mount]
+    networks: [appointment_setter_ingress, appointment_setter_policy]
+
+  iacquire-hermes-inference-worker-sales-assistant:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: sales_assistant
+    volumes: [*sales-assistant-profile, *hmac-mount]
+    networks: [sales_assistant_ingress, sales_assistant_policy]
+
+  iacquire-hermes-inference-worker-crm-manager:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: crm_manager
+    volumes: [*crm-manager-profile, *hmac-mount]
+    networks: [crm_manager_ingress, crm_manager_policy]
+
+  iacquire-hermes-inference-worker-performance-analyst:
+    <<: *worker-base
+    environment:
+      <<: *worker-environment
+      IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE: performance_analyst
+    volumes: [*performance-analyst-profile, *hmac-mount]
+    networks: [performance_analyst_ingress, performance_analyst_policy]
+
+  iacquire-deepseek-egress-proxy:
+    image: iacquire/hermes-inference-worker:0.22.5-v1
+    build:
+      context: ../..
+      dockerfile: services/hermes-inference-worker/Dockerfile
+      args:
+        HERMES_BASE_IMAGE: docker.io/nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
+        HERMES_SOURCE_COMMIT: bf0203a794a07aac3ff764972ab9087baa4e4f4e
+    command: ["/opt/iacquire-hermes/inference/deepseek_egress_proxy.py"]
+    restart: unless-stopped
+    init: true
+    user: "10000:10000"
+    read_only: true
+    expose: ["3128"]
+    networks:
+      - operations_manager_policy
+      - lead_hunter_policy
+      - appointment_setter_policy
+      - sales_assistant_policy
+      - crm_manager_policy
+      - performance_analyst_policy
+      - deepseek_egress
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=8m]
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 32
+    stop_grace_period: 5s
+    logging:
+      driver: local
+      options: {max-size: 1m, max-file: "2"}
+    healthcheck:
+      test:
+        - CMD
+        - /opt/hermes/.venv/bin/python
+        - -c
+        - >-
+          import socket;
+          s=socket.create_connection(('127.0.0.1',3128), timeout=2);
+          s.close()
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  operations_manager_ingress: {name: iacquire-hermes-inference-operations-manager-ingress, driver: bridge, internal: true}
+  lead_hunter_ingress: {name: iacquire-hermes-inference-lead-hunter-ingress, driver: bridge, internal: true}
+  appointment_setter_ingress: {name: iacquire-hermes-inference-appointment-setter-ingress, driver: bridge, internal: true}
+  sales_assistant_ingress: {name: iacquire-hermes-inference-sales-assistant-ingress, driver: bridge, internal: true}
+  crm_manager_ingress: {name: iacquire-hermes-inference-crm-manager-ingress, driver: bridge, internal: true}
+  performance_analyst_ingress: {name: iacquire-hermes-inference-performance-analyst-ingress, driver: bridge, internal: true}
+  operations_manager_policy: {name: iacquire-hermes-inference-operations-manager-policy, driver: bridge, internal: true}
+  lead_hunter_policy: {name: iacquire-hermes-inference-lead-hunter-policy, driver: bridge, internal: true}
+  appointment_setter_policy: {name: iacquire-hermes-inference-appointment-setter-policy, driver: bridge, internal: true}
+  sales_assistant_policy: {name: iacquire-hermes-inference-sales-assistant-policy, driver: bridge, internal: true}
+  crm_manager_policy: {name: iacquire-hermes-inference-crm-manager-policy, driver: bridge, internal: true}
+  performance_analyst_policy: {name: iacquire-hermes-inference-performance-analyst-policy, driver: bridge, internal: true}
+  deepseek_egress:
+    name: iacquire-hermes-inference-deepseek-egress
+    driver: bridge
