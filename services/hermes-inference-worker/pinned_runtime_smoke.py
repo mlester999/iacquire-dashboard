@@ -126,14 +126,22 @@ def main() -> None:
 
                     agent._execute_tool_calls = deny_tool_dispatch
                     result = agent.run_conversation("Say hello in one short sentence.")
-                    request_rows = FakeDeepSeekHandler.requests
-                    if len(request_rows) != 1:
+                    request_summaries = FakeDeepSeekHandler.request_summaries
+                    completion_indices = [
+                        index for index, summary in enumerate(request_summaries)
+                        if summary["path"] == "/v1/chat/completions"
+                    ]
+                    metadata_count = sum(summary["path"] == "/api/show" for summary in request_summaries)
+                    unexpected_paths = [
+                        summary["path"] for summary in request_summaries
+                        if summary["path"] not in {"/api/show", "/v1/chat/completions"}
+                    ]
+                    if len(completion_indices) != 1 or metadata_count > 1 or unexpected_paths:
                         raise SystemExit(
-                            "pinned Hermes made "
-                            f"{len(request_rows)} synthetic provider request(s); expected exactly one; "
-                            f"request metadata={json.dumps(FakeDeepSeekHandler.request_summaries, separators=(',', ':'))}"
+                            "pinned Hermes made an unexpected number or type of synthetic requests; "
+                            f"request metadata={json.dumps(request_summaries, separators=(',', ':'))}"
                         )
-                    request = request_rows[0]
+                    request = FakeDeepSeekHandler.requests[completion_indices[0]]
                     if request.get("tools") not in (None, []) or request.get("tool_choice") not in (None, "none"):
                         raise SystemExit("pinned Hermes sent a callable tool schema")
                     if request.get("max_tokens", 999) > 128 or request.get("max_completion_tokens", 999) > 128:
