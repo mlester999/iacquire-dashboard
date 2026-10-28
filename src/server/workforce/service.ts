@@ -13,6 +13,10 @@ import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type 
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, defaultSettings, sanitizeClientText, type CompanyContext } from "@/server/workforce/compiler";
 import { immutablePolicy, policyVersionFor, type WorkforceOrganizationKind } from "@/server/workforce/policy";
+import { replaceLegacyToolsSection } from "@/lib/employee-evidence";
+import { agentToolLabel } from "@/lib/agent-tools";
+import type { CapabilityActivity } from "@/lib/employee-capability-status";
+import { loadCapabilityActivity } from "@/server/workforce/capability-status";
 import { INTERNAL_BUSINESS, internalServicesText } from "@/lib/internal-business-profile";
 import {
   classifyConfigChange,
@@ -61,6 +65,8 @@ export interface AgentInstanceRow {
   credential_ready: boolean;
   /** Role prerequisites, the probe's record and workspace suspension, for the shared readiness model (src/server/workforce/readiness-facts.ts). */
   readiness_extras?: ReadinessExtras;
+  /** Recorded evidence of what the employee has actually done: role-data reads, completed chats, scheduled work (src/server/workforce/capability-status.ts). */
+  capability_activity?: CapabilityActivity;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -129,8 +135,17 @@ async function attachReadinessExtras(agents: AgentInstanceRow[]): Promise<AgentI
   const byOrg = new Map<string, AgentInstanceRow[]>();
   for (const agent of agents) byOrg.set(agent.org_id, [...(byOrg.get(agent.org_id) ?? []), agent]);
   const extras = new Map<string, ReadinessExtras>();
-  for (const [orgId, rows] of byOrg) for (const [id, value] of await readinessExtrasFor(orgId, rows)) extras.set(id, value);
-  return agents.map((agent) => ({ ...agent, readiness_extras: extras.get(agent.id) }));
+  const activity = new Map<string, CapabilityActivity>();
+  for (const [orgId, rows] of byOrg) {
+    for (const [id, value] of await readinessExtrasFor(orgId, rows)) extras.set(id, value);
+    // Recorded evidence only; if it cannot be read the employee simply shows nothing as verified.
+    try {
+      for (const [id, value] of await loadCapabilityActivity(orgId, rows.map((row) => row.id))) activity.set(id, value);
+    } catch {
+      /* leave this workspace's employees unverified */
+    }
+  }
+  return agents.map((agent) => ({ ...agent, readiness_extras: extras.get(agent.id), capability_activity: activity.get(agent.id) }));
 }
 
 export async function listAgents(userId: string, orgId: string): Promise<AgentInstanceRow[]> {
@@ -768,7 +783,9 @@ export async function composeRunInstructions(
   const companyName = sanitizeClientText(organization.name, 120)
     || (organization.kind === "agency" ? "iAcquire" : "the client");
   const [storedHead] = splitPolicy(compiledInstructions);
-  const head = updateCompiledPolicyVersion(storedHead, policyVersion);
+  // Configurations stored before the capability fix list portal permission labels as "Tools you may use". Those are not callable, so describe what is true at run time; the stored
+  // version, its approvals and the Super Admin acknowledgements bound to it are left exactly as they are.
+  const head = replaceLegacyToolsSection(updateCompiledPolicyVersion(storedHead, policyVersion), agentToolLabel);
   const policy = [
     "## Agency policy (always applies and overrides everything above)",
     ...immutablePolicy(companyName, organization.kind).map((rule, index) => `${index + 1}. ${rule}`),
