@@ -144,8 +144,15 @@ def main() -> None:
                     request = FakeDeepSeekHandler.requests[completion_indices[0]]
                     if request.get("tools") not in (None, []) or request.get("tool_choice") not in (None, "none"):
                         raise SystemExit("pinned Hermes sent a callable tool schema")
-                    if request.get("max_tokens", 999) > 128 or request.get("max_completion_tokens", 999) > 128:
-                        raise SystemExit("pinned Hermes exceeded the output token limit")
+                    output_limits = [
+                        request[key] for key in ("max_tokens", "max_completion_tokens") if key in request
+                    ]
+                    if not output_limits or any(
+                        type(limit) is not int or limit < 1 or limit > 128 for limit in output_limits
+                    ):
+                        raise SystemExit(
+                            f"pinned Hermes sent an invalid output token limit: {json.dumps(output_limits)}"
+                        )
                     messages = request.get("messages")
                     if not isinstance(messages, list) or not any(
                         isinstance(row, dict) and "Synthetic test SOUL canary" in str(row.get("content", ""))
