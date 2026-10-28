@@ -146,7 +146,41 @@ Reviewed: every file in the change, the read paths, what is sent to the model, t
 
 ## 11. Verification of the hardened branch
 
-FULLSUITE_PLACEHOLDER
+Run on commit `6b77d56f` (the review branch, `origin/fix/employee-real-capabilities`), 2026-10-28:
+
+| Check | Result |
+| --- | --- |
+| TypeScript, app and scripts (`npm run typecheck`) | Pass |
+| ESLint, whole repository (`npm run lint`) | 0 errors, 2 warnings (unused imports in `src/server/aqi/service.ts`, a file this work does not touch) |
+| Production build (`npm run build`, Next 16.4.2) | Pass |
+| Focused: 16 new hardening tests, 30 evidence tests, 11 chat end-to-end tests, 11 capability-status tests, 3 checklist tests, workforce config tests | 87 of 87 pass |
+| Tenant isolation | Pass: Alpha's evidence never contains Bravo's contacts, deals or leads for any of the six roles; an employee id from another workspace, or the right workspace under the wrong role, reads nothing and sends no record |
+| Permission denial | Pass: a person without the permission gets `no_permission`, never a count; an agency staff member without the internal CRM seat gets `no_permission`; an employee's switched-off ability gets `switched_off` and no record is read or sent |
+| Role context | Pass: each role receives only its own areas (`EXPECTED_SECTIONS` in `employee-chat-evidence.test.ts`) and no section carries a system label |
+| Full suite (`npx vitest run`) | 695 files pass, 8 fail, 1 skipped; 11,088 tests pass, 8 fail, 2 skipped |
+| The same 8 failures on clean production `d4adb4fd` | Yes. Re-run 2026-10-28 in a temporary worktree of `d4adb4fd`: the same 8 tests fail with the same assertions. |
+| Real-model acceptance (synthetic data, deepseek-flash, two runs; not a Hermes run) | Before the fix 0 of 13; after 25 of 26 (see section 10, last residual risk) |
+| Vercel Preview build of the review branch | Ready (compile-only: the Preview environment has no variables) |
+
+**The eight failures, unrelated to this work (they fail identically on production `d4adb4fd`):**
+
+1. `tests/appointments.test.ts`: reminders stop being planned when the owner switches them off.
+2. `tests/automation-studio-hardening.test.ts`: usage metering counts every failed attempt of a given-up run.
+3. `tests/chat-rail.test.tsx`: the chat rail shows the brand and a way back to AI Employees (cannot find the wordmark text).
+4. `tests/demo-showroom-controls.test.tsx`: the showroom navigation rail folds and unfolds (expects 68px, gets 76px).
+5. `tests/messaging-core.test.ts`: the 30-day per-contact allowance at planning and send time.
+6. `tests/staff-workload-views.test.ts`: a dated item appears on the team calendar on its day.
+7. `tests/type-scale-floor.test.ts`: no Tailwind arbitrary text size below 12px (14 offenders in the existing code).
+8. `tests/workforce-navigation.test.tsx`: the sidebar wordmark through the shared Logo.
+
+**Changed files against production `d4adb4fd` (23 files: 13 added, 10 changed; two commits, `21b3f6a0` and `6b77d56f`):**
+
+- Added: `docs/ai-employee-capability-repair-2026-10-28.md`, `scripts/employee-real-model-acceptance.ts`, `src/components/workforce/capability-checklist.tsx`, `src/lib/employee-capability-status.ts`, `src/lib/employee-evidence.ts`, `src/server/workforce/capability-status.ts`, `src/server/workforce/employee-evidence.ts`, `tests/capability-checklist.test.tsx`, `tests/employee-acceptance-dump.test.ts`, `tests/employee-capability-status.test.ts`, `tests/employee-chat-evidence.test.ts`, `tests/employee-evidence-hardening.test.ts`, `tests/employee-evidence.test.ts`.
+- Changed: `src/app/(portal)/employees/[slug]/page.tsx`, `src/components/admin/agency-workforce-manager.tsx`, `src/components/workforce/employee-detail.tsx`, `src/server/admin/queries.ts`, `src/server/chat/service.ts`, `src/server/workforce/compiler.ts`, `src/server/workforce/internal-capability-context.ts`, `src/server/workforce/performance-snapshot.ts`, `src/server/workforce/service.ts`, `tests/workforce-config.test.ts`.
+
+The second commit alone (the hardening) touches only `src/lib/employee-evidence.ts`, `src/server/workforce/employee-evidence.ts`, `tests/employee-evidence-hardening.test.ts` and this document.
+
+**Not verified by any check above:** a real Hermes run, the VPS SOUL files, how the new checklist looks in a browser, any production database state, and Vercel production behaviour of the hardening commit (it is not deployed).
 
 ## 12. What each employee can do, and what still needs a tool bridge (remaining-work matrix)
 
