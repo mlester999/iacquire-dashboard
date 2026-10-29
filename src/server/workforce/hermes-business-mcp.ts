@@ -262,7 +262,9 @@ async function auditMcpToolResult(run: ActiveChatRun, name: AgentToolName, reply
 }
 
 function asMcpResult(value: unknown, isError = false) {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
+  // Every structured result, from any tool, carries the records-are-data rule first, so a result cut at the size limit still has it.
+  const body = value && typeof value === "object" && !Array.isArray(value) ? { note: RECORDS_ARE_DATA, ...(value as Record<string, unknown>) } : value;
+  const text = typeof body === "string" ? body : JSON.stringify(body);
   return { content: [{ type: "text" as const, text: text.slice(0, 24_000) }], ...(isError ? { isError: true } : {}) };
 }
 
@@ -295,7 +297,7 @@ function makeServer(profile: InternalProfile) {
     const def = AGENT_TOOLS[name];
     server.registerTool(name, {
       title: def.label,
-      description: def.description,
+      description: `${def.description} ${RECORDS_ARE_DATA}`,
       inputSchema: TOOL_INPUTS[name],
       annotations: {
         readOnlyHint: def.kind === "read",
