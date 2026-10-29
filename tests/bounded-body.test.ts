@@ -1,6 +1,6 @@
 // The ceiling on a public request body is enforced while the body arrives, not after it has all been read.
 import { describe, expect, it } from "vitest";
-import { readBoundedBytes, readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
+import { readBoundedBytes, readBoundedFormData, readBoundedJson, readBoundedText } from "@/server/security/bounded-body";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}, init: Record<string, unknown> = {}) =>
   new Request("http://127.0.0.1/api/x", { method: "POST", body, headers, ...init } as RequestInit);
@@ -17,6 +17,24 @@ function chunkedBody(chunks: number, chunkBytes: number) {
   });
   return { stream, pulled: () => pulled };
 }
+
+describe("readBoundedJson", () => {
+  it("parses a small JSON body", async () => {
+    expect(await readBoundedJson(post('{"role":"crm_manager"}'), 100)).toEqual({ role: "crm_manager" });
+  });
+
+  it("returns null for a body over the limit, however it arrives", async () => {
+    expect(await readBoundedJson(post(JSON.stringify({ pad: "a".repeat(200) })), 100)).toBeNull();
+    const { stream, pulled } = chunkedBody(100_000, 1024);
+    expect(await readBoundedJson(post(stream, {}, { duplex: "half" }), 100)).toBeNull();
+    expect(pulled()).toBeLessThan(40);
+  });
+
+  it("returns null for a body that is not JSON, or has no body", async () => {
+    expect(await readBoundedJson(post("not json"), 100)).toBeNull();
+    expect(await readBoundedJson(new Request("http://127.0.0.1/x", { method: "POST" }), 100)).toBeNull();
+  });
+});
 
 describe("readBoundedText", () => {
   it("returns a small body as text", async () => {

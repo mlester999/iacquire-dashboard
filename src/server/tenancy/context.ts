@@ -189,6 +189,35 @@ export function buildContext(user: SessionUser, org: Membership, memberships: Me
 }
 
 /**
+ * The context a request from this person would have in this one workspace, for trusted server code that acts for them during their own live turn (no cookie, no session). Built from the
+ * same membership and permission-override rules as a request, so `can` answers exactly as it would there. Null unless the person is an active user with a usable membership in `orgId`.
+ */
+export async function loadOrgContextForUser(userId: string, orgId: string): Promise<OrgContext | null> {
+  const row = await withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; email: string; full_name: string; platform_role: PlatformRole; timezone: string; preferences: Record<string, unknown> | null; email_verified_at: Date | null }>(
+      "select id, email, full_name, platform_role, timezone, preferences, email_verified_at from users where id = $1 and status = 'active'",
+      [userId],
+    );
+    return rows[0] ?? null;
+  });
+  if (!row) return null;
+  const { memberships, overridesByOrg } = await loadTenancy(userId);
+  const org = memberships.find((m) => m.orgId === orgId && m.status !== "suspended");
+  if (!org) return null;
+  const user: SessionUser = {
+    sessionId: "server-acting-for-user",
+    id: row.id,
+    email: row.email,
+    fullName: row.full_name,
+    platformRole: row.platform_role,
+    timezone: row.timezone,
+    preferences: row.preferences ?? {},
+    emailVerified: Boolean(row.email_verified_at),
+  };
+  return buildContext(user, org, memberships, org.role === "owner" ? {} : overridesByOrg[org.orgId] ?? {});
+}
+
+/**
  * The active tenant is chosen by a cookie but only ever honoured when the signed-in user holds
  * an active membership in it. Changing the cookie, URL or request body cannot widen access.
  */

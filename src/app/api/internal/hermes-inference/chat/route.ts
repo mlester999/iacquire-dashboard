@@ -7,10 +7,13 @@ import { sendChatMessage } from "@/server/chat/service";
 import { sseStream } from "@/server/chat/hub";
 import { toPublicError } from "@/server/errors";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
+import { readBoundedJson } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 45;
+
+const MAX_BODY_BYTES = 1024;
 
 const bodySchema = z.object({
   role: z.enum(AGENT_ROLE_KEYS),
@@ -25,7 +28,8 @@ export async function POST(req: Request) {
     if (ctx.org.kind !== "agency" || ctx.user.platformRole !== "agency_super_admin") {
       return NextResponse.json({ error: "Restricted Chat checks are available to internal Super Admins only.", code: "forbidden" }, { status: 403 });
     }
-    const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+    // A role name and an id fit in a few hundred bytes; anything larger is refused while it is still arriving.
+    const parsed = bodySchema.safeParse(await readBoundedJson(req, MAX_BODY_BYTES));
     if (!parsed.success) return NextResponse.json({ error: "Invalid request.", code: "invalid_input" }, { status: 400 });
     const result = await sendChatMessage(ctx, {
       agentRole: parsed.data.role,

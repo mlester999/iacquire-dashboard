@@ -33,6 +33,20 @@ export async function readBoundedText(req: Request, maxBytes: number): Promise<s
 }
 
 /**
+ * The body parsed as JSON, or null when it is larger than `maxBytes` or is not valid JSON. For a small typed body on a route that settles who is asking first; the caller validates
+ * the shape, and treats null as an invalid request.
+ */
+export async function readBoundedJson(req: Request, maxBytes: number): Promise<unknown> {
+  const text = await readBoundedText(req, maxBytes);
+  if (text === null) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The body parsed as form data (urlencoded or multipart), or null when it is larger than `maxBytes`. A body that is not valid form data comes back as an empty FormData, the way
  * the callers that used `req.formData()` inside a try/catch already treated it.
  */

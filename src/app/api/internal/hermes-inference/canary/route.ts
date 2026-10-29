@@ -10,10 +10,13 @@ import { AppError, toPublicError } from "@/server/errors";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
+import { readBoundedJson } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 45;
+
+const MAX_BODY_BYTES = 1024;
 
 const bodySchema = z.object({ role: z.enum(AGENT_ROLE_KEYS) }).strict();
 
@@ -24,7 +27,8 @@ export async function POST(req: Request) {
     if (ctx.org.kind !== "agency" || ctx.user.platformRole !== "agency_super_admin") {
       throw new AppError("forbidden", "Restricted employee inference checks are available to internal Super Admins only.");
     }
-    const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+    // A role name and an id fit in a few hundred bytes; anything larger is refused while it is still arriving.
+    const parsed = bodySchema.safeParse(await readBoundedJson(req, MAX_BODY_BYTES));
     if (!parsed.success) throw new AppError("invalid_input", "Choose one existing internal employee.");
     const limit = await consumeRateLimit(RATE_LIMITS.agentInferenceOnlyByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "The restricted inference check has reached its short test limit. Wait one minute and try again.", { retryAfterSeconds: limit.retryAfterSeconds });

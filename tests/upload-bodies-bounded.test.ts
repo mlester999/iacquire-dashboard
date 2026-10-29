@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const API = path.join(ROOT, "src", "app", "api");
-const BOUNDED = /readBounded(?:FormData|Text|Bytes)\(/;
+const BOUNDED = /readBounded(?:FormData|Text|Bytes|Json)\(/;
 const FILE_OR_TEXT_PARSE = /(?:req|request)\.(?:formData|text|arrayBuffer)\(\)/;
 const JSON_PARSE = /(?:req|request)\.json\(\)/;
 
@@ -89,6 +89,16 @@ describe("every API route reads a file or free-text body with a ceiling", () => 
 
   it("keeps the list of authenticated JSON bodies from growing unnoticed", () => {
     expect(jsonReaders).toEqual(KNOWN_JSON_PARSES);
+  });
+
+  it("keeps the restricted inference routes on the bounded reader, with no raw JSON parse", () => {
+    // They take a role name and an id: a ceiling of a kilobyte, enforced while the body arrives.
+    for (const name of ["canary", "chat"]) {
+      const route = text(path.join(API, "internal", "hermes-inference", name, "route.ts"));
+      expect(route, name).toMatch(/readBoundedJson\(req, MAX_BODY_BYTES\)/);
+      expect(route, name).not.toMatch(JSON_PARSE);
+    }
+    expect(jsonReaders.filter((file) => file.includes("hermes-inference"))).toEqual([]);
   });
 
   it("would catch the mistake it exists for", () => {
