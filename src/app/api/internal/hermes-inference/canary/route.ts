@@ -9,6 +9,7 @@ import { withSystem } from "@/server/db";
 import { AppError, toPublicError } from "@/server/errors";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
+import { readBoundedJson } from "@/server/security/bounded-body";
 import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export const runtime = "nodejs";
 export const maxDuration = 45;
 
 const bodySchema = z.object({ role: z.enum(AGENT_ROLE_KEYS) }).strict();
+const REQUEST_BODY_LIMIT_BYTES = 128;
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +26,11 @@ export async function POST(req: Request) {
     if (ctx.org.kind !== "agency" || ctx.user.platformRole !== "agency_super_admin") {
       throw new AppError("forbidden", "Restricted employee inference checks are available to internal Super Admins only.");
     }
-    const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+    const body = await readBoundedJson(req, REQUEST_BODY_LIMIT_BYTES);
+    if (!body.ok && body.reason === "too_large") {
+      return NextResponse.json({ error: "Request body too large.", code: "invalid_input" }, { status: 413 });
+    }
+    const parsed = bodySchema.safeParse(body.ok ? body.value : null);
     if (!parsed.success) throw new AppError("invalid_input", "Choose one existing internal employee.");
     const limit = await consumeRateLimit(RATE_LIMITS.agentInferenceOnlyByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "The restricted inference check has reached its short test limit. Wait one minute and try again.", { retryAfterSeconds: limit.retryAfterSeconds });

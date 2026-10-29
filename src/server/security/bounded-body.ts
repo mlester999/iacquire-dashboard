@@ -32,6 +32,22 @@ export async function readBoundedText(req: Request, maxBytes: number): Promise<s
   return bytes === null ? null : new TextDecoder("utf-8").decode(bytes);
 }
 
+export type BoundedJsonResult =
+  | { ok: true; value: unknown }
+  | { ok: false; reason: "too_large" | "invalid_json" };
+
+/** Reads a JSON request under a byte ceiling before parsing; malformed UTF-8 and JSON are rejected. */
+export async function readBoundedJson(req: Request, maxBytes: number): Promise<BoundedJsonResult> {
+  const bytes = await readBoundedBytes(req, maxBytes);
+  if (bytes === null) return { ok: false, reason: "too_large" };
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+}
+
 /**
  * The body parsed as form data (urlencoded or multipart), or null when it is larger than `maxBytes`. A body that is not valid form data comes back as an empty FormData, the way
  * the callers that used `req.formData()` inside a try/catch already treated it.

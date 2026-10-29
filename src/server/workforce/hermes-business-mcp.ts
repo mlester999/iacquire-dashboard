@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "@/lib/agents";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 import { hasExplicitTargeting, targetingSchema } from "@/lib/leads-targeting";
 import { AppError } from "@/server/errors";
 import { withSystem, type Queryable } from "@/server/db";
@@ -110,7 +111,7 @@ async function activeChatRun(db: Queryable, profile: InternalProfile): Promise<A
        join agent_config_versions v on v.id=r.config_version_id and v.agent_instance_id=a.id and v.org_id=a.org_id and v.status='applied'
       where r.org_id=$1 and r.agent_instance_id=$2 and r.purpose='chat' and r.status='running'
         and r.hermes_run_id is not null and r.started_at > now() - interval '20 minutes'
-        and a.enabled and a.status in ('online','busy') and a.last_health_ok is true
+        and ${runtimeReadySql("a", { credentialRevocation: true })}
         and a.tool_inventory_expires_at > now() and a.hermes_profile=$3
         and a.active_config_version_id=r.config_version_id
       order by r.started_at desc limit 2`,

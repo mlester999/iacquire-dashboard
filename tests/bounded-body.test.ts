@@ -1,6 +1,6 @@
 // The ceiling on a public request body is enforced while the body arrives, not after it has all been read.
 import { describe, expect, it } from "vitest";
-import { readBoundedBytes, readBoundedFormData, readBoundedText } from "@/server/security/bounded-body";
+import { readBoundedBytes, readBoundedFormData, readBoundedJson, readBoundedText } from "@/server/security/bounded-body";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}, init: Record<string, unknown> = {}) =>
   new Request("http://127.0.0.1/api/x", { method: "POST", body, headers, ...init } as RequestInit);
@@ -83,6 +83,29 @@ describe("readBoundedBytes", () => {
     expect(Array.from((await readBoundedBytes(post(new Uint8Array([1, 2, 3])), 10)) ?? [])).toEqual([1, 2, 3]);
     expect((await readBoundedBytes(new Request("http://127.0.0.1/x", { method: "POST" }), 10))?.byteLength).toBe(0);
     expect(await readBoundedBytes(post(new Uint8Array(11)), 10)).toBeNull();
+  });
+});
+
+describe("readBoundedJson", () => {
+  it("parses a valid small body and accepts exactly the byte ceiling", async () => {
+    const body = JSON.stringify({ role: "crm_manager" });
+    expect(await readBoundedJson(post(body), new TextEncoder().encode(body).byteLength)).toEqual({
+      ok: true,
+      value: { role: "crm_manager" },
+    });
+  });
+
+  it("rejects oversized declared, chunked, and misleading-length bodies before parsing", async () => {
+    expect(await readBoundedJson(post("{}"), 1)).toEqual({ ok: false, reason: "too_large" });
+    const { stream } = chunkedBody(100_000, 1024);
+    expect(await readBoundedJson(post(stream, {}, { duplex: "half" }), 32)).toEqual({ ok: false, reason: "too_large" });
+    const liedAboutLength = post("{" + " ".repeat(40), { "content-length": "1" });
+    expect(await readBoundedJson(liedAboutLength, 16)).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  it("rejects malformed JSON and invalid UTF-8 distinctly from oversized input", async () => {
+    expect(await readBoundedJson(post("{"), 16)).toEqual({ ok: false, reason: "invalid_json" });
+    expect(await readBoundedJson(post(new Uint8Array([0xff])), 16)).toEqual({ ok: false, reason: "invalid_json" });
   });
 });
 
