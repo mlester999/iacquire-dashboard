@@ -25,6 +25,27 @@ const shellSyntaxOnly = (line: string) => line
 
 const hasBash = spawnSync("bash", ["-c", "true"]).status === 0;
 const workDirs: string[] = [];
+
+// The fake docker below is a script the preflight has to execute. CI mounts /tmp noexec, so the script
+// goes in the first scratch directory where a script can actually run: the system temp directory,
+// else the workspace's node_modules/.cache (ignored by git).
+function executableScratchDir(): string | null {
+  for (const base of [tmpdir(), join(root, "node_modules", ".cache")]) {
+    let dir: string | null = null;
+    try {
+      mkdirSync(base, { recursive: true });
+      dir = mkdtempSync(join(base, "a1-preflight-bin-"));
+      const probe = join(dir, "probe");
+      writeFileSync(probe, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+      // Run it through bash, the way the preflight does, so a noexec mount fails here and Windows still works.
+      if (spawnSync("bash", ["-c", '"$1"', "probe", probe.replace(/\\/g, "/")]).status === 0) return dir;
+    } catch {
+      // try the next location
+    }
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+  return null;
+}
 afterAll(() => { for (const dir of workDirs) rmSync(dir, { recursive: true, force: true }); });
 
 describe("VPS preflight script is read-only", () => {
@@ -101,8 +122,9 @@ describe("VPS preflight script is read-only", () => {
       writeFileSync(join(p, ".env"), "DEEPSEEK_API_KEY=sk-LEAKCANARY1234567890abcdef\nOTHER=topsecretvalue99\nDEEPSEEK_BASE_URL=https://user:LEAKCANARYPASS@api.deepseek.com/v1?token=LEAKCANARYURL\n");
     }
     writeFileSync(join(dir, "data", ".env"), "DEEPSEEK_API_KEY=sk-LEAKCANARYSHARED000000\n");
-    const bin = join(dir, "bin");
-    mkdirSync(bin);
+    const bin = executableScratchDir();
+    if (!bin) throw new Error("no scratch directory allows running scripts, so the fake docker cannot run");
+    workDirs.push(bin);
     writeFileSync(join(bin, "docker"), [
       "#!/usr/bin/env bash",
       'cmd=$1; shift',

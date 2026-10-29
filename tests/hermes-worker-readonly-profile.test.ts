@@ -47,6 +47,13 @@ describe("read-only profile smoke in CI", () => {
     expect(smoke).toContain("a throwaway Hermes home was left behind");
   });
 
+  it("explains its own failure, because the worker hides child errors and job logs need a sign-in", () => {
+    expect(smoke).toContain("def diagnose(");
+    expect(smoke).toContain("DIAGNOSTIC_CHILD");
+    expect(workflow).toContain("Read-only profile smoke failed");
+    expect(workflow).toContain('report "Unexpected failing test files"');
+  });
+
   it("is built into the image and compiled with the other smokes", () => {
     expect(dockerfile).toContain("pinned_readonly_profile_smoke.py /opt/iacquire-hermes/inference/pinned_readonly_profile_smoke.py");
     expect(dockerfile).toMatch(/py_compile \\\n\s+\/opt\/iacquire-hermes\/inference\/pinned_prompt_audit_smoke\.py \\\n\s+\/opt\/iacquire-hermes\/inference\/pinned_readonly_profile_smoke\.py/);

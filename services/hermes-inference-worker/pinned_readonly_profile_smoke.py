@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -38,6 +39,49 @@ def snapshot(directory: Path) -> dict[str, str]:
 
 def fail(message: str) -> None:
     raise SystemExit(message)
+
+
+# The worker discards the child's errors on purpose, so a refused audit says only "inference_failed".
+# This smoke handles synthetic content only, so when it fails it re-runs the same child with the
+# same environment and prints why, which is what makes a CI failure readable.
+DIAGNOSTIC_CHILD = """
+import io, json, sys, traceback
+import inference_runner
+sys.stdin = io.TextIOWrapper(io.BytesIO(sys.stdin.buffer.read()), encoding="utf-8")
+try:
+    inference_runner.main()
+except BaseException as error:
+    seen, cursor = [], error
+    while cursor is not None and len(seen) < 4:
+        seen.append(cursor)
+        cursor = cursor.__cause__ or cursor.__context__
+    for item in seen:
+        frames = traceback.extract_tb(item.__traceback__)[-3:]
+        where = " <- ".join(f"{frame.filename.rsplit('/', 1)[-1]}:{frame.lineno} {frame.name}" for frame in reversed(frames))
+        print(f"child raised {type(item).__name__}: {str(item)[:300]} @ {where}", file=sys.stderr)
+    raise SystemExit(3)
+"""
+
+
+def diagnose(captured: dict[str, Any], profile: Path) -> None:
+    for label, with_empty_dotenv in (("worker home", False), ("worker home plus an empty .env", True)):
+        home = worker.build_runtime_home(profile, "prompt_audit", tempfile.gettempdir())
+        try:
+            if with_empty_dotenv:
+                (home / ".env").write_text("", encoding="ascii")
+            env = dict(captured["env"])
+            env["HERMES_HOME"] = str(home)
+            env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '/opt/hermes')}:{Path(worker.__file__).resolve().parent}"
+            done = subprocess.run(
+                [captured["python"], "-c", DIAGNOSTIC_CHILD],
+                input=captured["input"], text=True, capture_output=True, env=env, cwd=captured["cwd"],
+                timeout=90, check=False,
+            )
+            print(f"diagnostic [{label}]: exit {done.returncode}; entries {sorted(path.name for path in home.iterdir())}")
+            print(f"diagnostic [{label}] stdout: {done.stdout[-400:]}")
+            print(f"diagnostic [{label}] stderr: {done.stderr[-1200:]}")
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
 
 
 def main() -> None:
@@ -77,7 +121,24 @@ def main() -> None:
         "history": [],
         "mode": "prompt_audit",
     }).encode("utf-8"))
-    result: dict[str, Any] = worker.execute(request, worker.run_pinned_hermes)
+    captured: dict[str, Any] = {}
+    real_run = subprocess.run
+
+    def recording_run(command: list[str], **kwargs: Any) -> Any:
+        captured.update(python=command[0], env=kwargs["env"], input=kwargs["input"], cwd=kwargs["cwd"])
+        return real_run(command, **kwargs)
+
+    subprocess.run = recording_run
+    try:
+        result: dict[str, Any] = worker.execute(request, worker.run_pinned_hermes)
+    except worker.RequestError as error:
+        subprocess.run = real_run
+        print(f"the worker refused the audit: {error.code} ({error.status})")
+        if captured:
+            diagnose(captured, profile)
+        fail("audit through the read-only profile was refused")
+    finally:
+        subprocess.run = real_run
 
     expected = {
         "ok": True,

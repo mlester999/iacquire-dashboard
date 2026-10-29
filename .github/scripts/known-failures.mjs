@@ -26,6 +26,14 @@ console.log(`known failing files still failing: ${[...failed].filter((file) => K
 if (fixed.length) console.log(`known failing files that now pass (informational): ${fixed.join(", ")}`);
 if (unexpected.length) {
   console.error(`UNEXPECTED failing files (${unexpected.length}):\n  ${unexpected.join("\n  ")}`);
+  // Job logs need a GitHub sign-in to read, so name the failing tests and the first line of why.
+  for (const file of report.testResults.filter((entry) => entry.status === "failed" && unexpected.includes(relative(entry.name)))) {
+    const failedTests = (file.assertionResults ?? []).filter((test) => test.status === "failed").slice(0, 6);
+    console.error(`${relative(file.name)}: ${failedTests.length ? "" : (file.message ?? "no test result (the file failed to load)").split("\n")[0].slice(0, 240)}`);
+    for (const test of failedTests) {
+      console.error(`  - ${test.fullName}: ${String(test.failureMessages?.[0] ?? "").split("\n")[0].slice(0, 240)}`);
+    }
+  }
   process.exit(1);
 }
 console.log("KNOWN_FAILURES_ONLY: no failure outside the nine recorded on production master");

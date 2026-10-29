@@ -80,14 +80,24 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=1g \
             --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
-            --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c '
-              set +e
+            --workdir /workspace --entrypoint sh node:24-bookworm-slim -c '
               npm test -- --pool=forks --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=/tmp/vitest-report.json
               echo "vitest exit code: $?"
-              set -e
-              node .github/scripts/known-failures.mjs /tmp/vitest-report.json
-              npm run typecheck
-              npm run lint
+              # Job logs need a GitHub sign-in to read, so each failing stage is also reported as an annotation.
+              report() { if [ "$2" != 0 ]; then echo "::error title=$1::$(tail -n 30 "$3" | tr "\n" "|" | cut -c1-2800)"; fi; }
+              node .github/scripts/known-failures.mjs /tmp/vitest-report.json > /tmp/known-failures.log 2>&1
+              known=$?
+              tail -n 60 /tmp/known-failures.log
+              npm run typecheck > /tmp/typecheck.log 2>&1
+              types=$?
+              tail -n 40 /tmp/typecheck.log
+              npm run lint > /tmp/lint.log 2>&1
+              lint=$?
+              tail -n 40 /tmp/lint.log
+              report "Unexpected failing test files" "$known" /tmp/known-failures.log
+              report "TypeScript failed" "$types" /tmp/typecheck.log
+              report "Lint failed" "$lint" /tmp/lint.log
+              if [ "$known" != 0 ] || [ "$types" != 0 ] || [ "$lint" != 0 ]; then exit 1; fi
             '
 
       # The production build fetches Google Fonts, so it is the one step that needs outbound access (found by the first Linux runs of this workflow); the tests, TypeScript and lint above stay offline.
@@ -193,7 +203,7 @@ jobs:
             --entrypoint /opt/hermes/.venv/bin/python \
             iacquire/hermes-inference-worker:ci -B \
             /opt/iacquire-hermes/inference/pinned_readonly_profile_smoke.py > "$log" 2>&1; then
-            echo "::error title=Read-only profile smoke failed::$(tail -n 25 "$log" | tr '\n' '|' | cut -c1-1500)"
+            echo "::error title=Read-only profile smoke failed::$(tail -n 25 "$log" | tr '\n' '|' | cut -c1-3500)"
             exit 1
           fi
           cat "$log"
