@@ -59,6 +59,11 @@ const schema = z.object({
   // GoHighLevel's webhook verification key is published and built in; set this only when GoHighLevel rotates it.
   GHL_WEBHOOK_PUBLIC_KEY: z.preprocess(blankToUndefined, z.string().optional()),
   ALLOW_INSECURE_HERMES_URLS: bool,
+  // First-party business MCP is inert until explicitly enabled. Profile API keys authenticate the endpoint,
+  // and every tool call is rebound to one active authenticated Chat run at request time.
+  HERMES_BUSINESS_MCP_ENABLED: bool,
+  // Writes are separately disabled. When enabled, the bridge may only create approval requests; it never runs a write directly.
+  HERMES_BUSINESS_MCP_WRITES_ENABLED: bool,
 
   // PayMongo: server-only secrets. Key prefixes decide test or live mode; live checkout also needs the review flag in the portal.
   PAYMONGO_SECRET_KEY: z.preprocess(blankToUndefined, z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, "must be a PayMongo secret key").optional()),
@@ -94,6 +99,10 @@ const schema = z.object({
   HERMES_PROVISIONER_ENABLED: bool,
   HERMES_PROVISIONER_TOKEN: z.preprocess(blankToUndefined, z.string().min(32).max(512).optional()),
   HERMES_PROVISIONER_GATEWAY_ID: z.preprocess(blankToUndefined, z.string().uuid().optional()),
+  // Restricted, no-tool DeepSeek worker. Its endpoint and HMAC secret are server-only; disabled unless explicitly enabled.
+  HERMES_INFERENCE_WORKER_ENABLED: bool,
+  HERMES_INFERENCE_WORKER_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  HERMES_INFERENCE_WORKER_SECRET: z.preprocess(blankToUndefined, z.string().min(32).max(512).optional()),
   // Second, deliberate switch for the scheduled worker. Both this and CRON_SECRET must be set before any job can run, so deploying
   // the scheduler configuration cannot start outbound work by itself. Off unless explicitly enabled.
   SCHEDULER_ENABLED: bool,
@@ -224,6 +233,12 @@ export function env(): Env {
   if (value.HERMES_PROVISIONER_ENABLED && (!value.HERMES_PROVISIONER_TOKEN || !value.HERMES_PROVISIONER_GATEWAY_ID)) {
     throw new Error("HERMES_PROVISIONER_ENABLED requires its server-only token and pinned gateway id.");
   }
+  if (value.HERMES_INFERENCE_WORKER_ENABLED && (!value.HERMES_INFERENCE_WORKER_URL || !value.HERMES_INFERENCE_WORKER_SECRET)) {
+    throw new Error("HERMES_INFERENCE_WORKER_ENABLED requires its HTTPS endpoint and server-only HMAC secret.");
+  }
+  if (value.HERMES_INFERENCE_WORKER_ENABLED && value.NODE_ENV === "production" && !value.HERMES_INFERENCE_WORKER_URL?.startsWith("https://")) {
+    throw new Error("The Hermes inference worker must use HTTPS in production.");
+  }
   const authProvider = resolveAuthProvider(process.env);
   const driver = value.DATABASE_DRIVER ?? (authProvider === "local" ? "pglite" : "postgres");
   // A secret in a NEXT_PUBLIC_ variable is a leak in every environment, not just production.
@@ -303,6 +318,9 @@ export function env(): Env {
     }
     if (value.ALLOW_INSECURE_HERMES_URLS) {
       throw new Error("ALLOW_INSECURE_HERMES_URLS cannot be enabled in production.");
+    }
+    if (value.HERMES_BUSINESS_MCP_WRITES_ENABLED && !value.HERMES_BUSINESS_MCP_ENABLED) {
+      throw new Error("HERMES_BUSINESS_MCP_WRITES_ENABLED requires HERMES_BUSINESS_MCP_ENABLED.");
     }
   }
   cached = { ...value, DATABASE_DRIVER: driver, AUTH_PROVIDER: authProvider };

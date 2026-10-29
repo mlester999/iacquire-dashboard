@@ -80,6 +80,8 @@ export const RATE_LIMITS = {
   invitationResend: { name: "invite:resend", limit: 6, windowSeconds: 3600 },
   accessRequestByIp: { name: "access:ip", limit: 5, windowSeconds: 3600 },
   agentMessageByUser: { name: "agent:user", limit: 30, windowSeconds: 60 },
+  // Restricted inference is intentionally much tighter than normal Chat: one six-role canary pass fits in this window.
+  agentInferenceOnlyByUser: { name: "agent:inference-only:user", limit: 6, windowSeconds: 60 },
   // Real provider runs against an unsaved employee draft. Separate from production chat so a test cannot exhaust a
   // person's chat allowance, and vice versa.
   agentPreviewByUser: { name: "agent:preview:user", limit: 10, windowSeconds: 60 },

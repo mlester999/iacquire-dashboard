@@ -55,6 +55,8 @@ import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
 import { enforceAgentAction } from "@/server/workforce/action-policy";
+import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
+import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -1298,6 +1300,7 @@ export interface SendInput {
   content?: string;
   clientMessageId?: string;
   regenerateMessageId?: string;
+  inferenceOnly?: boolean;
 }
 
 export interface SendResult {
@@ -1360,9 +1363,72 @@ async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
   return agent;
 }
 
+interface PreparedChatTurn {
+  conversationId: string;
+  userMessageId: string | null;
+  userContent: string;
+  history: Array<{ role: "user" | "assistant"; content: string }>;
+  sessionId: string;
+}
+
+async function createInferenceOnlyChatRun(
+  ctx: OrgContext,
+  agent: NonNullable<Awaited<ReturnType<typeof ensureAgentReady>>>,
+  role: AgentRoleKey,
+  prepared: PreparedChatTurn,
+) {
+  return withSystem(async (db) => {
+    const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id);
+    // The verification turn uses only the applied employee configuration and approved agency
+    // knowledge. It deliberately omits dynamic Operations Manager task context and chat history.
+    const conn = await loadConnection(db, agent.id);
+    if (!conn || conn.orgKind !== "agency" || conn.roleKey !== role) {
+      throw new AppError("agent_unavailable", "This internal employee connection could not be verified.");
+    }
+    const { rows: msg } = await db.query<{ id: string }>(
+      "insert into chat_messages (conversation_id, org_id, role, content, status) values ($1, $2, 'assistant', '', 'streaming') returning id",
+      [prepared.conversationId, ctx.org.orgId],
+    );
+    const idempotencyKey = `chat:${msg[0].id}`;
+    const { rows: run } = await db.query<{ id: string }>(
+      `insert into agent_runs (org_id, agent_instance_id, conversation_id, assistant_message_id, user_id, purpose,
+         idempotency_key, status, config_version_id)
+       values ($1, $2, $3, $4, $5, 'chat', $6, 'queued', $7) returning id`,
+      [ctx.org.orgId, agent.id, prepared.conversationId, msg[0].id, ctx.user.id, idempotencyKey, runInstructions.versionId],
+    );
+    await db.query("update chat_messages set run_id = $2 where id = $1", [msg[0].id, run[0].id]);
+    await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
+    await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
+    return {
+      assistantMessageId: msg[0].id,
+      runId: run[0].id,
+      instructions: runInstructions.instructions,
+      conn,
+      versionId: runInstructions.versionId,
+      knowledgeEntryIds: runInstructions.knowledgeEntryIds,
+      knowledgeDocumentIds: runInstructions.knowledgeDocumentIds,
+      idempotencyKey,
+    };
+  });
+}
+
 export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promise<SendResult> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't chat with AI employees.");
-  const limit = await consumeRateLimit(RATE_LIMITS.agentMessageByUser, ctx.user.id);
+  const inferenceOnly = input.inferenceOnly === true;
+  if (inferenceOnly) {
+    const config = env();
+    if (!config.HERMES_INFERENCE_WORKER_ENABLED) throw new AppError("forbidden", "Restricted employee inference is not enabled.");
+    if (ctx.org.kind !== "agency" || ctx.user.platformRole !== "agency_super_admin") {
+      throw new AppError("forbidden", "Restricted employee inference is available to internal Super Admins only.");
+    }
+    if (input.regenerateMessageId || (input.content ?? "").trim() !== HERMES_INFERENCE_ONLY_CHAT_CANARY) {
+      throw new AppError("invalid_input", "Restricted Chat accepts only the fixed no-tool verification message.");
+    }
+    if (input.conversationId) {
+      throw new AppError("invalid_input", "Start a new empty chat before running the restricted Chat check.");
+    }
+  }
+  const limit = await consumeRateLimit(inferenceOnly ? RATE_LIMITS.agentInferenceOnlyByUser : RATE_LIMITS.agentMessageByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You're sending messages quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
   await assertWithinLimits(ctx.org.orgId, "agent_message");
   const agent = await ensureAgentReady(ctx, input.agentRole);
@@ -1451,6 +1517,48 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       sessionId: conv[0].hermes_session_id,
     };
   });
+
+  if (inferenceOnly) {
+    const setup = await createInferenceOnlyChatRun(ctx, agent, input.agentRole, prepared);
+    const abort = new AbortController();
+    openChannel(setup.runId, ctx.user.id, abort);
+    publish(setup.runId, {
+      type: "ready",
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      assistantMessageId: setup.assistantMessageId,
+      runId: setup.runId,
+    });
+    void executeRun({
+      runId: setup.runId,
+      orgId: ctx.org.orgId,
+      agentId: agent.id,
+      configVersionId: setup.versionId,
+      agentRole: input.agentRole,
+      userId: ctx.user.id,
+      assistantMessageId: setup.assistantMessageId,
+      conversationId: prepared.conversationId,
+      conn: setup.conn,
+      abort,
+      inferenceOnly: true,
+      knowledgeEntryIds: setup.knowledgeEntryIds,
+      knowledgeDocumentIds: setup.knowledgeDocumentIds,
+      request: {
+        input: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        instructions: setup.instructions,
+        sessionId: prepared.sessionId,
+        conversationHistory: [],
+        idempotencyKey: setup.idempotencyKey,
+        memoryScope: `iaq:${ctx.org.orgId}:${input.agentRole}`,
+      },
+    });
+    return {
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      assistantMessageId: setup.assistantMessageId,
+      runId: setup.runId,
+    };
+  }
 
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
   // depend on an unenforced Hermes approval preference or let a generic run claim an action.
@@ -1853,6 +1961,7 @@ interface ExecuteRunInput {
   conversationId: string;
   conn: HermesConnection;
   abort: AbortController;
+  inferenceOnly?: boolean;
   /** Sources that were actually included in the instructions. Recorded only after the provider accepts the run. */
   knowledgeEntryIds?: string[];
   knowledgeDocumentIds?: string[];
@@ -1861,6 +1970,7 @@ interface ExecuteRunInput {
 
 const FRIENDLY_FAILURE: Record<string, string> = {
   start_failed: "The employee couldn't start working on this. Please try again.",
+  inference_only_unavailable: "The restricted DeepSeek Chat check couldn't finish. No tools or business actions were run.",
   connection_lost: "The connection to your AI employee dropped before it finished.",
   timeout: "This took longer than expected, so it was stopped.",
   run_failed: "Your AI employee couldn't finish this request.",
@@ -1944,6 +2054,80 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       const timer = setTimeout(done, ms);
       r.abort.signal.addEventListener("abort", done, { once: true });
     });
+
+  if (r.inferenceOnly) {
+    try {
+      await safeDb((db) => db.query("update agent_runs set status = 'running' where id = $1", [r.runId]));
+      if (typeof r.request.instructions !== "string" || !r.request.instructions.trim()) {
+        throw new Error("Restricted inference instructions are unavailable.");
+      }
+      const result = await requestInferenceOnly(r.conn, {
+        actorId: r.userId,
+        role: r.agentRole,
+        instructions: r.request.instructions,
+        input: HERMES_INFERENCE_ONLY_CHAT_CANARY,
+        history: [],
+        signal: r.abort.signal,
+      });
+      content = result.content;
+      if (r.abort.signal.aborted) {
+        const reason = String((r.abort.signal.reason as Error | undefined)?.message ?? "");
+        await finish(reason === "timeout" ? "timeout" : "cancelled", reason === "timeout" ? { errorCode: "timeout" } : {});
+        return;
+      }
+      publish(r.runId, { type: "delta", text: content });
+      await safeDb(async (db) => {
+        if (r.knowledgeEntryIds?.length || r.knowledgeDocumentIds?.length) {
+          await markEmployeeKnowledgeUsed(db, r.orgId, r.agentId, r.knowledgeEntryIds ?? [], r.knowledgeDocumentIds ?? []);
+        }
+      });
+      await recordAudit({
+        orgId: r.orgId,
+        actorUserId: r.userId,
+        actorKind: "user",
+        agentInstanceId: r.agentId,
+        action: "hermes.inference_only_chat",
+        targetType: "agent_run",
+        targetId: r.runId,
+        result: "success",
+        metadata: {
+          role: r.agentRole,
+          profile: r.conn.profile,
+          provider: result.provider,
+          model: result.model,
+          usageUnit: "tokens",
+          actualUsage: {
+            input: result.usage.inputTokens,
+            output: result.usage.outputTokens,
+            total: result.usage.totalTokens,
+          },
+          toolSchemas: 0,
+          toolCalls: 0,
+        },
+      });
+      await finish("completed", { content, usage: result.usage });
+      return;
+    } catch (err) {
+      const reason = r.abort.signal.aborted ? String((r.abort.signal.reason as Error | undefined)?.message ?? "") : "";
+      if (reason === "stopped_by_user" || reason === "timeout") {
+        await finish(reason === "timeout" ? "timeout" : "cancelled", reason === "timeout" ? { errorCode: "timeout" } : {});
+        return;
+      }
+      await recordAudit({
+        orgId: r.orgId,
+        actorUserId: r.userId,
+        actorKind: "user",
+        agentInstanceId: r.agentId,
+        action: "hermes.inference_only_chat",
+        targetType: "agent_run",
+        targetId: r.runId,
+        result: "failure",
+        metadata: { role: r.agentRole, provider: "deepseek", error: "inference_only_unavailable", toolSchemas: 0, toolCalls: 0 },
+      }).catch(() => undefined);
+      await finish("failed", { errorCode: "inference_only_unavailable" });
+      return;
+    }
+  }
 
   // Providers that do not advertise SSE still expose GET /v1/runs/{id}. In that case show an honest processing
   // state and render the completed output once; the browser UI already handles a response with no deltas.

@@ -9,6 +9,7 @@ import { AGENCY_HERMES_PROFILE_IDS, AGENT_BY_SLUG } from "@/lib/agents";
 import { preferredChatTimeZone } from "@/lib/chat-timezone";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { withSystem } from "@/server/db";
+import { env } from "@/server/env";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -131,6 +132,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       activeRunId={activeRunId}
       preferredTimeZone={preferredChatTimeZone(ctx.user.timezone, ctx.user.preferences)}
       orgKind={ctx.org.kind}
+      allowRestrictedInferenceMode={ctx.org.kind === "agency" && ctx.user.platformRole === "agency_super_admin" && env().HERMES_INFERENCE_WORKER_ENABLED}
       nowIso={new Date().toISOString()}
       initialInput={typeof q === "string" ? q.slice(0, 2000) : undefined}
     />

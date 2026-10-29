@@ -1,0 +1,116 @@
+name: Hermes inference worker verification
+run-name: Synthetic worker isolation checks (${{ github.ref_name }})
+
+on:
+  # A branch-scoped push run keeps verification possible without adding this workflow to master.
+  push:
+    branches:
+      - codex/internal-iacquire-activation
+    paths:
+      - services/hermes-inference-worker/**
+      - .github/workflows/hermes-inference-worker.yml
+  # GitHub exposes workflow_dispatch only when the workflow exists on the default branch.
+  # Kept for future manual use after that separate approval; never targets production.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-inference-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-build-and-smoke:
+    name: Build pinned Hermes worker and run synthetic checks
+    if: github.ref_name == 'codex/internal-iacquire-activation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the isolated branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify runner and branch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUNNER_OS" == Linux ]]
+          [[ "$(lsb_release -rs)" == "24.04" ]]
+          [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
+          docker version
+          docker compose version
+
+      - name: Build the pinned worker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --platform linux/amd64 \
+            --file services/hermes-inference-worker/Dockerfile \
+            --tag iacquire/hermes-inference-worker:ci .
+
+      - name: Run pinned Hermes smoke in an isolated container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_runtime_smoke.py
+
+      - name: Re-run worker policy and failure tests with network disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B -m unittest discover \
+            -s /opt/iacquire-hermes/inference -p 'test_*.py' -v
+
+      - name: Validate role-specific Compose isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          export IACQUIRE_INFERENCE_HMAC_FILE="$RUNNER_TEMP/synthetic-hmac"
+          export HERMES_PROFILE_BASE="$RUNNER_TEMP/synthetic-profiles"
+          docker compose -f services/hermes-inference-worker/compose.internal.yaml \
+            config --format json > "$RUNNER_TEMP/hermes-worker-compose.json"
+          python3 - "$RUNNER_TEMP/hermes-worker-compose.json" <<'PY'
+          import json, sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              config = json.load(source)
+          roles = (
+              "operations-manager", "lead-hunter", "appointment-setter",
+              "sales-assistant", "crm-manager", "performance-analyst",
+          )
+          services = config["services"]
+          assert len(services) == 7, "expected six workers and one egress proxy"
+          proxy_name = "iacquire-deepseek-egress-proxy"
+          assert proxy_name in services
+          for role in roles:
+              name = f"iacquire-hermes-inference-worker-{role}"
+              service = services[name]
+              assert service.get("read_only") is True, name
+              assert not service.get("ports"), name
+              assert "ALL" in service.get("cap_drop", []), name
+              assert "no-new-privileges:true" in service.get("security_opt", []), name
+              profiles = [v for v in service.get("volumes", []) if v.get("target", "").startswith("/profiles/")]
+              assert len(profiles) == 1 and profiles[0].get("read_only") is True, name
+              attached = set(service["networks"])
+              assert "deepseek_egress" not in attached, name
+              assert len(attached) == 2, name
+          networks = config["networks"]
+          assert networks["deepseek_egress"].get("internal") is not True
+          for name, network in networks.items():
+              if name != "deepseek_egress":
+                  assert network.get("internal") is True, name
+          proxy_networks = set(services[proxy_name]["networks"])
+          assert "deepseek_egress" in proxy_networks
+          print("COMPOSE_ISOLATION_PASS: six one-profile workers, no published ports, only the proxy has external egress")
+          PY

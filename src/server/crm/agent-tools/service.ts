@@ -14,6 +14,8 @@ import {
 } from "@/server/crm/agent-tools/catalog";
 import { HANDLERS, type ToolContext, type ToolOutput, type WritePlan } from "@/server/crm/agent-tools/handlers";
 import { verifyAgentToolToken, type VerifiedAgentToken } from "@/server/crm/agent-tools/tokens";
+import { env } from "@/server/env";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 
 /**
  * One CRM tool call from a client's own AI employee, end to end:
@@ -46,6 +48,8 @@ export interface AgentToolCall {
    */
   callId?: string | null;
   ipHash?: string | null;
+  /** The first-party MCP bridge may expose writes only as approval requests, regardless of employee mode. */
+  forceApprovalWrites?: boolean;
   now?: Date;
 }
 
@@ -58,6 +62,8 @@ interface AgentRow {
   org_name: string;
   org_timezone: string;
   org_kind: string;
+  is_internal_agency: boolean;
+  hermes_profile: string | null;
 }
 
 interface CallScope {
@@ -83,11 +89,21 @@ export const inputHash = (tool: string, input: unknown) => sha256(`${tool}\n${st
 
 async function loadAgent(db: Queryable, auth: VerifiedAgentToken): Promise<AgentRow | null> {
   const { rows } = await db.query<AgentRow>(
-    `select a.id, a.role_key, a.display_name, a.enabled, o.id as org_id, o.name as org_name, o.timezone as org_timezone, o.kind as org_kind
+    `select a.id,a.role_key,a.display_name,a.enabled,o.id as org_id,o.name as org_name,o.timezone as org_timezone,o.kind as org_kind,
+            (o.id=(select id from organizations where kind='agency' order by created_at asc limit 1)) as is_internal_agency,a.hermes_profile
      from agent_instances a join organizations o on o.id = a.org_id where a.id = $1 and a.org_id = $2`,
     [auth.agentInstanceId, auth.orgId],
   );
   return rows[0] ?? null;
+}
+
+function agentToolAccessEnabled(agent: AgentRow): boolean {
+  if (agent.org_kind === "client") return true;
+  return Boolean(
+    agent.org_kind === "agency" && agent.is_internal_agency && env().HERMES_BUSINESS_MCP_ENABLED
+    && AGENT_ROLE_KEYS.includes(agent.role_key as AgentRoleKey)
+    && agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key as AgentRoleKey],
+  );
 }
 
 function scopeFor(auth: VerifiedAgentToken, agent: AgentRow): CallScope {
@@ -200,13 +216,13 @@ async function findCallApproval(db: Queryable, s: CallScope, tool: AgentToolName
 }
 
 /** Records a CRM update approval for a write the employee may not (or may never) make on its own. Idempotent per run, tool, arguments and call. */
-async function requestApprovalForCall(db: Queryable, s: CallScope, tool: AgentToolName, input: Record<string, unknown>, plan: WritePlan, callRef: string): Promise<CallApproval> {
+async function requestApprovalForCall(db: Queryable, s: CallScope, tool: AgentToolName, input: Record<string, unknown>, plan: WritePlan, callRef: string, forcedApproval = false): Promise<CallApproval> {
   const key = approvalKey(s, tool, input, callRef);
   const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : `${s.agent.display_name} asked to ${plan.summary}.`;
   const why = plan.highImpact ? ` This always needs a person: ${plan.highImpact.charAt(0).toLowerCase()}${plan.highImpact.slice(1)}` : "";
   const id = await createApproval(db, {
     orgId: s.agent.org_id, agentId: s.agent.id, kind: "crm_update", title: `${s.agent.display_name}: ${plan.summary}`.slice(0, 200),
-    action: { source: "agent_tool", v: 1, tool, input, inputHash: inputHash(tool, input), runId: s.auth.runId, accessId: s.auth.tokenId, callRef, scopes: s.scopes },
+    action: { source: "agent_tool", v: 1, tool, input, inputHash: inputHash(tool, input), runId: s.auth.runId, accessId: s.auth.tokenId, callRef, scopes: s.scopes, forcedApproval },
     targetType: plan.targetType, targetId: plan.targetId.slice(0, 120), targetLabel: plan.targetLabel.slice(0, 200),
     reason: `${reason}${why}`.slice(0, 2000), expectedEffect: `${plan.expectedEffect} Nothing changes unless this is approved.`.slice(0, 2000),
     risk: plan.highImpact ? "high" : "medium", expiresInHours: 72, idempotencyKey: key, actorKind: "agent",
@@ -261,7 +277,7 @@ export async function describeAgentTools(token: string | null, opts: { ipHash?: 
   const auth = await withSystem((db) => verifyAgentToolToken(db, token));
   if (!auth) return unauthorized(opts.ipHash);
   const agent = await withSystem((db) => loadAgent(db, auth));
-  if (!agent || agent.org_kind !== "client" || !agent.enabled) return refuse(403, "forbidden", "This AI employee can't use CRM tools.");
+  if (!agent || !agentToolAccessEnabled(agent) || !agent.enabled) return refuse(403, "forbidden", "This AI employee can't use business tools.");
   const limit = await consumeRateLimit(RATE_LIMITS.agentToolCallsByEmployee, agent.id);
   if (!limit.allowed) return refuse(429, "rate_limited", "Too many CRM tool calls from this AI employee. Wait a moment and try again.", { retryAfterSeconds: limit.retryAfterSeconds });
   const s = scopeFor(auth, agent);
@@ -275,7 +291,7 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
   const auth = await withSystem((db) => verifyAgentToolToken(db, call.token));
   if (!auth) return unauthorized(call.ipHash);
   const agent = await withSystem((db) => loadAgent(db, auth));
-  if (!agent || agent.org_kind !== "client") return unauthorized(call.ipHash);
+  if (!agent || !agentToolAccessEnabled(agent)) return unauthorized(call.ipHash);
   const s = scopeFor(auth, agent);
   const toolName = call.tool.slice(0, 60);
   const known = isAgentToolName(toolName);
@@ -343,9 +359,9 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
       // Once this exact call became an approval request, it is only ever carried out through that request: an employee switched to
       // autonomous since, repeating the call, must not do it a second time beside the approval.
       const asked = await withSystem((db) => findCallApproval(db, s, toolName, input, callRef));
-      if (asked || gate.decision !== "allow" || plan.highImpact || def.alwaysApproval) {
+      if (asked || gate.decision !== "allow" || plan.highImpact || def.alwaysApproval || call.forceApprovalWrites === true) {
         const approval = await withSystem(async (db) => {
-          const a = await requestApprovalForCall(db, s, toolName, input, plan, callRef);
+          const a = await requestApprovalForCall(db, s, toolName, input, plan, callRef, call.forceApprovalWrites === true);
           const settled = settledApproval(a);
           await logCall(db, s, {
             ...base, outcome: settled ? settled.status : "pending_approval", result: "success", detail: settled ? settled.detail : plan.summary, targetType: plan.targetType, targetId: plan.targetId,
@@ -407,7 +423,10 @@ export async function executeApprovedAgentToolCall(input: { orgId: string; appro
   const accessId = typeof a.accessId === "string" ? a.accessId : "approval";
   const scopes = Array.isArray(a.scopes) ? a.scopes.filter((x): x is string => typeof x === "string") : [];
   const agent = await withSystem((db) => loadAgent(db, { tokenId: accessId, orgId: input.orgId, agentInstanceId: agentId, runId, scopes }));
-  if (!agent || agent.org_kind !== "client") return { status: "failed", detail: "The AI employee that asked for this no longer exists. Nothing was changed." };
+  if (!agent || !agentToolAccessEnabled(agent)) return { status: "failed", detail: "The AI employee that asked for this no longer exists. Nothing was changed." };
+  if (agent.org_kind === "agency" && (!env().HERMES_BUSINESS_MCP_WRITES_ENABLED || a.forcedApproval !== true)) {
+    return { status: "blocked", detail: "Internal AI employee changes can only proceed through the approved business-tool path. Nothing was changed." };
+  }
   const s = scopeFor({ tokenId: accessId, orgId: input.orgId, agentInstanceId: agent.id, runId, scopes }, agent);
   const def = AGENT_TOOLS[tool];
   if (!agent.enabled || !allowsTool(s, def)) return { status: "blocked", detail: `${agent.display_name} is no longer allowed to ${def.label.toLowerCase()}, so nothing was changed.` };
