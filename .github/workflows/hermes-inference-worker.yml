@@ -38,7 +38,8 @@ jobs:
         shell: bash
         env:
           EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
-          EXPECTED_PREVIOUS_CI_SHA: fd610fa9da5b69844c74bdbdc928b04a4d6890df
+          EXPECTED_PREVIOUS_CI_SHA: b6dca6f36d9dfde244e7c93393e6f5eed58228bc
+          EXPECTED_PRIOR_CI_SHA: fd610fa9da5b69844c74bdbdc928b04a4d6890df
           EXPECTED_MASTER_SHA: 7d411f250ec5f4df2e97282bdb4b8d36830b7355
           EXPECTED_WORKER_CANDIDATE_SHA: b9422e475007ef78c6119558f9b9950a13135a05
           EXPECTED_DIAGNOSTIC_SHA: 89ea940a1f45f32c1d229a48bf0fa25b13c1c7ba
@@ -46,7 +47,8 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
-          [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_RECONCILED_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_PRIOR_CI_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_PRIOR_CI_SHA^")" == "$EXPECTED_RECONCILED_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_RECONCILED_SHA^2")" == "$EXPECTED_MASTER_SHA" ]]
           [[ "$(git merge-base "$EXPECTED_RECONCILED_SHA" "$EXPECTED_WORKER_CANDIDATE_SHA")" == "$EXPECTED_WORKER_CANDIDATE_SHA" ]]
           [[ "$(git merge-base "$EXPECTED_WORKER_CANDIDATE_SHA" "$EXPECTED_DIAGNOSTIC_SHA")" == "$EXPECTED_DIAGNOSTIC_SHA" ]]
@@ -80,7 +82,7 @@ jobs:
             --fetch-timeout=300000
           docker pull --quiet node:24-bookworm-slim
 
-      - name: Run focused app tests, TypeScript, lint, and production build offline
+      - name: Run focused app tests, TypeScript, and lint offline
         shell: bash
         run: |
           set -euo pipefail
@@ -106,8 +108,20 @@ jobs:
                 tests/workforce-chat-appointment-change-intent.test.ts
               npm run typecheck
               npm run lint
-              npm run build
             '
+
+      - name: Build the production bundle with outbound access for Google Fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network bridge --read-only \
+            --user "$(id -u):$(id -g)" --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=512m \
+            --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
+            --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c \
+              'npm run build'
 
       - name: Build the pinned worker image
         shell: bash
