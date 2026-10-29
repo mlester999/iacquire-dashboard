@@ -55,6 +55,22 @@ describe("an employee only offers what the chat router really starts", () => {
     expect(parseWorkforceChatAssignment(role, say)?.capability).toBe(def.capability);
   });
 
+  it("any wording an employee is told to suggest inside a description is itself a request the router recognises", () => {
+    // The Performance Analyst once suggested asking for "this month", which on its own never produced the card; a suggested wording must be a complete request.
+    let quoted = 0;
+    for (const role of AGENT_ROLE_KEYS) {
+      for (const def of CHAT_REQUESTS[role]) {
+        for (const match of def.result.matchAll(/"([^"]+)"/g)) {
+          quoted += 1;
+          expect(def.capability, `${def.key} suggests a quoted wording but names no capability`).toBeDefined();
+          expect(parseWorkforceChatAssignment(role, match[1])?.capability, `${def.key}: "${match[1]}"`).toBe(def.capability);
+        }
+      }
+    }
+    expect(quoted).toBeGreaterThan(0);
+    expect(parseWorkforceChatAssignment("performance_analyst", "Show our performance metrics this month")?.input).toEqual({ period: "current_month" });
+  });
+
   it("every role has at least one request, and a request that names a capability names one its role may use", () => {
     for (const role of AGENT_ROLE_KEYS) expect(CHAT_REQUESTS[role].length, role).toBeGreaterThan(0);
   });
@@ -286,6 +302,25 @@ describe("the snapshot an employee is given", () => {
     expect(cannot.map((c) => c.request)).toEqual(["A calendar availability check", "A booking preview", "A cancellation or reschedule preview"]);
     for (const item of cannot) expect(item.because).toBe("no booking calendar is set up yet, so it cannot work yet");
     expect(String(requests.facts.everythingElse)).toContain("cannot be done from this chat");
+  });
+
+  it("an Appointment Setter with no calendar is given no appointment count, and told not to say nothing is booked", async () => {
+    // Found in production on 2026-10-29: "Nothing is booked this week" was said when no calendar existed, so nothing could be verified.
+    const { sections, block } = await evidence(shop, "appointment_setter");
+    const appointments = byId(sections, "appointments")!;
+    expect(appointments.state).toBe("not_configured");
+    expect(appointments.facts.appointmentsThisWeek).toBeNull();
+    expect(appointments.facts.upcomingAppointmentsNext14Days).toBeNull();
+    expect(appointments.summary).toContain("not a confirmed empty week");
+    expect(String(appointments.facts.note)).toMatch(/Do not say that nothing is booked or that there are zero appointments/);
+    expect(block).not.toMatch(/"appointmentsThisWeek":0/);
+
+    // A workspace whose CRM was never opened takes the other path and carries the same instruction.
+    const bare = await crmOrg({ name: "Quality Bare", timezone: MANILA });
+    const bareAppointments = byId((await evidence(bare, "appointment_setter")).sections, "appointments")!;
+    expect(bareAppointments.state).toBe("not_configured");
+    expect(bareAppointments.summary).toContain("not a confirmed empty week");
+    expect(String(bareAppointments.facts.note)).toMatch(/Do not say that nothing is booked/);
   });
 
   it("a request the employee's own settings have switched off is not offered", async () => {

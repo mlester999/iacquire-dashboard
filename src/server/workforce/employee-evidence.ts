@@ -458,6 +458,9 @@ async function calendarSetup(b: Build): Promise<CalendarSetup> {
   };
 }
 
+/** Said to the employee whenever the calendar is not set up, so it never turns "could not be verified" into "nothing is booked". */
+const UNVERIFIABLE_APPOINTMENTS = "No booking calendar is set up, so this week's appointments could not be verified. Do not say that nothing is booked or that there are zero appointments, and do not give a count; say none could be verified because there is no calendar yet.";
+
 const STATUS_WORDS: Record<string, string> = { new: "waiting for confirmation", confirmed: "confirmed", showed: "attended", noshow: "no-show", cancelled: "cancelled", invalid: "invalid" };
 
 /** The appointments this week and over the next two weeks, as the signed-in person. An empty list is only "not set up" when the calendar's setup was actually checked. */
@@ -495,20 +498,29 @@ async function readAppointments(b: Build, actor: CrmActor, calendar: { ready: bo
     alreadyHappened: new Date(i.endAt) <= b.now,
   }));
   const noneAtAll = live.length === 0;
+  const thisWeek = `${week.startDate} to ${addDays(week.endDate, -1)} (Monday to Sunday, ${b.timeZone})`;
+  // With no calendar set up, "none found" proves nothing about the week, so no count is given at all: a zero would be read as "nothing is booked".
+  if (noneAtAll && calendar.known && !calendar.ready) {
+    return section(
+      "appointments",
+      APPOINTMENTS_TITLE,
+      "not_configured",
+      "There are no verified appointments to show, because the booking calendar is not fully set up. This is not a confirmed empty week; nothing could be checked.",
+      { facts: { thisWeek, appointmentsThisWeek: null, upcomingAppointmentsNext14Days: null, note: UNVERIFIABLE_APPOINTMENTS } },
+    );
+  }
   return section(
     "appointments",
     APPOINTMENTS_TITLE,
-    noneAtAll ? (calendar.ready || !calendar.known ? "empty" : "not_configured") : "ready",
+    noneAtAll ? "empty" : "ready",
     noneAtAll
       ? calendar.ready
         ? "The calendar is active and there are no appointments this week or in the next two weeks."
-        : calendar.known
-          ? "There are no verified appointments to show, because the booking calendar is not fully set up."
-          : "There are no appointments this week or in the next two weeks. Whether the calendar itself is fully set up could not be checked just now."
+        : "There are no appointments this week or in the next two weeks. Whether the calendar itself is fully set up could not be checked just now."
       : `There ${inWeek.length === 1 ? "is" : "are"} ${inWeek.length} appointment${inWeek.length === 1 ? "" : "s"} this week.`,
     {
       facts: {
-        thisWeek: `${week.startDate} to ${addDays(week.endDate, -1)} (Monday to Sunday, ${b.timeZone})`,
+        thisWeek,
         appointmentsThisWeek: inWeek.length,
         upcomingAppointmentsNext14Days: upcoming.length,
         cancelledInThisWindow: items.filter((i) => i.status === "cancelled").length,
@@ -526,7 +538,7 @@ async function appointmentSections(b: Build): Promise<EvidenceSection[]> {
   if (b.crmMode === null) {
     return [
       section("calendar", CALENDAR_TITLE, "not_configured", "No booking calendar is set up yet, so there are no verified appointments or availability to show."),
-      section("appointments", APPOINTMENTS_TITLE, "not_configured", "There are no verified appointments to show, because the booking calendar is not set up."),
+      section("appointments", APPOINTMENTS_TITLE, "not_configured", "There are no verified appointments to show, because the booking calendar is not set up. This is not a confirmed empty week; nothing could be checked.", { facts: { note: UNVERIFIABLE_APPOINTMENTS } }),
     ];
   }
   if (!b.nativeAppointments) return [unavailableSection("calendar", CALENDAR_TITLE, OTHER_SYSTEM), unavailableSection("appointments", APPOINTMENTS_TITLE, OTHER_SYSTEM)];

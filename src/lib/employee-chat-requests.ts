@@ -123,7 +123,7 @@ export const CHAT_REQUESTS: Record<AgentRoleKey, readonly ChatRequestDef[]> = {
       key: "performance_snapshot",
       label: "The performance KPI card",
       say: "Show our performance metrics for the last 30 days",
-      result: "iAcquire calculates the saved metrics and shows them as a KPI card with each figure's source. Nothing is estimated. Say \"this month\" for the current calendar month.",
+      result: "iAcquire calculates the saved metrics and shows them as a KPI card with each figure's source. Nothing is estimated. For the current calendar month, write \"Show our performance metrics this month\".",
       capability: "performance_snapshot",
       abilities: ["analytics.read"],
     },
