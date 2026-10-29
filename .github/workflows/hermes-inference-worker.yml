@@ -30,18 +30,25 @@ jobs:
       - name: Check out the isolated branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Verify the exact reconciled source and workflow-only change
         shell: bash
         env:
-          EXPECTED_CANDIDATE_SHA: 9bdb349337ce1aea8e8bfb162b677f544e8624ec
+          EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
+          EXPECTED_MASTER_SHA: 7d411f250ec5f4df2e97282bdb4b8d36830b7355
+          EXPECTED_WORKER_CANDIDATE_SHA: b9422e475007ef78c6119558f9b9950a13135a05
+          EXPECTED_DIAGNOSTIC_SHA: 89ea940a1f45f32c1d229a48bf0fa25b13c1c7ba
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_CANDIDATE_SHA" ]]
-          [[ "$(git diff --name-only "$EXPECTED_CANDIDATE_SHA" HEAD)" == ".github/workflows/hermes-inference-worker.yml" ]]
-          git diff --check "$EXPECTED_CANDIDATE_SHA" HEAD
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_RECONCILED_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_RECONCILED_SHA^2")" == "$EXPECTED_MASTER_SHA" ]]
+          [[ "$(git merge-base "$EXPECTED_RECONCILED_SHA" "$EXPECTED_WORKER_CANDIDATE_SHA")" == "$EXPECTED_WORKER_CANDIDATE_SHA" ]]
+          [[ "$(git merge-base "$EXPECTED_WORKER_CANDIDATE_SHA" "$EXPECTED_DIAGNOSTIC_SHA")" == "$EXPECTED_DIAGNOSTIC_SHA" ]]
+          [[ "$(git diff --name-only "$EXPECTED_RECONCILED_SHA" HEAD)" == ".github/workflows/hermes-inference-worker.yml" ]]
+          git diff --check "$EXPECTED_RECONCILED_SHA" HEAD
 
       - name: Verify runner and branch scope
         shell: bash
@@ -82,7 +89,16 @@ jobs:
               npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism \
                 tests/hermes-prompt-audit.test.ts \
                 tests/workforce-chat-booking-intent.test.ts \
-                tests/employee-chat-evidence.test.ts
+                tests/employee-chat-evidence.test.ts \
+                tests/employee-chat-quality.test.ts \
+                tests/internal-consultation-calendar.test.ts \
+                tests/client-onboarding-readiness.test.ts \
+                tests/employee-evidence.test.ts \
+                tests/employee-evidence-hardening.test.ts \
+                tests/employee-readiness-facts.test.ts \
+                tests/employee-readiness-states.test.ts \
+                tests/workforce-chat-assignment.test.ts \
+                tests/workforce-chat-appointment-change-intent.test.ts
               npm run typecheck
               npm run lint
               npm run build
