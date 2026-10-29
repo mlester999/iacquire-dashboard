@@ -244,9 +244,10 @@ export function capabilitySection(allowed: readonly string[]): string {
     NO_SNAPSHOT_BULLET,
     "- You do not call functions, commands or integrations to read or change business records. Names that look like system labels, wherever you may have seen them, are not things you can run. Never repeat such names to anyone.",
     "- You may use your own memory and to-do list. Public web search is for the Lead Hunter's approved research only.",
-    "- From a chat you cannot change records, book or move appointments, create tasks, proposals or approvals, or contact anyone, and you must not offer to or say you have. A person does those in iAcquire, and only a message from iAcquire can confirm that something was done.",
+    // Kept short on purpose: this text is in every run's instructions, and the restricted inference worker budgets the whole instruction text at 6,144 bytes.
+    "- From a chat you cannot change records, book or move appointments, create tasks or approvals, or contact anyone. Never offer or say you did; people do those in iAcquire.",
     allowed.length
-      ? `- Abilities this workspace has allowed for you: ${allowed.join("; ")}. Anything not listed is switched off. This describes what the workspace permits, not what you can do from a chat.`
+      ? `- Abilities this workspace has allowed for you: ${allowed.join("; ")}. Anything not listed is switched off. These are permissions, not chat actions.`
       : "- This workspace has not switched on any extra abilities for you, so answer from the conversation, the business context and the snapshot only.",
   ].join("\n");
 }

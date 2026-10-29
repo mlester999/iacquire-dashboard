@@ -63,8 +63,15 @@ describe("an employee only offers what the chat router really starts", () => {
     const text = capabilitySection(["Read contacts"]);
     expect(text).toContain(CAPABILITY_SECTION_HEADING);
     expect(text).not.toMatch(/prepared as a proposal|Offer and prepare only/);
-    expect(text).toMatch(/cannot change records, book or move appointments, create tasks, proposals or approvals/);
+    expect(text).toMatch(/cannot change records, book or move appointments, create tasks or approvals, or contact anyone/);
     expect(text).toContain("Abilities this workspace has allowed for you: Read contacts.");
+    // This text is in every run's instructions, and the restricted inference worker budgets the whole instruction text at 6,144 bytes, so it must not grow past what it replaced.
+    const replacedBytes = Buffer.byteLength([
+      "- Anything that changes a record, books or moves an appointment, or reaches a customer is prepared as a proposal for a person to approve in iAcquire. Call it a proposal until iAcquire confirms it is done.",
+      "- Abilities this workspace has allowed for you: Read contacts. Offer and prepare only these. Anything not listed is switched off.",
+    ].join("\n"), "utf8");
+    const newBytes = Buffer.byteLength(text.split("\n").filter((line) => /^- (From a chat|Abilities this workspace)/.test(line)).join("\n"), "utf8");
+    expect(newBytes).toBeLessThanOrEqual(replacedBytes);
   });
 });
 
