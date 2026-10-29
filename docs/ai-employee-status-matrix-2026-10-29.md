@@ -7,16 +7,16 @@ Rule followed: nothing below was deployed or pushed to `master` except the booki
 
 | Item | State |
 | --- | --- |
-| Production (`iacquire.online`) | `master` `eac5070f` = hardened employee snapshot (`5171595a`) + the booking-intent fix. Vercel `dpl_9njKoxrpaLuDh2MotxSfv9uv2LnE` (Ready, `githubCommitSha` `eac5070f`), `/api/health` ok, scheduler `never_ran` |
-| Previous production deployment (rollback) | `dpl_8KUKY1cDUB5mcqNQzCEGbmtrHLDj` (`5171595a`, hardened snapshot, without the booking fix). Older: `a8708414` then `d4adb4fd` |
-| Chat quality work (not deployed) | Branch `fix/chat-quality-polish` off `master` `eac5070f`: `c98a7bbe` (four chat defects), `919ea580` (calendar spec, onboarding test, label), `8bbcd0e8` (this document), `ef6aaa31` (keeps the new copy under the worker's size budget, section 4 finding C7). The push to `origin` waits on the founder's GitHub sign-in (Terminal tab "Push chat-quality review branch"); until it lands the commits are local only |
+| Production (`iacquire.online`) | `master` `50da121a` = hardened employee snapshot + booking fix + the chat quality fixes, deployed at the founder's approval ("Yes, deploy") by a fast-forward with no force. Vercel `dpl_6CByKwLmcn9pqavvfG2ZQhhjT2v7` (`iacquire-dashboard-hgt3cwaas`, Ready, `githubCommitSha` `50da121a`, aliased to `iacquire.online`), `/api/health` ok, scheduler `never_ran` |
+| Previous production deployment (rollback) | `dpl_9njKoxrpaLuDh2MotxSfv9uv2LnE` (`iacquire-dashboard-j0v7x7co9`, `eac5070f`: hardened snapshot + booking fix, without the chat quality fixes). Older: `dpl_8KUKY1cD...` (`5171595a`), `a8708414`, `d4adb4fd` |
+| Chat quality work (deployed) | Branch `fix/chat-quality-polish`, whose head `50da121a` is production: `c98a7bbe` (four chat defects), `919ea580` (calendar spec, onboarding test, label), `8bbcd0e8` (earlier version of this document), `ef6aaa31` (keeps the new copy under the worker's size budget, finding C7). Later documentation-only commits go on that branch and are not on `master` |
 | Integration candidate (local only) | `integration/bridge-plus-quality` `9d799b26` in a nested worktree: the business-tools branch `fe40f7e4` merged with the chat quality branch. Never pushed, never deployed. Used to run the bridge's own tests next to the chat quality tests. Full suite on it: 11,171 passed, 11 failed, 2 skipped: the 9 known failures plus two repo guard tests that flag the business-tools branch's own new code (findings C8 and C9) |
 | Business-tools branch (not mine, not deployed) | `origin/codex/internal-iacquire-activation` `fe40f7e4`. Merges cleanly with the chat quality branch (`git merge-tree`, no conflicts) |
 | Full test suite on `c98a7bbe` | 11,158 passed, 9 failed, 2 skipped. The 9 failures are exactly those on `master` before this work: the 8 that also fail on clean production `d4adb4fd` (appointments reminders, automation-studio-hardening, chat-rail, demo-showroom-controls, messaging-core 30-day, staff-workload-views, type-scale-floor, workforce-navigation) and `email-render`, which comes from the email-branding commit already on `master` |
 
 ## 2. Priority A: the four chat defects
 
-| # | Defect found in production | Fix (branch `fix/chat-quality-polish`, not deployed) | Proof |
+| # | Defect found in production | Fix (deployed in `50da121a`) | Proof |
 | --- | --- | --- | --- |
 | 1 | The Appointment Setter answered "...and is the booking calendar set up?" with a fixed booking reply and never reached the employee | **Released** in `eac5070f`: "set up" as a state and "schedule" as a noun are no longer booking verbs. On the branch, the same filter is shared with the refusal guardrail ("What does my calendar schedule look like?" was refused as a booking) and the cancel/reschedule parser ignores questions about what already happened | 3 regression tests fail on the old parser and pass on the new one; a router-chain test over 10 read-only questions (none intercepted) and 8 genuine requests (each still stopped by its own flow: booking preview, appointment change, refusal, work job). Existing preview/confirm/approval end-to-end tests pass unchanged |
 | 2 | "What do the verified business metrics show?" returned the stored KPI card, not an explanation | A question or a request to explain now reaches the employee, which holds the same verified figures. An explicit request for the numbers or the card ("Show our performance metrics for the last 30 days", "Analyze ...", "Review our KPIs") still runs the unchanged KPI job, with its calculation and evidence. The employee is told the exact wording that produces the card | 6 routing tests fail on the old router; 7 explicit requests still produce the job; the existing job end-to-end test is unchanged |
@@ -33,9 +33,9 @@ Done in production after the booking-fix deployment (2026-10-29, deployment abov
 | --- | --- |
 | Formerly failing question, exact wording: "What appointments do we have this week, and is the booking calendar set up?" | Reached the employee (a recorded Hermes chat run; no fixed reply). Correct: no consultation calendar, zero verified appointments reported as unreadable, not as an empty week. Conversation saved |
 | Interception, records, jargon, persistence, writes | No interception; figures match the pages; no internal names; no record, approval or message created |
-| Still shown by that run | The reply ended "Want me to get that in motion with the iAcquire team?", an unavailable action. This is defect 3, fixed on the branch and not deployed |
+| Still shown by that run | The reply ended "Want me to get that in motion with the iAcquire team?", an unavailable action. This was defect 3, fixed in the next deployment (re-test below) |
 
-Not yet re-tested, because the fixes are not deployed: Performance Analyst explanation (defect 2), the closing offers (defect 3) and the knowledge wording in Zeng's reply (defect 4). The re-test, once approved and deployed, is exactly these questions in the real Chat, one employee at a time, with the pass criteria below.
+**Re-test after the chat quality deployment (`50da121a`, same day, real signed-in Chat, one question per employee, new conversations).** The pass criteria are in the right-hand column of the first table; the results follow it.
 
 | Question | Pass when |
 | --- | --- |
@@ -43,6 +43,19 @@ Not yet re-tested, because the fixes are not deployed: Performance Analyst expla
 | Zeng: "What is the current state of operations, and what work is pending right now?" | Says 3 of 9 knowledge sections are supplied and names the empty ones, not "in place"; no promise of an action |
 | Appointment Setter, CRM Manager, Sales Assistant, Lead Hunter (their earlier questions) | No "I'll set that up", "I can prepare a proposal" or "let me get that in motion"; if something is missing, says what and where a person does it; any offer matches a wording from "What can be started from this chat" |
 | All | Figures still match the live pages; persisted; no record, approval, message or booking created |
+
+| Question asked | Result |
+| --- | --- |
+| Performance Analyst: "What do the verified business metrics show right now?" | **Pass.** A plain-words answer, no KPI card: 10 leads created and all 10 awaiting review, zero contacts, appointments and deals, 26 AI runs completed and 5 failed, revenue and conversion not recorded so not estimated, the bottleneck is lead review. Figures agree with the Leads page and with the card. Minor: it ended with "ask me for 'this month'", which on its own would not trigger the card (the router needs the full request) |
+| Performance Analyst: "Show our performance metrics for the last 30 days" | **Pass.** The stored KPI card (12 KPIs, "Finished in 0s", evidence) as before; no model run |
+| Zeng: "What is the current state of operations, and what work is pending right now?" | **Pass.** Quiet; zero open tasks and approvals; 10 leads waiting; calendar and messaging not set up; **"Company knowledge is partial: 3 of 9 sections are supplied"** with the six empty sections named correctly. It offered only a real request ("Review our current operations and tell me what needs my attention") and said it cannot start it or change anything itself |
+| Appointment Setter: "What appointments do we have this week, and is the booking calendar set up?" | **Pass.** No calendar; a person sets it up in iAcquire; offered only the appointment review, "the one thing that can run from here". No "get that in motion". Minor: it said "Nothing is booked this week", softer than the earlier "unreadable, not empty" wording, though it states the calendar is not set up in the next sentence |
+| Lead Hunter: "Which leads have you already researched? Summarise what we have so far." | **Pass.** Same 10 names, scores and order as the Leads page; suggests the real review request; "I can't change any record or move these forward from this chat" |
+| Sales Assistant: "Where does our sales pipeline stand right now?" | **Pass.** Ready, empty, nine stages; suggests the real pipeline review wording |
+| CRM Manager: "What is the actual status of our CRM right now?" | **Pass.** Zero contacts, companies and deals; nine stages; no tasks; offers a data quality review that "changes nothing" |
+| Invariants | Completed chat runs per employee rose by exactly one for each model reply (Zeng 8, Lead Hunter 7, Appointment Setter 5, Sales Assistant 3, CRM Manager 5, Performance Analyst 3; the KPI card request added none). Conversations reload with question and reply. After the round: 0 approvals, 0 contacts, 0 deals, 0 tasks, no calendar, empty inbox, the same 10 leads all pending. No internal names in any reply. One work-board job record exists from the explicit KPI card request, as designed |
+
+No unsupported action promise appeared in any of the six replies. Two small wording follow-ups, neither blocking: make the Performance Analyst's suggested card wording a complete request (for example "Show our performance metrics this month"), and keep the Appointment Setter on the "unreadable, not empty" phrasing.
 
 ### Provider and model identity (what is and is not verified)
 
@@ -134,7 +147,7 @@ Legend. **Chat**: accurate, business-aware answers in the real Chat. **Provider*
 
 | | Zeng (Operations) | Lead Hunter | Appointment Setter | Sales Assistant | CRM Manager | Performance Analyst |
 | --- | --- | --- | --- | --- | --- | --- |
-| **1. Accurate business-aware Chat** | Verified in production: tasks, approvals, 10 waiting leads, setup gaps all matched live pages. Knowledge wording ("in place") fixed on the branch, not deployed | Verified: 10 leads, names, scores and order matched exactly | Verified: no calendar, zero verified appointments, "unreadable not empty". Fixed question verified in production after release | Verified: pipeline ready with nine empty stages | Verified: CRM ready and empty | Verified: figures consistent with the pages. Explanation vs KPI-card routing fixed on the branch, not deployed |
+| **1. Accurate business-aware Chat** | Verified in production: tasks, approvals, 10 waiting leads, setup gaps all matched live pages. Knowledge now reported as 3 of 9 with the empty sections named (re-verified after deploy) | Verified: 10 leads, names, scores and order matched exactly | Verified: no calendar, zero verified appointments, "unreadable not empty". Fixed question verified in production after release | Verified: pipeline ready with nine empty stages | Verified: CRM ready and empty | Verified: figures consistent with the pages. A question gets a plain-words answer; the explicit request still returns the KPI card (both re-verified after deploy) |
 | **2. Real model/provider verification** | Recorded Hermes run: yes. Provider identity: configured DeepSeek `deepseek-flash` per the other session's VPS read; **not verified per run** | same | same | same | same | same |
 | **3. Read-only tool execution** | None (bridge off, not deployed) | None | None | None | None | None |
 | **4. Actions genuinely available from Chat** | Server-run operations review (read-only) | Server-run lead review; new lead research (real public-source research, results saved for review; needs `leads.research`; no CRM import, no outreach). Not exercised in production by me | Server-run availability check and appointment review; booking and change **previews** (confirm in chat, approval may apply). None can work until a calendar exists | Server-run pipeline review; unsent follow-up drafts (need reply access and open conversations; no channel yet) | Server-run CRM quality review | Server-run KPI card |
@@ -145,18 +158,18 @@ Across the board: autonomous work, customer outreach, live bookings and the sche
 
 ## 7. What was not done, and why
 
-- Chat fixes 2 to 4 are not deployed and not re-tested in production: deployment needs your approval (section 8).
+- Nothing from the chat quality branch is outstanding: it was deployed at the founder's approval and re-tested (section 3). Two small wording follow-ups are listed there.
 - The bridge, the worker and the provider canary need VPS and Cloudflare actions that were out of reach and out of scope without approval.
 - The consultation calendar was not created: Google is not registered, the host has no hours, and three settings need your confirmation.
 - No controlled client was created in production.
 
 ## 8. Approval packages
 
-**A. Deploy the chat quality fixes (recommended next).**
+**A. Deploy the chat quality fixes (done 2026-10-29).**
 - What: fast-forward `master` from `eac5070f` to the head of `fix/chat-quality-polish` (13 source files, 6 test files, no migration, no environment change, no Hermes or VPS step; one of the 13 is a constants-only calendar spec that nothing imports at run time). Vercel builds production in about 3 minutes.
 - Checks run: focused tests (employee, workforce, chat, knowledge, calendar, onboarding), full suite (only the 9 known failures), TypeScript for the app and scripts, ESLint on the changed files. Production build (`npm run build`, Next 16.4.2) passes: compiled in 32 s, all routes generated.
 - After deploy: the re-test in section 3.
-- Rollback: `vercel rollback iacquire-dashboard-j0v7x7co9-mlester999s-projects.vercel.app --project iacquire-dashboard` (`eac5070f`).
+- Result: deployed and re-tested (section 3). Rollback: `vercel rollback iacquire-dashboard-j0v7x7co9-mlester999s-projects.vercel.app --project iacquire-dashboard` (`eac5070f`).
 
 **B. The business-tools bridge** is the staged plan in section 4. First approval needed: permission to build the integration branch and resolve C1 and C2 (no deployment).
 
