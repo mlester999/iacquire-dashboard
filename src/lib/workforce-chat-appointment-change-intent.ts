@@ -1,4 +1,5 @@
 import type { AgentRoleKey } from "@/lib/agents";
+import { asksAboutWhatHappened } from "@/lib/workforce-chat-booking-intent";
 
 export type WorkforceChatAppointmentChangeIntent =
   | { kind: "none" }
@@ -56,7 +57,8 @@ export function parseWorkforceChatAppointmentChangeIntent(role: AgentRoleKey, co
   const reschedule = text.match(RESCHEDULE_APPOINTMENT) ?? text.match(RESCHEDULE_NAME_FIRST);
   if (reschedule) return makeProposal("reschedule", reschedule[1], reschedule[2], reschedule[3]);
 
-  if (CHANGE_REQUEST.test(text) && APPOINTMENT.test(text)) {
+  // A question about what already happened is not a request to change anything. Exact commands were matched above.
+  if (CHANGE_REQUEST.test(text) && APPOINTMENT.test(text) && !asksAboutWhatHappened(command)) {
     return {
       kind: "clarification",
       message: "To prepare a cancellation, give the contact's exact CRM name and the appointment's exact start time with its timezone offset. To reschedule, include both the current and requested start times. Example: “Reschedule the appointment for Jane Doe from 2026-11-02T09:00+08:00 to 2026-11-03T10:00+08:00.” Nothing changes until an owner or admin approves the request.",

@@ -12,14 +12,27 @@ const ACTION = /\b(?:book|schedule|arrange|set up)\b/i;
 // "schedule" as a noun ("the schedule", "on schedule") and "set up" as a state ("is the calendar
 // set up?", "set up yet", "set up to take bookings") are questions about the workspace, not a
 // request to book, so they must reach the employee instead of getting the fixed booking reply.
-const SCHEDULE_AS_NOUN = /\b(?:(?:the|my|our|your|his|her|their|its|this|that|a|an|any|weekly|daily|current|full|whole|team|booking|appointment|meeting|calendar|availability|today['’]s|tomorrow['’]s)\s+|(?:on|ahead of|behind|off)\s+)schedule\b/gi;
+const SCHEDULE_AS_NOUN = /\b(?:(?:the|my|our|your|his|her|their|its|this|that|a|an|any|weekly|daily|current|full|whole|team|booking|appointment|meeting|calendar|availability|today['’ ]s|tomorrow['’ ]s)\s+|(?:on|ahead of|behind|off)\s+)schedule\b/gi;
 const SET_UP_AS_STATE = /\bset up(?=\s*(?:$|[.,;:!?)]|(?:yet|already|now|properly|correctly|right|so|for|to|and|or|with|in|on|at|before|enough|ok|okay)\b))/gi;
 const APPOINTMENT = /\b(?:appointment|meeting|call|calendar slot|booking)\b/i;
 const RECURRING = /\b(?:every|each|daily|weekly|hourly|recurring)\b/i;
 const GENERIC_CONTACT = /^(?:an?\s+)?(?:appointment|meeting|call|calendar slot|booking)$/i;
 
+/**
+ * Whether a normalized (lower case, no punctuation) message asks about what already happened or exists ("did anyone reschedule a meeting?", "how many bookings were cancelled?")
+ * rather than asking for a change. Shared by the booking, change and guardrail checks so a question about the calendar is never answered as if it were a command.
+ */
+export function asksAboutWhatHappened(normalized: string): boolean {
+  return /^(?:did|do|does|were|was|have|has|had|how many|which|who|what happened)\b/.test(normalized);
+}
+
+/** The text with "schedule" as a noun and "set up" as a state taken out, so that what is left can only hold a booking verb. Shared with the chat guardrail. */
+export function withoutNonBookingUses(text: string): string {
+  return text.replace(SCHEDULE_AS_NOUN, " ").replace(SET_UP_AS_STATE, " ");
+}
+
 function asksToBook(text: string): boolean {
-  return ACTION.test(text.replace(SCHEDULE_AS_NOUN, " ").replace(SET_UP_AS_STATE, " "));
+  return ACTION.test(withoutNonBookingUses(text));
 }
 
 function cleanName(value: string): string {

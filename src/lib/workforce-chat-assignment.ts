@@ -17,6 +17,16 @@ const normalize = (value: string) => value
 const hasAction = (text: string, words: string) => new RegExp(`\\b(?:${words})\\b`, "i").test(text);
 
 /**
+ * Whether a message about performance asks to be told what the numbers mean (a question, or an explicit request to explain) rather than to produce the KPI card. Works on normalized text.
+ * Asking outright for the card, the snapshot or a report always wins.
+ */
+function asksForExplanation(text: string): boolean {
+  if (/\b(?:kpi card|the card|snapshot|report)\b/.test(text)) return false;
+  return /^(?:what|how|why|which|where|is|are|do|does|did|tell me|talk me|walk me|explain|interpret|in plain)\b/.test(text)
+    || /\b(?:explain|interpret|interpretation|plain words|plain english|simple terms|in words|walk me through|talk me through|what stands out|what does (?:this|that|it) mean)\b/.test(text);
+}
+
+/**
  * Route only clear requests for existing, server-owned employee workflows. This recognizer does
  * not authorize an action by itself: dispatch still checks employee role and caller permissions.
  * Draft-producing work remains unsent and approval-gated; bookings, CRM imports, outreach and
@@ -95,7 +105,9 @@ export function parseWorkforceChatAssignment(role: AgentRoleKey, content: string
     };
   }
 
-  if (role === "performance_analyst" && reviewAction && /\b(?:performance|metrics|kpis|results|trends)\b/.test(text)) {
+  // A question or a request to explain is answered in words by the employee from the same verified figures; only an explicit request for the numbers or the card runs the saved KPI job
+  // (its calculation and its evidence are unchanged). The employee points to the card when the person wants the sources.
+  if (role === "performance_analyst" && reviewAction && /\b(?:performance|metrics|kpis|results|trends)\b/.test(text) && !asksForExplanation(text)) {
     const currentMonth = /\b(?:this month|month to date)\b/.test(text);
     return {
       capability: "performance_snapshot",
