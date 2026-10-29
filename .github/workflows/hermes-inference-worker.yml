@@ -19,6 +19,7 @@ on:
       - tests/hermes-business-mcp-policy.test.ts
       - tests/hermes-business-mcp-route.test.ts
       - tests/hermes-prompt-audit.test.ts
+      - tests/hermes-worker-compose.test.ts
       - tests/public-body-bounded.test.ts
       - tests/upload-bodies-bounded.test.ts
   # GitHub exposes workflow_dispatch only when the workflow exists on the default branch.
@@ -48,6 +49,7 @@ jobs:
       - name: Verify the exact reconciled source and approved CI/application fix
         shell: bash
         env:
+          EXPECTED_REVIEW_BASE_SHA: ab43262f0906d52d22983d00f11af1f552555da6
           EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
           EXPECTED_PREVIOUS_CI_SHA: 5cd1f2689c9f2630db3494978be9cb038fe5dc98
           EXPECTED_PRIOR_CI_SHA: b6dca6f36d9dfde244e7c93393e6f5eed58228bc
@@ -58,7 +60,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_REVIEW_BASE_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_REVIEW_BASE_SHA^")" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_PRIOR_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_PRIOR_CI_SHA^")" == "$EXPECTED_ANCESTOR_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_ANCESTOR_CI_SHA^")" == "$EXPECTED_RECONCILED_SHA" ]]
@@ -66,7 +69,7 @@ jobs:
           [[ "$(git merge-base "$EXPECTED_RECONCILED_SHA" "$EXPECTED_WORKER_CANDIDATE_SHA")" == "$EXPECTED_WORKER_CANDIDATE_SHA" ]]
           [[ "$(git merge-base "$EXPECTED_WORKER_CANDIDATE_SHA" "$EXPECTED_DIAGNOSTIC_SHA")" == "$EXPECTED_DIAGNOSTIC_SHA" ]]
           changed_files="$(git diff --name-only "$EXPECTED_RECONCILED_SHA" HEAD)"
-          expected_files=$'.github/workflows/hermes-inference-worker.yml\npackage-lock.json\nsrc/app/api/internal/hermes-inference/canary/route.ts\nsrc/app/api/internal/hermes-inference/chat/route.ts\nsrc/app/api/internal/hermes-inference/prompt-audit/route.ts\nsrc/server/security/bounded-body.ts\nsrc/server/workforce/hermes-business-mcp.ts\ntests/bounded-body.test.ts'
+          expected_files=$'.github/workflows/hermes-inference-worker.yml\npackage-lock.json\nservices/hermes-inference-worker/compose.internal.yaml\nservices/hermes-inference-worker/test_compose_tmpfs_runtime.py\nsrc/app/api/internal/hermes-inference/canary/route.ts\nsrc/app/api/internal/hermes-inference/chat/route.ts\nsrc/app/api/internal/hermes-inference/prompt-audit/route.ts\nsrc/server/security/bounded-body.ts\nsrc/server/workforce/hermes-business-mcp.ts\ntests/bounded-body.test.ts\ntests/hermes-worker-compose.test.ts'
           [[ "$changed_files" == "$expected_files" ]]
           git diff --check "$EXPECTED_RECONCILED_SHA" HEAD
 
@@ -78,6 +81,23 @@ jobs:
           [[ "$(lsb_release -rs)" == "24.04" ]]
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
           docker version
+
+      - name: Install and verify pinned Docker Compose 5.5.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/hermes-compose-config"
+          plugin="$config/cli-plugins/docker-compose"
+          mkdir -p "$(dirname "$plugin")"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64 \
+            --output "$plugin"
+          echo "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576  $plugin" | sha256sum --check
+          chmod 0755 "$plugin"
+          echo "DOCKER_CONFIG=$config" >> "$GITHUB_ENV"
+          export DOCKER_CONFIG="$config"
+          version="$(docker compose version --short)"
+          [[ "$version" == "v5.5.1" ]]
           docker compose version
 
       - name: Set up Node.js for focused application checks
@@ -120,6 +140,7 @@ jobs:
                 tests/workforce-chat-assignment.test.ts \
                 tests/workforce-chat-appointment-change-intent.test.ts \
                 tests/employee-runtime-single-definition.test.ts \
+                tests/hermes-worker-compose.test.ts \
                 tests/upload-bodies-bounded.test.ts \
                 tests/bounded-body.test.ts \
                 tests/hermes-business-mcp-route.test.ts \
@@ -198,32 +219,65 @@ jobs:
 
           with open(sys.argv[1], encoding="utf-8") as source:
               config = json.load(source)
-          roles = (
-              "operations-manager", "lead-hunter", "appointment-setter",
-              "sales-assistant", "crm-manager", "performance-analyst",
-          )
+          roles = {
+              "operations-manager": "operations_manager",
+              "lead-hunter": "lead_hunter",
+              "appointment-setter": "appointment_setter",
+              "sales-assistant": "sales_assistant",
+              "crm-manager": "crm_manager",
+              "performance-analyst": "performance_analyst",
+          }
           services = config["services"]
           assert len(services) == 7, "expected six workers and one egress proxy"
           proxy_name = "iacquire-deepseek-egress-proxy"
           assert proxy_name in services
-          for role in roles:
-              name = f"iacquire-hermes-inference-worker-{role}"
+          for suffix, role in roles.items():
+              name = f"iacquire-hermes-inference-worker-{suffix}"
               service = services[name]
               assert service.get("read_only") is True, name
+              assert service.get("user") == "10000:10000", name
               assert not service.get("ports"), name
               assert "ALL" in service.get("cap_drop", []), name
               assert "no-new-privileges:true" in service.get("security_opt", []), name
+              assert service.get("mem_limit") == "512m", name
+              assert service.get("cpus") == 0.5, name
+              assert service.get("pids_limit") == 64, name
+              assert service.get("environment", {}).get("IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE") == role, name
               profiles = [v for v in service.get("volumes", []) if v.get("target", "").startswith("/profiles/")]
               assert len(profiles) == 1 and profiles[0].get("read_only") is True, name
+              secrets = [v for v in service.get("volumes", []) if v.get("target") == "/run/secrets/inference_hmac"]
+              assert len(secrets) == 1 and secrets[0].get("read_only") is True, name
+              assert len(service.get("volumes", [])) == 2, name
               attached = set(service["networks"])
               assert "deepseek_egress" not in attached, name
-              assert len(attached) == 2, name
+              assert attached == {f"{role}_ingress", f"{role}_policy"}, (name, attached)
+              assert service.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=32m"], (name, service.get("tmpfs"))
+          proxy = services[proxy_name]
+          assert proxy.get("read_only") is True
+          assert proxy.get("user") == "10000:10000"
+          assert not proxy.get("ports")
+          assert "ALL" in proxy.get("cap_drop", [])
+          assert "no-new-privileges:true" in proxy.get("security_opt", [])
+          assert proxy.get("mem_limit") == "64m"
+          assert proxy.get("cpus") == 0.1
+          assert proxy.get("pids_limit") == 32
+          assert proxy.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=8m"], proxy.get("tmpfs")
           networks = config["networks"]
           assert networks["deepseek_egress"].get("internal") is not True
           for name, network in networks.items():
               if name != "deepseek_egress":
                   assert network.get("internal") is True, name
-          proxy_networks = set(services[proxy_name]["networks"])
+          proxy_networks = set(proxy["networks"])
+          expected_policy_networks = {f"{role}_policy" for role in roles.values()}
+          assert proxy_networks == expected_policy_networks | {"deepseek_egress"}, proxy_networks
           assert "deepseek_egress" in proxy_networks
           print("COMPOSE_ISOLATION_PASS: six one-profile workers, no published ports, only the proxy has external egress")
           PY
+
+      - name: Inspect tmpfs options in disposable no-network containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Compose uses the versioned service image name; CI built the same image with a :ci tag.
+          docker tag iacquire/hermes-inference-worker:ci iacquire/hermes-inference-worker:0.22.5-v1
+          python3 services/hermes-inference-worker/test_compose_tmpfs_runtime.py

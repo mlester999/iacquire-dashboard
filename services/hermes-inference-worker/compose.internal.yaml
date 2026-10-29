@@ -24,7 +24,8 @@ x-worker-base: &worker-base
   expose: ["8786"]
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
-  tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m]
+  # Quote the comma-delimited options so YAML keeps one tmpfs mount entry.
+  tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
   mem_limit: 512m
   cpus: 0.5
   pids_limit: 64
@@ -160,7 +161,7 @@ services:
       - deepseek_egress
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=8m]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=8m"]
     mem_limit: 64m
     cpus: 0.1
     pids_limit: 32
