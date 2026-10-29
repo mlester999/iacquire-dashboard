@@ -23,6 +23,8 @@ MAX_PROMPT_BYTES = 6_144
 MAX_OUTPUT_TOKENS = 128
 MAX_RESPONSE_BYTES = 256 * 1024
 ALLOWED_MODELS = {"deepseek-flash", "deepseek-v4-pro"}
+HERMES_VERSION = "0.22.5"
+SYNTHETIC_AUDIT_KEY = "no-provider-call-prompt-audit-only"
 ALLOWED_PROFILE_IDS = {
     "operations_manager": "iacquire-operations-manager",
     "lead_hunter": "iacquire-lead-hunter",
@@ -233,6 +235,204 @@ class SingleRequestDeepSeekProxy:
         self.thread.join(timeout=1)
 
 
+class LocalPromptCapture:
+    """Synthetic loopback provider which records byte counts and never forwards requests."""
+
+    def __init__(self, model: str):
+        self.model = model
+        self.observations: list[dict[str, int]] = []
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            server_version = "iAcquirePromptAudit/1"
+            sys_version = ""
+
+            def log_message(self, _format: str, *args: Any) -> None:
+                return
+
+            def do_POST(self) -> None:  # noqa: N802
+                if self.path != "/v1/chat/completions":
+                    self.send_error(404)
+                    return
+                try:
+                    size = int(self.headers.get("Content-Length", "-1"))
+                    if size < 1 or size > MAX_REQUEST_BYTES:
+                        raise RuntimeErrorSafe("audit_request_invalid")
+                    raw = self.rfile.read(size)
+                    if len(raw) != size or self.headers.get("Authorization") != f"Bearer {SYNTHETIC_AUDIT_KEY}":
+                        raise RuntimeErrorSafe("audit_request_invalid")
+                    request = json.loads(raw.decode("utf-8"))
+                    if not isinstance(request, dict) or request.get("model") != owner.model:
+                        raise RuntimeErrorSafe("audit_request_invalid")
+                    if request.get("tools") not in (None, []) or request.get("tool_choice") not in (None, "none"):
+                        raise RuntimeErrorSafe("audit_tools_present")
+                    if "functions" in request or "function_call" in request:
+                        raise RuntimeErrorSafe("audit_tools_present")
+                    token_key = "max_tokens" if "max_tokens" in request else "max_completion_tokens"
+                    token_limit = request.get(token_key)
+                    if type(token_limit) is not int or not 1 <= token_limit <= MAX_OUTPUT_TOKENS:
+                        raise RuntimeErrorSafe("audit_output_limit_invalid")
+                    if type(request.get("stream", False)) is not bool:
+                        raise RuntimeErrorSafe("audit_request_invalid")
+                    message_bytes = _text_content_bytes(request.get("messages"))
+                    owner.observations.append({
+                        "messageBytes": message_bytes,
+                        "messageCount": len(request["messages"]),
+                        "toolSchemas": len(request.get("tools") or []),
+                        "maxOutputTokens": token_limit,
+                    })
+                    self.send_response(200)
+                    if request.get("stream") is True:
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.end_headers()
+                        chunks = [
+                            {"id": "synthetic-audit", "object": "chat.completion.chunk", "created": 1, "model": owner.model, "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Synthetic no-call audit."}, "finish_reason": None}], "usage": None},
+                            {"id": "synthetic-audit", "object": "chat.completion.chunk", "created": 1, "model": owner.model, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}},
+                        ]
+                        for chunk in chunks:
+                            self.wfile.write(b"data: " + json.dumps(chunk).encode("utf-8") + b"\n\n")
+                        self.wfile.write(b"data: [DONE]\n\n")
+                    else:
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        response = {
+                            "id": "synthetic-audit",
+                            "object": "chat.completion",
+                            "created": 1,
+                            "model": owner.model,
+                            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Synthetic no-call audit."}, "finish_reason": "stop"}],
+                            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                        }
+                        self.wfile.write(json.dumps(response).encode("utf-8"))
+                except (RuntimeErrorSafe, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+                    self.send_error(400)
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True)
+        self.thread.start()
+
+    @property
+    def base_url(self) -> str:
+        host, port = self.server.server_address
+        return f"http://{host}:{port}/v1"
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=1)
+
+
+def _run_audit_turn(AIAgent: Any, model: str, instructions: str, user_input: str, capture: LocalPromptCapture) -> int:
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        agent = AIAgent(
+            base_url=capture.base_url,
+            api_key=SYNTHETIC_AUDIT_KEY,
+            provider="deepseek",
+            model=model,
+            max_iterations=1,
+            enabled_toolsets=[],
+            disabled_toolsets=None,
+            save_trajectories=False,
+            verbose_logging=False,
+            quiet_mode=True,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            ephemeral_system_prompt=instructions,
+            skip_context_files=True,
+            load_soul_identity=True,
+            skip_memory=True,
+            skip_background_review=True,
+            run_budget_seconds=24,
+            fallback_model=None,
+        )
+        try:
+            if getattr(agent, "provider", None) != "deepseek" or getattr(agent, "model", None) != model:
+                raise RuntimeErrorSafe("runtime_provider_or_model_mismatch")
+            tools = getattr(agent, "tools", None)
+            if tools not in ([], None) or getattr(agent, "valid_tool_names", set()) not in (set(), frozenset()):
+                raise RuntimeErrorSafe("runtime_tool_schema_present")
+            if getattr(agent, "_fallback_chain", []) not in ([], None):
+                raise RuntimeErrorSafe("runtime_fallback_present")
+
+            def block_tool_dispatch(*_args: Any, **_kwargs: Any) -> None:
+                raise RuntimeErrorSafe("runtime_tool_dispatch_blocked")
+
+            agent._execute_tool_calls = block_tool_dispatch
+            agent._api_max_retries = 1
+            agent._auto_recovery_cycles = 0
+            observation_count = len(capture.observations)
+            result = agent.run_conversation(user_input)
+            if not isinstance(result, dict) or result.get("completed") is not True:
+                raise RuntimeErrorSafe("prompt_audit_failed")
+            if int(getattr(agent, "session_api_calls", 1)) != 1 or len(capture.observations) != observation_count + 1:
+                raise RuntimeErrorSafe("prompt_audit_request_count_invalid")
+            observation = capture.observations[-1]
+            if observation["toolSchemas"] != 0 or observation["maxOutputTokens"] > MAX_OUTPUT_TOKENS:
+                raise RuntimeErrorSafe("runtime_policy_violation")
+            return observation["messageBytes"]
+        finally:
+            with contextlib.suppress(Exception):
+                agent.close()
+
+
+def run_prompt_audit(payload: dict[str, Any], soul_path: Path) -> dict[str, Any]:
+    """Measure the provider messages built by pinned Hermes against a synthetic loopback endpoint."""
+    if os.environ.get("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED") != "true":
+        raise RuntimeErrorSafe("prompt_audit_disabled")
+    if any(os.environ.get(name) for name in (
+        "DEEPSEEK_API_KEY", "IACQUIRE_DEEPSEEK_EGRESS_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+        "http_proxy", "https_proxy", "all_proxy",
+    )):
+        raise RuntimeErrorSafe("prompt_audit_network_policy_invalid")
+    if payload.get("mode") != "prompt_audit" or set(payload) != {
+        "requestId", "role", "instructions", "input", "chatInput", "history", "mode",
+    }:
+        raise RuntimeErrorSafe("request_invalid")
+    if soul_path.is_symlink() or not soul_path.is_file() or not 1 <= soul_path.stat().st_size <= 16_384:
+        raise RuntimeErrorSafe("profile_soul_unavailable")
+    soul_bytes = len(soul_path.read_bytes())
+    if not isinstance(payload["instructions"], str) or not isinstance(payload["input"], str) or not isinstance(payload["chatInput"], str):
+        raise RuntimeErrorSafe("request_invalid")
+
+    from hermes_cli.config import load_config
+    from run_agent import AIAgent
+
+    config = load_config()
+    model_cfg = config.get("model") if isinstance(config, dict) else None
+    if not isinstance(model_cfg, dict) or model_cfg.get("provider") not in ("deepseek", "auto", None):
+        raise RuntimeErrorSafe("configured_provider_mismatch")
+    model_hint = ""
+    for key in ("default", "name", "model"):
+        candidate = model_cfg.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            model_hint = candidate.strip()
+            break
+    if model_hint not in ALLOWED_MODELS:
+        raise RuntimeErrorSafe("configured_model_invalid")
+
+    capture = LocalPromptCapture(model_hint)
+    try:
+        provider_bytes = _run_audit_turn(AIAgent, model_hint, payload["instructions"], payload["input"], capture)
+        chat_bytes = _run_audit_turn(AIAgent, model_hint, payload["instructions"], payload["chatInput"], capture)
+        if len(capture.observations) != 2:
+            raise RuntimeErrorSafe("prompt_audit_request_count_invalid")
+        return {
+            "ok": True,
+            "mode": "prompt_audit",
+            "role": payload["role"],
+            "profile": os.environ.get("IACQUIRE_INTERNAL_PROFILE"),
+            "hermesVersion": HERMES_VERSION,
+            "soulBytes": soul_bytes,
+            "providerOnlyMessageBytes": provider_bytes,
+            "chatMessageBytes": chat_bytes,
+            "syntheticProviderRequests": len(capture.observations),
+            "toolSchemas": 0,
+            "toolCalls": 0,
+        }
+    finally:
+        capture.close()
+
+
 def _configured_provider() -> str:
     from hermes_cli.auth import PROVIDER_REGISTRY, get_env_value_prefer_dotenv, resolve_provider
     from hermes_cli.config import load_config
@@ -272,7 +472,7 @@ def main() -> None:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise RuntimeErrorSafe("request_invalid") from None
-    if not isinstance(payload, dict) or set(payload) != {"requestId", "role", "instructions", "input", "history"}:
+    if not isinstance(payload, dict):
         raise RuntimeErrorSafe("request_invalid")
     role = payload.get("role")
     if role not in ALLOWED_PROFILE_IDS or os.environ.get("IACQUIRE_INTERNAL_PROFILE") != ALLOWED_PROFILE_IDS[role]:
@@ -280,6 +480,16 @@ def main() -> None:
     soul_path = Path(os.environ.get("HERMES_HOME", "")) / "SOUL.md"
     if soul_path.is_symlink() or not soul_path.is_file() or not 1 <= soul_path.stat().st_size <= 16_384:
         raise RuntimeErrorSafe("profile_soul_unavailable")
+    if payload.get("mode") == "prompt_audit":
+        try:
+            _emit(run_prompt_audit(payload, soul_path))
+        except RuntimeErrorSafe:
+            raise
+        except Exception:
+            raise RuntimeErrorSafe("prompt_audit_failed") from None
+        return
+    if set(payload) != {"requestId", "role", "instructions", "input", "history"}:
+        raise RuntimeErrorSafe("request_invalid")
     if not isinstance(payload.get("instructions"), str) or not isinstance(payload.get("input"), str) or not isinstance(payload.get("history"), list):
         raise RuntimeErrorSafe("request_invalid")
     egress_proxy = os.environ.get("IACQUIRE_DEEPSEEK_EGRESS_PROXY", "")

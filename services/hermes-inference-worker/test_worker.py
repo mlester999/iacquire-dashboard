@@ -94,6 +94,58 @@ class InferenceWorkerTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=1)
 
+    def test_signed_prompt_audit_returns_only_role_and_byte_counts(self) -> None:
+        value = {
+            **payload("19a541c7-8a9c-42dd-8975-0d1411543b19"),
+            "mode": "prompt_audit",
+            "chatInput": "Synthetic chat canary.",
+        }
+        body = json.dumps(value, separators=(",", ":")).encode()
+        audit_result = {
+            "ok": True,
+            "mode": "prompt_audit",
+            "role": "lead_hunter",
+            "profile": "iacquire-lead-hunter",
+            "hermesVersion": "0.22.5",
+            "soulBytes": 44,
+            "providerOnlyMessageBytes": 950,
+            "chatMessageBytes": 962,
+            "syntheticProviderRequests": 2,
+            "toolSchemas": 0,
+            "toolCalls": 0,
+            "promptText": "Synthetic role instructions must not escape.",
+        }
+        server = worker.ThreadingHTTPServer(
+            ("127.0.0.1", 0),
+            worker.make_handler(SECRET, "lead_hunter", lambda _payload: audit_result),
+        )
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            timestamp = str(int(time.time()))
+            headers = {
+                "Content-Type": "application/json",
+                "X-Iacquire-Timestamp": timestamp,
+                "X-Iacquire-Signature": worker.request_signature(SECRET, timestamp, body),
+            }
+            host, port = server.server_address
+            connection = http.client.HTTPConnection(host, port, timeout=3)
+            connection.request("POST", worker.inference_path("lead_hunter"), body=body, headers=headers)
+            response = connection.getresponse()
+            response_text = response.read().decode()
+            self.assertEqual(response.status, 200)
+            self.assertNotIn("Synthetic role instructions", response_text)
+            parsed = json.loads(response_text)
+            self.assertEqual(parsed["providerOnlyMessageBytes"], 950)
+            self.assertEqual(parsed["toolSchemas"], 0)
+            self.assertNotIn("promptText", parsed)
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1)
+
     def test_profile_worker_rejects_other_internal_roles(self) -> None:
         calls: list[dict[str, object]] = []
 
@@ -282,6 +334,90 @@ class InferenceWorkerTests(unittest.TestCase):
                 connection.close()
             finally:
                 gate.close()
+
+    def test_prompt_audit_accepts_over_limit_instructions_for_measurement_only(self) -> None:
+        value = payload("6baec2ef-02bf-44b9-8afb-c20fb6087e42")
+        audit = {
+            **value,
+            "mode": "prompt_audit",
+            "chatInput": "Synthetic Chat canary.",
+            "instructions": "x" * 7_000,
+        }
+        accepted = worker.validate_payload(json.dumps(audit).encode())
+        self.assertEqual(accepted["mode"], "prompt_audit")
+        self.assertEqual(len(accepted["instructions"]), 7_000)
+        with self.assertRaises(worker.RequestError) as oversized_inference:
+            worker.validate_payload(json.dumps({**value, "instructions": "x" * 7_000}).encode())
+        self.assertEqual(oversized_inference.exception.code, "prompt_too_large")
+
+    def test_prompt_audit_response_is_identity_checked_and_contains_only_counts(self) -> None:
+        measured = {
+            "ok": True,
+            "mode": "prompt_audit",
+            "role": "lead_hunter",
+            "profile": "iacquire-lead-hunter",
+            "hermesVersion": "0.22.5",
+            "soulBytes": 321,
+            "providerOnlyMessageBytes": 5_900,
+            "chatMessageBytes": 5_910,
+            "syntheticProviderRequests": 2,
+            "toolSchemas": 0,
+            "toolCalls": 0,
+            "discardedPrompt": "must never escape",
+        }
+        result = worker.validate_prompt_audit_result(measured, "lead_hunter")
+        self.assertEqual(result["providerOnlyMessageBytes"], 5_900)
+        self.assertNotIn("discardedPrompt", result)
+        self.assertNotIn("instructions", result)
+        with self.assertRaises(worker.RequestError):
+            worker.validate_prompt_audit_result({**measured, "profile": "iacquire-crm-manager"}, "lead_hunter")
+        with self.assertRaises(worker.RequestError):
+            worker.validate_prompt_audit_result({**measured, "toolSchemas": 1}, "lead_hunter")
+
+    def test_prompt_audit_uses_no_deepseek_key_or_egress_proxy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "profiles")
+            profile = os.path.join(root, worker.ROLE_PROFILES["lead_hunter"])
+            os.makedirs(profile)
+            runner_path = os.path.join(temp, "runner.py")
+            with open(runner_path, "w", encoding="utf-8") as runner:
+                runner.write("# synthetic runner path")
+            env = {
+                "IACQUIRE_HERMES_INFERENCE_RUNNER": runner_path,
+                "IACQUIRE_HERMES_PYTHON": sys.executable,
+                "IACQUIRE_INTERNAL_PROFILE_ROOT": root,
+                "IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED": "true",
+            }
+            output = {
+                "ok": True,
+                "mode": "prompt_audit",
+                "role": "lead_hunter",
+                "profile": worker.ROLE_PROFILES["lead_hunter"],
+                "hermesVersion": "0.22.5",
+                "soulBytes": 20,
+                "providerOnlyMessageBytes": 400,
+                "chatMessageBytes": 420,
+                "toolSchemas": 0,
+                "toolCalls": 0,
+            }
+            payload_value = {
+                **payload("51906fb7-b673-4b63-8516-1765153634ed"),
+                "mode": "prompt_audit",
+                "chatInput": "Synthetic Chat canary.",
+            }
+            with patch.dict(os.environ, env):
+                with patch("worker.subprocess.run", return_value=subprocess.CompletedProcess("synthetic", 0, stdout=json.dumps(output), stderr="")) as run:
+                    result = worker.run_pinned_hermes(payload_value)
+            command_env = run.call_args.kwargs["env"]
+            child_payload = json.loads(run.call_args.kwargs["input"])
+            self.assertNotIn("IACQUIRE_DEEPSEEK_EGRESS_PROXY", command_env)
+            self.assertNotIn("DEEPSEEK_API_KEY", command_env)
+            self.assertEqual(child_payload["mode"], "prompt_audit")
+            self.assertNotIn("discardedPrompt", result)
+            with patch.dict(os.environ, {**env, "IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED": "false"}):
+                with self.assertRaises(worker.RequestError) as disabled:
+                    worker.run_pinned_hermes(payload_value)
+                self.assertEqual(disabled.exception.code, "prompt_audit_disabled")
 
 
 if __name__ == "__main__":

@@ -61,6 +61,17 @@ jobs:
             iacquire/hermes-inference-worker:ci -B \
             /opt/iacquire-hermes/inference/pinned_runtime_smoke.py
 
+      - name: Measure synthetic prompts with pinned Hermes and no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py
+
       - name: Re-run worker policy and failure tests with network disabled
         shell: bash
         run: |

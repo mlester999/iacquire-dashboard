@@ -90,7 +90,14 @@ def validate_payload(raw: bytes) -> dict[str, Any]:
         value = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise RequestError("invalid_json") from None
-    if not isinstance(value, dict) or set(value) != {"requestId", "actorId", "role", "instructions", "input", "history"}:
+    if not isinstance(value, dict):
+        raise RequestError("invalid_request")
+    base_keys = {"requestId", "actorId", "role", "instructions", "input", "history"}
+    mode = value.get("mode", "inference")
+    expected_keys = base_keys if mode == "inference" and "mode" not in value else base_keys | {"mode"}
+    if mode == "prompt_audit":
+        expected_keys = base_keys | {"mode", "chatInput"}
+    if mode not in {"inference", "prompt_audit"} or set(value) != expected_keys:
         raise RequestError("invalid_request")
     request_id, actor_id, role = value["requestId"], value["actorId"], value["role"]
     instructions, user_input = value["instructions"], value["input"]
@@ -105,16 +112,23 @@ def validate_payload(raw: bytes) -> dict[str, Any]:
     if not isinstance(user_input, str) or not user_input.strip() or len(user_input) > MAX_INPUT_CHARS:
         raise RequestError("input_too_large")
     history = _clean_history(value["history"])
-    if len((instructions + user_input + "".join(row["content"] for row in history)).encode("utf-8")) > MAX_PROMPT_BYTES:
+    chat_input = value.get("chatInput")
+    if mode == "prompt_audit" and (not isinstance(chat_input, str) or not chat_input.strip() or len(chat_input) > MAX_INPUT_CHARS or history):
+        raise RequestError("invalid_request")
+    if mode == "inference" and len((instructions + user_input + "".join(row["content"] for row in history)).encode("utf-8")) > MAX_PROMPT_BYTES:
         raise RequestError("prompt_too_large", 413)
-    return {
+    result = {
         "requestId": request_id,
         "actorId": actor_id,
         "role": role,
         "instructions": instructions,
         "input": user_input,
         "history": history,
+        "mode": mode,
     }
+    if mode == "prompt_audit":
+        result["chatInput"] = chat_input
+    return result
 
 
 def load_worker_secret(path_value: str) -> bytes:
@@ -232,8 +246,37 @@ def validate_runtime_result(value: Any) -> dict[str, Any]:
     return {"content": content, "usage": usage, "model": model, "provider": "deepseek", "toolSchemas": 0, "toolCalls": 0}
 
 
+def validate_prompt_audit_result(value: Any, role: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("ok") is not True or value.get("mode") != "prompt_audit":
+        raise RequestError("prompt_audit_failed", 502)
+    if value.get("role") != role or value.get("profile") != ROLE_PROFILES[role] or value.get("hermesVersion") != "0.22.5":
+        raise RequestError("prompt_audit_identity_mismatch", 502)
+    if value.get("syntheticProviderRequests") != 2:
+        raise RequestError("prompt_audit_request_count_invalid", 502)
+    counts = (value.get("soulBytes"), value.get("providerOnlyMessageBytes"), value.get("chatMessageBytes"))
+    if any(type(count) is not int or count < 0 or count > MAX_BODY_BYTES for count in counts):
+        raise RequestError("prompt_audit_result_invalid", 502)
+    if value.get("toolSchemas") != 0 or value.get("toolCalls") != 0:
+        raise RequestError("runtime_policy_violation", 502)
+    return {
+        "mode": "prompt_audit",
+        "role": role,
+        "profile": ROLE_PROFILES[role],
+        "hermesVersion": "0.22.5",
+        "soulBytes": counts[0],
+        "providerOnlyMessageBytes": counts[1],
+        "chatMessageBytes": counts[2],
+        "syntheticProviderRequests": 2,
+        "toolSchemas": 0,
+        "toolCalls": 0,
+    }
+
+
 def execute(payload: dict[str, Any], runner: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
-    result = validate_runtime_result(runner(payload))
+    raw_result = runner(payload)
+    if payload.get("mode") == "prompt_audit":
+        return {"ok": True, **validate_prompt_audit_result(raw_result, payload["role"])}
+    result = validate_runtime_result(raw_result)
     return {"ok": True, **result}
 
 
@@ -262,11 +305,18 @@ def run_pinned_hermes(payload: dict[str, Any]) -> dict[str, Any]:
     profile = ROLE_PROFILES[payload["role"]]
     profile_root = Path(os.environ.get("IACQUIRE_INTERNAL_PROFILE_ROOT", "/profiles"))
     profile_path = profile_root / profile
-    proxy = os.environ.get("IACQUIRE_DEEPSEEK_EGRESS_PROXY", "")
     if not profile_root.is_absolute() or not profile_path.is_dir() or profile_path.is_symlink():
         raise RequestError("runtime_profile_unavailable", 503)
-    if not proxy.startswith("http://iacquire-deepseek-egress-proxy:"):
-        raise RequestError("runtime_network_policy_unavailable", 503)
+    mode = payload.get("mode", "inference")
+    proxy = os.environ.get("IACQUIRE_DEEPSEEK_EGRESS_PROXY", "")
+    if mode == "prompt_audit":
+        if os.environ.get("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED") != "true":
+            raise RequestError("prompt_audit_disabled", 503)
+    elif mode == "inference":
+        if not proxy.startswith("http://iacquire-deepseek-egress-proxy:"):
+            raise RequestError("runtime_network_policy_unavailable", 503)
+    else:
+        raise RequestError("invalid_request")
     env = {
         "PATH": "/usr/local/bin:/usr/bin:/bin",
         "LANG": "C.UTF-8",
@@ -276,12 +326,16 @@ def run_pinned_hermes(payload: dict[str, Any]) -> dict[str, Any]:
         "HOME": "/tmp",
         "IACQUIRE_INTERNAL_PROFILE": profile,
         "IACQUIRE_HERMES_TEMP_ROOT": "/tmp",
+        "IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED": os.environ.get("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED", "false"),
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONPATH": "/opt/hermes",
-        "IACQUIRE_DEEPSEEK_EGRESS_PROXY": proxy,
     }
-    request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "history")}
+    if mode == "inference":
+        env["IACQUIRE_DEEPSEEK_EGRESS_PROXY"] = proxy
+        request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "history")}
+    else:
+        request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "chatInput", "history", "mode")}
     try:
         completed = subprocess.run(
             [python, str(runner_path)],
@@ -363,12 +417,30 @@ def make_handler(
                     result = execute(payload, runner)
                 finally:
                     request_guard.release()
-                _log_result(payload, result, "success")
+                if payload.get("mode") == "prompt_audit":
+                    logger.info(json.dumps({
+                        "event": "prompt_audit_result",
+                        "requestId": payload["requestId"],
+                        "actorId": payload["actorId"],
+                        "role": result["role"],
+                        "profile": result["profile"],
+                        "hermesVersion": result["hermesVersion"],
+                        "soulBytes": result["soulBytes"],
+                        "providerOnlyMessageBytes": result["providerOnlyMessageBytes"],
+                        "chatMessageBytes": result["chatMessageBytes"],
+                        "syntheticProviderRequests": result["syntheticProviderRequests"],
+                        "status": "success",
+                    }, separators=(",", ":")))
+                else:
+                    _log_result(payload, result, "success")
                 self._send_json(200, {"requestId": payload["requestId"], **result})
             except RequestError as error:
                 safe = {"error": error.code}
                 if "payload" in locals():
-                    _log_result(payload, None, error.code)
+                    if payload.get("mode") == "prompt_audit":
+                        logger.info(json.dumps({"event": "prompt_audit_result", "requestId": payload["requestId"], "actorId": payload["actorId"], "role": payload["role"], "status": error.code}, separators=(",", ":")))
+                    else:
+                        _log_result(payload, None, error.code)
                 self._send_json(error.status, safe)
             except Exception:
                 self._send_json(500, {"error": "inference_failed"})
