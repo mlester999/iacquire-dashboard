@@ -9,6 +9,7 @@ on:
     paths:
       - services/hermes-inference-worker/**
       - .github/workflows/hermes-inference-worker.yml
+      - package-lock.json
   # GitHub exposes workflow_dispatch only when the workflow exists on the default branch.
   # Kept for future manual use after that separate approval; never targets production.
   workflow_dispatch:
@@ -33,21 +34,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify the exact reconciled source and workflow-only change
+      - name: Verify the exact reconciled source and workflow plus lockfile-only fix
         shell: bash
         env:
           EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
+          EXPECTED_PREVIOUS_CI_SHA: fd610fa9da5b69844c74bdbdc928b04a4d6890df
           EXPECTED_MASTER_SHA: 7d411f250ec5f4df2e97282bdb4b8d36830b7355
           EXPECTED_WORKER_CANDIDATE_SHA: b9422e475007ef78c6119558f9b9950a13135a05
           EXPECTED_DIAGNOSTIC_SHA: 89ea940a1f45f32c1d229a48bf0fa25b13c1c7ba
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_RECONCILED_SHA" ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_RECONCILED_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_RECONCILED_SHA^2")" == "$EXPECTED_MASTER_SHA" ]]
           [[ "$(git merge-base "$EXPECTED_RECONCILED_SHA" "$EXPECTED_WORKER_CANDIDATE_SHA")" == "$EXPECTED_WORKER_CANDIDATE_SHA" ]]
           [[ "$(git merge-base "$EXPECTED_WORKER_CANDIDATE_SHA" "$EXPECTED_DIAGNOSTIC_SHA")" == "$EXPECTED_DIAGNOSTIC_SHA" ]]
-          [[ "$(git diff --name-only "$EXPECTED_RECONCILED_SHA" HEAD)" == ".github/workflows/hermes-inference-worker.yml" ]]
+          changed_files="$(git diff --name-only "$EXPECTED_RECONCILED_SHA" HEAD)"
+          expected_files=$'.github/workflows/hermes-inference-worker.yml\npackage-lock.json'
+          [[ "$changed_files" == "$expected_files" ]]
           git diff --check "$EXPECTED_RECONCILED_SHA" HEAD
 
       - name: Verify runner and branch scope
