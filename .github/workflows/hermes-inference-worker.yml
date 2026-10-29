@@ -50,8 +50,9 @@ jobs:
         shell: bash
         env:
           EXPECTED_TMPFS_CI_SHA: 52b1ac594b620998300bcfe9b1ad2248209df2f4
-          EXPECTED_TMPFS_REVIEW_SHA: 5b7cb45ed5b622288f9feb74112429a41b312d42
-          EXPECTED_TMPFS_PRIOR_REVIEW_SHA: cbde620d2b384115742551d26b9af23ce4a66187
+          EXPECTED_TMPFS_REVIEW_SHA: 5665c948f0eab246991c79a450e309710b167a42
+          EXPECTED_TMPFS_PRIOR_REVIEW_SHA: 5b7cb45ed5b622288f9feb74112429a41b312d42
+          EXPECTED_TMPFS_ANCESTOR_REVIEW_SHA: cbde620d2b384115742551d26b9af23ce4a66187
           EXPECTED_REVIEW_BASE_SHA: ab43262f0906d52d22983d00f11af1f552555da6
           EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
           EXPECTED_PREVIOUS_CI_SHA: 5cd1f2689c9f2630db3494978be9cb038fe5dc98
@@ -65,7 +66,8 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_TMPFS_REVIEW_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_TMPFS_REVIEW_SHA^")" == "$EXPECTED_TMPFS_PRIOR_REVIEW_SHA" ]]
-          [[ "$(git rev-parse "$EXPECTED_TMPFS_PRIOR_REVIEW_SHA^")" == "$EXPECTED_TMPFS_CI_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_TMPFS_PRIOR_REVIEW_SHA^")" == "$EXPECTED_TMPFS_ANCESTOR_REVIEW_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_TMPFS_ANCESTOR_REVIEW_SHA^")" == "$EXPECTED_TMPFS_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_TMPFS_CI_SHA^")" == "$EXPECTED_REVIEW_BASE_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_REVIEW_BASE_SHA^")" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_PRIOR_CI_SHA" ]]
@@ -296,4 +298,5 @@ jobs:
           set -euo pipefail
           # Compose uses the versioned service image name; CI built the same image with a :ci tag.
           docker tag iacquire/hermes-inference-worker:ci iacquire/hermes-inference-worker:0.22.5-v1
+          export COMPOSE_CONFIG_JSON="$RUNNER_TEMP/hermes-worker-compose.json"
           python3 services/hermes-inference-worker/test_compose_tmpfs_runtime.py

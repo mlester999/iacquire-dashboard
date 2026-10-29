@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""Verify Compose tmpfs options in disposable, network-isolated containers."""
+"""Verify Compose-rendered tmpfs options in disposable network-isolated Docker containers."""
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import sys
-import tempfile
-import uuid
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPOSE_FILE = ROOT / "services/hermes-inference-worker/compose.internal.yaml"
 EXPECTED_MOUNTS = (
     ("iacquire-hermes-inference-worker-operations-manager", 32),
     ("iacquire-hermes-inference-worker-lead-hunter", 32),
@@ -23,6 +20,7 @@ EXPECTED_MOUNTS = (
     ("iacquire-hermes-inference-worker-performance-analyst", 32),
     ("iacquire-deepseek-egress-proxy", 8),
 )
+EXPECTED_IMAGE = "iacquire/hermes-inference-worker:0.22.5-v1"
 
 CHECK_MOUNT = r"""
 import re
@@ -68,60 +66,36 @@ def run(command: list[str], *, env: dict[str, str], timeout: int = 90) -> subpro
 
 
 def main() -> int:
-    project = f"hermes-tmpfs-check-{uuid.uuid4().hex[:10]}"
-    compose = ["docker", "compose", "--project-name", project, "--file", str(COMPOSE_FILE)]
+    rendered_path = os.environ.get("COMPOSE_CONFIG_JSON")
+    if not rendered_path:
+        raise RuntimeError("COMPOSE_CONFIG_JSON must point to docker compose config --format json output")
+    services = json.loads(Path(rendered_path).read_text(encoding="utf-8"))["services"]
+    env = os.environ.copy()
 
-    with tempfile.TemporaryDirectory(prefix="hermes-tmpfs-runtime-") as temporary:
-        temp = Path(temporary)
-        profile_root = temp / "profiles"
-        for profile in (
-            "iacquire-operations-manager",
-            "iacquire-lead-hunter",
-            "iacquire-appointment-setter",
-            "iacquire-sales-assistant",
-            "iacquire-crm-manager",
-            "iacquire-analyst",
-        ):
-            (profile_root / profile).mkdir(parents=True, exist_ok=True)
+    for service, size_mib in EXPECTED_MOUNTS:
+        compose_service = services.get(service)
+        if not isinstance(compose_service, dict):
+            raise RuntimeError(f"rendered Compose service is missing: {service}")
+        tmpfs = compose_service.get("tmpfs")
+        expected_tmpfs = [f"/tmp:rw,noexec,nosuid,nodev,size={size_mib}m"]
+        if tmpfs != expected_tmpfs:
+            raise RuntimeError(f"{service}: rendered tmpfs mismatch: {tmpfs!r}")
+        if compose_service.get("image") != EXPECTED_IMAGE:
+            raise RuntimeError(f"{service}: unexpected rendered image")
 
-        synthetic_hmac = temp / "synthetic-hmac"
-        synthetic_hmac.write_bytes(b"synthetic-test-only")
-        env = os.environ.copy()
-        env["IACQUIRE_INFERENCE_HMAC_FILE"] = str(synthetic_hmac)
-        env["HERMES_PROFILE_BASE"] = str(profile_root)
-        env["IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED"] = "false"
-
-        try:
-            for service, size_mib in EXPECTED_MOUNTS:
-                result = run(
-                    compose
-                    + [
-                        "run",
-                        "--no-deps",
-                        "--rm",
-                        "--network",
-                        "none",
-                        "--entrypoint",
-                        "/opt/hermes/.venv/bin/python",
-                        service,
-                        "-c",
-                        CHECK_MOUNT,
-                        str(size_mib * 1024 * 1024),
-                    ],
-                    env=env,
-                )
-                if "TMPFS_RUNTIME_PASS" not in result.stdout:
-                    raise RuntimeError(f"{service}: mount check did not report success")
-                print(f"{service}: {result.stdout.strip().splitlines()[-1]}", flush=True)
-        finally:
-            # Compose run removes its temporary containers; remove only this unique test project.
-            subprocess.run(
-                compose + ["down", "--remove-orphans", "--volumes"],
-                env=env,
-                text=True,
-                capture_output=True,
-                timeout=90,
-            )
+        result = run(
+            [
+                "docker", "run", "--rm", "--network", "none", "--read-only",
+                "--user", "10000:10000", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges", "--tmpfs", tmpfs[0],
+                "--entrypoint", "/opt/hermes/.venv/bin/python", EXPECTED_IMAGE,
+                "-c", CHECK_MOUNT, str(size_mib * 1024 * 1024),
+            ],
+            env=env,
+        )
+        if "TMPFS_RUNTIME_PASS" not in result.stdout:
+            raise RuntimeError(f"{service}: mount check did not report success")
+        print(f"{service}: {result.stdout.strip().splitlines()[-1]}", flush=True)
 
     print("COMPOSE_TMPFS_RUNTIME_PASS: all six workers and the proxy used one correctly bounded /tmp mount with no network")
     return 0

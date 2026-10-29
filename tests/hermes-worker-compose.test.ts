@@ -39,5 +39,7 @@ describe("worker Compose tmpfs", () => {
     expect(runtimeCheck).toContain("/proc/self/mountinfo");
     expect(runtimeCheck).toMatch(/"--network",\s*"none"/);
     expect(runtimeCheck).toContain("EXPECTED_MOUNTS");
+    expect(runtimeCheck).toContain('os.environ.get("COMPOSE_CONFIG_JSON")');
+    expect(runtimeCheck).toContain('compose_service.get("tmpfs")');
   });
 });
