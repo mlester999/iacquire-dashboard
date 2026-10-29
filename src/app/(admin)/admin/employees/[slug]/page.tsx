@@ -197,7 +197,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-slate-300">
             <span className="inline-flex items-center gap-1.5"><Sparkles className="size-3.5 text-blue-200" /> {agent.config_version ? `Configuration v${agent.config_version}` : "No applied configuration"}</span>
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-blue-200" /> {agent.tool_inventory_tool_count ?? 0} approved tools</span>
-            <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} usable knowledge</span>
+            <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} employee notes and documents</span>
             <Link href="/approvals" className="inline-flex items-center gap-1.5 text-blue-200 hover:text-white">{pendingApprovals} pending approvals <ArrowUpRight className="size-3" /></Link>
           </div>
         }
