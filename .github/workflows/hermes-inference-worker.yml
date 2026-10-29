@@ -25,12 +25,23 @@ jobs:
     name: Build pinned Hermes worker and run synthetic checks
     if: github.ref_name == 'codex/internal-iacquire-activation'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Check out the isolated branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Verify the exact reconciled source and workflow-only change
+        shell: bash
+        env:
+          EXPECTED_CANDIDATE_SHA: 9bdb349337ce1aea8e8bfb162b677f544e8624ec
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_CANDIDATE_SHA" ]]
+          [[ "$(git diff --name-only "$EXPECTED_CANDIDATE_SHA" HEAD)" == ".github/workflows/hermes-inference-worker.yml" ]]
+          git diff --check "$EXPECTED_CANDIDATE_SHA" HEAD
 
       - name: Verify runner and branch scope
         shell: bash
@@ -41,6 +52,41 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
           docker version
           docker compose version
+
+      - name: Set up Node.js for focused application checks
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install application dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-fund --fetch-retries=5 \
+            --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=120000 \
+            --fetch-timeout=300000
+          docker pull --quiet node:24-bookworm-slim
+
+      - name: Run focused app tests, TypeScript, lint, and production build offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only \
+            --user "$(id -u):$(id -g)" --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=512m \
+            --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
+            --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c '
+              npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism \
+                tests/hermes-prompt-audit.test.ts \
+                tests/workforce-chat-booking-intent.test.ts \
+                tests/employee-chat-evidence.test.ts
+              npm run typecheck
+              npm run lint
+              npm run build
+            '
 
       - name: Build the pinned worker image
         shell: bash
