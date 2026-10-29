@@ -75,7 +75,7 @@ Source hashes at commit `bd843d27` (`services/hermes-inference-worker/`, unchang
 | File | SHA-256 |
 | --- | --- |
 | `Dockerfile` | `97618cee1538014c04ae6304ee2ed1821d8364dc9d1020eeef1bcd96f2aa0294` |
-| `compose.internal.yaml` | `68f714fc1d4970e972394d492a3b77beb5777be02ba84dd543d9e660862f8afa` |
+| `compose.internal.yaml` | `68f714fc1d4970e972394d492a3b77beb5777be02ba84dd543d9e660862f8afa` (superseded: see section 6, corrected hash `99cd7096e6f893ad1bf46ff531aec395104ad0859fee78dd8cbcbde882cc62a6` at commit `f09227b5`) |
 | `worker.py` | `772cfe2e131d9625304e8cd4c32bad936e3e6ef116962a683f5b4f61729d9d27` |
 | `inference_runner.py` | `47a72768652124776cf69fca62c1e59f5ff92aed35d073c6de14eac763219788` |
 | `deepseek_egress_proxy.py` | `2736719066901cc50f5b740578ab2d7d1a07f380a84ff6e79640e2fd8fd2eb45` |
@@ -111,3 +111,24 @@ Not needed. Checks 8 to 11 all passed, so no profile, permission or credential c
 1. A1 is run only after your separate approval. A2 (no-call prompt audit) is then requested separately: it needs `HERMES_INFERENCE_WORKER_URL`, `HERMES_INFERENCE_WORKER_SECRET` and both audit flags set in Vercel, and is switched off after six measurements.
 2. After A2, the prompt-budget decision in section 2 is requested before any live-model test. No canary runs before it.
 3. The consultation calendar and client provisioning milestones are unaffected.
+
+## 6. A1 execution log (approved by the founder: "Approve A1", recommended defaults)
+
+Run one step at a time in the founder's Hostinger console. Stopped at the first surprise.
+
+| Step | Result |
+| --- | --- |
+| Baseline | Containers: tunnel, gateway, Traefik only. The earlier worker image (W1) had been removed since 08:08 UTC. Profile baseline recorded in a shell variable (no file written): SHA-256 of all six `SOUL.md` and `config.yaml` plus size and mtime of each `.env` (18 lines). All six `config.yaml` are byte-identical (`2b469fa1...`); the `.env` files are 521 bytes each, last modified 2026-10-17 |
+| 1. Source | Eight files fetched from `raw.githubusercontent.com` at `bd843d27` into `/docker/iacquire-hermes-inference/services/hermes-inference-worker/`. `sha256sum -c`: all eight OK |
+| 2. Secret | `/etc/iacquire-hermes-inference/inference_hmac` created on the VPS: owner 10000:10000, mode 400, 65 bytes, never printed |
+| 3a. Compose check | `docker compose config`: valid, seven services |
+| 3b. Build | Exit 0, a complete cache hit: the image kept its original creation time (07:41:03 UTC) and labels. A cache hit requires byte-identical inputs, so the earlier image (W1) was built from exactly these verified sources. **W1 is resolved** |
+| 3c. Start | **Failed, nothing started.** Networks created (13); no container created: `Error response from daemon: invalid mount path: 'nodev' mount path must be absolute`. Containers afterwards: the original three only |
+
+**Cause (a defect in the reviewed Compose file, not the VPS).** `tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m]` is a YAML flow list, so each comma started a new item. Parsed before the fix: `["/tmp:rw","noexec","nosuid","nodev","size=32m"]`; after: `["/tmp:rw,noexec,nosuid,nodev,size=32m"]`. CI only parsed and rendered the Compose file and never started the services, so it passed. Two lines were affected (workers 32m, proxy 8m).
+
+**Fix** (commit `f09227b5`, review branch): quote both values (the intended options are unchanged); CI now asserts the rendered tmpfs value of every worker and the proxy; `tests/hermes-worker-compose.test.ts` guards the quoting. The corrected `compose.internal.yaml` has SHA-256 `99cd7096e6f893ad1bf46ff531aec395104ad0859fee78dd8cbcbde882cc62a6`; the other seven files are unchanged.
+
+**State on the VPS now (stopped here):** source files, secret and rebuilt image in place; thirteen empty Docker networks (`iacquire-hermes-inference-*`); no worker or proxy container; no tunnel attachment; no Cloudflare route; Hermes profiles, gateway and tunnel untouched. The thirteen networks are harmless and are reused by the next `up` or removed by `down`.
+
+**To continue (needs your confirmation, since the compose file differs from the one approved by hash):** fetch the corrected `compose.internal.yaml` from commit `f09227b5`, verify `99cd7096...`, then `up -d` and steps 4 to 8 as approved. Real container start is the first time this Compose file runs for real, so further surprises are possible; the same rule applies: stop at the first one.
