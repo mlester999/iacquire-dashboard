@@ -26,6 +26,8 @@ describe("worker Compose tmpfs", () => {
   });
 
   it("checks the exact rendered tmpfs settings for workers and the proxy", () => {
+    expect(workflow).toContain('assert memory_limit_bytes(service.get("mem_limit")) == 512 * 1024 * 1024');
+    expect(workflow).toContain('assert memory_limit_bytes(proxy.get("mem_limit")) == 64 * 1024 * 1024');
     expect(workflow).toContain('assert service.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=32m"]');
     expect(workflow).toContain('assert proxy.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=8m"]');
   });

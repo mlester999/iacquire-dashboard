@@ -50,6 +50,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_TMPFS_CI_SHA: 52b1ac594b620998300bcfe9b1ad2248209df2f4
+          EXPECTED_TMPFS_REVIEW_SHA: cbde620d2b384115742551d26b9af23ce4a66187
           EXPECTED_REVIEW_BASE_SHA: ab43262f0906d52d22983d00f11af1f552555da6
           EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
           EXPECTED_PREVIOUS_CI_SHA: 5cd1f2689c9f2630db3494978be9cb038fe5dc98
@@ -61,7 +62,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_TMPFS_CI_SHA" ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_TMPFS_REVIEW_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_TMPFS_REVIEW_SHA^")" == "$EXPECTED_TMPFS_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_TMPFS_CI_SHA^")" == "$EXPECTED_REVIEW_BASE_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_REVIEW_BASE_SHA^")" == "$EXPECTED_PREVIOUS_CI_SHA" ]]
           [[ "$(git rev-parse "$EXPECTED_PREVIOUS_CI_SHA^")" == "$EXPECTED_PRIOR_CI_SHA" ]]
@@ -221,6 +223,16 @@ jobs:
 
           with open(sys.argv[1], encoding="utf-8") as source:
               config = json.load(source)
+          def memory_limit_bytes(value):
+              if isinstance(value, int):
+                  return value
+              if isinstance(value, str):
+                  normalized = value.strip().lower()
+                  if normalized.endswith("m"):
+                      return int(normalized[:-1]) * 1024 * 1024
+                  return int(normalized)
+              raise AssertionError(f"unsupported rendered memory limit: {type(value).__name__}")
+
           roles = {
               "operations-manager": "operations_manager",
               "lead-hunter": "lead_hunter",
@@ -241,7 +253,7 @@ jobs:
               assert not service.get("ports"), name
               assert "ALL" in service.get("cap_drop", []), name
               assert "no-new-privileges:true" in service.get("security_opt", []), name
-              assert service.get("mem_limit") == "512m", name
+              assert memory_limit_bytes(service.get("mem_limit")) == 512 * 1024 * 1024, (name, service.get("mem_limit"))
               assert service.get("cpus") == 0.5, name
               assert service.get("pids_limit") == 64, name
               assert service.get("environment", {}).get("IACQUIRE_INFERENCE_WORKER_ALLOWED_ROLE") == role, name
@@ -260,7 +272,7 @@ jobs:
           assert not proxy.get("ports")
           assert "ALL" in proxy.get("cap_drop", [])
           assert "no-new-privileges:true" in proxy.get("security_opt", [])
-          assert proxy.get("mem_limit") == "64m"
+          assert memory_limit_bytes(proxy.get("mem_limit")) == 64 * 1024 * 1024, proxy.get("mem_limit")
           assert proxy.get("cpus") == 0.1
           assert proxy.get("pids_limit") == 32
           assert proxy.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=8m"], proxy.get("tmpfs")
