@@ -11,6 +11,7 @@ COPY --chown=0:0 services/hermes-inference-worker/inference_runner.py /opt/iacqu
 COPY --chown=0:0 services/hermes-inference-worker/deepseek_egress_proxy.py /opt/iacquire-hermes/inference/deepseek_egress_proxy.py
 COPY --chown=0:0 services/hermes-inference-worker/pinned_runtime_smoke.py /opt/iacquire-hermes/inference/pinned_runtime_smoke.py
 COPY --chown=0:0 services/hermes-inference-worker/pinned_prompt_audit_smoke.py /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py
+COPY --chown=0:0 services/hermes-inference-worker/pinned_readonly_profile_smoke.py /opt/iacquire-hermes/inference/pinned_readonly_profile_smoke.py
 COPY --chown=0:0 services/hermes-inference-worker/test_worker.py /opt/iacquire-hermes/inference/test_worker.py
 COPY --chown=0:0 services/hermes-inference-worker/Dockerfile /opt/iacquire-hermes/inference/Dockerfile
 RUN chmod 0444 /opt/iacquire-hermes/inference/*.py && \
@@ -20,14 +21,15 @@ RUN chmod 0444 /opt/iacquire-hermes/inference/*.py && \
       /opt/iacquire-hermes/inference/deepseek_egress_proxy.py \
       /opt/iacquire-hermes/inference/pinned_runtime_smoke.py && \
     /opt/hermes/.venv/bin/python -m py_compile \
-      /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py && \
+      /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py \
+      /opt/iacquire-hermes/inference/pinned_readonly_profile_smoke.py && \
     /opt/hermes/.venv/bin/python -c 'import sys; sys.path.insert(0,"/opt/hermes"); from run_agent import AIAgent; import model_tools; assert callable(AIAgent); assert model_tools.get_tool_definitions(enabled_toolsets=[]) == []'
 
 ENV PYTHONNOUSERSITE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/opt/hermes
 USER 10000:10000
-LABEL org.opencontainers.image.version="0.22.5-iacquire-inference.v1"
+LABEL org.opencontainers.image.version="0.22.5-iacquire-inference.v2"
 LABEL com.iacquire.hermes.base-source="${HERMES_SOURCE_COMMIT}"
 ENTRYPOINT ["/opt/hermes/.venv/bin/python"]
 CMD ["/opt/iacquire-hermes/inference/worker.py", "--serve"]

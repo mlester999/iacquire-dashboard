@@ -170,6 +170,28 @@ jobs:
             iacquire/hermes-inference-worker:ci -B \
             /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py
 
+      # The first production audit failed because Hermes writes logs under its home and the worker pointed the home at the
+      # read-only profile mount. The smokes above use writable synthetic homes, so this one mounts the profile read-only.
+      - name: Run the real worker path against a read-only profile mount with pinned Hermes and no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          profiles="$RUNNER_TEMP/readonly-profiles"
+          profile="$profiles/iacquire-lead-hunter"
+          mkdir -p "$profile"
+          printf 'Synthetic read-only profile SOUL.\n' > "$profile/SOUL.md"
+          printf 'model:\n  provider: deepseek\n  model: deepseek-v4-pro\nagent:\n  api_max_retries: 1\n  auto_recovery_cycles: 0\n' > "$profile/config.yaml"
+          printf 'SYNTHETIC_DECOY_SECRET=never-copy-this-value-0001\nDEEPSEEK_API_KEY=sk-synthetic-readonly-profile-0123456789\nDEEPSEEK_BASE_URL=https://api.deepseek.com\n' > "$profile/.env"
+          chmod 0755 "$profiles" "$profile"
+          chmod 0644 "$profile/SOUL.md" "$profile/config.yaml" "$profile/.env"
+          docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --mount "type=bind,source=$profile,target=/profiles/iacquire-lead-hunter,readonly" \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_readonly_profile_smoke.py
+
       - name: Re-run worker policy and failure tests with network disabled
         shell: bash
         run: |

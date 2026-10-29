@@ -10,7 +10,7 @@ x-worker-environment: &worker-environment
   IACQUIRE_DEEPSEEK_EGRESS_PROXY: http://iacquire-deepseek-egress-proxy:3128
 
 x-worker-base: &worker-base
-  image: iacquire/hermes-inference-worker:0.22.5-v1
+  image: iacquire/hermes-inference-worker:0.22.5-v2
   build:
     context: ../..
     dockerfile: services/hermes-inference-worker/Dockerfile
@@ -138,7 +138,7 @@ services:
     networks: [performance_analyst_ingress, performance_analyst_policy]
 
   iacquire-deepseek-egress-proxy:
-    image: iacquire/hermes-inference-worker:0.22.5-v1
+    image: iacquire/hermes-inference-worker:0.22.5-v2
     build:
       context: ../..
       dockerfile: services/hermes-inference-worker/Dockerfile

@@ -14,8 +14,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -51,6 +53,13 @@ RATE_PER_PROFILE = 2
 GLOBAL_RATE = 30
 DEFAULT_RUNNER_PATH = "/opt/iacquire-hermes/inference/inference_runner.py"
 INFERENCE_PATH_PREFIX = "/internal/inference/v1"
+# Hermes writes logs and state under its home directory, so it cannot run against the read-only
+# profile mount. Each request gets a throwaway home with copies of only these profile files.
+PROFILE_HOME_FILE_LIMITS = {"SOUL.md": 16_384, "config.yaml": 65_536}
+PROVIDER_DOTENV_LIMIT_BYTES = 65_536
+PROVIDER_DOTENV_KEYS = ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL")
+PROVIDER_DOTENV_VALUE_RE = re.compile(r"[A-Za-z0-9_.:/+=@~-]{8,512}")
+DEFAULT_TEMP_ROOT = "/tmp"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("iacquire.hermes.inference")
@@ -297,6 +306,77 @@ def _log_result(payload: dict[str, Any], result: dict[str, Any] | None, status: 
     }, separators=(",", ":")))
 
 
+def _read_profile_file(profile_path: Path, name: str, limit: int) -> bytes:
+    path = profile_path / name
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise OSError("unsafe profile file")
+        with path.open("rb") as source:
+            data = source.read(limit + 1)
+    except OSError:
+        raise RequestError("runtime_profile_unavailable", 503) from None
+    if not 1 <= len(data) <= limit:
+        raise RequestError("runtime_profile_unavailable", 503)
+    return data
+
+
+def _provider_dotenv(raw: bytes) -> str:
+    """Keep only the DeepSeek settings the runner inspects; every other secret in the profile stays behind."""
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return ""
+    kept: dict[str, str] = {}
+    for line in lines:
+        text = line.strip()
+        if text.startswith("export "):
+            text = text[len("export "):].lstrip()
+        name, separator, value = text.partition("=")
+        name = name.strip()
+        if not separator or name not in PROVIDER_DOTENV_KEYS:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        # Anything outside a plain token is dropped, so a key can never smuggle in a second assignment.
+        if PROVIDER_DOTENV_VALUE_RE.fullmatch(value):
+            kept[name] = value
+    return "".join(f"{name}={kept[name]}\n" for name in PROVIDER_DOTENV_KEYS if name in kept)
+
+
+def _write_private(path: Path, data: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as target:
+        target.write(data)
+
+
+def build_runtime_home(profile_path: Path, mode: str, temp_root: str) -> Path:
+    """Create the throwaway HERMES_HOME for one request.
+
+    Hermes writes its logs and state under its home, and the profile is mounted read-only, so the
+    child never runs against the profile itself. The home holds copies of SOUL.md and config.yaml
+    only. Inference adds a .env with just the DeepSeek settings; the prompt audit gets no .env at all.
+    The caller removes the directory when the request ends.
+    """
+    files = {name: _read_profile_file(profile_path, name, limit) for name, limit in PROFILE_HOME_FILE_LIMITS.items()}
+    dotenv = None
+    if mode == "inference":
+        dotenv = _provider_dotenv(_read_profile_file(profile_path, ".env", PROVIDER_DOTENV_LIMIT_BYTES))
+    try:
+        home = Path(tempfile.mkdtemp(prefix="iacquire-hermes-home-", dir=temp_root))
+    except OSError:
+        raise RequestError("runtime_unavailable", 503) from None
+    try:
+        for name, data in files.items():
+            _write_private(home / name, data)
+        if dotenv is not None:
+            _write_private(home / ".env", dotenv.encode("ascii"))
+    except OSError:
+        shutil.rmtree(home, ignore_errors=True)
+        raise RequestError("runtime_unavailable", 503) from None
+    return home
+
+
 def run_pinned_hermes(payload: dict[str, Any]) -> dict[str, Any]:
     runner_path = Path(os.environ.get("IACQUIRE_HERMES_INFERENCE_RUNNER", DEFAULT_RUNNER_PATH))
     python = os.environ.get("IACQUIRE_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
@@ -317,40 +397,47 @@ def run_pinned_hermes(payload: dict[str, Any]) -> dict[str, Any]:
             raise RequestError("runtime_network_policy_unavailable", 503)
     else:
         raise RequestError("invalid_request")
-    env = {
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "LANG": "C.UTF-8",
-        "LC_ALL": "C.UTF-8",
-        "TZ": "UTC",
-        "HERMES_HOME": str(profile_path),
-        "HOME": "/tmp",
-        "IACQUIRE_INTERNAL_PROFILE": profile,
-        "IACQUIRE_HERMES_TEMP_ROOT": "/tmp",
-        "IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED": os.environ.get("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED", "false"),
-        "PYTHONNOUSERSITE": "1",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": "/opt/hermes",
-    }
-    if mode == "inference":
-        env["IACQUIRE_DEEPSEEK_EGRESS_PROXY"] = proxy
-        request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "history")}
-    else:
-        request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "chatInput", "history", "mode")}
+    temp_root = os.environ.get("IACQUIRE_HERMES_TEMP_ROOT", DEFAULT_TEMP_ROOT)
+    if not Path(temp_root).is_absolute():
+        raise RequestError("runtime_unavailable", 503)
+    home = build_runtime_home(profile_path, mode, temp_root)
     try:
-        completed = subprocess.run(
-            [python, str(runner_path)],
-            input=json.dumps(request, separators=(",", ":")),
-            text=True,
-            capture_output=True,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-            check=False,
-            env=env,
-            cwd="/tmp",
-        )
-    except subprocess.TimeoutExpired:
-        raise RequestError("inference_timeout", 504) from None
-    except OSError:
-        raise RequestError("runtime_unavailable", 503) from None
+        env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "TZ": "UTC",
+            "HERMES_HOME": str(home),
+            "HOME": temp_root,
+            "IACQUIRE_INTERNAL_PROFILE": profile,
+            "IACQUIRE_HERMES_TEMP_ROOT": temp_root,
+            "IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED": os.environ.get("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED", "false"),
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": "/opt/hermes",
+        }
+        if mode == "inference":
+            env["IACQUIRE_DEEPSEEK_EGRESS_PROXY"] = proxy
+            request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "history")}
+        else:
+            request = {key: payload[key] for key in ("requestId", "role", "instructions", "input", "chatInput", "history", "mode")}
+        try:
+            completed = subprocess.run(
+                [python, str(runner_path)],
+                input=json.dumps(request, separators=(",", ":")),
+                text=True,
+                capture_output=True,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                check=False,
+                env=env,
+                cwd=temp_root,
+            )
+        except subprocess.TimeoutExpired:
+            raise RequestError("inference_timeout", 504) from None
+        except OSError:
+            raise RequestError("runtime_unavailable", 503) from None
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
     if completed.returncode != 0:
         # Child errors may contain provider details, prompt text, or credentials; never surface them.
         raise RequestError("inference_failed", 502)

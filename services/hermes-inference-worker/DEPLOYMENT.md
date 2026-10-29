@@ -21,6 +21,14 @@ separate approval and must be switched off after the six measurements.
   the real pinned Hermes `AIAgent`, not a DeepSeek credential or external request.
 - Run six worker containers from the same image. Each container has one fixed role, one read-only
   Hermes profile mount, and one exact role path. No worker can read another employee's profile.
+- Hermes writes logs and state under its home directory, so it never runs against the read-only
+  profile. For each request the worker builds a throwaway home in the container's `/tmp` holding
+  copies of `SOUL.md` and `config.yaml` only (the prompt audit gets nothing else; inference adds a
+  `.env` with just `DEEPSEEK_API_KEY` and `DEEPSEEK_BASE_URL`), runs the child there with mode 0600
+  files, and deletes it when the request ends. State, sessions, logs and the profile's other secrets
+  are never exposed to the child, and nothing is written to the profile. The first production audit
+  failed on exactly this (`Read-only file system: .../logs/agent.log`); the `pinned_readonly_profile_smoke.py`
+  CI step now runs the real worker path against a read-only profile mount.
 - The workers have no published host ports. Each has only its own internal ingress network and
   internal policy network. The existing `cloudflared` connector is attached to the six ingress
   networks only. The DeepSeek proxy is the only container with an external egress network.
@@ -68,7 +76,7 @@ Run the following on a Docker-capable non-production runner. It does not require
 path or any secret and does not call DeepSeek:
 
 ```powershell
-docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v1 .
+docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v2 .
 ```
 
 Do not proceed to deployment unless the build reports the pinned Hermes version, passes all
