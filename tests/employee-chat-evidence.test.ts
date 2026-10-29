@@ -138,6 +138,21 @@ describe("the six acceptance questions reach a Hermes run that carries verified,
     expect(message.content).not.toContain("I can prepare a booking preview");
   }, 60_000);
 
+  // Found in production on 2026-10-29: this wording used to be turned into the stored KPI card instead of an answer in words.
+  it("Performance Analyst asked what the metrics show is answered by its run, and is told how to get the KPI card", async () => {
+    const { message, evidence } = await ask("performance_analyst", "What do the verified business metrics show right now?");
+    expect(evidence.sections.map((s) => s.id)).toEqual(expect.arrayContaining(["performance", "chat_requests"]));
+    expect(JSON.stringify(evidence.sections.find((s) => s.id === "chat_requests"))).toContain("Show our performance metrics for the last 30 days");
+    expect(message.content).toContain("What do the verified business metrics show");
+  }, 60_000);
+
+  it("every role's run carries how complete the company knowledge is and what can be started from its chat", async () => {
+    for (const role of AGENT_ROLE_KEYS) {
+      const { evidence } = await ask(role);
+      expect(evidence.sections.map((s) => s.id), role).toEqual(expect.arrayContaining(["knowledge", "chat_requests"]));
+    }
+  }, 120_000);
+
   it("CRM Manager with a set-up but empty CRM: the facts say set up and empty, not disconnected", async () => {
     const { evidence } = await ask("crm_manager");
     const crm = evidence.sections.find((s) => s.id === "crm")!;

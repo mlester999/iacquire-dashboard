@@ -23,15 +23,23 @@ beforeAll(async () => {
 
 describe("workspace facts", () => {
   it("treats the default native CRM as available even when the workspace has no records", async () => {
-    expect(await facts(w.org.id)).toEqual({ knowledgeApproved: false, calendarReady: false, crmReady: true, pipelineReady: false, leadTargetingSet: false, customerChannelReady: false });
+    expect(await facts(w.org.id)).toMatchObject({ knowledgeApproved: false, calendarReady: false, crmReady: true, pipelineReady: false, leadTargetingSet: false, customerChannelReady: false });
+    expect((await facts(w.org.id)).knowledge).toMatchObject({ total: 9, supplied: 0, heldForReview: 0 });
   });
 
   it("count approved company knowledge, not knowledge held for review or left empty", async () => {
     await withSystem((db) => db.query("insert into company_knowledge (org_id, section, content, review_status) values ($1, 'faq', 'held text', 'pending_agency_review'), ($1, 'policies', '', 'approved')", [w.org.id]));
     expect((await facts(w.org.id)).knowledgeApproved).toBe(false);
+    expect((await facts(w.org.id)).knowledge).toMatchObject({ total: 9, supplied: 0, heldForReview: 1 });
     await withSystem((db) => db.query("insert into company_knowledge (org_id, section, content, review_status) values ($1, 'business_description', 'We repair roofs.', 'approved')", [w.org.id]));
     expect((await facts(w.org.id)).knowledgeApproved).toBe(true);
+    // The minimum flag is on, and the counts say how far from complete it is: one supplied, one held, seven still empty (an empty row is not "supplied").
+    const summary = (await facts(w.org.id)).knowledge!;
+    expect(summary).toMatchObject({ total: 9, supplied: 1, heldForReview: 1, suppliedNames: ["Business description"] });
+    expect(summary.missing).toHaveLength(7);
+    expect(summary.missing).toContain("Policies");
     expect((await facts(other.org.id)).knowledgeApproved).toBe(false);
+    expect((await facts(other.org.id)).knowledge).toMatchObject({ supplied: 0, heldForReview: 0 });
   });
 
   it("count saved lead targeting, an enabled customer channel, a pipeline with stages and a calendar with a host", async () => {

@@ -94,7 +94,9 @@ describe("an employee only reads what its own Allowed actions still permit", () 
   it("the Sales Assistant's own read follows its own switch, not the CRM Manager's", async () => {
     await applyConfig(shop.org.id, "sales_assistant", ["crm.read_opportunities"]);
     const { sections, block } = await evidenceFor(shop, "sales_assistant");
-    expect(states(sections)).toEqual({ pipeline: "switched_off" });
+    // Its own area is switched off. Company knowledge (counts only) and the list of what can be started from chat carry no customer records and follow the person, not this ability.
+    expect(states(sections)).toEqual({ pipeline: "switched_off", knowledge: "not_configured", chat_requests: "ready" });
+    expect(byId(sections, "chat_requests")!.records).toEqual([]);
     expect(block).not.toMatch(/Private kitchen|4321/);
   });
 
@@ -178,7 +180,8 @@ describe("a read that fails is never reported as a fact about the business", () 
   it("when the whole read runs out of time the remaining areas say so instead of guessing", async () => {
     const { sections } = await evidenceFor(shop, "crm_manager", { totalMs: 0 });
     expect(sections.length).toBeGreaterThan(0);
-    expect(sections.every((s) => s.state === "unavailable")).toBe(true);
+    // The list of what can be started from chat needs no read, so it is the one area that is still there.
+    expect(sections.filter((s) => s.id !== "chat_requests").every((s) => s.state === "unavailable")).toBe(true);
     expect(String((await lastAudit(shop.org.id)).metadata.problems)).toContain("out_of_time");
   });
 });

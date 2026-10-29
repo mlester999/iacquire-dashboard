@@ -6,6 +6,7 @@
 // employee better, but the work it does without it is honest: the capability says what is missing). Nothing here grants a permission or opens a tool; it only decides what to say.
 import type { AgentRoleKey } from "@/lib/agents";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
+import { knowledgeCompletenessText, type KnowledgeSummary } from "@/lib/knowledge-sections";
 
 export interface CrmReadinessEvidence {
   organizationKind: "agency" | "client" | null;
@@ -26,8 +27,10 @@ export function crmReadyFromEvidence(evidence: CrmReadinessEvidence): boolean {
 
 /** The workspace facts a requirement is judged from. All plain values, so a test can write them by hand. */
 export interface WorkspaceFacts {
-  /** At least one section of company knowledge is approved (an employee may only use approved knowledge). */
+  /** At least one section of company knowledge is approved (an employee may only use approved knowledge). This is the minimum to work, not a complete company profile. */
   knowledgeApproved: boolean;
+  /** How many of the knowledge sections are supplied, when it was read. Absent where only the minimum flag is known. */
+  knowledge?: KnowledgeSummary;
   /** An active calendar with a host that can take bookings, or a connected calendar. */
   calendarReady: boolean;
   /** A native CRM workspace is available or its external provider connection is verified. Record count is not part of readiness. */
@@ -125,7 +128,9 @@ export interface EmployeeFacts {
 export function evaluateRequirements(role: AgentRoleKey, facts: WorkspaceFacts, employee: EmployeeFacts = {}): RequirementResult[] {
   const results = ROLE_REQUIREMENTS[role].map((d) => {
     const met = facts[d.fact] === true;
-    return { key: d.key, label: d.label, met, blocking: d.blocking, detail: met ? d.met : d.missing, fixHref: met ? null : d.fixHref };
+    // Having some approved knowledge is enough to work, but the person should see how much of it exists rather than a bare "available".
+    const detail = !met ? d.missing : d.key === "knowledge" && facts.knowledge ? `Approved company knowledge is available to this employee. ${knowledgeCompletenessText(facts.knowledge)}` : d.met;
+    return { key: d.key, label: d.label, met, blocking: d.blocking, detail, fixHref: met ? null : d.fixHref };
   });
   const excess = employee.runtimeToolsExcess;
   if (excess) {

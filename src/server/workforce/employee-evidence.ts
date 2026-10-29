@@ -8,6 +8,9 @@ import {
   type EmployeeEvidence, type EvidenceRecord, type EvidenceSection,
 } from "@/lib/employee-evidence";
 import type { WorkspaceFacts } from "@/lib/employee-requirements";
+import { CHAT_REQUESTS } from "@/lib/employee-chat-requests";
+import { knowledgeCompletenessText } from "@/lib/knowledge-sections";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { recordAudit } from "@/server/audit";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import { hostMeetingSupport, listCalendars, listHostAvailability, type CalendarView } from "@/server/calendars/setup";
@@ -90,6 +93,8 @@ export function failureReason(error: unknown): string {
 /** The reason an area may not be read for this employee, or null when it may. Checked before any record is read. */
 function gateSection(b: Build, id: string, title: string): EvidenceSection | null {
   if (b.abilities === null) return unavailableSection(id, title, "What this employee is allowed to read could not be confirmed just now, so nothing was read.");
+  // Company knowledge is already part of every employee's own instructions and these two carry no customer records, so they follow the person's permission, not the role's abilities.
+  if (id === "knowledge" || id === "chat_requests") return null;
   const needed = SECTION_ABILITIES[b.roleKey]?.[id] ?? ROLE_ABILITIES[b.roleKey];
   return needed.some((ability) => b.abilities?.has(ability)) ? null : switchedOffSection(id, title);
 }
@@ -786,9 +791,85 @@ function moduleStates(facts: WorkspaceFacts | null): Record<string, string> {
     salesPipeline: word(facts.pipelineReady),
     bookingCalendar: word(facts.calendarReady),
     leadTargetingRules: word(facts.leadTargetingSet),
-    approvedBusinessKnowledge: word(facts.knowledgeApproved),
+    // Some approved knowledge is the minimum to work; how complete it is lives in the "Company knowledge" area.
+    approvedBusinessKnowledge: !facts.knowledgeApproved ? "not set up yet" : facts.knowledge ? `partly supplied: ${knowledgeCompletenessText(facts.knowledge)}` : "some is supplied (how complete it is was not checked)",
     customerMessagingChannel: word(facts.customerChannelReady),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Company knowledge: how complete it is
+// ---------------------------------------------------------------------------
+
+const KNOWLEDGE_TITLE = "Company knowledge";
+
+/** Counts and plain section names only; no knowledge text is read or sent. Follows the person's own permission to open the Knowledge Center. */
+function knowledgeSection(b: Build): EvidenceSection {
+  if (!b.ctx.can("knowledge.view")) return noPermissionSection("knowledge", KNOWLEDGE_TITLE);
+  const summary = b.facts?.knowledge;
+  if (!b.facts || !summary) return unavailableSection("knowledge", KNOWLEDGE_TITLE, SETUP_UNKNOWN);
+  const sentence = knowledgeCompletenessText(summary);
+  if (summary.supplied === 0) {
+    return section("knowledge", KNOWLEDGE_TITLE, "not_configured", sentence, {
+      facts: { sectionsSupplied: 0, sectionsAsked: summary.total, sectionsWaitingForReview: summary.heldForReview, stillEmpty: summary.missing },
+    });
+  }
+  return section("knowledge", KNOWLEDGE_TITLE, "ready", sentence, {
+    facts: {
+      sectionsSupplied: summary.supplied,
+      sectionsAsked: summary.total,
+      sectionsWaitingForReview: summary.heldForReview,
+      supplied: summary.suppliedNames,
+      stillEmpty: summary.missing,
+      complete: summary.supplied === summary.total,
+      note: "Some approved knowledge is the minimum to work from. Do not describe the company's knowledge as complete or fully set up unless every section is supplied, and do not answer from a section listed as still empty.",
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// What can really be started from this chat
+// ---------------------------------------------------------------------------
+
+const CHAT_REQUESTS_TITLE = "What can be started from this chat";
+
+/** What the workspace must have before a request can work, so the employee can say what is missing instead of offering it. */
+function missingSetup(requestKey: string, facts: WorkspaceFacts | null): string | null {
+  if (!facts) return null;
+  if ((requestKey === "availability_check" || requestKey === "booking_preview" || requestKey === "appointment_change") && !facts.calendarReady) return "no booking calendar is set up yet";
+  if (requestKey === "lead_research" && !facts.leadTargetingSet) return "no lead targeting rules are saved yet";
+  if ((requestKey === "pipeline_review" || requestKey === "followup_drafts") && !facts.pipelineReady) return "no sales pipeline is set up yet";
+  return null;
+}
+
+/**
+ * The requests this person can start by writing them in this chat, for this employee, and the ones they cannot (with the reason). An employee only ever offers the first list.
+ * These start only through iAcquire's own chat router under the person's permissions; the employee never runs them and must not say one has started.
+ */
+function chatRequestsSection(b: Build): EvidenceSection {
+  const canStart: EvidenceRecord[] = [];
+  const cannotStart: EvidenceRecord[] = [];
+  for (const def of CHAT_REQUESTS[b.roleKey]) {
+    const capability = def.capability ? capabilityDefinition(def.capability) : null;
+    if (def.capability && !capability?.allowedRoles.includes(b.roleKey)) continue;
+    const permissions = capability ? ["agents.use" as const, capability.requiredPermission, ...(capability.additionalPermissions ?? [])] : (def.permissions ?? []);
+    const person = permissions.every((permission) => b.ctx.can(permission));
+    const employee = def.abilities.some((ability) => b.abilities?.has(ability));
+    const missing = person && employee ? missingSetup(def.key, b.facts) : null;
+    if (person && employee && !missing) {
+      canStart.push({ request: def.label, theyCanWrite: def.say, whatHappens: def.result });
+    } else {
+      cannotStart.push({ request: def.label, because: !employee ? "this ability is switched off for this employee" : !person ? "the person asking does not have access to it" : `${missing}, so it cannot work yet` });
+    }
+  }
+  return section("chat_requests", CHAT_REQUESTS_TITLE, "ready", canStart.length ? `${canStart.length} kind${canStart.length === 1 ? "" : "s"} of request can be started from this chat.` : "Nothing can be started from this chat by this person right now.", {
+    facts: {
+      howItWorks: "The person writes the request in this chat. iAcquire, not you, runs it under the person's permissions and shows the result; you never run it and must not say it has started or finished.",
+      cannotStartNow: cannotStart,
+      everythingElse: "Anything not listed (changing a record, creating a task, proposal, approval or booking, sending a message, setting something up) cannot be done from this chat. Say so plainly and say where in iAcquire a person does it.",
+    },
+    records: canStart,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -937,7 +1018,11 @@ export async function prepareEmployeeEvidence(
     }
     const build: Build = { ctx, roleKey: input.roleKey, now, timeZone, abilities, deadline, sectionTimeoutMs, actor, facts, crmMode, nativeAppointments, problems };
     try {
-      sections = await ROLE_SECTIONS[input.roleKey](build);
+      sections = [
+        ...await ROLE_SECTIONS[input.roleKey](build),
+        ...await guard(build, "knowledge", KNOWLEDGE_TITLE, async () => knowledgeSection(build)),
+        chatRequestsSection(build),
+      ];
       // Whatever a section builder returned, an area this employee may not read is reported as switched off, and nothing else about it is kept.
       sections = sections.map((section) => gateSection(build, section.id, section.title) ?? section);
     } catch (error) {

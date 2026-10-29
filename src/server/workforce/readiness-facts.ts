@@ -6,6 +6,7 @@ import { runtimeToolExposure } from "@/lib/employee-tool-policy";
 import type { HealthSummary, ReadinessExtras } from "@/lib/workforce-readiness";
 import { healthProbeSchemaReady } from "@/server/workforce/health-alerts";
 import { hasExplicitTargeting } from "@/lib/leads-targeting";
+import { summarizeKnowledge, type KnowledgeSectionState } from "@/lib/knowledge-sections";
 import { crmReadyFromEvidence, type CrmReadinessEvidence } from "@/lib/employee-requirements";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 
@@ -45,6 +46,11 @@ export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<
     [orgId],
   );
   const r = rows[0];
+  // How much knowledge exists, section by section (at most nine small rows; no text is read).
+  const knowledgeRows = await db.query<KnowledgeSectionState>(
+    "select section, btrim(content) <> '' as filled, review_status from company_knowledge where org_id = $1",
+    [orgId],
+  );
   const crmEvidence: CrmReadinessEvidence = {
     organizationKind: r?.org_kind ?? null,
     workspaceExists: r?.crm_workspace_exists === true,
@@ -54,6 +60,7 @@ export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<
   };
   return {
     knowledgeApproved: r?.knowledge === true,
+    knowledge: summarizeKnowledge(knowledgeRows.rows),
     calendarReady: r?.calendar === true,
     crmReady: crmReadyFromEvidence(crmEvidence),
     pipelineReady: r?.pipeline === true,

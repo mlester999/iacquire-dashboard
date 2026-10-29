@@ -1,4 +1,5 @@
 import type { AgentRoleKey } from "@/lib/agents";
+import { asksAboutWhatHappened, withoutNonBookingUses } from "@/lib/workforce-chat-booking-intent";
 
 export type WorkforceChatRefusalReason =
   | "out_of_role_research"
@@ -67,11 +68,11 @@ export function workforceChatRefusal(role: AgentRoleKey, content: string, employ
     };
   }
 
-  if (!bookingReadRequest && follows(
-    text,
-    /\b(?:book|schedule|confirm|reschedule|cancel|move)\b/,
-    /\b(?:appointment|meeting|calendar|booking|slot)\b/,
-  )) {
+  // "My schedule" or "the calendar schedule" is a noun, not a request to schedule anything, so it is not judged as a booking verb.
+  if (!bookingReadRequest
+    && !asksAboutWhatHappened(text)
+    && /\b(?:book|schedule|confirm|reschedule|cancel|move)\b/.test(withoutNonBookingUses(text))
+    && /\b(?:appointment|meeting|calendar|booking|slot)\b/.test(text)) {
     return {
       reason: "appointment_write",
       message: "This chat can check real calendar availability, but it cannot create, confirm, cancel or reschedule a booking. No calendar record was changed.",
