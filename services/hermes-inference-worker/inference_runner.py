@@ -13,6 +13,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 

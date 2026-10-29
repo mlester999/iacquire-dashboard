@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import os
 import subprocess
@@ -662,6 +663,65 @@ class ThrowawayRuntimeHomeTests(unittest.TestCase):
                 self.assertEqual(os.listdir(fixture["runtime"]), [])
             finally:
                 os.chmod(fixture["profile"], 0o755)
+
+
+def undefined_global_names(path: str) -> list[str]:
+    """Names a module reads as globals that it never imports, defines or gets from builtins."""
+    import builtins
+    import symtable
+
+    with open(path, encoding="utf-8") as source:
+        top = symtable.symtable(source.read(), path, "exec")
+    defined = {
+        symbol.get_name() for symbol in top.get_symbols()
+        if symbol.is_assigned() or symbol.is_imported() or symbol.is_namespace()
+    }
+    defined.update({"__file__", "__name__", "__doc__"})
+    missing: set[str] = set()
+
+    def visit(table: symtable.SymbolTable) -> None:
+        for symbol in table.get_symbols():
+            name = symbol.get_name()
+            if symbol.is_referenced() and symbol.is_global() and name not in defined and not hasattr(builtins, name):
+                missing.add(f"{name} (in {table.get_name()})")
+        for child in table.get_children():
+            visit(child)
+
+    visit(top)
+    return sorted(missing)
+
+
+class RunnerEntryPointTests(unittest.TestCase):
+    """inference_runner.main() ran in no test or smoke until CI exercised it through the worker, and it
+    used Path without importing it, so every real request failed with inference_failed."""
+
+    def test_no_module_in_the_image_reads_an_undefined_global(self):
+        directory = os.path.dirname(os.path.abspath(__file__))
+        for name in sorted(os.listdir(directory)):
+            if name.endswith(".py") and not name.startswith("test_"):
+                with self.subTest(name):
+                    self.assertEqual(undefined_global_names(os.path.join(directory, name)), [])
+
+    def run_main(self, home: str, request: dict) -> str:
+        values = {"HERMES_HOME": home, "IACQUIRE_INTERNAL_PROFILE": "iacquire-lead-hunter"}
+        stdin = io.TextIOWrapper(io.BytesIO(json.dumps(request).encode("utf-8")), encoding="utf-8")
+        with patch.dict(os.environ, values), patch.object(sys, "stdin", stdin):
+            os.environ.pop("IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED", None)
+            with self.assertRaises(inference_runner.RuntimeErrorSafe) as caught:
+                inference_runner.main()
+        return str(caught.exception)
+
+    def test_main_reads_the_soul_from_the_runtime_home_before_it_loads_hermes(self):
+        request = {
+            "requestId": "7a5bde96-b288-4e54-8dad-5b6c7d8e9f88", "role": "lead_hunter", "instructions": "x", "input": "y",
+            "chatInput": "z", "history": [], "mode": "prompt_audit",
+        }
+        with tempfile.TemporaryDirectory() as home:
+            self.assertEqual(self.run_main(home, request), "profile_soul_unavailable")
+            with open(os.path.join(home, "SOUL.md"), "w", encoding="utf-8") as soul:
+                soul.write("Synthetic SOUL fixture.")
+            # With a SOUL present main() gets past the Path check and stops at the audit switch, not at a NameError.
+            self.assertEqual(self.run_main(home, request), "prompt_audit_disabled")
 
 
 if __name__ == "__main__":

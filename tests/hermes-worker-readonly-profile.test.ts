@@ -69,6 +69,8 @@ describe("read-only profile smoke in CI", () => {
 
   it("has unit tests for the home, including a real child against a read-only directory", () => {
     expect(workerTests).toContain("class ThrowawayRuntimeHomeTests");
+    expect(workerTests).toContain("class RunnerEntryPointTests");
+    expect(read("services/hermes-inference-worker/inference_runner.py")).toContain("from pathlib import Path\n");
     expect(workerTests).toContain("test_a_real_child_can_write_its_logs_while_the_profile_directory_is_read_only");
   });
 });
