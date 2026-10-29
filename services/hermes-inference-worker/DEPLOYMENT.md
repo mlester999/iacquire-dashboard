@@ -4,10 +4,20 @@ This package is a temporary, inference-only path for six existing internal AI Em
 not call the normal Hermes run API, run employee tools, activate schedules, or perform business
 actions. The code is disabled in the application until `HERMES_INFERENCE_WORKER_ENABLED=true`.
 
+The separate `/api/internal/hermes-inference/prompt-audit` diagnostic is off by default. It
+requires `HERMES_PROMPT_AUDIT_ENABLED=true` in the app and
+`IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED=true` in the isolated worker. It sends the currently composed
+internal employee instructions to that worker over the existing Access and HMAC path. The worker
+loads only that role's read-only SOUL profile and runs the pinned Hermes `AIAgent` twice against a
+synthetic loopback completion server. The audit child receives a synthetic API key, no DeepSeek
+credential, and no egress-proxy setting. It returns only UTF-8 byte counts and role/profile/version
+identity; it does not write profile, conversation, or business data. This temporary feature needs
+separate approval and must be switched off after the six measurements.
+
 ## Isolation and request limits
 
 - Build from the Hermes image pinned by digest in `Dockerfile`. The image build runs the Python
-  unit suite and `pinned_runtime_smoke.py`; that smoke uses a synthetic local API endpoint and
+  unit suite and both pinned runtime smokes; they use synthetic local API endpoints and
   the real pinned Hermes `AIAgent`, not a DeepSeek credential or external request.
 - Run six worker containers from the same image. Each container has one fixed role, one read-only
   Hermes profile mount, and one exact role path. No worker can read another employee's profile.

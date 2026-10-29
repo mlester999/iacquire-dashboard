@@ -25,12 +25,30 @@ jobs:
     name: Build pinned Hermes worker and run synthetic checks
     if: github.ref_name == 'codex/internal-iacquire-activation'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Check out the isolated branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify the exact reconciled source and workflow-only change
+        shell: bash
+        env:
+          EXPECTED_RECONCILED_SHA: b6a69582369ff710b2d75f5c29671e26ae5da4e5
+          EXPECTED_MASTER_SHA: 7d411f250ec5f4df2e97282bdb4b8d36830b7355
+          EXPECTED_WORKER_CANDIDATE_SHA: b9422e475007ef78c6119558f9b9950a13135a05
+          EXPECTED_DIAGNOSTIC_SHA: 89ea940a1f45f32c1d229a48bf0fa25b13c1c7ba
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_RECONCILED_SHA" ]]
+          [[ "$(git rev-parse "$EXPECTED_RECONCILED_SHA^2")" == "$EXPECTED_MASTER_SHA" ]]
+          [[ "$(git merge-base "$EXPECTED_RECONCILED_SHA" "$EXPECTED_WORKER_CANDIDATE_SHA")" == "$EXPECTED_WORKER_CANDIDATE_SHA" ]]
+          [[ "$(git merge-base "$EXPECTED_WORKER_CANDIDATE_SHA" "$EXPECTED_DIAGNOSTIC_SHA")" == "$EXPECTED_DIAGNOSTIC_SHA" ]]
+          [[ "$(git diff --name-only "$EXPECTED_RECONCILED_SHA" HEAD)" == ".github/workflows/hermes-inference-worker.yml" ]]
+          git diff --check "$EXPECTED_RECONCILED_SHA" HEAD
 
       - name: Verify runner and branch scope
         shell: bash
@@ -41,6 +59,50 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "codex/internal-iacquire-activation" ]]
           docker version
           docker compose version
+
+      - name: Set up Node.js for focused application checks
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install application dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-fund --fetch-retries=5 \
+            --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=120000 \
+            --fetch-timeout=300000
+          docker pull --quiet node:24-bookworm-slim
+
+      - name: Run focused app tests, TypeScript, lint, and production build offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only \
+            --user "$(id -u):$(id -g)" --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=512m \
+            --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
+            --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c '
+              npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism \
+                tests/hermes-prompt-audit.test.ts \
+                tests/workforce-chat-booking-intent.test.ts \
+                tests/employee-chat-evidence.test.ts \
+                tests/employee-chat-quality.test.ts \
+                tests/internal-consultation-calendar.test.ts \
+                tests/client-onboarding-readiness.test.ts \
+                tests/employee-evidence.test.ts \
+                tests/employee-evidence-hardening.test.ts \
+                tests/employee-readiness-facts.test.ts \
+                tests/employee-readiness-states.test.ts \
+                tests/workforce-chat-assignment.test.ts \
+                tests/workforce-chat-appointment-change-intent.test.ts
+              npm run typecheck
+              npm run lint
+              npm run build
+            '
 
       - name: Build the pinned worker image
         shell: bash
@@ -60,6 +122,17 @@ jobs:
             --entrypoint /opt/hermes/.venv/bin/python \
             iacquire/hermes-inference-worker:ci -B \
             /opt/iacquire-hermes/inference/pinned_runtime_smoke.py
+
+      - name: Measure synthetic prompts with pinned Hermes and no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_prompt_audit_smoke.py
 
       - name: Re-run worker policy and failure tests with network disabled
         shell: bash

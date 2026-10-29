@@ -5,6 +5,7 @@ x-worker-environment: &worker-environment
   IACQUIRE_INFERENCE_WORKER_PORT: "8786"
   IACQUIRE_INFERENCE_WORKER_SECRET_FILE: /run/secrets/inference_hmac
   IACQUIRE_HERMES_INFERENCE_RUNNER: /opt/iacquire-hermes/inference/inference_runner.py
+  IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED: ${IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED:-false}
   IACQUIRE_INTERNAL_PROFILE_ROOT: /profiles
   IACQUIRE_DEEPSEEK_EGRESS_PROXY: http://iacquire-deepseek-egress-proxy:3128
 
