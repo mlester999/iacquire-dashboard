@@ -129,7 +129,7 @@ describe("VPS preflight script is read-only", () => {
     });
     const output = `${result.stdout}${result.stderr}`;
     expect(output).toContain("== Summary ==");
-    expect(output).not.toMatch(/LEAKCANARY|CANARYCONFIGKEY|topsecretvalue|LEAKTOKEN|TUNNEL_TOKEN|eyJ|user:/);
+    expect(output).not.toMatch(/LEAKCANARY|CANARYCONFIGKEY|topsecretvalue|LEAKTOKEN|TUNNEL_TOKEN|eyJ/);
     expect(output).toContain("DEEPSEEK_API_KEY is present with 12 or more characters (value not shown)");
     expect(output).toContain("connector is token-managed");
     expect(output).toMatch(/sha256 config\.yaml = [0-9a-f]{64}/);

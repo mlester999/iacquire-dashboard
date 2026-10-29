@@ -88,7 +88,7 @@ Expect `836ab4cb` unless something deployed since. `https://iacquire.online/api/
 
 ## 6. Results to send back
 
-Paste or attach `a1-preflight-vps.txt` and `a1-preflight-cloudflare.txt` (they contain hostnames, paths, hashes and counts, no secrets; read them once before sending), plus the output of the two Vercel commands. Redact the account id if you prefer. I will then fill in this table and prepare the A1 approval request.
+Paste or attach `a1-preflight-vps.txt` and `a1-preflight-cloudflare.txt` (they contain hostnames, paths, hashes and counts, no secrets; read them once before sending), plus the output of the two Vercel commands. Redact the account id if you prefer. I will then fill in this table and prepare the A1 approval request. The current status, the explicit A2/A3 prompt-budget blocker, the draft A1 request with its rollback, and the isolated remediation proposal are in `docs/hermes-a1-results-and-request-2026-10-29.md`.
 
 ## 7. What A1 would do (preview only, not approved)
 
