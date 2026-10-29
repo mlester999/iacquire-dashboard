@@ -214,6 +214,9 @@ jobs:
               attached = set(service["networks"])
               assert "deepseek_egress" not in attached, name
               assert len(attached) == 2, name
+              # One tmpfs entry with its options intact: an unquoted comma in the YAML flow list once split it.
+              assert service.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=32m"], (name, service.get("tmpfs"))
+          assert services[proxy_name].get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=8m"], services[proxy_name].get("tmpfs")
           networks = config["networks"]
           assert networks["deepseek_egress"].get("internal") is not True
           for name, network in networks.items():
