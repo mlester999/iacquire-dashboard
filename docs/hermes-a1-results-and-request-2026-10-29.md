@@ -2,7 +2,7 @@
 
 Date: 2026-10-29 (UTC 08:08 for the VPS run). Branch: `integration/hermes-bridge-final`. Sections 1 to 5 were read-only; nothing was installed, started, attached, routed, edited or called when they were written.
 
-**Status (updated 2026-10-29 ~10:30 UTC): A1 is complete and verified; see section 6.1.** Next gate: the no-call A2 prompt audit, which needs its own approval.
+**Status (updated 2026-10-29 ~12:10 UTC): A1 is complete and verified (section 6.1). A2 was attempted and stopped at its first audit (section 7): the worker cannot run Hermes against a read-only profile. Everything is back to dormant.** Next gate: a worker fix (section 7.4), then A2 again; both need approval.
 
 ## 1. Result: no STOP, two WARN. A1 can be requested.
 
@@ -151,3 +151,39 @@ Run one step at a time in the founder's Hostinger console. Stopped at the first 
 - **Still open:** W2 (the Access service token does not expire), O1 (gateway host port 32771 is public, `ufw` inactive), O2 (workers mount whole profile directories, decision (d)), the prompt budget (section 2).
 
 **Rollback if needed** (reverses A1 only, nothing else depends on it yet): delete the six worker routes in the Cloudflare tunnel (leave the gateway route), then on the VPS `docker network disconnect iacquire-hermes-inference-<role>-ingress iacquire-hermes-tunnel` for each role, then `docker compose -f compose.internal.yaml down`, then remove the secret file. The profiles, gateway and Vercel need no change.
+
+## 7. A2 attempt (approved: "Approve A2", then "Approve rotation"; 2026-10-29 ~11:00-12:10 UTC)
+
+**Outcome: stopped at the first audit, on a surprise; production returned to dormant.** No DeepSeek call was made, and none was possible by design: the audit child gets no key and no proxy setting, the worker networks are internal, and the only provider is a loopback synthetic listener. The egress proxy keeps no connection log (it logged nothing, not even the denied test from A1), so this rests on that design, not on a log.
+
+### 7.1 What was done, in order
+
+1. **Secret.** The approved "pipe the A1 secret from the VPS to Vercel" was not possible from this PC: there is no SSH identity, the Hostinger console ignores clipboard writes (OSC 52), the page blocks `navigator.clipboard.readText`, and a synthetic Ctrl+V does not paste. With the founder's approval ("Approve rotation") a fresh 64-hex secret was generated locally and never displayed. It went to Vercel as a sensitive variable and to the clipboard (excluded from clipboard history and cloud sync). The founder pasted it into a no-echo prompt in the VPS console, which wrote `/etc/iacquire-hermes-inference/inference_hmac` in place only if the input was exactly 64 hex characters. Result: mode 400, owner 10000:10000, 65 bytes. The clipboard was cleared afterwards. The A1 secret is retired.
+2. **Vercel.** `HERMES_INFERENCE_WORKER_URL` = `https://hermes-api.iacquire.online/internal/inference/v1` and `HERMES_INFERENCE_WORKER_SECRET` were added to Production. Later `HERMES_PROMPT_AUDIT_ENABLED=true` was added and the current production deployment (`38oremflx`, `bd843d27`) was rebuilt with `vercel redeploy` (same source, new environment): `jv6amn3fo`, Ready in 5 minutes, `/api/health` ok.
+3. **Workers.** `IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED=true` was set and the six workers were recreated. A `--dry-run` came first and showed exactly six workers recreating and no network, volume or image change; the proxy was untouched. After the update: all healthy, flag true, no published ports, one profile mount each, tunnel still attached to the six ingress networks.
+4. **First audit** (Operations Manager, from the signed-in Super Admin session): HTTP 502 "could not complete its identity checks" after 2.2 s. The worker log shows `prompt_audit_result ... "status":"inference_failed"`.
+
+### 7.2 What the failure already proves
+
+The signed path works end to end: Vercel, Cloudflare Access (service token), tunnel, worker port, HMAC signature accepted, role allowed, child process started. This closes the "tunnel to worker not proven" item from section 6.1 for the signed path. No tunnel errors were logged.
+
+### 7.3 Cause
+
+Reproduced inside the worker container with synthetic text and no network: `OSError [Errno 30] Read-only file system: '/profiles/iacquire-operations-manager/logs/agent.log'`. Hermes v0.22.5 opens `logs/agent.log` and creates its skeleton directories under `HERMES_HOME`. The worker points `HERMES_HOME` at the read-only profile mount (A1 decision d), so **every audit and every inference would fail the same way for all six roles**. CI did not catch it because the synthetic profile it uses is writable. The runner deliberately discards child errors (it returns only `{"ok": false}`), so the only visible signal was the generic code.
+
+### 7.4 Fix direction, verified with synthetic data only
+
+With `HERMES_HOME` set to a throwaway directory in the container's `/tmp` holding only copies of `SOUL.md` and `config.yaml`, the same audit returned: `ok`, Hermes 0.22.5, `soulBytes` 2,291, `providerOnlyMessageBytes` 3,570, `chatMessageBytes` 3,566, 2 synthetic requests, 0 tool schemas, 0 tool calls. Hermes created 11 skeleton directories beside the two copied files (`audio_cache`, `backups`, `cache`, `cron`, `hooks`, `image_cache`, `logs`, `memories`, `pairing`, `sessions`, `skills`), all in tmpfs. This design also fixes O2 for the audit: no `.env`, `state.db` or session history is mounted into or readable by the child. Inference (A3) additionally needs the DeepSeek key; it should be supplied as a minimal `.env` containing only that one variable, built per request, never the whole profile file.
+
+Needed change (not started): build the throwaway home in `run_pinned_hermes` (worker.py) and remove it afterwards; unit tests; make the CI smoke mount a profile read-only so this class of failure is caught; new image tag; roll-out to the VPS (rebuild, recreate) as its own approved step; then re-run A2.
+
+### 7.5 Budget implication (provisional, not the real audit)
+
+The synthetic provider message was 3,570 bytes with a 34-byte instruction and a 24-byte input, so the fixed overhead per call is about 3.5 KB (the 2,291-byte SOUL plus about 1.2 KB of Hermes framing). The real instruction text is 5.6 to 10.9 KB. If that holds, **every role exceeds 6,144 bytes, not only Lead Hunter**, so decision D2 concerns all six. Only the real audit can confirm this; the worker accepts over-limit instructions in audit mode for measurement.
+
+### 7.6 End state (verified)
+
+- Vercel Production: `HERMES_PROMPT_AUDIT_ENABLED` removed and the site redeployed; `HERMES_INFERENCE_WORKER_URL` and the sensitive `HERMES_INFERENCE_WORKER_SECRET` remain (inert while both flags are off). `HERMES_INFERENCE_WORKER_ENABLED` was never set.
+- VPS: six workers recreated with the audit flag false (all healthy, no published ports, tunnel attached to six ingress networks); the secret file holds the new secret; the throwaway test directory was removed.
+- Unchanged: all profile files (Operations Manager `SOUL.md` prefix `1e02f4c8226b` and `.env` mtime `1792203915` match the baseline), the gateway, the tunnel configuration, the Cloudflare routes and Access policy.
+- Rollback of A2 only: remove the two Vercel variables and redeploy; the worker secret file can stay (it is only read by the workers).
