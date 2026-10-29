@@ -1,6 +1,6 @@
 # Hermes integration: consolidated release package (2026-10-29)
 
-One integration branch, `integration/hermes-bridge-final`, built on production master. **Nothing in it is deployed.** No push to `master`, no production deployment, no Cloudflare or VPS change, no live profile change, no DeepSeek call and no business-tool activation has been made. Every step after this document needs its own explicit approval (section 9).
+One integration branch, `integration/hermes-bridge-final`, built on production master. **Stage A0 (deploy with every flag off) was approved and executed on 2026-10-29; production is now `836ab4cb`** (section 1a). Nothing else has been done: no Cloudflare or VPS change, no environment or flag change, no live profile change, no DeepSeek call and no business-tool activation. Every step after A0 needs its own explicit approval (section 9).
 
 ## 1. What is actually current (read 2026-10-29)
 
@@ -15,6 +15,22 @@ The brief's starting point was out of date, so this was re-read rather than assu
 | Origin branches | `codex/internal-iacquire-activation`: `fe40f7e4` when I started, **`5cd1f268` now** (the other session pushed its prompt-audit branch and two CI repairs while I worked; both are merged into the final branch, and I did not touch that branch); `integration/hermes-business-bridge` `77038458` (my earlier branch, superseded); other `codex/*` branches not touched |
 
 **Production rollback anchor for this release:** the current deployment `dpl_CKmCcLjUNARx8aSaRQTPDqG1nmBF`. If the candidate is deployed and has to be undone: `vercel rollback iacquire-dashboard-d2n7hvc05-mlester999s-projects.vercel.app --project iacquire-dashboard`. Behind it, in order: `iacquire-dashboard-hgt3cwaas` (`50da121a`), `iacquire-dashboard-j0v7x7co9` (`eac5070f`).
+
+## 1a. Stage A0 executed (2026-10-29, approved by the founder)
+
+| Step | Result |
+| --- | --- |
+| CI on the exact tip `836ab4cb` (run `40818417650`, Linux `ubuntu-24.04`) | **Both jobs succeeded.** `worker-build-and-smoke`: about 2 minutes (pinned image build, pinned Hermes smoke, no-call prompt audit smoke with the network off, worker unit tests, Compose isolation). `app-checks`: about 48 minutes (the whole suite offline, with failures judged against the nine known, then TypeScript, lint and the production build with outbound access for fonts) |
+| Master | Fast-forwarded `7d411f25` to `836ab4cb`, no force, after CI was green |
+| Production deployment | `dpl_CsHs1trSFdQFSNBckwj2ZAjKjUts` (`iacquire-dashboard-n1wmpca5g`), Ready, `githubCommitSha` `836ab4cb`, aliased to `iacquire.online`; `/api/health` `{"status":"ok","database":"ok","scheduler":"never_ran"}` |
+| Flags-off behaviour | Unauthenticated: the MCP endpoint answers 404; the three inference routes answer 403. As the signed-in Super Admin: the prompt audit answers 503 "The no-call prompt audit is disabled." and the restricted Chat answers 403 "Restricted employee inference is not enabled." Both refuse before anything is persisted or any worker is called |
+| Six employees in the real Chat, one question each, after the deployment | **All pass.** Zeng: "3 of 9" knowledge sections, a real request offered, no promise. Lead Hunter: the 10 leads (top lead Abraham Ash). Appointment Setter: "It's not that the week is empty — it just can't be verified without a calendar", a real request offered. Sales Assistant: zero deals, nine empty stages. CRM Manager: zero contacts, companies and deals, a real review request offered. Performance Analyst: plain words, no KPI card, 10 leads awaiting review, revenue and conversion "not tracked", "a human decision in iAcquire, not something I can do from this chat" |
+| Invariants | Completed chat runs rose by exactly one per model reply (Zeng 10, Lead Hunter 8, Appointment Setter 8, Sales Assistant 4, CRM Manager 6, Performance Analyst 5). Afterwards: 0 approvals, 0 contacts, no calendar, an empty inbox, the same 10 leads all pending. No internal names in any reply |
+| Not changed | No environment variable, Vercel setting, flag, VPS, Cloudflare, profile, credential or schedule |
+
+**Rollback anchor now:** `vercel rollback iacquire-dashboard-d2n7hvc05-mlester999s-projects.vercel.app --project iacquire-dashboard` re-promotes the previous production deployment (`dpl_CKmCcLjUNARx8aSaRQTPDqG1nmBF`, `7d411f25`). Behind it: `iacquire-dashboard-hgt3cwaas` (`50da121a`), `iacquire-dashboard-j0v7x7co9` (`eac5070f`).
+
+**Next, each separately approved:** A1 (VPS worker installation, inference disabled), then A2 (no-call prompt audit), A3 (real-model canaries), A4 (business-tool acceptance), with decisions D1 to D4 in section 9.
 
 ## 2. The single integration branch
 
@@ -142,7 +158,7 @@ Each stage is separate, has its own rollback, and stops on any failure. Nothing 
 | D3 | Build the derived MCP credential (C3) | Yes, before A4 |
 | D4 | Host and workspace time zone | See section 10 |
 
-**A0. Deploy the candidate with every flag off.** Fast-forward `master` from `7d411f25` to the branch tip, no force; Vercel builds production. No migration, no environment change, no VPS or Cloudflare change. Intended effect on production: none. Check after: `/api/health`, the six-employee Chat regression questions, and that the three bridge routes refuse. Rollback: the anchor in section 1. Adds one pinned build dependency (the MCP SDK, audited).
+**A0. Deploy the candidate with every flag off. DONE (section 1a).** Fast-forward `master` from `7d411f25` to the branch tip, no force; Vercel builds production. No migration, no environment change, no VPS or Cloudflare change. Intended effect on production: none. Check after: `/api/health`, the six-employee Chat regression questions, and that the three bridge routes refuse. Rollback: the anchor in section 1. Adds one pinned build dependency (the MCP SDK, audited).
 
 **A1. Controlled infrastructure installation, inference disabled.** Build the pinned image on the VPS, create the signing secret, start the six workers and the proxy with the exact read-only profile mounts, confirm no published ports and one profile mount each, confirm unrelated `CONNECT` destinations are denied, attach the tunnel connector to the six ingress networks, add only the six anchored routes under the existing Access policy. No gateway restart, no firewall change. Rollback: the sequence in `DEPLOYMENT.md` (flags off, remove the six routes, disconnect the connector, stop only the worker services and proxy, remove the secret). Preconditions: the Cloudflare inspection above.
 
