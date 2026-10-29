@@ -10,10 +10,13 @@ import { withSystem } from "@/server/db";
 import { getAgentByRole, buildRunInstructions, loadConnection } from "@/server/workforce/service";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
+import { readBoundedJson } from "@/server/security/bounded-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 45;
+
+const MAX_BODY_BYTES = 1024;
 
 const bodySchema = z.object({ role: z.enum(AGENT_ROLE_KEYS) }).strict();
 
@@ -26,7 +29,8 @@ export async function POST(req: Request) {
       throw new AppError("forbidden", "The no-call prompt audit is available to internal Super Admins only.");
     }
     if (!env().HERMES_PROMPT_AUDIT_ENABLED) throw new AppError("integration_unavailable", "The no-call prompt audit is disabled.");
-    const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+    // A role name fits in a few hundred bytes; anything larger is refused while it is still arriving.
+    const parsed = bodySchema.safeParse(await readBoundedJson(req, MAX_BODY_BYTES));
     if (!parsed.success) throw new AppError("invalid_input", "Choose one existing internal employee.");
     const limit = await consumeRateLimit(RATE_LIMITS.agentInferenceOnlyByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "The no-call prompt audit reached its short test limit. Wait one minute and try again.", { retryAfterSeconds: limit.retryAfterSeconds });

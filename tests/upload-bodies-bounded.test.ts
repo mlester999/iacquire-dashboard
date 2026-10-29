@@ -93,7 +93,7 @@ describe("every API route reads a file or free-text body with a ceiling", () => 
 
   it("keeps the restricted inference routes on the bounded reader, with no raw JSON parse", () => {
     // They take a role name and an id: a ceiling of a kilobyte, enforced while the body arrives.
-    for (const name of ["canary", "chat"]) {
+    for (const name of ["canary", "chat", "prompt-audit"]) {
       const route = text(path.join(API, "internal", "hermes-inference", name, "route.ts"));
       expect(route, name).toMatch(/readBoundedJson\(req, MAX_BODY_BYTES\)/);
       expect(route, name).not.toMatch(JSON_PARSE);
