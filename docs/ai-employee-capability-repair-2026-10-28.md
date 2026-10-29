@@ -1,6 +1,6 @@
 # AI Employee capability repair: change package (2026-10-28)
 
-Status (updated 2026-10-28 evening): **the first commit of this repair, `21b3f6a0`, is already on `origin/master` and is serving production (`iacquire.online`).** It was pushed to master at about 19:45 +08 and Vercel's production deployment `dpl_37NeVCTyTfrT4ud4psqvsJPyQJaq` was Ready at about 19:49, before the security review the founder asked for. Who pushed it is not established (the git credentials are the founder's). **The review in section 10 found defects in that commit. The fixes are in a second commit on `fix/employee-real-capabilities` and are not deployed.** No Hermes profile, SOUL file, credential, role permission, schedule or database row was changed by this work; the only database writes are the additive audit rows the new code writes when a chat runs. Approval to release the fixes is requested in section 9.
+Status (updated 2026-10-28 evening): **the first commit of this repair, `21b3f6a0`, is already on `origin/master` and is serving production (`iacquire.online`).** It was pushed to master at about 19:45 +08 and Vercel's production deployment `dpl_37NeVCTyTfrT4ud4psqvsJPyQJaq` was Ready at about 19:49, before the security review the founder asked for. Who pushed it is not established (the git credentials are the founder's). **The review in section 10 found defects in that commit. The fixes were released to `master` on 2026-10-29 after the founder approved them (commit `5171595a`, Vercel deployment `dpl_8KUKY1cDUB5mcqNQzCEGbmtrHLDj`, Ready, health check ok).** No Hermes profile, SOUL file, credential, role permission, schedule or database row was changed by this work; the only database writes are the additive audit rows the new code writes when a chat runs. Production acceptance through the real Chat is in section 13. A fix for one chat-routing defect that run found (section 13, finding A) is prepared on the review branch and is not deployed.
 
 ## 1. Root causes (exact, from the code)
 
@@ -97,14 +97,16 @@ The same reader runs for client workspaces (verified in tests): the knowledge bl
 
 ## 9. Release, deployment, rollback
 
-**Where things are now (checked 2026-10-28 ~19:50 and again before this release package):**
+**Update 2026-10-29: released (the founder approved).** `origin/master` is `5171595a`, a fast-forward with no force. Production is Vercel deployment `dpl_8KUKY1cDUB5mcqNQzCEGbmtrHLDj` (`iacquire-dashboard-e0cmipp3q`): Ready after 2 minutes, `githubCommitSha` `5171595a`, aliased to `iacquire.online`, and `/api/health` reports ok. The way back is now `iacquire-dashboard-i03vpkj4b-mlester999s-projects.vercel.app` (`a8708414`: keeps the email branding, has the unhardened reader) or the older `d4adb4fd` build below. The table that follows is the state before the release.
+
+**Where things were before the release (checked 2026-10-28 ~19:50 and again before this release package):**
 
 | Item | State |
 | --- | --- |
 | Production (`iacquire.online`) | Was serving `21b3f6a0` (first commit, without the section 10 fixes) from ~19:49 +08 (deployment `dpl_37NeVCTyTfrT4ud4psqvsJPyQJaq`). At 22:50 a separate, unrelated commit (`a8708414`, transactional email branding, pushed by the founder's git account) went to `master` on top of it; production now serves that (deployment `iacquire-dashboard-i03vpkj4b`), which still contains the unhardened `21b3f6a0`. |
 | Previous production deployment (the way back) | `iacquire-dashboard-kmzo210pj-mlester999s-projects.vercel.app` = `dpl_GcfzGttUhCdhVRB1HEim1BNZmoi5`, built from `d4adb4fd`, Ready since 14:08 +08. |
 | `origin/master` | `a8708414` (= `21b3f6a0` plus the email branding commit). |
-| Review branch | `fix/employee-real-capabilities`: the section 10 fixes, tests and this document, merged with current `master` so that it fast-forwards onto it. Against current `master` it changes exactly four files (`src/lib/employee-evidence.ts`, `src/server/workforce/employee-evidence.ts`, `tests/employee-evidence-hardening.test.ts`, this document). Not on master, not deployed. |
+| Review branch | `fix/employee-real-capabilities`: the section 10 fixes, tests and this document, merged with current `master` so that it fast-forwards onto it. Against current `master` it changes exactly four files (`src/lib/employee-evidence.ts`, `src/server/workforce/employee-evidence.ts`, `tests/employee-evidence-hardening.test.ts`, this document). Released: fast-forwarded onto `master` on 2026-10-29 at `5171595a`. |
 | Vercel Preview environment | Has **no environment variables** (checked with `vercel env ls preview`; production has 44). A Preview build of the review branch therefore compiles but has no database, no credentials and no model key: it cannot read or write any real workspace. |
 
 **Proposed release (needs the founder's explicit approval, nothing below has been done):**
@@ -182,7 +184,7 @@ Run on commit `6b77d56f` (the hardening commit), 2026-10-28. After that, `master
 
 The second commit alone (the hardening) touches only `src/lib/employee-evidence.ts`, `src/server/workforce/employee-evidence.ts`, `tests/employee-evidence-hardening.test.ts` and this document.
 
-**Not verified by any check above:** a real Hermes run, the VPS SOUL files, how the new checklist looks in a browser, any production database state, and Vercel production behaviour of the hardening commit (it is not deployed).
+**Not verified by any check above:** a real Hermes run, the VPS SOUL files, how the new checklist looks in a browser, any production database state, and Vercel production behaviour of the hardening commit (a production run through the real Chat is recorded in section 13, which does not cover the SOUL files).
 
 ## 12. What each employee can do, and what still needs a tool bridge (remaining-work matrix)
 
@@ -211,3 +213,37 @@ Three different things are easy to confuse, so they are kept apart:
 4. Optional: refresh the six SOUL files from the corrected configuration text (separately gated).
 
 Kept disabled throughout: autonomous work, customer outreach, live bookings, and broad platform deployment.
+
+## 13. Production acceptance through the real Chat (2026-10-29)
+
+Run after the release in section 9, through the normal signed-in Chat at `iacquire.online`, in the founder's own iAcquire (agency) workspace. The founder signed in themselves in the browser pane; no password was entered by the assistant. One read-only question per employee, then each answer was compared with the live pages of the same workspace. Nothing was written to any record.
+
+| Employee | Question asked | What the reply said | Checked against | Result |
+| --- | --- | --- | --- | --- |
+| Zeng | "What is the current state of operations, and what work is pending right now?" | Quiet, nothing blocked; 0 open or overdue tasks; 0 approvals; 10 leads waiting for human review; no booking requests; calendar and customer messaging not set up; no scheduled AI work; no failed runs in 7 days | Leads page (10 pending), CRM Tasks (0), Approvals (0), Calendars & types ("No calendars yet"), Communication settings (email, SMS and WhatsApp "Not set up") | Matches. Soft point: "approved business knowledge ... in place" repeats a yes/no readiness flag; the Knowledge Center shows 3 of 9 sections supplied |
+| Lead Hunter | "Which leads have you already researched? Summarise what we have so far." | 10 Miami real estate leads from the 21 October test run, all pending, none approved, rejected or synced, no duplicates; names and scores in order (68, 66, 64, 63, 63, 60, 58, 58, 57, 51) | Leads page | Exact match of names, scores, order and status |
+| Appointment Setter | "Which appointments do we have this week, and what is the state of our calendar?" | The booking calendar is not set up, so there are no verified appointments this week; the zero is "because nothing is connected yet, not because this week is genuinely empty" | Calendars & types ("No calendars yet") | Correct, and keeps "not set up" apart from "empty". The first wording of the question was intercepted, see finding A |
+| Sales Assistant | "Where does our sales pipeline stand right now?" | Pipeline ready, 0 open, won or lost deals; the nine stages named and all empty | Pipelines page (nine stages, 0 deals), Opportunities (0 deals) | Matches |
+| CRM Manager | "What is the actual status of our CRM right now?" | CRM set up but empty: 0 contacts, 0 companies, 0 deals, nine stages, no tasks | Contacts (0), Tasks (0), Opportunities (0) | Matches. Companies were not opened |
+| Performance Analyst | "In plain words, how is the business doing overall, and what should I pay attention to first?" | Start-up state: 10 leads created, none approved; 0 contacts, appointments or deals; 24 AI runs completed and 5 failed in 30 days; no revenue, conversion or cost recorded so none reported; first look at the 10 unreviewed leads, then the missing calendar | The KPI card the same employee returned for its first question (same figures); Leads page for the 10 | Consistent. The AI-run counts were not checked against a page. The first wording of the question was answered by the KPI job, see finding B |
+
+**Evidence these were real model runs.** The agency employees page counts completed chat runs per employee. After the questions it showed Zeng 7, Lead Hunter 6, Appointment Setter 3, Sales Assistant 2, CRM Manager 4, Performance Analyst 2, with latest run times 23:02:56 to 23:05:51 UTC, matching the times of the questions. Where the earlier count was known (Zeng 6, Lead Hunter 5, Appointment Setter 2, Sales Assistant 1) each moved by exactly one. The two replies that were not model answers (findings A and B) created no chat run. The page does not show which model answered, so DeepSeek as the model behind the Hermes profile is not independently confirmed here.
+
+**Other required checks**
+
+| Check | Result |
+| --- | --- |
+| Real conversations saved | Pass. Every conversation was reopened by its link in a fresh page load and showed both the question and the reply |
+| No invented results | Pass for every figure compared above. Not compared: companies count, AI-run counts |
+| No leaked internal names | Pass. No capability label, tool name, section name or the word "snapshot" appeared in any reply |
+| No unauthorized action | Pass. After the six chats: 0 contacts, 0 deals, 0 tasks, 0 approvals, no calendar, no inbox conversations, the same 10 leads all still pending; no booking preview was created |
+| Empty, unavailable and not set up kept apart | Pass for empty (CRM, pipeline) and not set up (calendar, messaging). The `unavailable`, `no_permission` and `switched_off` states were not reproducible in production without changing configuration, so they are covered by tests only |
+
+**Findings from this run (none changed here; each needs its own approved change)**
+
+- **A. A booking shortcut can swallow a status question (existing code, not touched by this work).** `src/lib/workforce-chat-booking-intent.ts` answers any Appointment Setter message that contains an action word (`book`, `schedule`, `arrange`, `set up`) and an appointment word (`appointment`, `meeting`, `call`, `calendar slot`, `booking`) but no exact ISO time with a fixed "I can prepare a booking preview..." message, before the model is asked. The first question ("...and is the booking calendar set up?") matched on "set up" and "booking", so the employee never saw the workspace. Nothing wrong was said and nothing was booked, but the exact status question the founder asked for fails on that wording, and "schedule" or "call" used as nouns are at risk too. **Fix prepared on the review branch, not deployed.** `asksToBook` in that file no longer counts "set up" as a booking verb when it describes a state (followed by "yet", "to", "for", "?" and the like), or "schedule" when it is a noun ("the schedule", "booking schedule", "on schedule"). Genuine requests ("Set up an appointment with Jane Doe at ...", "Schedule a call with Jane Doe") are recognised as before. Tests: two new unit tests in `tests/workforce-chat-booking-intent.test.ts`, and two in `tests/employee-chat-evidence.test.ts` that send the original wording through the real chat service and require a model run. The three regression tests fail on the old parser with the production symptom (the fixed reply, no run) and pass with the fix. **Same family, not fixed (read-only questions that still get a fixed reply):** the refusal guardrail answers "Show me the schedule for my meeting with Jane Doe." with an appointment-write refusal, and the cancel or reschedule parser (`src/lib/workforce-chat-appointment-change-intent.ts`) answers "Did anyone reschedule a meeting this week?" and "What happens if I cancel a booking?" with its fixed clarification.
+- **B. A "metrics" request is routed to the KPI job, not the model (by design, `src/lib/workforce-chat-assignment.ts`).** "What do the verified business metrics show right now?" returned the stored KPI card (12 KPIs, "Finished in 0s", "Saved with execution evidence"). The figures are correct and come from saved records, but it is server-run work, not a model reply, and not the plain explanation the founder wants. This is item 3 of the next focused work in section 12.
+- **C. Closing offers run ahead of what Chat can do.** Several replies end with "I can help get that calendar set up" or "I can prepare a proposal for a nudge". They said "as a proposal only", but no employee can create a proposal or approval from Chat while the tool bridge is unwired (section 12). Worth tightening in the employee text later.
+- **D. Knowledge readiness is a yes/no flag.** The snapshot cannot say "3 of 9 sections", so an employee says the knowledge is in place.
+
+**Not covered by this run:** a client (non-agency) workspace in production, tenant isolation in production (only the tests cover it), the VPS SOUL files, and model identity per run. Autonomous work, customer outreach, live bookings and the scheduler stayed off and untouched.
