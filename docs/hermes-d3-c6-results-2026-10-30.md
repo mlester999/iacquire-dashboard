@@ -10,13 +10,13 @@ was called; the business MCP endpoint and inference stay off. This is the eviden
 | D3: dedicated signed, profile-bound MCP credential; the Hermes profile API key no longer opens the endpoint | **Implemented. Verified locally** |
 | D3: authorization against the application's records, run-level binding, people boundary, rotation, revocation, expiry | **Implemented. Verified locally** (denial matrix, with a no-side-effects check on every refusal) |
 | D3: operator issuing script (`npm run hermes:business-mcp-token`) | **Implemented. Verified locally** on synthetic inputs. Never run against hosted data |
-| C6: real Hermes 0.21.5 gateway and MCP client against the real handler, six profiles, 38 checks | **Verified against pinned Hermes** (Windows host, hash-locked dependencies). The Linux CI run of the same test is **Blocked: it needs a push, which needs approval** |
+| C6: real Hermes 0.21.5 gateway and MCP client against the real handler, six profiles, 38 checks | **Verified against pinned Hermes** (Windows host, hash-locked dependencies). The same test **also passed on Linux CI** (Ubuntu 24.04, GitHub Actions run 41041177963, commit `a276c967`, 2026-10-30, about five minutes; the evidence it recorded shows `platform: linux`, Hermes 0.21.5, `mcp` 2.0.0, Python 3.13.14) |
 | C6: the production gateway container itself | **Not done. Requires production approval** (two read-only version checks, section 3.4) |
 | A4 preparation: read-only capability contracts for the six employees | **Verified locally** on synthetic records |
 | Production business-tool readiness | **Not claimed.** Local and synthetic tests do not establish it |
 
 Success criteria: D3 is complete (section 2). C6 "a disposable Hermes 0.21.5 runtime demonstrably discovers and invokes the approved business MCP contract with correct authentication and inventory
-provenance" is met on the pinned source runtime; the stronger form (the production container, Linux CI) still needs the two approvals above. A4 is **ready to be requested for separate authorization**
+provenance" is met on the pinned source runtime; the stronger form (the production container itself) still needs the read-only version checks in section 9; Linux CI has since passed. A4 is **ready to be requested for separate authorization**
 only when those are done and the blockers in section 8 are resolved.
 
 ## 2. D3: credential separation
@@ -79,7 +79,7 @@ nothing from the developer's shell; no model is called; the only network use is 
 - **Not the production container.** It is the same Hermes source, the same locked dependencies as upstream's official image and the repository's overlay, on Windows; the production gateway is a host-packaged
   Hermes 0.21.5 image carrying the same backport. The historical official 0.21.5 image digest used in this repository is recorded in git history (commit `f2eed8a3`) if a container build is wanted.
   Two **read-only** checks on the real gateway would close most of the gap: `hermes --version` and the installed `mcp` package version (tested: 0.21.5 and 2.0.0). Not run: this phase does not authorize it.
-- **Not Linux.** The workflow `.github/workflows/hermes-business-mcp-compat.yml` runs the same test on Ubuntu; it runs only after a push, which needs approval.
+- **Linux:** the same test passed on Ubuntu in CI after the push (run 41041177963), rebuilding the runtime from nothing on the runner. The full evidence is in that run's job summary; the annotation copy is cut at 6,000 characters.
 - **Not a model-driven run.** The "read" is Hermes' MCP client and registry called in-process, the path an agent's tool call takes, with no model in the loop.
 - **Not a gateway restart or profile reload,** and not multi-day behaviour (credential expiry is proven by unit test, not by waiting).
 - **The six inference workers (Hermes 0.22.5)** are separate and have no MCP; nothing here concerns them.
@@ -156,7 +156,7 @@ Run on the Windows development machine, on the branch's working tree, against sy
 **Not done, and not claimed:**
 
 - The **production build** was not run: the nested worktree cannot find `next` on its own, so it has to be run from the parent worktree checked out detached on this commit.
-- **Linux CI** for the pinned-runtime test and the full-suite job: needs the push approval described in section 9.
+- **Linux CI:** the pinned-runtime test passed (run 41041177963). The full-suite job did not run (its path filter does not match these files); the full suite passed locally.
 - No hosted migration, deployment, push, production setting or secret change, and no model call, was made.
 
 ## 8. Security findings, remaining blockers, and what must be resolved before production business tools
@@ -194,7 +194,7 @@ also needs its own written authorization, and it would be the first time the end
 
 Recommended next requests, in this order, each separate:
 
-1. **Approve pushing the review branch for CI only** (no deploy, not `master`): the Linux run of `hermes-business-mcp-compat.yml`. It is the only workflow this push triggers: the full-suite job in `hermes-inference-worker.yml` is path-filtered and none of these files match it, and the full suite has already passed locally with only the nine recorded failures. The exact branch, commit, diff summary and
+1. **Done on 2026-10-30 (approved and pushed): the review branch was pushed for CI only** (no deploy, not `master`; Vercel also built a preview, which GitHub records as environment `Preview`, not production): the Linux run of `hermes-business-mcp-compat.yml`. It is the only workflow this push triggers: the full-suite job in `hermes-inference-worker.yml` is path-filtered and none of these files match it, and the full suite has already passed locally with only the nine recorded failures. The exact branch, commit, diff summary and
    verification results are in the final report.
 2. **Approve two read-only checks on the real gateway:** `hermes --version` and the installed `mcp` package version.
 3. **Decide O1, O2 and the hosting-account question** (section 8).
