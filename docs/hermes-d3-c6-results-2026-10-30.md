@@ -219,6 +219,6 @@ Recommended next requests, in this order, each separate:
 1. **Done on 2026-10-30 (approved and pushed): the review branch was pushed for CI only** (no deploy, not `master`; Vercel also built a preview, which GitHub records as environment `Preview`, not production): the Linux run of `hermes-business-mcp-compat.yml`. It is the only workflow this push triggers: the full-suite job in `hermes-inference-worker.yml` is path-filtered and none of these files match it, and the full suite has already passed locally with only the nine recorded failures. The exact branch, commit, diff summary and
    verification results are in the final report.
 2. **Done on 2026-10-30 (approved and run): read-only checks on the real gateway**: `hermes --version`, the installed `mcp` package version, and a hash of the eight overlay files inside the running image against `SHA256SUMS`. All match (section 3.5).
-3. **Decide O1, O2 and the hosting-account question** (section 8).
+3. **Decide O1, O2 and the hosting-account question** (section 8). A draft proposal with options, read-only checks and a recommendation is in `docs/hermes-a4-blockers-proposal-2026-10-30.md`.
 4. Only then, **A4a**: set the signing secret in the server environment with the flags still off; issue credentials with the script; install them on one profile (Zeng first) through the approved host
    procedure; switch the bridge on for a short, supervised window; run one business-tool acceptance chat; switch it off again.
