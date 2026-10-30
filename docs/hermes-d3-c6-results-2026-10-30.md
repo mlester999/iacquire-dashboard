@@ -1,0 +1,200 @@
+# D3 and C6: business tool security and Hermes compatibility (2026-10-30)
+
+Local work on `integration/hermes-bridge-final`. **Nothing was pushed, deployed or applied.** No production setting, secret, flag, profile, gateway, database or customer record was changed; no model
+was called; the business MCP endpoint and inference stay off. This is the evidence for the D3 and C6 gates and the preparation for A4, not an approval to start A4.
+
+## 1. Outcome labels
+
+| Item | Label |
+| --- | --- |
+| D3: dedicated signed, profile-bound MCP credential; the Hermes profile API key no longer opens the endpoint | **Implemented. Verified locally** |
+| D3: authorization against the application's records, run-level binding, people boundary, rotation, revocation, expiry | **Implemented. Verified locally** (denial matrix, with a no-side-effects check on every refusal) |
+| D3: operator issuing script (`npm run hermes:business-mcp-token`) | **Implemented. Verified locally** on synthetic inputs. Never run against hosted data |
+| C6: real Hermes 0.21.5 gateway and MCP client against the real handler, six profiles, 38 checks | **Verified against pinned Hermes** (Windows host, hash-locked dependencies). The Linux CI run of the same test is **Blocked: it needs a push, which needs approval** |
+| C6: the production gateway container itself | **Not done. Requires production approval** (two read-only version checks, section 3.4) |
+| A4 preparation: read-only capability contracts for the six employees | **Verified locally** on synthetic records |
+| Production business-tool readiness | **Not claimed.** Local and synthetic tests do not establish it |
+
+Success criteria: D3 is complete (section 2). C6 "a disposable Hermes 0.21.5 runtime demonstrably discovers and invokes the approved business MCP contract with correct authentication and inventory
+provenance" is met on the pinned source runtime; the stronger form (the production container, Linux CI) still needs the two approvals above. A4 is **ready to be requested for separate authorization**
+only when those are done and the blockers in section 8 are resolved.
+
+## 2. D3: credential separation
+
+Full design and operator procedure: `docs/hermes-business-mcp-credentials.md`. In short:
+
+- **Before:** the endpoint accepted the employee's Hermes profile API key, which is also the portal's credential for the Hermes gateway: one leaked string, two trust directions.
+- **Now:** only `iamcp1.<role>.<employee id>.<workspace id>.<issued>.<expires>.<credential id>.<signature>`, HMAC-SHA256 under a key derived with HKDF from `HERMES_BUSINESS_MCP_SECRET` (a new,
+  server-only secret that must differ from every other secret in the deployment; checked at boot, never echoed). The profile API key is refused; the credential opens nothing but this endpoint.
+  Constant-time comparison, strict shapes, fields read only after the signature verifies, expiry (90 days default, 400 maximum), single-credential revocation by id, overlap rotation with a
+  verify-only previous secret, one audit entry for a signed-but-refused credential (id only), failure limiting that never blocks a valid credential.
+- **A signed credential is not authority.** The employee row it names must still match every claim (workspace, role, profile, enabled, workspace active, saved Hermes credential unrevoked), and nothing
+  is read without that employee's own live, authenticated Chat turn, run by a Super Admin who still belongs to the workspace. The turn, and so the person, is chosen by the server.
+- **Found and fixed while doing it:** the Super Admin boundary applied to the context tool but not to the CRM tools. It now applies to both, before any tool token exists (`requireWorkspaceUser`).
+- **Tests:** `hermes-business-mcp-credential.test.ts` (29: known-answer vector, tamper/malformed matrices, domain separation, expiry, clock, revocation, rotation, environment contract, secret-handling
+  guards) and `hermes-business-mcp-auth.test.ts` (39: against a seeded database and the real handler: valid and invalid credentials, the old profile key refused, wrong role/employee/workspace,
+  altered/expired/revoked/rotated, disabled and suspended employees and workspaces, revoked Hermes credential, re-mapped profile, no turn, another employee's turn, wrong kind of turn, stale, doubled and
+  out-of-date turns, expired inventory proof, non-Super-Admin and removed member, replay after the turn ends, tool lists, unauthorized and write tools, operating mode and agency pause, the failure limit,
+  the credential not opening the tool API or the gateway, nothing credential-shaped in any table or log, and the issuing script's core). Mutation checks confirmed the tests fail when each protection is removed.
+- **No migration.** If per-credential issue records or admin-screen revocation are wanted later, a small table would add them; it is not proposed now.
+
+## 3. C6: compatibility with the real Hermes
+
+### 3.1 What was run
+
+`services/hermes-business-mcp-acceptance/prepare-runtime.mjs` builds, in a new directory, **Hermes 0.21.5** at upstream commit `f97608f178d1ffeca59860195ab7da295f7c8e5f` (v2026.9.24), its
+dependencies installed exactly as upstream's own container build does (`uv sync --frozen`, lockfile sha256 `ab53c5f5…8027f7`; Python 3.13.14; MCP SDK `mcp` 2.0.0, aiohttp 3.14.3, httpx 0.28.1), plus this
+repository's catalog overlay, checked against its `SHA256SUMS` (eight files) and applied to a copy. The pristine checkout is the control. Reproduced from nothing in 47 seconds.
+
+`tests/hermes-business-mcp-pinned-runtime.test.ts` then serves the **real** `handleHermesBusinessMcp` over loopback on a seeded in-memory database, creates a disposable Hermes home with the six
+internal profiles (each with its own API key and its own credential in its own `.env`), starts the **real** gateway, and checks the following. The runtime's environment holds no provider key and
+nothing from the developer's shell; no model is called; the only network use is loopback (and, in the build, the fetch of the pinned source and packages).
+
+### 3.2 Results (all 38 checks pass)
+
+| Required check | Result | Evidence |
+| --- | --- | --- |
+| 1. Hermes accepts the MCP server configuration | Yes, all six profiles | `mcp_servers.iacquire_business` with `Authorization: "Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}"` expanded from the profile `.env`, `tool_timeout: 12` |
+| 2. The gateway discovers the required tools | Yes, exactly each role's approved tools (2 to 5 per role) | the real MCP client authenticates with the signed credential; the endpoint answered 200 |
+| 3. Inventory reports correct source, server, toolset, names | Yes | every business row: `source: mcp`, `source_server: iacquire_business`, `toolset: mcp-iacquire_business`, names `mcp__iacquire_business__<tool>`; catalog `complete: true`, contract `hermes.api_server.tool_catalog.v1` |
+| 4. Tools recognized under the existing `iacquire_business` contract | Yes, after one fix (3.3) | the application's own `runHealthCheck` records all six employees online with a verified inventory |
+| 5. One authenticated, authorized read on synthetic records | Yes | Hermes' MCP client and tool registry call `get_role_workspace_context`: own record found, other workspace's record absent; a CRM summary read; without the employee's live Chat turn the application refuses |
+| 6. Invalid credentials rejected | Yes, 8 cases | garbled, the profile's own API key, signed under another secret, expired, client employee, right employee under another workspace, wrong role, none: no tool registered, the endpoint answered 401 (429 once the address's failure limit tripped), no side effect |
+| 7. Unauthorized tools unavailable or refused | Yes | `crm_summary_report`, `update_contact`, `create_task`, `request_appointment`, `prepare_message`, `request_send_approval` are not registered for the Lead Hunter: "Unknown tool" |
+| 8. Cross-tenant access denied | Yes | cross-workspace credentials refused (check 6); the context read returns only the employee's own workspace |
+| 9. No unexpected administrative or system tools | Yes | the only built-in tools are `memory`, `session_search`, `todo_list`, `web_extract`, `web_search`; no terminal, file, browser, code, cron, delegation or other MCP tool, in any of the six inventories |
+| 10. Failed, partial, incompatible, missing fail closed | Yes | service down: gateway reports "never completed tool discovery", employee not online. One tool missing: "missing required reviewed tool". An extra `shell_exec` offered: "unapproved MCP tool". A malformed schema: Hermes fails the whole server's discovery, employee not online |
+| Control: gateway without the overlay | Fails closed as documented | `GET /v1/tools` is 404; the employee stays `setup_required` |
+
+### 3.3 What the real runtime found that mocks could not
+
+1. **The gateway lists a configured MCP server twice in `enabled_toolsets`:** as `mcp-iacquire_business` and under the server's own name `iacquire_business`. The application's verifier refused the real
+   inventory ("not allowed: iacquire_business"). The mocked gateway had never produced that shape, and no existing test exercised the MCP-enabled inventory path at all. Fixed in `assertCatalogPolicy`: the
+   server name is tolerated as an alias **only while the business bridge is on for the role**, and no tool may hide behind it (a row whose toolset is the alias is refused).
+2. **A gap the negative tests exposed:** a tool carrying a business tool's reserved name (`mcp__iacquire_business__…`) or sitting in an `mcp-` toolset, but reporting a non-MCP source, was accepted.
+   The verifier now treats anything that presents itself as MCP as MCP and requires provenance to agree exactly. Ten mocked tests (`hermes-business-mcp-inventory.test.ts`, labelled as mocked) pin both decisions.
+
+### 3.4 What this does not prove
+
+- **Not the production container.** It is the same Hermes source, the same locked dependencies as upstream's official image and the repository's overlay, on Windows; the production gateway is a host-packaged
+  Hermes 0.21.5 image carrying the same backport. The historical official 0.21.5 image digest used in this repository is recorded in git history (commit `f2eed8a3`) if a container build is wanted.
+  Two **read-only** checks on the real gateway would close most of the gap: `hermes --version` and the installed `mcp` package version (tested: 0.21.5 and 2.0.0). Not run: this phase does not authorize it.
+- **Not Linux.** The workflow `.github/workflows/hermes-business-mcp-compat.yml` runs the same test on Ubuntu; it runs only after a push, which needs approval.
+- **Not a model-driven run.** The "read" is Hermes' MCP client and registry called in-process, the path an agent's tool call takes, with no model in the loop.
+- **Not a gateway restart or profile reload,** and not multi-day behaviour (credential expiry is proven by unit test, not by waiting).
+- **The six inference workers (Hermes 0.22.5)** are separate and have no MCP; nothing here concerns them.
+
+## 4. The six-employee capability matrix (A4 preparation, read-only)
+
+`tests/hermes-business-mcp-capability-matrix.test.ts` pins this table to the code and exercises every tool each employee holds through the real handler on **synthetic** records (labelled "Matrix
+Synthetic …", created by the test). Nothing is a real customer record or real activity. Every tool is a read; no write, proposal, approval, send or booking tool is offered to any employee, and the test
+asserts that running all of them creates no message, booking, approval, task or lead.
+
+Common to every row: the endpoint is `/api/internal/hermes-business/mcp`; the people check is `assertWorkforceWorkspaceAccess` (Super Admin) plus `agents.use` for the run's user; the service is
+`buildRoleWorkspaceContext` → `prepareEmployeeEvidence` (`src/server/workforce/employee-evidence.ts`) for the context tool and `callAgentTool` (`src/server/crm/agent-tools/service.ts`) for CRM tools,
+which add the role allowlist, the person's permissions and the automation gate. "Area" means a section of the context snapshot. The internal agency CRM row is created lazily by a Super Admin opening
+CRM; until then CRM reads are empty and the snapshot says "native, ready, no contacts" (existing design), which an employee cannot tell from a CRM that is genuinely empty.
+
+| Employee | Capability | Existing service / tool | Permission check | Employee scope | Expected result (synthetic) | Remaining blocker |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Zeng** (Operations Manager) | Task status | areas `work_board`, `schedules`; `internalOperations` (`openTaskCount`, `overdueTaskCount`, `openTasks`) | `agents.use` or `activity.view` | `tasks:write` (no read tool), `contacts:read`, `opportunities:read`, `calendar:read`, `reports:read` | counts and up to 6 attention records; here `work_board:empty` | none for reads |
+| | Approvals | `internalOperations.pendingApprovals`, `pendingApprovalCount`, `blockedApprovals`, `changesRequestedCount` | `approvals.view`, `activity.view`, `agency.workforce.view` | | summary and counts | details beyond the summary are not exposed; deciding or submitting approvals is out of scope |
+| | Workload | areas `handoffs`, `work_board` | same | | `handoffs:ready` | none |
+| | Employee health | `internalOperations.workforce`: per employee, enabled, connection status, currently executing, runs in 24 hours, failed runs in 7 days, last run | `agency.workforce.view` | | present for the six roles | none for reads |
+| | Business operations | `crm_summary_report`, `check_availability`, `find_contacts`, `get_contact` | `analytics.view`, `appointments.view`, `contacts.view` | `reports:read`, `calendar:read`, `contacts:read` | counts (contacts, deals, tasks, appointments, conversations); 3 open slots; contact found | agency CRM row lazy (see above) |
+| **Lead Hunter** | Authorized leads | area `leads`; `find_contacts`, `get_contact` | `leads.view`; `contacts.view` | `contacts:read` | `leads:ready`, the synthetic lead listed with review state, duplicate check, CRM sync | CRM contacts and researched leads are different records |
+| | Research requests | area `leads` (`researchRequestsByStatus`, `recentResearchRequests`) | `leads.view` | | present | starting research is a chat request (`chat_requests`), not an MCP tool |
+| | Lead status, qualification | area `leads` records (`score`, `review`, `buyingSignalsFound`); `get_contact` lead status | `leads.view`; `contacts.view` | | listed | `targeting:not_configured` until rules are saved (reported honestly) |
+| **Appointment Setter** | Availability | `check_availability`; area `open_times` | `appointments.view` | `calendar:read` | 3 open slots on the synthetic calendar | native calendars only; a GoHighLevel-owned calendar reports "managed elsewhere" |
+| | Calendars | area `calendar` | `appointments.view` | | `calendar:ready` | none |
+| | Appointment requests | area `booking_requests` (counts and up to 5) | `appointments.view` | `appointments:request` (**not offered**: `request_appointment` is a proposal tool) | `booking_requests:empty` | requesting a booking stays on the approval path (out of scope) |
+| | Booking status | area `appointments`; `get_conversation_history` (own conversations only) | `appointments.view`; `inbox.view` | `conversations:read` | `appointments:empty`; another employee's conversation is "not found" | none |
+| **Sales Assistant** | Opportunities | area `pipeline` | `crm.view`, `sales.view` | `opportunities:read` (**no read tool exists for it**) | `pipeline:ready` with the synthetic deal | no per-opportunity tool; reachable only through the area |
+| | Approved service information | none | | | `knowledge:not_configured` | **Gap.** No approved knowledge saved and no tool; service text reaches the employee in its instructions, not through MCP |
+| | Sales follow-up context | `get_conversation_history`, `get_contact` (open deals, tasks, appointments), `check_availability` | `inbox.view`, `contacts.view`, `appointments.view` | `conversations:read`, `calendar:read` | own conversation returned (internal notes never included) | none |
+| **CRM Manager** | Contacts | `find_contacts`, `get_contact` | `contacts.view` | `contacts:read` | synthetic contact found | none |
+| | Opportunities, pipeline records | area `pipeline` | `crm.view`, `sales.view` | `opportunities:read` (no tool) | `pipeline:ready` | as above |
+| | Data-quality findings | area `crm_quality` (missing details, possible duplicates) | `contacts.view` | | `crm_quality:ready` | none |
+| | Summary counts | `crm_summary_report` | `analytics.view` | `reports:read` | counts only; no email or phone in the reply | none |
+| **Performance Analyst** | Verified performance metrics | area `performance` (last 30 days against the 30 before) | `analytics.view` | `reports:read` | `performance:ready` with measures, change and source | none |
+| | Conversion results | `performance` records; `crm_summary_report` deal counts | `analytics.view` | | **counts only** | **Gap.** The snapshot itself says conversion rates, revenue and costs are not recorded; none is offered |
+| | Attribution reports | none | | | not available | **Gap.** No attribution source exists to expose |
+
+Gaps are reported, not papered over: **no tool for approved service information, per-opportunity reads, conversion rates or attribution**, and the honest "not set up" states are already the snapshot's.
+
+## 5. Existing components reused (nothing duplicated)
+
+Hermes credential rows and the vault (`integration_credentials`, `credential_references`); the run gate `runtimeReadySql` and `agent_runs`; the one-minute `crm_agent_tokens` and `callAgentTool` (role
+allowlist, person's permissions, automation gate, approval path, `forceApprovalWrites`); `assertWorkforceWorkspaceAccess`; `app.user_can_access_org` / `app.has_permission`; `recordAudit`,
+`tool_executions`; the rate limiter (`agentToolAuthFailureByIp`, `agentToolCallsByEmployee`); the tool-inventory verifier (`verifyToolInventory`, `runHealthCheck`) and the complete-catalog contract; the
+provisioning preview; the catalog overlay and its `SHA256SUMS`; the existing CI patterns; `startMockHermes` and the fixtures. No new tables, routes or competing authentication systems.
+
+## 6. Files changed, migrations
+
+Source: `src/server/env.ts` (secret, previous secret, revoked ids, boot checks), `src/server/workforce/hermes-business-mcp.ts` (authentication, people boundary), **new**
+`hermes-business-mcp-credential.ts`, `hermes-business-mcp-issue.ts`, `src/server/workforce/provisioning.ts` (preview names the dedicated variable), `src/server/integrations/hermes/inventory.ts`
+(alias; provenance), `scripts/hermes-business-mcp-token.ts`, `package.json` (one script), `.env.example`. Harness: `services/hermes-business-mcp-acceptance/*`,
+`.github/workflows/hermes-business-mcp-compat.yml`. Tests: five new test files (credential, auth, inventory, pinned runtime, capability matrix), two support files, two updated. Docs: this file and `hermes-business-mcp-credentials.md`.
+
+**Migrations: none proposed. Nothing is left unapplied.**
+
+## 7. Verification
+
+Run on the Windows development machine, on the branch's working tree, against synthetic data only.
+
+| Check | Result |
+| --- | --- |
+| D3 and MCP tests (`hermes-business-mcp-credential`, `-auth`, `-context`, `-provisioning`, `-route`, `-policy`, `-dependencies`, `-inventory`, `-capability-matrix`) | pass |
+| Existing inventory, tool-policy and CRM agent-tool tests re-run after the changes | pass |
+| Pinned-runtime compatibility test (real Hermes 0.21.5, runtime rebuilt from nothing by `prepare-runtime.mjs`) | 38 of 38 pass; also verified to skip without a runtime and to fail when one is required but absent |
+| Mutation checks (each protection removed in turn) | tests fail without the protection; two database predicates are redundant with other layers and cannot be isolated |
+| TypeScript (app and scripts), ESLint on every new and changed file | clean |
+| Operator script on synthetic inputs (issue, verify, refuse to overwrite, refuse bad input) | works; prints no credential or secret |
+
+**Not done, and not claimed:**
+
+- The **full test suite**, **whole-repository lint** and the **production build** were not completed before this work was stopped. A full-suite run was started and was still running; its JSON report is written to the scratch area as `full-report.json` and is judged with `node .github/scripts/known-failures.mjs <report>` (the nine recorded failures are allowed, anything else is a regression). Until that is read, there is no statement here about regressions elsewhere.
+- **Linux CI** for the pinned-runtime test and the full-suite job: needs the push approval described in section 9.
+- No hosted migration, deployment, push, production setting or secret change, and no model call, was made.
+
+## 8. Security findings, remaining blockers, and what must be resolved before production business tools
+
+New or sharpened by this phase:
+
+1. **C3 resolved (D3).** The profile API key and the business credential are now separate and neither opens the other's door.
+2. **C4 corrected.** The repeated "oldest agency workspace" subquery is not an ambiguity: the database allows exactly one agency workspace (`organizations_single_agency`) and refuses a client employee an
+   internal profile name (`reserved_hermes_profile`). The subquery is redundant defence in depth.
+3. **People boundary inconsistency fixed** (CRM tools did not apply the Super Admin check).
+4. **Verifier gaps fixed** (server-name alias; MCP-looking tools without MCP provenance), found only by the real runtime and the negative tests.
+5. **The credential lives in each Hermes profile's `.env`.** That raises the stakes of O1, O2 and O3 below: whatever can read a profile directory can read it. Its reach is small (read-only business
+   information, only during that employee's live Chat turn, expires, individually revocable), but that is a reason to fix the exposure first, not to ignore it.
+6. **A Hermes profile with a bad or expired credential retries hard.** In testing the address's failure limit (30 per 10 minutes) tripped within one probe, so answers became 429. Valid credentials are
+   unaffected, but an expired credential will look like a retry storm. Credentials last 90 days; reissue at 60.
+7. **Reads on the not-yet-opened agency CRM are empty, not "not set up"** (existing design); an employee cannot tell them apart. Open the agency CRM before A4 acceptance.
+
+Open from earlier phases, restated with what they mean for A4:
+
+| Finding | Must be resolved before production business tools? |
+| --- | --- |
+| Unexplained activity on the hosting account, and a diagnostic flag set outside this work | **Yes.** A4 adds a signing secret to that account's environment; the account must be trusted first (rotate its tokens, review its members) |
+| O1: the gateway host exposes a public port and its firewall is inactive | **Yes**, or show that nothing reachable there can read a profile directory |
+| O2: workers mount whole profile directories | **Yes** (mount only `SOUL.md` and `config.yaml`, or keep the credential out of what is mounted) before a credential is placed in a profile `.env` |
+| O3: writable anonymous `/opt/data` volume in each worker | No (low) |
+| W2: non-expiring Access service token | No for A4; set a rotation policy |
+| Egress proxy still on the older image | No (affects inference egress only) |
+| Inference latency 17 to 23 s against the 32/36/45 s limits | No for MCP (`tool_timeout` is 12 s per tool call); watch it in A4 chat |
+| Gateway and `mcp` package versions on the real host not yet read | **Yes**, a read-only check, to match the tested 0.21.5 / 2.0.0 |
+
+## 9. A4 readiness and the next request
+
+**Not ready to start A4.** Both gates are met on what can be proven here (D3 locally; C6 on the pinned source runtime), but the stronger C6 evidence and the infrastructure blockers above are open. A4
+also needs its own written authorization, and it would be the first time the endpoint is switched on.
+
+Recommended next requests, in this order, each separate:
+
+1. **Approve pushing the review branch for CI only** (no deploy, not `master`): the Linux run of `hermes-business-mcp-compat.yml` plus the full-suite job. The exact branch, commit, diff summary and
+   verification results are in the final report.
+2. **Approve two read-only checks on the real gateway:** `hermes --version` and the installed `mcp` package version.
+3. **Decide O1, O2 and the hosting-account question** (section 8).
+4. Only then, **A4a**: set the signing secret in the server environment with the flags still off; issue credentials with the script; install them on one profile (Zeng first) through the approved host
+   procedure; switch the bridge on for a short, supervised window; run one business-tool acceptance chat; switch it off again.

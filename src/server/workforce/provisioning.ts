@@ -19,6 +19,7 @@ import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/wo
 import { roleToolEnforcement, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
 import { env } from "@/server/env";
 import { HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
+import { BUSINESS_MCP_CREDENTIAL_ENV_VAR } from "@/server/workforce/hermes-business-mcp-credential";
 
 /**
  * Generates the agency runbook for provisioning a dedicated Hermes profile for one tenant employee.
@@ -127,11 +128,12 @@ export function buildInternalAgencyConfigYaml(): string {
     const mcpUrl = new URL("/api/internal/hermes-business/mcp", e.APP_URL).toString();
     lines.push(
       "",
+      `# ${BUSINESS_MCP_CREDENTIAL_ENV_VAR} is this profile's own business MCP credential, set in the profile's .env. It is NOT the profile's API_SERVER_KEY (see docs/hermes-business-mcp-credentials.md).`,
       "mcp_servers:",
       "  iacquire_business:",
       `    url: ${mcpUrl}`,
       "    headers:",
-      '      Authorization: "Bearer ${API_SERVER_KEY}"',
+      `      Authorization: "Bearer \${${BUSINESS_MCP_CREDENTIAL_ENV_VAR}}"`,
       "    tool_timeout: 12",
     );
   }
@@ -168,6 +170,10 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
       "API_SERVER_ENABLED=true",
       "API_SERVER_KEY=<generate on the VPS: openssl rand -hex 32>",
+      ...(row.kind === "agency" && env().HERMES_BUSINESS_MCP_ENABLED
+        ? [`# This profile's business MCP credential, issued for this employee only by \`npm run hermes:business-mcp-token\`. Never reuse API_SERVER_KEY here, and never paste it into chat or tickets.`,
+          `${BUSINESS_MCP_CREDENTIAL_ENV_VAR}=<signed credential from the issuing script's private output file>`]
+        : []),
       "# Model provider credentials for this profile (e.g. DeepSeek) — configure with `hermes -p " + profile + " model`.",
       "",
     ].join("\n"),

@@ -28,6 +28,7 @@
     "workforce:qa:seed": "node scripts/run-workforce-qa-seed.mjs",
     "workforce:qa:server": "node scripts/crm-qa.mjs",
     "hermes:audit": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/hermes-live-audit.ts",
+    "hermes:business-mcp-token": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/hermes-business-mcp-token.ts",
     "workforce:worker": "node --env-file-if-exists=.env --env-file-if-exists=.env.development --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/workforce-worker.ts",
     "hermes:lead-hunter-audit": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/lead-hunter-readiness-audit.ts",
     "crm:qa": "node scripts/crm-browser-qa.mjs",

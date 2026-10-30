@@ -59,11 +59,17 @@ const schema = z.object({
   // GoHighLevel's webhook verification key is published and built in; set this only when GoHighLevel rotates it.
   GHL_WEBHOOK_PUBLIC_KEY: z.preprocess(blankToUndefined, z.string().optional()),
   ALLOW_INSECURE_HERMES_URLS: bool,
-  // First-party business MCP is inert until explicitly enabled. Profile API keys authenticate the endpoint,
-  // and every tool call is rebound to one active authenticated Chat run at request time.
+  // First-party business MCP is inert until explicitly enabled. A signed, profile-bound credential (src/server/workforce/hermes-business-mcp-credential.ts) authenticates the
+  // endpoint, and every tool call is rebound to one active authenticated Chat run at request time. The Hermes profile API key is NOT accepted here.
   HERMES_BUSINESS_MCP_ENABLED: bool,
   // Writes are separately disabled. When enabled, the bridge may only create approval requests; it never runs a write directly.
   HERMES_BUSINESS_MCP_WRITES_ENABLED: bool,
+  // The signing secret behind those credentials: server-only, 32+ characters without whitespace, and never the value of any other secret (checked at boot). Rotating it ends every
+  // issued credential. HERMES_BUSINESS_MCP_SECRET_PREVIOUS is verify-only, kept while new credentials are installed, then removed. HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS ends single
+  // credentials by their 16-hex-character id (comma separated, at most 64). See docs/hermes-business-mcp-credentials.md.
+  HERMES_BUSINESS_MCP_SECRET: z.preprocess(blankToUndefined, z.string().regex(/^\S{32,512}$/, "must be 32-512 characters without whitespace").optional()),
+  HERMES_BUSINESS_MCP_SECRET_PREVIOUS: z.preprocess(blankToUndefined, z.string().regex(/^\S{32,512}$/, "must be 32-512 characters without whitespace").optional()),
+  HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS: z.preprocess(blankToUndefined, z.string().max(2048).optional()),
 
   // PayMongo: server-only secrets. Key prefixes decide test or live mode; live checkout also needs the review flag in the portal.
   PAYMONGO_SECRET_KEY: z.preprocess(blankToUndefined, z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, "must be a PayMongo secret key").optional()),
@@ -240,6 +246,30 @@ export function env(): Env {
   }
   if ((value.HERMES_INFERENCE_WORKER_ENABLED || value.HERMES_PROMPT_AUDIT_ENABLED) && value.NODE_ENV === "production" && !value.HERMES_INFERENCE_WORKER_URL?.startsWith("https://")) {
     throw new Error("The Hermes inference worker must use HTTPS in production.");
+  }
+  // The business MCP credential secret is checked here, never echoed: only variable names appear in these messages.
+  if (value.HERMES_BUSINESS_MCP_ENABLED && !value.HERMES_BUSINESS_MCP_SECRET) {
+    throw new Error("HERMES_BUSINESS_MCP_ENABLED requires HERMES_BUSINESS_MCP_SECRET, a dedicated server-only signing secret. A Hermes profile key does not authenticate the business MCP endpoint.");
+  }
+  if (value.HERMES_BUSINESS_MCP_SECRET_PREVIOUS && !value.HERMES_BUSINESS_MCP_SECRET) {
+    throw new Error("HERMES_BUSINESS_MCP_SECRET_PREVIOUS requires HERMES_BUSINESS_MCP_SECRET.");
+  }
+  if (value.HERMES_BUSINESS_MCP_SECRET && value.HERMES_BUSINESS_MCP_SECRET === value.HERMES_BUSINESS_MCP_SECRET_PREVIOUS) {
+    throw new Error("HERMES_BUSINESS_MCP_SECRET_PREVIOUS must differ from HERMES_BUSINESS_MCP_SECRET.");
+  }
+  const mcpSecrets = [value.HERMES_BUSINESS_MCP_SECRET, value.HERMES_BUSINESS_MCP_SECRET_PREVIOUS].filter((secret): secret is string => Boolean(secret));
+  if (mcpSecrets.length) {
+    const reused = Object.entries(value)
+      .filter(([name, other]) => !name.startsWith("HERMES_BUSINESS_MCP_") && /SECRET|KEY|TOKEN|PASSWORD/.test(name) && typeof other === "string"
+        && other.split(",").some((part) => mcpSecrets.includes(part.trim())))
+      .map(([name]) => name);
+    if (reused.length) throw new Error(`The business MCP signing secret must be its own secret; it matches ${reused.join(", ")}.`);
+  }
+  if (value.HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS) {
+    const ids = value.HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS.split(",").map((id) => id.trim()).filter(Boolean);
+    if (ids.length > 64 || ids.some((id) => !/^[0-9a-f]{16}$/.test(id))) {
+      throw new Error("HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS must list at most 64 credential ids, each 16 lowercase hexadecimal characters, comma separated.");
+    }
   }
   const authProvider = resolveAuthProvider(process.env);
   const driver = value.DATABASE_DRIVER ?? (authProvider === "local" ? "pglite" : "postgres");

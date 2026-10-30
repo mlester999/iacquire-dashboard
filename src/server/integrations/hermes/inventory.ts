@@ -209,8 +209,12 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: 
     );
   }
   const enabled = [...new Set(catalog.enabledToolsets)].sort();
+  // The real Hermes 0.21.5 gateway lists a configured MCP server twice in enabled_toolsets: as its toolset (`mcp-iacquire_business`) and under the server's own name (`iacquire_business`).
+  // Seen only against the pinned runtime (tests/hermes-business-mcp-pinned-runtime.test.ts), never by the mocked gateway. The name is an alias for the same server, not a second toolset, and
+  // only while the business bridge is on for this role. Every tool row's own toolset and server are still checked against `safe` below, so a tool cannot hide behind the alias.
+  const serverAliases = new Set<string>(allowBusinessMcp ? [HERMES_BUSINESS_MCP_SERVER] : []);
   const missing = [...safe].filter((name) => !enabled.includes(name)).sort();
-  const extra = enabled.filter((name) => !safe.has(name));
+  const extra = enabled.filter((name) => !safe.has(name) && !serverAliases.has(name));
   if (missing.length || extra.length) {
     failure(
       "inventory_unsafe",
@@ -230,7 +234,10 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: 
     );
   }
 
-  const mcp = catalog.tools.filter((tool) => tool.provenance.source === "mcp" || tool.provenance.sourceServer !== null);
+  // A tool is an MCP tool if the gateway says so OR if it presents itself as one: the reserved `mcp__` name, or a place in an `mcp-` toolset. Provenance must then agree exactly, so a plugin
+  // or native tool cannot take a reviewed business tool's name (or toolset) and be accepted because it did not claim to come from MCP.
+  const mcp = catalog.tools.filter((tool) => tool.provenance.source === "mcp" || tool.provenance.sourceServer !== null
+    || tool.name.startsWith("mcp__") || (tool.provenance.toolset ?? "").startsWith("mcp-"));
   if (mcp.length) {
     const expected = new Set(allowBusinessMcp && businessRole ? businessMcpRuntimeNamesForRole(businessRole, env().HERMES_BUSINESS_MCP_WRITES_ENABLED) : []);
     const unexpected = mcp.filter((tool) => tool.provenance.source !== "mcp" || tool.provenance.sourceServer !== HERMES_BUSINESS_MCP_SERVER

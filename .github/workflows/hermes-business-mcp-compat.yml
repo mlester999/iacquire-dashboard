@@ -1,0 +1,97 @@
+name: Hermes business MCP compatibility
+run-name: Pinned Hermes 0.21.5 business MCP proof (${{ github.ref_name }})
+
+# C6. Builds the pinned Hermes 0.21.5 runtime (upstream commit f97608f, dependencies exactly as upstream's own uv.lock, plus this repository's catalog overlay verified against its
+# SHA256SUMS) and runs tests/hermes-business-mcp-pinned-runtime.test.ts against it. That test serves the REAL business MCP handler on loopback over a synthetic database and points the REAL
+# Hermes gateway and MCP client at it, then checks discovery, the complete tool inventory, the application's own verifier, authenticated reads, invalid credentials, tool denial, cross-tenant
+# access and every fail-closed case. It calls no model, holds no provider key and touches no live gateway, profile, customer record or non-loopback address (the only outbound traffic is the
+# build's fetch of the pinned Hermes source and its locked Python packages). It is NOT the production container; docs/hermes-d3-c6-results-2026-10-30.md says what it does and does not prove.
+on:
+  # Branch-scoped, as the other Hermes workflows are, so verification does not need this file on master.
+  push:
+    branches:
+      - integration/hermes-bridge-final
+    paths:
+      - services/hermes-business-mcp-acceptance/**
+      - services/hermes-provisioner/catalog-overlay/**
+      - src/server/workforce/hermes-business-mcp*.ts
+      - src/server/integrations/hermes/inventory.ts
+      - tests/hermes-business-mcp-pinned-runtime.test.ts
+      - tests/support/c6-runtime.ts
+      - .github/workflows/hermes-business-mcp-compat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-business-mcp-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pinned-runtime:
+    name: Real Hermes 0.21.5 gateway and MCP client against the business MCP handler
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install application dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-fund --fetch-retries=5 \
+            --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=120000 \
+            --fetch-timeout=300000
+
+      - name: Install uv (pinned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --disable-pip-version-check "uv==0.11.21"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build the pinned Hermes runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node services/hermes-business-mcp-acceptance/prepare-runtime.mjs --out "$RUNNER_TEMP/c6-runtime" | tee "$RUNNER_TEMP/c6-prepare.log"
+
+      - name: Run the compatibility proof against it
+        shell: bash
+        env:
+          IACQUIRE_REQUIRE_C6_RUNTIME: '1'
+        run: |
+          set -euo pipefail
+          export IACQUIRE_C6_PYTHON="$RUNNER_TEMP/c6-runtime/venv/bin/python"
+          export IACQUIRE_C6_HERMES_SOURCE="$RUNNER_TEMP/c6-runtime/hermes-overlay"
+          export IACQUIRE_C6_BASELINE_SOURCE="$RUNNER_TEMP/c6-runtime/upstream"
+          export IACQUIRE_C6_EVIDENCE="$RUNNER_TEMP/c6-evidence.json"
+          npx vitest run tests/hermes-business-mcp-pinned-runtime.test.ts --reporter=verbose
+
+      - name: Report the evidence (names, versions and counts only)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Pinned Hermes business MCP proof"
+            echo
+            echo '```json'
+            cat "$RUNNER_TEMP/c6-runtime/runtime.json" 2>/dev/null || echo '{"runtime":"not built"}'
+            echo '```'
+            echo '```json'
+            cat "$RUNNER_TEMP/c6-evidence.json" 2>/dev/null || echo '{"evidence":"not recorded"}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/c6-evidence.json" ]; then
+            echo "::notice title=C6 evidence::$(node -e "process.stdout.write(JSON.stringify(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))))" "$RUNNER_TEMP/c6-evidence.json" | cut -c1-6000)"
+          fi

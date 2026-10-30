@@ -1,4 +1,4 @@
-// The business MCP endpoint's role-context tool, driven through the real handler with a profile key and an active Chat run (synthetic workspaces, a local stand-in for Hermes, no network).
+// The business MCP endpoint's role-context tool, driven through the real handler with a signed business MCP credential and an active Chat run (synthetic workspaces, a local stand-in for Hermes, no network).
 // It proves the tool is the chat snapshot and nothing else: the same reads and states, as the person asking, for the one workspace, with the employee's own switched-off abilities
 // honoured and nothing but area names and states in the audit trail. Before this the tool ran its own SQL as the system role and ignored all of that.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -8,12 +8,16 @@ import { resetEnvCache } from "@/server/env";
 import { loadOrgContextForUser } from "@/server/tenancy/context";
 import { prepareEmployeeEvidence } from "@/server/workforce/employee-evidence";
 import { handleHermesBusinessMcp } from "@/server/workforce/hermes-business-mcp";
+import { issueConfiguredBusinessMcpCredential } from "@/server/workforce/hermes-business-mcp-credential";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
+import { MCP_TEST_SECRET } from "./support/business-mcp";
 
+// The Hermes profile API keys only connect the profiles to the stand-in gateway; the MCP endpoint takes a different, signed credential per employee.
 const KEYS = Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [role, `synthetic-${role}-profile-key-0123456789`])) as Record<AgentRoleKey, string>;
+const CREDENTIALS = {} as Record<AgentRoleKey, string>;
 const URL = "https://portal.example.test/api/internal/hermes-business/mcp";
 
 let mock: MockHermes;
@@ -25,7 +29,7 @@ let staff: { id: string; email: string };
 async function rpc(role: AgentRoleKey, method: string, params?: Record<string, unknown>) {
   const response = await handleHermesBusinessMcp(new Request(URL, {
     method: "POST",
-    headers: { Authorization: `Bearer ${KEYS[role]}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+    headers: { Authorization: `Bearer ${CREDENTIALS[role]}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params ? { params } : {}) }),
   }));
   return { status: response.status, body: (await response.json()) as { result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: Array<{ name: string; inputSchema: { properties?: Record<string, unknown> }; annotations?: { readOnlyHint?: boolean } }> } } };
@@ -90,7 +94,11 @@ beforeAll(async () => {
   }
   vi.stubEnv("HERMES_BUSINESS_MCP_ENABLED", "true");
   vi.stubEnv("HERMES_BUSINESS_MCP_WRITES_ENABLED", "false");
+  vi.stubEnv("HERMES_BUSINESS_MCP_SECRET", MCP_TEST_SECRET);
   resetEnvCache();
+  for (const role of AGENT_ROLE_KEYS) {
+    CREDENTIALS[role] = issueConfiguredBusinessMcpCredential({ role, agentId: await agentId(agency.id, role), orgId: agency.id }).token;
+  }
 }, 120_000);
 
 afterAll(async () => {
