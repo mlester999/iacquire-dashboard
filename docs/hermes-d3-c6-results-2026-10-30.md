@@ -1,7 +1,7 @@
 # D3 and C6: business tool security and Hermes compatibility (2026-10-30)
 
 Work on `integration/hermes-bridge-final`; the code was pushed to that review branch for CI only (not `master`), and **nothing was deployed or applied.** No production setting, secret, flag, profile, database or customer record was changed; no model
-was called; the business MCP endpoint and inference stay off. The only thing done on the production gateway is the two read-only version checks in section 3.5 (nothing restarted or changed). This is the evidence for the D3 and C6 gates and the preparation for A4, not an approval to start A4.
+was called; the business MCP endpoint and inference stay off. The only things done on the production gateway are the read-only checks in section 3.5: two version checks and an overlay hash check (nothing restarted or changed). This is the evidence for the D3 and C6 gates and the preparation for A4, not an approval to start A4.
 
 ## 1. Outcome labels
 
@@ -12,12 +12,13 @@ was called; the business MCP endpoint and inference stay off. The only thing don
 | D3: operator issuing script (`npm run hermes:business-mcp-token`) | **Implemented. Verified locally** on synthetic inputs. Never run against hosted data |
 | C6: real Hermes 0.21.5 gateway and MCP client against the real handler, six profiles, 38 checks | **Verified against pinned Hermes** (Windows host, hash-locked dependencies). The same test **also passed on Linux CI** (Ubuntu 24.04, GitHub Actions run 41041177963, commit `a276c967`, 2026-10-30, about five minutes; the evidence it recorded shows `platform: linux`, Hermes 0.21.5, `mcp` 2.0.0, Python 3.13.14) |
 | C6: the production gateway's own versions | **Verified by read-only checks on 2026-10-30:** Hermes Agent v0.21.5 (2026.9.24), upstream `f97608f1`, `mcp` 2.0.0, as tested; Python 3.13.5 (tested 3.13.14). Section 3.5 |
+| C6: the overlay inside the production image | **Verified by a read-only hash check on 2026-10-30:** all eight overlay files match `SHA256SUMS` byte for byte, the files the proof used. Section 3.5 |
 | C6: tool discovery and calls on the production gateway itself | **Not done. Requires production approval** (that is A4); the proof ran on the pinned source runtime, not on the production container |
 | A4 preparation: read-only capability contracts for the six employees | **Verified locally** on synthetic records |
 | Production business-tool readiness | **Not claimed.** Local and synthetic tests do not establish it |
 
 Success criteria: D3 is complete (section 2). C6 "a disposable Hermes 0.21.5 runtime demonstrably discovers and invokes the approved business MCP contract with correct authentication and inventory
-provenance" is met on the pinned source runtime (Windows, and Linux CI), and the production gateway's own versions now match what was tested (section 3.5); discovery and calls have not been run on the production container itself, which is A4. A4 is **ready to be requested for separate authorization**
+provenance" is met on the pinned source runtime (Windows, and Linux CI), and the production gateway's own versions and overlay files now match what was tested (section 3.5); discovery and calls have not been run on the production container itself, which is A4. A4 is **ready to be requested for separate authorization**
 only when the blockers in section 8 are resolved.
 
 ## 2. D3: credential separation
@@ -78,15 +79,15 @@ nothing from the developer's shell; no model is called; the only network use is 
 ### 3.4 What this does not prove
 
 - **Not run on the production container.** The proof used the same Hermes source, the same locked dependencies as upstream's official image and the repository's overlay, on Windows and on Linux CI; the production gateway is an
-  iAcquire-tagged Hermes 0.21.5 image on the hosting provider's Hermes base image, carrying the same backport (by its labels). Two read-only checks on it were approved and run on 2026-10-30 (section 3.5): the versions match what was tested. Nothing was discovered or called through the real gateway. The historical official 0.21.5 image digest used in this repository is recorded in git history (commit `f2eed8a3`) if a container build is wanted.
+  iAcquire-tagged Hermes 0.21.5 image on the hosting provider's Hermes base image, carrying the same backport (by its labels, confirmed by hash). Read-only checks on it were approved and run on 2026-10-30 (section 3.5): the versions match what was tested and the overlay files are byte-identical. Nothing was discovered or called through the real gateway. The historical official 0.21.5 image digest used in this repository is recorded in git history (commit `f2eed8a3`) if a container build is wanted.
 - **Linux:** the same test passed on Ubuntu in CI after the push (run 41041177963), rebuilding the runtime from nothing on the runner. The full evidence is in that run's job summary; the annotation copy is cut at 6,000 characters.
 - **Not a model-driven run.** The "read" is Hermes' MCP client and registry called in-process, the path an agent's tool call takes, with no model in the loop.
 - **Not a gateway restart or profile reload,** and not multi-day behaviour (credential expiry is proven by unit test, not by waiting).
 - **The six inference workers (Hermes 0.22.5)** are separate and have no MCP; nothing here concerns them.
 
-### 3.5 The production gateway's versions (two read-only checks, 2026-10-30)
+### 3.5 The production gateway: versions and overlay (read-only checks, 2026-10-30)
 
-Approved by the founder in chat (the 'Approve checks' reply) and run once, from the founder's signed-in browser, in the VPS web console. Nothing was restarted, installed or changed; no profile, setting, secret, port or firewall was touched; no model was called and nothing was sent to the portal; no environment value was printed.
+The two version checks were approved by the founder in chat (the 'Approve checks' reply) and the overlay hash check separately afterwards (the 'Run hash check' reply). Each was run once, from the founder's signed-in browser, in the VPS web console. Nothing was restarted, installed or changed; no profile, setting, secret, port or firewall was touched; no model was called and nothing was sent to the portal; no environment value was printed.
 
 | Check | Tested (pinned runtime) | Production gateway | Result |
 | --- | --- | --- | --- |
@@ -97,9 +98,13 @@ Approved by the founder in chat (the 'Approve checks' reply) and run once, from 
 
 Supporting facts, read from the container's and its image's metadata with field selectors that leave out the environment: the gateway container runs an image tagged `iacquire/hermes-agent:0.21.5-toolcatalog-f6a6230` (built 2026-10-18 on the hosting provider's Hermes base image, per its labels). Its labels declare upstream source commit `f97608f178d1ffeca59860195ab7da295f7c8e5f`, the contract `hermes.api_server.tool_catalog.v1` and revision `f6a6230`: the same upstream commit and reviewed backport revision that the overlay README in this repository names. The container was created on 2026-10-19 at 07:01 UTC; its start time was the same each time it was read, and its restart count was 0.
 
-What was run, exactly: a listing of container names, images and status; the metadata reads above; `hermes --version` and a package-metadata lookup inside the gateway container as user 10000 with a throwaway `HERMES_HOME` in the container's temporary directory (made and removed by the command, so nothing was written to the gateway's data volume); and a final status read.
+What was run, exactly: a listing of container names, images and status; the metadata reads above; `hermes --version` and a package-metadata lookup inside the gateway container as user 10000 with a throwaway `HERMES_HOME` in the container's temporary directory (made and removed by the command, so nothing was written to the gateway's data volume); and a final status read. For the hash check: `sha256sum -c` in the same container as user 10000, fed this repository's expected list over standard input (it only reads files); a read-only search of the container's file system for other copies of the overlay file names; a listing of the package's install records; and another status read.
 
-What this still does not show: the labels are what the image says about itself, and the eight overlay files inside the running image were **not** hashed against `SHA256SUMS` (a third read-only check, outside the approval). Only the `mcp` package was compared, not aiohttp, httpx or the rest of the dependency set. The real gateway has not been asked to discover or call a business tool; that is A4. Separately, the overlay README records that upstream v0.21.6 later listed security fixes that have not been assessed or ported. It is written about the client image, but the internal gateway is the same 0.21.5 base, so the question applies to it too; it has not been assessed here.
+**The overlay hash check (second approval, 'Run hash check').** The eight overlay files, at their paths under `/opt/hermes` in the running gateway container, were hashed against the eight lines of this repository's `services/hermes-provisioner/catalog-overlay/SHA256SUMS`: **8 of 8 match** (`sha256sum -c` reported OK for `model_tools.py`, `agent/memory_provider.py`, `gateway/platforms/api_server_tool_catalog.py`, `gateway/platforms/api_server.py`, `plugins/memory/honcho/__init__.py`, `plugins/memory/supermemory/__init__.py`, `tools/mcp_tool_registration.py` and `tools/mcp_tool.py`, and exited 0). The same list was first checked against the committed files in this repository (8 of 8 match, and the overlay directory is identical on this branch and on `origin/master`). So the chain holds end to end: repository files = `SHA256SUMS` = files in the running image = the files the pinned-runtime proof applied.
+
+They are also the files in use. A search of the container's file system found exactly one copy of each of six overlay file names (the two plugin `__init__.py` files were not searched by name), all under `/opt/hermes`; the package is an editable install (its `__editable__` records are in `site-packages`, and `hermes --version` reports `/opt/hermes` as the install directory), so there is no second copy to be imported. The gateway was still running afterwards, restart count 0, same start time.
+
+What this still does not show: the labels are what the image says about itself, but the hash check settles the overlay. Only the `mcp` package version was compared, not aiohttp, httpx or the rest of the dependency set, and files outside the overlay were not compared. A hash shows the files on disk, not the memory of the already-running process (up since 2026-10-19, from this image). The real gateway has not been asked to discover or call a business tool; that is A4. Separately, the overlay README records that upstream v0.21.6 later listed security fixes that have not been assessed or ported. It is written about the client image, but the internal gateway is the same 0.21.5 base, so the question applies to it too; it has not been assessed here.
 
 ## 4. The six-employee capability matrix (A4 preparation, read-only)
 
@@ -174,7 +179,7 @@ Run on the Windows development machine, on the branch's working tree, against sy
 
 - The **production build** was not run: the nested worktree cannot find `next` on its own, so it has to be run from the parent worktree checked out detached on this commit.
 - **Linux CI:** the pinned-runtime test passed (run 41041177963). The full-suite job did not run (its path filter does not match these files); the full suite passed locally.
-- No hosted migration, deployment, push to `master`, production setting or secret change, and no model call, was made. The review branch was pushed once, for CI only; the only production access was the two read-only version checks in section 3.5.
+- No hosted migration, deployment, push to `master`, production setting or secret change, and no model call, was made. The review branch was pushed once, for CI only; the only production access was the read-only checks in section 3.5 (two version checks and an overlay hash check).
 
 ## 8. Security findings, remaining blockers, and what must be resolved before production business tools
 
@@ -202,18 +207,18 @@ Open from earlier phases, restated with what they mean for A4:
 | W2: non-expiring Access service token | No for A4; set a rotation policy |
 | Egress proxy still on the older image | No (affects inference egress only) |
 | Inference latency 17 to 23 s against the 32/36/45 s limits | No for MCP (`tool_timeout` is 12 s per tool call); watch it in A4 chat |
-| Gateway and `mcp` package versions on the real host | **Done 2026-10-30 (read-only): 0.21.5 and `mcp` 2.0.0, as tested** (section 3.5). Still open, not blocking by itself: the overlay files in the running image were not hashed, and upstream v0.21.6's security fixes are unassessed |
+| Gateway and `mcp` package versions, and the overlay, on the real host | **Done 2026-10-30 (read-only): 0.21.5 and `mcp` 2.0.0 as tested; all eight overlay files match `SHA256SUMS`** (section 3.5). Still open, not blocking by itself: upstream v0.21.6's security fixes are unassessed |
 
 ## 9. A4 readiness and the next request
 
-**Not ready to start A4.** Both gates are met on what can be proven here (D3 locally; C6 on the pinned source runtime, with the production gateway's versions confirmed to match), but the infrastructure blockers above are open. A4
+**Not ready to start A4.** Both gates are met on what can be proven here (D3 locally; C6 on the pinned source runtime, with the production gateway's versions and overlay files confirmed to match), but the infrastructure blockers above are open. A4
 also needs its own written authorization, and it would be the first time the endpoint is switched on.
 
 Recommended next requests, in this order, each separate:
 
 1. **Done on 2026-10-30 (approved and pushed): the review branch was pushed for CI only** (no deploy, not `master`; Vercel also built a preview, which GitHub records as environment `Preview`, not production): the Linux run of `hermes-business-mcp-compat.yml`. It is the only workflow this push triggers: the full-suite job in `hermes-inference-worker.yml` is path-filtered and none of these files match it, and the full suite has already passed locally with only the nine recorded failures. The exact branch, commit, diff summary and
    verification results are in the final report.
-2. **Done on 2026-10-30 (approved and run): two read-only checks on the real gateway**, `hermes --version` and the installed `mcp` package version. Both match (section 3.5). An optional third read-only check, hashing the eight overlay files inside the running image against `SHA256SUMS`, would turn the label-based match into a byte-level one; it needs its own approval.
+2. **Done on 2026-10-30 (approved and run): read-only checks on the real gateway**: `hermes --version`, the installed `mcp` package version, and a hash of the eight overlay files inside the running image against `SHA256SUMS`. All match (section 3.5).
 3. **Decide O1, O2 and the hosting-account question** (section 8).
 4. Only then, **A4a**: set the signing secret in the server environment with the flags still off; issue credentials with the script; install them on one profile (Zeng first) through the approved host
    procedure; switch the bridge on for a short, supervised window; run one business-tool acceptance chat; switch it off again.
