@@ -215,6 +215,7 @@ jobs:
           docker run --rm --network none --read-only --user 10000:10000 \
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            -e IACQUIRE_REQUIRE_PINNED_HERMES=1 \
             --entrypoint /opt/hermes/.venv/bin/python \
             iacquire/hermes-inference-worker:ci -B -m unittest discover \
             -s /opt/iacquire-hermes/inference -p 'test_*.py' -v

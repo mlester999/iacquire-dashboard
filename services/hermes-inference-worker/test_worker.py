@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import http.client
+import importlib
 import io
 import json
 import os
@@ -832,6 +834,86 @@ class RunnerEntryPointTests(unittest.TestCase):
                 soul.write("Synthetic SOUL fixture.")
             # With a SOUL present main() gets past the Path check and stops at the audit switch, not at a NameError.
             self.assertEqual(self.run_main(home, request), "prompt_audit_disabled")
+
+
+def hermes_imports(path: str) -> list[tuple[str, str]]:
+    """Every (module, name) the runner imports from the pinned Hermes runtime, including __import__(..., fromlist=[...])."""
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    found: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and (node.module == "run_agent" or node.module.split(".")[0] == "hermes_cli"):
+            for alias in node.names:
+                found.add((node.module, alias.name))
+        elif (
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__import__"
+            and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+        ):
+            for keyword in node.keywords:
+                if keyword.arg == "fromlist" and isinstance(keyword.value, ast.List):
+                    for item in keyword.value.elts:
+                        if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                            found.add((node.args[0].value, item.value))
+    return sorted(found)
+
+
+class RunnerHermesContractTests(unittest.TestCase):
+    """The runner's inference path imports helpers from the pinned Hermes. It once imported get_env_value_prefer_dotenv from
+    hermes_cli.auth, where Hermes 0.22.5 does not define it (it lives in hermes_cli.config), so every real inference failed
+    with inference_failed before any provider call. The audit path never reaches that import, so no earlier check saw it."""
+
+    RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inference_runner.py")
+
+    def require_hermes(self) -> None:
+        """Skip unless the pinned Hermes runtime is here. CI sets IACQUIRE_REQUIRE_PINNED_HERMES=1, which turns a skip into a failure,
+        so these checks cannot be silently skipped in the pinned image."""
+        required = os.environ.get("IACQUIRE_REQUIRE_PINNED_HERMES") == "1"
+        try:
+            hermes = importlib.import_module("hermes_cli")
+            importlib.import_module("hermes_cli.config")
+        except ImportError:
+            if required:
+                self.fail("the pinned Hermes runtime must be importable in this run")
+            self.skipTest("the pinned Hermes runtime is not importable here")
+        version = str(getattr(hermes, "__version__", ""))
+        if version and not version.startswith(inference_runner.HERMES_VERSION):
+            if required:
+                self.fail(f"expected Hermes {inference_runner.HERMES_VERSION}, found {version}")
+            self.skipTest(f"this machine has Hermes {version}, not the pinned {inference_runner.HERMES_VERSION}")
+
+    def test_the_runner_takes_each_hermes_helper_from_the_module_that_defines_it(self) -> None:
+        pairs = hermes_imports(self.RUNNER)
+        for expected in (
+            ("run_agent", "AIAgent"),
+            ("hermes_cli.auth", "PROVIDER_REGISTRY"),
+            ("hermes_cli.auth", "resolve_provider"),
+            ("hermes_cli.config", "get_env_value_prefer_dotenv"),
+            ("hermes_cli.config", "load_config"),
+        ):
+            self.assertIn(expected, pairs)
+        self.assertNotIn(("hermes_cli.auth", "get_env_value_prefer_dotenv"), pairs)
+
+    def test_every_hermes_import_resolves_in_the_pinned_runtime(self) -> None:
+        self.require_hermes()
+        for module_name, name in hermes_imports(self.RUNNER):
+            with self.subTest(f"{module_name}.{name}"):
+                module = importlib.import_module(module_name)
+                self.assertTrue(hasattr(module, name), f"{module_name} does not define {name}")
+
+    def test_the_configured_provider_check_runs_against_the_pinned_runtime(self) -> None:
+        self.require_hermes()
+        with tempfile.TemporaryDirectory() as home:
+            with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as handle:
+                handle.write("model:\n  provider: deepseek\n  default: deepseek-flash\n")
+            with open(os.path.join(home, ".env"), "w", encoding="utf-8") as handle:
+                handle.write(f"DEEPSEEK_API_KEY={DEEPSEEK_KEY}\n")
+            here = os.path.dirname(os.path.abspath(__file__))
+            env = {**os.environ, "HERMES_HOME": home, "PYTHONPATH": os.pathsep.join(part for part in (here, os.environ.get("PYTHONPATH", "")) if part)}
+            done = subprocess.run(
+                [sys.executable, "-c", f"import inference_runner; print(inference_runner._configured_provider() == {DEEPSEEK_KEY!r})"],
+                capture_output=True, text=True, env=env, timeout=120, check=False,
+            )
+            self.assertEqual((done.returncode, done.stdout.strip()), (0, "True"), done.stderr[-500:])
 
 
 if __name__ == "__main__":

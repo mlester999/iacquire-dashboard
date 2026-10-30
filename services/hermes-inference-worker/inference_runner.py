@@ -436,8 +436,9 @@ def run_prompt_audit(payload: dict[str, Any], soul_path: Path) -> dict[str, Any]
 
 
 def _configured_provider() -> str:
-    from hermes_cli.auth import PROVIDER_REGISTRY, get_env_value_prefer_dotenv, resolve_provider
-    from hermes_cli.config import load_config
+    # get_env_value_prefer_dotenv lives in hermes_cli.config in Hermes 0.22.5, not in hermes_cli.auth.
+    from hermes_cli.auth import PROVIDER_REGISTRY, resolve_provider
+    from hermes_cli.config import get_env_value_prefer_dotenv, load_config
 
     config = load_config()
     provider = resolve_provider()
