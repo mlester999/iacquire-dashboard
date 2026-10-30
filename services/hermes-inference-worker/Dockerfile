@@ -29,7 +29,7 @@ ENV PYTHONNOUSERSITE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/opt/hermes
 USER 10000:10000
-LABEL org.opencontainers.image.version="0.22.5-iacquire-inference.v2"
+LABEL org.opencontainers.image.version="0.22.5-iacquire-inference.v3"
 LABEL com.iacquire.hermes.base-source="${HERMES_SOURCE_COMMIT}"
 ENTRYPOINT ["/opt/hermes/.venv/bin/python"]
 CMD ["/opt/iacquire-hermes/inference/worker.py", "--serve"]

@@ -37,12 +37,15 @@ separate approval and must be switched off after the six measurements.
 - Requests require a timestamped HMAC signature, expire after 30 seconds, reject replayed request
   IDs, and are limited to six requests per actor per minute, two per actor/profile per minute,
   and one active call per profile.
-- The combined text content of all effective provider messages is capped at 6,144 UTF-8 bytes
-  before the provider call. The request sets `max_tokens=128`, disables reasoning, omits tool
-  schemas, permits exactly one upstream request, and has a 25-second provider timeout. The runtime
-  rejects responses reporting over 6,144 input or 128 output tokens. The input-token check uses
-  provider-reported usage after the call; the pre-request bound is the 6,144-byte limit on the
-  complete message content, including profile instructions.
+- The combined text content of all effective provider messages is capped at 24,576 UTF-8 bytes
+  (24 KiB) before the provider call, and the instruction text at 20,000 characters. The request
+  sets `max_tokens=128`, disables reasoning, omits tool schemas, permits exactly one upstream
+  request, and has a 25-second provider timeout. The runtime rejects responses reporting over
+  8,192 input or 128 output tokens. The input-token check uses provider-reported usage after the
+  call; the pre-request bound is the 24,576-byte limit on the complete message content, including
+  the profile's `SOUL.md` and Hermes framing (about 3.8 KB together). The cap was raised from 6,144
+  bytes (decision D2, 2026-10-30) because every employee's live instructions measured 8.3 to
+  14.1 KB; see `docs/hermes-d2-prompt-budget-proposal-2026-10-30.md`.
 - Worker and app requests time out at 32 and 36 seconds respectively. Chat and provider-only routes
   declare a 45-second maximum. Logs contain request/actor/role IDs, model and token counts only;
   prompt, SOUL, model response, API key and HMAC secret are not logged.
@@ -76,7 +79,7 @@ Run the following on a Docker-capable non-production runner. It does not require
 path or any secret and does not call DeepSeek:
 
 ```powershell
-docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v2 .
+docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v3 .
 ```
 
 Do not proceed to deployment unless the build reports the pinned Hermes version, passes all
@@ -172,8 +175,8 @@ Read-only preflight snapshot taken on 2026-10-29:
    prepare/review each complete diff and restore copy; preserve every unrelated setting. The bridge
    remains off until HERMES_BUSINESS_MCP_ENABLED is explicitly enabled.
 
-Each request rejects combined effective message text above 6,144 UTF-8 bytes before the provider
-call, requests at most 128 output tokens, and rejects any response reporting over 6,144 input
+Each request rejects combined effective message text above 24,576 UTF-8 bytes before the provider
+call, requests at most 128 output tokens, and rejects any response reporting over 8,192 input
 tokens. Across twelve approved calls, the requested output cap totals 1,536 tokens. The input-token
 ceiling is validated against provider-reported usage after the call, so it is not a strict
 pre-call token or dollar cap; the complete-message byte limit is the pre-call bound. Report actual

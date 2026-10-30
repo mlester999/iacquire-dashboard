@@ -187,3 +187,45 @@ The synthetic provider message was 3,570 bytes with a 34-byte instruction and a 
 - VPS: six workers recreated with the audit flag false (all healthy, no published ports, tunnel attached to six ingress networks); the secret file holds the new secret; the throwaway test directory was removed.
 - Unchanged: all profile files (Operations Manager `SOUL.md` prefix `1e02f4c8226b` and `.env` mtime `1792203915` match the baseline), the gateway, the tunnel configuration, the Cloudflare routes and Access policy.
 - Rollback of A2 only: remove the two Vercel variables and redeploy; the worker secret file can stay (it is only read by the workers).
+
+## 8. Fix roll-out and A2 re-run (approved: "Approve rollout"; 2026-10-30)
+
+**Outcome: the audit now works for all six roles, and all six are over the 6,144-byte budget.** Every request returned HTTP 200 with `deepseekCalls` 0, `toolSchemas` 0, `toolCalls` 0 and 2 synthetic provider requests (loopback listener only; the audit child has no key and no proxy).
+
+### 8.1 The fix (review branch `integration/hermes-bridge-final`, head `41b0580a`, CI green on both jobs)
+
+- **Cause 1 (section 7.3):** Hermes writes under `HERMES_HOME`, which pointed at the read-only profile mount. The worker now builds a per-request throwaway home in `/tmp` holding copies of `SOUL.md` and `config.yaml` (mode 0600, removed in `finally`); inference adds a `.env` limited to the two DeepSeek settings.
+- **Cause 2 (found by CI diagnostics, not by the first audit):** `inference_runner.py` never imported `Path`, so `main()` raised `NameError` and every real request ended as `inference_failed`. No test or smoke had ever executed `main()`. It now imports `Path`, and the in-image tests execute `main()` and reject any undefined global in any module.
+- Image tag moved to `0.22.5-v2` so it cannot be confused with the running v1.
+
+### 8.2 Roll-out on the VPS
+
+1. The nine service files were fetched from the commit into `/root/v2-stage`, every sha256 matched the hashes computed from the commit, the v1 files were backed up to `/root/v1-backup-0.22.5`, and the v2 files were installed and re-verified in place.
+2. Image `iacquire/hermes-inference-worker:0.22.5-v2` = `d22cf79d90c9` was built (the v1 image `4ee41de3b352` is kept for rollback). In-image unit tests: 23 OK with `--network none`.
+3. A `--dry-run` showed that a plain `up` would also recreate the egress proxy (its image tag changed). Only the six workers were approved, so they were recreated with `up -d --no-build --no-deps <six services>`; **the proxy was not touched and still runs the v1 image** (`deepseek_egress_proxy.py` is byte-identical in both). The compose file names v2 for it, so the next plain `up` will recreate it on v2.
+4. Verified after the roll-out: six workers healthy on v2; read-only root; no published ports; user 10000; all capabilities dropped; profile mount and secret mount read-only; `/tmp` is a 32 MB `nosuid,nodev,noexec` tmpfs; the proxy answered `403 Forbidden` to `CONNECT example.com:443`; unauthenticated calls to the public worker routes return 403; the tunnel stayed attached to all six ingress networks (the networks persist when only the workers are recreated, so no re-attach was needed).
+5. `/opt/data` is still a writable volume on each worker (open item O3).
+
+### 8.3 The six measurements (real instructions, pinned Hermes 0.22.5, limit 6,144 bytes)
+
+| Role | App instruction | SOUL | Provider-only message | Chat message | Chat over limit by | App instruction that would fit |
+|---|---:|---:|---:|---:|---:|---:|
+| Operations Manager | 11,037 | 2,291 | 14,785 | 14,822 | 8,678 | about 2,360 |
+| Lead Hunter | 14,091 | 2,404 | 17,873 | 17,910 | 11,766 | about 2,330 |
+| Sales Assistant | 8,638 | 2,346 | 12,362 | 12,399 | 6,255 | about 2,380 |
+| CRM Manager | 8,349 | 2,323 | 12,129 | 12,166 | 6,022 | about 2,410 |
+| Appointment Setter | 8,518 | 2,361 | 12,257 | 12,294 | 6,150 | about 2,370 |
+| Performance Analyst | 8,281 | 2,349 | 12,008 | 12,045 | 5,901 | about 2,380 |
+
+What this means for decision D2: the fixed part of every call is the SOUL (about 2.3 KB) plus about 1.4 KB of Hermes framing (the chat call adds 37 bytes more). That leaves about 2.4 KB of the 6,144 for the app's business instructions, against 8.3 to 14.1 KB today. Fitting the current budget would mean cutting each role's instructions by about 71% to 84%, which conflicts with "no silent truncation of security rules or business knowledge". The alternative is a larger, deliberately chosen budget. Both are the founder's call (D2); nothing was truncated or changed.
+
+### 8.4 End state (verified 2026-10-30)
+
+- Vercel Production: `HERMES_PROMPT_AUDIT_ENABLED` removed again and the site redeployed (`m613jymv7`, Ready in 5 minutes, aliased to `www.iacquire.online`). `/api/health` answers `{"status":"ok","database":"ok","scheduler":"never_ran"}`. From the signed-in Super Admin session, `POST /api/internal/hermes-inference/prompt-audit` answers 503 "The no-call prompt audit is disabled." and `.../canary` answers 503 "Restricted Hermes inference is not enabled." `HERMES_INFERENCE_WORKER_URL` and the sensitive `HERMES_INFERENCE_WORKER_SECRET` remain (inert while the flags are off). `HERMES_INFERENCE_WORKER_ENABLED` was never set.
+- VPS: six workers healthy on `0.22.5-v2` with `IACQUIRE_HERMES_PROMPT_AUDIT_ENABLED` false; proxy untouched on the v1 image; tunnel attached to six ingress networks (runtime attachment, not durable if the tunnel container is recreated); `/root/v2-stage` and `/root/v1-backup-0.22.5` left in place (repository files only, no secrets).
+- Unchanged: all profile files, the gateway, the Cloudflare routes and the Access policy. No DeepSeek call was made at any point.
+- Rollback of this roll-out only: restore the v1 files from `/root/v1-backup-0.22.5` and recreate the six workers on the v1 image (kept locally); not recommended, because v1 cannot run any audit or inference.
+
+### 8.5 What is still open
+
+D2 (prompt budget, all six roles), A3 (real-model canaries) and A4 (business-tool acceptance) each need their own approval. Also open: W2 (non-expiring Access token), O1 (gateway port 32771 public), O2 (whole profile directories mount), O3 (writable `/opt/data` volume), the proxy still on the v1 image, and the review branch changes (including this section) not yet merged to master.

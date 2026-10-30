@@ -65,6 +65,11 @@ def audit_payload(request_id: str) -> dict[str, object]:
     return {**payload(request_id), "mode": "prompt_audit", "chatInput": "Synthetic Chat canary."}
 
 
+def encode(value: object) -> bytes:
+    """The request body as the app sends it: UTF-8 JSON, so multibyte text keeps its real size."""
+    return json.dumps(value, ensure_ascii=False).encode("utf-8")
+
+
 def make_profile(temp: str, files: dict[str, str] | None = None) -> dict[str, str]:
     """A synthetic profile root, a private runtime temp root and a stand-in runner file."""
     root = os.path.join(temp, "profiles")
@@ -118,7 +123,7 @@ class InferenceWorkerTests(unittest.TestCase):
         with self.assertRaises(worker.RequestError):
             worker.validate_payload(json.dumps({**payload(request_id), "role": "client_admin"}).encode())
         with self.assertRaises(worker.RequestError):
-            worker.validate_payload(json.dumps({**payload(request_id), "instructions": "x" * 8_000}).encode())
+            worker.validate_payload(json.dumps({**payload(request_id), "instructions": "x" * (worker.MAX_INSTRUCTIONS_CHARS + 1)}).encode())
 
     def test_signed_request_is_authenticated_once_and_returns_auditable_metadata(self) -> None:
         value = payload("713c8a88-0684-447b-af15-61c1841cb6b4")
@@ -400,17 +405,20 @@ class InferenceWorkerTests(unittest.TestCase):
 
     def test_prompt_audit_accepts_over_limit_instructions_for_measurement_only(self) -> None:
         value = payload("6baec2ef-02bf-44b9-8afb-c20fb6087e42")
+        # Two-byte characters keep the character count under its own cap while the UTF-8 size is over the budget.
+        over_budget = "é" * (worker.MAX_PROMPT_BYTES // 2 + 1_000)
+        self.assertGreater(len(over_budget.encode("utf-8")), worker.MAX_PROMPT_BYTES)
         audit = {
             **value,
             "mode": "prompt_audit",
             "chatInput": "Synthetic Chat canary.",
-            "instructions": "x" * 7_000,
+            "instructions": over_budget,
         }
-        accepted = worker.validate_payload(json.dumps(audit).encode())
+        accepted = worker.validate_payload(encode(audit))
         self.assertEqual(accepted["mode"], "prompt_audit")
-        self.assertEqual(len(accepted["instructions"]), 7_000)
+        self.assertEqual(len(accepted["instructions"]), len(over_budget))
         with self.assertRaises(worker.RequestError) as oversized_inference:
-            worker.validate_payload(json.dumps({**value, "instructions": "x" * 7_000}).encode())
+            worker.validate_payload(encode({**value, "instructions": over_budget}))
         self.assertEqual(oversized_inference.exception.code, "prompt_too_large")
 
     def test_prompt_audit_response_is_identity_checked_and_contains_only_counts(self) -> None:
@@ -456,6 +464,108 @@ class InferenceWorkerTests(unittest.TestCase):
                 with self.assertRaises(worker.RequestError) as disabled:
                     worker.run_pinned_hermes(payload_value)
                 self.assertEqual(disabled.exception.code, "prompt_audit_disabled")
+
+
+class PromptBudgetTests(unittest.TestCase):
+    """The prompt budget (decision D2): 24 KiB of effective message text, 20,000 instruction characters, 8,192 input tokens."""
+
+    def test_the_worker_and_the_runner_hold_the_same_numbers(self) -> None:
+        self.assertEqual(worker.MAX_PROMPT_BYTES, 24_576)
+        self.assertEqual(inference_runner.MAX_PROMPT_BYTES, worker.MAX_PROMPT_BYTES)
+        self.assertEqual(worker.MAX_INSTRUCTIONS_CHARS, 20_000)
+        self.assertEqual(worker.MAX_INPUT_TOKENS, 8_192)
+        self.assertEqual(inference_runner.MAX_INPUT_TOKENS, worker.MAX_INPUT_TOKENS)
+        self.assertEqual(worker.MAX_OUTPUT_TOKENS, 128)
+        self.assertEqual(inference_runner.MAX_OUTPUT_TOKENS, worker.MAX_OUTPUT_TOKENS)
+
+    def test_the_largest_measured_live_role_fits_with_room_to_grow(self) -> None:
+        # Lead Hunter in the 2026-10-30 no-call audit: 14,091 bytes of instructions, a 17,910-byte chat message.
+        self.assertLess(14_091, worker.MAX_INSTRUCTIONS_CHARS)
+        self.assertLess(17_910, inference_runner.MAX_PROMPT_BYTES)
+
+    def test_instructions_are_accepted_up_to_their_character_cap(self) -> None:
+        value = payload("0f4e1c58-8d0a-4f6e-9a77-3b1f6a5d2c10")
+        accepted = worker.validate_payload(encode({**value, "instructions": "x" * worker.MAX_INSTRUCTIONS_CHARS}))
+        self.assertEqual(len(accepted["instructions"]), worker.MAX_INSTRUCTIONS_CHARS)
+        with self.assertRaises(worker.RequestError) as too_long:
+            worker.validate_payload(encode({**value, "instructions": "x" * (worker.MAX_INSTRUCTIONS_CHARS + 1)}))
+        self.assertEqual(too_long.exception.code, "instructions_too_large")
+
+    def test_an_inference_prompt_is_cut_off_at_exactly_the_byte_budget(self) -> None:
+        value = payload("5d1b8e47-2c93-4a0f-8e61-7a4c9b3d0e22")
+        room = worker.MAX_PROMPT_BYTES - len(str(value["input"]).encode("utf-8"))
+        at_budget = "é" * (room // 2) + "x" * (room % 2)
+        accepted = worker.validate_payload(encode({**value, "instructions": at_budget}))
+        self.assertEqual(len(accepted["instructions"].encode("utf-8")) + len(str(value["input"]).encode("utf-8")), worker.MAX_PROMPT_BYTES)
+        with self.assertRaises(worker.RequestError) as over:
+            worker.validate_payload(encode({**value, "instructions": at_budget + "x"}))
+        self.assertEqual((over.exception.code, over.exception.status), ("prompt_too_large", 413))
+        with self.assertRaises(worker.RequestError) as with_history:
+            worker.validate_payload(encode({**value, "instructions": at_budget, "history": [{"role": "user", "content": "Hi."}]}))
+        self.assertEqual(with_history.exception.code, "prompt_too_large")
+
+    def test_the_provider_gate_accepts_a_prompt_at_exactly_the_byte_budget(self) -> None:
+        reply = b'{"model":"deepseek-v4-pro","choices":[{"message":{"content":"Synthetic."},"finish_reason":"stop"}],"usage":{"prompt_tokens":6100,"completion_tokens":3,"total_tokens":6103}}'
+
+        class FakeResponse:
+            status = 200
+
+            def __init__(self) -> None:
+                self.headers = Message()
+                self.headers["Content-Type"] = "application/json"
+
+            def read(self, _size: int = -1) -> bytes:
+                return reply
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        class FakeOpener:
+            def open(self, _request: object, timeout: int) -> FakeResponse:
+                return FakeResponse()
+
+        with patch("urllib.request.build_opener", return_value=FakeOpener()):
+            gate = inference_runner.SingleRequestDeepSeekProxy(
+                api_key="synthetic-key",
+                model="deepseek-v4-pro",
+                egress_proxy="http://iacquire-deepseek-egress-proxy:3128",
+            )
+            try:
+                host, port = gate.server.server_address
+                connection = http.client.HTTPConnection(host, port, timeout=3)
+                request = {"model": "deepseek-v4-pro", "messages": [{"role": "user", "content": "x" * inference_runner.MAX_PROMPT_BYTES}], "stream": False, "max_tokens": 128}
+                connection.request("POST", "/v1/chat/completions", body=json.dumps(request), headers={"Authorization": "Bearer synthetic-key", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                response.read()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(gate.upstream_requests, 1)
+                self.assertEqual(gate.usage, {"inputTokens": 6_100, "outputTokens": 3, "totalTokens": 6_103})
+                connection.close()
+            finally:
+                gate.close()
+
+    def test_the_usage_check_compares_tokens_to_a_token_ceiling_not_to_the_byte_budget(self) -> None:
+        def reply(prompt: int, completion: int = 3) -> bytes:
+            body = {
+                "model": "deepseek-v4-pro",
+                "choices": [{"message": {"content": "Synthetic."}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion},
+            }
+            return json.dumps(body).encode()
+
+        usage, _model = inference_runner._response_usage(reply(inference_runner.MAX_INPUT_TOKENS), "application/json")
+        self.assertEqual(usage, {"inputTokens": 8_192, "outputTokens": 3, "totalTokens": 8_195})
+        # Above the old 6,144 limit and under the ceiling: accepted now.
+        usage, _model = inference_runner._response_usage(reply(6_145), "application/json")
+        self.assertEqual(usage["inputTokens"], 6_145)
+        with self.assertRaises(inference_runner.RuntimeErrorSafe) as over:
+            inference_runner._response_usage(reply(inference_runner.MAX_INPUT_TOKENS + 1), "application/json")
+        self.assertEqual(str(over.exception), "runtime_token_limit_exceeded")
+        with self.assertRaises(inference_runner.RuntimeErrorSafe):
+            inference_runner._response_usage(reply(10, inference_runner.MAX_OUTPUT_TOKENS + 1), "application/json")
 
 
 class ThrowawayRuntimeHomeTests(unittest.TestCase):

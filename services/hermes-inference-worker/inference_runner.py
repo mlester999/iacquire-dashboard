@@ -20,7 +20,8 @@ from urllib.parse import urlsplit
 
 UPSTREAM = "https://api.deepseek.com/v1/chat/completions"
 MAX_REQUEST_BYTES = 64 * 1024
-MAX_PROMPT_BYTES = 6_144
+MAX_PROMPT_BYTES = 24_576
+MAX_INPUT_TOKENS = 8_192
 MAX_OUTPUT_TOKENS = 128
 MAX_RESPONSE_BYTES = 256 * 1024
 ALLOWED_MODELS = {"deepseek-flash", "deepseek-v4-pro"}
@@ -92,7 +93,7 @@ def _response_usage(body: bytes, content_type: str) -> tuple[dict[str, int] | No
             total = raw.get("total_tokens")
             if any(type(n) is not int or n < 0 for n in (prompt, completion, total)):
                 return None, None
-            if total != prompt + completion or prompt > MAX_PROMPT_BYTES or completion > MAX_OUTPUT_TOKENS:
+            if total != prompt + completion or prompt > MAX_INPUT_TOKENS or completion > MAX_OUTPUT_TOKENS:
                 raise RuntimeErrorSafe("runtime_token_limit_exceeded")
             usage = {"inputTokens": prompt, "outputTokens": completion, "totalTokens": total}
     return usage, actual_model

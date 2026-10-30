@@ -32,8 +32,18 @@ describe("Hermes no-call prompt audit response", () => {
       providerOnlyMessageBytes: 5_900,
       chatMessageBytes: 5_940,
       syntheticProviderRequests: 2,
-      promptLimitBytes: 6_144,
+      promptLimitBytes: 24_576,
     });
+  });
+
+  it("reports live-sized measurements against the 24 KiB budget", () => {
+    // Lead Hunter in the 2026-10-30 audit: 14,091 bytes of instructions, 17,910 as a chat message.
+    const live = parsePromptAuditResponse(
+      { ...base, soulBytes: 2_404, providerOnlyMessageBytes: 17_873, chatMessageBytes: 17_910 },
+      { requestId: base.requestId, role: "lead_hunter", appInstructionBytes: 14_091 },
+    );
+    expect(live.promptLimitBytes).toBe(24_576);
+    expect(live.chatMessageBytes).toBeLessThanOrEqual(live.promptLimitBytes);
   });
 
   it("rejects a different profile, unexpected tool exposure, and oversized invalid counts", () => {

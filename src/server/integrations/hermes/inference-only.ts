@@ -8,7 +8,7 @@ import type { HermesConnection } from "@/server/integrations/hermes/client";
 
 const MAX_OUTPUT_TOKENS = 128;
 const MAX_INPUT_TOKENS = 8_192;
-const MAX_PROMPT_BYTES = 6_144;
+const MAX_PROMPT_BYTES = 24_576;
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const MAX_WORKER_BODY_BYTES = 48 * 1024;
 const WORKER_PATH_PREFIX = "/internal/inference/v1";
@@ -43,7 +43,7 @@ export interface PromptAuditResult {
   providerOnlyMessageBytes: number;
   chatMessageBytes: number;
   syntheticProviderRequests: 2;
-  promptLimitBytes: 6_144;
+  promptLimitBytes: 24_576;
 }
 
 export function signInferenceOnlyRequest(secret: string, timestamp: string, body: string): string {
