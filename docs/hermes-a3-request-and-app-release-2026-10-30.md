@@ -50,7 +50,8 @@ Neither starts until you say so, and the second one needs the first.
 - `origin/master` is still `bd843d27`, the source production runs (`m613jymv7` is a rebuild of it). The review branch `integration/hermes-bridge-final` is 13 commits ahead and **0 behind**, so master can be advanced by a **fast-forward** (no merge commit, no conflicts).
 - 19 files, +1,473 / -185. **Runtime change: two files, 3 lines added and 3 removed:** `src/server/integrations/hermes/inference-only.ts` (the prompt budget constant and its type, 6,144 to 24,576) and `src/lib/employee-evidence.ts` (a comment). Everything else is the worker service files, the CI workflow, tests and docs. No migrations, no dependency or config change.
 - **With the flags off, production behaves identically**: the new constant is read only by the restricted-inference and audit code paths, which both answer 503 today.
-- CI on `02875cf3` (all code) was green on both jobs; the three later commits are documentation only. A push to the review branch would rerun CI on the final tip before anything touches master.
+- CI on `02875cf3` (all code) was green on both jobs (run 40996733401). The review branch tip `1f5cddd5` differs from it only in two documentation files, and the verification workflow runs only for pushes that touch the worker files, the workflow, its scripts or the lockfile, so a docs-only push correctly starts no run. The green run therefore covers exactly the code that would go to master.
+- The workflow file already exists on master (an earlier version); the release updates it. Its jobs run only on the two review branches, so merging it changes nothing on master.
 - Public-repository check: the repository is public. I scanned all 1,271 added lines for IPv4 addresses, 32-hex account ids, tunnel and session ids, provider hostnames and email addresses: **none**. The only credential-looking string is `synthetic-key` in a unit test, the same placeholder the existing tests use. The new docs name the production hostname already used publicly, container names and VPS paths.
 - Section 6.2 of the D2 proposal first listed production knowledge by section name and size. Because the repository is public, **it was trimmed to its conclusions (done, at your request, before anything goes to master)**: no section names, titles or sizes of production records remain in the documents.
 
@@ -59,8 +60,8 @@ Neither starts until you say so, and the second one needs the first.
 **Steps if approved (Option A).**
 
 1. (Done) Section 6.2 trimmed.
-2. Push the branch tip to `integration/hermes-bridge-final` first so CI runs on the final commit; wait for green (about 30 minutes).
-3. Push that same SHA to `refs/heads/master` (explicit SHA, explicit ref; it needs your GitHub sign-in and your explicit authorization, because you authorized exactly one master push earlier and it was used).
+2. (Done) The branch tip is pushed to `integration/hermes-bridge-final` (`1f5cddd5`); no further CI wait is needed (see above).
+3. Push the branch tip SHA to `refs/heads/master` (explicit SHA, explicit ref; it needs your GitHub sign-in and your explicit authorization, because you authorized exactly one master push earlier and it was used).
 4. Vercel builds production (about 5 to 7 minutes). Verify `/api/health`, the audit and canary routes still answer 503, and that the deployment's source is the pushed SHA.
 
 **Rollback.** Redeploy the previous production deployment (`m613jymv7`, source `bd843d27`) with `vercel redeploy ... --target production`; or push a revert commit. The release changes no data, so there is nothing to restore. The VPS side does not need rolling back for this.
