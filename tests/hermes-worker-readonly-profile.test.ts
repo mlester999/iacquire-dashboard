@@ -76,13 +76,13 @@ describe("read-only profile smoke in CI", () => {
 });
 
 describe("worker image tag", () => {
-  it("moves to v3 everywhere so the prompt-budget image is never confused with the running v2", () => {
-    expect(compose.match(/image: iacquire\/hermes-inference-worker:0\.22\.5-v3/g)).toHaveLength(2);
-    expect(compose).not.toContain("0.22.5-v2");
-    expect(compose).not.toContain("0.22.5-v1");
-    expect(deployment).toContain("-t iacquire/hermes-inference-worker:0.22.5-v3 .");
-    expect(deployment).not.toContain("0.22.5-v2");
-    expect(deployment).not.toContain("0.22.5-v1");
-    expect(dockerfile).toContain('org.opencontainers.image.version="0.22.5-iacquire-inference.v3"');
+  it("moves to v4 everywhere so the runner-import fix is never confused with the running v3", () => {
+    expect(compose.match(/image: iacquire\/hermes-inference-worker:0\.22\.5-v4/g)).toHaveLength(2);
+    for (const old of ["0.22.5-v3", "0.22.5-v2", "0.22.5-v1"]) {
+      expect(compose).not.toContain(old);
+      expect(deployment).not.toContain(old);
+    }
+    expect(deployment).toContain("-t iacquire/hermes-inference-worker:0.22.5-v4 .");
+    expect(dockerfile).toContain('org.opencontainers.image.version="0.22.5-iacquire-inference.v4"');
   });
 });

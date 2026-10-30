@@ -79,7 +79,7 @@ Run the following on a Docker-capable non-production runner. It does not require
 path or any secret and does not call DeepSeek:
 
 ```powershell
-docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v3 .
+docker build --pull -f services/hermes-inference-worker/Dockerfile -t iacquire/hermes-inference-worker:0.22.5-v4 .
 ```
 
 Do not proceed to deployment unless the build reports the pinned Hermes version, passes all
