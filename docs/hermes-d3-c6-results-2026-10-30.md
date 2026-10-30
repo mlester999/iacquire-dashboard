@@ -149,11 +149,13 @@ Run on the Windows development machine, on the branch's working tree, against sy
 | Pinned-runtime compatibility test (real Hermes 0.21.5, runtime rebuilt from nothing by `prepare-runtime.mjs`) | 38 of 38 pass; also verified to skip without a runtime and to fail when one is required but absent |
 | Mutation checks (each protection removed in turn) | tests fail without the protection; two database predicates are redundant with other layers and cannot be isolated |
 | TypeScript (app and scripts), ESLint on every new and changed file | clean |
+| Full test suite (723 files, run on this commit's source and tests) | 11,334 tests passed, 10 failed, 40 skipped. All 10 failures are inside the nine files already failing on production master; the repository's guard reports `KNOWN_FAILURES_ONLY` (no regression). The skips include the pinned-runtime tests, which need a runtime and were not given one in this run, as designed |
+| ESLint, whole repository | 0 errors, 3 warnings (the same three as before this work: two in `src/server/aqi/service.ts`, one in `src/server/chat/service.ts`) |
 | Operator script on synthetic inputs (issue, verify, refuse to overwrite, refuse bad input) | works; prints no credential or secret |
 
 **Not done, and not claimed:**
 
-- The **full test suite**, **whole-repository lint** and the **production build** were not completed before this work was stopped. A full-suite run was started and was still running; its JSON report is written to the scratch area as `full-report.json` and is judged with `node .github/scripts/known-failures.mjs <report>` (the nine recorded failures are allowed, anything else is a regression). Until that is read, there is no statement here about regressions elsewhere.
+- The **production build** was not run: the nested worktree cannot find `next` on its own, so it has to be run from the parent worktree checked out detached on this commit.
 - **Linux CI** for the pinned-runtime test and the full-suite job: needs the push approval described in section 9.
 - No hosted migration, deployment, push, production setting or secret change, and no model call, was made.
 
