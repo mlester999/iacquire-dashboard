@@ -95,3 +95,25 @@ After A3 the next gates are D3, C6 and A4 (business-tool acceptance), then the o
 - **Verified after:** six workers healthy on v4, audit flag false; read-only root, no published ports, user 10000, all capabilities dropped, profile and secret mounts read-only, `/tmp` a 32 MB `nosuid,nodev,noexec` tmpfs; the proxy answers `403 Forbidden` to `CONNECT example.com:443`; the tunnel is attached to all six ingress networks; the running workers hold the budget numbers (24,576 bytes, 20,000 characters, 8,192 input tokens); unauthenticated calls to the public worker routes return 403; `/api/health` is ok.
 - **Not touched:** Vercel, Cloudflare, the profiles, master, any DeepSeek call during the roll-out. The `/opt/data` volume is still writable (O3).
 - **Calls against the cap so far:** the failed canary (which never reached DeepSeek) and the one diagnostic call.
+
+## 6. A3 results (2026-10-30, 07:27 to 07:33 UTC): all 11 calls passed
+
+**Setup.** Worker image `0.22.5-v4` on the six workers (audit flag off), the production app on `2e877d24` (the 24 KiB budget), and the Vercel flag `HERMES_INFERENCE_WORKER_ENABLED` on only for about 13 minutes (07:20:51 to 07:34:05), then removed and the site redeployed. One call at a time, 15 seconds apart, stopping at the first problem (none occurred). Eleven calls, the approved cap: six provider-only canaries and five Chat canaries. Performance Analyst's Chat canary was call 12 and was not run.
+
+**Recorded by the app's audit rows (provider `deepseek`, model `deepseek-flash`, 0 tool schemas, 0 tool calls, result `success` for every row; exactly 11 rows in the three-hour window):**
+
+| Employee | Provider-only canary, tokens in / out | Chat canary, tokens in / out |
+|---|---:|---:|
+| Operations Manager | 2,836 / 36 | 2,848 / 48 |
+| Lead Hunter | 3,454 / 68 | 3,464 / 106 |
+| Sales Assistant | 2,448 / 32 | 2,458 / 58 |
+| CRM Manager | 2,372 / 46 | 2,382 / 53 |
+| Appointment Setter | 2,403 / 45 | 2,409 / 56 |
+| Performance Analyst | 2,393 / 45 | not run |
+
+- **Cost.** 29,467 input and 593 output tokens in total, about **$0.01** at DeepSeek's peak deepseek-flash rates ($0.30 per 1M input, $1.20 per 1M output; the window fell in the 06:00 to 10:00 UTC weekday peak). The estimate in section 2 assumed 3 bytes per token; the measured figure is about 5.2 bytes per token, so real prompts are cheaper than estimated.
+- **What the replies showed.** Each provider reply was a short greeting in the employee's own voice that said it had taken no action. Each Chat reply gave one honest way the employee supports iAcquireOS, in line with its role (for example: summaries of authorised tasks for Operations Manager; drafting follow-ups for review for Sales Assistant; proposing record updates for approval, not applying them, for CRM Manager). Nothing invented was found. Performance Analyst said it had no workspace records in front of it. Lead Hunter used an illustrative example assignment, labelled as an example. The no-tool, no-action restrictions held.
+- **First verified provider identity:** `deepseek` / `deepseek-flash` for all six employees, with real token usage recorded against the 24 KiB budget (largest prompt used 3,464 tokens, far under the 8,192 ceiling).
+- **Findings.** (1) Each call took 17 to 23 seconds, against a 32-second worker limit, a 36-second app limit and a 45-second route limit: the margin is thin for longer prompts or history, so latency should be watched before real chat is routed through this worker. (2) The Chat canary's readiness check against the Hermes gateway did not block any run. (3) The restricted worker accepts the full live instructions (8 to 14 KB) with room to spare.
+- **What A3 does not prove.** Accuracy on business data (A4), tool use, multi-turn behaviour and long answers; the 128-token output cap kept every reply short. No live workspace data was sent.
+- **Next gates.** D3, C6 and A4 (business-tool acceptance), each needing its own approval; the open items W2, O1, O2, O3 and moving the egress proxy to the current image; and the unrun Performance Analyst Chat canary if wanted.
