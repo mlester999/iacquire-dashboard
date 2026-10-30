@@ -194,7 +194,7 @@ also needs its own written authorization, and it would be the first time the end
 
 Recommended next requests, in this order, each separate:
 
-1. **Approve pushing the review branch for CI only** (no deploy, not `master`): the Linux run of `hermes-business-mcp-compat.yml` plus the full-suite job. The exact branch, commit, diff summary and
+1. **Approve pushing the review branch for CI only** (no deploy, not `master`): the Linux run of `hermes-business-mcp-compat.yml`. It is the only workflow this push triggers: the full-suite job in `hermes-inference-worker.yml` is path-filtered and none of these files match it, and the full suite has already passed locally with only the nine recorded failures. The exact branch, commit, diff summary and
    verification results are in the final report.
 2. **Approve two read-only checks on the real gateway:** `hermes --version` and the installed `mcp` package version.
 3. **Decide O1, O2 and the hosting-account question** (section 8).
