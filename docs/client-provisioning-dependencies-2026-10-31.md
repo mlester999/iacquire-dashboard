@@ -1,5 +1,7 @@
 # Client AI Employees: where automatic provisioning stands, and what is left after internal A4
 
+**Next major product milestone (kept on the roadmap, 2026-10-31):** automatic provisioning of six working, tenant-isolated AI Employees for every new paying client. This file is its dependency list; `hermes-d3-c6-release-readiness-2026-10-31.md`, section 14, records where it sits in the sequence after the internal A4a acceptance.
+
 **Status (2026-10-31): read-only review of the repository and its recorded evidence. Nothing was deployed, applied or probed, and no client was provisioned.** The goal this serves: every new paying client automatically receives six isolated, properly configured AI Employees after onboarding and payment clearance. This is the dependency and gap list, with honest labels.
 
 ## 1. Where it stands

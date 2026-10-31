@@ -24,7 +24,7 @@ Each is a separate approval. None is implied by another, by this plan, or by an 
 | --- | --- | --- | --- |
 | G1 | The hosting and deployment accounts are trusted: two-factor sign-in on, unknown access removed, one operator rule agreed (the account review and remediation list are in the private security report, not in this repository) | **Not met** | account owner |
 | G2 | O1: nothing on the gateway host is reachable from the internet except what is meant to be (provider firewall first, port unpublished at the next gateway restart) | **Not met** | approval, then owner or assistant |
-| G3 | O2: the six workers run from the worker-only profile view, `check --containers` passes (`services/hermes-inference-worker/DEPLOYMENT.md`) | Built and tested; **not applied** | approval |
+| G3 | O2: the six workers run from the worker-only profile view, `check --containers` passes (`services/hermes-inference-worker/DEPLOYMENT.md`) | Built, tested and green on Linux CI at `0b0b3bb8`; **not applied** | approval |
 | G4 | The D3/C6 code is on production (a fast-forward of `master`, then a Vercel build), with every flag still off | **Not met**: production runs the code from before D3, where the profile key opens the endpoint (the endpoint is off, so nothing is exposed) | approval (master push) |
 | G5 | `HERMES_BUSINESS_MCP_SECRET` set in the application's environment as a **sensitive** variable, flags still off, after a quiet day on the account | **Not met** | approval |
 | G6 | The A4a window is agreed in time, nothing else is changing production (the account events are re-read first, and the other assistant is confirmed idle) | at the time | you |
@@ -32,12 +32,12 @@ Each is a separate approval. None is implied by another, by this plan, or by an 
 
 ## 3. Preparation (no model, no tool, endpoint still off)
 
-1. **Evidence tooling** (built; tested locally on synthetic data): `scripts/hermes-a4a-evidence.ts` with `baseline` and `verify`, backed by `src/server/workforce/hermes-a4a-evidence.ts`. It is read-only (it can only run `select`), prints counts, names, ids and verdicts, never a record's text, and was checked against what the real handler writes.
+1. **Evidence tooling** (built; tested locally on synthetic data): `scripts/hermes-a4a-evidence.ts` with `baseline` and `verify`, backed by `src/server/workforce/hermes-a4a-evidence.ts`. It is read-only (it can only run `select`), prints counts, names, ids and verdicts, never a record's text, and was checked against what the real handler writes. It is run as `node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/hermes-a4a-evidence.ts <baseline or verify> ...` (it is not an `npm` script) and connects to the database named by its environment, so the connection it uses is a decision for you before the window: a read-only database role created for the window is recommended (a separate approval; nothing is written).
 2. **Credential**: after G5, `npm run hermes:business-mcp-token -- issue --role operations_manager --agent <Zeng's id> --org <agency id> --out <private directory> --secret-file <file>`: one credential for Zeng only, mode 0600, with its id and expiry printed. Verify it offline with `verify`. The other five are not issued.
 3. **Recorded restore copies** of Zeng's live `config.yaml` and `.env` (SHA-256 of each, copies kept off the host), and the hashes of all six profiles' `SOUL.md` and `config.yaml`, so "unchanged afterwards" is a comparison, not a belief.
 4. **Install, by you, at the gateway host's console** (the assistant does not type secrets into a console): append `IACQUIRE_BUSINESS_MCP_TOKEN=<credential>` to Zeng's profile `.env`; add the `mcp_servers.iacquire_business` entry shown by the provisioning preview to Zeng's profile `config.yaml` (URL, `Authorization: "Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}"`, `tool_timeout: 12`, and the toolset that exposes only Zeng's reviewed tools). Delete the credential file from the machine that issued it.
 5. **Does the running gateway pick the entry up without a restart?** Not known: the C6 proof started a gateway per configuration. If a restart is needed it is a separate approval and the moment to also apply O1 option D (unpublish the port), so the gateway is interrupted once. A restart briefly interrupts all six employees' Chat.
-6. **Local rehearsal (done, repeatable):** the whole read path is covered by the 38 pinned-runtime checks and the 39-test authentication matrix on synthetic data; run them again on the exact commit being released.
+6. **Local rehearsal (done, repeatable):** the whole read path is covered by the 38 pinned-runtime checks and the 39-test authentication matrix on synthetic data; run them again on the exact commit being released (done on Linux CI at `0b0b3bb8`: the C6 proof job, and the authentication matrix inside the full suite).
 
 ## 4. Test data
 
@@ -53,9 +53,9 @@ Each is a separate approval. None is implied by another, by this plan, or by an 
 1. **Open the window:** set `HERMES_BUSINESS_MCP_ENABLED=true` in the production environment (not `HERMES_BUSINESS_MCP_WRITES_ENABLED`, which stays off) and redeploy the same commit. Verify the new deployment is live and created after the change (a deployment keeps the environment it was created with).
 2. **Check the closed door first:** an unauthenticated request to the endpoint answers 401; a request with Zeng's Hermes **profile key** answers 401 (this is the D3 separation, shown on production once).
 3. **Check discovery:** Zeng's readiness in the portal shows online with a verified tool inventory; the gateway's inventory for Zeng lists its reviewed tools and no write tool; the other five employees' inventories show no business tool.
-4. **Baseline:** `hermes-a4a-evidence baseline --out <file>` (records the time and the independent counts).
+4. **Baseline:** `scripts/hermes-a4a-evidence.ts baseline --out <file>` (the command form is in section 3, item 1; it records the time and the independent counts).
 5. **One Chat** with Zeng, signed in as a Super Admin, one fixed question (below). Note the run's id from the Chat run record. No second question, no follow-up that could lead to an action.
-6. **Verify at once:** `hermes-a4a-evidence verify --baseline <file> --run <run id> --credential-id <id>`. Read Zeng's answer against the printed independent counts, line by line.
+6. **Verify at once:** `scripts/hermes-a4a-evidence.ts verify --baseline <file> --run <run id> --credential-id <id>` (same command form). Read Zeng's answer against the printed independent counts, line by line.
 7. **Close the window:** remove `HERMES_BUSINESS_MCP_ENABLED` and redeploy; verify the endpoint answers 404 again and Zeng's inventory has no business tool. Then, at the console, restore Zeng's `config.yaml` and `.env` from the recorded copies (or leave them if the next stage follows within the day, by your decision) and confirm all six profiles' hashes equal the recorded ones.
 8. **Report** the evidence output, the answer, the audit rows and the final state.
 
@@ -128,7 +128,7 @@ A4a needs these, each separately and each stated by you in chat. I will not trea
 3. **O2:** moving the six workers onto the profile view (`DEPLOYMENT.md`), with a Compose-file stage and a `sync`.
 4. **Release:** one authorization to fast-forward `master` to a named commit (the D3/C6 code plus the O2 and evidence work), with a rollback to the current production build.
 5. **Signing secret:** generate and set `HERMES_BUSINESS_MCP_SECRET` as a sensitive variable, flags off, after a quiet day.
-6. **Credential and configuration for Zeng only:** issue, and you install at the console.
+6. **Credential and configuration for Zeng only:** issue, and you install at the console; and **the database access the evidence tool uses** (a read-only role is recommended).
 7. **The window itself:** date and time, who is present, the fixed question, and the stop conditions in section 8.
 
 **Recommendation today: NO-GO for A4a.** G1 to G5 and G7 are unmet. The code and the evidence tooling are ready and tested on synthetic data; what stands between this and a safe first window is account hardening, the open gateway port, the workers' mounts and the production release, in that order.
