@@ -3,11 +3,12 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import {
-  EXPECTED_BOOKKEEPING_TABLES, evaluateA4aEvidence, findInternalAgencyOrgId, listWorkspaceTables, readAuthoritativeCounts, readRowCounts, readRunEvidence, readWriteDeltas,
+  EXPECTED_BOOKKEEPING_TABLES, evaluateA4aEvidence, findInternalAgencyOrgId, listWorkspaceTables, readAuthoritativeCounts, readRoleFacts, readRowCounts, readRunEvidence, readWriteDeltas,
   reviewedToolRecordNames, type AuthoritativeCounts, type EvidenceInput, type RunEvidence, type TableDelta,
 } from "@/server/workforce/hermes-a4a-evidence";
 import { businessMcpToolNamesForRole } from "@/server/workforce/hermes-business-mcp-policy";
-import { agentId, createOrg } from "./support/fixtures";
+import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 
 // A4a evidence: the read-only before/after comparison for the first supervised business-tool task. These tests check the checks themselves (so a real run cannot pass by accident)
 // and the queries (against a seeded database), and that the module can only read.
@@ -128,7 +129,8 @@ describe("A4a evidence: the module can only read, and never shows a record", () 
 
   it("is a read-only command: no import of a write path, no environment value printed", () => {
     expect(script).not.toMatch(/withSystem|DATABASE_URL|process\.env\./);
-    expect(script).toContain("readAuthoritativeCounts");
+    expect(script).toContain("readRoleFacts");
+    expect(script).toContain("The baseline was taken for");
   });
 });
 
@@ -220,5 +222,170 @@ describe("A4a evidence: the queries, on a seeded database", () => {
     expect((await readRunEvidence(other.id, runId, since)).found).toBe(false);
     const verdict = evaluateA4aEvidence(input({ run: evidence, deltas: (await readWriteDeltas(agency.id, since, baselineForRun)).map((entry) => ({ ...entry, created: entry.expected ? entry.created : 0, updated: entry.expected ? entry.updated : 0 })) }));
     expect(failing(verdict)).toEqual([]);
+  });
+});
+
+describe("A4b: the same checks for each of the six employees", () => {
+  const cleanRun = (role: (typeof AGENT_ROLE_KEYS)[number]): RunEvidence => ({ ...GOOD_RUN, role, audit: [{ ...GOOD_RUN.audit[0], role }] });
+
+  it("passes a clean supervised read for every role, because every role is reviewed for the workspace context tool", () => {
+    for (const role of AGENT_ROLE_KEYS) {
+      const result = evaluateA4aEvidence(input({ role, run: cleanRun(role) }));
+      expect(failing(result), role).toEqual([]);
+      expect(result.ok, role).toBe(true);
+    }
+  });
+
+  it("fails a tool that belongs to another role's reviewed list", () => {
+    // The Performance Analyst may read the context and the CRM summary only; the Appointment Setter may not read the summary; neither may read contacts or history unless reviewed.
+    const withTool = (role: (typeof AGENT_ROLE_KEYS)[number], name: string) => evaluateA4aEvidence(input({ role, run: { ...cleanRun(role), tools: [...GOOD_RUN.tools, { name, status: "completed", count: 1 }] } }));
+    expect(failing(withTool("performance_analyst", "mcp__iacquire_business__find_contacts"))).toContain("only_reviewed_tools");
+    expect(failing(withTool("appointment_setter", "mcp__iacquire_business__crm_summary_report"))).toContain("only_reviewed_tools");
+    expect(failing(withTool("lead_hunter", "mcp__iacquire_business__get_conversation_history"))).toContain("only_reviewed_tools");
+    expect(failing(withTool("crm_manager", "mcp__iacquire_business__check_availability"))).toContain("only_reviewed_tools");
+    expect(failing(withTool("appointment_setter", "mcp__iacquire_business__check_availability"))).toEqual([]);
+  });
+
+  it("compares any role's named facts before and after, and only advises when they moved", () => {
+    const quiet = evaluateA4aEvidence(input({ role: "lead_hunter", run: cleanRun("lead_hunter"), before: { leads_total: 4, leads_awaiting_review: 2 }, after: { leads_total: 4, leads_awaiting_review: 2 } }));
+    expect(quiet.checks.find((check) => check.id === "facts_stable")).toMatchObject({ ok: true });
+    const moved = evaluateA4aEvidence(input({ role: "lead_hunter", run: cleanRun("lead_hunter"), before: { leads_total: 4 }, after: { leads_total: 5 } }));
+    expect(moved.checks.find((check) => check.id === "facts_stable")).toMatchObject({ ok: false, advisory: true });
+    expect(moved.ok).toBe(true);
+  });
+});
+
+describe("A4b: each role's independent counts, on a seeded database", () => {
+  let a: Awaited<ReturnType<typeof createOrg>>;
+  let b: Awaited<ReturnType<typeof createOrg>>;
+  const run = (sql: string, params: unknown[] = []) => withSystem((db) => db.query(sql, params));
+
+  beforeAll(async () => {
+    // Two client workspaces (only one agency workspace may exist, and the first describe already made it): the counts do not depend on the workspace kind.
+    a = await createOrg({ kind: "client", name: "A4b Facts A" });
+    b = await createOrg({ kind: "client", name: "A4b Facts B" });
+
+    // Leads: two awaiting review (one made 45 days ago), one approved 5 days ago, one rejected 100 days ago.
+    await run(
+      `insert into leads (org_id, business_name, review_status, created_at) values
+         ($1, 'L1', 'pending', now()), ($1, 'L2', 'pending', now() - interval '45 days'), ($1, 'L3', 'approved', now() - interval '5 days'), ($1, 'L4', 'rejected', now() - interval '100 days')`,
+      [a.id],
+    );
+    // Contacts: three live (now, 10 days ago, 45 days ago), one deleted and one archived (neither counts as a live contact).
+    await run(
+      `insert into contacts (org_id, display_name, lifecycle_stage, created_at, deleted_at, archived_at) values
+         ($1, 'C1', 'qualified', now(), null, null), ($1, 'C2', 'lead_captured', now() - interval '10 days', null, null), ($1, 'C3', 'qualified', now() - interval '45 days', null, null),
+         ($1, 'C4', 'lead_captured', now(), now(), null), ($1, 'C5', 'lead_captured', now(), null, now())`,
+      [a.id],
+    );
+    const contacts = (await run("select id, display_name from contacts where org_id = $1", [a.id])).rows as Array<{ id: string; display_name: string }>;
+    const contactId = (name: string) => contacts.find((row) => row.display_name === name)!.id;
+
+    // A native pipeline with two open stages, a won stage and a lost stage; deals: three open (two Qualified, one Proposal), two won (5 and 45 days ago), one lost 10 days ago,
+    // one archived open deal and one deal cached from another provider (neither is a live native deal).
+    const pipeline = (await run("insert into crm_pipelines (org_id, provider, name, is_default, position) values ($1, 'native', 'Sales', true, 0) returning id", [a.id])).rows[0] as { id: string };
+    const stages = (await run(
+      `insert into crm_pipeline_stages (org_id, pipeline_id, name, position, kind) values ($1, $2, 'Qualified', 1, 'open'), ($1, $2, 'Proposal', 2, 'open'), ($1, $2, 'Won', 3, 'won'), ($1, $2, 'Lost', 4, 'lost') returning id, name`,
+      [a.id, pipeline.id],
+    )).rows as Array<{ id: string; name: string }>;
+    const stageId = (name: string) => stages.find((row) => row.name === name)!.id;
+    const deal = (name: string, status: "open" | "won" | "lost", stage: string, closedDaysAgo: number | null, archived = false) =>
+      run(
+        `insert into crm_opportunities (org_id, provider, name, status, pipeline_ref, stage_ref, currency, stage_entered_at, closed_at, archived_at)
+         values ($1, 'native', $2, $3, $4, $5, 'USD', now(), ${closedDaysAgo === null ? "null" : `now() - interval '${closedDaysAgo} days'`}, ${archived ? "now()" : "null"})`,
+        [a.id, name, status, pipeline.id, stageId(stage)],
+      );
+    await deal("O1", "open", "Qualified", null);
+    await deal("O2", "open", "Qualified", null);
+    await deal("O3", "open", "Proposal", null);
+    await deal("O4", "won", "Won", 5);
+    await deal("O5", "won", "Won", 45);
+    await deal("O6", "lost", "Lost", 10);
+    await deal("O7", "open", "Qualified", null, true);
+    await run("insert into crm_opportunities (org_id, provider, name, status, ghl_opportunity_id) values ($1, 'ghl', 'O8', 'open', 'ghl-opportunity-8')", [a.id]);
+
+    // Tasks: two open and overdue-or-not, one in progress and overdue, one done.
+    await run(
+      `insert into tasks (org_id, title, status, due_at, completed_at) values
+         ($1, 'T1', 'open', now() - interval '2 days', null), ($1, 'T2', 'open', now() + interval '2 days', null), ($1, 'T3', 'in_progress', now() - interval '1 day', null), ($1, 'T4', 'done', null, now())`,
+      [a.id],
+    );
+    // Calendars: one active, one draft; two weekly availability rules for a member.
+    await run("insert into crm_calendars (org_id, name, slug, status, origin) values ($1, 'Consults', 'consults', 'active', 'manual'), ($1, 'Draft hours', 'draft-hours', 'draft', 'onboarding')", [a.id]);
+    const member = await createUser();
+    await addMember(a.id, member.id, "owner");
+    await run("insert into crm_availability_rules (org_id, user_id, weekday, start_minute, end_minute) values ($1, $2, 1, 540, 1020), ($1, $2, 2, 540, 1020)", [a.id, member.id]);
+    // Appointments in the provider cache: two count (in 1 and 2 days), one cancelled and one in 10 days do not.
+    await run(
+      `insert into appointment_refs (org_id, ghl_appointment_id, ghl_calendar_id, title, status, start_at, end_at) values
+         ($1, 'ar1', 'cal', 'Consult', 'confirmed', now() + interval '2 days', now() + interval '2 days 1 hour'),
+         ($1, 'ar2', 'cal', 'Consult', 'cancelled', now() + interval '3 days', now() + interval '3 days 1 hour'),
+         ($1, 'ar3', 'cal', 'Consult', 'confirmed', now() + interval '10 days', now() + interval '10 days 1 hour'),
+         ($1, 'ar4', 'cal', 'Consult', 'new', now() + interval '1 day', now() + interval '1 day 1 hour')`,
+      [a.id],
+    );
+    // Booking requests: a booked one in 2 days and one awaiting approval in 3 days count; a cancelled one in 1 day and a requested one in 20 days do not.
+    await run(
+      `insert into appointment_bookings (org_id, contact_id, calendar_id, start_at, end_at, timezone, title, requested_by_kind, status, idempotency_key, ghl_appointment_id, booked_at) values
+         ($1, $2, 'cal-1', now() + interval '2 days', now() + interval '2 days 1 hour', 'UTC', 'Consult', 'ai', 'booked', 'idem-key-0001', 'ghl-ap-1', now()),
+         ($1, $2, 'cal-1', now() + interval '3 days', now() + interval '3 days 1 hour', 'UTC', 'Consult', 'ai', 'awaiting_approval', 'idem-key-0002', null, null),
+         ($1, $2, 'cal-1', now() + interval '1 day', now() + interval '1 day 1 hour', 'UTC', 'Consult', 'ai', 'cancelled', 'idem-key-0003', null, null),
+         ($1, $2, 'cal-1', now() + interval '20 days', now() + interval '20 days 1 hour', 'UTC', 'Consult', 'ai', 'requested', 'idem-key-0004', null, null)`,
+      [a.id, contactId("C1")],
+    );
+    // Conversations: two open (one per contact), one closed.
+    await run(
+      `insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'ai'), ($1, $3, 'sms', 'open', 'ai'), ($1, $4, 'sms', 'closed', 'ai')`,
+      [a.id, contactId("C1"), contactId("C2"), contactId("C3")],
+    );
+
+    // Another workspace with one of a few things: none of it may reach the first workspace's counts.
+    await run("insert into leads (org_id, business_name, review_status) values ($1, 'B lead', 'pending')", [b.id]);
+    await run("insert into contacts (org_id, display_name, lifecycle_stage) values ($1, 'B contact', 'qualified')", [b.id]);
+    await run("insert into tasks (org_id, title, status) values ($1, 'B task', 'open')", [b.id]);
+  }, 120_000);
+
+  it("the Operations Manager's facts are the existing authoritative counts", async () => {
+    expect(await readRoleFacts(a.id, "operations_manager")).toEqual(await readAuthoritativeCounts(a.id));
+  });
+
+  it("Lead Hunter: leads by review state and the live contacts", async () => {
+    expect(await readRoleFacts(a.id, "lead_hunter")).toEqual({ leads_total: 4, leads_awaiting_review: 2, leads_approved: 1, leads_rejected: 1, contacts_total: 3 });
+  });
+
+  it("Appointment Setter: active and draft calendars, availability rules, and the next seven days", async () => {
+    expect(await readRoleFacts(a.id, "appointment_setter")).toEqual({ calendars_active: 1, calendars_draft: 1, availability_rules: 2, appointments_next_7_days: 2, bookings_open_next_7_days: 2 });
+  });
+
+  it("Sales Assistant: open, won and lost native deals, and the open deals per stage", async () => {
+    expect(await readRoleFacts(a.id, "sales_assistant")).toEqual({ open_deals: 3, won_deals: 2, lost_deals: 1, contacts_total: 3, "open_deals_in_stage:Proposal": 1, "open_deals_in_stage:Qualified": 2 });
+  });
+
+  it("CRM Manager: the CRM summary facts, counted without the summary tool's code", async () => {
+    expect(await readRoleFacts(a.id, "crm_manager")).toEqual({
+      contacts_total: 3, new_contacts_30d: 2, open_deals: 3, won_deals_30d: 1, lost_deals_30d: 1, open_tasks: 3, overdue_tasks: 2, appointments_next_7_days: 2, open_conversations: 2,
+    });
+  });
+
+  it("Performance Analyst: the last 30 days against the 30 days before", async () => {
+    expect(await readRoleFacts(a.id, "performance_analyst")).toEqual({
+      new_contacts_30d: 2, new_contacts_previous_30d: 1, leads_created_30d: 2, leads_created_previous_30d: 1, won_deals_30d: 1, won_deals_previous_30d: 1, lost_deals_30d: 1, lost_deals_previous_30d: 0,
+    });
+  });
+
+  it("counts one workspace only: the other workspace's rows never reach these numbers, and its own are its own", async () => {
+    expect(await readRoleFacts(b.id, "lead_hunter")).toEqual({ leads_total: 1, leads_awaiting_review: 1, leads_approved: 0, leads_rejected: 0, contacts_total: 1 });
+    expect(await readRoleFacts(b.id, "sales_assistant")).toEqual({ open_deals: 0, won_deals: 0, lost_deals: 0, contacts_total: 1 });
+    expect(await readRoleFacts(b.id, "crm_manager")).toMatchObject({ contacts_total: 1, open_tasks: 1, open_deals: 0, open_conversations: 0 });
+  });
+
+  it("returns numbers for every role and never a name, a title or a message", async () => {
+    for (const role of AGENT_ROLE_KEYS) {
+      const facts = await readRoleFacts(a.id, role);
+      for (const [name, value] of Object.entries(facts)) {
+        expect(Number.isFinite(value), `${role} ${name}`).toBe(true);
+        expect(name, role).toMatch(/^[A-Za-z0-9_]+(:[A-Za-z0-9 _-]+)?$/);
+      }
+    }
   });
 });

@@ -18,13 +18,16 @@ import { businessMcpToolNamesForRole } from "@/server/workforce/hermes-business-
  */
 export const EXPECTED_BOOKKEEPING_TABLES: readonly string[] = ["agent_runs", "audit_logs", "chat_conversations", "chat_messages", "crm_agent_tokens", "tool_executions"];
 
-export interface AuthoritativeCounts {
+export type AuthoritativeCounts = {
   openTasks: number;
   overdueTasks: number;
   pendingApprovals: number;
   changesRequested: number;
   blockedExecutions: number;
-}
+};
+
+/** The facts one employee's fixed question is about, by name: the Operations Manager's `AuthoritativeCounts`, or the role's own counts from `readRoleFacts` (A4b). */
+export type RoleFacts = Readonly<Record<string, number>>;
 
 export interface TableDelta {
   table: string;
@@ -95,6 +98,71 @@ export async function readAuthoritativeCounts(orgId: string): Promise<Authoritat
       openTasks: num(row.open_tasks), overdueTasks: num(row.overdue_tasks), pendingApprovals: num(row.pending_approvals),
       changesRequested: num(row.changes_requested), blockedExecutions: num(row.blocked_executions),
     };
+  });
+}
+
+// A4b: the independent counts for the other five employees, from the table in section 7 of docs/hermes-a4a-acceptance-plan-2026-10-31.md. Plain SQL, one statement per role, one
+// bound value (the workspace). Archived and deleted records are not counted as live ones, and a window is "the last 30 days" or "the 30 days before that".
+const ROLE_FACT_SQL: Record<Exclude<AgentRoleKey, "operations_manager">, string> = {
+  lead_hunter: `select
+      (select count(*) from leads where org_id = $1) as leads_total,
+      (select count(*) from leads where org_id = $1 and review_status = 'pending') as leads_awaiting_review,
+      (select count(*) from leads where org_id = $1 and review_status = 'approved') as leads_approved,
+      (select count(*) from leads where org_id = $1 and review_status = 'rejected') as leads_rejected,
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null) as contacts_total`,
+  appointment_setter: `select
+      (select count(*) from crm_calendars where org_id = $1 and archived_at is null and status = 'active') as calendars_active,
+      (select count(*) from crm_calendars where org_id = $1 and archived_at is null and status = 'draft') as calendars_draft,
+      (select count(*) from crm_availability_rules where org_id = $1) as availability_rules,
+      (select count(*) from appointment_refs where org_id = $1 and start_at >= now() and start_at < now() + interval '7 days' and status not in ('cancelled', 'invalid')) as appointments_next_7_days,
+      (select count(*) from appointment_bookings where org_id = $1 and status in ('awaiting_approval', 'requested', 'booked', 'needs_manual') and start_at >= now() and start_at < now() + interval '7 days') as bookings_open_next_7_days`,
+  sales_assistant: `select
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'open') as open_deals,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won') as won_deals,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'lost') as lost_deals,
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null) as contacts_total`,
+  crm_manager: `select
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null) as contacts_total,
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null and created_at > now() - interval '30 days') as new_contacts_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'open') as open_deals,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won' and closed_at > now() - interval '30 days') as won_deals_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'lost' and closed_at > now() - interval '30 days') as lost_deals_30d,
+      (select count(*) from tasks where org_id = $1 and status in ('open', 'in_progress')) as open_tasks,
+      (select count(*) from tasks where org_id = $1 and status in ('open', 'in_progress') and due_at is not null and due_at < now()) as overdue_tasks,
+      (select count(*) from appointment_refs where org_id = $1 and start_at >= now() and start_at < now() + interval '7 days' and status not in ('cancelled', 'invalid')) as appointments_next_7_days,
+      (select count(*) from conversations where org_id = $1 and status = 'open') as open_conversations`,
+  performance_analyst: `select
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null and created_at > now() - interval '30 days') as new_contacts_30d,
+      (select count(*) from contacts where org_id = $1 and deleted_at is null and archived_at is null and created_at > now() - interval '60 days' and created_at <= now() - interval '30 days') as new_contacts_previous_30d,
+      (select count(*) from leads where org_id = $1 and created_at > now() - interval '30 days') as leads_created_30d,
+      (select count(*) from leads where org_id = $1 and created_at > now() - interval '60 days' and created_at <= now() - interval '30 days') as leads_created_previous_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won' and closed_at > now() - interval '30 days') as won_deals_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won' and closed_at > now() - interval '60 days' and closed_at <= now() - interval '30 days') as won_deals_previous_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'lost' and closed_at > now() - interval '30 days') as lost_deals_30d,
+      (select count(*) from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'lost' and closed_at > now() - interval '60 days' and closed_at <= now() - interval '30 days') as lost_deals_previous_30d`,
+};
+
+/**
+ * The facts a role's fixed question is about, counted straight from the tables (A4b). The Operations Manager's are `readAuthoritativeCounts`. The Sales Assistant also gets one
+ * `open_deals_in_stage:<stage name>` entry per pipeline stage that holds an open deal (a stage name is workspace configuration, never a record's content).
+ */
+export async function readRoleFacts(orgId: string, role: AgentRoleKey): Promise<Record<string, number>> {
+  if (role === "operations_manager") return { ...(await readAuthoritativeCounts(orgId)) };
+  return readSystem(async (db) => {
+    const { rows } = await db.query<Record<string, unknown>>(ROLE_FACT_SQL[role], [orgId]);
+    const facts: Record<string, number> = {};
+    for (const [name, value] of Object.entries(rows[0] ?? {})) facts[name] = num(value);
+    if (role === "sales_assistant") {
+      const stages = await db.query<{ stage: string; n: number }>(
+        `select s.name as stage, count(*)::int as n
+           from crm_opportunities o join crm_pipeline_stages s on s.id = o.stage_ref and s.org_id = o.org_id
+          where o.org_id = $1 and o.provider = 'native' and o.archived_at is null and o.status = 'open'
+          group by s.name order by s.name`,
+        [orgId],
+      );
+      for (const entry of stages.rows) facts[`open_deals_in_stage:${entry.stage}`] = num(entry.n);
+    }
+    return facts;
   });
 }
 
@@ -212,8 +280,8 @@ export async function readRunEvidence(orgId: string, runId: string, sinceIso: st
 
 export interface EvidenceInput {
   role: AgentRoleKey;
-  before: AuthoritativeCounts;
-  after: AuthoritativeCounts;
+  before: RoleFacts;
+  after: RoleFacts;
   deltas: TableDelta[];
   run: RunEvidence;
   /** The id of the credential installed for this employee (printed by the issuing script); when given, every audit entry must carry it. */

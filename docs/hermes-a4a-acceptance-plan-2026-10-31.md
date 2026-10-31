@@ -94,7 +94,7 @@ Same window, same evidence tool (`--role <role>`), one employee at a time, each 
 | CRM Manager | context snapshot, `crm_summary_report`, `find_contacts`, `get_contact` | CRM counts and data-quality findings | `contacts`, `opportunities`, `tasks` counts | the agency CRM row is created lazily when a Super Admin first opens CRM, so reads are "empty", not "not set up", until then: open CRM first |
 | Performance Analyst | context snapshot, `crm_summary_report` | the measured counts for the last 30 days against the 30 before | counts in the same tables over the same windows | conversion rates, revenue and attribution are not recorded; the honest answer is "not recorded" |
 
-Each new employee also needs its own credential, its own `mcp_servers` entry and a fresh quiet window. The evidence tool's independent counts today cover Zeng's facts (tasks, approvals); a per-role independent query is added alongside each employee's request, reviewed with it, not before.
+Each new employee also needs its own credential, its own `mcp_servers` entry and a fresh quiet window. The evidence tool's independent counts now cover all six roles (`readRoleFacts`: Zeng's tasks and approvals, and for each other employee the counts in the table above, as plain SQL that shares no code with the tools, tested on a seeded database): take the baseline with `--role <role>`, and review that role's counts together with its request before its window.
 
 ## 8. Stop conditions
 
