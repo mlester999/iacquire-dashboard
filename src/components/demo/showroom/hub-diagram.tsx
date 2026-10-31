@@ -42,7 +42,7 @@ export function BusinessHub({ className }: { className?: string }) {
         <span className="sx-ping absolute size-28 rounded-full border border-primary/40 @xl:size-32" aria-hidden />
         <div className="relative grid size-28 place-items-center rounded-full border border-line-strong bg-gradient-to-b from-surface-3 to-surface p-3 text-center shadow-[var(--glow)] @xl:size-32">
           <span>
-            <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-ink">Your business</span>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.12em] text-primary-ink">Your business</span>
             <span className="mt-1 line-clamp-3 block break-words text-[13px] font-semibold leading-tight text-ink @xl:text-[14px]">{name}</span>
           </span>
         </div>

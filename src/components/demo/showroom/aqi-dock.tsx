@@ -118,7 +118,7 @@ export function AqiDock({ open, onOpenChange, chat, roles, draft, suggestions }:
                 {aiEnabled ? (
                   <>
                     <span>AQi</span>
-                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-ink">Demo guide</span>
+                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-primary-ink">Demo guide</span>
                   </>
                 ) : (
                   ROOM_COPY.chatOffHeading

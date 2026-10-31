@@ -19,6 +19,7 @@ vi.mock("next/link", async () => {
   return { default: Link };
 });
 
+import { RAIL_FOLDED } from "@/components/demo/showroom/rail";
 import { Workspace, type WorkspaceProps } from "@/components/demo/showroom/workspace";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
@@ -106,7 +107,7 @@ describe("the navigation rail", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(rail().getAttribute("data-collapsed")).toBe("true");
     expect(layout.getAttribute("data-nav-collapsed")).toBe("true");
-    expect(layout.style.getPropertyValue("--sidebar-w")).toBe("68px");
+    expect(layout.style.getPropertyValue("--sidebar-w")).toBe(`${RAIL_FOLDED}px`);
     expect(window.localStorage.getItem("iaq-demo-nav-v1")).toBe("compact");
     // Folding takes nothing away: every row still has its words (a tooltip shows them) and goes where it went.
     expect(links()).toEqual(open);

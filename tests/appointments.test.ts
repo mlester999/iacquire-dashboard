@@ -35,8 +35,16 @@ import { bookingReplyText, customerInstructions, parseReply, respondToConversati
 import { detectBookingIntent } from "@/lib/appointments";
 import { inbound, messagingOrg, recordingProvider, type MessagingOrg } from "./support/messaging";
 
-const NOW = new Date("2026-10-21T01:00:00Z");
-const at = (days: number, hour = 9, minute = 0) => new Date(Date.UTC(2026, 9, 21 + days, hour, minute));
+// The simulated "now": the next Wednesday at 01:00 UTC counted from today, so it is always later than the real clock. The database stamps rows with its own now(), and a reminder for a
+// time that has already passed in real time is never "scheduled", so a fixed date made these tests fail by themselves once the real date caught up with it. Weekday and hour are kept.
+const NOW = (() => {
+  const date = new Date();
+  date.setUTCHours(1, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + (((3 - date.getUTCDay() + 7) % 7) || 7));
+  return date;
+})();
+const BASE_DAY = Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), NOW.getUTCDate());
+const at = (days: number, hour = 9, minute = 0) => new Date(BASE_DAY + days * 86_400_000 + hour * 3_600_000 + minute * 60_000);
 /** Times far beyond the booking horizon, so ledger tests never collide with availability and booking tests. */
 const far = (days: number, hour = 9, minute = 0) => at(80 + days, hour, minute);
 let m: MessagingOrg;
@@ -731,14 +739,15 @@ describe("reminders", () => {
     it("waits out quiet hours instead of waking the customer", async () => {
       await withSystem((db) => db.query("update messaging_policy set quiet_hours_start = '21:00', quiet_hours_end = '08:00'"));
       try {
-        const start = new Date("2026-10-30T10:00:00Z");
+        const start = at(1, 10); // the day after NOW, 10:00 UTC
+        const night = at(0, 22, 30);
         const e = ev({ kind: "create", contactId: ghl, startAt: start, eventTime: new Date(NOW.getTime() - 180_000) });
         await apply(e);
-        await sendDueReminders({ now: new Date("2026-10-29T22:30:00Z") }); // the 24h reminder is due at 10:00 the day before; this is the night before
+        await sendDueReminders({ now: night }); // the 24h reminder is due at 10:00 the day before; this is the night before
         const rem = (await reminders(e.appointmentId)).find((x) => x.offset_minutes === 1440)!;
         const msg = (await withSystem((db) => db.query<{ send_after: Date; status: string }>("select send_after, status from conversation_messages where id = $1", [rem.message_id]))).rows[0];
         expect(msg.status).toBe("queued");
-        expect(new Date(msg.send_after).getTime()).toBeGreaterThan(new Date("2026-10-29T22:30:00Z").getTime());
+        expect(new Date(msg.send_after).getTime()).toBeGreaterThan(night.getTime());
         expect(new Date(msg.send_after).getUTCHours()).toBeGreaterThanOrEqual(8);
       } finally {
         await withSystem((db) => db.query("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'"));

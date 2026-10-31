@@ -195,7 +195,15 @@ async function premiumWorkflow(o: CrmOrg, definition = taskDef()) {
   await setWorkflowStatus(actor, id, "active");
   return id;
 }
-const usage = (o: CrmOrg) => withSystem((db) => studioUsageSnapshot(db, o.org.id)).then((u) => Object.fromEntries(Object.entries(u.counters).map(([k, v]) => [k, v.quantity])) as Record<string, number>);
+// Summed over every month the runs touched: these tests move the clock forward by days, and in the last days of a month that crosses into the next one, where the counters are kept in a
+// separate row, so reading only the current month made two of them fail by themselves at the end of every month.
+const usage = (o: CrmOrg) =>
+  withSystem(async (db) => {
+    const snapshot = await studioUsageSnapshot(db, o.org.id);
+    const { rows } = await db.query<{ metric: string; total: string }>("select metric, sum(quantity)::text as total from automation_studio_usage where org_id = $1 group by metric", [o.org.id]);
+    const totals = new Map(rows.map((row) => [row.metric, Number(row.total)]));
+    return Object.fromEntries(Object.keys(snapshot.counters).map((key) => [key, totals.get(key) ?? 0])) as Record<string, number>;
+  });
 const runRow = async (workflowId: string) => (await withSystem((db) => db.query<{ status: string; attempts: number; last_error: string | null }>("select status, attempts, last_error from crm_workflow_runs where workflow_id = $1", [workflowId]))).rows[0];
 
 describe("usage metering of failures and retries", () => {

@@ -73,7 +73,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
           <Logo tone="inverse" compact={collapsed} />
         </Link>
         {!collapsed && <span className="flex-1" />}
-        <span className={cn("sx-rail-label rounded-full border border-white/15 bg-white/[.07] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#cdd8ee]", collapsed && "hidden")}>Demo</span>
+        <span className={cn("sx-rail-label rounded-full border border-white/15 bg-white/[.07] px-2.5 py-0.5 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#cdd8ee]", collapsed && "hidden")}>Demo</span>
         <Tooltip content={collapsed ? "Expand navigation" : "Collapse navigation"} side="right" sideOffset={TIP_GAP}>
           <button
             type="button"
@@ -97,7 +97,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
             <div className="sx-rail-label min-w-0 flex-1 pr-3 leading-tight">
               <p className="sr-only">Your demo</p>
               <p className="truncate text-[13.5px] font-semibold text-white">{name}</p>
-              {industryLabel && <p className="truncate text-[11.5px] text-[#b6c1d4]">{industryLabel}</p>}
+              {industryLabel && <p className="truncate text-[12px] text-[#b6c1d4]">{industryLabel}</p>}
             </div>
           </div>
         </Tooltip>

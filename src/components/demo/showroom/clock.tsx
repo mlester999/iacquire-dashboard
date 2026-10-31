@@ -144,7 +144,7 @@ function MiniTile({ icon: Icon, value, label }: { icon: LucideIcon; value: strin
   return (
     <div title={label} className="flex h-[52px] w-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-white/10 bg-white/[.035] text-white">
       <Icon className="size-3.5 text-[#a9c2ff]" aria-hidden />
-      <span aria-hidden className="text-[11px] font-semibold leading-none tabular-nums">
+      <span aria-hidden className="text-[12px] font-semibold leading-none tabular-nums">
         {value}
       </span>
       <span className="sr-only">{label}</span>

@@ -159,7 +159,7 @@ function PipelineTab() {
                     <li key={`${lead.id}-${s}`} className="sx-pop rounded-xl border border-primary/60 bg-primary-soft p-3 shadow-[var(--glow)]">
                       <p className="text-[14px] font-semibold text-ink">{lead.name}</p>
                       <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{scenario.enquiry}</p>
-                      <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-primary-ink">The lead you are following</p>
+                      <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-primary-ink">The lead you are following</p>
                     </li>
                   )}
                   {here.map((d) => (

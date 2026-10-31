@@ -119,7 +119,7 @@ describe("ChatRail navigation", () => {
     renderRail();
     expect(screen.getByRole("link", { name: /iAcquire dashboard/i })).toHaveAttribute("href", "/overview");
     expect(screen.getByRole("link", { name: /Back to AI Employees/i })).toHaveAttribute("href", "/employees");
-    expect(screen.getByText("Acquire")).toBeInTheDocument();
+    expect(screen.getByText("AcquireOS")).toBeInTheDocument();
   });
 
   it("returns an agency Super Admin to the agency workforce area, not the client directory", () => {

@@ -99,7 +99,7 @@ export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }:
         <ol className="space-y-2 border-t border-success/20 pt-4 text-[14px] leading-relaxed">
           {STEPS_AFTER.map((t, i) => (
             <li key={t} className="flex gap-3">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-success/20 text-[11px] font-semibold">{i + 1}</span>
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-success/20 text-[12px] font-semibold">{i + 1}</span>
               {t}
             </li>
           ))}

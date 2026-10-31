@@ -14,8 +14,21 @@ import { ingestInbound } from "@/server/messaging/ingest";
 import { DEFAULT_FOLLOWUP_TEXT } from "@/lib/messaging";
 import { inbound, messageRow, messagingOrg, phone, recordingProvider, type MessagingOrg } from "./support/messaging";
 
-const NOW = new Date("2026-10-21T12:00:00Z"); // a Wednesday, midday UTC, later than any real "now" used by fixtures
+// A Wednesday, midday UTC, always after the real clock: the database stamps rows with its own now(), so the simulated "now" has to stay later than any real one. A fixed date went
+// stale on its own day (this file started failing the day after the date it named), so it is the next Wednesday at 12:00 UTC counted from today.
+const NOW = (() => {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + (((3 - date.getUTCDay() + 7) % 7) || 7));
+  return date;
+})();
 const days = (n: number) => new Date(NOW.getTime() + n * 86_400_000);
+/** The given UTC time of day, `offset` days after NOW's day. */
+const at = (offset: number, hour: number, minute = 0) => {
+  const date = days(offset);
+  date.setUTCHours(hour, minute, 0, 0);
+  return date;
+};
 
 let m: MessagingOrg;
 beforeAll(async () => {
@@ -529,14 +542,14 @@ describe("follow-ups", () => {
     const p = await plan(org, c.conversationId);
     await withSystem((db) => db.query("update messaging_policy set quiet_hours_start = '21:00', quiet_hours_end = '08:00'"));
     try {
-      const lateNight = new Date("2026-10-22T23:00:00Z");
+      const lateNight = at(1, 23);
       await processDueFollowUps({ now: lateNight });
       const msg = (await withSystem((db) => db.query<{ id: string; send_after: Date; status: string }>("select id, send_after, status from conversation_messages where conversation_id = $1 and scope = 'followup'", [c.conversationId]))).rows[0];
       expect(msg.status).toBe("queued");
-      expect(new Date(msg.send_after).toISOString()).toBe("2026-10-23T08:00:00.000Z");
+      expect(new Date(msg.send_after).toISOString()).toBe(at(2, 8).toISOString());
       const { provider, calls } = recordingProvider();
-      expect(await dispatchMessage(msg.id, { provider, now: new Date("2026-10-23T07:00:00Z") })).toEqual({ status: "skipped" });
-      expect(await dispatchMessage(msg.id, { provider, now: new Date("2026-10-23T08:30:00Z") })).toEqual({ status: "sent" });
+      expect(await dispatchMessage(msg.id, { provider, now: at(2, 7) })).toEqual({ status: "skipped" });
+      expect(await dispatchMessage(msg.id, { provider, now: at(2, 8, 30) })).toEqual({ status: "sent" });
       expect(calls).toHaveLength(1);
       expect((await steps(p.planId as string))[0].status).toBe("sent");
     } finally {

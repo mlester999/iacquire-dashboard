@@ -155,7 +155,7 @@ export function StepNav() {
         <button type="button" onClick={() => go(prev.view)} className="sx-btn-quiet inline-flex h-11 items-center gap-2 rounded-xl px-4 text-[14px] font-medium">
           <ArrowLeft className="size-4" aria-hidden />
           <span className="text-left">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-muted">Back</span>
+            <span className="block text-[12px] uppercase tracking-[0.08em] text-muted">Back</span>
             {prev.short}
           </span>
         </button>
@@ -165,7 +165,7 @@ export function StepNav() {
       {next ? (
         <button type="button" onClick={() => go(next.view)} className="sx-btn-primary inline-flex h-12 items-center gap-3 rounded-xl px-5 text-[14px] font-semibold">
           <span className="text-left">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-white/70">Next: step {next.step}</span>
+            <span className="block text-[12px] uppercase tracking-[0.08em] text-white/70">Next: step {next.step}</span>
             {next.title}
           </span>
           <ArrowRight className="size-4" aria-hidden />

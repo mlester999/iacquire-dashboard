@@ -42,9 +42,14 @@ describe("the workload pages' read models", () => {
 
   it("puts a dated item on the team calendar on its day, and never offers a staff member the team calendar", async () => {
     const w = await workloadWorld();
-    const due = new Date(Date.now() + 36 * 3_600_000).toISOString();
+    // A fixed weekday: the planning days are the next five weekdays, so the calendar spans exactly five days only when they run Monday to Friday, and "now plus 36 hours" from the real clock
+    // lands outside them on a weekend. Counting from a Monday at 12:00 UTC makes the test the same on every day it runs.
+    const now = new Date();
+    now.setUTCHours(12, 0, 0, 0);
+    now.setUTCDate(now.getUTCDate() + (((1 - now.getUTCDay() + 7) % 7) || 7)); // the next Monday at 12:00 UTC
+    const due = new Date(now.getTime() + 36 * 3_600_000).toISOString();
     await makeTicket(w.clientA.id, { assignedTo: w.staff.id, subject: "Calendar ticket", dueAt: due });
-    const calendar = await loadTeamCalendar(w.manager);
+    const calendar = await loadTeamCalendar(w.manager, { now });
     expect(calendar.dates).toHaveLength(5);
     expect(calendar.calendar.days).toHaveLength(5);
     const titles = calendar.calendar.days.flatMap((d) => d.entries.map((e) => e.title));

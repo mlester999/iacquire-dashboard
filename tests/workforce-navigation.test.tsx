@@ -126,7 +126,7 @@ describe("management navigation (main iAcquire sidebar)", () => {
     const brand = screen.getByRole("link", { name: "iAcquire overview" });
     expect(brand.className).toContain("workspace-nav-brand");
     expect(brand.className).not.toContain("text-white");
-    expect(within(brand).getByText("Acquire").className).toContain("logo-accent");
+    expect(within(brand).getByText("AcquireOS").className).toContain("logo-accent");
     expect(screen.getByRole("navigation", { name: "Main" }).className).toContain("workspace-nav");
   });
 });

@@ -124,7 +124,7 @@ export function ScenarioPlayer({ scenario, onAsk, askLabel }: { scenario: Scenar
                     aria-current={i === at ? "step" : undefined}
                     className={cn("flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-snug transition-colors", i === at ? "bg-primary-soft text-ink" : i < at ? "text-ink-2 hover:bg-surface-2" : "text-muted hover:bg-surface-2")}
                   >
-                    <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold", i <= at ? "bg-primary text-primary-on" : "border border-line-strong text-muted")}>{i + 1}</span>
+                    <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[12px] font-semibold", i <= at ? "bg-primary text-primary-on" : "border border-line-strong text-muted")}>{i + 1}</span>
                     <span>{s.title}</span>
                   </button>
                 </li>

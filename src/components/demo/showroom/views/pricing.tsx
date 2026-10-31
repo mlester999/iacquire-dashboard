@@ -148,7 +148,7 @@ export function PricingView() {
                 return (
                   <li key={key} className="flex flex-col items-center gap-1.5 text-center">
                     <AgentAvatar role={m} size="md" eager />
-                    <span className="text-[11.5px] font-medium leading-tight text-ink-2">{m.shortName}</span>
+                    <span className="text-[12px] font-medium leading-tight text-ink-2">{m.shortName}</span>
                   </li>
                 );
               })}

@@ -200,7 +200,7 @@ function Steps({ heading, items }: { heading: string; items: readonly string[] }
       <ol className="space-y-2">
         {items.map((t, i) => (
           <li key={t} className="flex gap-3 text-[14px] leading-relaxed text-ink-2">
-            <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary-ink">{i + 1}</span>
+            <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{i + 1}</span>
             {t}
           </li>
         ))}
@@ -243,7 +243,7 @@ function ConfirmBody({ kind }: { kind: ConfirmKind }) {
           <div className="sx-panel-flat grid grid-cols-[1fr_auto] gap-x-4 px-4 py-3">
             <dt className="text-[14px] font-semibold text-ink">{BUY_CONFIRM.implementationLabel}</dt>
             <dd className="row-span-2 text-right">
-              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-muted">Starting at</span>
+              <span className="block text-[12px] font-medium uppercase tracking-[0.08em] text-muted">Starting at</span>
               <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-ink">{usd(setupFeeUsd)}</span>
             </dd>
             <dd className="mt-0.5 text-[13px] leading-snug text-muted">{BUY_CONFIRM.implementationNote}</dd>
@@ -251,7 +251,7 @@ function ConfirmBody({ kind }: { kind: ConfirmKind }) {
           <div className="sx-panel-flat grid grid-cols-[1fr_auto] gap-x-4 px-4 py-3">
             <dt className="text-[14px] font-semibold text-ink">{BUY_CONFIRM.maintenanceLabel}</dt>
             <dd className="row-span-2 text-right">
-              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-muted">Optional</span>
+              <span className="block text-[12px] font-medium uppercase tracking-[0.08em] text-muted">Optional</span>
               <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-ink">{usd(monthlyPlanUsd)}</span>
               <span className="text-[12px] text-muted">/month</span>
             </dd>
