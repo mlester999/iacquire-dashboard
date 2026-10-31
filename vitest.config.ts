@@ -27,7 +27,7 @@ export default defineConfig({
     hookTimeout: 60000,
     pool: "forks",
     // No test may open a connection to another machine (see the file for why).
-    setupFiles: [path.resolve(import.meta.dirname, "tests/support/no-network.ts")],
+    setupFiles: [path.resolve(import.meta.dirname, "tests/support/no-network.ts"), path.resolve(import.meta.dirname, "tests/support/test-clock.ts")],
     env: {
       NODE_ENV: "test",
       AUTH_PROVIDER: "local",
