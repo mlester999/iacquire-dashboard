@@ -322,6 +322,9 @@ describe("the calendar and history", () => {
     const acc = await connect(s);
     const one = await scheduledPost(s, acc.id, { caption: "One" });
     const draft = await createPost(s.sales, textPost(acc.id, { caption: "A draft" }));
+    // A draft is dated by when it was made, which is the real clock: pin it inside the month asked for below, so the test gives the same answer on every day it runs (from the first of
+    // November it fell outside the October window).
+    await rows("update social_posts set created_at = $2 where id = $1", [draft.id, new Date("2026-10-15T09:00:00Z")]);
     const all = await listPosts(s.viewer, { from: new Date("2026-10-01T00:00:00Z"), to: new Date("2026-11-01T00:00:00Z") });
     expect(all.map((p) => p.caption).sort()).toEqual(["A draft", "One"]);
     expect((await listPosts(s.viewer, { statuses: ["scheduled"] })).map((p) => p.id)).toEqual([one.id]);

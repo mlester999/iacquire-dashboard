@@ -52,7 +52,9 @@ describe("what the health check sees of customers' payments", () => {
     expect(mine[2].title).toBe("1 payment notification was received from your payment provider and not applied");
     // Counts and nothing else: no amount, no name, no key, no address.
     const text = JSON.stringify(mine);
-    for (const secret of [conn.webhookSecret, conn.apiKey, "evt_failed_one", "pay_review", "1000", "Maria", conn.publicKey]) expect(text, secret).not.toContain(secret);
+    for (const secret of [conn.webhookSecret, conn.apiKey, "evt_failed_one", "pay_review", "Maria", conn.publicKey]) expect(text, secret).not.toContain(secret);
+    // The amount (1000) as a number standing alone. Searching for the four characters anywhere failed by chance now and then: the text carries random workspace ids, and four digits of one can be "1000".
+    expect(text).not.toMatch(/(?<![0-9a-fA-F-])1000(?![0-9a-fA-F-])/);
     expect(mine[1].evidence).toEqual({ failed: 1 });
     expect(mine[2].evidence).toEqual({ stuck: 1 });
     expect(mine[0].evidence).toEqual({ waiting: 1 });
