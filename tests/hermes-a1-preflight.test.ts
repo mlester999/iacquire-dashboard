@@ -84,7 +84,7 @@ describe("VPS preflight script is read-only", () => {
 
   it("maps the six roles to the same profile directories as the Compose file and the runner", () => {
     const script = [...vpsScript.matchAll(/^\s+"([a-z_]+) (iacquire-[a-z-]+)"$/gm)].map((m) => [m[1], m[2]]);
-    const composeDirs = [...compose.matchAll(/HERMES_PROFILE_BASE[^}]*\}\/(iacquire-[a-z-]+)/g)].map((m) => m[1]);
+    const composeDirs = [...compose.matchAll(/IACQUIRE_WORKER_PROFILE_BASE[^}]*\}\/(iacquire-[a-z-]+)/g)].map((m) => m[1]);
     const runnerMap = [...runner.matchAll(/^\s+"([a-z_]+)": "(iacquire-[a-z-]+)",$/gm)].map((m) => [m[1], m[2]]);
     expect(script).toHaveLength(6);
     expect(script).toEqual(runnerMap);

@@ -59,32 +59,32 @@ x-hmac-mount: &hmac-mount
 x-profile-mounts:
   operations_manager: &operations-manager-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-operations-manager
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-operations-manager
     target: /profiles/iacquire-operations-manager
     read_only: true
   lead_hunter: &lead-hunter-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-lead-hunter
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-lead-hunter
     target: /profiles/iacquire-lead-hunter
     read_only: true
   appointment_setter: &appointment-setter-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-appointment-setter
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-appointment-setter
     target: /profiles/iacquire-appointment-setter
     read_only: true
   sales_assistant: &sales-assistant-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-sales-assistant
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-sales-assistant
     target: /profiles/iacquire-sales-assistant
     read_only: true
   crm_manager: &crm-manager-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-crm-manager
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-crm-manager
     target: /profiles/iacquire-crm-manager
     read_only: true
   performance_analyst: &performance-analyst-profile
     type: bind
-    source: ${HERMES_PROFILE_BASE:?Set the exact Hermes profiles directory}/iacquire-analyst
+    source: ${IACQUIRE_WORKER_PROFILE_BASE:?Set IACQUIRE_WORKER_PROFILE_BASE to the worker-only profile view built by scripts/hermes-worker-profile-view.sh and never to the live Hermes profiles}/iacquire-analyst
     target: /profiles/iacquire-analyst
     read_only: true
 

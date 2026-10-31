@@ -20,7 +20,9 @@ separate approval and must be switched off after the six measurements.
   unit suite and both pinned runtime smokes; they use synthetic local API endpoints and
   the real pinned Hermes `AIAgent`, not a DeepSeek credential or external request.
 - Run six worker containers from the same image. Each container has one fixed role, one read-only
-  Hermes profile mount, and one exact role path. No worker can read another employee's profile.
+  mount of that employee's worker-only profile view (see "Worker-only profile view (O2)"), and one
+  exact role path. No worker can read another employee's profile, and none can read the live profile
+  directories at all.
 - Hermes writes logs and state under its home directory, so it never runs against the read-only
   profile. For each request the worker builds a throwaway home in the container's `/tmp` holding
   copies of `SOUL.md` and `config.yaml` only (the prompt audit gets nothing else; inference adds a
@@ -142,6 +144,68 @@ Read-only preflight snapshot taken on 2026-10-29:
   runtimes must not be mixed. The separate-container design preserves the existing gateway; validate
   each read-only profile using the pinned worker at deployment time before enabling a canary.
 
+## Worker-only profile view (O2)
+
+A worker needs three things from its employee's profile: `SOUL.md`, `config.yaml` and the DeepSeek
+settings in `.env`. A live Hermes profile also holds `state.db`, `sessions`, `memories`, `.env.backup-*`
+files, every other secret in `.env` and, once business tools are on, that employee's business MCP
+credential. Mounting the live directory (the first install did, by decision (d) of A1) lets a
+compromised worker read all of it. The worker therefore mounts a view that holds exactly the three files.
+
+- **The variable.** `compose.internal.yaml` takes the profile directory from the required variable
+  `IACQUIRE_WORKER_PROFILE_BASE`. It no longer reads `HERMES_PROFILE_BASE`: with only the old variable
+  set, Compose refuses to start, so a worker cannot fall back to the live profiles by accident. The
+  live directory is passed only to the script below, never to Compose.
+- **The script.** `scripts/hermes-worker-profile-view.sh` builds one directory per employee under the
+  view base (`SOUL.md` and `config.yaml` as byte-for-byte copies; `.env` reduced with the worker's own
+  rules to `DEEPSEEK_API_KEY` and `DEEPSEEK_BASE_URL`), mode 0400 in a 0500 directory owned by
+  `10000:10000`. It writes only inside the view, never changes a live profile, deletes only its own
+  `.new.*` temporary files, replaces files in place (so a running worker keeps a valid mount and reads the
+  new content on its next request: no restart after a sync), prints no profile text and no value from
+  `.env`, and checks that no other secret of the live `.env` appears in the view. `check` is read-only.
+  `check --containers` (docker `ps` and `inspect` with a fixed mount template, never the environment)
+  also fails if any worker mounts anything but its own view and the HMAC file, a writable profile mount,
+  another employee's profile, the Docker socket, or a path under the live directory.
+- **Drift.** A changed live `SOUL.md`, `config.yaml` or DeepSeek key is invisible to the workers until
+  `sync` is run again. `check` reports it as DRIFT, naming the file and two 12-character hashes. Run
+  `check` before every later stage (A4a and after) and after any approved change to a live profile.
+- **What it does not cover.** The view is a copy, so the DeepSeek key exists in a second place on the
+  host (the view, mode 0400, owner `10000`). The anonymous `/opt/data` volume of the base image (O3)
+  is a separate, low-risk item and is reported by `check --containers` as a warning.
+- **An `mcp_servers` entry is inert here.** A4a adds one to each live `config.yaml`, and the view copies
+  the file unchanged. `pinned_mcp_config_smoke.py` runs the real worker path against the pinned Hermes
+  with such an entry (an HTTP server on a loopback port and a stdio command) and fails if the audit
+  differs, if the worker connects to the address, or if it starts the command. CI runs it from a bind
+  mount so the image stays byte-identical to the one in production.
+
+Operator procedure (VPS, as root, in an approved window; the image does not change, so there is no
+rebuild and no new tag; each step is checked before the next):
+
+```bash
+LIVE=<the gateway's live profiles directory>        # read by the script only
+VIEW=/docker/iacquire-hermes-inference/worker-profiles
+# 1. Stage the new compose file and the script from the approved commit; verify their sha256 first, as for the v3 and v4 files.
+bash scripts/hermes-worker-profile-view.sh sync --live "$LIVE" --view "$VIEW" --dry-run   # validates all six first; writes nothing
+bash scripts/hermes-worker-profile-view.sh sync --live "$LIVE" --view "$VIEW"             # builds the view, then verifies it
+bash scripts/hermes-worker-profile-view.sh check --live "$LIVE" --view "$VIEW"            # read-only; every line [ OK ]
+# 2. Move only the six workers (the proxy, the gateway and the tunnel are not touched).
+export IACQUIRE_WORKER_PROFILE_BASE="$VIEW" IACQUIRE_INFERENCE_HMAC_FILE=/etc/iacquire-hermes-inference/inference_hmac
+cd /docker/iacquire-hermes-inference
+docker compose -p iacquire-hermes-inference -f services/hermes-inference-worker/compose.internal.yaml up -d --no-build --no-deps --dry-run \
+  iacquire-hermes-inference-worker-operations-manager iacquire-hermes-inference-worker-lead-hunter iacquire-hermes-inference-worker-appointment-setter \
+  iacquire-hermes-inference-worker-sales-assistant iacquire-hermes-inference-worker-crm-manager iacquire-hermes-inference-worker-performance-analyst
+# the dry run must show only those six services recreating; then run the same command without --dry-run
+bash scripts/hermes-worker-profile-view.sh check --live "$LIVE" --view "$VIEW" --containers   # six healthy workers, each on its own view, read-only
+```
+
+Rollback (the workers only; nothing else is touched): re-stage the previous compose file, export
+`HERMES_PROFILE_BASE` as before, and recreate the six workers the same way. Doing so restores the live
+mount deliberately, and it should be recorded as an accepted exposure. The view directory can stay or
+be removed by an operator; no step deletes it.
+
+Gate for business tools: the first business MCP credential is placed in a live profile `.env` only after
+the six workers run from the view and `check --containers` has passed in the same window.
+
 ## Approval-gated deployment order
 
 1. Deploy only the reviewed focused app diff from the reconciled isolated branch through the existing
@@ -153,7 +217,7 @@ Read-only preflight snapshot taken on 2026-10-29:
 2. Build the pinned image on the existing VPS only after its non-production image smoke passes.
    Create one private HMAC secret for the app-to-worker call and install it with mode `0400`, owned
    so UID/GID `10000:10000` can read it. Do not display it in command output or shell history.
-3. Start the six worker services and the proxy with the exact six read-only profile mounts. Check
+3. Start the six worker services and the proxy with the exact six read-only profile-view mounts. Check
    service health, confirm no host port is published, verify that each container sees only its one
    profile mount, and test that unrelated CONNECT destinations are denied.
 4. Attach the existing tunnel connector to the six private ingress networks and add only the six

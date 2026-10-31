@@ -208,6 +208,65 @@ jobs:
           fi
           cat "$log"
 
+      # A4a adds an mcp_servers entry to every live profile config, and the worker copies that file unchanged into its throwaway
+      # Hermes home. This runs the real worker path with and without such an entry and fails if anything differs. It runs from a bind
+      # mount, not from the image, so the image stays byte-identical to the one in production.
+      - name: Prove a business MCP entry in a profile config cannot change the worker, with pinned Hermes and no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/mcp-config-smoke.log"
+          if ! docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-inference-worker/pinned_mcp_config_smoke.py,target=/opt/iacquire-hermes/inference/pinned_mcp_config_smoke.py,readonly" \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_mcp_config_smoke.py > "$log" 2>&1; then
+            echo "::error title=MCP config smoke failed::$(tail -n 25 "$log" | tr '\n' '|' | cut -c1-3500)"
+            exit 1
+          fi
+          cat "$log"
+
+      # O2: the workers are given a worker-only view of a profile, never the live directory. This builds a view with the real script from
+      # synthetic live profiles that carry planted secrets (an API key, a chat token, a business MCP credential, conversation history),
+      # checks that none of them is in the view, mounts one view read-only and runs the real worker path against it.
+      - name: Build a worker-only profile view with the real script and run the real worker path against it, with pinned Hermes and no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          live="$RUNNER_TEMP/view-live"
+          view="$RUNNER_TEMP/worker-profile-view"
+          for profile in iacquire-operations-manager iacquire-lead-hunter iacquire-appointment-setter iacquire-sales-assistant iacquire-crm-manager iacquire-analyst; do
+            mkdir -p "$live/$profile/sessions"
+            printf 'Synthetic SOUL for %s.\n' "$profile" > "$live/$profile/SOUL.md"
+            printf 'model:\n  provider: deepseek\n  model: deepseek-v4-pro\nagent:\n  api_max_retries: 1\n  auto_recovery_cycles: 0\nmcp_servers:\n  iacquire_business:\n    url: https://example.invalid/mcp\n    headers:\n      Authorization: "Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}"\n' > "$live/$profile/config.yaml"
+            printf 'API_SERVER_KEY=planted-api-key-%s-0001\nSLACK_BOT_TOKEN=xoxb-planted-slack-%s-0002\nIACQUIRE_BUSINESS_MCP_TOKEN=iamcp1.planted.credential.%s.0003\nDEEPSEEK_API_KEY=sk-synthetic-view-smoke-0123456789\nDEEPSEEK_BASE_URL=https://api.deepseek.com\n' "$profile" "$profile" "$profile" > "$live/$profile/.env"
+            printf 'conversation history planted-history-%s-0004' "$profile" > "$live/$profile/state.db"
+            printf 'planted-history-%s-0005' "$profile" > "$live/$profile/sessions/s1.json"
+          done
+          # Run as root, as on the VPS, so the files get the workers' owner and mode.
+          sudo bash scripts/hermes-worker-profile-view.sh sync --live "$live" --view "$view"
+          sudo bash scripts/hermes-worker-profile-view.sh check --live "$live" --view "$view"
+          test "$(sudo find "$view" -mindepth 2 -type f | wc -l)" = 18
+          test "$(sudo find "$view" -mindepth 2 -type d | wc -l)" = 0
+          if sudo grep -rqE 'planted-|iamcp1\.' "$view"; then echo "::error title=Planted secret in the worker view::a value from the live profile reached the view"; exit 1; fi
+          planted="planted-api-key-iacquire-lead-hunter-0001,xoxb-planted-slack-iacquire-lead-hunter-0002,iamcp1.planted.credential.iacquire-lead-hunter.0003,planted-history-iacquire-lead-hunter-0004,planted-history-iacquire-lead-hunter-0005"
+          log="$RUNNER_TEMP/profile-view-smoke.log"
+          if ! docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --mount "type=bind,source=$view/iacquire-lead-hunter,target=/profiles/iacquire-lead-hunter,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-inference-worker/pinned_profile_view_smoke.py,target=/opt/iacquire-hermes/inference/pinned_profile_view_smoke.py,readonly" \
+            -e "IACQUIRE_SMOKE_PLANTED=$planted" \
+            --entrypoint /opt/hermes/.venv/bin/python \
+            iacquire/hermes-inference-worker:ci -B \
+            /opt/iacquire-hermes/inference/pinned_profile_view_smoke.py > "$log" 2>&1; then
+            echo "::error title=Worker-only profile view smoke failed::$(tail -n 25 "$log" | tr '\n' '|' | cut -c1-3500)"
+            exit 1
+          fi
+          cat "$log"
+
       - name: Re-run worker policy and failure tests with network disabled
         shell: bash
         run: |
@@ -225,14 +284,22 @@ jobs:
         run: |
           set -euo pipefail
           export IACQUIRE_INFERENCE_HMAC_FILE="$RUNNER_TEMP/synthetic-hmac"
-          export HERMES_PROFILE_BASE="$RUNNER_TEMP/synthetic-profiles"
+          export IACQUIRE_WORKER_PROFILE_BASE="$RUNNER_TEMP/synthetic-worker-profile-view"
           docker compose -f services/hermes-inference-worker/compose.internal.yaml \
             config --format json > "$RUNNER_TEMP/hermes-worker-compose.json"
-          python3 - "$RUNNER_TEMP/hermes-worker-compose.json" <<'PY'
-          import json, sys
+          # O2: the old variable must not select what the workers mount. With only it set (as a leftover from the first install would be),
+          # Compose has to refuse to render, so a worker can never fall back to the live profile directories by accident.
+          if env -u IACQUIRE_WORKER_PROFILE_BASE HERMES_PROFILE_BASE="$RUNNER_TEMP/live-profiles-must-not-be-used" \
+            docker compose -f services/hermes-inference-worker/compose.internal.yaml config --format json > /dev/null 2>&1; then
+            echo "::error title=Compose still accepts HERMES_PROFILE_BASE::the workers could be pointed at the live profiles without the worker-only view variable"
+            exit 1
+          fi
+          python3 - "$RUNNER_TEMP/hermes-worker-compose.json" "$IACQUIRE_WORKER_PROFILE_BASE" <<'PY'
+          import json, os, sys
 
           with open(sys.argv[1], encoding="utf-8") as source:
               config = json.load(source)
+          view_base = sys.argv[2]
           roles = (
               "operations-manager", "lead-hunter", "appointment-setter",
               "sales-assistant", "crm-manager", "performance-analyst",
@@ -250,6 +317,12 @@ jobs:
               assert "no-new-privileges:true" in service.get("security_opt", []), name
               profiles = [v for v in service.get("volumes", []) if v.get("target", "").startswith("/profiles/")]
               assert len(profiles) == 1 and profiles[0].get("read_only") is True, name
+              # O2: that one mount is this employee's directory inside the worker-only view, nothing else is mounted but the HMAC file,
+              # and every mount is a read-only bind (no Docker socket, no named or anonymous volume, no live profile directory).
+              profile_dir = "iacquire-analyst" if role == "performance-analyst" else f"iacquire-{role}"
+              assert profiles[0]["source"] == os.path.join(view_base, profile_dir) and profiles[0]["target"] == f"/profiles/{profile_dir}", (name, profiles[0])
+              assert sorted(v.get("target") for v in service["volumes"]) == sorted([f"/profiles/{profile_dir}", "/run/secrets/inference_hmac"]), name
+              assert all(v.get("type") == "bind" and v.get("read_only") is True for v in service["volumes"]), name
               attached = set(service["networks"])
               assert "deepseek_egress" not in attached, name
               assert len(attached) == 2, name
