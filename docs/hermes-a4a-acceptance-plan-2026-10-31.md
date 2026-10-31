@@ -4,6 +4,8 @@
 
 A4a is the first time an AI employee reads iAcquireOS business information through the business MCP endpoint: one employee (Zeng, the Operations Manager), one supervised Chat turn by a Super Admin, one short window, reads only. Everything in it is reversible within minutes, and the endpoint is switched off again before the window is called finished. The design it exercises is in `hermes-business-mcp-credentials.md`; what it builds on is in `hermes-d3-c6-results-2026-10-30.md`.
 
+**Zeng's reviewed tools** (pinned by `hermes-business-mcp-capability-matrix.test.ts`; all reads, none a write, proposal or send): the workspace context snapshot (`get_role_workspace_context`: the AI work board, schedules, handoffs, approvals summary and employee health), `crm_summary_report`, `check_availability`, `find_contacts` and `get_contact`. Writes are not offered to any employee while `HERMES_BUSINESS_MCP_WRITES_ENABLED` is off.
+
 ## 1. What A4a proves, and what it does not
 
 | It proves | It does not prove |
@@ -87,8 +89,8 @@ Same window, same evidence tool (`--role <role>`), one employee at a time, each 
 | Employee | Reviewed tools (read) | Fixed question (summary) | Independent check | Known limits to expect |
 | --- | --- | --- | --- | --- |
 | Lead Hunter | context snapshot, `find_contacts`, `get_contact` | how many researched leads await review, and their review states | `leads` counts by `review_status` for the workspace | CRM contacts and researched leads are different records; targeting rules may be "not configured" |
-| Appointment Setter | context snapshot, `check_availability`, `get_conversation_history` | is a calendar set up, and what open times exist this week | `calendars`, availability rules and `appointment_bookings` for the week | needs a native calendar; none is configured today, so the honest answer is "no calendar" |
-| Sales Assistant | context snapshot, `get_conversation_history`, `get_contact`, `check_availability` | how many open opportunities and in which stages | `opportunities` by stage for the agency workspace | no per-opportunity tool exists; reachable only through the snapshot area |
+| Appointment Setter | context snapshot, `check_availability`, `find_contacts`, `get_contact`, `get_conversation_history` | is a calendar set up, and what open times exist this week | `calendars`, availability rules and `appointment_bookings` for the week | needs a native calendar; none is configured today, so the honest answer is "no calendar" |
+| Sales Assistant | context snapshot, `check_availability`, `find_contacts`, `get_contact`, `get_conversation_history` | how many open opportunities and in which stages | `opportunities` by stage for the agency workspace | no per-opportunity tool exists; reachable only through the snapshot area |
 | CRM Manager | context snapshot, `crm_summary_report`, `find_contacts`, `get_contact` | CRM counts and data-quality findings | `contacts`, `opportunities`, `tasks` counts | the agency CRM row is created lazily when a Super Admin first opens CRM, so reads are "empty", not "not set up", until then: open CRM first |
 | Performance Analyst | context snapshot, `crm_summary_report` | the measured counts for the last 30 days against the 30 before | counts in the same tables over the same windows | conversion rates, revenue and attribution are not recorded; the honest answer is "not recorded" |
 

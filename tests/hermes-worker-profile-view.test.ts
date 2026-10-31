@@ -423,8 +423,29 @@ describe.skipIf(!hasBash || !hasPython)("worker profile view: the DeepSeek filte
 describe.skipIf(!hasBash)("worker profile view: the running workers' mounts", () => {
   const container = (role: string) => `iacquire-hermes-inference-iacquire-hermes-inference-worker-${role}-1`;
 
+  // The fake docker is a script the view script has to execute. CI mounts /tmp noexec, so it goes in the first scratch directory where a script can actually run: the system
+  // temp directory, else the workspace's node_modules/.cache (ignored by git). The A1 preflight test does the same.
+  function executableScratchDir(): string | null {
+    for (const base of [tmpdir(), join(root, "node_modules", ".cache")]) {
+      let dir: string | null = null;
+      try {
+        mkdirSync(base, { recursive: true });
+        dir = mkdtempSync(join(base, "worker-view-bin-"));
+        const probe = join(dir, "probe");
+        writeFileSync(probe, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+        // Run it through bash, the way the view script does, so a noexec mount fails here and Windows still works.
+        if (spawnSync("bash", ["-c", '"$1"', "probe", posix(probe)]).status === 0) return dir;
+      } catch {
+        // try the next location
+      }
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    }
+    return null;
+  }
+
   function fakeDocker(mounts: (role: string, profile: string, view: string) => string[], running = Object.keys(WORKER_ROLES)) {
-    const bin = mkdtempSync(join(tmpdir(), "worker-view-bin-"));
+    const bin = executableScratchDir();
+    if (!bin) throw new Error("no scratch directory allows running scripts, so the fake docker cannot run");
     workDirs.push(bin);
     const arms = (view: string) => running.map((role) => `    ${container(role)}) printf '%s\\n' ${mounts(role, WORKER_ROLES[role], view).map((line) => `'${line}'`).join(" ")} ;;`).join("\n");
     return { bin, write: (view: string) => {
