@@ -36,7 +36,7 @@ Each is a separate approval. None is implied by another, by this plan, or by an 
 2. **Credential**: after G5, `npm run hermes:business-mcp-token -- issue --role operations_manager --agent <Zeng's id> --org <agency id> --out <private directory> --secret-file <file>`: one credential for Zeng only, mode 0600, with its id and expiry printed. Verify it offline with `verify`. The other five are not issued.
 3. **Recorded restore copies** of Zeng's live `config.yaml` and `.env` (SHA-256 of each, copies kept off the host), and the hashes of all six profiles' `SOUL.md` and `config.yaml`, so "unchanged afterwards" is a comparison, not a belief.
 4. **Install, by you, at the gateway host's console** (the assistant does not type secrets into a console): append `IACQUIRE_BUSINESS_MCP_TOKEN=<credential>` to Zeng's profile `.env`; add the `mcp_servers.iacquire_business` entry shown by the provisioning preview to Zeng's profile `config.yaml` (URL, `Authorization: "Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}"`, `tool_timeout: 12`, and the toolset that exposes only Zeng's reviewed tools). Delete the credential file from the machine that issued it.
-5. **Does the running gateway pick the entry up without a restart?** Not known: the C6 proof started a gateway per configuration. If a restart is needed it is a separate approval and the moment to also apply O1 option D (unpublish the port), so the gateway is interrupted once. A restart briefly interrupts all six employees' Chat.
+5. **Does the running gateway pick the entry up without a restart? No.** Observed against the pinned 0.21.5 gateway with this repository's overlay (`tests/hermes-business-mcp-hot-reload.test.ts`): after the `mcp_servers` entry, the toolset and the credential were written into a live profile's `config.yaml` and `.env`, the running gateway's complete tool inventory still listed no business tool after 20 seconds; after a restart the same files gave exactly the approved tools. So the window includes **one gateway restart** after the install (and one after the restore, for the gateway to drop the entry). Each briefly interrupts all six employees' Chat and is a separate approval; the first is the moment to apply O1 option D (unpublish the host port) too, so the gateway is interrupted once.
 6. **Local rehearsal (done, repeatable):** the whole read path is covered by the 38 pinned-runtime checks and the 39-test authentication matrix on synthetic data; run them again on the exact commit being released (done on Linux CI at `0b0b3bb8`: the C6 proof job, and the authentication matrix inside the full suite).
 
 ## 4. Test data
@@ -116,7 +116,7 @@ Stop, switch the endpoint off first (section 9), and report if any of these happ
 | End the Chat turn | a credential reads nothing without a live turn (also limited to 20 minutes) | immediate |
 | `HERMES_BUSINESS_MCP_ENABLED` off + redeploy | the endpoint answers 404 | about 5 to 7 minutes |
 | Add the credential's id to `HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS` + redeploy | that credential is refused | about 5 to 7 minutes |
-| Restore Zeng's `config.yaml` and `.env` from the recorded copies at the gateway host | Zeng no longer has the entry or the credential | minutes (a gateway reload if needed) |
+| Restore Zeng's `config.yaml` and `.env` from the recorded copies at the gateway host | Zeng no longer has the entry or the credential | minutes, plus a gateway restart (a running gateway keeps the entry until it is restarted) |
 | Rotate `HERMES_BUSINESS_MCP_SECRET` | every credential ends | next deployment |
 
 ## 10. The approval request

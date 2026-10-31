@@ -107,7 +107,7 @@ The added lines of the whole review-branch range (6,032 lines and 165 commit-mes
 2. The environment-level switches take one deployment (about 5 to 7 minutes). The immediate stops are the database-level ones (disable the employee, pause the agency, end the turn).
 3. There is no source-address pinning (recommended once the gateway's outbound address is confirmed from the host) and no per-credential issue registry or one-click revocation screen (a small table would add both; not proposed now).
 4. Credentials last 90 days; reissue at 60. An expired or wrong credential makes the profile retry hard, tripping the per-address failure limit (30 per 10 minutes) for failures only.
-5. Whether a running 0.21.5 gateway picks up a new `mcp_servers` entry without a restart is unknown; a restart interrupts all six employees' Chat briefly.
+5. A running 0.21.5 gateway does not pick up a new `mcp_servers` entry and credential written into a live profile (observed with the real pinned gateway, `tests/hermes-business-mcp-hot-reload.test.ts`): the A4a window includes one gateway restart, which interrupts all six employees' Chat for about a minute.
 6. The agency CRM row is created lazily, so reads are "empty" rather than "not set up" until a Super Admin opens CRM once.
 7. Upstream's later security fixes are assessed in `hermes-upstream-security-assessment-2026-10-31.md`: not an A4a blocker by themselves; the gateway upgrade is a separate project.
 8. Exact Linux test counts are visible only in GitHub's sign-in-protected job logs, so this record states conclusions, not Linux numbers. A small workflow change could also publish the comparator's summary as a public annotation; it is not made (it would need another push and a full 39-minute run).
