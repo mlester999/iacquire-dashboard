@@ -23,6 +23,7 @@ import { defaultSettings } from "@/server/workforce/compiler";
 import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 import { MCP_TEST_SECRET } from "./support/business-mcp";
+import { readRowCounts, readWriteDeltas } from "@/server/workforce/hermes-a4a-evidence";
 
 const URL = "https://portal.example.test/api/internal/hermes-business/mcp";
 const KEYS = Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [role, `matrix-${role}-profile-key-0123456789`])) as Record<AgentRoleKey, string>;
@@ -264,6 +265,26 @@ describe("the read tools, on synthetic records", () => {
       await count("select count(*)::int as n from leads where org_id = $1"),
     ];
     expect(after).toEqual(before);
+  });
+
+  // The A4a evidence tool (scripts/hermes-a4a-evidence.ts) treats every workspace table outside EXPECTED_BOOKKEEPING_TABLES as a possible write. This is what makes that list true: every
+  // tool of every employee, through the real handler, and the only tables with a new, changed or removed row for the workspace are ones the tool expects.
+  it("writes only the run's own bookkeeping: every table that gains, changes or loses a row is one the evidence tool expects", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const since = new Date().toISOString();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const baseline = await readRowCounts(agency.id);
+    for (const role of AGENT_ROLE_KEYS) {
+      await startTurn(role);
+      await tool(role, HERMES_BUSINESS_CONTEXT_TOOL);
+      for (const name of MATRIX[role].tools) await tool(role, name, name === "get_contact" ? { contactId } : name === "find_contacts" ? { query: "Matrix" } : name === "get_conversation_history" ? { conversationId } : {});
+    }
+    const deltas = await readWriteDeltas(agency.id, since, baseline);
+    const changed = deltas.filter((entry) => entry.created || entry.updated || entry.rowDelta || entry.error);
+    expect(changed.filter((entry) => !entry.expected)).toEqual([]);
+    // The loop really ran: the audit trail, the tool records and the runs grew.
+    for (const table of ["audit_logs", "tool_executions", "agent_runs"]) expect(changed.find((entry) => entry.table === table)?.rowDelta, table).toBeGreaterThan(0);
+    evidence.tables_written_by_reads = changed.map((entry) => `${entry.table}:+${entry.rowDelta}`);
   });
 });
 });

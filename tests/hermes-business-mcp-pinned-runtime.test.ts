@@ -9,7 +9,7 @@
 // key exists in the runtime's environment, no live gateway, profile, credential, customer record or network address outside loopback is touched. The "authenticated read" is Hermes' MCP client and
 // tool registry called in-process, which is the code path an agent's tool call takes, not a model-driven run.
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
@@ -397,6 +397,38 @@ suite("business MCP against the real pinned Hermes 0.21.5 gateway", () => {
         expect(result.status).not.toBe("online");
       } finally { await unpatched.stop(); await server.close(); }
     }, 300_000);
+  });
+
+  // The credential is meant to be in each profile's own .env and nowhere else. This looks at everything the real gateways and MCP clients wrote into their homes while the checks above ran
+  // (logs, session and state databases, caches, probe output, the fault-injection homes), which no other test inspects: the evidence test below only checks what this file records.
+  it("leaves no credential, signing secret or gateway key in anything the gateways wrote (logs, databases, sessions); only the profile .env files hold them, by design", () => {
+    const secrets = [
+      ...Object.values(CREDENTIALS).flatMap((token) => [token, token.split(".").pop() as string]),
+      MCP_TEST_SECRET, rootKey, ...Object.values(PROFILE_KEYS),
+    ];
+    expect(new Set(secrets).size).toBe(secrets.length);
+    const needles = secrets.map((value) => Buffer.from(value, "utf8"));
+    let files = 0;
+    let bytes = 0;
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!entry.isFile() || entry.name === ".env") continue;
+        const size = statSync(full).size;
+        if (size > 64 * 1024 * 1024) continue;
+        files += 1;
+        bytes += size;
+        const content = readFileSync(full);
+        if (needles.some((needle) => content.includes(needle))) hits.push(path.relative(scratch.root, full).replace(/\\/g, "/"));
+      }
+    };
+    walk(scratch.root);
+    evidence.hermes_home_scan = { filesScanned: files, megabytesScanned: Math.round(bytes / 1e5) / 10, filesWithASecret: hits.length };
+    // A scan that looked at nothing proves nothing: a real Hermes home holds many files (config, skills, caches, logs).
+    expect(files).toBeGreaterThan(50);
+    expect(hits).toEqual([]);
   });
 
   it("leaves no credential, key or secret in the evidence it records", () => {
