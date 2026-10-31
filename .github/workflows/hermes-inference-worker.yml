@@ -7,11 +7,21 @@ on:
     branches:
       - codex/internal-iacquire-activation
       - integration/hermes-bridge-final
+    # Any change to the application or its tests runs the whole suite. Until 2026-10-31 only the worker files did, so a push that changed tests or source ran nothing at all.
     paths:
       - services/hermes-inference-worker/**
       - .github/workflows/hermes-inference-worker.yml
       - .github/scripts/**
+      - package.json
       - package-lock.json
+      - src/**
+      - tests/**
+      - scripts/**
+      - supabase/**
+      - vitest.config.ts
+      - next.config.ts
+      - tsconfig*.json
+      - eslint.config.mjs
   # GitHub exposes workflow_dispatch only when the workflow exists on the default branch.
   # Kept for future manual use after that separate approval; never targets production.
   workflow_dispatch:
@@ -24,8 +34,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The whole application suite, TypeScript, lint and the production build, offline, on Linux. The suite is judged against the nine failures that already exist on production
-  # master (.github/scripts/known-failures.mjs): anything else fails the job.
+  # The whole application suite, TypeScript, lint and the production build, offline, on Linux. The suite is judged by .github/scripts/known-failures.mjs, whose list of recorded
+  # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation.
   app-checks:
     name: Full tests, TypeScript, lint (offline) and production build
     if: contains(fromJSON('["codex/internal-iacquire-activation","integration/hermes-bridge-final"]'), github.ref_name)
