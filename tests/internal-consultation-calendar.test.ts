@@ -61,6 +61,8 @@ describe("the consultation calendar settings", () => {
   });
 
   it("verify as ready to take bookings, without a meeting link", async () => {
+    // A video type with no meeting tool must say how the link is sent (the activation check refuses a "Video call" with nothing else), so the host writes that down.
+    await updateAppointmentType(shop.actor("owner"), typeId, { locationDetail: "We email the video link after we confirm your time." });
     const verification = await verifyCalendar(shop.actor("owner"), calendarId, { now: NOW });
     expect(verification.checks.filter((c) => !c.ok)).toEqual([]);
     expect(verification.firstOpenTime).not.toBeNull();

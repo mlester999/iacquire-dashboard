@@ -216,6 +216,7 @@ describe("the registered jobs", () => {
     aiProactiveHeldReports: 5,
     aiProactiveBriefings: 5,
     aiHealthProbe: 5,
+    provisioningWatchdog: 5,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
     projectReviewOverdue: 15,
@@ -292,6 +293,7 @@ describe("the registered jobs", () => {
       "aiWorkRecovery",
       "crmWorkflowRecovery",
       "inboxAttention",
+      "provisioningWatchdog",
     ]);
     // Sixty minutes later the jobs on an hour or faster are due, the longer ones are not. (A job that failed on the first pass is also
     // due: it is retried after fifteen minutes. On an empty database none is expected to fail, but the expectation does not depend on it.)

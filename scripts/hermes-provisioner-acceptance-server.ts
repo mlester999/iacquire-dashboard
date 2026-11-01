@@ -42,6 +42,7 @@ const [
   workforceModule,
   credentialsModule,
   fixtureModule,
+  billingFixtureModule,
   settingsModule,
 ] = await Promise.all([
   import("@/app/api/internal/hermes-provisioner/claim/route"),
@@ -51,6 +52,7 @@ const [
   import("@/server/workforce/service"),
   import("@/server/security/credentials"),
   import("../tests/support/fixtures"),
+  import("../tests/support/billing"),
   import("@/lib/agent-settings"),
 ]);
 
@@ -175,6 +177,8 @@ async function approveHeldConfigs(orgIds: string[], reviewerId: string) {
 
 async function onboardSyntheticClient(name: string, description: string, service: string, customers: string) {
   const org = await fixtureModule.createOrg({ name });
+  // The worker's claim only takes a provision job for a workspace whose setup fee is cleared, so the synthetic client has it cleared before it submits.
+  await billingFixtureModule.clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared");
   const owner = await fixtureModule.createUser();
   await fixtureModule.addMember(org.id, owner.id, "owner");
   const ctx = fixtureModule.ctxFor(owner, org, "owner");

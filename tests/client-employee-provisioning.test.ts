@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { withSystem } from "@/server/db";
-import { getProvisioningBundle, requestProvisioning, updateProvisioningJob } from "@/server/workforce/provisioning";
-import { suggestedProfileName } from "@/server/workforce/service";
+import { getProvisioningBundle, requeueProvisioningJob, requestProvisioning, updateProvisioningJob } from "@/server/workforce/provisioning";
+import type { AgentRoleKey } from "@/lib/agents";
+import { defaultSettings } from "@/server/workforce/compiler";
+import { createConfigVersion, suggestedProfileName } from "@/server/workforce/service";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 
@@ -75,6 +77,34 @@ describe("eligible client employee provisioning queue", () => {
     const state = await withSystem((db) => db.query<{ status: string; attempt_count: number; next_retry_at: Date }>("select status, attempt_count, next_retry_at from agent_provisioning_jobs where id = $1", [jobId]));
     expect(state.rows[0]).toMatchObject({ status: "failed", attempt_count: 1 });
     expect(state.rows[0].next_retry_at).toBeTruthy();
+    // The ordinary request never opens a second provision job for an employee that already had one: the way out of a failure is the agency's requeue, below.
     expect(await withSystem((db) => requestProvisioning(db, org.id, owner.id))).toBe(0);
+  });
+
+  it("is no dead end: after the third failed attempt the agency requeues one new request, with a reason, and the old limits still hold for the manual path", async () => {
+    const { org, owner } = await eligibleClient();
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    await withSystem((db) => requestProvisioning(db, org.id, owner.id));
+    const { rows } = await withSystem((db) => db.query<{ id: string; agent_instance_id: string }>("select id,agent_instance_id from agent_provisioning_jobs where org_id = $1 order by id limit 1", [org.id]));
+    const jobId = rows[0].id;
+    const employee = rows[0].agent_instance_id;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await updateProvisioningJob(admin.id, org.id, jobId, "in_progress");
+      await updateProvisioningJob(admin.id, org.id, jobId, "failed", "Host tool check did not pass.");
+      await withSystem((db) => db.query("update agent_provisioning_jobs set next_retry_at = now() - interval '1 second' where id = $1 and next_retry_at is not null", [jobId]));
+    }
+    // Used up: the manual retry stops and the normal request still refuses...
+    await expect(updateProvisioningJob(admin.id, org.id, jobId, "in_progress")).rejects.toThrow(/retry limit/i);
+    expect(await withSystem((db) => requestProvisioning(db, org.id, owner.id))).toBe(0);
+    // ...and a requeue needs an approved configuration to build the profile from, which the employee does not have yet.
+    await expect(requeueProvisioningJob(admin.id, org.id, employee, "The host was repaired today")).rejects.toThrow(/approved configuration/i);
+    await withSystem(async (db) => {
+      const role = (await db.query<{ role_key: AgentRoleKey }>("select role_key from agent_instances where id = $1", [employee])).rows[0].role_key;
+      await createConfigVersion(db, { orgId: org.id, agentId: employee, settings: defaultSettings(role), source: "onboarding", userId: owner.id, apply: true });
+    });
+    const out = await requeueProvisioningJob(admin.id, org.id, employee, "The host was repaired today");
+    expect(out).toMatchObject({ kind: "provision", previousJobId: jobId });
+    const open = await withSystem((db) => db.query<{ id: string }>("select id from agent_provisioning_jobs where agent_instance_id = $1 and status in ('requested','in_progress','awaiting_health_check')", [employee]));
+    expect(open.rows).toEqual([{ id: out.jobId }]);
   });
 });

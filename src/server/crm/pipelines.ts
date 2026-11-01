@@ -85,15 +85,66 @@ async function insertPipeline(db: Queryable, actor: CrmActor, input: { name: str
   return rows[0].id;
 }
 
+/**
+ * The lock every creation of a workspace's default pipeline takes: the board creating its starting pipeline, and the automatic industry setup replacing that starting pipeline
+ * with the industry's own. Taking the same key is what stops the two from each making a default (the database allows only one, so the loser would fail).
+ */
+export async function lockDefaultPipeline(db: Queryable, orgId: string): Promise<void> {
+  await db.query("select pg_advisory_xact_lock(hashtext('crm-default-pipeline:' || $1::text))", [orgId]);
+}
+
+const GENERIC_PIPELINE_NAME = "Sales pipeline";
+
+/**
+ * The workspace's starting pipeline when nobody has used it: the only active native pipeline, still named and shaped exactly as iAcquire created it, with no deal ever in it (open,
+ * won, lost or archived), no stage removed, renamed or given a probability or colour, and nothing from a Blueprint, form or workflow pointing at it. Null otherwise: a pipeline
+ * somebody has touched is theirs and is never replaced.
+ */
+export async function untouchedDefaultPipelineId(db: Queryable, orgId: string): Promise<string | null> {
+  const pipes = await db.query<{ id: string; name: string; description: string | null; is_default: boolean }>(
+    "select id, name, description, is_default from crm_pipelines where org_id = $1 and provider = 'native' and archived_at is null", [orgId],
+  );
+  if (pipes.rows.length !== 1) return null;
+  const p = pipes.rows[0];
+  if (!p.is_default || p.name !== GENERIC_PIPELINE_NAME || p.description !== null) return null;
+  const stages = await db.query<{ name: string; kind: StageKind; probability: number | null; color: string | null; archived_at: Date | null }>(
+    "select name, kind, probability, color, archived_at from crm_pipeline_stages where org_id = $1 and pipeline_id = $2 order by position", [orgId, p.id],
+  );
+  if (stages.rows.length !== DEFAULT_STAGES.length) return null;
+  const shaped = stages.rows.every((s, i) => s.archived_at === null && s.name === DEFAULT_STAGES[i].name && s.kind === DEFAULT_STAGES[i].kind && s.probability === null && s.color === null);
+  if (!shaped) return null;
+  const used = await db.query(
+    `select 1 from crm_opportunities where org_id = $1 and pipeline_ref = $2::uuid
+     union all select 1 from crm_blueprint_links where org_id = $1 and native_id = $2::uuid
+     union all select 1 from crm_forms where org_id = $1 and position($3::text in draft::text) > 0
+     union all select 1 from crm_workflows where org_id = $1 and position($3::text in draft::text) > 0
+     limit 1`,
+    [orgId, p.id, p.id],
+  );
+  return used.rows.length ? null : p.id;
+}
+
+/**
+ * Archives the workspace's starting pipeline when it is untouched (see untouchedDefaultPipelineId) so the industry pipeline that is about to be added becomes the default. Inside the
+ * caller's transaction, which must hold lockDefaultPipeline. Returns the archived pipeline's id, or null when there was nothing to replace.
+ */
+export async function retireUntouchedDefaultPipeline(db: Queryable, orgId: string): Promise<string | null> {
+  const id = await untouchedDefaultPipelineId(db, orgId);
+  if (!id) return null;
+  await db.query("update crm_pipelines set archived_at = now(), is_default = false where id = $1 and org_id = $2 and provider = 'native' and archived_at is null", [id, orgId]);
+  await recordAudit({ orgId, actorKind: "system", action: "crm.pipeline_archived", targetType: "crm_pipeline", targetId: id, result: "success", metadata: { reason: "replaced_by_industry_pipeline" } }, db);
+  return id;
+}
+
 /** Creates the starting pipeline the first time a native workspace needs one. Safe to call repeatedly. */
 export async function ensureDefaultPipeline(db: Queryable, actor: CrmActor): Promise<string> {
   const existing = await db.query<{ id: string }>("select id from crm_pipelines where org_id = $1 and provider = 'native' and archived_at is null order by is_default desc, position limit 1", [actor.orgId]);
   if (existing.rows[0]) return existing.rows[0].id;
   // Serialize the first creation so two people opening the board at once don't make two default pipelines.
-  await db.query("select pg_advisory_xact_lock(hashtext('crm-default-pipeline:' || $1::text))", [actor.orgId]);
+  await lockDefaultPipeline(db, actor.orgId);
   const again = await db.query<{ id: string }>("select id from crm_pipelines where org_id = $1 and provider = 'native' and archived_at is null limit 1", [actor.orgId]);
   if (again.rows[0]) return again.rows[0].id;
-  return insertPipeline(db, actor, { name: "Sales pipeline", stages: DEFAULT_STAGES, isDefault: true });
+  return insertPipeline(db, actor, { name: GENERIC_PIPELINE_NAME, stages: DEFAULT_STAGES, isDefault: true });
 }
 
 export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boolean } = {}, existing?: Queryable): Promise<PipelineView[]> {

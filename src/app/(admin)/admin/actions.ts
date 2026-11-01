@@ -29,7 +29,7 @@ import {
   testAgencyHermesProfile,
   testAllAgencyHermesProfiles,
 } from "@/server/workforce/agency";
-import { getProvisioningBundle, updateProvisioningJob } from "@/server/workforce/provisioning";
+import { getProvisioningBundle, requeueProvisioningJob, updateProvisioningJob } from "@/server/workforce/provisioning";
 import { syncGhl, verifyGhlConnection } from "@/server/integrations/ghl";
 import { agencyReply, updateTicket, TICKET_STATUSES, type TicketStatus } from "@/server/support/service";
 import { createInvitation } from "@/server/auth/service";
@@ -219,6 +219,18 @@ export async function updateProvisioningJobAction(orgId: string, jobId: string, 
   try {
     const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
     await updateProvisioningJob(user.id, orgId, jobId, status, detail);
+    revalidatePath(`/admin/clients/${orgId}`);
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** The agency's way out of a provisioning request that ended in failure or was cancelled: one new request for the same employee, with a recorded reason. */
+export async function requeueProvisioningAction(orgId: string, agentId: string, reason: string) {
+  try {
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
+    await requeueProvisioningJob(user.id, orgId, agentId, reason);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
   } catch (err) {

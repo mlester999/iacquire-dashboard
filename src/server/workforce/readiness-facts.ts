@@ -14,6 +14,19 @@ import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 // so the gallery, the employee page, the chat header, the setup banner and the Super Admin all judge an employee from the same evidence (the pure rules are in
 // src/lib/employee-requirements.ts and src/lib/workforce-readiness.ts). Read-only; trusted code: the caller has already authorized the person for `orgId`.
 
+/**
+ * SQL (parameter $1 is the organization id): how many active, non-archived iAcquire calendars have a current host (active member, active user) with weekly hours. A connection, a
+ * draft or a host with no hours cannot offer a time, so none of them counts. The same three-table host rule as activeHostsOfCalendar (src/server/calendars/activation.ts); the
+ * employee requirements and the questionnaire's review both use this one rule, so the two screens cannot disagree about whether there is a calendar that takes bookings.
+ */
+export const NATIVE_BOOKABLE_CALENDARS_SQL = `(select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
+                  and exists (
+                    select 1 from crm_calendar_members cm
+                      join organization_memberships om on om.org_id = cm.org_id and om.user_id = cm.user_id and om.status = 'active'
+                      join users u on u.id = cm.user_id and u.status = 'active'
+                     where cm.calendar_id = c.id and cm.org_id = c.org_id and cm.active
+                       and exists (select 1 from crm_availability_rules r where r.org_id = cm.org_id and r.user_id = cm.user_id)))`;
+
 export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<WorkspaceFacts> {
   const { rows } = await db.query<{
     org_kind: "agency" | "client" | null;
@@ -32,14 +45,15 @@ export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<
        (select provider from crm_capability_providers where org_id = $1 and capability = 'contacts') as crm_contacts_provider,
        exists (select 1 from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null) as crm_ghl_verified,
        exists (select 1 from company_knowledge k where k.org_id = $1 and k.review_status = 'approved' and k.content <> '') as knowledge,
+       -- A native workspace's booking calendar counts only when it is active and a current host (active member, active user) has weekly hours: a connection, a draft
+       -- or a host with no hours cannot offer a time. The same three-table host rule as activeHostsOfCalendar (src/server/calendars/activation.ts).
        (case when coalesce((select mode from ws), 'native') = 'native'
-          then (select count(*) from crm_calendar_connections where org_id = $1 and status = 'connected')
-             + (select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
-                  and exists (select 1 from crm_calendar_members m where m.calendar_id = c.id and m.org_id = c.org_id and m.active))
+          then ${NATIVE_BOOKABLE_CALENDARS_SQL}
           else (select coalesce(sum(cardinality(calendar_ids)), 0) from ghl_location_mappings where org_id = $1 and status = 'connected')
         end) > 0 as calendar,
+       -- Archived stages do not count, and a pipeline needs at least one open stage (a pipeline of only won/lost stages holds no deals).
        (exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
-                  and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id))
+                  and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null and s.kind = 'open'))
         or exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider <> 'native' and p.archived_at is null)) as pipeline,
        (select criteria from lead_targeting_profiles where org_id = $1) as targeting,
        exists (select 1 from messaging_channels where org_id = $1 and enabled) as channel`,

@@ -355,6 +355,9 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/server/maintenance/agreement-service.ts",
       "src/server/maintenance/payment.ts",
       "src/server/maintenance/service.ts",
+      // The automatic industry CRM setup is for a client who finished onboarding AND paid (the same condition provisioning waits for). It adds nothing to a workspace that has not paid and
+      // never limits the core CRM, which works without it.
+      "src/server/onboarding/crm-provisioning.ts",
       "src/server/purchase-intents/service.ts",
       "src/server/setup/agency.ts",
       // The launch panel reports where the fee stands (the state before payment reads "Questionnaire submitted") and the final checks wait for it. Neither spends anything.

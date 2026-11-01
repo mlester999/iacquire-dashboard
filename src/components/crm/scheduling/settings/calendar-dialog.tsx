@@ -96,7 +96,11 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
     };
     if (calendar) {
       const ok = await run("save", () => updateCalendarAction(scope.orgId, calendar.id, { ...payload, ...(form.isPublic !== calendar.public && !draft ? { public: form.isPublic } : {}) }),
-        (r) => (r.hoursApplied.length ? `Calendar saved. Suggested hours given to ${r.hoursApplied.length} ${r.hoursApplied.length === 1 ? "host" : "hosts"} without hours.` : "Calendar saved."));
+        (r) => {
+          const saved = r.hoursApplied.length ? `Calendar saved. Suggested hours given to ${r.hoursApplied.length} ${r.hoursApplied.length === 1 ? "host" : "hosts"} without hours.` : "Calendar saved.";
+          const n = r.hoursNeedZoneChoice.length;
+          return n ? `${saved} ${n === 1 ? "One host works" : `${n} hosts work`} in a different time zone than the suggested hours, so their hours were not changed: set them in Availability.` : saved;
+        });
       if (ok) onOpenChange(false);
     } else {
       const r = await run("save", () => createCalendarAction(scope.orgId, payload), "Calendar created. Add what customers can book next.");

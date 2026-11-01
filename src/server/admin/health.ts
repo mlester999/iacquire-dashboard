@@ -3,6 +3,8 @@ import { pendingMigrations, pingDb, withSystem, type Queryable } from "@/server/
 import { env } from "@/server/env";
 import { getN8nStatus, type N8nStatus } from "@/server/integrations/n8n";
 import { helpAiAvailable } from "@/server/help/service";
+import { relativeTime } from "@/lib/utils";
+import { PROVISIONER_LIVENESS_JOB, newestJobOfEmployeeSql } from "@/server/workforce/provisioning-watchdog";
 
 export interface SystemHealth {
   checkedAt: string;
@@ -16,7 +18,54 @@ export interface SystemHealth {
   recentErrors: Array<{ at: string; source: string; detail: string; org: string | null }>;
   runs24h: { total: number; failed: number; cancelled: number; tokens: number };
   pendingProvisioning: number;
+  provisioning: ProvisioningHealth;
   crm: CrmDeliveryHealth;
+}
+
+/**
+ * Client AI employee provisioning, counts and times only (no names, no profile or key). `failed` is employees whose newest job used all three attempts (a failed job that a requeue
+ * replaced is not counted); `oldestOpen*` is how long the longest-open
+ * job has been in its current state (waiting to be claimed, being worked on, or waiting for its first health check); `workerLastClaimAt` is the last time the restricted worker
+ * asked for work (null: never recorded).
+ */
+export interface ProvisioningHealth {
+  open: number;
+  failed: number;
+  oldestOpenAt: string | null;
+  oldestOpenMinutes: number | null;
+  workerLastClaimAt: string | null;
+}
+
+export const EMPTY_PROVISIONING_HEALTH: ProvisioningHealth = { open: 0, failed: 0, oldestOpenAt: null, oldestOpenMinutes: null, workerLastClaimAt: null };
+
+export async function provisioningHealth(q: Queryable, now: Date = new Date()): Promise<ProvisioningHealth> {
+  const { rows } = await q.query<{ open: number; failed: number; oldest: Date | null; last_claim: Date | null }>(
+    `select count(*) filter (where j.status in ('requested', 'in_progress', 'awaiting_health_check'))::int as open,
+            count(*) filter (where j.status = 'failed' and j.attempt_count >= 3 and ${newestJobOfEmployeeSql("j")})::int as failed,
+            min(j.updated_at) filter (where j.status in ('requested', 'in_progress', 'awaiting_health_check')) as oldest,
+            (select last_success_at from worker_job_runs where job_name = $1) as last_claim
+       from agent_provisioning_jobs j`,
+    [PROVISIONER_LIVENESS_JOB],
+  );
+  const r = rows[0];
+  const oldest = r?.oldest ? new Date(r.oldest) : null;
+  return {
+    open: r?.open ?? 0,
+    failed: r?.failed ?? 0,
+    oldestOpenAt: oldest ? oldest.toISOString() : null,
+    oldestOpenMinutes: oldest ? Math.max(0, Math.floor((now.getTime() - oldest.getTime()) / 60_000)) : null,
+    workerLastClaimAt: r?.last_claim ? new Date(r.last_claim).toISOString() : null,
+  };
+}
+
+const minutesText = (m: number) => (m < 60 ? `${m} min` : m < 24 * 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / (24 * 60))} d ${Math.floor((m % (24 * 60)) / 60)} h`);
+
+/** The health page's words for the provisioning numbers: failures first, then how long the oldest open job has waited, then when the worker last asked for work. */
+export function provisioningSummary(p: ProvisioningHealth, now: Date = new Date()): string {
+  const failed = p.failed ? `${p.failed} failed after 3 attempts` : "None failed";
+  const oldest = p.oldestOpenMinutes === null ? "none open" : `oldest open ${minutesText(p.oldestOpenMinutes)}`;
+  const worker = p.workerLastClaimAt ? `worker last asked for work ${relativeTime(p.workerLastClaimAt, now.getTime())}` : "worker has never asked for work";
+  return `${failed} · ${oldest} · ${worker}`;
 }
 
 /**
@@ -114,11 +163,9 @@ export async function getSystemHealth(): Promise<SystemHealth> {
             where s.status = 'error' and s.last_checked_at > now() - interval '7 days')
            order by at desc nulls last limit 15`,
         );
-        const provisioning = await q.query<{ n: number }>(
-          "select count(*)::int as n from agent_provisioning_jobs where status in ('requested', 'in_progress', 'awaiting_health_check')",
-        );
+        const provisioning = await provisioningHealth(q);
         const crm = await crmDeliveryHealth(q);
-        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: errors.rows, provisioning: provisioning.rows[0].n, crm };
+        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: errors.rows, provisioning, crm };
       })
     : null;
 
@@ -147,7 +194,8 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     helpAi: { configured: await helpAiAvailable() },
     recentErrors: (data?.errors ?? []).map((r) => ({ at: r.at ? new Date(r.at).toISOString() : "", source: r.source, detail: r.detail, org: r.org })),
     runs24h: data?.runs ?? { total: 0, failed: 0, cancelled: 0, tokens: 0 },
-    pendingProvisioning: data?.provisioning ?? 0,
+    pendingProvisioning: data?.provisioning.open ?? 0,
+    provisioning: data?.provisioning ?? EMPTY_PROVISIONING_HEALTH,
     crm: data?.crm ?? EMPTY_CRM_HEALTH,
   };
 }

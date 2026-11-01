@@ -3,13 +3,14 @@ import type { Queryable } from "@/server/db";
 import type { ConnectionFacts } from "@/lib/onboarding/engine";
 import { installState } from "@/lib/webchat/rules";
 import { runtimeReadySql } from "@/lib/employee-runtime";
+import { NATIVE_BOOKABLE_CALENDARS_SQL } from "@/server/workforce/readiness-facts";
 
 /**
  * What the workspace is really connected to, read from its own rows, for the review at the end of the questionnaire. Nothing is inferred: a connection is reported only
  * when a row says so. Trusted code: the caller has authorized the person for `orgId`, and every query names it.
  *
- * On iAcquire CRM nothing is "linked": the CRM is set up once an industry Blueprint is applied, and a calendar counts once someone has a connected calendar or there is an
- * active iAcquire calendar with a host (a draft calendar made from the onboarding answers does not count: it takes no bookings). GoHighLevel (and hybrid) workspaces keep the
+ * On iAcquire CRM nothing is "linked": the CRM is set up once an industry Blueprint is applied, and a calendar counts once there is an active iAcquire calendar with a current
+ * host who has weekly hours (the rule the employee requirements use: a bare connection, a draft calendar made from the onboarding answers, or a host with no hours takes no bookings). GoHighLevel (and hybrid) workspaces keep the
  * location facts. The optional facts (website address, website chat, social media) never decide whether anything can be approved.
  */
 export async function connectionFacts(db: Queryable, orgId: string): Promise<ConnectionFacts> {
@@ -50,11 +51,7 @@ export async function connectionFacts(db: Queryable, orgId: string): Promise<Con
   const mode = ((await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native");
   if (mode === "native") {
     const blueprint = Number(await one("select count(*) as n from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied')"));
-    const calendar = Number(await one(
-      `select (select count(*) from crm_calendar_connections where org_id = $1 and status = 'connected')
-            + (select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
-                 and exists (select 1 from crm_calendar_members m where m.calendar_id = c.id and m.org_id = c.org_id and m.active)) as n`,
-    ));
+    const calendar = Number(await one(`select ${NATIVE_BOOKABLE_CALENDARS_SQL} as n`));
     return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, invitedStaff: staff, ...optional };
   }
   return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, invitedStaff: staff, ...optional };

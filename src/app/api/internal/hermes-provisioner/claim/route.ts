@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/server/env";
 import { claimHermesProvisionerJob, constantTimeProvisionerTokenMatches } from "@/server/workforce/hermes-provisioner";
+import { recordProvisionerClaimSeen } from "@/server/workforce/provisioning-watchdog";
 import { provisionerAuthorized, provisionerErrorResponse, readProvisionerJson } from "@/server/workforce/provisioner-http";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export async function POST(req: Request) {
     if (body.data.gatewayId !== config.HERMES_PROVISIONER_GATEWAY_ID) {
       return NextResponse.json({ error: "The worker is not assigned to this Hermes gateway." }, { status: 403, headers: NO_STORE });
     }
+    // The worker is alive whether or not there is a job for it: the liveness row (at most one write a minute, best effort) is what lets the platform notice a silent worker.
+    await recordProvisionerClaimSeen();
     const job = await claimHermesProvisionerJob(body.data.gatewayId);
     return NextResponse.json({ job }, { headers: NO_STORE });
   } catch (error) {

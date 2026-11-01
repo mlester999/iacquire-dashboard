@@ -34,10 +34,14 @@ export async function activateCalendarAction(orgId: string | null, calendarId: s
   });
 }
 
-export async function applyCalendarHoursTemplateAction(orgId: string | null, calendarId: string) {
+/**
+ * Gives hosts without weekly hours the calendar's suggested hours. A host who already works in a different time zone is reported in `needsZoneChoice` and given nothing; asking
+ * again with `timezone` (the zone the suggested hours are written in) saves their hours in it and makes it their zone. The service checks that it is a real zone.
+ */
+export async function applyCalendarHoursTemplateAction(orgId: string | null, calendarId: string, timezone?: string) {
   return guard(async () => {
     const actor = await resolveCrmActor(orgArg.parse(orgId) ?? null, "calendars.manage");
-    const res = await applyCalendarHoursTemplate(actor, uuid.parse(calendarId));
+    const res = await applyCalendarHoursTemplate(actor, uuid.parse(calendarId), { timezone: z.string().max(64).optional().parse(timezone) });
     refresh(actor);
     return res;
   });

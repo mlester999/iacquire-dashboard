@@ -3,7 +3,9 @@ import { withSystem } from "@/server/db";
 import { buildReviewModel, type ConnectionFacts } from "@/lib/onboarding/engine";
 import { connectionFacts } from "@/server/onboarding/connection-facts";
 import type { Answers, StoredAnswers } from "@/lib/onboarding/types";
+import { createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { addMember, createOrg, createUser } from "./support/fixtures";
+import { crmOrg } from "./support/crm";
 
 // The review of the questionnaire reports real connection state. These cover the three optional lines added in milestone M3 (website address verified, website chat seen
 // on a website, a social account connected), read from the real tables, and the rule that they never block anything.
@@ -118,5 +120,36 @@ describe("the optional lines of the review", () => {
     expect(m.missingConnections).toEqual([]);
     expect(m.canSubmit).toBe(true);
     expect(m.blockers).toEqual([]);
+  });
+});
+
+describe("the calendar line of the review agrees with the employee requirements", () => {
+  it("counts an iAcquire calendar only when it is active and a current host has weekly hours, never a bare connection, a draft, or another workspace's calendar", async () => {
+    const other = await crmOrg({ timezone: "Asia/Manila" });
+    await setHostAvailability(other.actor("owner"), other.people.owner.id, { timezone: "Asia/Manila", rules: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] });
+    await createCalendar(other.actor("owner"), { name: "Theirs", members: [{ userId: other.people.owner.id }] });
+
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const owner = c.actor("owner");
+    const connected = async () => (await run((db) => connectionFacts(db, c.org.id))).calendarConnected;
+    expect(await connected()).toBe(false);
+    // A connected outside calendar alone cannot offer a time: there is no calendar that takes bookings.
+    await run((db) => db.query(
+      "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, check_conflicts, write_events, last_success_at) values ($1, $2, 'google', 'owner@example.test', 'connected', true, false, now())",
+      [c.org.id, c.people.owner.id],
+    ));
+    expect(await connected()).toBe(false);
+    // An active calendar with a host who has no weekly hours cannot either.
+    const cal = await createCalendar(owner, { name: "Visits", members: [{ userId: c.people.owner.id }] });
+    expect(await connected()).toBe(false);
+    await setHostAvailability(owner, c.people.owner.id, { timezone: "Asia/Manila", rules: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] });
+    expect(await connected()).toBe(true);
+    // The same calendar as a draft takes no bookings, and neither does one whose only host has left.
+    await run((db) => db.query("update crm_calendars set status = 'draft', is_default = false, public = false where id = $1", [cal.id]));
+    expect(await connected()).toBe(false);
+    await run((db) => db.query("update crm_calendars set status = 'active' where id = $1", [cal.id]));
+    expect(await connected()).toBe(true);
+    await run((db) => db.query("update organization_memberships set status = 'revoked' where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
+    expect(await connected()).toBe(false);
   });
 });

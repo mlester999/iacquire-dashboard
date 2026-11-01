@@ -13,6 +13,7 @@ import {
   type SaveStepInput,
 } from "@/server/onboarding/service";
 import { deleteAsset, setAssetAlt, setAssetVariant } from "@/server/assets/service";
+import { scheduleClientCrmSetup } from "@/server/onboarding/crm-provisioning";
 import type { AssistanceOptions } from "@/lib/onboarding/assistance";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,6 +50,8 @@ export async function submitOnboardingAction() {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
     const result = await submitOnboarding(ctx);
+    // After the submission has committed, never inside it. Off by default; when on, the industry CRM is applied once the setup fee is also cleared (whichever comes second starts it).
+    scheduleClientCrmSetup(ctx.org.orgId, "questionnaire submitted");
     revalidatePath("/", "layout");
     return result;
   });

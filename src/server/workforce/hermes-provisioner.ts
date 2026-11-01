@@ -5,42 +5,26 @@ import { isAgentRoleKey } from "@/lib/agents";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { saveProvisionedHermesCredential } from "@/server/security/credentials";
+import { PROFILE_KEY_REUSED, saveProvisionedHermesCredential } from "@/server/security/credentials";
 import { secretFingerprint } from "@/server/security/crypto";
-import { buildConfigYaml, buildProvisionerSoul } from "@/server/workforce/provisioning";
+import { notifyAgency } from "@/server/notifications";
+import { buildConfigYaml, buildProvisionerSoul, PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS } from "@/server/workforce/tool-policies";
+import { normalizeProvisioningFailureCode, provisioningRetryPlan } from "@/lib/provisioning-failure";
 import { env } from "@/server/env";
 
 const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 const uuid = z.string().uuid();
 
-const failureCodes = [
-  "invalid_manifest", "lease_expired", "soul_digest_mismatch", "policy_digest_mismatch",
-  "unsafe_model_config", "invalid_policy_config", "invalid_profile_config", "unsafe_profile_path",
-  "profile_file_missing", "unsafe_hermes_home", "agency_profile_found", "profile_state_invalid",
-  "profile_ownership_missing", "profile_ownership_conflict", "profile_key_missing", "profile_key_invalid",
-  "profile_create_failed", "profile_conflict", "profile_authentication_failed", "profile_api_contract_failed",
-  "profile_identity_failed", "canary_tool_isolation_failed", "canary_submission_failed",
-  "canary_events_unavailable", "canary_event_invalid", "canary_tool_invoked", "canary_failed",
-  "canary_failed_model_authentication_failed", "canary_failed_model_configuration_missing",
-  "canary_failed_model_credentials_missing", "canary_failed_model_endpoint_unreachable",
-  "canary_failed_model_provider_error", "canary_failed_model_provider_unsupported",
-  "canary_failed_model_unavailable", "canary_failed_provider_resolution_failed",
-  "canary_incomplete", "effective_soul_unverified", "runtime_tool_policy_unverified",
-  "runtime_tool_inventory_incomplete", "invalid_profile", "invalid_profile_route",
-  "unsafe_hermes_api_origin", "http_response_too_large", "http_unavailable",
-  "stale_configuration", "identity_mismatch",
-  "audit_log_unavailable", "worker_internal_error",
-] as const;
-
 const failureSchema = z.object({
   ok: z.literal(false),
   jobId: uuid,
   leaseToken: uuid,
   gatewayId: uuid,
-  code: z.enum(failureCodes),
+  // Any text up to a sane length is accepted and then normalised by failJob: a code the portal does not know must never cost the failure itself.
+  code: z.string().min(1).max(200),
 }).strict();
 
 const successSchema = z.object({
@@ -112,30 +96,55 @@ export async function claimHermesProvisionerJob(gatewayId: string) {
   return withSystem(async (db) => claimInTransaction(db, gatewayId));
 }
 
+// Room for a new client's team on the pinned gateway, asked per candidate job. It only applies to a `provision` job (a synchronization adds no profile) and only when
+// HERMES_PROVISIONER_MAX_PROFILES is set ($2). The count is every profile the gateway already holds, plus what the clients that already began are still owed (one that has a
+// profile mapped, or an attempt running right now), plus this client's own remaining team. A client that began therefore keeps going and a client that has not began waits as a
+// whole until the whole team fits: never half a team.
+const WITHIN_PROFILE_CAPACITY =
+  "(j.kind<>'provision' or $2::int is null or (" +
+  "(select count(*) from agent_instances x where x.hermes_gateway_id=g.id and x.hermes_profile is not null) + " +
+  "(select count(*) from agent_instances r where r.enabled and r.hermes_profile is null " +
+  "and exists (select 1 from agent_provisioning_jobs rj where rj.agent_instance_id=r.id and rj.org_id=r.org_id and rj.kind='provision' and rj.status in ('requested','in_progress','failed')) " +
+  "and (r.org_id=o.id " +
+  "or exists (select 1 from agent_instances s where s.org_id=r.org_id and s.hermes_gateway_id=g.id and s.hermes_profile is not null) " +
+  "or exists (select 1 from agent_provisioning_jobs sj where sj.org_id=r.org_id and sj.kind='provision' and sj.status='in_progress' and sj.lease_expires_at>now())))" +
+  " <= $2::int))";
+
+// Everything that makes a job claimable except the capacity question, so the claim and the "waiting for capacity" notice read the same rules.
+// A provision job also needs the setup payment to still be cleared (a refund can land after the request), and the agency's emergency pause holds every job of the workspace
+// (or all of them, when it is the platform-wide pause on the agency workspace). A synchronization for a client that is already running is not held by the payment.
+const ELIGIBLE_JOBS =
+  "from agent_provisioning_jobs j " +
+  "join agent_instances a on a.id=j.agent_instance_id and a.org_id=j.org_id " +
+  "join organizations o on o.id=j.org_id " +
+  "join hermes_gateways g on g.id=$1 " +
+  "where j.kind in ('provision','sync') and j.attempt_count < 3 " +
+  "and ((j.status in ('requested','failed') and (j.next_retry_at is null or j.next_retry_at<=now())) " +
+  "or (j.status='in_progress' and j.lease_expires_at<=now())) " +
+  "and o.kind='client' and o.status='active' and not o.is_demo and o.onboarding_completed_at is not null " +
+  "and (j.kind<>'provision' or " + PROVISIONING_PAYMENT_CLEARED_SQL + ") " +
+  "and not exists (select 1 from automation_pauses ap join organizations po on po.id=ap.org_id where ap.active and ap.scope='agency' and (ap.org_id=o.id or po.kind='agency')) " +
+  "and a.enabled and a.active_config_version_id is not null " +
+  "and exists (select 1 from agent_config_versions v where v.id=a.active_config_version_id and v.org_id=a.org_id and v.agent_instance_id=a.id and v.status='applied' and v.applied_at is not null) " +
+  "and exists (select 1 from organization_memberships m join users u on u.id=m.user_id where m.org_id=o.id and m.role='owner' and m.status='active' and u.email_verified_at is not null) " +
+  "and g.status='connected' and g.gateway_type='multiplexed_profiles' and g.profile_creation_status='restricted_service_verified' " +
+  "and g.provisioner_isolation_verified_at is not null " +
+  "and not exists (select 1 from agent_instances ai join organizations oi on oi.id=ai.org_id where ai.hermes_gateway_id=g.id and oi.kind='agency') " +
+  "and ((j.kind='provision' and a.hermes_profile is null and a.hermes_gateway_id is null and j.source_job_id is null) " +
+  "or (j.kind='sync' and a.hermes_profile is not null and a.hermes_gateway_id=g.id and j.source_job_id is not null " +
+  "and exists (select 1 from agent_provisioning_jobs p where p.id=j.source_job_id and p.agent_instance_id=a.id and p.org_id=a.org_id and p.kind='provision' and p.result_reference like 'provisioner:v1:%'))) ";
+
 async function claimInTransaction(db: Queryable, gatewayId: string) {
+  const maxProfiles = env().HERMES_PROVISIONER_MAX_PROFILES ?? null;
   const { rows: candidates } = await db.query<{ id: string }>(
-    "select j.id from agent_provisioning_jobs j " +
-    "join agent_instances a on a.id=j.agent_instance_id and a.org_id=j.org_id " +
-    "join organizations o on o.id=j.org_id " +
-    "join hermes_gateways g on g.id=$1 " +
-    "where j.kind in ('provision','sync') and j.attempt_count < 3 " +
-    "and ((j.status in ('requested','failed') and (j.next_retry_at is null or j.next_retry_at<=now())) " +
-    "or (j.status='in_progress' and j.lease_expires_at<=now())) " +
-    "and o.kind='client' and o.status='active' and not o.is_demo and o.onboarding_completed_at is not null " +
-    "and a.enabled and a.active_config_version_id is not null " +
-    "and exists (select 1 from agent_config_versions v where v.id=a.active_config_version_id and v.org_id=a.org_id and v.agent_instance_id=a.id and v.status='applied' and v.applied_at is not null) " +
-    "and exists (select 1 from organization_memberships m join users u on u.id=m.user_id where m.org_id=o.id and m.role='owner' and m.status='active' and u.email_verified_at is not null) " +
-    "and g.status='connected' and g.gateway_type='multiplexed_profiles' and g.profile_creation_status='restricted_service_verified' " +
-    "and g.provisioner_isolation_verified_at is not null " +
-    "and not exists (select 1 from agent_instances ai join organizations oi on oi.id=ai.org_id where ai.hermes_gateway_id=g.id and oi.kind='agency') " +
-    "and ((j.kind='provision' and a.hermes_profile is null and a.hermes_gateway_id is null and j.source_job_id is null) " +
-    "or (j.kind='sync' and a.hermes_profile is not null and a.hermes_gateway_id=g.id and j.source_job_id is not null " +
-    "and exists (select 1 from agent_provisioning_jobs p where p.id=j.source_job_id and p.agent_instance_id=a.id and p.org_id=a.org_id and p.kind='provision' and p.result_reference like 'provisioner:v1:%'))) " +
-    "order by j.created_at,j.id for update of j skip locked limit 1",
-    [gatewayId],
+    "select j.id " + ELIGIBLE_JOBS + "and " + WITHIN_PROFILE_CAPACITY + " order by j.created_at,j.id for update of j skip locked limit 1",
+    [gatewayId, maxProfiles],
   );
   const candidate = candidates[0];
-  if (!candidate) return null;
+  if (!candidate) {
+    if (maxProfiles !== null) await announceCapacityHold(db, gatewayId, maxProfiles);
+    return null;
+  }
 
   const { rows } = await db.query<ManifestRow>(
     "select j.id,j.kind,j.org_id,j.agent_instance_id,j.source_job_id," +
@@ -166,15 +175,26 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
   const soulSha256 = digest(soul);
   const policyConfigSha256 = digest(configYaml);
   const challengeSha256 = digest(challenge);
-  const { rows: leaseRows } = await db.query<{ lease_token: string; lease_expires_at: Date | string }>(
+  const { rows: leaseRows } = await db.query<{ lease_token: string; lease_expires_at: Date | string; attempt_count: number }>(
     "update agent_provisioning_jobs set status='in_progress',attempt_count=attempt_count+1," +
     "lease_token=gen_random_uuid(),lease_expires_at=now()+interval '10 minutes',next_retry_at=null,detail=null," +
     "config_version_id=$2,manifest_soul_sha256=$3,manifest_policy_config_sha256=$4,manifest_challenge_sha256=$5 " +
-    "where id=$1 returning lease_token::text,lease_expires_at",
+    "where id=$1 returning lease_token::text,lease_expires_at,attempt_count",
     [row.id, row.config_version_id, soulSha256, policyConfigSha256, challengeSha256],
   );
   const lease = leaseRows[0];
   if (!lease) throw new AppError("conflict", "The provisioning lease could not be created.");
+  // One row per attempt, so what happened to a profile can be read back attempt by attempt. Only identifiers and counts: never the SOUL, the challenge or any key.
+  await recordAudit({
+    orgId: row.org_id,
+    actorKind: "system",
+    agentInstanceId: row.agent_instance_id,
+    action: "agent.profile_provisioning_started",
+    targetType: "agent_provisioning_job",
+    targetId: row.id,
+    result: "success",
+    metadata: { jobId: row.id, kind: row.kind, attempt: Number(lease.attempt_count), configVersionId: row.config_version_id, configVersion: Number(row.config_version), gatewayId },
+  }, db);
   return {
     jobId: row.id,
     leaseToken: lease.lease_token,
@@ -198,6 +218,31 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
   };
 }
 
+/**
+ * When the profile ceiling is the only thing keeping a claimable provision job waiting, tells the agency once a day (per person) instead of letting the queue stall in silence.
+ * Nothing is failed, cancelled or counted against a job's attempts: raising the limit (or freeing profiles) releases it on the next claim.
+ */
+async function announceCapacityHold(db: Queryable, gatewayId: string, maxProfiles: number) {
+  const { rows: blocked } = await db.query<{ n: number }>(
+    "select count(*)::int as n " + ELIGIBLE_JOBS + "and not " + WITHIN_PROFILE_CAPACITY,
+    [gatewayId, maxProfiles],
+  );
+  if (!blocked[0]?.n) return;
+  const { rows: held } = await db.query<{ n: number; day: string }>(
+    "select (select count(*)::int from agent_instances where hermes_gateway_id=$1 and hermes_profile is not null) as n, to_char(now() at time zone 'utc','YYYY-MM-DD') as day",
+    [gatewayId],
+  );
+  await notifyAgency(db, null, {
+    kind: "agent_status",
+    severity: "warning",
+    title: "Client AI teams are waiting for room on the client runtime",
+    body: `The client-only Hermes runtime already holds ${held[0]?.n ?? 0} of the ${maxProfiles} profiles it is allowed (HERMES_PROVISIONER_MAX_PROFILES), so ${blocked[0].n} setup request${blocked[0].n === 1 ? " is" : "s are"} on hold. ` +
+      "Nothing has failed. Raise the limit only after checking the host's headroom; the held setups start by themselves.",
+    link: "/admin/health",
+    dedupeKey: `provisioner-capacity:${gatewayId}:${held[0]?.day ?? "today"}`,
+  });
+}
+
 /** Accepts one leased worker result, stores a new key in Vault and leaves portal readiness separate. */
 export async function completeHermesProvisionerJob(raw: unknown, gatewayId: string) {
   if (env().HERMES_PROVISIONER_GATEWAY_ID !== gatewayId) throw new AppError("forbidden", "The worker is not assigned to this Hermes gateway.");
@@ -217,9 +262,9 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
       hermes_gateway_id: string | null; credential_id: string | null; credential_fingerprint: string | null;
       gateway_base_url: string | null; gateway_status: string | null; gateway_type: string | null;
       profile_creation_status: string | null; isolation_verified_at: Date | string | null;
-      gateway_has_agency_profiles: boolean;
+      gateway_has_agency_profiles: boolean; job_age_seconds: number;
     }>(
-      "select j.status,j.kind,j.org_id,j.agent_instance_id,j.source_job_id,j.config_version_id,j.attempt_count,j.result_reference," +
+      "select j.status,j.kind,j.org_id,j.agent_instance_id,j.source_job_id,j.config_version_id,j.attempt_count,j.result_reference,extract(epoch from (now()-j.created_at))::float8 as job_age_seconds," +
       "j.manifest_soul_sha256,j.manifest_policy_config_sha256,j.manifest_challenge_sha256,j.lease_token::text,j.lease_expires_at," +
       "o.kind as org_kind,o.slug as org_slug,o.name as org_name,a.role_key,a.enabled,a.active_config_version_id," +
       "v.status as active_config_status,v.applied_at as config_applied_at,a.hermes_profile,a.hermes_gateway_id,a.credential_id,c.fingerprint as credential_fingerprint," +
@@ -234,6 +279,7 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
     );
     const job = rows[0];
     if (!job) throw new AppError("not_found", "Provisioning job not found.");
+    const fail = (code: string) => failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), code, Number(job.job_age_seconds));
 
     const sourceJobId = input.ok
       ? (input.sourceProvisionJobId ?? input.jobId)
@@ -266,7 +312,7 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
     }
 
     if (!input.ok) {
-      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), input.code);
+      await fail(input.code);
       return { accepted: true, failed: true };
     }
 
@@ -281,36 +327,45 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
         input.policyConfigSha256 !== job.manifest_policy_config_sha256 ||
         input.soulChallengeSha256 !== job.manifest_challenge_sha256 ||
         input.sourceProvisionJobId !== job.source_job_id) {
-      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "stale_configuration");
+      await fail("stale_configuration");
       return { accepted: true, failed: true };
     }
 
     const expectedProfile = suggestedProfileName(job.org_slug, job.role_key);
     if (input.profile !== expectedProfile || !input.profile.startsWith("c-")) {
-      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "identity_mismatch");
+      await fail("identity_mismatch");
       return { accepted: true, failed: true };
     }
     if (job.kind === "provision" && (job.hermes_profile || job.hermes_gateway_id || !input.apiKey)) {
-      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "profile_ownership_conflict");
+      await fail("profile_ownership_conflict");
       return { accepted: true, failed: true };
     }
     if (job.kind === "sync" && (
       !job.hermes_profile || job.hermes_profile !== input.profile || job.hermes_gateway_id !== gatewayId ||
       !job.credential_id || input.apiKey
     )) {
-      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "profile_ownership_conflict");
+      await fail("profile_ownership_conflict");
       return { accepted: true, failed: true };
     }
 
     let credentialId = job.credential_id;
     if (job.kind === "provision") {
-      const stored = await saveProvisionedHermesCredential(db, {
-        orgId: job.org_id,
-        agentId: job.agent_instance_id,
-        profile: input.profile,
-        secret: input.apiKey!,
-      });
-      credentialId = stored.id;
+      try {
+        const stored = await saveProvisionedHermesCredential(db, {
+          orgId: job.org_id,
+          agentId: job.agent_instance_id,
+          profile: input.profile,
+          secret: input.apiKey!,
+        });
+        credentialId = stored.id;
+      } catch (error) {
+        // The refusal happens before anything is written, so the transaction is still clean: the job fails with a named code and no profile is mapped.
+        if (error instanceof AppError && error.message === PROFILE_KEY_REUSED) {
+          await fail(PROFILE_KEY_REUSED);
+          return { accepted: true, failed: true };
+        }
+        throw error;
+      }
     }
     const reference = resultReference({
       sourceJobId,
@@ -364,14 +419,19 @@ async function failJob(
   jobId: string,
   attempt: number,
   code: string,
+  jobAgeSeconds: number,
 ) {
-  const safeCode = failureCodes.includes(code as (typeof failureCodes)[number]) ? code : "invalid_manifest";
-  await db.query(
+  // The raw string comes from outside the portal and may carry anything, so only a known code or a well-formed submission code is ever stored or repeated.
+  const safeCode = normalizeProvisioningFailureCode(code);
+  const plan = provisioningRetryPlan({ code: safeCode, attemptCount: attempt, jobAgeSeconds });
+  const { rows } = await db.query<{ next_retry_at: Date | string | null }>(
     "update agent_provisioning_jobs set status='failed',detail=$2,lease_token=null,lease_expires_at=null," +
-    "next_retry_at=case when attempt_count<3 then now()+make_interval(secs => 30*(2^greatest(attempt_count-1,0))::integer) else null end " +
-    "where id=$1",
-    [jobId, "Restricted Hermes profile setup failed (" + safeCode + "). Review the isolated host result before retrying."],
+    "attempt_count=greatest(attempt_count-$3::int,0)," +
+    "next_retry_at=case when $4::int is null then null else now()+make_interval(secs => $4::int) end " +
+    "where id=$1 returning next_retry_at",
+    [jobId, "Restricted Hermes profile setup failed (" + safeCode + "). Review the isolated host result before retrying.", plan.giveBackAttempt ? 1 : 0, plan.retryAfterSeconds],
   );
+  const retryAt = rows[0]?.next_retry_at ?? null;
   await recordAudit({
     orgId,
     actorKind: "system",
@@ -380,7 +440,14 @@ async function failJob(
     targetType: "agent_provisioning_job",
     targetId: jobId,
     result: "failure",
-    metadata: { code: safeCode, attempt },
+    metadata: {
+      code: safeCode,
+      attempt,
+      failureClass: plan.failureClass,
+      attemptGivenBack: plan.giveBackAttempt,
+      ...(plan.ageBoundReached ? { ageBoundReached: true } : {}),
+      nextRetryAt: retryAt ? new Date(retryAt).toISOString() : null,
+    },
   }, db);
 }
 

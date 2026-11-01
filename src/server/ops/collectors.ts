@@ -4,6 +4,7 @@ import { env } from "@/server/env";
 import { applyCollector, type CollectorResult, type Observation } from "@/server/ops/incidents";
 import { sanitizeErrorText } from "@/lib/ops";
 import { customerPaymentObservations } from "@/server/customer-payments/health";
+import { WORKER_SILENT_MINUTES, newestJobOfEmployeeSql, provisionerWorkerSilence } from "@/server/workforce/provisioning-watchdog";
 
 // Each collector reads recorded evidence only (never calls a provider) and returns the conditions that are unhealthy right now.
 // The incident engine opens what is new and closes what a later run no longer finds. Keys start with the collector's prefix, and no
@@ -26,6 +27,8 @@ export const THRESHOLDS = {
   stuckPaymentMinutes: 10,
   /** A scheduled job failing this many runs in a row. */
   jobFailures: 3,
+  /** The client runtime's profile count is a warning from this share of HERMES_PROVISIONER_MAX_PROFILES and critical at the limit. */
+  provisioningCapacityWarn: 0.8,
 } as const;
 
 const minutesAgo = (now: Date, m: number) => new Date(now.getTime() - m * 60_000).toISOString();
@@ -263,6 +266,109 @@ async function failedRuns(db: Queryable, now: Date): Promise<Observation[]> {
   }));
 }
 
+/**
+ * Provisioning of client AI employees: recorded evidence only (jobs, the worker's liveness row, the gateway row, a count of profiles), agency-only wording, nothing client visible. Four of
+ * the five conditions need the restricted provisioner to be switched on; with it off, waiting jobs are the intended state and nothing here is reported. A terminal failure is reported
+ * either way, because it is a fact about a job that exists.
+ */
+async function provisioning(db: Queryable, now: Date): Promise<Observation[]> {
+  const out: Observation[] = [];
+  const config = env();
+  const stall = config.HERMES_PROVISIONER_STALL_MINUTES;
+  const waitingSince = minutesAgo(now, stall);
+
+  // Jobs that used all three attempts: closed as failed (by the worker or the watchdog), or on their last attempt with a lease that ran out and not yet closed. Only an employee's
+  // newest job counts: a requeue opens a new job and leaves the old failed one behind, which must not hold the incident open once the employee is back.
+  const failed = await db.query<{ org_id: string; n: number; name: string }>(
+    `select j.org_id, count(*)::int as n, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+      where j.kind in ('provision', 'sync') and j.attempt_count >= 3
+        and (j.status = 'failed' or (j.status = 'in_progress' and (j.lease_expires_at is null or j.lease_expires_at <= $1::timestamptz)))
+        and ${newestJobOfEmployeeSql("j")}
+      group by j.org_id, o.name`,
+    [now.toISOString()],
+  );
+  for (const r of failed.rows) {
+    out.push({
+      key: `provisioning:failed:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee setup", severity: "critical",
+      title: `${r.n} AI employee profile job${r.n === 1 ? " has" : "s have"} failed after 3 attempts (${r.name})`,
+      detail: "The restricted worker used all of its attempts. The employee stays in setup until the job is reviewed and requeued.",
+      evidence: { failed: r.n },
+      guidance: "Open the client's page, review the isolated host result, then requeue the job.",
+    });
+  }
+  if (!config.HERMES_PROVISIONER_ENABLED) return out;
+
+  // Requests nobody has picked up, and employees that never got their first health check.
+  const queued = await db.query<{ org_id: string; n: number; oldest: Date; name: string }>(
+    `select j.org_id, count(*)::int as n, min(j.updated_at) as oldest, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+      where j.kind in ('provision', 'sync') and j.status = 'requested' and j.updated_at <= $1::timestamptz and o.status = 'active'
+      group by j.org_id, o.name`,
+    [waitingSince],
+  );
+  for (const r of queued.rows) {
+    out.push({
+      key: `provisioning:stalled:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee setup", severity: "warning",
+      title: `${r.n} AI employee setup request${r.n === 1 ? " has" : "s have"} waited more than ${stall} minutes (${r.name})`,
+      detail: "Nothing has claimed these requests. The worker may be stopped, the gateway may not be verified, or the workspace may be on hold.",
+      evidence: { waiting: r.n, oldest: new Date(r.oldest).toISOString() },
+      guidance: "Check the worker's last claim, the client runtime's gateway, and whether the workspace is paused or its payment is cleared.",
+    });
+  }
+  const checks = await db.query<{ org_id: string; n: number; oldest: Date; name: string }>(
+    `select j.org_id, count(*)::int as n, min(j.updated_at) as oldest, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+      where j.kind in ('provision', 'sync') and j.status = 'awaiting_health_check' and j.updated_at <= $1::timestamptz and o.status = 'active'
+      group by j.org_id, o.name`,
+    [waitingSince],
+  );
+  for (const r of checks.rows) {
+    out.push({
+      key: `provisioning:health:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee first check", severity: "warning",
+      title: `${r.n} AI employee${r.n === 1 ? " is" : "s are"} still waiting for the first health check after ${stall} minutes (${r.name})`,
+      detail: "The profile was built on the host, but the portal's own connection check has not passed. The job stays open until it does.",
+      evidence: { waiting: r.n, oldest: new Date(r.oldest).toISOString() },
+      guidance: "Open the employee and read the last health check result; run the check again after fixing what it names.",
+    });
+  }
+
+  // The worker itself: only a problem while something is waiting for it.
+  const waiting = await db.query<{ n: number }>(
+    `select count(*)::int as n from agent_provisioning_jobs
+      where kind in ('provision', 'sync') and status = 'requested' and updated_at <= $1::timestamptz`,
+    [minutesAgo(now, WORKER_SILENT_MINUTES)],
+  );
+  const waitingJobs = waiting.rows[0].n;
+  if (waitingJobs > 0) {
+    const worker = await provisionerWorkerSilence(db, now);
+    if (worker.silent) {
+      out.push({
+        key: "provisioning:worker-silent", source: "hermes", orgId: null, subject: "provisioning worker", severity: "warning",
+        title: "The client provisioning worker has stopped asking for work",
+        detail: `${waitingJobs} request${waitingJobs === 1 ? " is" : "s are"} waiting and the worker has not claimed for ${WORKER_SILENT_MINUTES} minutes${worker.lastSeenAt ? ` (last claim ${worker.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")} UTC)` : " (no claim has ever been recorded)"}.`,
+        evidence: { waiting: waitingJobs, lastClaimAt: worker.lastSeenAt ? worker.lastSeenAt.toISOString() : null },
+        guidance: "Check the restricted worker on the client runtime host and its logs. Requests are safe and are claimed when it is back.",
+      });
+    }
+  }
+
+  // Capacity of the one client runtime the worker is pinned to.
+  const max = config.HERMES_PROVISIONER_MAX_PROFILES;
+  const gatewayId = config.HERMES_PROVISIONER_GATEWAY_ID;
+  if (max && gatewayId) {
+    const used = (await db.query<{ n: number }>("select count(*)::int as n from agent_instances where hermes_gateway_id = $1 and hermes_profile is not null", [gatewayId])).rows[0].n;
+    if (used >= max * THRESHOLDS.provisioningCapacityWarn) {
+      const full = used >= max;
+      out.push({
+        key: `provisioning:capacity:${gatewayId}`, source: "hermes", orgId: null, subject: "client runtime capacity", severity: full ? "critical" : "warning",
+        title: full ? `The client runtime is full (${used} of ${max} profiles)` : `The client runtime is nearly full (${used} of ${max} profiles)`,
+        detail: full ? "New client profiles wait until capacity is raised. Syncs of existing profiles still run." : "New clients will soon wait for capacity.",
+        evidence: { profiles: used, limit: max },
+        guidance: "Raising HERMES_PROVISIONER_MAX_PROFILES, or adding runtime capacity, is a deliberate decision: check the host's memory first.",
+      });
+    }
+  }
+  return out;
+}
+
 export interface Collector {
   prefix: string;
   collect: (db: Queryable, now: Date) => Promise<Observation[]>;
@@ -281,6 +387,7 @@ export const COLLECTORS: Collector[] = [
   { prefix: "ghl:", collect: (db) => ghlMappings(db) },
   { prefix: "hermes:", collect: (db) => agents(db) },
   { prefix: "automation:", collect: failedRuns },
+  { prefix: "provisioning:", collect: provisioning },
 ];
 
 export type CollectorOutcome = CollectorResult | { prefix: string; error: string };

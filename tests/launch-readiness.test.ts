@@ -83,6 +83,15 @@ describe("a queued job, a draft or a badge is not a pass", () => {
     expect(itemOf(failed, "employees.performance_analyst")).toMatchObject({ state: "failed", owner: "iacquire" });
   });
 
+  it("shows an attempt that is being retried by itself as in progress, with no one to act, and still not as done", () => {
+    const r = deriveLaunchReadiness(replaceEmployee(ready(), "performance_analyst", { provisioning: "retrying", readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "", blocking: [] } }));
+    expect(itemOf(r, "employees.performance_analyst")).toMatchObject({ state: "in_progress", owner: "system" });
+    expect(itemOf(r, "employees.performance_analyst").detail).toContain("tried again automatically");
+    expect(r.blocking.map((i) => i.key)).not.toContain("employees.performance_analyst");
+    expect(r.state).toBe("provisioning");
+    expect(r.percent).toBeLessThan(100);
+  });
+
   it("does not count an employee that can chat but is missing what its role needs", () => {
     const r = deriveLaunchReadiness(replaceEmployee(ready(), "lead_hunter", { readiness: { state: "pending_setup", chatAvailable: true, workReady: false, description: "", blocking: ["saved lead targeting"] } }));
     expect(itemOf(r, "employees.lead_hunter")).toMatchObject({ state: "action_required", owner: "you" });

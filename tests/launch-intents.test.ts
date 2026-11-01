@@ -151,6 +151,59 @@ describe("the guided calendar steps", () => {
     expect((await runLaunchIntent(c.ctx, "activate_calendar")).message).toContain("already active");
   }, 120_000);
 
+  it("says so when a host works in another time zone and cannot be given the suggested hours, instead of claiming every host already has hours", async () => {
+    const c = await draftClient("Zone Dental", "Asia/Manila");
+    await runLaunchIntent(c.ctx, "assign_host");
+    // The host already works in London and has no weekly hours: the suggested hours are written in Manila, so giving them to this host would put them hours off.
+    await withSystem((db) => db.query("insert into crm_host_settings (org_id, user_id, timezone, accepting) values ($1, $2, 'Europe/London', true)", [c.org.id, c.people.owner.id]));
+    const res = await runLaunchIntent(c.ctx, "apply_hours");
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/different time zone/);
+    expect(res.message).toMatch(/Availability/);
+    expect(res.message).not.toMatch(/already has weekly hours/);
+    expect(await count(c.org.id, "crm_availability_rules")).toBe(0);
+    // Pressing it again says the same thing, and the calendar still cannot activate on hours that were never written.
+    expect((await runLaunchIntent(c.ctx, "apply_hours")).ok).toBe(false);
+    const activation = await runLaunchIntent(c.ctx, "activate_calendar");
+    expect(activation.ok).toBe(false);
+    expect(activation.message).toMatch(/no weekly hours/);
+  }, 120_000);
+
+  it("will not activate while the client's own answer says their Google Calendar must block times and none is connected, and does so only for that client", async () => {
+    const c = await draftClient("Busy Google Dental", "Asia/Manila");
+    const other = await draftClient("Busy Other Dental", "Asia/Manila");
+    for (const x of [c, other]) {
+      await runLaunchIntent(x.ctx, "assign_host");
+      await runLaunchIntent(x.ctx, "apply_hours");
+    }
+    await withSystem((db) => db.query("insert into crm_setup_guides (org_id, answers) values ($1, $2::jsonb)", [c.org.id, JSON.stringify({ appointments: true, calendarSource: "google" })]));
+    const refused = await runLaunchIntent(c.ctx, "activate_calendar");
+    expect(refused.ok).toBe(false);
+    expect(refused.message).toMatch(/events in your Google Calendar must block times, but no host has connected one yet/);
+    expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("draft");
+    // The same facts through the panel's own read: the calendar's connections check fails with the same words.
+    expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.checks).toEqual(expect.arrayContaining([expect.objectContaining({ key: "connections", ok: false, detail: expect.stringMatching(/must block times/) })]));
+    // Another client with no such answer is not held back.
+    expect(await runLaunchIntent(other.ctx, "activate_calendar")).toMatchObject({ ok: true });
+    // A connected Google calendar that is being read for busy times is what the answer asks for.
+    await withSystem((db) => db.query(
+      "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, check_conflicts, write_events, last_success_at) values ($1, $2, 'google', 'owner@example.test', 'connected', true, false, $3)",
+      [c.org.id, c.people.owner.id, new Date(Date.now() - 5 * 60_000)],
+    ));
+    expect(await runLaunchIntent(c.ctx, "activate_calendar")).toMatchObject({ ok: true });
+    expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("active");
+  }, 120_000);
+
+  it("holds no one to an outside calendar when the client said they take no appointments or use only the iAcquire calendar", async () => {
+    for (const answers of [{ appointments: false, calendarSource: "google" }, { appointments: true, calendarSource: "iacquire" }]) {
+      const c = await draftClient(`No Busy ${answers.calendarSource} ${answers.appointments}`, "Asia/Manila");
+      await withSystem((db) => db.query("insert into crm_setup_guides (org_id, answers) values ($1, $2::jsonb)", [c.org.id, JSON.stringify(answers)]));
+      await runLaunchIntent(c.ctx, "assign_host");
+      await runLaunchIntent(c.ctx, "apply_hours");
+      expect(await runLaunchIntent(c.ctx, "activate_calendar"), JSON.stringify(answers)).toMatchObject({ ok: true });
+    }
+  }, 120_000);
+
   it("refuses a member who may not manage calendars, and never makes someone else the host", async () => {
     const c = await draftClient("Refusal Clinic", "UTC");
     const sales = ctxFor(c.people.sales, c.org, "sales_rep");

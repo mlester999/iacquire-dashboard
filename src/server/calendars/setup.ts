@@ -204,39 +204,57 @@ export const DRAFT_HIDDEN_MESSAGE = "This calendar is still a draft. Verify and 
 
 /**
  * Copies a calendar's suggested weekly hours and time zone to the given hosts, inside the caller's transaction. Only hosts with no weekly
- * hours at all receive them: anyone who already has hours keeps them untouched (hours belong to the person, across every calendar), and a
- * host whose time zone is already set keeps that too. Returns who received the hours and who kept their own.
+ * hours at all receive them: anyone who already has hours keeps them untouched (hours belong to the person, across every calendar). A host
+ * whose time zone is already set to a different zone than the hours are written in is NOT given them: business-local hours read in the
+ * wrong zone would be wrong by hours, so they are reported in `needsZoneChoice` and someone chooses the zone (`opts.timezone` is that
+ * choice: the hours are saved in it and it becomes the host's zone, which is safe because a host with no hours has nothing else in the old
+ * zone). Returns who received the hours, who kept their own, and who needs a zone choice.
  */
-export async function applyHoursTemplateInTx(db: Queryable, orgId: string, calendarId: string, userIds: string[]): Promise<{ applied: string[]; kept: string[] }> {
+export async function applyHoursTemplateInTx(
+  db: Queryable, orgId: string, calendarId: string, userIds: string[], opts: { timezone?: string } = {},
+): Promise<{ applied: string[]; kept: string[]; needsZoneChoice: string[] }> {
   const ids = [...new Set(userIds)];
+  if (opts.timezone !== undefined && !isValidTimeZone(opts.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
   const cal = await db.query<{ timezone: string | null; hours_template: unknown }>("select timezone, hours_template from crm_calendars where id = $1 and org_id = $2 and archived_at is null", [calendarId, orgId]);
   if (!cal.rows[0]) throw new AppError("not_found", "Calendar not found.");
   const rules = parseHoursTemplate(cal.rows[0].hours_template);
-  if (!rules.length || !ids.length) return { applied: [], kept: ids };
+  if (!rules.length || !ids.length) return { applied: [], kept: ids, needsZoneChoice: [] };
   await assertHosts(db, orgId, ids);
   const org = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [orgId]);
   const suggested = cal.rows[0].timezone && isValidTimeZone(cal.rows[0].timezone) ? cal.rows[0].timezone : null;
   const fallback = org.rows[0]?.timezone && isValidTimeZone(org.rows[0].timezone) ? org.rows[0].timezone : "UTC";
+  const zone = opts.timezone ?? suggested ?? fallback;
   const withHours = await db.query<{ user_id: string }>("select distinct user_id from crm_availability_rules where org_id = $1 and user_id = any($2::uuid[])", [orgId, ids]);
   const has = new Set(withHours.rows.map((r) => r.user_id));
+  const settings = await db.query<{ user_id: string; timezone: string }>("select user_id, timezone from crm_host_settings where org_id = $1 and user_id = any($2::uuid[])", [orgId, ids]);
+  const existingZone = new Map(settings.rows.map((r) => [r.user_id, r.timezone]));
   const applied: string[] = [];
   const kept: string[] = [];
+  const needsZoneChoice: string[] = [];
   for (const userId of ids) {
     if (has.has(userId)) {
       kept.push(userId);
       continue;
     }
-    // A host who already chose a time zone keeps it; a host with no settings starts in the suggested one (else the workspace's).
+    const own = existingZone.get(userId);
+    if (own !== undefined && own !== zone) {
+      if (opts.timezone === undefined) {
+        needsZoneChoice.push(userId);
+        continue;
+      }
+      await db.query("update crm_host_settings set timezone = $3 where org_id = $1 and user_id = $2", [orgId, userId, zone]);
+    }
+    // A host with no settings starts in the zone the hours are written in.
     await db.query(
       "insert into crm_host_settings (org_id, user_id, timezone, accepting) values ($1, $2, $3, true) on conflict (org_id, user_id) do nothing",
-      [orgId, userId, suggested ?? fallback],
+      [orgId, userId, zone],
     );
     for (const r of rules) {
       await db.query("insert into crm_availability_rules (org_id, user_id, weekday, start_minute, end_minute) values ($1, $2, $3, $4, $5)", [orgId, userId, r.weekday, r.startMinute, r.endMinute]);
     }
     applied.push(userId);
   }
-  return { applied, kept };
+  return { applied, kept, needsZoneChoice };
 }
 
 function checkCalendar(input: Partial<CalendarInput>) {
@@ -252,8 +270,9 @@ function checkCalendar(input: Partial<CalendarInput>) {
 
 /**
  * Why a calendar can't take bookings from its public page yet, or null when it can go public: it needs at least one active host
- * (a current member of the workspace) and at least one appointment type that is shown on the page. Working hours are not required
- * to publish, but the Booking Pages screen points out a page that has none.
+ * (a current member of the workspace), at least one appointment type that is shown on the page, and then every activation check
+ * (hosts with weekly hours and a real time zone, the meeting links the types need, and an open time a customer would really be offered).
+ * The first failing check is the reason, in the words the activation screen shows. Turning a page OFF never goes through here.
  */
 async function publishBlocker(db: Queryable, orgId: string, calendarId: string): Promise<string | null> {
   const cal = await db.query<{ status: CalendarStatus }>("select status from crm_calendars where id = $1 and org_id = $2", [calendarId, orgId]);
@@ -272,12 +291,16 @@ async function publishBlocker(db: Queryable, orgId: string, calendarId: string):
   );
   if (Number(types.rows[0]?.total ?? 0) === 0) return "This calendar has no appointment types yet, so there's nothing to book. Add one first.";
   if (Number(types.rows[0]?.shown ?? 0) === 0) return "Every appointment type on this calendar is hidden from the booking page. Show at least one first.";
-  return null;
+  // Loaded when needed: activation.ts imports this module, so a static import would be a cycle.
+  const { verifyCalendarInTx } = await import("@/server/calendars/activation");
+  const failed = (await verifyCalendarInTx(db, orgId, calendarId)).checks.find((c) => !c.ok);
+  return failed ? `Fix this before customers can book: ${failed.detail}` : null;
 }
 
 /**
- * Creates a calendar. `public: true` here only pre-marks the page for setup code that adds the types straight after (the page shows
- * nothing until a type exists); the checked switch people use is setCalendarPublic.
+ * Creates a calendar. `public: true` here only pre-marks the page for trusted setup code that adds the types straight after (the page shows
+ * nothing until a type exists) and is never checked; the checked switch people use is setCalendarPublic. The server action drops the flag
+ * from what a person sends (src/app/actions/crm-calendar-settings.ts), so a page cannot be published through creation.
  */
 export async function createCalendar(actor: CrmActor, input: CalendarInput): Promise<{ id: string }> {
   assertCan(actor, "calendars.manage");
@@ -303,7 +326,7 @@ export async function createCalendar(actor: CrmActor, input: CalendarInput): Pro
 }
 
 /** Changes a calendar's settings. Turning the booking page on here applies the same check as setCalendarPublic. */
-export async function updateCalendar(actor: CrmActor, id: string, input: Partial<CalendarInput>): Promise<{ hoursApplied: string[] }> {
+export async function updateCalendar(actor: CrmActor, id: string, input: Partial<CalendarInput>): Promise<{ hoursApplied: string[]; hoursNeedZoneChoice: string[] }> {
   assertCan(actor, "calendars.manage");
   checkCalendar(input);
   return crmWrite(actor, async (db) => {
@@ -346,11 +369,13 @@ export async function updateCalendar(actor: CrmActor, id: string, input: Partial
     if (input.public !== undefined && input.public !== cur.rows[0].public) {
       await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: input.public ? "crm.calendar_published" : "crm.calendar_unpublished", targetType: "crm_calendar", targetId: id, result: "success" }, db);
     }
-    const hoursApplied = input.useHoursTemplate && input.members?.length ? (await applyHoursTemplateInTx(db, actor.orgId, id, input.members.map((m) => m.userId))).applied : [];
+    const template = input.useHoursTemplate && input.members?.length ? await applyHoursTemplateInTx(db, actor.orgId, id, input.members.map((m) => m.userId)) : null;
+    const hoursApplied = template?.applied ?? [];
     if (hoursApplied.length) {
       await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_hours_applied", targetType: "crm_calendar", targetId: id, result: "success", metadata: { hosts: hoursApplied.length } }, db);
     }
-    return { hoursApplied };
+    // Hosts left without hours because they already work in another time zone: the caller says so rather than implying everyone has hours.
+    return { hoursApplied, hoursNeedZoneChoice: template?.needsZoneChoice ?? [] };
   });
 }
 
@@ -461,6 +486,21 @@ function checkType(input: Partial<AppointmentTypeInput>) {
   if (input.requireEmail === false && input.requirePhone === false) throw new AppError("invalid_input", "Ask for at least an email address or a phone number, so you can reach the person who booked.");
 }
 
+/** The settings of a type that decide what a customer is offered and what happens after they book, kept small for the audit trail. */
+const TYPE_AUDIT_KEYS = [
+  "name", "durationMinutes", "slotIntervalMinutes", "bufferBeforeMinutes", "bufferAfterMinutes", "minNoticeMinutes", "maxDaysAhead", "dailyLimit", "capacity", "locationKind",
+  "meetingProvider", "requiresConfirmation", "public", "allowCustomerChanges", "changeCutoffMinutes", "requireEmail", "requirePhone",
+] as const;
+type AuditValue = string | number | boolean | null;
+type TypeAuditSnapshot = Record<(typeof TYPE_AUDIT_KEYS)[number], AuditValue>;
+
+const typeSnapshot = (t: TypeRow): TypeAuditSnapshot => ({
+  name: t.name, durationMinutes: t.duration_minutes, slotIntervalMinutes: t.slot_interval_minutes, bufferBeforeMinutes: t.buffer_before_minutes, bufferAfterMinutes: t.buffer_after_minutes,
+  minNoticeMinutes: t.min_notice_minutes, maxDaysAhead: t.max_days_ahead, dailyLimit: t.daily_limit, capacity: t.capacity, locationKind: t.location_kind, meetingProvider: t.meeting_provider,
+  requiresConfirmation: t.requires_confirmation, public: t.public, allowCustomerChanges: t.allow_customer_changes, changeCutoffMinutes: t.change_cutoff_minutes,
+  requireEmail: t.require_email, requirePhone: t.require_phone,
+});
+
 /** Questions as stored: trimmed labels, and options only on choice questions. */
 function cleanQuestions(questions: BookingQuestion[]): BookingQuestion[] {
   return questions.map((q) => ({
@@ -490,6 +530,11 @@ export async function createAppointmentType(actor: CrmActor, calendarId: string,
         JSON.stringify(cleanQuestions(input.questions ?? [])), input.color ?? null, pos.rows[0].n,
         input.confirmationMessage?.trim() || null, input.allowCustomerChanges ?? true, input.changeCutoffMinutes ?? 0, input.requireEmail ?? true, input.requirePhone ?? false],
     );
+    const made = await db.query<TypeRow>(`select ${TYPE_COLUMNS} from crm_appointment_types t where t.id = $1 and t.org_id = $2`, [rows[0].id, actor.orgId]);
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_created", targetType: "crm_appointment_type", targetId: rows[0].id, result: "success",
+      metadata: { calendarId, ...typeSnapshot(made.rows[0]) },
+    }, db);
     return { id: rows[0].id };
   });
 }
@@ -530,6 +575,28 @@ export async function updateAppointmentType(actor: CrmActor, id: string, input: 
         merged.locationKind, merged.locationDetail, merged.provider, merged.link, merged.confirm, merged.isPublic, JSON.stringify(merged.questions), merged.color,
         merged.confirmation, merged.customerChanges, merged.cutoff, merged.requireEmail, merged.requirePhone],
     );
+    // What changed: before and after for the booking-policy settings, and only the names of the text fields (their words are not copied into the trail).
+    const before = typeSnapshot(t);
+    const after: TypeAuditSnapshot = {
+      name: merged.name, durationMinutes: merged.duration, slotIntervalMinutes: merged.interval, bufferBeforeMinutes: merged.before, bufferAfterMinutes: merged.after,
+      minNoticeMinutes: merged.notice, maxDaysAhead: merged.ahead, dailyLimit: merged.limit, capacity: merged.capacity, locationKind: merged.locationKind, meetingProvider: merged.provider,
+      requiresConfirmation: merged.confirm, public: merged.isPublic, allowCustomerChanges: merged.customerChanges, changeCutoffMinutes: merged.cutoff, requireEmail: merged.requireEmail,
+      requirePhone: merged.requirePhone,
+    };
+    const changed: Record<string, [AuditValue, AuditValue]> = {};
+    for (const k of TYPE_AUDIT_KEYS) if (before[k] !== after[k]) changed[k] = [before[k], after[k]];
+    const texts: Array<[string, unknown, unknown]> = [
+      ["description", t.description, merged.description], ["locationDetail", t.location_detail, merged.locationDetail], ["meetingLink", t.meeting_link, merged.link],
+      ["confirmationMessage", t.confirmation_message, merged.confirmation], ["color", t.color, merged.color],
+      ["questions", JSON.stringify(t.questions ?? []), JSON.stringify(merged.questions)],
+    ];
+    const textChanged = texts.filter(([, x, y]) => x !== y).map(([k]) => k);
+    if (Object.keys(changed).length || textChanged.length) {
+      await recordAudit({
+        orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_updated", targetType: "crm_appointment_type", targetId: id, result: "success",
+        metadata: { calendarId: t.calendar_id, changed, textChanged },
+      }, db);
+    }
   });
 }
 
@@ -538,8 +605,14 @@ export async function setAppointmentTypePublic(actor: CrmActor, id: string, isPu
   assertCan(actor, "calendars.manage");
   await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
-    const res = await db.query("update crm_appointment_types set public = $3 where id = $1 and org_id = $2 and archived_at is null", [id, actor.orgId, isPublic]);
-    if (!res.rowCount) throw new AppError("not_found", "Appointment type not found.");
+    const cur = await db.query<{ public: boolean; calendar_id: string }>("select public, calendar_id from crm_appointment_types where id = $1 and org_id = $2 and archived_at is null for update", [id, actor.orgId]);
+    if (!cur.rows[0]) throw new AppError("not_found", "Appointment type not found.");
+    if (cur.rows[0].public === isPublic) return;
+    await db.query("update crm_appointment_types set public = $3 where id = $1 and org_id = $2", [id, actor.orgId, isPublic]);
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_updated", targetType: "crm_appointment_type", targetId: id, result: "success",
+      metadata: { calendarId: cur.rows[0].calendar_id, changed: { public: [cur.rows[0].public, isPublic] }, textChanged: [] },
+    }, db);
   });
 }
 
@@ -585,6 +658,10 @@ export async function duplicateAppointmentType(actor: CrmActor, id: string): Pro
        from crm_appointment_types where id = $1 and org_id = $2 returning id`,
       [id, actor.orgId, name, slug, pos.rows[0].n],
     );
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_created", targetType: "crm_appointment_type", targetId: rows[0].id, result: "success",
+      metadata: { calendarId: t.calendar_id, duplicatedFrom: id, name },
+    }, db);
     return { id: rows[0].id };
   });
 }
@@ -593,8 +670,9 @@ export async function archiveAppointmentType(actor: CrmActor, id: string): Promi
   assertCan(actor, "calendars.manage");
   await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
-    const res = await db.query("update crm_appointment_types set archived_at = now() where id = $1 and org_id = $2 and archived_at is null", [id, actor.orgId]);
+    const res = await db.query<{ calendar_id: string }>("update crm_appointment_types set archived_at = now() where id = $1 and org_id = $2 and archived_at is null returning calendar_id", [id, actor.orgId]);
     if (!res.rowCount) throw new AppError("not_found", "Appointment type not found.");
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_archived", targetType: "crm_appointment_type", targetId: id, result: "success", metadata: { calendarId: res.rows[0].calendar_id } }, db);
   });
 }
 
@@ -668,13 +746,26 @@ export async function setHostAvailability(actor: CrmActor, userId: string, input
   await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     await assertHosts(db, actor.orgId, [userId]);
+    const prior = await db.query<{ timezone: string; accepting: boolean }>("select timezone, accepting from crm_host_settings where org_id = $1 and user_id = $2", [actor.orgId, userId]);
+    const priorRules = await db.query<{ weekday: number; start_minute: number; end_minute: number }>("select weekday, start_minute, end_minute from crm_availability_rules where org_id = $1 and user_id = $2", [actor.orgId, userId]);
+    const accepting = input.accepting ?? true;
     await db.query(
       `insert into crm_host_settings (org_id, user_id, timezone, accepting) values ($1, $2, $3, $4)
        on conflict (org_id, user_id) do update set timezone = excluded.timezone, accepting = excluded.accepting`,
-      [actor.orgId, userId, input.timezone, input.accepting ?? true],
+      [actor.orgId, userId, input.timezone, accepting],
     );
     await db.query("delete from crm_availability_rules where org_id = $1 and user_id = $2", [actor.orgId, userId]);
     for (const r of input.rules) await db.query("insert into crm_availability_rules (org_id, user_id, weekday, start_minute, end_minute) values ($1, $2, $3, $4, $5)", [actor.orgId, userId, r.weekday, r.startMinute, r.endMinute]);
+    // Saving the same hours again changes nothing, so it leaves nothing in the trail.
+    const key = (list: Array<{ weekday: number; startMinute: number; endMinute: number }>) => list.map((r) => `${r.weekday}:${r.startMinute}-${r.endMinute}`).sort().join(",");
+    const same = prior.rows[0] !== undefined && prior.rows[0].timezone === input.timezone && prior.rows[0].accepting === accepting
+      && key(priorRules.rows.map((r) => ({ weekday: r.weekday, startMinute: r.start_minute, endMinute: r.end_minute }))) === key(input.rules);
+    if (!same) {
+      await recordAudit({
+        orgId: actor.orgId, ...auditActor(actor), action: "crm.host_availability_changed", targetType: "crm_host", targetId: userId, result: "success",
+        metadata: { userId, timezone: [prior.rows[0]?.timezone ?? null, input.timezone], accepting: [prior.rows[0]?.accepting ?? null, accepting], ranges: input.rules.length, before: priorRules.rows.length },
+      }, db);
+    }
   });
 }
 
@@ -691,6 +782,10 @@ export async function addAvailabilityOverride(actor: CrmActor, input: { userId: 
       "insert into crm_availability_overrides (org_id, user_id, on_date, start_minute, end_minute, reason) values ($1, $2, $3, $4, $5, $6) returning id",
       [actor.orgId, input.userId, input.date, input.startMinute, input.endMinute, input.reason?.trim().slice(0, 120) || null],
     );
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.availability_override_added", targetType: "crm_availability_override", targetId: rows[0].id, result: "success",
+      metadata: { userId: input.userId, date: input.date, wholeDay: input.startMinute === null, startMinute: input.startMinute, endMinute: input.endMinute },
+    }, db);
     return { id: rows[0].id };
   });
 }
@@ -699,10 +794,14 @@ export async function deleteAvailabilityOverride(actor: CrmActor, id: string): P
   assertCan(actor, "appointments.view");
   await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
-    const { rows } = await db.query<{ user_id: string | null }>("select user_id from crm_availability_overrides where id = $1 and org_id = $2", [id, actor.orgId]);
+    const { rows } = await db.query<{ user_id: string | null; on_date: string }>("select user_id, on_date::text from crm_availability_overrides where id = $1 and org_id = $2", [id, actor.orgId]);
     if (!rows[0]) throw new AppError("not_found", "That exception doesn't exist.");
     if (rows[0].user_id !== actor.userId) assertCan(actor, "calendars.manage", "Removing someone else's exception needs calendar management.");
     await db.query("delete from crm_availability_overrides where id = $1 and org_id = $2", [id, actor.orgId]);
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.availability_override_removed", targetType: "crm_availability_override", targetId: id, result: "success",
+      metadata: { userId: rows[0].user_id, date: rows[0].on_date, removed: 1 },
+    }, db);
   });
 }
 
@@ -740,6 +839,10 @@ export async function setDayException(
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     if (input.userId) await assertHosts(db, actor.orgId, [input.userId]);
+    const prior = await db.query<{ start_minute: number | null; end_minute: number | null }>(
+      "select start_minute, end_minute from crm_availability_overrides where org_id = $1 and on_date = $2 and (($3::uuid is null and user_id is null) or user_id = $3::uuid)",
+      [actor.orgId, input.date, input.userId],
+    );
     await db.query(
       "delete from crm_availability_overrides where org_id = $1 and on_date = $2 and (($3::uuid is null and user_id is null) or user_id = $3::uuid)",
       [actor.orgId, input.date, input.userId],
@@ -753,6 +856,14 @@ export async function setDayException(
         [actor.orgId, input.userId, input.date, w.startMinute, w.endMinute, reason],
       );
       ids.push(ins.rows[0].id);
+    }
+    // The same day set the same way again changes nothing, so it leaves nothing in the trail.
+    const key = (list: Array<{ startMinute: number | null; endMinute: number | null }>) => list.map((r) => `${r.startMinute}-${r.endMinute}`).sort().join(",");
+    if (key(prior.rows.map((r) => ({ startMinute: r.start_minute, endMinute: r.end_minute }))) !== key(rows)) {
+      await recordAudit({
+        orgId: actor.orgId, ...auditActor(actor), action: "crm.availability_override_added", targetType: "crm_availability_override", targetId: ids[0], result: "success",
+        metadata: { userId: input.userId, date: input.date, wholeDay: windows === null, windows: windows?.length ?? 0, replaced: prior.rows.length },
+      }, db);
     }
     return { ids };
   });
@@ -769,6 +880,10 @@ export async function clearDayException(actor: CrmActor, input: { userId: string
       [actor.orgId, input.date, input.userId],
     );
     if (!res.rowCount) throw new AppError("not_found", "That exception doesn't exist.");
+    await recordAudit({
+      orgId: actor.orgId, ...auditActor(actor), action: "crm.availability_override_removed", targetType: "crm_availability_override", result: "success",
+      metadata: { userId: input.userId, date: input.date, removed: res.rowCount },
+    }, db);
     return { removed: res.rowCount };
   });
 }

@@ -6,8 +6,10 @@ import { assertCan, auditActor, crmWrite, type CrmActor } from "@/server/crm/act
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { isValidTimeZone } from "@/lib/calendars/slots";
 import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
-import { applyHoursTemplateInTx, type CalendarStatus, type MeetingProvider } from "@/server/calendars/setup";
+import { pollMinutesFor } from "@/server/calendars/connections";
+import { applyHoursTemplateInTx, type CalendarStatus, type LocationKind, type MeetingProvider } from "@/server/calendars/setup";
 import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
+import { cleanAnswers } from "@/lib/onboarding/crm-setup";
 
 // Draft calendars and how they go live. A calendar created from a Blueprint (or imported) starts as a draft: no booking page, never the
 // default, and refused by every booking path (src/server/calendars/availability.ts loadBookingContext). It becomes bookable only when someone
@@ -43,6 +45,31 @@ export interface CalendarVerification {
   checks: CalendarCheck[];
   /** The first open time found: proof that a customer could really book it once it is active. */
   firstOpenTime: { typeId: string; typeName: string; start: string } | null;
+  /** Appointment types (of the ones checked) that no customer could be offered a time for. One type with times is enough to go live, so this does not fail the checks; it says what still needs fixing. */
+  typesWithoutTimes: string[];
+}
+
+/** The calendar account whose busy times the client said must block bookings (the calendar they told the CRM setup guide they use). */
+export type BusyCalendarProvider = "google" | "microsoft";
+
+export interface VerifyOptions {
+  /**
+   * When set, activation cannot pass while no host has this provider connected and being read for busy times. Left out, it is read from what the client told the CRM setup
+   * guide (statedBusyProvider), so every caller judges the same way; `null` says "none" explicitly (the Setup Center's own calendar check applies the stated answer itself).
+   */
+  requiredBusyProvider?: BusyCalendarProvider | null;
+}
+
+/**
+ * The outside calendar whose busy times must block bookings, from the client's own stored answers to the CRM setup guide: they take appointments and use Google Calendar or a
+ * Microsoft 365 calendar. Null when they said they do not take appointments, use the iAcquire calendar only, use a kind that is only read as a feed or over CalDAV (the Setup
+ * Center's calendar check covers those), or have not said. An answer that no longer validates is dropped, never trusted. Trusted code: every query names the workspace.
+ */
+export async function statedBusyProvider(db: Queryable, orgId: string): Promise<BusyCalendarProvider | null> {
+  const { rows } = await db.query<{ answers: unknown }>("select answers from crm_setup_guides where org_id = $1", [orgId]);
+  const stated = cleanAnswers(rows[0]?.answers);
+  if (stated.appointments === false) return null;
+  return stated.calendarSource === "google" || stated.calendarSource === "microsoft" ? stated.calendarSource : null;
 }
 
 export interface ActivationResult {
@@ -68,6 +95,8 @@ const names = (people: Array<{ name: string }>) => {
   const n = people.map((p) => p.name);
   return n.length <= 3 ? n.join(", ") : `${n.slice(0, 3).join(", ")} and ${n.length - 3} more`;
 };
+
+const BUSY_ACCOUNT: Record<BusyCalendarProvider, string> = { google: "Google Calendar", microsoft: "Microsoft 365 calendar" };
 
 const PROVIDER_INFO: Record<"google_meet" | "microsoft_teams", { connection: "google" | "microsoft"; link: string; account: string }> = {
   google_meet: { connection: "google", link: "Google Meet", account: "Google Calendar" },
@@ -100,20 +129,21 @@ export async function typesAwaitingMeetingLink(db: Queryable, orgId: string, sco
   return rows;
 }
 
-/**
- * Runs every activation check for one calendar of `orgId`, inside the caller's transaction. Trusted code: the caller has authorized the
- * actor for this workspace, and every query names it. Reads only.
- */
-export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarId: string, now: Date = new Date()): Promise<CalendarVerification> {
-  const cal = await db.query<{ id: string; name: string; status: CalendarStatus }>(
-    "select id, name, status from crm_calendars where id = $1 and org_id = $2 and archived_at is null",
-    [calendarId, orgId],
-  );
-  const c = cal.rows[0];
-  if (!c) throw new AppError("not_found", "Calendar not found.");
+export interface CalendarHost {
+  userId: string;
+  name: string;
+  timezone: string | null;
+  accepting: boolean | null;
+  hasHours: boolean;
+}
 
-  // The people who would take bookings: active hosts who are still active members of this workspace (as availability counts them).
-  const hosts = await db.query<{ user_id: string; name: string; timezone: string | null; accepting: boolean | null; has_hours: boolean }>(
+/**
+ * The people who would take bookings on one calendar: active hosts who are still active members of this workspace and active users, the
+ * same three-table rule availability uses. A host who left or was suspended is not here, so no screen counts them. Trusted code: the caller
+ * authorized the reader for `orgId`. Highest priority first.
+ */
+export async function activeHostsOfCalendar(db: Queryable, orgId: string, calendarId: string): Promise<CalendarHost[]> {
+  const { rows } = await db.query<{ user_id: string; name: string; timezone: string | null; accepting: boolean | null; has_hours: boolean }>(
     `select cm.user_id, coalesce(nullif(u.full_name, ''), u.email::text) as name, h.timezone, h.accepting,
             exists (select 1 from crm_availability_rules r where r.org_id = cm.org_id and r.user_id = cm.user_id) as has_hours
      from crm_calendar_members cm
@@ -124,9 +154,27 @@ export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarI
      order by cm.priority desc, cm.created_at`,
     [calendarId, orgId],
   );
+  return rows.map((r) => ({ userId: r.user_id, name: r.name, timezone: r.timezone, accepting: r.accepting, hasHours: r.has_hours }));
+}
+
+/**
+ * Runs every activation check for one calendar of `orgId`, inside the caller's transaction. Trusted code: the caller has authorized the
+ * actor for this workspace, and every query names it. Reads only.
+ */
+export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarId: string, now: Date = new Date(), opts: VerifyOptions = {}): Promise<CalendarVerification> {
+  const cal = await db.query<{ id: string; name: string; status: CalendarStatus }>(
+    "select id, name, status from crm_calendars where id = $1 and org_id = $2 and archived_at is null",
+    [calendarId, orgId],
+  );
+  const c = cal.rows[0];
+  if (!c) throw new AppError("not_found", "Calendar not found.");
+
+  // The people who would take bookings: active hosts who are still active members of this workspace (as availability counts them).
+  const hostList = await activeHostsOfCalendar(db, orgId, calendarId);
+  const hosts = { rows: hostList.map((h) => ({ user_id: h.userId, name: h.name, timezone: h.timezone, accepting: h.accepting, has_hours: h.hasHours })) };
   const people = hosts.rows.map((h) => ({ userId: h.user_id, name: h.name }));
-  const types = await db.query<{ id: string; name: string; meeting_provider: MeetingProvider; meeting_link: string | null }>(
-    "select id, name, meeting_provider, meeting_link from crm_appointment_types where calendar_id = $1 and org_id = $2 and archived_at is null order by position, lower(name)",
+  const types = await db.query<{ id: string; name: string; meeting_provider: MeetingProvider; meeting_link: string | null; location_kind: LocationKind; location_detail: string | null }>(
+    "select id, name, meeting_provider, meeting_link, location_kind, location_detail from crm_appointment_types where calendar_id = $1 and org_id = $2 and archived_at is null order by position, lower(name)",
     [calendarId, orgId],
   );
   const checks: CalendarCheck[] = [];
@@ -158,10 +206,13 @@ export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarI
   // A fixed link that is missing: a Blueprint's type stored without its link, plus (defensively) a fixed-link type with an empty link.
   const awaiting = new Set((await typesAwaitingMeetingLink(db, orgId, { calendarId })).map((t) => t.id));
   const missingLink = types.rows.filter((t) => awaiting.has(t.id) || (t.meeting_provider === "custom_link" && !t.meeting_link));
-  if (!needs.length && !missingLink.length) add("connections", true, "No appointment type needs a calendar connection.");
+  // A video appointment that says nothing about how to join: no meeting tool and no written instructions, so the customer would get "Video call" and nothing else.
+  const noJoinInfo = types.rows.filter((t) => !awaiting.has(t.id) && t.location_kind === "video" && t.meeting_provider === "none" && !(t.location_detail ?? "").trim());
+  const busyProvider = opts.requiredBusyProvider !== undefined ? opts.requiredBusyProvider : await statedBusyProvider(db, orgId);
+  if (!needs.length && !missingLink.length && !noJoinInfo.length && !busyProvider) add("connections", true, "No appointment type needs a calendar connection.");
   else {
     const ids = hosts.rows.map((h) => h.user_id);
-    const conns = ids.length
+    const conns = ids.length && needs.length
       ? await db.query<{ user_id: string; provider: "google" | "microsoft" }>(
           `select distinct user_id, provider from crm_calendar_connections
            where org_id = $1 and user_id = any($2::uuid[]) and status = 'connected' and write_events and external_calendar_id is not null and provider in ('google', 'microsoft')`,
@@ -180,8 +231,38 @@ export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarI
       }
     }
     if (missingLink.length) problems.push(`${names(missingLink)} ${missingLink.length === 1 ? "needs" : "need"} the meeting link this business uses.`);
+    if (noJoinInfo.length) {
+      problems.push(`${names(noJoinInfo)} ${noJoinInfo.length === 1 ? "is a video appointment" : "are video appointments"} with no meeting tool: choose Google Meet or Microsoft Teams, or write how you send the link, in the appointment type.`);
+    }
+    // The client said their existing events must block times, so a connected, still-being-read calendar of that kind has to exist (a fresh read is what keeps a host from being double-booked).
+    if (busyProvider) {
+      const account = BUSY_ACCOUNT[busyProvider];
+      if (!hosts.rows.length) problems.push(`Your ${account} must be connected so your existing events block times; assign hosts first.`);
+      else {
+        const rows = await db.query<{ user_id: string; read_at: Date }>(
+          `select user_id, coalesce(last_success_at, created_at) as read_at from crm_calendar_connections
+           where org_id = $1 and user_id = any($2::uuid[]) and provider = $3 and status = 'connected' and check_conflicts`,
+          [orgId, ids, busyProvider],
+        );
+        const freshAfter = now.getTime() - 3 * pollMinutesFor(busyProvider) * 60_000;
+        const fresh = rows.rows.filter((r) => new Date(r.read_at).getTime() >= freshAfter);
+        if (!rows.rows.length) {
+          problems.push(`You said events in your ${account} must block times, but no host has connected one yet, so a customer could be offered a time you are already busy. Connect it in Calendar connections.`);
+          for (const h of hosts.rows) who.set(h.user_id, { userId: h.user_id, name: h.name });
+        } else if (!fresh.length) {
+          const stale = rows.rows.map((r) => ({ userId: r.user_id, name: hosts.rows.find((h) => h.user_id === r.user_id)?.name ?? "A host" }));
+          problems.push(`The connected ${account} of ${names(stale)} hasn't been read for busy times since ${new Date(Math.max(...rows.rows.map((r) => new Date(r.read_at).getTime()))).toISOString().slice(0, 10)}, so its events may not block times. Reconnect it in Calendar connections.`);
+          for (const p of stale) who.set(p.userId, p);
+        }
+      }
+    }
     if (problems.length) add("connections", false, problems.join(" "), [...who.values()]);
-    else add("connections", true, `Every host has connected what ${needs.map((p) => PROVIDER_INFO[p].link).join(" and ")} links need.`);
+    else {
+      const ok: string[] = [];
+      if (needs.length) ok.push(`Every host has connected what ${needs.map((p) => PROVIDER_INFO[p].link).join(" and ")} links need.`);
+      if (busyProvider) ok.push(`A connected ${BUSY_ACCOUNT[busyProvider]} is read for busy times.`);
+      add("connections", true, ok.length ? ok.join(" ") : "No appointment type needs a calendar connection.");
+    }
   }
 
   // A real open time, computed exactly as a customer would be offered one (notice period included), ignoring only the draft status.
@@ -207,18 +288,18 @@ export async function verifyCalendarInTx(db: Queryable, orgId: string, calendarI
     add("slot", true, `A customer could book it: the first open time is for ${firstOpenTime.typeName}.${note}`);
   }
 
-  return { calendarId: c.id, calendarName: c.name, status: c.status, ok: checks.every((x) => x.ok), checkedAt: now.toISOString(), checks, firstOpenTime };
+  return { calendarId: c.id, calendarName: c.name, status: c.status, ok: checks.every((x) => x.ok), checkedAt: now.toISOString(), checks, firstOpenTime, typesWithoutTimes: withoutTimes };
 }
 
 /**
  * Runs the activation checks for one calendar, for someone who manages calendars. Read-only; computed as trusted code after the
  * permission check (every query names the workspace), so every host's connected-calendar busy time counts exactly as it does for booking.
  */
-export async function verifyCalendar(actor: CrmActor, calendarId: string, opts: { now?: Date } = {}): Promise<CalendarVerification> {
+export async function verifyCalendar(actor: CrmActor, calendarId: string, opts: { now?: Date } & VerifyOptions = {}): Promise<CalendarVerification> {
   assertCan(actor, "calendars.manage");
   return withSystem(async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
-    return verifyCalendarInTx(db, actor.orgId, calendarId, opts.now);
+    return verifyCalendarInTx(db, actor.orgId, calendarId, opts.now, opts);
   });
 }
 
@@ -239,7 +320,7 @@ function verificationRecord(v: CalendarVerification, actor: CrmActor) {
  * locked). On success it records when and what was verified, and makes it the default if the workspace has no active default. When a check
  * fails nothing changes and the result says which. The booking page stays off: turning it on is a separate, checked step.
  */
-export async function activateCalendar(actor: CrmActor, calendarId: string, opts: { now?: Date } = {}): Promise<ActivationResult> {
+export async function activateCalendar(actor: CrmActor, calendarId: string, opts: { now?: Date } & VerifyOptions = {}): Promise<ActivationResult> {
   const result = await activateCalendarTx(actor, calendarId, opts);
   // Committed: the Setup Center's calendar check sees the newly active calendar now rather than at the next scheduled pass (never failing
   // the activation). Nothing changed otherwise, so there is nothing new to pick up.
@@ -247,14 +328,14 @@ export async function activateCalendar(actor: CrmActor, calendarId: string, opts
   return result;
 }
 
-function activateCalendarTx(actor: CrmActor, calendarId: string, opts: { now?: Date }): Promise<ActivationResult> {
+function activateCalendarTx(actor: CrmActor, calendarId: string, opts: { now?: Date } & VerifyOptions): Promise<ActivationResult> {
   assertCan(actor, "calendars.manage");
   const now = opts.now ?? new Date();
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     const lock = await db.query<{ status: CalendarStatus }>("select status from crm_calendars where id = $1 and org_id = $2 and archived_at is null for update", [calendarId, actor.orgId]);
     if (!lock.rows[0]) throw new AppError("not_found", "Calendar not found.");
-    const verification = await verifyCalendarInTx(db, actor.orgId, calendarId, now);
+    const verification = await verifyCalendarInTx(db, actor.orgId, calendarId, now, opts);
     if (lock.rows[0].status === "active") return { activated: false, alreadyActive: true, madeDefault: false, verification };
     if (!verification.ok) return { activated: false, alreadyActive: false, madeDefault: false, verification };
     await db.query(
@@ -276,23 +357,20 @@ function activateCalendarTx(actor: CrmActor, calendarId: string, opts: { now?: D
 
 /**
  * Gives the calendar's suggested weekly hours (from its Blueprint) to its current hosts who have no hours yet. Hosts who already have hours
- * keep them. Changing other people's hours needs calendar management, as it does in Availability.
+ * keep them. A host who already has a different time zone is not given hours in the wrong zone: they come back in `needsZoneChoice`, and
+ * calling again with `opts.timezone` (the zone the hours are written in) applies them in that zone. Changing other people's hours needs
+ * calendar management, as it does in Availability.
  */
-export async function applyCalendarHoursTemplate(actor: CrmActor, calendarId: string): Promise<{ applied: string[]; kept: string[] }> {
+export async function applyCalendarHoursTemplate(actor: CrmActor, calendarId: string, opts: { timezone?: string } = {}): Promise<{ applied: string[]; kept: string[]; needsZoneChoice: string[] }> {
   assertCan(actor, "calendars.manage");
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
-    const hosts = await db.query<{ user_id: string }>(
-      `select cm.user_id from crm_calendar_members cm join organization_memberships m on m.org_id = cm.org_id and m.user_id = cm.user_id and m.status = 'active'
-       join users u on u.id = cm.user_id and u.status = 'active'
-       where cm.calendar_id = $1 and cm.org_id = $2 and cm.active`,
-      [calendarId, actor.orgId],
-    );
+    const hosts = await activeHostsOfCalendar(db, actor.orgId, calendarId);
     const cal = await db.query<{ n: number }>("select jsonb_array_length(hours_template) as n from crm_calendars where id = $1 and org_id = $2 and archived_at is null", [calendarId, actor.orgId]);
     if (!cal.rows[0]) throw new AppError("not_found", "Calendar not found.");
     if (!cal.rows[0].n) throw new AppError("conflict", "This calendar has no suggested hours to use.");
-    if (!hosts.rows.length) throw new AppError("conflict", "Assign hosts first, then use the suggested hours for them.");
-    const res = await applyHoursTemplateInTx(db, actor.orgId, calendarId, hosts.rows.map((h) => h.user_id));
+    if (!hosts.length) throw new AppError("conflict", "Assign hosts first, then use the suggested hours for them.");
+    const res = await applyHoursTemplateInTx(db, actor.orgId, calendarId, hosts.map((h) => h.userId), opts);
     if (res.applied.length) {
       await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_hours_applied", targetType: "crm_calendar", targetId: calendarId, result: "success", metadata: { hosts: res.applied.length } }, db);
     }

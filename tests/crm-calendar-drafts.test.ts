@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 }));
 import { withSystem } from "@/server/db";
 import {
-  archiveCalendar, createAppointmentType, createCalendar, listBookingPages, listCalendars, listSchedulingPeople, parseHoursTemplate, setCalendarPublic, setHostAvailability,
+  archiveAppointmentType as archiveType, archiveCalendar, createAppointmentType, createCalendar, listBookingPages, listCalendars, listSchedulingPeople, parseHoursTemplate, setCalendarPublic, setHostAvailability,
   updateAppointmentType, updateCalendar, type AppointmentTypeInput,
 } from "@/server/calendars/setup";
 import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
@@ -364,7 +364,7 @@ describe("suggested hours", () => {
     expect(await hours("sales")).toEqual({ tz: "Europe/London", rules: [{ weekday: 1, start_minute: 480, end_minute: 720 }] });
     // Applying again never duplicates or overwrites anything.
     const second = await applyCalendarHoursTemplate(owner, d.calendarId);
-    expect(second).toEqual({ applied: [], kept: expect.arrayContaining([c.people.owner.id, c.people.sales.id]) });
+    expect(second).toEqual({ applied: [], kept: expect.arrayContaining([c.people.owner.id, c.people.sales.id]), needsZoneChoice: [] });
     expect((await hours("owner")).rules).toHaveLength(2);
     // Without the option, assigning hosts leaves hours alone.
     await updateCalendar(owner, d.calendarId, { members: [{ userId: c.people.owner.id }, { userId: c.people.sales.id }, { userId: c.people.setter.id }] });
@@ -377,6 +377,119 @@ describe("suggested hours", () => {
     await expect(applyCalendarHoursTemplate(owner, plain.id)).rejects.toThrow(/no suggested hours/);
     const audit = await withSystem((db) => db.query("select 1 from audit_logs where org_id = $1 and action = 'crm.calendar_hours_applied'", [c.org.id]));
     expect(audit.rows).toHaveLength(2);
+  });
+});
+
+describe("verification hardening", () => {
+  const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
+  const connectBusy = (c: CrmOrg, who: CrmWho, provider: "google" | "microsoft", o: { lastSuccessAt?: Date | null; checkConflicts?: boolean; status?: string } = {}) =>
+    withSystem((db) => db.query(
+      "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, check_conflicts, write_events, last_success_at) values ($1, $2, $3, $4, $5, $6, false, $7)",
+      [c.org.id, c.people[who].id, provider, `${who}-${provider}-${crypto.randomBytes(3).toString("hex")}@example.test`, o.status ?? "connected", o.checkConflicts ?? true, o.lastSuccessAt === undefined ? minutesAgo(5) : o.lastSuccessAt],
+    ));
+
+  it("a video appointment must say how customers join: a meeting tool, a fixed link, or written instructions", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const owner = c.actor("owner");
+    // "I send my own link" drafts a video type with no tool and no words about joining: customers would be told "Video call" and nothing else.
+    const bare = await draftCalendar(c, { type: { locationKind: "video", meetingProvider: "none" } });
+    const v1 = await verifyCalendar(owner, bare.calendarId, { now: NOW });
+    expect(failing(v1)).toEqual(["connections"]);
+    expect(checkOf(v1, "connections").detail).toMatch(/Site visit is a video appointment with no meeting tool/);
+    expect((await activateCalendar(owner, bare.calendarId, { now: NOW })).activated).toBe(false);
+    expect((await statusOf(bare.calendarId)).status).toBe("draft");
+    // Written instructions pass (they are what the customer is shown).
+    await updateAppointmentType(owner, bare.typeId as string, { locationDetail: "We email a video link the morning of the visit." });
+    expect((await verifyCalendar(owner, bare.calendarId, { now: NOW })).ok).toBe(true);
+    // Whitespace is not instructions.
+    await updateAppointmentType(owner, bare.typeId as string, { locationDetail: "   " });
+    expect(failing(await verifyCalendar(owner, bare.calendarId, { now: NOW }))).toEqual(["connections"]);
+    // A fixed link passes, and so does a phone or in-person type that has no tool at all.
+    const fixed = await draftCalendar(c, { type: { locationKind: "video", meetingProvider: "custom_link", meetingLink: "https://meet.example.test/room" } });
+    expect((await verifyCalendar(owner, fixed.calendarId, { now: NOW })).ok).toBe(true);
+    const phone = await draftCalendar(c, { type: { locationKind: "phone", meetingProvider: "none" } });
+    expect((await verifyCalendar(owner, phone.calendarId, { now: NOW })).ok).toBe(true);
+  });
+
+  it("lists the appointment types no customer could be offered a time for, without failing a calendar that has other times", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const owner = c.actor("owner");
+    const d = await draftCalendar(c, { hours: false, type: { name: "Quick visit", durationMinutes: 60 } });
+    // Two-hour windows (9-11): a 60-minute visit fits, a 3-hour one never does.
+    await setHostAvailability(owner, c.people.owner.id, { timezone: "Asia/Manila", rules: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 11 * 60 })) });
+    await createAppointmentType(owner, d.calendarId, { name: "Full-day survey", durationMinutes: 180, minNoticeMinutes: 60, maxDaysAhead: 30 });
+    const v = await verifyCalendar(owner, d.calendarId, { now: NOW });
+    expect(v.ok).toBe(true);
+    expect(v.typesWithoutTimes).toEqual(["Full-day survey"]);
+    expect(checkOf(v, "slot").detail).toMatch(/No open time yet for Full-day survey/);
+    // Once the window is long enough, nothing is missing.
+    await setHostAvailability(owner, c.people.owner.id, { timezone: "Asia/Manila", rules: WEEKDAYS_9_TO_5 });
+    expect((await verifyCalendar(owner, d.calendarId, { now: NOW })).typesWithoutTimes).toEqual([]);
+    // With only the long type, there is nothing to go live with.
+    await setHostAvailability(owner, c.people.owner.id, { timezone: "Asia/Manila", rules: [{ weekday: 1, startMinute: 9 * 60, endMinute: 11 * 60 }] });
+    await archiveType(owner, d.typeId as string);
+    const only = await verifyCalendar(owner, d.calendarId, { now: NOW });
+    expect(only.typesWithoutTimes).toEqual(["Full-day survey"]);
+    expect(failing(only)).toEqual(["slot"]);
+    // No types: nothing was checked, so nothing is listed.
+    const noTypes = await draftCalendar(c, { type: null });
+    expect((await verifyCalendar(owner, noTypes.calendarId, { now: NOW })).typesWithoutTimes).toEqual([]);
+  });
+
+  it("cannot activate while the client said their existing events must block times and no calendar of that kind is connected", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const owner = c.actor("owner");
+    const d = await draftCalendar(c);
+    // Without the answer nothing is required, exactly as before.
+    expect((await verifyCalendar(owner, d.calendarId, { now: NOW })).ok).toBe(true);
+    const none = await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" });
+    expect(failing(none)).toEqual(["connections"]);
+    expect(checkOf(none, "connections").detail).toMatch(/events in your Google Calendar must block times, but no host has connected one yet/);
+    expect(checkOf(none, "connections").people).toEqual([{ userId: c.people.owner.id, name: "Owner Person" }]);
+    const refused = await activateCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" });
+    expect(refused).toMatchObject({ activated: false, alreadyActive: false });
+    expect((await statusOf(d.calendarId)).status).toBe("draft");
+
+    // The wrong kind of calendar, a connection that is not reading busy times, and one that needs signing in again are not it.
+    await connectBusy(c, "owner", "microsoft");
+    await connectBusy(c, "owner", "google", { checkConflicts: false });
+    await connectBusy(c, "owner", "google", { status: "error" });
+    expect(failing(await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" }))).toEqual(["connections"]);
+    // Another workspace's connection never counts.
+    const other = await crmOrg({ timezone: "Asia/Manila" });
+    await connectBusy(other, "owner", "google");
+    expect(failing(await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" }))).toEqual(["connections"]);
+
+    // A connected, recently read Google calendar passes, and the same calendar then activates.
+    await connectBusy(c, "owner", "google");
+    const ok = await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" });
+    expect(ok.ok).toBe(true);
+    expect(checkOf(ok, "connections").detail).toMatch(/A connected Google Calendar is read for busy times/);
+    expect(await activateCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" })).toMatchObject({ activated: true });
+    // Microsoft is a different requirement: the Google connection does not satisfy it. (The Microsoft connection above does.)
+    const d2 = await draftCalendar(c);
+    expect((await verifyCalendar(owner, d2.calendarId, { now: NOW, requiredBusyProvider: "microsoft" })).ok).toBe(true);
+    const solo = await crmOrg({ timezone: "Asia/Manila" });
+    const d3 = await draftCalendar(solo);
+    await connectBusy(solo, "owner", "google");
+    expect(failing(await verifyCalendar(solo.actor("owner"), d3.calendarId, { now: NOW, requiredBusyProvider: "microsoft" }))).toEqual(["connections"]);
+  });
+
+  it("reports a busy-time connection that has not been read for three poll intervals as stale", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const owner = c.actor("owner");
+    const d = await draftCalendar(c);
+    // The default poll is 10 minutes, so anything older than 30 minutes is stale.
+    await connectBusy(c, "owner", "google", { lastSuccessAt: minutesAgo(31) });
+    const stale = await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" });
+    expect(failing(stale)).toEqual(["connections"]);
+    expect(checkOf(stale, "connections").detail).toMatch(/hasn't been read for busy times since 2026-10-18/);
+    expect(checkOf(stale, "connections").people).toEqual([{ userId: c.people.owner.id, name: "Owner Person" }]);
+    // Not asked for, not judged: the same connection is fine when busy times were not required.
+    expect((await verifyCalendar(owner, d.calendarId, { now: NOW })).ok).toBe(true);
+    // A read inside the bound makes it fresh again, and one fresh connection is enough.
+    await connectBusy(c, "owner", "google", { lastSuccessAt: minutesAgo(29) });
+    expect((await verifyCalendar(owner, d.calendarId, { now: NOW, requiredBusyProvider: "google" })).ok).toBe(true);
   });
 });
 

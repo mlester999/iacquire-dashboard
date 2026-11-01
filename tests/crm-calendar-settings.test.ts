@@ -120,6 +120,8 @@ describe("publishing a booking page", () => {
     await expect(updateCalendar(owner, cal.id, { public: true })).rejects.toThrow(/hidden from the booking page/);
     await setAppointmentTypePublic(owner, t.id, true);
     await expect(setCalendarPublic(c.actor("sales"), cal.id, true)).rejects.toThrow(/role/);
+    // A page can't go public while its host has no weekly hours, so the host gets hours first.
+    await setHostAvailability(owner, c.people.sales.id, { timezone: "Asia/Manila", rules: WEEKDAYS_9_TO_5 });
     await setCalendarPublic(owner, cal.id, true);
     expect((await listCalendars(owner)).find((x) => x.id === cal.id)?.public).toBe(true);
     // Turning it on again is a no-op; off always works.
@@ -141,7 +143,8 @@ describe("publishing a booking page", () => {
     const single = await calendarWithType(c, { hosts: ["sales"], hours: false });
     let pages = (await listBookingPages(owner)).pages;
     expect(pages.find((p) => p.calendarId === single.calendarId)).toMatchObject({ live: false, blockers: [{ code: "calendar_private" }, { code: "no_hours", people: [{ userId: c.people.sales.id }] }] });
-    await setCalendarPublic(owner, single.calendarId, true);
+    // Publishing now needs hours, so the page is made public directly to reach the "no hours" state above and then below.
+    await withSystem((db) => db.query("update crm_calendars set public = true where id = $1", [single.calendarId]));
     await setHostAvailability(owner, c.people.sales.id, { timezone: "Asia/Manila", rules: WEEKDAYS_9_TO_5 });
     pages = (await listBookingPages(owner)).pages;
     const page = pages.find((p) => p.calendarId === single.calendarId)!;
@@ -160,10 +163,10 @@ describe("publishing a booking page", () => {
     // Round robin needs one host with hours; collective needs all of them.
     const rr = await calendarWithType(c, { hosts: ["owner", "setter"], assignment: "round_robin", hours: false });
     await setHostAvailability(owner, c.people.owner.id, { timezone: "Asia/Manila", rules: WEEKDAYS_9_TO_5 });
-    await setCalendarPublic(owner, rr.calendarId, true);
+    await withSystem((db) => db.query("update crm_calendars set public = true where id = $1", [rr.calendarId]));
     expect((await listBookingPages(owner)).pages.find((p) => p.calendarId === rr.calendarId)).toMatchObject({ live: true });
     const team = await calendarWithType(c, { hosts: ["owner", "setter"], assignment: "collective", hours: false });
-    await setCalendarPublic(owner, team.calendarId, true);
+    await withSystem((db) => db.query("update crm_calendars set public = true where id = $1", [team.calendarId]));
     expect((await listBookingPages(owner)).pages.find((p) => p.calendarId === team.calendarId)).toMatchObject({ live: false, blockers: [{ code: "no_hours", people: [{ userId: c.people.setter.id }] }] });
     // Everyone who can see the calendar can see the list.
     expect((await listBookingPages(c.actor("viewer"))).pages.length).toBe(pages.length + 2);

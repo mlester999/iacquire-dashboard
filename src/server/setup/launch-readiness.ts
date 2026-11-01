@@ -34,8 +34,16 @@ async function answersOf(db: Queryable, orgId: string): Promise<Answers> {
   return confirmedAnswers(toStored(await loadAnswerRows(db, orgId)));
 }
 
-function provisioningOf(status: string | null): ProvisioningFact {
-  return status === "requested" || status === "in_progress" || status === "awaiting_health_check" || status === "succeeded" || status === "failed" || status === "cancelled" ? status : "none";
+/** The attempts a job gets before a person decides (the worker's claim stops at the same number). */
+const MAX_PROVISIONING_ATTEMPTS = 3;
+
+/**
+ * A failed attempt is "failed" for a person only when no retry is coming: all attempts used, or no retry time. A transient failure (the model provider or the network was
+ * unavailable) is given its attempt back and retried by itself, for up to a day, so showing it as failed would tell a client to expect manual work that is not needed.
+ */
+function provisioningOf(status: string | null, attempts: number | null, nextRetryAt: Date | string | null): ProvisioningFact {
+  if (status === "failed") return nextRetryAt !== null && (attempts ?? MAX_PROVISIONING_ATTEMPTS) < MAX_PROVISIONING_ATTEMPTS ? "retrying" : "failed";
+  return status === "requested" || status === "in_progress" || status === "awaiting_health_check" || status === "succeeded" || status === "cancelled" ? status : "none";
 }
 
 /**
@@ -110,7 +118,7 @@ async function verificationFacts(db: Queryable, orgId: string): Promise<Verifica
   });
 }
 
-function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { status: string | null; detail: string | null }>, held: Set<AgentRoleKey>, paymentCleared: boolean | null): EmployeeFact[] {
+function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null }>, held: Set<AgentRoleKey>, paymentCleared: boolean | null): EmployeeFact[] {
   const out: EmployeeFact[] = [];
   for (const role of AGENT_ROLE_KEYS) {
     const agent = agents.find((a) => a.role_key === role);
@@ -130,7 +138,7 @@ function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { sta
       role,
       // The plan decides which employees are switched on for this workspace; the rest are registered but not started.
       entitled: agent.enabled,
-      provisioning: provisioningOf(job?.status ?? null),
+      provisioning: provisioningOf(job?.status ?? null, job?.attempts ?? null, job?.nextRetryAt ?? null),
       provisioningDetail: job?.detail ?? null,
       readiness: { state: readiness.state, chatAvailable: readiness.chatAvailable, workReady: readiness.workReady, description: readiness.description, blocking: readiness.blocking.map((b) => b.label) },
       heldForReview: held.has(role),
@@ -173,13 +181,13 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
       ? Number((await db.query<{ n: string }>("select count(*) as n from crm_calendar_connections where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0
       : Number((await db.query<{ n: string }>("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0;
     const channelRows = (await db.query<{ channel: ChannelFact["channel"]; enabled: boolean; registration_status: string }>("select channel, enabled, registration_status from messaging_channels where org_id = $1", [orgId])).rows;
-    const jobs = new Map<AgentRoleKey, { status: string | null; detail: string | null }>();
-    for (const r of (await db.query<{ role: AgentRoleKey; status: string | null; detail: string | null }>(
-      `select distinct on (a.role_key) a.role_key as role, j.status, j.detail
+    const jobs = new Map<AgentRoleKey, { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null }>();
+    for (const r of (await db.query<{ role: AgentRoleKey; status: string | null; detail: string | null; attempt_count: number | null; next_retry_at: Date | string | null }>(
+      `select distinct on (a.role_key) a.role_key as role, j.status, j.detail, j.attempt_count, j.next_retry_at
          from agent_instances a left join agent_provisioning_jobs j on j.agent_instance_id = a.id and j.org_id = a.org_id
         where a.org_id = $1 order by a.role_key, j.created_at desc nulls last`,
       [orgId],
-    )).rows) jobs.set(r.role, { status: r.status, detail: r.detail });
+    )).rows) jobs.set(r.role, { status: r.status, detail: r.detail, attempts: r.attempt_count, nextRetryAt: r.next_retry_at });
     const held = new Set<AgentRoleKey>((await db.query<{ role: AgentRoleKey }>(
       `select distinct a.role_key as role from agent_instances a join agent_config_versions v on v.agent_instance_id = a.id and v.org_id = a.org_id
         where a.org_id = $1 and v.status = 'pending_agency_review'`,

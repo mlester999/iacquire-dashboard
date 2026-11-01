@@ -96,8 +96,12 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Choose a date.
 // Calendars
 // ---------------------------------------------------------------------------
 
-export async function createCalendarAction(orgId: string | null, input: z.input<typeof calendarInput>) {
-  return act(orgId, "calendars.manage", (actor) => createCalendar(actor, calendarInput.parse(input)));
+// A new calendar always starts private: the booking page goes live only through setCalendarPublic (or updateCalendar), which run every activation check. The flag is dropped
+// from the input here, so a caller cannot publish a page with a type that has no way to join, hours in no real zone or no open time.
+const newCalendarInput = calendarInput.omit({ public: true });
+
+export async function createCalendarAction(orgId: string | null, input: Omit<z.input<typeof calendarInput>, "public">) {
+  return act(orgId, "calendars.manage", (actor) => createCalendar(actor, newCalendarInput.parse(input)));
 }
 
 export async function updateCalendarAction(orgId: string | null, id: string, input: Partial<z.input<typeof calendarInput>>) {

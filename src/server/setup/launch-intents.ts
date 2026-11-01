@@ -45,9 +45,16 @@ export async function runLaunchIntent(ctx: OrgContext, intent: LaunchIntent): Pr
     case "apply_hours": {
       const cal = await calendarOrThrow(ctx.org.orgId);
       const res = await applyCalendarHoursTemplate(memberActor(ctx), cal.id);
-      return res.applied.length
-        ? { ok: true, message: `Weekly hours saved for ${res.applied.length === 1 ? "your host" : `${res.applied.length} hosts`}. Change them any time in Availability.` }
-        : { ok: true, message: "Every host already has weekly hours, so nothing was changed." };
+      // A host who already works in another time zone is given nothing (the suggested hours would be read in the wrong zone), and this button cannot choose a zone for them. Say
+      // so, instead of saying every host already has hours.
+      const n = res.needsZoneChoice.length;
+      const zoneNote = n
+        ? `${n === 1 ? "One host already works" : `${n} hosts already work`} in a different time zone than the suggested hours, so their hours were not changed. Open Availability and set their weekly hours in their own time zone.`
+        : "";
+      if (res.applied.length) {
+        return { ok: true, message: `Weekly hours saved for ${res.applied.length === 1 ? "your host" : `${res.applied.length} hosts`}. Change them any time in Availability.${zoneNote ? ` ${zoneNote}` : ""}` };
+      }
+      return n ? { ok: false, message: zoneNote } : { ok: true, message: "Every host already has weekly hours, so nothing was changed." };
     }
     case "activate_calendar": {
       const cal = await calendarOrThrow(ctx.org.orgId);

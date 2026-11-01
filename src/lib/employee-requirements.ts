@@ -31,11 +31,11 @@ export interface WorkspaceFacts {
   knowledgeApproved: boolean;
   /** How many of the knowledge sections are supplied, when it was read. Absent where only the minimum flag is known. */
   knowledge?: KnowledgeSummary;
-  /** An active calendar with a host that can take bookings, or a connected calendar. */
+  /** An active, non-archived calendar with at least one active host who has weekly hours. A connected calendar, a draft or a host with no hours does not count (a native workspace). */
   calendarReady: boolean;
   /** A native CRM workspace is available or its external provider connection is verified. Record count is not part of readiness. */
   crmReady: boolean;
-  /** At least one active sales pipeline with a stage. */
+  /** At least one active sales pipeline with an open stage (archived stages do not count). */
   pipelineReady: boolean;
   /** The workspace has saved who the Lead Hunter should look for. */
   leadTargetingSet: boolean;
@@ -74,8 +74,8 @@ const KNOWLEDGE: Omit<RequirementDef, "blocking"> = {
 };
 const CALENDAR: Omit<RequirementDef, "blocking"> = {
   key: "calendar", label: "A calendar that takes bookings", fact: "calendarReady",
-  met: "A calendar with a host is ready to take bookings.",
-  missing: "No active calendar with a host (or connected calendar) exists, so no appointment can be offered or booked.",
+  met: "An active calendar with a host who has weekly hours is ready to take bookings.",
+  missing: "No active calendar with a host who has weekly hours exists (a draft calendar or a connection alone does not count), so no appointment can be offered or booked.",
   fixHref: "/crm/calendar",
 };
 const CRM: Omit<RequirementDef, "blocking"> = {
@@ -86,8 +86,8 @@ const CRM: Omit<RequirementDef, "blocking"> = {
 };
 const PIPELINE: Omit<RequirementDef, "blocking"> = {
   key: "pipeline", label: "A sales pipeline", fact: "pipelineReady",
-  met: "A sales pipeline with stages exists.",
-  missing: "No active sales pipeline exists, so there are no opportunities to review.",
+  met: "A sales pipeline with open stages exists.",
+  missing: "No active sales pipeline with an open stage exists, so there are no opportunities to review.",
   fixHref: "/crm/pipelines",
 };
 const TARGETING: Omit<RequirementDef, "blocking"> = {

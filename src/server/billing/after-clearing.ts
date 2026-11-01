@@ -2,6 +2,7 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import { notifyOrgRoles } from "@/server/notifications";
 import { requestProvisioning } from "@/server/workforce/provisioning";
+import { scheduleClientCrmSetup } from "@/server/onboarding/crm-provisioning";
 
 /**
  * What follows any event that cleared the setup fee (a provider's signed webhook, a payment a Super Admin recorded, a waiver): the AI employees' provisioning requests
@@ -18,5 +19,8 @@ export async function afterSetupCleared(db: Queryable, orgId: string, o: { actor
     link: "/employees",
     dedupeKey: `setup-cleared:${o.eventKey}`,
   });
+  // The industry CRM waits for the same two things the employees do (questionnaire submitted, fee cleared); whichever of the two arrives second starts it. It runs only after this
+  // transaction has committed, never inside it, and does nothing at all while the switch is off.
+  scheduleClientCrmSetup(orgId, "setup fee cleared");
   return { provisioningRequested };
 }

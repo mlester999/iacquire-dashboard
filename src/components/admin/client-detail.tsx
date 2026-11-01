@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, Lock, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, Lock, MessagesSquare, PlayCircle, RefreshCw, RotateCcw, ShieldAlert, XCircle, Stethoscope, UserPlus } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
@@ -20,6 +20,7 @@ import {
   healthCheckAction,
   inviteClientUserAction,
   provisioningBundleAction,
+  requeueProvisioningAction,
   revokeInvitationAction,
   setAgentEnabledAction,
   setGhlMappingAction,
@@ -33,7 +34,7 @@ import {
 import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
 import { setupStatusCopy } from "@/lib/billing-clearance";
 import type { AgencyPaymentView } from "@/server/billing/payments-view";
-import type { TenantDetail } from "@/server/admin/queries";
+import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
 import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
@@ -220,6 +221,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const { run, pending } = useAction();
   const [connectFor, setConnectFor] = React.useState<Detail["agents"][number] | null>(null);
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
+  const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
   return (
     <div className="space-y-6">
       <Card className="border-primary/20 bg-primary-soft/30">
@@ -337,6 +339,23 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                     </Button>
                   )}
                   {j.status === "failed" && j.attempt_count < 3 && j.next_retry_at && new Date(j.next_retry_at) > new Date() && <span className="text-[12px] text-muted">Retry {relativeTime(j.next_retry_at)}</span>}
+                  {j.is_latest && provisioningJobEnded(j) && (
+                    <Button size="sm" variant="secondary" onClick={() => setRequeueFor(j)}>
+                      <RotateCcw className="size-3.5" /> Requeue with a reason
+                    </Button>
+                  )}
+                  {j.is_latest && provisioningJobCancellable(j) && (
+                    <Button size="sm" variant="ghost" loading={pending === `cancel-${j.id}`} onClick={() => run(`cancel-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "cancelled"), "Request cancelled")}>
+                      <XCircle className="size-3.5" /> Cancel request
+                    </Button>
+                  )}
+                  {j.history.length > 0 && (
+                    <ul className="basis-full space-y-0.5 pl-1 text-[12px] text-muted" aria-label="Recent attempts">
+                      {j.history.map((e, i) => (
+                        <li key={i}>{provisioningEventLabel(e)} <span className="text-faint">· {relativeTime(e.at)}</span></li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
@@ -346,6 +365,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
 
       <ConnectDialog key={connectFor?.id ?? "none"} agent={connectFor} onClose={() => setConnectFor(null)} />
       <BundleDialog bundle={bundle} onClose={() => setBundle(null)} />
+      <RequeueDialog key={requeueFor?.id ?? "none"} orgId={data.org.id} job={requeueFor} onClose={() => setRequeueFor(null)} />
     </div>
   );
 }
@@ -423,6 +443,62 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
       </div>
       <pre className="scrollbar-thin max-h-64 overflow-auto rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed">{value}</pre>
     </div>
+  );
+}
+
+/** A request that has ended without a result and will not start again by itself: failed for good, cancelled, or its last attempt ran out of time. */
+function provisioningJobEnded(j: Detail["provisioning"][number]) {
+  if (j.status === "cancelled") return true;
+  if (j.status === "failed") return j.attempt_count >= 3 || !j.next_retry_at;
+  return j.status === "in_progress" && j.attempt_count >= 3 && Boolean(j.lease_expires_at) && new Date(j.lease_expires_at as Date) <= new Date();
+}
+
+/** Open or waiting requests can be stopped; a stopped one can be requeued with a reason. */
+function provisioningJobCancellable(j: Detail["provisioning"][number]) {
+  return j.status === "requested" || j.status === "awaiting_health_check" || (j.status === "failed" && !provisioningJobEnded(j));
+}
+
+function provisioningEventLabel(e: ProvisioningEvent) {
+  switch (e.action) {
+    case "agent.profile_provisioning_started": return `Attempt ${e.attempt ?? "?"} started`;
+    case "agent.profile_provisioning_failed": return `Attempt ${e.attempt ?? "?"} failed${e.code ? `: ${e.code}` : ""}`;
+    case "agent.profile_provisioned": return "Host profile created and verified";
+    case "agent.profile_configuration_synchronized": return "Configuration synchronized on the host";
+    case "agent.provisioning_requeued": return "Requeued by iAcquire";
+    default: return sentenceCase(e.action.replace(/^agent\./, "").replace(/_/g, " "));
+  }
+}
+
+function RequeueDialog({ orgId, job, onClose }: { orgId: string; job: Detail["provisioning"][number] | null; onClose: () => void }) {
+  const { run, pending } = useAction();
+  const [reason, setReason] = React.useState("");
+  return (
+    <Dialog
+      open={Boolean(job)}
+      onOpenChange={(o) => !o && onClose()}
+      title={job ? `Requeue ${AGENT_BY_KEY[job.agent_role].shortName}'s setup?` : "Requeue setup"}
+      description="This opens one new request for the same employee. It is refused while another request is open or the setup payment is not confirmed. The client's owner is told once."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={reason.trim().length < 5}
+            loading={pending === "requeue"}
+            onClick={async () => {
+              if (!job) return;
+              const ok = await run("requeue", () => requeueProvisioningAction(orgId, job.agent_id, reason), "Setup requeued");
+              if (ok) onClose();
+            }}
+          >
+            Requeue
+          </Button>
+        </>
+      }
+    >
+      <Field label="Reason (kept in the audit log, not shown to the client)" htmlFor="requeue-reason">
+        <Textarea id="requeue-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+      </Field>
+    </Dialog>
   );
 }
 

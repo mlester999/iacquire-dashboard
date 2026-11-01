@@ -16,6 +16,16 @@ import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
 import { loadCapabilityActivity } from "@/server/workforce/capability-status";
 import type { CapabilityActivity } from "@/lib/employee-capability-status";
 
+/** One recorded step of a provisioning request, read from its audit rows. */
+export interface ProvisioningEvent {
+  action: string;
+  result: string;
+  attempt: number | null;
+  /** The normalised failure code of a failed attempt; never raw worker text. */
+  code: string | null;
+  at: Date;
+}
+
 export interface TenantDetail {
   access: {
     team: boolean;
@@ -83,7 +93,14 @@ export interface TenantDetail {
    * trusted server access, so row-level security cannot answer for them; this is the same question asked directly (see docs/staff-access-privacy.md).
    */
   contentAccess: { sessionRequired: boolean; hasSession: boolean; permitted: boolean; heldKnowledgeHidden: number; runDetailsHidden: number };
-  provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; config_version: number | null; status: string; detail: string | null; created_at: Date; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null }>;
+  provisioning: Array<{
+    id: string; agent_id: string; agent_role: AgentRoleKey; kind: string; config_version: number | null; status: string; detail: string | null; created_at: Date; attempt_count: number;
+    next_retry_at: Date | null; lease_expires_at: Date | null;
+    /** True for the newest request of its employee: the only one that can be requeued. */
+    is_latest: boolean;
+    /** The last five recorded events of this request (an attempt starting, a failure with its code, a completion, a requeue), newest first. Identifiers and codes only. */
+    history: ProvisioningEvent[];
+  }>;
   ghl: { location_id: string; location_name: string | null; pipeline_id: string | null; calendar_ids: string[]; status: string; verified_at: Date | null; has_credential: boolean } | null;
   integrations: Array<{ provider: string; status: string; detail: string | null; last_checked_at: Date | null }>;
   billing: {
@@ -175,13 +192,35 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
           access.workforceManage ? item : { ...item, compiledInstructions: null, compiledInstructionsTruncated: false },
         )
       : [];
-    const provisioning = await db.query<TenantDetail["provisioning"][number]>(
-      `select j.id, a.role_key as agent_role, j.kind, v.version as config_version, j.status, j.detail, j.created_at, j.attempt_count, j.next_retry_at, j.lease_expires_at
+    const provisioningRows = await db.query<Omit<TenantDetail["provisioning"][number], "history">>(
+      `select j.id, j.agent_instance_id as agent_id, a.role_key as agent_role, j.kind, v.version as config_version, j.status, j.detail, j.created_at, j.attempt_count, j.next_retry_at, j.lease_expires_at,
+              j.id = (select l.id from agent_provisioning_jobs l where l.agent_instance_id = j.agent_instance_id and l.org_id = j.org_id order by l.created_at desc, l.id desc limit 1) as is_latest
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
        left join agent_config_versions v on v.id=j.config_version_id
        where j.org_id = $1 order by j.created_at desc limit 30`,
       [orgId],
     );
+    // The last five audit rows of each listed request, for this workspace only.
+    const provisioningEvents = provisioningRows.rows.length
+      ? await db.query<{ job_id: string } & ProvisioningEvent>(
+          `select e.job_id, e.action, e.result, e.attempt, e.code, e.at from (
+             select l.target_id as job_id, l.action, l.result, l.created_at as at,
+                    case when l.metadata->>'attempt' ~ '^[0-9]{1,2}$' then (l.metadata->>'attempt')::int end as attempt,
+                    l.metadata->>'code' as code,
+                    row_number() over (partition by l.target_id order by l.created_at desc, l.id desc) as rn
+             from audit_logs l
+             where l.org_id = $1 and l.target_type = 'agent_provisioning_job' and l.target_id = any($2::text[])
+               and l.action in ('agent.profile_provisioning_started','agent.profile_provisioning_failed','agent.profile_provisioned','agent.profile_configuration_synchronized','agent.provisioning_requeued')
+           ) e where e.rn <= 5 order by e.at desc`,
+          [orgId, provisioningRows.rows.map((r) => r.id)],
+        )
+      : { rows: [] as Array<{ job_id: string } & ProvisioningEvent> };
+    const provisioning = {
+      rows: provisioningRows.rows.map((job) => ({
+        ...job,
+        history: provisioningEvents.rows.filter((e) => e.job_id === job.id).map(({ job_id: _jobId, ...event }) => event),
+      })),
+    };
     const ghl = await db.query<NonNullable<TenantDetail["ghl"]>>(
       `select g.location_id, g.location_name, g.pipeline_id, g.calendar_ids, g.status, g.verified_at,
               (g.credential_id is not null and c.revoked_at is null) as has_credential

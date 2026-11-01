@@ -594,9 +594,18 @@ async function activateVersion(db: Queryable, orgId: string, agentId: string, ve
     "and exists (select 1 from agent_instances a where a.id=j.agent_instance_id and a.org_id=j.org_id and a.hermes_profile_config_version_id is not null)",
     [orgId, agentId],
   );
-  await db.query(
-    "insert into agent_provisioning_jobs (org_id,agent_instance_id,kind,config_version_id,source_job_id) " +
-    "select a.org_id,a.id,'sync',$3,p.id from agent_instances a " +
+  await queueSyncJob(db, orgId, agentId, versionId);
+}
+
+/**
+ * Queues the one synchronization job that brings an already provisioned client profile to the given applied version. Only an enabled client employee whose profile the
+ * restricted worker created, on a verified client-only gateway, is eligible, and the one-open-job index keeps it to one. Returns the new job's id, or null when nothing was queued
+ * (not eligible, or a job is already open). `requestedBy` is the agency person who asked for it, when a person did.
+ */
+export async function queueSyncJob(db: Queryable, orgId: string, agentId: string, versionId: string, requestedBy: string | null = null): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
+    "insert into agent_provisioning_jobs (org_id,agent_instance_id,kind,config_version_id,source_job_id,requested_by) " +
+    "select a.org_id,a.id,'sync',$3,p.id,$4 from agent_instances a " +
     "join organizations o on o.id=a.org_id " +
     "join hermes_gateways g on g.id=a.hermes_gateway_id " +
     "join lateral (select j.id from agent_provisioning_jobs j where j.agent_instance_id=a.id and j.org_id=a.org_id " +
@@ -605,9 +614,10 @@ async function activateVersion(db: Queryable, orgId: string, agentId: string, ve
     "and a.hermes_profile_config_version_id is not null and g.status='connected' " +
     "and g.profile_creation_status='restricted_service_verified' and g.provisioner_isolation_verified_at is not null " +
     "and not exists (select 1 from agent_instances ai join organizations oi on oi.id=ai.org_id where ai.hermes_gateway_id=g.id and oi.kind='agency') " +
-    "on conflict do nothing",
-    [orgId, agentId, versionId],
+    "on conflict do nothing returning id",
+    [orgId, agentId, versionId, requestedBy],
   );
+  return rows[0]?.id ?? null;
 }
 
 /** Applies a draft version after its approval was granted. */
@@ -992,23 +1002,29 @@ export async function connectHermesProfile(input: {
     if (dupe.length) throw new AppError("conflict", "That Hermes profile already backs another employee. Each employee needs its own profile.");
     const {rows:old}=await db.query<{credential_id:string|null}>("select credential_id from agent_instances where id=$1",[input.agentId]);
     const cred = await saveCredential(db,{orgId:agent.org_id,provider:"hermes",label:`Hermes profile ${profile}`,secret:apiKey,actorId:input.agencyUserId,replaces:old[0]?.credential_id});
+    // The agency attests that the runbook it applied carried the configuration that is approved right now. A client employee records that version, so a later approved edit reads
+    // "synchronization pending" instead of staying Ready on a SOUL that predates it; connecting again after re-running the runbook records the newer version. An internal
+    // profile is not tracked this way.
+    const trackVersion = agent.kind === "client";
     const inventorySchema = await toolInventorySchemaReady(db);
     if (inventorySchema) {
       await db.query(
         `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
            status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check',
+           hermes_profile_config_version_id = case when $6::boolean then active_config_version_id else hermes_profile_config_version_id end,
            tool_inventory_contract = null, tool_inventory_digest = null, tool_inventory_verified_at = null,
            tool_inventory_expires_at = null, tool_inventory_tool_count = null,
            tool_inventory_snapshot = '{}'::jsonb, tool_inventory_detail = null
          where id = $1`,
-        [input.agentId, baseUrl, profile, cred.id, gatewayId],
+        [input.agentId, baseUrl, profile, cred.id, gatewayId, trackVersion],
       );
     } else {
       await db.query(
         `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
-           status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check'
+           status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check',
+           hermes_profile_config_version_id = case when $6::boolean then active_config_version_id else hermes_profile_config_version_id end
          where id = $1`,
-        [input.agentId, baseUrl, profile, cred.id, gatewayId],
+        [input.agentId, baseUrl, profile, cred.id, gatewayId, trackVersion],
       );
     }
     await db.query(

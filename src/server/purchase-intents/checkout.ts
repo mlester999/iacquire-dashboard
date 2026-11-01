@@ -10,7 +10,7 @@ import { consumeRateLimit, consumeRateLimitInTx, RATE_LIMITS } from "@/server/se
 import { createCheckoutSession, type FetchLike } from "@/server/billing/paymongo";
 import { newPaymentReference } from "@/server/billing/payments";
 import type { NormalizedPaymentEvent } from "@/server/billing/providers/types";
-import type { SessionUser } from "@/server/auth/service";
+import { authorizerOf } from "@/server/admin/authorizer";
 import {
   canStartCheckout, CHECKOUT_CREATING_GRACE_MINUTES, CHECKOUT_STALE_HOURS, checkoutReturnText, type CheckoutStatus, type PurchaseStatus,
 } from "@/lib/purchase-intents/rules";
@@ -357,14 +357,6 @@ export async function applyCheckoutFailed(db: Queryable, event: NormalizedPaymen
 // ---------------------------------------------------------------------------
 // Provisioning by the system, under the authority of the person who allowed it
 // ---------------------------------------------------------------------------
-
-async function authorizerOf(db: Queryable, userId: string): Promise<SessionUser | null> {
-  const u = (await db.query<{ id: string; email: string; full_name: string | null; platform_role: SessionUser["platformRole"]; timezone: string | null; preferences: Record<string, unknown> | null; verified: boolean }>(
-    "select id, email, full_name, platform_role, timezone, preferences, email_verified_at is not null as verified from users where id = $1 and status = 'active'", [userId],
-  )).rows[0];
-  if (!u || u.platform_role === "none") return null;
-  return { sessionId: "purchase-intent-automation", id: u.id, email: u.email, fullName: u.full_name ?? "", platformRole: u.platform_role, timezone: u.timezone ?? "UTC", preferences: u.preferences ?? {}, emailVerified: u.verified };
-}
 
 export type AutoProvisionOutcome = "provisioned" | "waiting_for_a_person" | "not_automatic" | "already_done" | "failed";
 

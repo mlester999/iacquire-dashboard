@@ -11,10 +11,10 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
-import { suggestedProfileName } from "@/server/workforce/service";
+import { queueSyncJob, suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
 import { roleToolEnforcement, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
 import { env } from "@/server/env";
@@ -205,6 +205,12 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
 }
 
 /**
+ * The one definition of "the setup payment is cleared" that provisioning code outside this file uses (the restricted worker's claim asks it again at claim time, because a refund
+ * can land between a request and the claim). It reads `o` as the workspace's organizations row.
+ */
+export const PROVISIONING_PAYMENT_CLEARED_SQL = "app.setup_payment_cleared(o.id)";
+
+/**
  * Opens provisioning requests for enabled employees that don't have a dedicated profile yet. Provisioning is the step that costs iAcquire money, so it also needs the
  * setup payment confirmed (paid or waived: app.setup_payment_cleared); the questionnaire and everything else in the workspace do not. Called again after any event that
  * clears the payment (src/server/billing/after-clearing.ts), so a client who finished onboarding first is provisioned the moment the payment is confirmed.
@@ -279,7 +285,8 @@ export async function updateProvisioningJob(agencyUserId: string, orgId: string,
     );
     const job = rows[0];
     if (!job) throw new AppError("not_found", "Provisioning request not found in this workspace.");
-    if (job.kind === "sync") throw new AppError("conflict", "Configuration synchronization is managed by the restricted Hermes worker.");
+    // A synchronization is run by the restricted worker, so an agency person can only stop one (and then requeue it), never drive it by hand.
+    if (job.kind === "sync" && status !== "cancelled") throw new AppError("conflict", "Configuration synchronization is managed by the restricted Hermes worker.");
     if (status === "in_progress") {
       if (job.attempt_count >= 3) throw new AppError("conflict", "Retry limit reached. Review the failure before a new deliberate request.");
       if (job.status === "in_progress" && job.lease_expires_at && job.lease_expires_at > new Date()) throw new AppError("conflict", "This provisioning attempt is already in progress.");
@@ -311,4 +318,108 @@ export async function updateProvisioningJob(agencyUserId: string, orgId: string,
       action: "agent.provisioning_status_changed", targetType: "agent_provisioning_job", targetId: jobId, result: "success",
       metadata: { status, attempt: status === "in_progress" ? job.attempt_count + 1 : job.attempt_count } }, db);
   });
+}
+
+const TERMINAL_RETRY_ATTEMPTS = 3;
+
+/**
+ * The agency's way out of a provisioning job that ended without a profile (or without a synchronized one): failed at the third attempt, cancelled, or worn out (its last lease
+ * ran out at the third attempt). It opens exactly one new job: a `provision` job for an employee that has no profile yet, or a `sync` job for the current approved version for one
+ * the restricted worker already created. It never touches a job that is still open or will still retry by itself, and it needs the workspace to be paid for and in good standing,
+ * the same as the first request. The reason goes to the audit log only: the job's own detail is shown to the client.
+ */
+export async function requeueProvisioningJob(agencyUserId: string, orgId: string, agentId: string, reason: string) {
+  const why = typeof reason === "string" ? reason.trim() : "";
+  if (why.length < 5) throw new AppError("invalid_input", "Say why this setup is being requeued (at least 5 characters).");
+  if (why.length > 500) throw new AppError("invalid_input", "Keep the reason under 500 characters.");
+  return withSystem(async (db) => {
+    const { rows: permission } = await db.query<{ allowed: boolean }>(
+      "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
+      [agencyUserId, orgId],
+    );
+    if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
+    const { rows: agents } = await db.query<{
+      role_key: AgentRoleKey; enabled: boolean; hermes_profile: string | null; active_config_version_id: string | null;
+      org_kind: string; org_status: string; is_demo: boolean; onboarded: boolean; paid: boolean;
+    }>(
+      "select a.role_key,a.enabled,a.hermes_profile,a.active_config_version_id,o.kind as org_kind,o.status as org_status,o.is_demo," +
+      "o.onboarding_completed_at is not null as onboarded," + PROVISIONING_PAYMENT_CLEARED_SQL + " as paid " +
+      "from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2 for update of a",
+      [agentId, orgId],
+    );
+    const agent = agents[0];
+    if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found in this workspace.");
+    if (agent.org_kind !== "client" || agent.is_demo || agent.org_status !== "active") throw new AppError("conflict", "Only an active client workspace can have its setup requeued.");
+    if (!agent.enabled) throw new AppError("conflict", "This employee is not included in the workspace, so there is nothing to set up.");
+    if (!agent.paid) throw new AppError("conflict", "The workspace's setup payment is not confirmed, so setup cannot be requeued yet.");
+    if (!agent.active_config_version_id) throw new AppError("conflict", "This employee has no approved configuration yet. Approve one before requeuing its setup.");
+
+    const { rows: jobs } = await db.query<{ id: string; kind: string; status: string; attempt_count: number; next_retry_at: Date | null; lease_expired: boolean }>(
+      "select id,kind,status,attempt_count,next_retry_at,(lease_expires_at is not null and lease_expires_at<=now()) as lease_expired " +
+      "from agent_provisioning_jobs where agent_instance_id=$1 and org_id=$2 order by created_at desc,id desc limit 1 for update",
+      [agentId, orgId],
+    );
+    const previous = jobs[0];
+    if (!previous) throw new AppError("conflict", "This employee has no earlier setup request. Use the normal request instead.");
+    const worn = previous.status === "in_progress" && previous.lease_expired && previous.attempt_count >= TERMINAL_RETRY_ATTEMPTS;
+    if (previous.status === "succeeded") throw new AppError("conflict", "The last setup request already completed.");
+    if (["requested", "awaiting_health_check"].includes(previous.status) || (previous.status === "in_progress" && !worn)) {
+      throw new AppError("conflict", "A setup request is already open for this employee.");
+    }
+    if (previous.status === "failed" && previous.attempt_count < TERMINAL_RETRY_ATTEMPTS && previous.next_retry_at) {
+      throw new AppError("conflict", "This request will retry by itself at its recorded retry time.");
+    }
+    if (worn) {
+      // The worker stopped answering on its last attempt; close the stuck attempt so the one-open-job rule lets the new request in.
+      await db.query(
+        "update agent_provisioning_jobs set status='failed',lease_token=null,lease_expires_at=null,next_retry_at=null,handled_by=$3," +
+        "detail='Restricted Hermes profile setup failed (lease_expired). Review the isolated host result before retrying.' where id=$1 and org_id=$2",
+        [previous.id, orgId, agencyUserId],
+      );
+      await recordAudit({ orgId, actorKind: "system", agentInstanceId: agentId, action: "agent.profile_provisioning_failed", targetType: "agent_provisioning_job", targetId: previous.id, result: "failure",
+        metadata: { code: "lease_expired", attempt: previous.attempt_count } }, db);
+    }
+
+    let jobId: string | null;
+    let kind: "provision" | "sync";
+    if (!agent.hermes_profile) {
+      if (!agent.onboarded) throw new AppError("conflict", "The client has not finished onboarding.");
+      kind = "provision";
+      const { rows } = await db.query<{ id: string }>(
+        "insert into agent_provisioning_jobs (org_id,agent_instance_id,kind,requested_by) values ($1,$2,'provision',$3) on conflict do nothing returning id",
+        [orgId, agentId, agencyUserId],
+      );
+      jobId = rows[0]?.id ?? null;
+    } else {
+      kind = "sync";
+      jobId = await queueSyncJob(db, orgId, agentId, agent.active_config_version_id, agencyUserId);
+      if (!jobId && !(await hasOpenJob(db, agentId, orgId))) {
+        throw new AppError("conflict", "A synchronization cannot be queued: this profile was not created by the restricted worker (re-run the runbook for a manual profile), or its gateway is not verified.");
+      }
+    }
+    if (!jobId) throw new AppError("conflict", "A setup request is already open for this employee.");
+
+    await recordAudit({
+      orgId, actorUserId: agencyUserId, actorKind: "agency", agentInstanceId: agentId, action: "agent.provisioning_requeued",
+      targetType: "agent_provisioning_job", targetId: jobId, result: "success",
+      metadata: { previousJobId: previous.id, previousKind: previous.kind, previousStatus: worn ? "failed" : previous.status, previousAttempts: previous.attempt_count, kind, reason: why },
+    }, db);
+    await notifyOrgRoles(db, orgId, ["owner"], {
+      kind: "agent_status",
+      severity: "info",
+      title: `${AGENT_BY_KEY[agent.role_key].shortName}'s setup is being retried`,
+      body: "iAcquire restarted this AI employee's setup after a problem. You do not need to do anything.",
+      link: "/employees",
+      dedupeKey: `provisioning-requeued:${jobId}`,
+    });
+    return { jobId, kind, previousJobId: previous.id };
+  });
+}
+
+async function hasOpenJob(db: Queryable, agentId: string, orgId: string) {
+  const { rows } = await db.query(
+    "select 1 from agent_provisioning_jobs where agent_instance_id=$1 and org_id=$2 and status in ('requested','in_progress','awaiting_health_check') limit 1",
+    [agentId, orgId],
+  );
+  return rows.length > 0;
 }

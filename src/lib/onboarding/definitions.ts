@@ -55,6 +55,13 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "choice", options: INDUSTRY_OPTIONS }, reviewLabel: "Industry",
   },
   {
+    id: "a.local_kind", section: "A", title: "What kind of local business is it?",
+    help: "This picks the CRM setup that fits you best: its pipeline stages, fields and message templates. Skip it if none of these fits.",
+    show: inIndustry("local_services"),
+    kind: { type: "choice", options: opts(["beauty", "Beauty, salon or spa"], ["auto", "Auto services"], ["education", "Education, tutoring or coaching"], ["food", "Restaurant, cafe or food service"], ["other", "Something else"]) },
+    reviewLabel: "Kind of local business",
+  },
+  {
     id: "a.business_model", section: "A", required: true, title: "How do you serve customers?",
     help: "Local businesses get questions about service areas. Online businesses skip them.",
     kind: { type: "choice", options: opts(["local", "In person or at their location", "Customers visit us, or we visit them"], ["online", "Online or remote", "We work with customers over phone, video or email"], ["mixed", "Both", "A mix of local and remote work"]) },

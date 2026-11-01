@@ -103,7 +103,8 @@ export interface CalendarFacts {
   bookingPageOn: boolean;
 }
 
-export type ProvisioningFact = "none" | "requested" | "in_progress" | "awaiting_health_check" | "succeeded" | "failed" | "cancelled";
+/** "retrying" is a failed attempt that still has attempts left and a retry time: it is tried again by itself, so it is not yet a failure anyone must look at. */
+export type ProvisioningFact = "none" | "requested" | "in_progress" | "awaiting_health_check" | "succeeded" | "failed" | "retrying" | "cancelled";
 
 export interface EmployeeFact {
   role: AgentRoleKey;
@@ -305,6 +306,7 @@ function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
   }
   if (e.heldForReview) return { key, label, state: "awaiting_review", required: true, owner: "iacquire", detail: "A configuration change is waiting for iAcquire's review. Nothing runs on it until it is approved." };
   if (e.provisioning === "failed") return { key, label, state: "failed", required: true, owner: "iacquire", detail: "Setting up its profile failed. iAcquire can review the recorded error and retry safely." };
+  if (e.provisioning === "retrying") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Setting up its profile hit a temporary problem and is being tried again automatically. Nothing is needed from you, and iAcquire is told if it does not recover." };
   if (e.provisioning === "requested") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its dedicated profile is queued. It is not ready until its identity and tools are verified." };
   if (e.provisioning === "in_progress") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its dedicated profile is being created. Verification has not passed yet." };
   if (e.provisioning === "awaiting_health_check") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its profile exists. Its connection and tool inventory are being verified." };

@@ -62,6 +62,7 @@ import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
 import { runHealthProbe } from "@/server/workforce/health-probe";
+import { runProvisioningWatchdog } from "@/server/workforce/provisioning-watchdog";
 import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
 import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
@@ -273,6 +274,11 @@ export const JOBS: ScheduledJob[] = [
   // The AI-employee health probe: an authenticated, read-only look (GET only, no model tokens, no run, nothing to a customer) at each connected employee's Hermes profile, so an
   // outage is seen by the platform first. Off unless WORKFORCE_HEALTH_PROBE_ENABLED=true; it spends at most its time budget per tick (src/server/workforce/health-probe.ts).
   { name: "aiHealthProbe", everyMinutes: 5, run: async () => (await runHealthProbe()).probed },
+  // The provisioning watchdog for client Hermes profiles. A job whose third attempt's lease ran out is closed as failed once, every terminal failure is announced once (agency and the client's
+  // owner), a request that has waited past HERMES_PROVISIONER_STALL_MINUTES while the worker is silent or the gateway is not verified is announced once per workspace per day, and an employee
+  // still waiting for its first health check after two minutes is checked (the read-only check an administrator's button runs; a failed check never fails the job). It contacts no customer, cancels
+  // nothing and does nothing while no client profile job exists. Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "provisioningWatchdog", everyMinutes: 5, run: async () => { const r = await runProvisioningWatchdog(); return r.settled + r.announced + r.stalled + r.checked; } },
   // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
   // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
   // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. It spends at most RECONCILE_BUDGET_MS waiting on providers (the tick is cut off at

@@ -83,10 +83,15 @@ export async function saveCredential(db: Queryable, input: { orgId: string | nul
   return { id:rows[0].id,fingerprint };
 }
 
+/** The refusal a returned key gets when another live Hermes credential already holds it. The completion path turns it into a failed job with this code. */
+export const PROFILE_KEY_REUSED = "profile_key_reused";
+
 /**
  * Stores the one-time Hermes profile key returned by the restricted host worker.
  * This path intentionally has no actor impersonation parameter: it can only save a
  * per-client Hermes API key and attributes the write to the system.
+ * A key another live Hermes credential already holds is refused before anything is stored: every employee must have its own key, so a repeat means the host handed
+ * the same profile key out twice. (The fingerprint is truncated, so the check is a guard, not a database constraint.)
  */
 export async function saveProvisionedHermesCredential(
   db: Queryable,
@@ -99,6 +104,11 @@ export async function saveProvisionedHermesCredential(
   if (!await credentialStoreReady(db)) {
     throw new AppError("integration_unavailable", "Secure credential storage is unavailable.");
   }
+  const { rows: held } = await db.query(
+    "select 1 from integration_credentials where provider='hermes' and org_id is not null and revoked_at is null and fingerprint=$1 limit 1",
+    [secretFingerprint(secret)],
+  );
+  if (held.length) throw new AppError("conflict", PROFILE_KEY_REUSED);
   let vaultId: string;
   try {
     if (testStore()) {

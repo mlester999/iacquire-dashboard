@@ -22,6 +22,7 @@ import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
 import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
+import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
@@ -189,6 +190,14 @@ describe("two clients from the questionnaire to ready to launch", () => {
     expect(failed.state).toBe("action_required");
     expect(itemOf(failed, "employees.lead_hunter")).toMatchObject({ state: "failed", owner: "iacquire" });
     for (const role of AGENT_ROLE_KEYS.filter((k) => k !== "lead_hunter")) expect(itemOf(failed, `employees.${role}`).state).not.toBe("failed");
+    // A failure that still has attempts left and a retry time is retried by itself, so it is not a failure anyone has to look at; with all three attempts used it is, whatever time is recorded.
+    await withSystem((db) => db.query("update agent_provisioning_jobs set next_retry_at = now() + interval '5 minutes' where agent_instance_id = $1 and kind = 'provision'", [hunter]));
+    const retrying = await readiness(a);
+    expect(itemOf(retrying, "employees.lead_hunter")).toMatchObject({ state: "in_progress", owner: "system", detail: expect.stringContaining("tried again automatically") });
+    expect(retrying.blocking.map((i) => i.key)).not.toContain("employees.lead_hunter");
+    await withSystem((db) => db.query("update agent_provisioning_jobs set attempt_count = 3 where agent_instance_id = $1 and kind = 'provision'", [hunter]));
+    expect(itemOf(await readiness(a), "employees.lead_hunter")).toMatchObject({ state: "failed", owner: "iacquire" });
+    await withSystem((db) => db.query("update agent_provisioning_jobs set attempt_count = 1, next_retry_at = null where agent_instance_id = $1 and kind = 'provision'", [hunter]));
     // Asking for provisioning again makes no second job for the failed employee.
     await withSystem((db) => afterSetupCleared(db, a.org.id, { actorUserId: null, how: "waiver", eventKey: `acceptance-retry-${a.org.id}` }));
     expect((await withSystem((db) => db.query("select 1 from agent_provisioning_jobs where agent_instance_id = $1 and kind = 'provision'", [hunter]))).rows).toHaveLength(1);
@@ -222,6 +231,13 @@ describe("two clients from the questionnaire to ready to launch", () => {
     const hostSettings = (await withSystem((db) => db.query<{ timezone: string }>("select timezone from crm_host_settings where org_id = $1 and user_id = $2", [a.org.id, a.owner.id]))).rows;
     expect(hostSettings).toEqual([{ timezone: "America/Chicago" }]);
     expect(await checkJobs(a.org.id)).toBe(0);
+    // "I send my own link" drafts the video estimate with no meeting tool and no words about how to join, so activation refuses it until the company writes how it sends the link.
+    const refused = await runLaunchIntent(a.ctx, "activate_calendar");
+    expect(refused.ok).toBe(false);
+    expect(refused.message).toMatch(/Video estimate is a video appointment with no meeting tool/);
+    expect(await checkJobs(a.org.id)).toBe(0);
+    const video = (await withSystem((db) => db.query<{ id: string }>("select id from crm_appointment_types where org_id = $1 and name = 'Video estimate'", [a.org.id]))).rows[0];
+    await updateAppointmentType(memberActor(a.ctx), video.id, { locationDetail: "We email a video link the morning of the estimate." });
     expect(await runLaunchIntent(a.ctx, "activate_calendar")).toMatchObject({ ok: true });
 
     // The dental practice does not book appointments, so its Appointment Setter has no check to run.

@@ -377,7 +377,9 @@ export async function calendarEvidence(db: Queryable, orgId: string, now: Date =
   let bookable = 0;
   let firstIssue: string | null = null;
   for (const c of active.slice(0, MAX_CALENDARS_VERIFIED)) {
-    const v = await verifyCalendarInTx(db, orgId, c.id, now);
+    // This check applies the client's stated calendar itself (below, with its own freshness window and for every kind of outside calendar), so the activation check's own
+    // version of that rule is switched off here: the two would say the same thing twice, in different words.
+    const v = await verifyCalendarInTx(db, orgId, c.id, now, { requiredBusyProvider: null });
     if (v.ok) {
       verified += 1;
       if (c.public && Number(c.public_types) > 0) bookable += 1;

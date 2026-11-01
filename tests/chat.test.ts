@@ -279,6 +279,10 @@ describe("conversation persistence", () => {
       expect(activeConfig).not.toBe(queuedConfig);
       const requests = mock.requests.slice(requestStart);
       expect(requests.some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+      // The new configuration version makes this employee read as "provisioning" until a check passes on it, so reconnect and check before the later tests chat.
+      mock.setInventory("c-chat-sales-assistant", null);
+      await connectHermesProfile({ agentId: sales, baseUrl: mock.url, profile: "c-chat-sales-assistant", apiKey: KEY, agencyUserId: admin.id });
+      await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
     } finally {
       mock.setInventory("c-chat-sales-assistant", null);
     }

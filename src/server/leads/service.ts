@@ -28,16 +28,37 @@ export async function getTargeting(ctx: OrgContext): Promise<Targeting> {
   });
 }
 
+/** The targeting keys whose value differs, each with its value before and after. Business descriptions only (industries, regions, keywords); the audit bounds their length and count. */
+function targetingChanges(before: Targeting, after: Targeting): Record<string, { before: unknown; after: unknown }> {
+  const out: Record<string, { before: unknown; after: unknown }> = {};
+  for (const key of Object.keys(after) as Array<keyof Targeting>) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) out[key] = { before: before[key], after: after[key] };
+  }
+  return out;
+}
+
 export async function saveTargeting(ctx: OrgContext, input: unknown) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can change targeting rules.");
   const data = targetingSchema.parse(input);
-  await withUser(ctx.user.id, (db) =>
-    db.query(
+  // Trusted code after the permission check above (every query names the workspace): the audit row needs the system role, and it commits with the change.
+  await withSystem(async (db) => {
+    const prior = await db.query<{ criteria: unknown }>("select criteria from lead_targeting_profiles where org_id = $1 for update", [ctx.org.orgId]);
+    const parsed = prior.rows[0] ? targetingSchema.safeParse(prior.rows[0].criteria ?? {}) : null;
+    const before = parsed?.success ? parsed.data : targetingSchema.parse({});
+    const changes = targetingChanges(before, data);
+    // Saving the same rules again changes nothing: no write and nothing in the trail.
+    if (prior.rows[0] && parsed?.success && !Object.keys(changes).length) return;
+    await db.query(
       `insert into lead_targeting_profiles (org_id, criteria, updated_by) values ($1, $2, $3)
        on conflict (org_id) do update set criteria = excluded.criteria, updated_by = excluded.updated_by, updated_at = now()`,
       [ctx.org.orgId, JSON.stringify(data), ctx.user.id],
-    ),
-  );
+    );
+    // The previous rules are kept (bounded) so the change can be undone by hand; no contact details live in targeting.
+    await recordAudit({
+      orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "leads.targeting_saved", targetType: "lead_targeting_profile", result: "success",
+      metadata: { first: !prior.rows[0], changedKeys: Object.keys(changes), changed: changes },
+    }, db);
+  });
 }
 
 // ---------------------------------------------------------------------------

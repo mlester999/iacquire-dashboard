@@ -474,7 +474,7 @@ export function toMessagingPreferences(a: Answers): { businessHours: BusinessHou
 export interface ConnectionFacts {
   /**
    * The workspace's CRM provider. On iAcquire CRM ("native") `crmLinked` means an industry Blueprint is applied and `calendarConnected`
-   * means a connected calendar or an active iAcquire calendar; otherwise both are about the GoHighLevel location. Absent: GoHighLevel wording.
+   * means an active iAcquire calendar with a current host who has weekly hours (a connection alone does not take bookings); otherwise both are about the GoHighLevel location. Absent: GoHighLevel wording.
    */
   crmMode?: "native" | "ghl" | "hybrid";
   crmLinked: boolean;
@@ -593,7 +593,7 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
     missingConnections.push({
       key: "calendar",
       label: "Calendar not connected",
-      why: native ? "Connect your calendar, or set up the iAcquire calendar, in the CRM setup guide so appointment times come from real availability." : "Connect a calendar so appointment times come from real availability.",
+      why: native ? "Set up the iAcquire calendar with a host and weekly hours in the CRM setup guide, so appointment times come from real availability. Connecting an outside calendar alone is not enough." : "Connect a calendar so appointment times come from real availability.",
     });
   }
 

@@ -58,6 +58,18 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
   const suggested = hoursSummary(calendar.hoursTemplate);
   const passing = current?.checks.filter((c) => c.ok).length ?? 0;
 
+  // Hosts who already work in another time zone and were given nothing: the person picks whether the suggested hours are in the calendar's zone.
+  const [zoneHosts, setZoneHosts] = React.useState(0);
+  const hoursZone = calendar.suggestedTimezone ?? tz;
+  async function applySuggestedHours(timezone?: string) {
+    const res = await run("hours", () => applyCalendarHoursTemplateAction(scope.orgId, calendar.id, timezone), (r) => {
+      const parts = [r.applied.length ? `Suggested hours given to ${r.applied.length} ${r.applied.length === 1 ? "host" : "hosts"}.` : r.needsZoneChoice.length ? null : "Every host already has their own hours, so nothing changed."];
+      if (r.needsZoneChoice.length) parts.push(`${r.needsZoneChoice.length} ${r.needsZoneChoice.length === 1 ? "host works" : "hosts work"} in a different time zone, so their hours were not changed.`);
+      return parts.filter(Boolean).join(" ");
+    });
+    if (res && typeof res === "object") setZoneHosts(res.needsZoneChoice.length);
+  }
+
   async function checkAgain() {
     const v = await run("verify", () => verifyCalendarAction(scope.orgId, calendar.id));
     if (v && typeof v === "object") setCurrent(v);
@@ -99,10 +111,17 @@ export function VerifyPanel({ scope, calendar, verification, onEditHosts }: { sc
             <ul className="mt-1 space-y-0.5">{suggested.map((line) => <li key={line}>{line}</li>)}</ul>
             <p className="mt-1.5 text-muted">Hours belong to each person and apply to every calendar they host, so only hosts with no weekly hours yet receive these.</p>
             {canManage && (
-              <Button className="mt-2" variant="secondary" size="sm" loading={busy("hours")}
-                onClick={() => run("hours", () => applyCalendarHoursTemplateAction(scope.orgId, calendar.id), (r) => (r.applied.length ? `Suggested hours given to ${r.applied.length} ${r.applied.length === 1 ? "host" : "hosts"}.` : "Every host already has their own hours, so nothing changed."))}>
+              <Button className="mt-2" variant="secondary" size="sm" loading={busy("hours")} onClick={() => applySuggestedHours()}>
                 Use for hosts without hours
               </Button>
+            )}
+            {canManage && zoneHosts > 0 && (
+              <div className="mt-2 rounded-lg border border-line bg-surface p-2.5" role="status">
+                <p className="text-ink">
+                  {zoneHosts === 1 ? "One host works" : `${zoneHosts} hosts work`} in a different time zone than these hours, so nothing was saved for them. If the hours above are in {hoursZone}, save them in that zone: it becomes {zoneHosts === 1 ? "that host's" : "their"} time zone. Otherwise set their hours in Availability.
+                </p>
+                <Button className="mt-2" variant="secondary" size="sm" loading={busy("hours")} onClick={() => applySuggestedHours(hoursZone)}>Save these hours in {hoursZone}</Button>
+              </div>
             )}
           </div>
         )}

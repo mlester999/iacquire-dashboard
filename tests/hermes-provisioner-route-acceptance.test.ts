@@ -7,6 +7,8 @@ import { agentSettingsSchema } from "@/lib/agent-settings";
 import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
+import { defaultSettings } from "@/server/workforce/compiler";
+import { requestProvisioning } from "@/server/workforce/provisioning";
 import { createConfigVersion, decideHeldVersion } from "@/server/workforce/service";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
@@ -462,5 +464,73 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       [tenantA.org.id, tenantB.org.id],
     ));
     expect(reviewAudit.rows[0].count).toBeGreaterThanOrEqual(pending.rows.length);
+  });
+
+  it("records a worker failure with any code it can raise mid-job: known, dynamic or garbage", async () => {
+    const gatewayId = randomUUID();
+    const workerToken = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
+    vi.stubEnv("HERMES_PROVISIONER_ENABLED", "true");
+    vi.stubEnv("HERMES_PROVISIONER_TOKEN", workerToken);
+    vi.stubEnv("HERMES_PROVISIONER_GATEWAY_ID", gatewayId);
+    resetEnvCache();
+    // Jobs are not tied to a gateway until claimed: nothing an earlier test left claimable may be taken here.
+    await withSystem((db) => db.query("delete from agent_provisioning_jobs"));
+
+    const org = await createOrg({ name: "Route Codes " + randomUUID().slice(0, 8) });
+    await clearSetupPayment(org.id);
+    const owner = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    const agent = await agentId(org.id, "lead_hunter");
+    await withSystem(async (db) => {
+      await db.query("update organizations set onboarding_completed_at=now() where id=$1", [org.id]);
+      await createConfigVersion(db, { orgId: org.id, agentId: agent, settings: defaultSettings("lead_hunter"), source: "onboarding", userId: owner.id, apply: true });
+      await db.query("update agent_instances set enabled=false where org_id=$1 and id<>$2", [org.id, agent]);
+      await db.query(
+        "insert into hermes_gateways (id,label,environment,base_url,gateway_type,status,profile_creation_status,provisioner_isolation_verified_at) " +
+        "values ($1,'Synthetic code test runtime','development',$2,'multiplexed_profiles','connected','restricted_service_verified',now())",
+        [gatewayId, "https://client-" + gatewayId.replaceAll("-", "") + ".hermes.test"],
+      );
+    });
+    await withSystem((db) => requestProvisioning(db, org.id, owner.id));
+
+    const jobState = async (jobId: string) => (await withSystem((db) => db.query<{ status: string; attempt_count: number; next_retry_at: Date | null; detail: string | null }>(
+      "select status,attempt_count,next_retry_at,detail from agent_provisioning_jobs where id=$1", [jobId]))).rows[0];
+    const failOnce = async (code: string) => {
+      const claimed = await postJson(claimRoute, { gatewayId }, workerToken);
+      expect(claimed.status).toBe(200);
+      const job = (await claimed.json() as { job: ClaimedJob | null }).job;
+      expect(job).not.toBeNull();
+      const response = await postJson(completeRoute, { ok: false, jobId: job!.jobId, leaseToken: job!.leaseToken, gatewayId, code }, workerToken);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ accepted: true, failed: true });
+      await withSystem((db) => db.query("update agent_provisioning_jobs set next_retry_at=now()-interval '1 second' where id=$1", [job!.jobId]));
+      return job!.jobId;
+    };
+
+    for (const code of ["profile_gateway_discovery_timeout", "canary_submission_http_409_profile_mismatch"]) {
+      const jobId = await failOnce(code);
+      const state = await jobState(jobId);
+      expect(state.status).toBe("failed");
+      expect(state.detail).toContain(code);
+      const audit = await withSystem((db) => db.query<{ metadata: { code: string; nextRetryAt: string | null } }>(
+        "select metadata from audit_logs where target_id=$1 and action='agent.profile_provisioning_failed' order by id desc limit 1", [jobId]));
+      expect(audit.rows[0].metadata.code).toBe(code);
+      expect(audit.rows[0].metadata.nextRetryAt).toBeTruthy();
+    }
+
+    const garbage = "sk_live_not_a_real_key_but_looks_like_one";
+    for (const raw of [garbage, "Not A Code, with spaces!"]) {
+      const jobId = await failOnce(raw);
+      const state = await jobState(jobId);
+      expect(state.detail).toContain("unclassified_worker_failure");
+      expect(state.detail).not.toContain(raw);
+    }
+    const audits = await withSystem((db) => db.query<{ metadata: string }>("select metadata::text as metadata from audit_logs where org_id=$1", [org.id]));
+    expect(audits.rows.every((row) => !row.metadata.includes(garbage) && !row.metadata.includes("spaces"))).toBe(true);
+    expect(audits.rows.some((row) => row.metadata.includes("unclassified_worker_failure"))).toBe(true);
+    // Every one of the four failures was transient or unknown-permanent; the first two gave their attempt back, the unknown ones spent theirs.
+    const finalState = await withSystem((db) => db.query<{ status: string; attempt_count: number }>("select status,attempt_count from agent_provisioning_jobs where org_id=$1", [org.id]));
+    expect(finalState.rows).toEqual([{ status: "failed", attempt_count: 2 }]);
+    await withSystem((db) => db.query("delete from agent_provisioning_jobs where org_id=$1", [org.id]));
   });
 });

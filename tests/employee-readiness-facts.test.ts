@@ -8,13 +8,14 @@ import { blockingUnmet } from "@/lib/employee-requirements";
 import { loadWorkspaceFacts, readinessExtrasFor } from "@/server/workforce/readiness-facts";
 import { getAgentByRole, listAgents } from "@/server/workforce/service";
 import { createPipeline } from "@/server/crm/pipelines";
-import { createCalendar } from "@/server/calendars/setup";
+import { createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { crmOrg, type CrmOrg } from "./support/crm";
 import { insertPublishedBlueprint, sampleContent } from "./support/blueprints";
 
 let w: CrmOrg;
 let other: CrmOrg;
 const facts = (orgId: string) => withSystem((db) => loadWorkspaceFacts(db, orgId));
+const WEEKDAYS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 17 * 60 }));
 
 beforeAll(async () => {
   w = await crmOrg({ name: "Facts Co" });
@@ -58,9 +59,81 @@ describe("workspace facts", () => {
     expect((await facts(other.org.id)).pipelineReady).toBe(false);
 
     expect((await facts(w.org.id)).calendarReady).toBe(false);
+    // An active calendar with a host but no weekly hours offers no time, so it is not "ready" yet.
     await createCalendar(w.actor("owner"), { name: "Consults" });
+    expect((await facts(w.org.id)).calendarReady).toBe(false);
+    await setHostAvailability(w.actor("owner"), w.people.owner.id, { timezone: "UTC", rules: WEEKDAYS });
     expect((await facts(w.org.id)).calendarReady).toBe(true);
     expect((await facts(other.org.id)).calendarReady).toBe(false);
+  });
+
+  it("does not count a calendar connection on its own as a calendar that takes bookings", async () => {
+    const c = await crmOrg();
+    await withSystem((db) => db.query(
+      "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, write_events, external_calendar_id) values ($1, $2, 'google', $3, 'connected', true, 'primary')",
+      [c.org.id, c.people.owner.id, `${c.org.id}@example.test`],
+    ));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    // A read-only feed is the same: busy times are not a place to book.
+    await withSystem((db) => db.query(
+      "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, write_events) values ($1, $2, 'ics', $3, 'connected', false)",
+      [c.org.id, c.people.sales.id, `${c.org.id}-feed@example.test`],
+    ));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    // The connection does not stop a real, ready calendar from counting.
+    await setHostAvailability(c.actor("owner"), c.people.owner.id, { timezone: "UTC", rules: WEEKDAYS });
+    await createCalendar(c.actor("owner"), { name: "Visits", members: [{ userId: c.people.owner.id }] });
+    expect((await facts(c.org.id)).calendarReady).toBe(true);
+  });
+
+  it("needs the calendar to be active, not archived, with a current host who has weekly hours", async () => {
+    const c = await crmOrg();
+    const owner = c.actor("owner");
+    await setHostAvailability(owner, c.people.owner.id, { timezone: "UTC", rules: WEEKDAYS });
+    const cal = await createCalendar(owner, { name: "Visits", members: [{ userId: c.people.owner.id }] });
+    expect((await facts(c.org.id)).calendarReady).toBe(true);
+
+    // A draft calendar plus a host (with hours) is not ready.
+    await withSystem((db) => db.query("update crm_calendars set status = 'draft', public = false, is_default = false where id = $1", [cal.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    await withSystem((db) => db.query("update crm_calendars set status = 'active' where id = $1", [cal.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(true);
+
+    // The only host loses their hours, leaves the workspace or is suspended: nobody could take a booking.
+    const saved = await withSystem((db) => db.query<{ weekday: number; start_minute: number; end_minute: number }>("select weekday, start_minute, end_minute from crm_availability_rules where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
+    await withSystem((db) => db.query("delete from crm_availability_rules where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    for (const r of saved.rows) await withSystem((db) => db.query("insert into crm_availability_rules (org_id, user_id, weekday, start_minute, end_minute) values ($1, $2, $3, $4, $5)", [c.org.id, c.people.owner.id, r.weekday, r.start_minute, r.end_minute]));
+    expect((await facts(c.org.id)).calendarReady).toBe(true);
+    await withSystem((db) => db.query("update organization_memberships set status = 'revoked' where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    await withSystem((db) => db.query("update organization_memberships set status = 'active' where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
+    await withSystem((db) => db.query("update users set status = 'disabled' where id = $1", [c.people.owner.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+    await withSystem((db) => db.query("update users set status = 'active' where id = $1", [c.people.owner.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(true);
+
+    // Archived: gone.
+    await withSystem((db) => db.query("update crm_calendars set archived_at = now() where id = $1", [cal.id]));
+    expect((await facts(c.org.id)).calendarReady).toBe(false);
+  });
+
+  it("does not count a pipeline whose stages are all archived or all closing stages", async () => {
+    const c = await crmOrg();
+    const pipeline = await createPipeline(c.actor("owner"), { name: "Sales", stages: [{ name: "New" }, { name: "Won", kind: "won" }] });
+    expect((await facts(c.org.id)).pipelineReady).toBe(true);
+    // The only open stage is archived: what is left is Won, which holds no deals.
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = now() where pipeline_id = $1 and kind = 'open'", [pipeline.id]));
+    expect((await facts(c.org.id)).pipelineReady).toBe(false);
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = null where pipeline_id = $1 and kind = 'open'", [pipeline.id]));
+    expect((await facts(c.org.id)).pipelineReady).toBe(true);
+    // Every stage archived.
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = now() where pipeline_id = $1", [pipeline.id]));
+    expect((await facts(c.org.id)).pipelineReady).toBe(false);
+    // An archived pipeline never counts, whatever its stages.
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = null where pipeline_id = $1", [pipeline.id]));
+    await withSystem((db) => db.query("update crm_pipelines set archived_at = now() where id = $1", [pipeline.id]));
+    expect((await facts(c.org.id)).pipelineReady).toBe(false);
   });
 
   it("counts native CRM readiness independently of Blueprint applications and record counts", async () => {
