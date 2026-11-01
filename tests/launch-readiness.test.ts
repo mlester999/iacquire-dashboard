@@ -168,6 +168,14 @@ describe("what does not apply never blocks", () => {
     expect(r.blocking).toEqual([]);
   });
 
+  it("treats a failed check for an older configuration as not yet checked, never as this configuration's failure", () => {
+    const r = deriveLaunchReadiness(ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { role, state: "failed" as const, configVersion: 2, detail: "It did not pass." } : passed(role))) }));
+    expect(itemOf(r, "verification.crm_manager")).toMatchObject({ state: "action_required", detail: expect.stringContaining("configuration changed"), action: { intent: "run_checks" } });
+    // Failed on the current configuration it is still a failure, with the reason.
+    const current = deriveLaunchReadiness(ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { role, state: "failed" as const, configVersion: 3, detail: "It did not pass." } : passed(role))) }));
+    expect(itemOf(current, "verification.crm_manager")).toMatchObject({ state: "failed", detail: "It did not pass." });
+  });
+
   it("needs no integration when no customer channel was asked for, and one connected channel per channel asked for", () => {
     const none = deriveLaunchReadiness(ready({ channels: [] }));
     expect(none.steps.find((s) => s.key === "integrations")!.state).toBe("not_applicable");
