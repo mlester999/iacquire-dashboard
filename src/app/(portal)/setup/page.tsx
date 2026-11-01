@@ -4,6 +4,8 @@ import { getClientSetupSnapshot } from "@/server/setup/snapshots";
 import { SetupCenter } from "@/components/setup/setup-center";
 import { OnboardedBanner, type EmployeeProvisioningState } from "@/components/setup/onboarded-banner";
 import { SetupPaymentLine } from "@/components/setup/setup-payment-line";
+import { LaunchReadinessPanel } from "@/components/setup/launch-readiness-panel";
+import { getLaunchReadiness } from "@/server/setup/launch-readiness";
 import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
@@ -65,10 +67,13 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   ]) : [[], []];
   // The database's yes or no (app.setup_payment_cleared), asked as this member. A sample workspace has no setup fee, so it says nothing about one.
   const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
+  // The one honest launch state, from the workspace's own records. If it cannot be read the checklist below still works and nothing is claimed.
+  const launch = await getLaunchReadiness(ctx).catch(() => null);
   return (
     <>
       {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} />}
       <SetupPaymentLine cleared={paymentCleared} billingHref={ctx.can("billing.view") ? "/settings/billing" : null} />
+      {launch && <LaunchReadinessPanel readiness={launch} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );
