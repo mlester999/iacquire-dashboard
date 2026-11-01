@@ -1,5 +1,7 @@
 # AI employee readiness matrix
 
+> **Newer record (2026-11-01):** what each employee really does today, what was observed on production, and the acceptance checks per role are in [ai-employee-role-acceptance-2026-11-01.md](ai-employee-role-acceptance-2026-11-01.md). Where this file (last verified 2026-10-26) differs, that file is the later evidence.
+
 Last verified: 2026-10-26, on branch `integrate/phases-3-7-workforce` (worktree `.data/wt-release-candidate`), at the release-candidate head this document ships with. It is the honest answer to "is each of the six AI employees real?". It separates what runs in this repository and was tested here from what needs a live Hermes profile, which has **never** been connected for a client. A card that says "online" in a test or a screenshot is a simulated profile, and a simulated profile is not production-ready.
 
 **What changed since the 2026-10-25 version of this document.** Four things it used to list as "not built" are built and tested, and are described below with the code and the tests that prove them: one shared readiness definition with role prerequisites, a scheduled Hermes health probe, a per-role tool allowlist, and storage entitlement. This document no longer repeats the old claims that they are missing. Everything is still **local only**: nothing is deployed, no hosted migration is applied, and no real Hermes profile has ever answered.
