@@ -13,11 +13,13 @@ import { listPipelines } from "@/server/crm/pipelines";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { getProvisioningBundle } from "@/server/workforce/provisioning";
-import { isReservedProfile } from "@/server/workforce/service";
+import { agentSettingsSchema } from "@/lib/agent-settings";
+import { createConfigVersion, isReservedProfile } from "@/server/workforce/service";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent } from "@/server/setup/launch-intents";
 import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
+import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -302,4 +304,62 @@ describe("a booking tool that needs a connection keeps the client honest", () =>
     expect(r.state).toBe("action_required");
     expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("draft");
   }, 180_000);
+});
+
+describe("a change the client makes later", () => {
+  it("keeps the client's own edits, updates the employees the change touches, and re-checks only those", async () => {
+    const c = await onboard({ ...dental, name: "Change Later Dental", entitled: AGENT_ROLE_KEYS });
+    await clearSetupPayment(c.org.id);
+    await simulateVerifiedProfiles(c);
+    const actor = memberActor(c.ctx);
+    await getWorkspace(actor);
+    await listPipelines(actor, { ensureDefault: true });
+    await markBlueprintApplied(c.org.id);
+    await pickUpSetupEvidence(c.org.id, "a Blueprint apply");
+    const roles = AGENT_ROLE_KEYS.filter((role) => role !== "appointment_setter"); // this client books no appointments
+    await settled(c.org.id, roles.length);
+    expect(await readiness(c)).toMatchObject({ state: "ready_to_launch", percent: 100 });
+
+    // The client rewrites one employee's personality themselves.
+    const crm = await agentId(c.org.id, "crm_manager");
+    const own = "Our own wording, written by the practice.";
+    const active = (await withSystem((db) => db.query<{ settings: Record<string, unknown> }>(
+      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [crm]))).rows[0].settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: crm, settings: agentSettingsSchema.parse({ ...active, personality: own }), source: "client_edit", userId: c.owner.id, apply: true }));
+    expect((await sweepLaunchVerification(c.org.id)).queued).toEqual(["crm_manager"]);
+    await settled(c.org.id, roles.length + 1);
+
+    const versions = async () => new Map((await withSystem((db) => db.query<{ role_key: string; version: number }>(
+      "select a.role_key, v.version from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id where a.org_id = $1", [c.org.id]))).rows.map((r) => [r.role_key, Number(r.version)]));
+    const before = await versions();
+    // Later they change what they sell and submit again.
+    const saved = await saveOnboardingStep(c.ctx, { answers: { "b.services": { value: "Orthodontic braces, clear aligners and retainers" } }, currentQuestionId: "f.review" });
+    expect(saved.rejected).toEqual({});
+    // A change to what the business says needs the client's approval again before it reaches their employees: nothing changes until they give it.
+    await expect(submitOnboarding(c.ctx)).rejects.toThrow(/approve this setup/i);
+    expect(await versions()).toEqual(before);
+    expect((await saveOnboardingStep(c.ctx, { answers: { "f.review": { value: true } }, currentQuestionId: "f.review" })).rejected).toEqual({});
+    await submitOnboarding(c.ctx);
+    const after = await versions();
+    const changed = [...after.keys()].filter((role) => after.get(role) !== before.get(role)) as AgentRoleKey[];
+    expect(changed.length).toBeGreaterThan(0);
+    // Their own edit survived the synchronisation.
+    const kept = (await withSystem((db) => db.query<{ settings: { personality?: string } }>(
+      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [crm]))).rows[0].settings;
+    expect(kept.personality).toBe(own);
+    // Each change is a recorded, attributed version, never a silent overwrite.
+    const sources = await withSystem((db) => db.query<{ source: string }>("select distinct v.source from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.org_id = $1 and a.role_key = any($2::text[])", [c.org.id, changed]));
+    expect(sources.rows.every((r) => ["onboarding", "client_edit"].includes(r.source))).toBe(true);
+
+    // The launch state notices: exactly the employees that changed and have a check to run need a new one, and the sweep starts exactly those. (This client books no appointments, so
+    // the Appointment Setter's new version has no check to repeat.)
+    const checked = changed.filter((role) => role !== "appointment_setter");
+    expect(checked.length).toBeGreaterThan(0);
+    const stale = await readiness(c);
+    expect(stale.state).toBe("action_required");
+    expect(stale.blocking.map((i) => i.key).sort()).toEqual(checked.map((role) => `verification.${role}`).sort());
+    expect((await sweepLaunchVerification(c.org.id)).queued.sort()).toEqual([...checked].sort());
+    await settled(c.org.id, roles.length + 1 + checked.length);
+    expect(await readiness(c)).toMatchObject({ state: "ready_to_launch", percent: 100 });
+  }, 240_000);
 });
