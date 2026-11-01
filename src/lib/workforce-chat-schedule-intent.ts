@@ -29,7 +29,10 @@ const DAYS: ReadonlyArray<{ key: Weekday; pattern: RegExp }> = [
 ];
 const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 const WEEKDAY_ORDER: Weekday[] = [...WEEKDAYS, "sat", "sun"];
-const RECURRING_SIGNAL = /\b(?:every|each|daily|weekly|hourly|recurring)\b/i;
+// "every" and "each" start a schedule only when a period of time follows them ("every Friday", "each morning", "every 2 hours"). In "list every open time" or "check each blocked task" they
+// mean "all of them": a question to answer now, which used to get "What local time should I use?" because it was read as a recurring request.
+const PERIOD = "(?:weekdays?|days?|weeks?|hours?|mornings?|afternoons?|evenings?|nights?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?)";
+const RECURRING_SIGNAL = new RegExp(`\\b(?:every|each)\\s+(?:\\d+\\s+)?${PERIOD}\\b|\\b(?:daily|weekly|hourly|recurring)\\b`, "i");
 const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/i;
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;

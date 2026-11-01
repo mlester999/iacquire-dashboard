@@ -56,6 +56,26 @@ describe("AI workforce chat schedule intent", () => {
     });
   });
 
+  it("does not read \"every\" or \"each\" as a schedule when it means \"all of them\"", () => {
+    // Found on production: "List every open time on Tuesday, November 3." was answered with "What local time should I use?" instead of reaching the employee.
+    for (const [role, text] of [
+      ["appointment_setter", "List every open time on Tuesday, November 3."],
+      ["appointment_setter", "Show me every available time next week"],
+      ["operations_manager", "Check each blocked task and tell me what needs my attention"],
+      ["lead_hunter", "Review every researched lead on Friday"],
+      ["crm_manager", "Find each duplicate contact on Monday"],
+    ] as const) {
+      expect(parseWorkforceChatScheduleIntent(role, text), text).toEqual({ kind: "none" });
+    }
+  });
+
+  it("still reads a period after \"every\" or \"each\" as a schedule, and asks what is missing", () => {
+    expect(parseWorkforceChatScheduleIntent("appointment_setter", "Check calendar availability every Tuesday at 9 AM")).toMatchObject({ kind: "proposal", capability: "appointment_availability", cadence: "weekly" });
+    expect(parseWorkforceChatScheduleIntent("appointment_setter", "Check calendar availability each morning")).toMatchObject({ kind: "clarification" });
+    expect(parseWorkforceChatScheduleIntent("appointment_setter", "Check calendar availability every 2 hours")).toMatchObject({ kind: "clarification" });
+    expect(parseWorkforceChatScheduleIntent("appointment_setter", "List every open time on Tuesday every week")).toMatchObject({ kind: "clarification" });
+  });
+
   it("only treats clear confirmation phrases as schedule authorization", () => {
     expect(isScheduleConfirmation("confirm schedule")).toBe("confirm");
     expect(isScheduleConfirmation("Create this schedule!")).toBe("confirm");
