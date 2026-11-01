@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { MessageSquare, Power, RefreshCw, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
+import { Field, Textarea } from "@/components/ui/primitives";
 import { healthCheckAction, setAgentEnabledAction } from "@/app/(admin)/admin/actions";
 
 export function AgencyWorkforceControls({
@@ -28,6 +29,7 @@ export function AgencyWorkforceControls({
   const [checking, setChecking] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [reason, setReason] = React.useState("");
 
   const check = async () => {
     setChecking(true);
@@ -41,10 +43,11 @@ export function AgencyWorkforceControls({
 
   const toggle = async () => {
     setSaving(true);
-    const res = await setAgentEnabledAction(orgId, agentId, !enabled);
+    const res = await setAgentEnabledAction(orgId, agentId, !enabled, reason);
     setSaving(false);
     if (!res.ok) return toast.error(res.error);
     setConfirming(false);
+    setReason("");
     toast.success(enabled ? `${employeeName} paused` : `${employeeName} enabled`, {
       description: enabled ? "Chat and automated work are now unavailable for this employee." : "It becomes usable after a successful connection check.",
     });
@@ -90,7 +93,7 @@ export function AgencyWorkforceControls({
             <Button variant="secondary" onClick={() => setConfirming(false)}>
               Cancel
             </Button>
-            <Button variant={enabled ? "danger" : "brand"} loading={saving} onClick={toggle}>
+            <Button variant={enabled ? "danger" : "brand"} loading={saving} disabled={reason.trim().length < 5} onClick={toggle}>
               {enabled ? "Pause employee" : "Enable employee"}
             </Button>
           </>
@@ -99,6 +102,9 @@ export function AgencyWorkforceControls({
         <p className="text-[14px] leading-relaxed text-muted">
           This changes the employee&apos;s availability for the iAcquire internal workspace. It does not delete its history, knowledge or profile connection.
         </p>
+        <Field label="Reason (kept in the audit log)" htmlFor={`agency-plan-reason-${agentId}`} className="mt-4">
+          <Textarea id={`agency-plan-reason-${agentId}`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+        </Field>
       </Dialog>
     </>
   );

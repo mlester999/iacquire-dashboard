@@ -7,6 +7,7 @@ import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
+import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
 import { agentId, ctxFor } from "./support/fixtures";
 import { approveHours, checkJobs, count, draftClient, itemOf, readyClient, settled } from "./support/launch";
 
@@ -94,6 +95,26 @@ describe("the final checks decide 100% Ready to Launch", () => {
     // Its connection check failed, so it is a failure for iAcquire to look at, not something "being verified".
     expect(itemOf(r, "employees.sales_assistant")).toMatchObject({ state: "action_required", owner: "iacquire" });
     expect(itemOf(r, "verification.sales_assistant").state).toBe("in_progress");
+  }, 180_000);
+
+  it("says a check held for iAcquire's review is waiting for that review, and a check that is running is running", async () => {
+    const c = await readyClient({ name: "Held Check Clinic", timezone: "Asia/Manila" });
+    await startLaunchVerification(c.ctx);
+    await settled(c.org.id, 6);
+    const crm = await agentId(c.org.id, "crm_manager");
+    const setStatus = (status: string) => withSystem((db) => db.query("update ai_work_jobs set status = $3 where org_id = $1 and agent_instance_id = $2 and input ->> 'launchVerification' = 'true'", [c.org.id, crm, status]));
+
+    await setStatus("waiting_for_approval");
+    const held = await startLaunchVerification(c.ctx);
+    expect(held.started).toEqual([]);
+    // The same words the panel uses: nothing is running, it waits for a person.
+    expect(held.skipped).toEqual([{ role: "crm_manager", reason: expect.stringContaining("waiting for iAcquire's review") }]);
+    expect(held.message).not.toContain("already running");
+    expect(itemOf((await getLaunchReadiness(c.ctx))!, "verification.crm_manager").detail).toContain("waiting for iAcquire's review");
+
+    await setStatus("running");
+    const running = await startLaunchVerification(c.ctx);
+    expect(running.skipped).toEqual([{ role: "crm_manager", reason: expect.stringContaining("already running") }]);
   }, 180_000);
 
   it("refuses a member who cannot start AI work, before the questionnaire, and before the setup payment", async () => {
@@ -210,4 +231,31 @@ describe("the guided calendar steps", () => {
     expect(await count(b.org.id, "crm_calendar_members")).toBe(0);
     expect(await checkJobs(b.org.id)).toBe(0);
   }, 120_000);
+});
+
+describe("each step that ran leaves the launch ledger a row, and a refused one leaves nothing", () => {
+  const rows = async (orgId: string) => (await withSystem((db) => db.query<{ actor_kind: string; actor_user_id: string | null; metadata: { to: string; changed: Array<{ key: string; state: string }> } }>(
+    "select actor_kind, actor_user_id, metadata from audit_logs where org_id = $1 and action = $2 order by id", [orgId, LAUNCH_LEDGER_ACTION]))).rows;
+
+  it("records the state the step left, as the person who pressed it, and not for a step that changed nothing or was refused", async () => {
+    const c = await readyClient({ name: "Ledger Steps Roofing", timezone: "Asia/Manila" });
+    const base = (await rows(c.org.id)).length;
+    // The final checks are started by the person: the state moves (the checks are running, or already passing), and that is one row naming them.
+    const started = await runLaunchIntent(c.ctx, "run_checks");
+    expect(started.ok).toBe(true);
+    const after = (await rows(c.org.id)).slice(base);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ actor_kind: "user", actor_user_id: c.people.owner.id });
+    expect(after[0].metadata.changed.some((i) => i.key.startsWith("verification."))).toBe(true);
+    await settled(c.org.id, 6);
+    // Once every check has passed, the next press records that (once), and pressing again while nothing changed adds nothing.
+    await runLaunchIntent(c.ctx, "run_checks");
+    expect((await rows(c.org.id)).at(-1)!.metadata.to).toBe("ready_to_launch");
+    const settledCount = (await rows(c.org.id)).length;
+    await runLaunchIntent(c.ctx, "run_checks");
+    expect((await rows(c.org.id)).length).toBe(settledCount);
+    // A step the person may not run is refused before anything is read, so the ledger hears nothing of it.
+    await expect(runLaunchIntent(ctxFor(c.people.sales, c.org, "sales_rep"), "assign_host")).rejects.toThrow(/role doesn.t allow this/i);
+    expect((await rows(c.org.id)).length).toBe(settledCount);
+  }, 180_000);
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
+import { runReadOnlyReviewJob, reviewCount, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 
 const samples = (value: unknown) => (Array.isArray(value) ? (value as string[]).filter((item) => typeof item === "string") : []);
@@ -129,6 +129,11 @@ export async function runCrmQualityReviewJob(job: WorkJobRow, _context: { worker
     scanningMessage: "Reading persisted CRM contacts, companies and verified identities…",
     analyzingMessage: "Assessing data-quality gaps and preparing recommended fixes…",
     checks: [missingContactDetails, companiesMissingDetails, duplicateCompanies, duplicateContactNames, unverifiedIdentities],
+    examined: async (db, job) => [
+      { label: "contacts", count: await reviewCount(db, "select count(*)::int as count from contacts where org_id = $1 and deleted_at is null", [job.org_id]) },
+      { label: "companies", count: await reviewCount(db, "select count(*)::int as count from crm_companies where org_id = $1 and deleted_at is null", [job.org_id]) },
+    ],
+    sourceArea: "contacts",
     limitations: "Only CRM records stored in this workspace were read. No provider was contacted and no record or identity was changed.",
     subject: "CRM quality",
   });

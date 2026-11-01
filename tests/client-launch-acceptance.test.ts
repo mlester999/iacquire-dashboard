@@ -20,6 +20,7 @@ import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readi
 import { runLaunchIntent } from "@/server/setup/launch-intents";
 import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
 import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
+import { LAUNCH_LEDGER_ACTION, recordLaunchSnapshot } from "@/server/setup/launch-ledger";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { updateAppointmentType } from "@/server/calendars/setup";
@@ -276,6 +277,20 @@ describe("two clients from the questionnaire to ready to launch", () => {
     // Each client's checks ran on that client's own employees.
     const crossed = await withSystem((db) => db.query("select 1 from ai_work_jobs j join agent_instances i on i.id = j.agent_instance_id where i.org_id <> j.org_id"));
     expect(crossed.rows).toHaveLength(0);
+
+    // The ledger remembers each client's own journey. The events above (the guided steps, the evidence pickups) left rows as they happened; a finished check is not an event that
+    // records, so the last row is written when something next looks (the scheduled watch, later), and here that is the call itself. Ready is only ever the last row, and it says 100.
+    for (const c of [a, b]) await recordLaunchSnapshot(c.org.id, { kind: "system" });
+    const trail = async (c: Client) => (await withSystem((db) => db.query<{ metadata: { to: string; percent: number } }>("select metadata from audit_logs where org_id = $1 and action = $2 order by id", [c.org.id, LAUNCH_LEDGER_ACTION]))).rows.map((r) => r.metadata);
+    for (const c of [a, b]) {
+      const rows = await trail(c);
+      expect(rows.length).toBeGreaterThan(1);
+      expect(rows.at(-1)).toMatchObject({ to: "ready_to_launch", percent: 100 });
+      expect(rows.slice(0, -1).some((r) => r.to === "ready_to_launch")).toBe(false);
+      // The owner is told it is ready exactly once, and only the owner of that workspace.
+      const told = await withSystem((db) => db.query<{ user_id: string }>("select user_id from notifications where org_id = $1 and kind = 'setup_ready'", [c.org.id]));
+      expect(told.rows).toEqual([{ user_id: c.owner.id }]);
+    }
   }, 240_000);
 
   it("did all of it without sending a message, booking anyone or turning on a public page", async () => {
@@ -379,6 +394,11 @@ describe("a change the client makes later", () => {
     // Later they change what they sell and submit again.
     const saved = await saveOnboardingStep(c.ctx, { answers: { "b.services": { value: "Orthodontic braces, clear aligners and retainers" } }, currentQuestionId: "f.review" });
     expect(saved.rejected).toEqual({});
+    // Until they approve it, the change is not the setup: the client is not 100%, and the one thing that holds it up is the client's own approval.
+    const waiting = await readiness(c);
+    expect(waiting.state).toBe("action_required");
+    expect(waiting.percent).toBeLessThan(100);
+    expect(waiting.blocking.map((i) => i.key)).toEqual(["profile.pending_changes"]);
     // A change to what the business says needs the client's approval again before it reaches their employees: nothing changes until they give it.
     await expect(submitOnboarding(c.ctx)).rejects.toThrow(/approve this setup/i);
     expect(await versions()).toEqual(before);

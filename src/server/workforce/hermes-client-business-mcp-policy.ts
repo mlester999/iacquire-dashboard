@@ -10,7 +10,8 @@ import { HERMES_BUSINESS_CONTEXT_TOOL, hermesMcpToolName, type BusinessMcpToolNa
 /**
  * What the CLIENT tier of the business tools may offer, kept apart from the internal agency tier on purpose: a tool added to the catalog for any other reason reaches no client until it
  * is listed here and reviewed. The tier is dormant until two things agree: the deployment (HERMES_CLIENT_BUSINESS_MCP_ENABLED) and the workspace (org_features client_business_tools).
- * Nothing in this file is wired to a route. The server name, the toolset and the runtime tool names are the internal tier's, so the gateway reports the same provenance for both.
+ * The route is src/app/api/internal/hermes-business/client/mcp/route.ts (handler: hermes-client-business-mcp.ts). The server name, the toolset and the runtime tool names are the internal
+ * tier's, so the gateway reports the same provenance for both.
  */
 
 export const CLIENT_BUSINESS_TOOLS_FEATURE = "client_business_tools";
@@ -18,15 +19,16 @@ export const CLIENT_BUSINESS_PROPOSALS_FEATURE = "client_business_proposals";
 
 /**
  * The read tools each role is offered, beside the context tool. An explicit list (not derived from the catalog) so that a new catalog read tool is not offered to a client by
- * accident. It starts equal to the internal tier's reads; the role's scopes still decide what is actually allowed (see clientBusinessMcpToolNamesForRole).
+ * accident. It is the internal tier's reads plus list_opportunities (a client-only tool) for the roles that hold the deals scope; the role's scopes still decide what is actually
+ * allowed (see clientBusinessMcpToolNamesForRole).
  */
 export const CLIENT_BUSINESS_TOOL_MATRIX: Record<AgentRoleKey, readonly AgentToolName[]> = {
-  operations_manager: ["find_contacts", "get_contact", "check_availability", "crm_summary_report"],
+  operations_manager: ["find_contacts", "get_contact", "check_availability", "crm_summary_report", "list_opportunities"],
   lead_hunter: ["find_contacts", "get_contact"],
   appointment_setter: ["find_contacts", "get_contact", "check_availability", "get_conversation_history"],
-  sales_assistant: ["find_contacts", "get_contact", "check_availability", "get_conversation_history"],
-  crm_manager: ["find_contacts", "get_contact", "crm_summary_report"],
-  performance_analyst: ["crm_summary_report"],
+  sales_assistant: ["find_contacts", "get_contact", "check_availability", "get_conversation_history", "list_opportunities"],
+  crm_manager: ["find_contacts", "get_contact", "crm_summary_report", "list_opportunities"],
+  performance_analyst: ["crm_summary_report", "list_opportunities"],
 };
 
 /** The CRM changes a role may PROPOSE: every `write` tool its scopes allow. They only ever become approval requests. A `proposal`-kind tool (a message or a booking) is never offered. */

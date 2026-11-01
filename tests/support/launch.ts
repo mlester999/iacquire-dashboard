@@ -101,3 +101,15 @@ export async function draftClient(name: string, timezone: string) {
   await withSystem((db) => db.query("insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, min_notice_minutes, location_kind) values ($1, $2, 'Free consultation', 'free-consultation', 30, 60, 'phone')", [c.org.id, calendarId]));
   return { ...c, calendarId, ctx: ctxFor(c.people.owner, c.org, "owner") };
 }
+
+/**
+ * Stamps a workspace's questionnaire as submitted now, the way a submission leaves its row. Every answer saved after this is an edit nobody approved (the rule the questionnaire page and
+ * the launch panel share), and stamping it again is the approval. The fixtures above leave no such row, so a workspace made by them has no "unapproved changes" until a test opts in.
+ */
+export async function markSubmitted(orgId: string) {
+  await withSystem((db) => db.query(
+    `insert into onboarding_responses (org_id, completed_at, status, submitted_at, current_step) values ($1, now(), 'submitted', now(), 6)
+     on conflict (org_id) do update set status = 'submitted', submitted_at = now(), completed_at = coalesce(onboarding_responses.completed_at, now())`,
+    [orgId],
+  ));
+}

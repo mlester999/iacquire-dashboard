@@ -16,6 +16,7 @@ import { disconnectWorkspaceEsign } from "@/server/esign/connections";
 import { disconnectWorkspaceCalendars } from "@/server/calendars/connections";
 import { revokeWorkspaceAutomationConnections } from "@/server/automation-studio/connections";
 import { revokeWorkspaceApiKeys } from "@/server/crm/api-keys";
+import { revokeClientBusinessCredentialsForOrg } from "@/server/workforce/hermes-client-business-credential";
 import { pauseWorkspaceWebhooks } from "@/server/crm/webhooks";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
@@ -428,6 +429,8 @@ export async function executeDeletion(user: Pick<SessionUser, "id" | "platformRo
   const stored = (await withSystem((db) => db.query<{ bucket: PrivateBucket; storage_key: string }>("select bucket, storage_key from private_files where org_id = $1 and status <> 'deleted'", [r.org_id]))).rows;
   const purged = await withSystem(async (db) => {
     await db.query("select set_config('iaq.purge', 'on', true)");
+    // A closed workspace must not keep a live business-tool credential, even for the moment before its rows are purged.
+    await revokeClientBusinessCredentialsForOrg(db, r.org_id, "workspace_archived");
     let remaining = (await tenantTables(db)).filter((t) => !PURGE_RETAINS.has(t));
     let rows = 0;
     for (let pass = 0; pass < 12 && remaining.length; pass += 1) {

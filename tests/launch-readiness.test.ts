@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
-import { channelIsReady, connectionSteps, deriveLaunchReadiness, summarizeWeeklyHours, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
+import { channelIsReady, connectionSteps, deriveLaunchReadiness, fingerprintOf, STALL_MINUTES, summarizeWeeklyHours, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
 
 // "100% Ready to Launch" must mean every applicable, required setup and verification check passed, and nothing less: not a queued job, not a drafted calendar, not a green badge.
 
@@ -751,5 +751,161 @@ describe("the Appointment Setter's check waits for the calendar", () => {
     expect(itemOf(r, "verification.appointment_setter").action).toBeUndefined();
     // Once the calendar is active it is judged like the others.
     expect(itemOf(deriveLaunchReadiness(ready()), "verification.appointment_setter").state).toBe("done");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Time: an item in progress for too long is somebody's to look at
+// ---------------------------------------------------------------------------
+
+const NOW = new Date("2026-10-26T12:00:00Z");
+const ago = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000).toISOString();
+const provisioningReadiness = { state: "provisioning" as const, chatAvailable: false, workReady: false, description: "", blocking: [] };
+const provisioningLead = (over: Partial<EmployeeFact>) => replaceEmployee(ready(), "lead_hunter", { provisioning: "in_progress", readiness: provisioningReadiness, ...over });
+
+describe("a stuck item stops reading as 'nothing is needed from you'", () => {
+  it("keeps a young in-progress profile in progress and flips an old one to action required for iAcquire, using the clock the caller passed", () => {
+    const young = deriveLaunchReadiness(provisioningLead({ startedAt: ago(STALL_MINUTES.provisioning - 1) }), NOW);
+    expect(itemOf(young, "employees.lead_hunter")).toMatchObject({ state: "in_progress", owner: "system" });
+    expect(itemOf(young, "employees.lead_hunter").stalled).toBeUndefined();
+    expect(young.state).toBe("provisioning");
+
+    const old = deriveLaunchReadiness(provisioningLead({ startedAt: ago(STALL_MINUTES.provisioning + 1) }), NOW);
+    expect(itemOf(old, "employees.lead_hunter")).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true, stalledSince: ago(STALL_MINUTES.provisioning + 1) });
+    expect(old.state).toBe("action_required");
+    expect(old.blocking.map((i) => i.key)).toEqual(["employees.lead_hunter"]);
+    expect(old.detail).toContain("1 needs iAcquire's attention");
+    expect(old.percent).toBeLessThan(100);
+    // Nothing is said about how long without a clock: the pure read of the facts says only what they say.
+    expect(itemOf(deriveLaunchReadiness(provisioningLead({ startedAt: ago(500) })), "employees.lead_hunter")).toMatchObject({ state: "in_progress" });
+  });
+
+  it("says 'iAcquire has been alerted' only when an alert was really recorded", () => {
+    const notTold = deriveLaunchReadiness(provisioningLead({ startedAt: ago(45) }), NOW);
+    expect(itemOf(notTold, "employees.lead_hunter").detail).not.toContain("has been alerted");
+    expect(itemOf(notTold, "employees.lead_hunter").detail).toContain("waiting on iAcquire");
+    expect(itemOf(notTold, "employees.lead_hunter").detail).toContain("about 45 minutes");
+    const told = deriveLaunchReadiness(provisioningLead({ startedAt: ago(45), stallAlerted: true }), NOW);
+    expect(itemOf(told, "employees.lead_hunter").detail).toContain("iAcquire has been alerted.");
+    // A worker that stopped reporting is named; a live one is not.
+    expect(itemOf(deriveLaunchReadiness(provisioningLead({ startedAt: ago(45), leaseExpired: true }), NOW), "employees.lead_hunter").detail).toContain("Nothing is working on it right now");
+    expect(itemOf(notTold, "employees.lead_hunter").detail).not.toContain("Nothing is working on it");
+  });
+
+  it("uses the threshold the server read for provisioning, and keeps the fixed ones for the others", () => {
+    const f = provisioningLead({ startedAt: ago(100) });
+    expect(itemOf(deriveLaunchReadiness(f, NOW, { provisioning: 120 }), "employees.lead_hunter").state).toBe("in_progress");
+    expect(itemOf(deriveLaunchReadiness(f, NOW, { provisioning: 90 }), "employees.lead_hunter").state).toBe("action_required");
+    expect(STALL_MINUTES).toEqual({ provisioning: 30, verification: 15, crm: 60 });
+  });
+
+  it("stalls only a job somebody is on: a profile that was never started or was cancelled is not stalled, whatever its age", () => {
+    for (const provisioning of ["none", "cancelled"] as const) {
+      const r = deriveLaunchReadiness(provisioningLead({ provisioning, startedAt: ago(5000) }), NOW);
+      expect(itemOf(r, "employees.lead_hunter"), provisioning).toMatchObject({ state: "in_progress" });
+    }
+    for (const provisioning of ["requested", "awaiting_health_check", "retrying"] as const) {
+      const r = deriveLaunchReadiness(provisioningLead({ provisioning, startedAt: ago(300) }), NOW);
+      expect(itemOf(r, "employees.lead_hunter"), provisioning).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    }
+    // A finished employee never stalls, however old its job.
+    expect(deriveLaunchReadiness(replaceEmployee(ready(), "lead_hunter", { provisioning: "succeeded", startedAt: ago(9000) }), NOW).state).toBe("ready_to_launch");
+  });
+
+  it("stalls a final check that runs too long, and only that check", () => {
+    const verification = (since: string, over: Record<string, unknown> = {}): VerificationFact[] => AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? ({ role, state: "running", since, ...over } as VerificationFact) : passed(role)));
+    const young = deriveLaunchReadiness(ready({ verification: verification(ago(STALL_MINUTES.verification - 1)) }), NOW);
+    expect(itemOf(young, "verification.crm_manager")).toMatchObject({ state: "in_progress", owner: "system" });
+    const old = deriveLaunchReadiness(ready({ verification: verification(ago(STALL_MINUTES.verification + 1), { leaseExpired: true }) }), NOW);
+    expect(itemOf(old, "verification.crm_manager")).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    expect(itemOf(old, "verification.crm_manager").detail).toContain("Nothing is running it right now");
+    expect(itemOf(old, "verification.crm_manager").detail).not.toContain("has been alerted");
+    expect(old.blocking.map((i) => i.key)).toEqual(["verification.crm_manager"]);
+    expect(itemOf(deriveLaunchReadiness(ready({ verification: verification(ago(60), { alerted: true }) }), NOW), "verification.crm_manager").detail).toContain("iAcquire has been alerted.");
+    // A running check without a start time is never called stalled.
+    const noStart: VerificationFact[] = AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { role, state: "running" } : passed(role)));
+    expect(itemOf(deriveLaunchReadiness(ready({ verification: noStart }), NOW), "verification.crm_manager").state).toBe("in_progress");
+  });
+
+  it("stalls an industry CRM setup that nobody has started, but never one that already ran", () => {
+    const crm = (over: Partial<LaunchFacts["crm"]>) => ready({ crm: { mode: "native", blueprint: "none", pipelineReady: true, providerConnected: false, ...over } });
+    expect(itemOf(deriveLaunchReadiness(crm({ waitingSince: ago(STALL_MINUTES.crm - 1) }), NOW), "crm.blueprint")).toMatchObject({ state: "in_progress" });
+    const old = deriveLaunchReadiness(crm({ waitingSince: ago(STALL_MINUTES.crm + 1), waitingAlerted: true }), NOW);
+    expect(itemOf(old, "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    expect(itemOf(old, "crm.blueprint").detail).toContain("iAcquire has been alerted.");
+    expect(itemOf(deriveLaunchReadiness(crm({ blueprint: "verified", waitingSince: ago(900) }), NOW), "crm.blueprint")).toMatchObject({ state: "done" });
+    expect(itemOf(deriveLaunchReadiness(crm({ blueprint: "failed", waitingSince: ago(900) }), NOW), "crm.blueprint").stalled).toBeUndefined();
+  });
+
+  it("does not call the industry CRM setup late while the client has not submitted or the setup fee is not cleared: iAcquire is not what is being waited for", () => {
+    const crm = (over: Partial<LaunchFacts> = {}) => ready({ crm: { mode: "native", blueprint: "none", pipelineReady: true, providerConnected: false, waitingSince: ago(STALL_MINUTES.crm + 120) }, ...over });
+    // The control: submitted and cleared, the same old wait is stalled.
+    expect(itemOf(deriveLaunchReadiness(crm(), NOW), "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    // Not cleared (unpaid or refunded) or not submitted: the same wait is not late, and nothing says "waiting on iAcquire".
+    for (const over of [{ paymentCleared: false }, { submitted: false }] as Array<Partial<LaunchFacts>>) {
+      const item = itemOf(deriveLaunchReadiness(crm(over), NOW), "crm.blueprint");
+      expect(item.stalled, JSON.stringify(over)).toBeUndefined();
+      expect(item.state, JSON.stringify(over)).toBe("in_progress");
+    }
+    // A sample workspace has no setup fee to wait for (null: not asked): that alone does not hold the wait back.
+    expect(itemOf(deriveLaunchReadiness(crm({ paymentCleared: null }), NOW), "crm.blueprint").stalled).toBe(true);
+  });
+
+  it("maps a check held for approval to waiting for review, which is ready for review and not provisioning", () => {
+    const held = ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "sales_assistant" ? { role, state: "awaiting_review" as const } : passed(role))) });
+    const r = deriveLaunchReadiness(held, NOW);
+    expect(itemOf(r, "verification.sales_assistant")).toMatchObject({ state: "awaiting_review", owner: "iacquire", required: true });
+    expect(r.state).toBe("ready_for_review");
+    expect(r.percent).toBeLessThan(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Edits nobody approved
+// ---------------------------------------------------------------------------
+
+describe("answer edits that nobody approved block 100%", () => {
+  it("adds a required item for the client, and leaves 100% impossible until it clears", () => {
+    const clean = deriveLaunchReadiness(ready());
+    expect(clean.state).toBe("ready_to_launch");
+    expect(clean.steps.flatMap((s) => s.items).some((i) => i.key === "profile.pending_changes")).toBe(false);
+
+    const pending = deriveLaunchReadiness(ready({ pendingAnswerChanges: true }));
+    expect(itemOf(pending, "profile.pending_changes")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { href: "/onboarding" } });
+    expect(itemOf(pending, "profile.pending_changes").detail).toContain("Your AI team still runs on the previous setup");
+    expect(pending.state).toBe("action_required");
+    expect(pending.percent).toBeLessThan(100);
+    expect(pending.total).toBe(clean.total + 1);
+    expect(pending.blocking.map((i) => i.key)).toEqual(["profile.pending_changes"]);
+    expect(pending.steps.find((s) => s.key === "profile")!.state).toBe("action_required");
+    expect(deriveLaunchReadiness(ready({ pendingAnswerChanges: false })).state).toBe("ready_to_launch");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The fingerprint
+// ---------------------------------------------------------------------------
+
+describe("the fingerprint says 'something changed', and only that", () => {
+  it("is the same for the same facts and for different wording, and different when who has to move or what is done changes", () => {
+    const base = fingerprintOf(deriveLaunchReadiness(ready()));
+    expect(fingerprintOf(deriveLaunchReadiness(ready()))).toBe(base);
+    expect(base).toMatch(/^[0-9a-f]{14}$/);
+    // More approved sections changes the words of the knowledge line, not what is done.
+    expect(fingerprintOf(deriveLaunchReadiness(ready({ knowledge: { approved: 9, pending: 0 } })))).toBe(base);
+    // An optional line (the public booking page being on) is not a required check.
+    expect(fingerprintOf(deriveLaunchReadiness(ready({ appointments: { wanted: true, calendar: calendar({ bookingPageOn: true }), externalCalendarConnected: false } })))).toBe(base);
+    // A different item state, a different owner and a different overall state are each a different fingerprint.
+    const seen = new Set([
+      base,
+      fingerprintOf(deriveLaunchReadiness(ready({ knowledge: { approved: 0, pending: 0 } }))),
+      fingerprintOf(deriveLaunchReadiness(ready({ knowledge: { approved: 0, pending: 2 } }))),
+      fingerprintOf(deriveLaunchReadiness(ready({ pendingAnswerChanges: true }))),
+      fingerprintOf(deriveLaunchReadiness(ready({ paymentCleared: false }))),
+      fingerprintOf(deriveLaunchReadiness(replaceEmployee(ready(), "lead_hunter", { provisioning: "failed", readiness: provisioningReadiness }))),
+      fingerprintOf(deriveLaunchReadiness(provisioningLead({ startedAt: ago(5) }), NOW)),
+      fingerprintOf(deriveLaunchReadiness(provisioningLead({ startedAt: ago(500) }), NOW)),
+    ]);
+    expect(seen.size).toBe(8);
   });
 });

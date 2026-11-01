@@ -19,8 +19,15 @@ export async function pickUpSetupEvidence(orgId: string, after: string): Promise
   // The same events can make an employee ready for authorized work (a calendar or a CRM becoming active), so its final read-only check starts by itself (src/server/setup/launch-sweep.ts).
   try {
     const { sweepLaunchVerificationAfter } = await import("@/server/setup/launch-sweep");
-    await sweepLaunchVerificationAfter(orgId, after);
+    await sweepLaunchVerificationAfter(orgId, after, { record: false });
   } catch (err) {
     console.warn(`[iacquire] launch check sweep after ${after} could not start.`, { error: err instanceof Error ? err.name : "unknown" });
+  }
+  // The same events move the launch state, so it is remembered once, after both of the above (the ledger loads on demand like the sweep and never fails the action).
+  try {
+    const { recordLaunchSnapshotAfter } = await import("@/server/setup/launch-ledger");
+    await recordLaunchSnapshotAfter(orgId, { kind: "system" }, after);
+  } catch (err) {
+    console.warn(`[iacquire] launch ledger after ${after} could not start.`, { error: err instanceof Error ? err.name : "unknown" });
   }
 }

@@ -208,3 +208,103 @@ describe("one-onboarding employee generation", () => {
     expect(compiled.instructions.lastIndexOf("Agency policy")).toBeGreaterThan(compiled.instructions.indexOf("</client_context>"));
   });
 });
+
+describe("which fields count as the client's own edits", () => {
+  const original = buildEmployeeSettings("lead_hunter", data);
+  const edited = (patch: Record<string, unknown>, base = original) => agentSettingsSchema.parse({ ...base, ...patch });
+  const revised = onboardingSchema.parse({ ...data, business: { ...data.business, idealCustomers: "Portland clinics" } });
+
+  it("hands a field back to onboarding when a rollback puts it back to the value onboarding wrote", () => {
+    const clientEdit = edited({ targetCustomers: "Clinics chosen by the owner" });
+    const history = [
+      { source: "onboarding", settings: original },
+      { source: "client_edit", settings: clientEdit },
+    ];
+    // Before the rollback the edit is the client's own and a business update leaves it alone.
+    expect(manualOverridesFromHistory(history).has("targetCustomers")).toBe(true);
+    expect(mergeBusinessUpdate("lead_hunter", clientEdit, original, revised, manualOverridesFromHistory(history)).targetCustomers).toBe("Clinics chosen by the owner");
+    // The rollback restores onboarding's own value: the field is no longer a manual edit, so the next business update reaches it again.
+    const rolledBack = edited({}, original);
+    const after = manualOverridesFromHistory([...history, { source: "rollback", settings: rolledBack }]);
+    expect(after.has("targetCustomers")).toBe(false);
+    expect(mergeBusinessUpdate("lead_hunter", rolledBack, original, revised, after).targetCustomers).toBe("Portland clinics");
+  });
+
+  it("keeps a field the client owns when a rollback restores a different earlier value of theirs", () => {
+    const first = edited({ targetCustomers: "First owner wording" });
+    const second = edited({ targetCustomers: "Second owner wording" });
+    const overrides = manualOverridesFromHistory([
+      { source: "onboarding", settings: original },
+      { source: "client_edit", settings: first },
+      { source: "client_edit", settings: second },
+      { source: "rollback", settings: first },
+    ]);
+    expect(overrides.has("targetCustomers")).toBe(true);
+  });
+
+  it("does not take an edit that a later onboarding version only carried forward for onboarding's own value", () => {
+    const clientEdit = edited({ targetCustomers: "Clinics chosen by the owner" });
+    const carried = edited({ targetCustomers: "Clinics chosen by the owner", companyRules: "A rule the business update changed." }, clientEdit);
+    const other = edited({ targetCustomers: "Something else of the client's" }, carried);
+    // Restoring the wording the onboarding version carried forward is restoring the client's own text, not onboarding's.
+    const overrides = manualOverridesFromHistory([
+      { source: "onboarding", settings: original },
+      { source: "client_edit", settings: clientEdit },
+      { source: "onboarding", settings: carried },
+      { source: "client_edit", settings: other },
+      { source: "rollback", settings: carried },
+    ]);
+    expect(overrides.has("targetCustomers")).toBe(true);
+  });
+
+  it("applies the same rule to role answers", () => {
+    const withAnswer = edited({ roleAnswers: { ...original.roleAnswers, qualification: "Client-edited rule" } });
+    const history = [
+      { source: "onboarding", settings: original },
+      { source: "client_edit", settings: withAnswer },
+    ];
+    expect(manualOverridesFromHistory(history).has("roleAnswers.qualification")).toBe(true);
+    expect(manualOverridesFromHistory([...history, { source: "rollback", settings: original }]).has("roleAnswers.qualification")).toBe(false);
+  });
+
+  it("treats an agency edit as the client's side of the line too, so it is preserved", () => {
+    const agencyEdit = edited({ tone: "premium" });
+    const overrides = manualOverridesFromHistory([
+      { source: "onboarding", settings: original },
+      { source: "agency", settings: agencyEdit },
+    ]);
+    expect(overrides.has("tone")).toBe(true);
+    const merged = mergeBusinessUpdate("lead_hunter", agencyEdit, original, onboardingSchema.parse({ ...data, communication: { ...data.communication, tone: "casual" } }), overrides);
+    expect(merged.tone).toBe("premium");
+  });
+
+  it("keeps a field the client cleared cleared", () => {
+    const cleared = edited({ roleAnswers: { ...original.roleAnswers, qualification: "" } });
+    const overrides = manualOverridesFromHistory([
+      { source: "onboarding", settings: original },
+      { source: "client_edit", settings: cleared },
+    ]);
+    expect(overrides.has("roleAnswers.qualification")).toBe(true);
+    const merged = mergeBusinessUpdate("lead_hunter", cleared, original, onboardingSchema.parse({
+      ...data, workforce: { ...data.workforce, answers: { lead_hunter: { qualification: "Only licensed clinics" } } },
+    }), overrides);
+    expect(merged.roleAnswers.qualification).toBe("");
+  });
+
+  it("never touches the tools, the escalation contact or the custom instruction of an employee", () => {
+    const current = edited({ disabledTools: ["web_search"], escalationContact: "owner@example.test", customInstruction: "Greet people by name." });
+    const merged = mergeBusinessUpdate("lead_hunter", current, original, revised);
+    expect(merged.disabledTools).toEqual(["web_search"]);
+    expect(merged.escalationContact).toBe("owner@example.test");
+    expect(merged.customInstruction).toBe("Greet people by name.");
+    // The business update itself still arrived.
+    expect(merged.targetCustomers).toBe("Portland clinics");
+  });
+
+  it("ignores versions whose settings cannot be read and a first version that is not onboarding's", () => {
+    expect(manualOverridesFromHistory([
+      { source: "client_edit", settings: edited({ tone: "premium" }) },
+      { source: "client_edit", settings: { not: "settings" } },
+    ]).size).toBe(0);
+  });
+});

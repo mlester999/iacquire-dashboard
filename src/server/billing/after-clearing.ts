@@ -22,5 +22,13 @@ export async function afterSetupCleared(db: Queryable, orgId: string, o: { actor
   // The industry CRM waits for the same two things the employees do (questionnaire submitted, fee cleared); whichever of the two arrives second starts it. It runs only after this
   // transaction has committed, never inside it, and does nothing at all while the switch is off.
   scheduleClientCrmSetup(orgId, "setup fee cleared");
+  // The launch ledger remembers the state this clearing left, after the transaction has committed (it reads the committed payment). Loaded on demand: the launch module imports
+  // far more than a payment path should at load.
+  try {
+    const { scheduleLaunchSnapshot } = await import("@/server/setup/launch-ledger");
+    scheduleLaunchSnapshot(orgId, "setup fee cleared");
+  } catch (err) {
+    console.warn("[iacquire] could not schedule the launch ledger after the setup fee cleared.", { error: err instanceof Error ? err.name : "unknown" });
+  }
   return { provisioningRequested };
 }

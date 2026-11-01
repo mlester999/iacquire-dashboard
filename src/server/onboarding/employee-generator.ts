@@ -150,20 +150,28 @@ export function mergeBusinessUpdate(
 }
 
 /** Any applied non-onboarding version that changes a shared field makes that field client owned.
- * This survives subsequent onboarding versions, which can contain the client's earlier edit. */
+ * This survives subsequent onboarding versions, which can contain the client's earlier edit.
+ * A rollback that puts a field back to the value onboarding itself generated hands the field back to onboarding: the client no longer holds a manual edit there. */
 export function manualOverridesFromHistory(versions: Array<{ source: string; settings: unknown }>): Set<string> {
   const changed = new Set<string>();
+  // What onboarding itself wrote into each field: the first onboarding version, and any later one only for the fields it actually changed.
+  // A later onboarding version that merely carries the client's edit forward is not onboarding's own value.
+  const generated = new Map<string, string | undefined>();
   let previous: AgentSettings | null = null;
   for (const version of versions) {
     const parsed = agentSettingsSchema.safeParse(version.settings);
     if (!parsed.success) continue;
     const current = parsed.data;
-    if (previous && version.source !== "onboarding") {
-      for (const field of ["tone", "replyLength", "language", "targetCustomers", "companyRules", "neverPromise", "escalateWhen"] as const) {
-        if (current[field] !== previous[field]) changed.add(field);
-      }
-      for (const key of new Set([...Object.keys(previous.roleAnswers), ...Object.keys(current.roleAnswers)])) {
-        if (current.roleAnswers[key] !== previous.roleAnswers[key]) changed.add(`roleAnswers.${key}`);
+    const fields: Array<[string, string | undefined, string | undefined]> = [
+      ...(["tone", "replyLength", "language", "targetCustomers", "companyRules", "neverPromise", "escalateWhen"] as const).map((field) => [field, previous?.[field], current[field]] as [string, string | undefined, string | undefined]),
+      ...[...new Set([...Object.keys(previous?.roleAnswers ?? {}), ...Object.keys(current.roleAnswers)])].map((key) => [`roleAnswers.${key}`, previous?.roleAnswers[key], current.roleAnswers[key]] as [string, string | undefined, string | undefined]),
+    ];
+    for (const [field, before, after] of fields) {
+      if (version.source === "onboarding") {
+        if (!previous || after !== before) generated.set(field, after);
+      } else if (previous && after !== before) {
+        if (version.source === "rollback" && generated.has(field) && generated.get(field) === after) changed.delete(field);
+        else changed.add(field);
       }
     }
     previous = current;

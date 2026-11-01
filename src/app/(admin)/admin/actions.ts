@@ -109,12 +109,13 @@ export async function setTenantStatusAction(orgId: string, status: "active" | "s
   }
 }
 
-export async function setAgentEnabledAction(orgId: string, agentId: string, enabled: boolean) {
+/** `data` says what the change did for a client workspace (configured, provisioning requested, synchronization queued, requests cancelled); it is null for the internal workspace and demos, which only switch. */
+export async function setAgentEnabledAction(orgId: string, agentId: string, enabled: boolean, reason: string) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
-    await setAgentEnabled(admin, orgId, agentId, enabled);
+    const data = await setAgentEnabled(admin, orgId, agentId, enabled, reason);
     revalidatePath(`/admin/clients/${orgId}`);
-    return { ok: true as const };
+    return { ok: true as const, data };
   } catch (err) {
     return actionError(err);
   }

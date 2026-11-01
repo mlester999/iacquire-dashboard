@@ -196,7 +196,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
                  select a.id::text as id, a.action, a.created_at, coalesce(u.full_name, a.actor_kind) as actor, a.result, ro.short_name as agent
                  from audit_logs a left join users u on u.id = a.actor_user_id
                  left join agent_instances ai on ai.id = a.agent_instance_id left join agent_roles ro on ro.key = ai.role_key
-                 where a.org_id = $1 and a.action not like 'auth.%' and a.action <> 'agent.health_check'
+                 where a.org_id = $1 and a.action not like 'auth.%' and a.action not in ('agent.health_check', 'setup.launch_state_changed')
                  order by a.created_at desc limit 8
                ) r)
           else '[]'::json end) as recent`,

@@ -8,7 +8,7 @@ import {
   type WorkJobRow,
 } from "@/server/workforce/jobs";
 import { publishReviewReport } from "@/server/workforce/reports";
-import { reviewFinding, type ReviewFinding, type ReviewMetric } from "@/server/workforce/read-only-review";
+import { readReviewSource, reviewCount, reviewFinding, sourceLimitation, type ReviewFinding, type ReviewMetric } from "@/server/workforce/read-only-review";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import { readableTimeZone, summarizeSlotsByDay } from "@/lib/calendars/availability-summary";
 import type { AgentRoleKey } from "@/lib/agents";
@@ -132,6 +132,14 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       });
     }
 
+    // What the check looked at, so "no slots" can be told apart from "no calendar".
+    const examined = [
+      { label: "active calendars", count: await reviewCount(db, "select count(*)::int as count from crm_calendars where org_id = $1 and status = 'active' and archived_at is null", [job.org_id]) },
+      { label: "appointment types", count: await reviewCount(db, "select count(*)::int as count from crm_appointment_types where org_id = $1 and archived_at is null", [job.org_id]) },
+    ];
+    const source = await readReviewSource(db, job.org_id, "calendars");
+    const limitations = `Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted. ${sourceLimitation(source)}`;
+
     const count = slots.length;
     const summary = availability.ok
       ? `Calendar availability checked: ${truncated ? "at least " : ""}${count} bookable slot${count === 1 ? "" : "s"}${days.length ? ` on ${days.length} day${days.length === 1 ? "" : "s"}` : ""} in the next 7 days (${displayTimeZone}).`
@@ -169,13 +177,15 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
           : { reason: availability.detail, reasonCode: availability.reason },
         metrics,
         findings,
-        limitations: "Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted.",
+        examined,
+        source,
+        limitations,
       },
       event: {
         kind: "notice",
         stage: "completed",
         message: summary,
-        data: { slots: slots.length },
+        data: { slots: slots.length, examined, source },
       },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
@@ -185,7 +195,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       subject: "Calendar availability",
       findings,
       metrics,
-      limitations: "Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted.",
+      limitations,
       checksRun: 2,
     });
   });

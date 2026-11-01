@@ -208,6 +208,10 @@ describe("reviewed workforce capabilities", () => {
       db.query<{ count: number }>("select count(*)::int as count from crm_companies where org_id = $1 and deleted_at is null", [org.id]),
     );
     expect(rows[0].count).toBe(3);
+    // The result says what it read (six active contacts, three companies), so a review is never "clean" by default.
+    expect(job.result.examined).toEqual([{ label: "contacts", count: 6 }, { label: "companies", count: 3 }]);
+    expect(job.result.source).toEqual({ crmMode: "native", provider: "native" });
+    expect(job.result.limitations).toMatch(/Read from the records iAcquire holds \(native mode\)/);
   });
 
   it("turns a completed finding into one idempotent, assigned follow-up task", async () => {
@@ -269,6 +273,8 @@ describe("reviewed workforce capabilities", () => {
       ),
     );
     expect(after.rows[0]).toEqual(before.rows[0]);
+    // Two open deals were read; the won deals are not part of what this review looks at.
+    expect(job.result.examined).toEqual([{ label: "deals", count: 2 }]);
   });
 
   it("runs a real appointment review and never confirms or moves a booking", async () => {
@@ -290,6 +296,8 @@ describe("reviewed workforce capabilities", () => {
       db.query<{ status: string; count: number }>("select status, count(*)::int as count from appointment_bookings where org_id = $1 group by status order by status", [org.id]),
     );
     expect(after.rows).toEqual(before.rows);
+    // Four bookings sit in a state the checks read; the previous booked one is also "booked", so five.
+    expect(job.result.examined).toEqual([{ label: "bookings", count: 5 }]);
   });
 
   it("reads real calendar availability without holding or booking a slot", async () => {
@@ -309,6 +317,8 @@ describe("reviewed workforce capabilities", () => {
     expect(availability?.timeZone).toBe("UTC");
     const metrics = (job.result.metrics as Array<{ key: string; value: number }>) ?? [];
     expect(metrics.find((metric) => metric.key === "available_slots")?.value).toBeGreaterThan(0);
+    expect(job.result.examined).toEqual([{ label: "active calendars", count: 1 }, { label: "appointment types", count: 1 }]);
+    expect((job.result.source as { crmMode: string }).crmMode).toBe("native");
     const after = await withSystem((db) =>
       db.query<{ count: number }>("select count(*)::int as count from appointment_bookings where org_id = $1", [org.id]),
     );
@@ -382,6 +392,27 @@ describe("reviewed workforce capabilities", () => {
     expect(keysOf(job.result)).not.toContain("no_lead_flow");
     const failure = (job.result.findings as Array<{ key: string; detail: string }>).find((item) => item.key === "ai_run_failure_rate");
     expect(failure?.detail).toMatch(/20% review threshold/i);
+    // The owner may view activity, so the AI run figures and their count are part of what was read.
+    expect((job.result.examined as Array<{ label: string; count: number }>).find((item) => item.label === "AI runs")?.count).toBe(7);
+  });
+
+  it("keeps AI run figures out of a snapshot a Team member asked for, and keeps them in the owner's", async () => {
+    const member = await createUser();
+    await addMember(org.id, member.id, "member");
+    const dispatched = await dispatchCapabilityJob(ctxFor(member, org, "member"), {
+      agentRole: "performance_analyst",
+      capability: "performance_snapshot",
+      title: "Performance snapshot for a member",
+      input: {},
+    });
+    const job = await waitForJob(dispatched.jobId);
+    expect(job.status).toBe("completed");
+    const keys = ((job.result.metrics as Array<{ key: string }>) ?? []).map((item) => item.key);
+    expect(keys).toHaveLength(10);
+    expect(keys.filter((key) => key.startsWith("ai_runs_"))).toEqual([]);
+    expect(keysOf(job.result)).not.toContain("ai_run_failure_rate");
+    expect(keysOf(job.result)).toContain("unvalued_open_pipeline");
+    expect((job.result.examined as Array<{ label: string }>).map((item) => item.label)).not.toContain("AI runs");
   });
 
   it("compares calendar months in the workspace time zone when the assignment asks for this month", async () => {

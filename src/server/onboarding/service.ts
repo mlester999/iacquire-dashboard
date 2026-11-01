@@ -1,15 +1,13 @@
 import "server-only";
 import crypto from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency } from "@/server/notifications";
-import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
-import { BUSINESS_GOALS, agentSettingsSchema, onboardingSchema, websiteLooksValid, type OnboardingData } from "@/lib/agent-settings";
-import { createConfigVersion, currentSettings, loadCompanyContext } from "@/server/workforce/service";
-import { compileAgentConfig, defaultSettings, detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler";
+import { isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { BUSINESS_GOALS, onboardingSchema, websiteLooksValid, type OnboardingData } from "@/lib/agent-settings";
+import { detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler";
 import { scanInstructionText } from "@/lib/instruction-risk";
 import { queueOnboardingPreparations } from "@/server/setup/jobs";
 import { requestProvisioning } from "@/server/workforce/provisioning";
@@ -36,7 +34,6 @@ import {
   planScope,
   resolveCurrentQuestion,
   submitCheck,
-  toKnowledgeSections,
   toLegacyData,
   toMessagingPreferences,
   validateAnswer,
@@ -47,7 +44,8 @@ import {
 import { ONBOARDING_SECTIONS, type AnswerSource, type AnswerValue, type Answers, type QuestionDef, type StoredAnswers } from "@/lib/onboarding/types";
 import type { OrgContext } from "@/server/tenancy/context";
 import { ASSISTANCE_FIELDS, assistanceRequestSchema, draftUsesProvidedDetails, missingDetails, sparseDescriptionIsGrounded, type AssistanceOptions, type Clarification } from "@/lib/onboarding/assistance";
-import { buildEmployeeSettings, generateEmployeeSettings, manualOverridesFromHistory, mergeBusinessUpdate, type GeneratedSettings } from "@/server/onboarding/employee-generator";
+import { generateEmployeeSettings, type GeneratedSettings } from "@/server/onboarding/employee-generator";
+import { hasUnconfiguredEnabledEmployee, seedKnowledgeFromAnswers, syncEmployeesFromAnswers, type GeneratedEmployee } from "@/server/onboarding/employee-sync";
 import { answerTimes, loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { connectionFacts } from "@/server/onboarding/connection-facts";
 import { appliedThrough, lockOnboardingRow } from "@/server/onboarding/profile-sync";
@@ -518,6 +516,8 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
 // Applying the answers to the platform
 // ===========================================================================
 
+export type { GeneratedEmployee };
+
 export interface OnboardingOutcome {
   employees: GeneratedEmployee[];
   knowledge: { written: string[]; kept: string[] };
@@ -526,14 +526,6 @@ export interface OnboardingOutcome {
 }
 
 const NO_SCHEDULING: SchedulingDraftOutcome = { state: "skipped", typesAdded: 0, skipped: [] };
-
-export interface GeneratedEmployee {
-  role: AgentRoleKey;
-  name: string;
-  summary: string;
-  configStatus: string;
-  agentStatus: string;
-}
 
 export function validateForCompletion(data: OnboardingData): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -551,8 +543,6 @@ interface V2Extras {
   firstSubmission: boolean;
   generated: Record<AgentRoleKey, GeneratedSettings> | null;
 }
-
-const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 
 /**
  * Saves the company profile and knowledge, builds a versioned, policy-wrapped configuration for each
@@ -601,7 +591,8 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       // Answers edited before the last submission, or before a Settings edit that left nothing waiting, are already in the live workspace.
       const appliedAt = appliedThrough(prior);
       const changedAt = latest[0]?.changed_at?.getTime() ?? 0;
-      if (prior.status === "submitted" && appliedAt >= changedAt) {
+      // An enabled employee with no configuration is not "unchanged" (one added to the plan after the last submission): that submission builds it.
+      if (prior.status === "submitted" && appliedAt >= changedAt && !(await hasUnconfiguredEnabledEmployee(db, ctx.org.orgId))) {
         const { rows } = await db.query<{ role_key: AgentRoleKey; display_name: string; summary: string | null; status: string }>(
           `select a.role_key, a.display_name, v.summary, a.status from agent_instances a
            left join agent_config_versions v on v.id = a.active_config_version_id
@@ -645,117 +636,12 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     if (v2) await applyV2Extras(db, ctx, v2, knowledge);
     else await seedLegacyKnowledge(db, ctx, data);
 
-    const out: GeneratedEmployee[] = [];
-    const { rows: agents } = await db.query<{ id: string; role_key: string; status: string; active_config_version_id: string | null }>(
-      "select id, role_key, status, active_config_version_id from agent_instances where org_id = $1",
-      [ctx.org.orgId],
+    // The per-employee work lives with the rest of "what an employee's configuration is, from the answers" (src/server/onboarding/employee-sync.ts).
+    const out = await syncEmployeesFromAnswers(
+      db,
+      { orgId: ctx.org.orgId, userId: ctx.user.id, actorKind: ctx.org.kind === "agency" || ctx.user.platformRole !== "none" ? "agency" : "user" },
+      { data, selected, basis: v2 },
     );
-    for (const role of selected) {
-      const agent = agents.find((a) => a.role_key === role);
-      if (!agent) continue;
-      const answers = Object.fromEntries(
-        AGENT_BY_KEY[role].questions
-          .map((q) => [q.id, sanitizeClientText(data.workforce.answers[role]?.[q.id] ?? "", 1000)] as const)
-          .filter(([, v]) => v),
-      );
-      let settings = v2 ? (v2.generated?.[role]?.settings ?? buildEmployeeSettings(role, data)) : defaultSettings(role, data.communication);
-      if (agent.active_config_version_id) {
-        // Keep manual changes to every preference. Refresh the compiled company context and only
-        // replace role answers that still equal the prior onboarding-generated value.
-        const current = (await currentSettings(db, agent.id, ctx.org.orgId)).settings;
-        const { rows: priorRows } = await db.query<{ settings: unknown }>(
-          `select settings from agent_config_versions where agent_instance_id = $1 and org_id = $2 and source = 'onboarding'
-           and applied_at is not null
-           order by version desc limit 1`,
-          [agent.id, ctx.org.orgId],
-        );
-        const prior = priorRows[0] ? agentSettingsSchema.safeParse(priorRows[0].settings) : null;
-        const { rows: history } = await db.query<{ source: string; settings: unknown }>(
-          `select source, settings from agent_config_versions
-           where agent_instance_id = $1 and org_id = $2 and applied_at is not null
-           order by version`,
-          [agent.id, ctx.org.orgId],
-        );
-        const { rows: pendingManual } = await db.query<{ source: string; settings: unknown }>(
-          `select source, settings from agent_config_versions
-           where agent_instance_id = $1 and org_id = $2 and status = 'pending_agency_review' and source <> 'onboarding'
-           order by version desc limit 1`,
-          [agent.id, ctx.org.orgId],
-        );
-        const pendingEdit = pendingManual[0] ? agentSettingsSchema.safeParse(pendingManual[0].settings) : null;
-        const latest = pendingEdit?.success ? pendingEdit.data : current;
-        const provenance = pendingEdit?.success ? [...history, pendingManual[0]] : history;
-        settings = prior?.success ? mergeBusinessUpdate(role, latest, prior.data, data, manualOverridesFromHistory(provenance)) : latest;
-      } else {
-        if (v2 && !v2.firstSubmission) {
-          const { rows: priorPending } = await db.query<{ settings: unknown }>(
-            `select settings from agent_config_versions
-             where agent_instance_id = $1 and org_id = $2 and source = 'onboarding' and status = 'pending_agency_review'
-             order by version desc limit 1`,
-            [agent.id, ctx.org.orgId],
-          );
-          const held = priorPending[0] ? agentSettingsSchema.safeParse(priorPending[0].settings) : null;
-          if (held?.success) settings = mergeBusinessUpdate(role, held.data, held.data, data);
-        }
-        settings = agentSettingsSchema.parse({ ...settings, roleAnswers: { ...settings.roleAnswers, ...answers } });
-      }
-      if (agent.active_config_version_id) {
-        const { rows: activeRows } = await db.query<{ version: number; settings: unknown; compiled_instructions: string; default_tools: string[] }>(
-          `select v.version, v.settings, v.compiled_instructions, r.default_tools
-           from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id
-           join agent_roles r on r.key = a.role_key
-           where v.id = $1 and v.org_id = $2`,
-          [agent.active_config_version_id, ctx.org.orgId],
-        );
-        const active = activeRows[0];
-        const activeSettings = active ? agentSettingsSchema.safeParse(active.settings) : null;
-        if (active && activeSettings?.success && isDeepStrictEqual(settings, activeSettings.data)) {
-          const company = await loadCompanyContext(db, ctx.org.orgId);
-          const refreshed = compileAgentConfig({ role, settings, company, version: Number(active.version), allowedTools: active.default_tools });
-          if (refreshed.instructions === active.compiled_instructions) {
-            out.push({ role, name: AGENT_BY_KEY[role].name, summary: refreshed.summary, configStatus: "unchanged", agentStatus: agent.status });
-            continue;
-          }
-        }
-      }
-      if (v2) {
-        const { rows: pendingRows } = await db.query<{ version: number; settings: unknown; compiled_instructions: string; summary: string; default_tools: string[] }>(
-          `select v.version, v.settings, v.compiled_instructions, v.summary, r.default_tools
-           from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id
-           join agent_roles r on r.key = a.role_key
-           where v.agent_instance_id = $1 and v.org_id = $2 and v.source = 'onboarding' and v.status = 'pending_agency_review'
-           order by v.version desc limit 1`,
-          [agent.id, ctx.org.orgId],
-        );
-        const pending = pendingRows[0];
-        const parsedPending = pending ? agentSettingsSchema.safeParse(pending.settings) : null;
-        if (pending && parsedPending?.success && isDeepStrictEqual(settings, parsedPending.data)) {
-          const company = await loadCompanyContext(db, ctx.org.orgId);
-          const refreshed = compileAgentConfig({ role, settings, company, version: Number(pending.version), allowedTools: pending.default_tools });
-          if (refreshed.instructions === pending.compiled_instructions) {
-            out.push({ role, name: AGENT_BY_KEY[role].name, summary: pending.summary, configStatus: "unchanged", agentStatus: agent.status });
-            continue;
-          }
-        }
-      }
-      const v = await createConfigVersion(db, {
-        orgId: ctx.org.orgId,
-        agentId: agent.id,
-        settings,
-        source: "onboarding",
-        changeRequest: v2 && !v2.firstSubmission
-          ? "Synchronized confirmed business changes; existing employee style preserved."
-          : v2?.generated?.[role]?.source === "safe_defaults"
-            ? "Safe deterministic defaults used; AI preference generation was unavailable or invalid."
-            : v2?.generated?.[role]?.fallbackFields?.length
-              ? `AI generated safe role preferences; protected role-template defaults restored for ${v2.generated[role].fallbackFields.join(", ")}.`
-            : "Generated from confirmed onboarding and protected role templates.",
-        actorKind: ctx.org.kind === "agency" || ctx.user.platformRole !== "none" ? "agency" : "user",
-        userId: ctx.user.id,
-        apply: true,
-      });
-      out.push({ role, name: AGENT_BY_KEY[role].name, summary: v.summary, configStatus: v.status, agentStatus: agent.status });
-    }
     // The snapshot is what the answers said about the business at this submission (the same instant as submitted_at: both are this transaction's now()). A later
     // re-submission writes only the facts that differ from it. The earlier flow has no answers, so it leaves the snapshot as it was.
     const stamp = new Date((await db.query<{ t: Date }>("select now() as t")).rows[0].t);
@@ -840,27 +726,7 @@ async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowl
   }
 
   // Knowledge: write what onboarding owns; never overwrite text that someone edited in the Knowledge Center.
-  for (const { section, content } of toKnowledgeSections(a)) {
-    const text = sanitizeClientText(content, 12000);
-    if (!text) continue;
-    const flags = detectRiskFlags(text);
-    const { rows } = await db.query<{ content: string; seeded_hash: string | null }>("select content, seeded_hash from company_knowledge where org_id = $1 and section = $2", [ctx.org.orgId, section]);
-    const current = rows[0];
-    if (current && current.content === text) continue;
-    if (current && current.seeded_hash !== sha256(current.content)) {
-      knowledge.kept.push(section);
-      continue;
-    }
-    const review = flags.length ? "pending_agency_review" : "approved";
-    await db.query(
-      `insert into company_knowledge (org_id, section, content, updated_by, risk_flags, review_status, applied_at, seeded_hash)
-       values ($1, $2, $3, $4, $5, $6, case when $6 = 'approved' then now() end, $7)
-       on conflict (org_id, section) do update set content = excluded.content, version = company_knowledge.version + 1, updated_by = excluded.updated_by,
-         risk_flags = excluded.risk_flags, review_status = excluded.review_status, applied_at = excluded.applied_at, seeded_hash = excluded.seeded_hash`,
-      [ctx.org.orgId, section, text, ctx.user.id, flags, review, sha256(text)],
-    );
-    knowledge.written.push(section);
-  }
+  await seedKnowledgeFromAnswers(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, a, knowledge);
 }
 
 /** Final approval of the adaptive questionnaire. Requires every blocker cleared and the owner's explicit confirmation. */

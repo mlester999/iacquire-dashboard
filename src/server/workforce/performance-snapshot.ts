@@ -1,5 +1,5 @@
 import "server-only";
-import type { Queryable } from "@/server/db";
+import { withUser, type Queryable } from "@/server/db";
 import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck, type ReviewMetric } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 
@@ -11,6 +11,22 @@ const n = (value: unknown) => {
 async function scalar(db: Queryable, sql: string, params: unknown[]): Promise<number> {
   const { rows } = await db.query<{ count: number }>(sql, params);
   return n(rows[0]?.count);
+}
+
+/** The two AI run figures in the snapshot (the chat snapshot hides the same keys from a person without activity access). */
+const AI_RUN_METRICS: ReadonlySet<string> = new Set(["ai_runs_completed", "ai_runs_failed"]);
+
+/** Whether the person who asked may view activity. Fails closed: no requester, no membership or a failed read all mean no. */
+export async function requesterMayReadRuns(job: Pick<WorkJobRow, "org_id" | "requested_by">): Promise<boolean> {
+  if (!job.requested_by) return false;
+  try {
+    const { rows } = await withUser(job.requested_by, (db) =>
+      db.query<{ allowed: boolean }>("select coalesce(app.has_permission($1, 'activity.view'), false) as allowed", [job.org_id]),
+    );
+    return rows[0]?.allowed === true;
+  } catch {
+    return false;
+  }
 }
 
 type PerformancePeriod = {
@@ -267,19 +283,44 @@ export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { wor
     periodPromise ??= resolvePeriod(db, job);
     return periodPromise;
   };
+  // The result is shown to the person who asked, so it follows the rule chat uses: AI run figures only for someone who may view activity.
+  let mayReadRuns = false;
   return runReadOnlyReviewJob(job, {
     capability: "performance_snapshot",
     allowedRoles: ["performance_analyst"],
     scanningMessage: "Reading persisted leads, contacts, appointments, opportunities and AI runs for the requested period…",
     analyzingMessage: "Calculating measured KPIs for the requested period and checking only the stated anomaly thresholds…",
+    beforeScan: async () => {
+      mayReadRuns = await requesterMayReadRuns(job);
+    },
     checks: [
       async (db) => noLeadFlow(await getPeriod(db))(db, job),
-      async (db) => aiFailureRate(await getPeriod(db))(db, job),
+      async (db) => (mayReadRuns ? aiFailureRate(await getPeriod(db))(db, job) : null),
       unvaluedPipeline,
       async (db) => noConfirmedAppointments(await getPeriod(db))(db, job),
     ],
-    metrics: async (db) => metrics(db, await getPeriod(db)),
-    limitations: "KPIs cover only records stored in this workspace for the requested calendar month or last 30 days, compared with the matching prior period. No provider was contacted, no estimate was produced and no metric was inferred.",
+    metrics: async (db) => {
+      const all = await metrics(db, await getPeriod(db));
+      return mayReadRuns ? all : all.filter((metric) => !AI_RUN_METRICS.has(metric.key));
+    },
+    examined: async (db, reviewed) => {
+      const [leads, contacts, appointments, deals] = await Promise.all([
+        scalar(db, "select count(*)::int as count from leads where org_id = $1", [reviewed.org_id]),
+        scalar(db, "select count(*)::int as count from contacts where org_id = $1 and deleted_at is null", [reviewed.org_id]),
+        scalar(db, "select count(*)::int as count from appointment_bookings where org_id = $1", [reviewed.org_id]),
+        scalar(db, "select count(*)::int as count from crm_opportunities where org_id = $1", [reviewed.org_id]),
+      ]);
+      const examined = [
+        { label: "leads", count: leads },
+        { label: "contacts", count: contacts },
+        { label: "appointments", count: appointments },
+        { label: "deals", count: deals },
+      ];
+      if (mayReadRuns) examined.push({ label: "AI runs", count: await scalar(db, "select count(*)::int as count from agent_runs where org_id = $1", [reviewed.org_id]) });
+      return examined;
+    },
+    sourceArea: "reporting",
+    limitations: "KPIs cover only records stored in this workspace for the requested calendar month or last 30 days, compared with the matching prior period. No provider was contacted, no estimate was produced and no metric was inferred. AI run figures are shown only to people who may view activity.",
     subject: "Performance",
   });
 }

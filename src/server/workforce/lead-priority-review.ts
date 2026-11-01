@@ -1,5 +1,5 @@
 import "server-only";
-import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
+import { runReadOnlyReviewJob, reviewCount, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 
 // The Sales Assistant's read-only look at lead priority. It reads the scores the engine already wrote and what has happened to those leads since;
@@ -104,6 +104,12 @@ export async function runLeadPriorityReviewJob(job: WorkJobRow, _context: { work
     scanningMessage: "Reading lead priorities that were already assessed and what happened to those leads since…",
     analyzingMessage: "Working out which promising leads need a person…",
     checks: [hotNotContacted, hotNoOwner, mostlyUnknown, backlog],
+    // The checks read contacts that already carry a priority, so a contact nobody has scored yet is not "checked".
+    examined: async (db, job) => [{
+      label: "assessed leads",
+      count: await reviewCount(db, "select count(*)::int as count from contacts where org_id = $1 and deleted_at is null and priority_label is not null", [job.org_id]),
+    }],
+    sourceArea: "contacts",
     limitations: "Only the stored priorities and records in this workspace were read. No lead was scored, contacted or changed.",
     subject: "Lead priority",
   });

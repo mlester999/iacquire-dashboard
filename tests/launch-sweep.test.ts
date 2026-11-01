@@ -3,7 +3,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
+import { sweepLaunchVerification, sweepLaunchVerificationAfter } from "@/server/setup/launch-sweep";
+import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
 import { getLaunchReadiness } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
@@ -152,6 +153,24 @@ describe("the Appointment Setter's check waits for the booking calendar", () => 
     await settled(c.org.id, 6);
     expect(await checkJobs(c.org.id)).toBe(6);
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
+  }, 180_000);
+});
+
+describe("the sweep as an event leaves the launch ledger a row", () => {
+  it("records the state the event left once it ran, and the way to ready once the checks settle", async () => {
+    const c = await readyClient({ name: "Ledger Sweep Roofing", timezone: "Asia/Manila" });
+    const trail = async () => (await withSystem((db) => db.query<{ metadata: { to: string } }>("select metadata from audit_logs where org_id = $1 and action = $2 order by id", [c.org.id, LAUNCH_LEDGER_ACTION]))).rows.map((r) => r.metadata.to);
+    const base = (await trail()).length;
+    await sweepLaunchVerificationAfter(c.org.id, "a test event");
+    await settled(c.org.id, 6);
+    await sweepLaunchVerificationAfter(c.org.id, "a test event");
+    const after = (await trail()).slice(base);
+    expect(after.at(-1)).toBe("ready_to_launch");
+    expect(after.slice(0, -1).includes("ready_to_launch")).toBe(false);
+    // The same event again changes nothing, so nothing more is written.
+    const length = (await trail()).length;
+    await sweepLaunchVerificationAfter(c.org.id, "a test event");
+    expect((await trail()).length).toBe(length);
   }, 180_000);
 });
 

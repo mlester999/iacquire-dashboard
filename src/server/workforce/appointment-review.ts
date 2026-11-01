@@ -1,5 +1,5 @@
 import "server-only";
-import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
+import { runReadOnlyReviewJob, reviewCount, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 
 const samples = (value: unknown) => (Array.isArray(value) ? (value as string[]).filter((item) => typeof item === "string") : []);
@@ -103,6 +103,16 @@ export async function runAppointmentReviewJob(job: WorkJobRow, _context: { worke
     scanningMessage: "Reading persisted appointment requests, confirmations and ownership…",
     analyzingMessage: "Assessing booking risks and preparing recommended next actions…",
     checks: [awaitingApproval, manualBookings, stuckRequests, unassignedUpcoming],
+    // The four checks look at bookings in these states; a cancelled or finished booking is not part of what was reviewed.
+    examined: async (db, job) => [{
+      label: "bookings",
+      count: await reviewCount(
+        db,
+        "select count(*)::int as count from appointment_bookings where org_id = $1 and status in ('awaiting_approval', 'needs_manual', 'requested', 'booked')",
+        [job.org_id],
+      ),
+    }],
+    sourceArea: "appointments",
     limitations: "Only appointment records stored in this workspace were read. No calendar provider was contacted and no booking was confirmed, moved or cancelled.",
     subject: "Appointment",
   });

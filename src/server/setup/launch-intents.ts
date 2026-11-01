@@ -14,6 +14,7 @@ import { activateCalendar, applyApprovedCalendarHours, assignHostIfNone } from "
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { findLaunchCalendar, loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 
 // The buttons of the guided launch setup. Each one is a thing the client could already do in the CRM; here it is one click from the checklist that names it, runs the real
 // service (which re-checks the person's permission and every rule itself), and says plainly what happened. None of them turns a public booking page on, sends a message, books
@@ -62,6 +63,13 @@ async function hostCandidate(orgId: string, userId: string): Promise<{ id: strin
 }
 
 export async function runLaunchIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIntentParams = {}): Promise<LaunchIntentResult> {
+  const result = await runIntent(ctx, intent, params);
+  // A step that ran may have moved the launch state: the ledger remembers it (and tells the owners of a moment that is theirs). A refused step threw above and records nothing.
+  await recordLaunchSnapshotAfter(ctx.org.orgId, { kind: "user", userId: ctx.user.id }, `the ${intent} step`);
+  return result;
+}
+
+async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIntentParams): Promise<LaunchIntentResult> {
   if (ctx.org.kind !== "client") throw new AppError("forbidden", "Launch setup applies to a client workspace.");
   if (intent !== "run_checks") {
     // Each calendar step re-checks the permission it needs again; this refuses first, before anything is read.
@@ -141,6 +149,11 @@ export async function startLaunchVerification(ctx: OrgContext): Promise<LaunchIn
     const v = verification.get(e.role);
     if (v?.state === "running") {
       skipped.push({ role: e.role, reason: `${name}'s check is already running.` });
+      continue;
+    }
+    // A check held for a person's approval is not started a second time either, and it is not running: it waits for that review (the panel says the same).
+    if (v?.state === "awaiting_review") {
+      skipped.push({ role: e.role, reason: `${name}'s check is waiting for iAcquire's review.` });
       continue;
     }
     if (v?.state === "passed" && v.configVersion === e.configVersion) continue;

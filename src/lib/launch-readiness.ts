@@ -57,6 +57,10 @@ export interface LaunchItem {
   detail: string;
   owner: ItemOwner;
   action?: LaunchAction;
+  /** The item was in progress for longer than it should be, so it is now iAcquire's to look at. Only ever set from a start time the facts carried and a clock the caller passed in. */
+  stalled?: boolean;
+  /** When the thing that stalled began waiting (ISO), so an alert about it can be named once per wait. Set with `stalled`. */
+  stalledSince?: string;
   /** The people the client may choose from for this step (the host), for a select beside the button. Names only: the server validates the id that comes back. */
   hostChoices?: Array<{ id: string; name: string }>;
   /** What the client's own part of this step involves (for example the records they add for a domain). Guidance only: it is never a state and never counts as verified. */
@@ -180,11 +184,28 @@ export interface EmployeeFact {
   heldForReview: boolean;
   /** The applied configuration version the checks below were run against. */
   configVersion: number | null;
+  /** When the profile job that is still open began waiting (ISO). Absent or null: unknown, so the item is never called stalled. */
+  startedAt?: string | null;
+  /** That open job is claimed by nobody: its lease ran out. */
+  leaseExpired?: boolean;
+  /** iAcquire was really told this wait is long (a recorded notice for it). The words "iAcquire has been alerted" are used only when this is true. */
+  stallAlerted?: boolean;
 }
 
 export type VerificationFact =
   | { role: AgentRoleKey; state: "none" }
-  | { role: AgentRoleKey; state: "running" }
+  | {
+      role: AgentRoleKey;
+      state: "running";
+      /** When the check was queued (ISO), so a check that runs for too long is noticed. Absent: unknown. */
+      since?: string | null;
+      /** Its worker stopped reporting: the lease ran out. */
+      leaseExpired?: boolean;
+      /** iAcquire was really told this check is taking long. */
+      alerted?: boolean;
+    }
+  /** The check is held for a person's approval (a work job in waiting_for_approval): that is a review, not a run. */
+  | { role: AgentRoleKey; state: "awaiting_review" }
   | { role: AgentRoleKey; state: "passed" | "failed"; /** The configuration version the check was run against. */ configVersion: number | null; detail: string | null };
 
 export interface ChannelFact {
@@ -229,6 +250,10 @@ export interface LaunchFacts {
     /** Tags, contact fields and forms in the CRM, and whether they match what the Blueprint created. */
     records?: { state: "in_place" | "missing" | "pending"; tags: number; contactFields: number; forms: number };
     providerConnected: boolean;
+    /** When the industry setup began to be waited for: the later of the questionnaire's submission and the setup fee clearing (ISO). Absent or null: unknown. */
+    waitingSince?: string | null;
+    /** iAcquire was really told this wait is long. */
+    waitingAlerted?: boolean;
   };
   /** True: appointments are wanted. False: not wanted. Null: the questionnaire does not say. */
   appointments: {
@@ -243,6 +268,56 @@ export interface LaunchFacts {
   channels: ChannelFact[];
   employees: EmployeeFact[];
   verification: VerificationFact[];
+  /**
+   * The client saved answer edits after their last approval, so the live setup (and the AI team) still runs on the earlier answers. The same rule the questionnaire uses for
+   * "unsubmitted changes". It blocks 100% until the client approves. Absent: nothing is waiting.
+   */
+  pendingAnswerChanges?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Time: how long a wait may last before it is somebody's to look at
+// ---------------------------------------------------------------------------
+
+export interface StallMinutes {
+  /** An employee's profile job that is still open. The server reads HERMES_PROVISIONER_STALL_MINUTES for this one. */
+  provisioning: number;
+  /** A final read-only check that is queued or running. */
+  verification: number;
+  /** The industry CRM setup that has not been applied yet. */
+  crm: number;
+}
+export const STALL_MINUTES: StallMinutes = { provisioning: 30, verification: 15, crm: 60 };
+
+/** What the judge needs to tell a long wait from a short one. Without `now` nothing is ever called stalled: a pure read of the facts says only what they say. */
+interface Clock {
+  now: Date | null;
+  stall: StallMinutes;
+}
+
+/** How long ago `since` was, when both it and the clock are known and the wait has passed `thresholdMinutes`; otherwise null. */
+function waitedPast(clock: Clock, since: string | null | undefined, thresholdMinutes: number): number | null {
+  if (!clock.now || !since) return null;
+  const began = Date.parse(since);
+  if (!Number.isFinite(began)) return null;
+  const waited = clock.now.getTime() - began;
+  return waited >= thresholdMinutes * 60_000 ? waited : null;
+}
+
+const howLong = (ms: number) => {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  return minutes < 120 ? `about ${minutes} minutes` : `about ${Math.round(minutes / 60)} hours`;
+};
+
+/**
+ * An item that waited too long: iAcquire's to look at, and said so in plain words. "iAcquire has been alerted" is written only when a recorded alert exists (`alerted`); otherwise it
+ * says what is true, that the item is waiting on iAcquire, and promises nothing.
+ */
+function stalledItem(i: LaunchItem, what: string, waited: number, since: string, alerted: boolean | undefined, extra = ""): LaunchItem {
+  return {
+    key: i.key, label: i.label, state: "action_required", required: i.required, owner: "iacquire", stalled: true, stalledSince: since,
+    detail: `${what} has taken ${howLong(waited)}, longer than expected.${extra} ${alerted ? "iAcquire has been alerted." : "It is waiting on iAcquire."} Nothing is needed from you.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +339,10 @@ function profileStep(f: LaunchFacts): LaunchStep {
       ? { key: "profile.timezone", label: "Business time zone", state: "done", required: true, owner: "you", detail: `Your business time zone is ${p.timezone}.` }
       : { key: "profile.timezone", label: "Business time zone", state: "action_required", required: true, owner: "you", detail: "Confirm the time zone your business works in. Booking times and replies depend on it.", action: { label: "Confirm time zone", href: "/onboarding" } }),
   ];
+  // Edits nobody approved are not the live setup: until the client approves them, "ready" would describe answers that nothing has been built from.
+  if (f.pendingAnswerChanges) {
+    items.push(item({ key: "profile.pending_changes", label: "Changes waiting for your approval", state: "action_required", required: true, owner: "you", detail: "You changed your company setup and have not approved it yet. Your AI team still runs on the previous setup.", action: { label: "Review and approve your changes", href: "/onboarding" } }));
+  }
   return { key: "profile", title: "Business profile", ...summarize(items) };
 }
 
@@ -285,7 +364,7 @@ function knowledgeStep(f: LaunchFacts): LaunchStep {
 }
 
 /** The industry CRM setup, judged from the Blueprint evidence: only a verified one is done, and everything that is not verified is iAcquire's to fix, never the client's. */
-function blueprintItem(c: LaunchFacts["crm"]): LaunchItem {
+function blueprintItem(c: LaunchFacts["crm"], clock: Clock, started: boolean): LaunchItem {
   const base = { key: "crm.blueprint", label: "Industry CRM setup", required: true, owner: "iacquire" } as const;
   const summary = c.blueprintSummary?.trim();
   switch (c.blueprint) {
@@ -299,10 +378,14 @@ function blueprintItem(c: LaunchFacts["crm"]): LaunchItem {
       return { ...base, state: "action_required", detail: summary || "Your industry CRM setup was only partly applied. iAcquire will finish it. Nothing is needed from you." };
     case "missing_records":
       return { ...base, state: "action_required", detail: summary || "Some items your CRM setup created are no longer in your CRM. iAcquire will review this with you." };
-    case "none":
-      return { ...base, state: "in_progress", detail: c.automaticSetup
+    case "none": {
+      const waiting: LaunchItem = { ...base, state: "in_progress", detail: c.automaticSetup
         ? "Your industry CRM is being set up by iAcquire's automatic setup. Nothing is needed from you."
         : "Your industry CRM is being set up by iAcquire. Nothing is needed from you." };
+      // The automatic setup waits for the questionnaire AND the setup fee: until both have happened nothing is late, and it is not iAcquire that is being waited for.
+      const waited = started ? waitedPast(clock, c.waitingSince, clock.stall.crm) : null;
+      return waited === null || !c.waitingSince ? waiting : stalledItem(waiting, "Setting up your industry CRM", waited, c.waitingSince, c.waitingAlerted);
+    }
   }
 }
 
@@ -318,11 +401,11 @@ function crmRecordsItem(c: LaunchFacts["crm"]): LaunchItem {
   return { ...base, state: "in_progress", detail: "Your tags, contact fields and forms arrive with the CRM setup." };
 }
 
-function crmStep(f: LaunchFacts): LaunchStep {
+function crmStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const c = f.crm;
   const items: LaunchItem[] = [];
   if (c.mode === "native") {
-    items.push(item(blueprintItem(c)));
+    items.push(item(blueprintItem(c, clock, f.submitted && f.paymentCleared !== false)));
     // A pipeline that exists is done whatever the Blueprint says; one that does not exist is waited for while the setup has not run (or is waiting for a person), and reviewed once it has.
     const waiting = c.blueprint === "none" || c.blueprint === "waiting_for_a_person" || c.blueprint === "failed";
     items.push(item(c.pipelineReady
@@ -639,7 +722,20 @@ function channelItem(c: ChannelFact): LaunchItem {
       : `iAcquire connects, tests and switches on your ${label} sender. Nothing is sent until it is verified.${stated}` };
 }
 
-function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
+/** A profile job that is still open and has waited past the provisioning threshold. Only the job states that mean "somebody is on it" can stall: not started and cancelled never do. */
+function stalledProvisioning(i: LaunchItem, e: EmployeeFact, clock: Clock): LaunchItem {
+  if (!e.startedAt || !(e.provisioning === "requested" || e.provisioning === "in_progress" || e.provisioning === "awaiting_health_check" || e.provisioning === "retrying")) return i;
+  const waited = waitedPast(clock, e.startedAt, clock.stall.provisioning);
+  if (waited === null) return i;
+  return stalledItem(i, "Setting up its profile", waited, e.startedAt, e.stallAlerted, e.leaseExpired ? " Nothing is working on it right now." : "");
+}
+
+function employeeItem(f: LaunchFacts, e: EmployeeFact, clock: Clock): LaunchItem {
+  const found = employeeItemNow(f, e);
+  return found.state === "in_progress" ? stalledProvisioning(found, e, clock) : found;
+}
+
+function employeeItemNow(f: LaunchFacts, e: EmployeeFact): LaunchItem {
   const meta = AGENT_BY_KEY[e.role];
   const key = `employees.${e.role}`;
   const label = meta.shortName;
@@ -671,18 +767,18 @@ function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
   return { key, label, state: "action_required", required: true, owner: "iacquire", detail: e.readiness.description };
 }
 
-function employeesStep(f: LaunchFacts): LaunchStep {
+function employeesStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const byRole = new Map(f.employees.map((e) => [e.role, e]));
   // A role with no record at all is an employee that was never created: that is something iAcquire must look at, never a quiet "not applicable".
   const missing = (role: AgentRoleKey): EmployeeFact => ({ role, entitled: true, provisioning: "succeeded", provisioningDetail: null, attempts: 0, maxAttempts: 3, nextRetryAt: null, healthFailed: false, healthDetail: null, readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "This employee has not been created. iAcquire needs to review the workspace.", blocking: [] }, heldForReview: false, configVersion: null });
-  const items = AGENT_ROLE_KEYS.map((role) => employeeItem(f, byRole.get(role) ?? missing(role)));
+  const items = AGENT_ROLE_KEYS.map((role) => employeeItem(f, byRole.get(role) ?? missing(role), clock));
   // The title counts what the plan includes, the way the review does, so the two screens agree.
   const included = AGENT_ROLE_KEYS.filter((role) => byRole.get(role)?.entitled ?? true).length;
   const title = included === AGENT_ROLE_KEYS.length ? `Your ${countWord(included)} AI employees` : included === 0 ? "Your AI employees" : `Your ${countWord(included)} AI employee${included === 1 ? "" : "s"}`;
   return { key: "employees", title, ...summarize(items) };
 }
 
-function verificationStep(f: LaunchFacts): LaunchStep {
+function verificationStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const verification = new Map(f.verification.map((v) => [v.role, v]));
   const employees = new Map(f.employees.map((e) => [e.role, e]));
   const items: LaunchItem[] = [];
@@ -707,7 +803,13 @@ function verificationStep(f: LaunchFacts): LaunchStep {
       continue;
     }
     const v = verification.get(role) ?? { role, state: "none" as const };
-    if (v.state === "running") items.push(item({ key, label, state: "in_progress", required: true, owner: "system", detail: "A read-only check on your real records is running." }));
+    if (v.state === "running") {
+      const running = item({ key, label, state: "in_progress", required: true, owner: "system", detail: "A read-only check on your real records is running." });
+      const waited = waitedPast(clock, v.since, clock.stall.verification);
+      items.push(waited === null || !v.since ? running : stalledItem(running, "Its read-only check", waited, v.since, v.alerted, v.leaseExpired ? " Nothing is running it right now." : ""));
+    }
+    // A check held for a person's approval is waiting on that review, not running: it must not read as progress.
+    else if (v.state === "awaiting_review") items.push(item({ key, label, state: "awaiting_review", required: true, owner: "iacquire", detail: "Its read-only check is waiting for iAcquire's review. Nothing runs until it is approved." }));
     else if (v.state === "none") items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Not checked yet. The check reads your real records and changes nothing.", action: { label: "Run final checks", intent: "run_checks" } }));
     // A result for an older configuration says nothing about this one, whether it passed or failed: the check runs again (the sweep starts it by itself).
     else if (v.configVersion !== e.configVersion) items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Its configuration changed since the last check, so the check needs to run again.", action: { label: "Run final checks", intent: "run_checks" } }));
@@ -735,8 +837,13 @@ function summarize(items: LaunchItem[]): { state: StepState; summary: string; it
   return { state, summary: state === "done" ? "Complete." : `${done} of ${watched.length} checks passed.`, items };
 }
 
-export function deriveLaunchReadiness(f: LaunchFacts): LaunchReadiness {
-  const steps: LaunchStep[] = [profileStep(f), knowledgeStep(f), crmStep(f), calendarStep(f), integrationsStep(f), employeesStep(f), verificationStep(f)];
+/**
+ * `now` makes the judge time-aware: an employee's profile, a final check or the industry CRM setup that has been in progress for longer than its threshold (STALL_MINUTES, or the
+ * `stall` the server read from the environment) becomes an action for iAcquire instead of "in progress, nothing is needed" for ever. Left out, nothing is ever called stalled.
+ */
+export function deriveLaunchReadiness(f: LaunchFacts, now?: Date, stall: Partial<StallMinutes> = {}): LaunchReadiness {
+  const clock: Clock = { now: now ?? null, stall: { ...STALL_MINUTES, ...stall } };
+  const steps: LaunchStep[] = [profileStep(f), knowledgeStep(f), crmStep(f, clock), calendarStep(f), integrationsStep(f), employeesStep(f, clock), verificationStep(f, clock)];
   const required = steps.flatMap((s) => s.items).filter((i) => i.required && i.state !== "not_applicable");
   const passed = required.filter((i) => i.state === "done").length;
   const total = required.length;
@@ -769,4 +876,24 @@ export function deriveLaunchReadiness(f: LaunchFacts): LaunchReadiness {
     return { ...base, state: "provisioning", label: LAUNCH_STATE_LABEL.provisioning, headline: "Setting up your business", detail: "Nothing has been checked yet.", percent: 0 };
   }
   return { ...base, state: "ready_to_launch", label: LAUNCH_STATE_LABEL.ready_to_launch, headline: "100% Ready to Launch", detail: "Every applicable setup and verification check has passed. Nothing customer-facing is switched on until you turn it on.", percent: 100 };
+}
+
+/**
+ * A short fingerprint of what matters about a readiness: the overall state and every required, applicable item's key, state and owner. Wording, counts and the time never move it, so
+ * two reads that say the same thing in different words are the same fingerprint, and a change in who has to move or what is done is a different one. Not a secret and not a
+ * security boundary: it only tells "something changed" from "nothing did". (cyrb53, 53 bits.)
+ */
+export function fingerprintOf(r: Pick<LaunchReadiness, "state" | "steps">): string {
+  const parts = r.steps.flatMap((s) => s.items).filter((i) => i.required && i.state !== "not_applicable").map((i) => `${i.key}:${i.state}:${i.owner}`).sort();
+  const text = `${r.state}|${parts.join(",")}`;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
 }

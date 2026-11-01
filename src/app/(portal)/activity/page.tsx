@@ -21,7 +21,7 @@ export default async function ActivityPage() {
             `select a.id::text, a.action, u.full_name as actor, a.actor_kind, a.target_type, a.result, a.created_at, a.approval_id, ro.short_name as agent
              from audit_logs a left join users u on u.id = a.actor_user_id
              left join agent_instances ai on ai.id = a.agent_instance_id left join agent_roles ro on ro.key = ai.role_key
-             where a.org_id = $1 and a.action <> 'agent.health_check' order by a.created_at desc limit 150`,
+             where a.org_id = $1 and a.action not in ('agent.health_check', 'setup.launch_state_changed') order by a.created_at desc limit 150`,
             [ctx.org.orgId],
           )
         ).rows

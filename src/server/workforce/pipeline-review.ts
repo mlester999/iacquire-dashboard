@@ -1,5 +1,5 @@
 import "server-only";
-import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
+import { runReadOnlyReviewJob, reviewCount, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 
 const samples = (value: unknown) => (Array.isArray(value) ? (value as string[]).filter((item) => typeof item === "string") : []);
@@ -128,7 +128,13 @@ export async function runPipelineReviewJob(job: WorkJobRow, _context: { workerId
     scanningMessage: "Reading persisted sales opportunities and their recorded stage history…",
     analyzingMessage: "Assessing pipeline hygiene and preparing recommended next actions…",
     checks: PIPELINE_REVIEW_CHECKS,
-    limitations: "Only opportunities stored in this workspace were read. No provider was contacted and no deal, stage or owner was changed.",
+    // Every check reads open, unarchived deals, so that is the denominator.
+    examined: async (db, job) => [{
+      label: "deals",
+      count: await reviewCount(db, "select count(*)::int as count from crm_opportunities where org_id = $1 and status = 'open' and archived_at is null", [job.org_id]),
+    }],
+    sourceArea: "opportunities",
+    limitations: "Only open opportunities stored in this workspace were read. No provider was contacted and no deal, stage or owner was changed.",
     subject: "Pipeline",
   });
 }

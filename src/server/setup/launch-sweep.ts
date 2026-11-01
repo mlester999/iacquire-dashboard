@@ -5,6 +5,7 @@ import { LAUNCH_VERIFICATION_CAPABILITY, launchVerificationInput, launchVerifica
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
+import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 
 // The automatic half of the final checks. When an employee becomes ready for authorized work, or its configuration changes and it is ready again, nobody should have to press a button for
 // it to prove itself: this starts the one read-only check for each such employee. It starts a check only where none exists yet for the employee's current configuration version, so it
@@ -76,12 +77,14 @@ export async function sweepLaunchVerification(orgId: string): Promise<LaunchSwee
 
 /**
  * The sweep as an event hook: called after something committed that can make an employee ready (a passing health check, a calendar or CRM becoming active). It never fails the
- * action that called it. The sweep is loaded on demand so the services that call this do not import the setup module at load.
+ * action that called it. The sweep is loaded on demand so the services that call this do not import the setup module at load. When it has run, the launch ledger remembers the
+ * state the event left (a caller that records the state itself afterwards passes `record: false`).
  */
-export async function sweepLaunchVerificationAfter(orgId: string, after: string): Promise<void> {
+export async function sweepLaunchVerificationAfter(orgId: string, after: string, opts: { record?: boolean } = {}): Promise<void> {
   try {
     await sweepLaunchVerification(orgId);
   } catch (err) {
     console.warn(`[iacquire] launch check sweep after ${after} failed; the next event will retry.`, { error: err instanceof Error ? err.name : "unknown" });
   }
+  if (opts.record !== false) await recordLaunchSnapshotAfter(orgId, { kind: "system" }, after);
 }

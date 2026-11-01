@@ -7,6 +7,8 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import {
   deriveLaunchReadiness,
+  STALL_MINUTES,
+  type StallMinutes,
   type CalendarCheckFact,
   type CalendarFacts,
   type ChannelFact,
@@ -21,6 +23,7 @@ import {
 import { confirmedAnswers } from "@/lib/onboarding/engine";
 import type { Answers } from "@/lib/onboarding/types";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
+import { approvedAnswersOf, channelsWithApprovedSender, readPendingAnswerChanges } from "@/server/onboarding/pending-changes";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { activeHostsOfCalendar, hostConnectionStates, proposeCalendarHours, statedBusyAnswer, verifyCalendarInTx } from "@/server/calendars/activation";
 import { calendarConnectionSettings } from "@/server/calendars/connections";
@@ -36,15 +39,39 @@ import { USABLE_NATIVE_PIPELINE_SQL, loadWorkspaceFacts } from "@/server/workfor
 
 const CHANNELS = ["email", "sms", "whatsapp"] as const;
 
+/**
+ * The thresholds the judge uses on the server: the provisioning one is the same HERMES_PROVISIONER_STALL_MINUTES the provisioning watchdog alerts on, so the panel and the alert agree
+ * about when a profile job has waited too long. The other two are constants (src/lib/launch-readiness.ts).
+ */
+export function launchStallMinutes(): StallMinutes {
+  return { ...STALL_MINUTES, provisioning: env().HERMES_PROVISIONER_STALL_MINUTES };
+}
+
+/** The name of the agency notice about one long wait. The ledger writes it and the facts look for it, so the panel says "iAcquire has been alerted" only after a notice really exists. */
+export function launchStallAlertKey(orgId: string, itemKey: string, since: string): string {
+  return `launch-stalled:${orgId}:${itemKey}:${Math.floor(Date.parse(since) / 1000)}`;
+}
+
+/**
+ * Which of these waits iAcquire was really told about: a ledger notice with the exact key, or (for a profile job still waiting in the queue) the provisioning watchdog's own
+ * stalled-queue notice. The watchdog only looks at requests that had already waited past the threshold, so its notice covers a job only when it was sent after that much waiting; a
+ * job that was running, or younger than that, was not what the notice was about.
+ */
+async function alertedWaits(db: Queryable, orgId: string, waits: Array<{ itemKey: string; since: string; queued: boolean }>, queueStallMinutes: number): Promise<Set<string>> {
+  if (!waits.length) return new Set();
+  const keys = waits.map((w) => launchStallAlertKey(orgId, w.itemKey, w.since));
+  const told = new Set((await db.query<{ dedupe_key: string }>("select distinct dedupe_key from notifications where org_id = $1 and dedupe_key = any($2::text[])", [orgId, keys])).rows.map((r) => r.dedupe_key));
+  if (waits.some((w) => w.queued)) {
+    const noticed = (await db.query<{ at: Date | string }>("select created_at as at from notifications where org_id = $1 and dedupe_key like $2 order by created_at desc limit 50", [orgId, `provisioning-stalled:${orgId}:%`])).rows.map((r) => new Date(r.at).getTime());
+    for (const w of waits) if (w.queued && noticed.some((at) => at >= Date.parse(w.since) + queueStallMinutes * 60_000)) told.add(launchStallAlertKey(orgId, w.itemKey, w.since));
+  }
+  return told;
+}
+
 /** Who the client said takes the appointments: themselves or a team member. Only a confirmed answer counts, and only while appointments are wanted (the answer is hidden otherwise). */
 function hostChoiceOf(answers: Answers): "owner" | "team" | null {
   const choice = answers["d.appt_host"];
   return choice === "owner" || choice === "team" ? choice : null;
-}
-
-/** What the questionnaire says. Only confirmed answers count: a guess from the website that the client has not looked at is not an answer. */
-async function answersOf(db: Queryable, orgId: string): Promise<Answers> {
-  return confirmedAnswers(toStored(await loadAnswerRows(db, orgId)));
 }
 
 type CrmFacts = Pick<LaunchFacts["crm"], "blueprint" | "blueprintSummary" | "automaticSetup" | "pipelineReady" | "records">;
@@ -212,9 +239,10 @@ async function teamHostFacts(db: Queryable, orgId: string, answers: Answers): Pr
 
 /** The latest read-only check run for each role, as the launch panel started it (input.launchVerification). */
 async function verificationFacts(db: Queryable, orgId: string): Promise<VerificationFact[]> {
-  const { rows } = await db.query<{ role: AgentRoleKey; status: string; result_count: number; failure_message: string | null; result_summary: string | null; config_version: string | null; reason: string | null }>(
+  const { rows } = await db.query<{ role: AgentRoleKey; status: string; result_count: number; failure_message: string | null; result_summary: string | null; config_version: string | null; reason: string | null; since: Date | string; lease_expired: boolean }>(
     `select distinct on (a.role_key) a.role_key as role, j.status, j.result_count, j.failure_message, j.result_summary,
-            j.input ->> 'configVersion' as config_version, j.result -> 'availability' ->> 'reason' as reason
+            j.input ->> 'configVersion' as config_version, j.result -> 'availability' ->> 'reason' as reason, j.created_at as since,
+            (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())) as lease_expired
        from ai_work_jobs j join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
       where j.org_id = $1 and j.input ->> 'launchVerification' = 'true'
       order by a.role_key, j.created_at desc`,
@@ -222,7 +250,9 @@ async function verificationFacts(db: Queryable, orgId: string): Promise<Verifica
   );
   return rows.map((r): VerificationFact => {
     const configVersion = r.config_version !== null && Number.isFinite(Number(r.config_version)) ? Number(r.config_version) : null;
-    if (r.status === "queued" || r.status === "running" || r.status === "waiting_for_approval") return { role: r.role, state: "running" };
+    // A check held for a person's approval waits on that review: it is not running, and it is not a failure.
+    if (r.status === "waiting_for_approval") return { role: r.role, state: "awaiting_review" };
+    if (r.status === "queued" || r.status === "running") return { role: r.role, state: "running", since: new Date(r.since).toISOString(), leaseExpired: r.lease_expired };
     if (r.status !== "completed") return { role: r.role, state: "failed", configVersion, detail: (r.failure_message ?? r.result_summary ?? "The check did not complete.").slice(0, 300) };
     // The Appointment Setter is only proven when a real open time was found: a calendar that cannot offer one is not a working scheduler.
     if (r.role === "appointment_setter" && (r.reason || r.result_count < 1)) {
@@ -232,7 +262,9 @@ async function verificationFacts(db: Queryable, orgId: string): Promise<Verifica
   });
 }
 
-function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null }>, held: Set<AgentRoleKey>, paymentCleared: boolean | null): EmployeeFact[] {
+interface ProvisioningJobRead { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null; since: Date | string | null; leaseExpired: boolean }
+
+function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, ProvisioningJobRead>, held: Set<AgentRoleKey>, paymentCleared: boolean | null, told: Set<string>, orgId: string): EmployeeFact[] {
   const out: EmployeeFact[] = [];
   for (const role of AGENT_ROLE_KEYS) {
     const agent = agents.find((a) => a.role_key === role);
@@ -263,6 +295,9 @@ function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { sta
       readiness: { state: readiness.state, chatAvailable: readiness.chatAvailable, workReady: readiness.workReady, description: readiness.description, blocking: readiness.blocking.map((b) => b.label) },
       heldForReview: held.has(role),
       configVersion: agent.config_version,
+      startedAt: job?.since ? new Date(job.since).toISOString() : null,
+      leaseExpired: job?.leaseExpired ?? false,
+      stallAlerted: job?.since ? told.has(launchStallAlertKey(orgId, `employees.${role}`, new Date(job.since).toISOString())) : false,
     });
   }
   return out;
@@ -285,13 +320,19 @@ export async function loadLaunchFactsForOrg(orgId: string): Promise<LaunchFacts 
 
 async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpenBilling: boolean, viewer: Viewer): Promise<LaunchFacts | null> {
   const read = await withSystem(async (db) => {
-    const org = (await db.query<{ kind: string; name: string; industry: string | null; timezone: string; submitted: boolean; is_demo: boolean; description: string }>(
-      `select o.kind, o.name, o.industry, o.timezone, o.onboarding_completed_at is not null as submitted, o.is_demo, coalesce(p.description, '') as description
-         from organizations o left join company_profiles p on p.org_id = o.id where o.id = $1`,
+    const org = (await db.query<{ kind: string; name: string; industry: string | null; timezone: string; submitted: boolean; is_demo: boolean; description: string; waiting_since: Date | string | null }>(
+      `select o.kind, o.name, o.industry, o.timezone, o.onboarding_completed_at is not null as submitted, o.is_demo, coalesce(p.description, '') as description,
+              greatest(o.onboarding_completed_at, b.paid_at, b.waived_at) as waiting_since
+         from organizations o left join company_profiles p on p.org_id = o.id left join billing_accounts b on b.org_id = o.id where o.id = $1`,
       [orgId],
     )).rows[0];
     if (!org || org.kind !== "client") return null;
-    const answers = await answersOf(db, orgId);
+    // Edits saved after the last approval are not the live setup. The two facts that decide what is required (appointments and channels) read the answers as last approved, so an
+    // unapproved edit cannot switch a requirement off; every other fact reads what is saved now.
+    const answerRows = await loadAnswerRows(db, orgId);
+    const change = await readPendingAnswerChanges(db, orgId, answerRows);
+    const answers = confirmedAnswers(toStored(answerRows));
+    const approved = change.pending ? approvedAnswersOf(answerRows, change) : answers;
     const workspace = await loadWorkspaceFacts(db, orgId);
     const mode = (await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native";
     const crm = mode === "native" ? await crmFacts(db, orgId) : null;
@@ -306,13 +347,14 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
          from messaging_channels mc left join integration_credentials c on c.id = mc.credential_id where mc.org_id = $1`,
       [orgId],
     )).rows;
-    const jobs = new Map<AgentRoleKey, { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null }>();
-    for (const r of (await db.query<{ role: AgentRoleKey; status: string | null; detail: string | null; attempt_count: number | null; next_retry_at: Date | string | null }>(
-      `select distinct on (a.role_key) a.role_key as role, j.status, j.detail, j.attempt_count, j.next_retry_at
+    const jobs = new Map<AgentRoleKey, ProvisioningJobRead>();
+    for (const r of (await db.query<{ role: AgentRoleKey; status: string | null; detail: string | null; attempt_count: number | null; next_retry_at: Date | string | null; since: Date | string | null; lease_expired: boolean | null }>(
+      `select distinct on (a.role_key) a.role_key as role, j.status, j.detail, j.attempt_count, j.next_retry_at, j.created_at as since,
+              (j.status = 'in_progress' and (j.lease_expires_at is null or j.lease_expires_at <= now())) as lease_expired
          from agent_instances a left join agent_provisioning_jobs j on j.agent_instance_id = a.id and j.org_id = a.org_id
         where a.org_id = $1 order by a.role_key, j.created_at desc nulls last`,
       [orgId],
-    )).rows) jobs.set(r.role, { status: r.status, detail: r.detail, attempts: r.attempt_count, nextRetryAt: r.next_retry_at });
+    )).rows) jobs.set(r.role, { status: r.status, detail: r.detail, attempts: r.attempt_count, nextRetryAt: r.next_retry_at, since: r.since, leaseExpired: r.lease_expired === true });
     const held = new Set<AgentRoleKey>((await db.query<{ role: AgentRoleKey }>(
       `select distinct a.role_key as role from agent_instances a join agent_config_versions v on v.agent_instance_id = a.id and v.org_id = a.org_id
         where a.org_id = $1 and v.status = 'pending_agency_review'`,
@@ -320,15 +362,39 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     )).rows.map((r) => r.role));
     const paymentCleared = org.is_demo ? null : await isSetupPaymentCleared(db, orgId);
     const verification = await verificationFacts(db, orgId);
-    return { org, answers, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification };
+    // Which long waits iAcquire was really told about, so the panel claims an alert only when one exists.
+    // The automatic setup waits for BOTH the submitted questionnaire and the cleared setup fee (src/server/onboarding/crm-provisioning.ts), so the wait has not begun until both are
+    // true: `greatest` alone would give a time when only one of them happened, and an unpaid or unsubmitted client would be called stalled on iAcquire.
+    const waitingSince = crm && crm.blueprint === "none" && org.waiting_since && org.submitted && paymentCleared === true ? new Date(org.waiting_since).toISOString() : null;
+    const waits = [
+      ...[...jobs.entries()].filter(([, j]) => j.since).map(([role, j]) => ({ itemKey: `employees.${role}`, since: new Date(j.since as Date | string).toISOString(), queued: j.status === "requested" })),
+      ...verification.flatMap((v) => (v.state === "running" && v.since ? [{ itemKey: `verification.${v.role}`, since: v.since, queued: false }] : [])),
+      ...(waitingSince ? [{ itemKey: "crm.blueprint", since: waitingSince, queued: false }] : []),
+    ];
+    const told = await alertedWaits(db, orgId, waits, launchStallMinutes().provisioning);
+    return { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification, told, waitingSince };
   });
   if (!read) return null;
-  const { org, answers, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification } = read;
+  const { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification: verified, told, waitingSince } = read;
+  // The alert is a fact of the check itself: a running check carries whether iAcquire was told it is taking long.
+  const verification = verified.map((v): VerificationFact => (v.state === "running" && v.since ? { ...v, alerted: told.has(launchStallAlertKey(orgId, `verification.${v.role}`, v.since)) } : v));
 
-  const wantedChannels = Array.isArray(answers["c.channels"]) ? (answers["c.channels"] as string[]) : [];
-  // A booking calendar that is already taking bookings answers "do you book appointments?" even if the questionnaire was never asked.
-  const answered = typeof answers["b.appointments"] === "boolean" ? (answers["b.appointments"] as boolean) : null;
-  const wantsAppointments = answered ?? (calendar?.status === "active" ? true : null);
+  // What the last approval produced for a channel: a switched-on channel, one with a registration under way or decided, a stored credential, or a sender the client gave before the
+  // edits. The list of channels itself, once edited, no longer says what was approved (the value is overwritten in place).
+  const senderGiven = channelsWithApprovedSender(answerRows, change);
+  const appliedChannel = (channel: ChannelFact["channel"]) => {
+    const row = channelRows.find((r) => r.channel === channel);
+    return Boolean((row && (row.enabled || row.credential || row.registration_status !== "not_started")) || senderGiven.includes(channel));
+  };
+  const wantedChannels: string[] = change.editedIds.includes("c.channels")
+    ? CHANNELS.filter(appliedChannel)
+    : Array.isArray(approved["c.channels"]) ? (approved["c.channels"] as string[]) : [];
+  // A booking calendar that is already taking bookings answers "do you book appointments?" even if the questionnaire was never asked. An answer edited since the last approval is not
+  // that answer: what was approved is what exists (a calendar, or a connected calendar for a provider-managed workspace), and not wanting appointments only counts once it is approved.
+  const answered = typeof approved["b.appointments"] === "boolean" ? (approved["b.appointments"] as boolean) : null;
+  const wantsAppointments = change.editedIds.includes("b.appointments")
+    ? calendar !== null || externalCalendarConnected
+    : answered ?? (calendar?.status === "active" ? true : null);
   const timezoneAnswered = typeof answers["a.timezone"] === "string" && (answers["a.timezone"] as string).trim() !== "";
   return {
     submitted: org.submitted,
@@ -342,7 +408,7 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
       timezoneAnswered,
     },
     knowledge: { approved: workspace.knowledge?.supplied ?? 0, pending: workspace.knowledge?.heldForReview ?? 0 },
-    crm: crm ? { mode, ...crm, providerConnected } : { mode, blueprint: "none", pipelineReady: workspace.pipelineReady, providerConnected },
+    crm: crm ? { mode, ...crm, providerConnected, waitingSince, waitingAlerted: waitingSince ? told.has(launchStallAlertKey(orgId, "crm.blueprint", waitingSince)) : false } : { mode, blueprint: "none", pipelineReady: workspace.pipelineReady, providerConnected },
     appointments: { wanted: wantsAppointments, calendar, externalCalendarConnected, hostChoice: hostChoiceOf(answers), teamHosts },
     channels: CHANNELS.map((channel): ChannelFact => {
       const row = channelRows.find((r) => r.channel === channel);
@@ -351,13 +417,14 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
         statedSender: statedSenderOf(answers, channel), credentialStored: row?.credential ?? false,
       };
     }),
-    employees: employeeFacts(agents, jobs, held, paymentCleared),
+    employees: employeeFacts(agents, jobs, held, paymentCleared, told, orgId),
     verification,
+    ...(change.pending ? { pendingAnswerChanges: true } : {}),
   };
 }
 
 /** The honest launch state of the viewer's client workspace, or null for a workspace that is not a client's. */
 export async function getLaunchReadiness(ctx: OrgContext): Promise<LaunchReadiness | null> {
   const facts = await loadLaunchFacts(ctx);
-  return facts ? deriveLaunchReadiness(facts) : null;
+  return facts ? deriveLaunchReadiness(facts, new Date(), launchStallMinutes()) : null;
 }

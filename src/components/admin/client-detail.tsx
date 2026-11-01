@@ -222,6 +222,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [connectFor, setConnectFor] = React.useState<Detail["agents"][number] | null>(null);
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
   const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
+  const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
   return (
     <div className="space-y-6">
       <Card className="border-primary/20 bg-primary-soft/30">
@@ -249,7 +250,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                     <Switch
                       checked={a.enabled}
                       aria-label={`${a.enabled ? "Disable" : "Enable"} ${meta.shortName}`}
-                      onCheckedChange={(v) => run(`en-${a.id}`, () => setAgentEnabledAction(data.org.id, a.id, v), v ? "Employee enabled" : "Employee disabled")}
+                      onCheckedChange={(v) => setPlanChange({ agent: a, enabled: v })}
                     />
                   )}
                 </div>
@@ -366,7 +367,58 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
       <ConnectDialog key={connectFor?.id ?? "none"} agent={connectFor} onClose={() => setConnectFor(null)} />
       <BundleDialog bundle={bundle} onClose={() => setBundle(null)} />
       <RequeueDialog key={requeueFor?.id ?? "none"} orgId={data.org.id} job={requeueFor} onClose={() => setRequeueFor(null)} />
+      <PlanChangeDialog key={planChange ? `${planChange.agent.id}-${planChange.enabled}` : "none"} orgId={data.org.id} change={planChange} onClose={() => setPlanChange(null)} />
     </div>
+  );
+}
+
+/** What a plan change did, in words that do not claim more than happened: a queued request is not a working employee. */
+function planChangeSummary(d: { configuration: string; provisioning: string; syncQueued: boolean; cancelledJobs: number; runningJobs: number } | null | undefined, enabled: boolean): string {
+  if (!d) return enabled ? "Employee enabled" : "Employee disabled";
+  if (!enabled) {
+    const stopped = d.cancelledJobs ? `${d.cancelledJobs} setup request${d.cancelledJobs === 1 ? "" : "s"} cancelled` : "No setup request was waiting";
+    return `Employee removed from the plan. ${stopped}${d.runningJobs ? `; ${d.runningJobs} already started and will finish first` : ""}.`;
+  }
+  const config = d.configuration === "built" ? "Configured from the client's confirmed answers." : d.configuration === "held" ? "Its configuration is waiting for review." : d.configuration === "waiting_for_client" ? "Not configured yet: the client has company changes they have not approved." : d.configuration === "not_needed" ? "The client has not finished the questionnaire, so it is configured when they do." : "";
+  const setup = d.provisioning === "requested" ? "Setup requested." : d.provisioning === "already_open" ? "Setup was already requested." : d.provisioning === "waiting_for_payment" ? "Setup waits for the setup payment." : d.syncQueued ? "Profile update queued." : "";
+  return ["Employee added to the plan.", config, setup].filter(Boolean).join(" ");
+}
+
+function PlanChangeDialog({ orgId, change, onClose }: { orgId: string; change: { agent: Detail["agents"][number]; enabled: boolean } | null; onClose: () => void }) {
+  const { run, pending } = useAction();
+  const [reason, setReason] = React.useState("");
+  const name = change ? AGENT_BY_KEY[change.agent.role_key].shortName : "";
+  return (
+    <Dialog
+      open={Boolean(change)}
+      onOpenChange={(o) => !o && onClose()}
+      title={change ? `${change.enabled ? "Add" : "Remove"} ${name} ${change.enabled ? "to" : "from"} the plan?` : "Change the plan"}
+      description={change?.enabled
+        ? "Once the client has finished the questionnaire, the employee is configured from their confirmed answers and its setup is requested (it still waits for the setup payment). Nothing is switched on for customers."
+        : "Setup requests that were only requested are cancelled; one the worker already started finishes first. Conversations and knowledge are kept. The client's owners are told."}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            variant={change?.enabled ? "brand" : "danger"}
+            disabled={reason.trim().length < 5}
+            loading={pending === "plan-change"}
+            onClick={async () => {
+              if (!change) return;
+              const enabled = change.enabled;
+              const ok = await run("plan-change", () => setAgentEnabledAction(orgId, change.agent.id, enabled, reason), (d) => planChangeSummary(d, enabled));
+              if (ok) onClose();
+            }}
+          >
+            {change?.enabled ? "Add to plan" : "Remove from plan"}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Reason (kept in the audit log, not shown to the client)" htmlFor="plan-change-reason">
+        <Textarea id="plan-change-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+      </Field>
+    </Dialog>
   );
 }
 

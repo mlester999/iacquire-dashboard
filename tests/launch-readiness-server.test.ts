@@ -28,6 +28,7 @@ import SetupPage from "@/app/(portal)/setup/page";
 import { dismissCalendarNoticeAction } from "@/app/actions/launch-readiness";
 import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, calendarNoticeFor, encodeCalendarNotice, noticeSurfaceOf } from "@/server/calendars/connections";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { startLaunchVerification } from "@/server/setup/launch-intents";
 import { activateCalendar, applyCalendarHoursTemplate, verifyCalendar } from "@/server/calendars/activation";
 import { updateCalendar } from "@/server/calendars/setup";
 import { getWorkspace } from "@/server/crm/workspace";
@@ -39,7 +40,7 @@ import { agentId, ctxFor } from "./support/fixtures";
 import { crmOrg } from "./support/crm";
 import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { applyRealBlueprint } from "./support/launch";
+import { applyRealBlueprint, readyClient } from "./support/launch";
 
 const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
 const stepOf = (r: LaunchReadiness, key: string) => r.steps.find((s) => s.key === key)!;
@@ -476,4 +477,60 @@ describe("the Setup page shows the calendar sign-in notice once", () => {
     expect(html).toContain('href="/settings/messaging"');
     expect(renderToStaticMarkup(React.createElement(LaunchReadinessPanel, { readiness }))).not.toContain("Google is connected.");
   });
+});
+
+describe("a final check that waits for a person or runs too long is read from its own job", () => {
+  /** A final-check job of the kind the panel starts, in the state a test needs, with its own age and lease. */
+  async function checkJob(orgId: string, role: "crm_manager" | "sales_assistant" | "lead_hunter", over: { status: string; minutesOld: number; lease: "live" | "expired" | "none" }) {
+    const id = await agentId(orgId, role);
+    const version = (await withSystem((db) => db.query<{ version: number }>("select v.version from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [id]))).rows[0].version;
+    await withSystem((db) => db.query(
+      `insert into ai_work_jobs (org_id, agent_instance_id, capability, title, status, input, idempotency_key, created_at, lease_owner, lease_expires_at)
+       values ($1, $2, 'lead_search', 'Launch check', $3, $4::jsonb, $5, now() - make_interval(mins => $6), $7, $8)`,
+      [
+        orgId, id, over.status, JSON.stringify({ launchVerification: true, configVersion: version }), `test-check-${role}-${orgId}`, over.minutesOld,
+        over.lease === "none" ? null : "worker-test", over.lease === "none" ? null : over.lease === "live" ? new Date(Date.now() + 10 * 60_000) : new Date(Date.now() - 10 * 60_000),
+      ],
+    ));
+  }
+
+  it("calls a check held for approval a review, a young running one in progress, and an old one whose lease ran out iAcquire's to look at", async () => {
+    const c = await readyClient({ name: "Waiting Checks Roofing", timezone: "America/Chicago" });
+    await checkJob(c.org.id, "sales_assistant", { status: "waiting_for_approval", minutesOld: 1, lease: "none" });
+    await checkJob(c.org.id, "lead_hunter", { status: "running", minutesOld: 1, lease: "live" });
+    await checkJob(c.org.id, "crm_manager", { status: "running", minutesOld: 30, lease: "expired" });
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    const verification = (role: string) => facts.verification.find((v) => v.role === role)!;
+    expect(verification("sales_assistant")).toEqual({ role: "sales_assistant", state: "awaiting_review" });
+    expect(verification("lead_hunter")).toMatchObject({ state: "running", leaseExpired: false, alerted: false });
+    expect(verification("crm_manager")).toMatchObject({ state: "running", leaseExpired: true });
+
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "verification.sales_assistant")).toMatchObject({ state: "awaiting_review", owner: "iacquire", required: true });
+    expect(itemOf(r, "verification.lead_hunter")).toMatchObject({ state: "in_progress", owner: "system" });
+    expect(itemOf(r, "verification.lead_hunter").stalled).toBeUndefined();
+    expect(itemOf(r, "verification.crm_manager")).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    expect(itemOf(r, "verification.crm_manager").detail).toContain("Nothing is running it right now");
+    // Nothing has told iAcquire yet, so nothing says it was.
+    expect(itemOf(r, "verification.crm_manager").detail).not.toContain("has been alerted");
+    // A waiting review is not a blocker the client must clear, and a held check is not started a second time.
+    expect(r.blocking.map((i) => i.key)).not.toContain("verification.sales_assistant");
+    const started = await startLaunchVerification(c.ctx);
+    expect(started.started).not.toContain("sales_assistant");
+    expect(started.skipped?.map((s) => s.role)).toEqual(expect.arrayContaining(["sales_assistant", "lead_hunter"]));
+  }, 180_000);
+});
+
+describe("reading the Setup page writes nothing", () => {
+  it("shows the panel any number of times without a ledger row or a notice", async () => {
+    const c = await submitRealOnboarding({ name: "Read Page Roofing", clearPayment: true });
+    mocks.ctx = submitted(c.ctx);
+    mocks.jar.clear();
+    const writes = async () => (await withSystem((db) => db.query<{ n: string }>(
+      "select (select count(*) from audit_logs where org_id = $1 and action = 'setup.launch_state_changed') + (select count(*) from notifications where org_id = $1 and kind like 'setup_%') as n", [c.org.id],
+    ))).rows[0].n;
+    const before = await writes();
+    for (let i = 0; i < 3; i += 1) expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))).toBeDefined();
+    expect(await writes()).toBe(before);
+  }, 120_000);
 });

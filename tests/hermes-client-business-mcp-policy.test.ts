@@ -3,6 +3,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { AGENT_TOOLS, ROLE_SCOPES, toolsForRole, type AgentToolName } from "@/server/crm/agent-tools/catalog";
+import { businessMcpToolNamesForRole } from "@/server/workforce/hermes-business-mcp-policy";
 import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { clearFeatureCache, featureOn, setOrgFeature } from "@/server/proposals/features";
@@ -24,12 +25,12 @@ const CONTEXT = "get_role_workspace_context";
 // The reads each role has today, written out on purpose. They are not computed from the internal tier's function or from the catalog: this test is what notices a tool that
 // reaches a client without being listed here and reviewed.
 const READS: Record<AgentRoleKey, string[]> = {
-  operations_manager: ["find_contacts", "get_contact", "check_availability", "crm_summary_report"],
+  operations_manager: ["find_contacts", "get_contact", "check_availability", "crm_summary_report", "list_opportunities"],
   lead_hunter: ["find_contacts", "get_contact"],
   appointment_setter: ["find_contacts", "get_contact", "check_availability", "get_conversation_history"],
-  sales_assistant: ["find_contacts", "get_contact", "check_availability", "get_conversation_history"],
-  crm_manager: ["find_contacts", "get_contact", "crm_summary_report"],
-  performance_analyst: ["crm_summary_report"],
+  sales_assistant: ["find_contacts", "get_contact", "check_availability", "get_conversation_history", "list_opportunities"],
+  crm_manager: ["find_contacts", "get_contact", "crm_summary_report", "list_opportunities"],
+  performance_analyst: ["crm_summary_report", "list_opportunities"],
 };
 
 // What a role may PROPOSE: every catalog `write` tool its scopes allow. Messages and appointment requests (kind `proposal`) are not among them.
@@ -70,7 +71,7 @@ describe("the read tools a client employee is offered", () => {
 
   it("never offers a read the role's scopes do not allow, even if the matrix listed one", () => {
     for (const role of AGENT_ROLE_KEYS) {
-      const allowed = new Set<string>(toolsForRole(role));
+      const allowed = new Set<string>(toolsForRole(role, { includeClientOnly: true }));
       for (const name of CLIENT_BUSINESS_TOOL_MATRIX[role]) expect(allowed.has(name), `${role} ${name}`).toBe(true);
     }
     // The analyst has no contact or calendar scope, and the lead hunter has no report or calendar scope.
@@ -81,25 +82,34 @@ describe("the read tools a client employee is offered", () => {
 });
 
 describe("a tool only the client tier offers", () => {
-  it("is offered as soon as a role's matrix entry lists it and the role's scopes allow it, and never to a role without that scope or as a proposal", () => {
+  it("is offered to every role whose scopes allow it, never to a role without that scope, never as a proposal, and to no internal agency employee", () => {
     const allowedRoles = AGENT_ROLE_KEYS.filter((role) => ROLE_SCOPES[role].includes(AGENT_TOOLS.list_opportunities.scope));
     const deniedRoles = AGENT_ROLE_KEYS.filter((role) => !allowedRoles.includes(role));
     expect(allowedRoles.length).toBeGreaterThan(0);
     expect(deniedRoles.length).toBeGreaterThan(0);
-    // Not offered while no matrix lists it (the state every other test pins).
-    for (const role of AGENT_ROLE_KEYS) expect(clientBusinessMcpToolNamesForRole(role), role).not.toContain("list_opportunities");
+    for (const role of allowedRoles) {
+      expect(CLIENT_BUSINESS_TOOL_MATRIX[role], role).toContain("list_opportunities");
+      expect(clientBusinessMcpToolNamesForRole(role), role).toContain("list_opportunities");
+      expect(clientBusinessMcpRuntimeNamesForRole(role), role).toContain("mcp__iacquire_business__list_opportunities");
+    }
+    for (const role of deniedRoles) {
+      expect(CLIENT_BUSINESS_TOOL_MATRIX[role], role).not.toContain("list_opportunities");
+      expect(clientBusinessMcpToolNamesForRole(role), role).not.toContain("list_opportunities");
+    }
+    for (const role of AGENT_ROLE_KEYS) {
+      expect(clientBusinessProposalToolNamesForRole(role), role).not.toContain("list_opportunities");
+      expect(businessMcpToolNamesForRole(role, true), role).not.toContain("list_opportunities");
+    }
+  });
+
+  it("is dropped for a role whose scopes lose the deals scope, even while the matrix lists it", () => {
     const matrix = CLIENT_BUSINESS_TOOL_MATRIX as unknown as Record<AgentRoleKey, AgentToolName[]>;
-    const saved = new Map<AgentRoleKey, AgentToolName[]>(AGENT_ROLE_KEYS.map((role): [AgentRoleKey, AgentToolName[]] => [role, [...matrix[role]]]));
+    const saved = [...matrix.lead_hunter];
     try {
-      for (const role of AGENT_ROLE_KEYS) matrix[role] = [...saved.get(role)!, "list_opportunities"];
-      for (const role of allowedRoles) {
-        expect(clientBusinessMcpToolNamesForRole(role), role).toContain("list_opportunities");
-        expect(clientBusinessMcpRuntimeNamesForRole(role), role).toContain("mcp__iacquire_business__list_opportunities");
-      }
-      for (const role of deniedRoles) expect(clientBusinessMcpToolNamesForRole(role), role).not.toContain("list_opportunities");
-      for (const role of AGENT_ROLE_KEYS) expect(clientBusinessProposalToolNamesForRole(role), role).not.toContain("list_opportunities");
+      matrix.lead_hunter = [...saved, "list_opportunities"];
+      expect(clientBusinessMcpToolNamesForRole("lead_hunter")).not.toContain("list_opportunities");
     } finally {
-      for (const role of AGENT_ROLE_KEYS) matrix[role] = saved.get(role)!;
+      matrix.lead_hunter = saved;
     }
   });
 });

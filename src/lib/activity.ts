@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   "agent.hermes_connected": "connected an AI employee's dedicated environment",
   "agent.provisioning_requested": "requested AI employee setup",
   "agent.enabled": "enabled an AI employee",
+  "agent.plan_change_resumed": "iAcquire switched an AI employee back on after a plan change",
   "agent.disabled": "disabled an AI employee",
   "approval.approved": "approved a request",
   "approval.rejected": "rejected a request",
@@ -68,6 +69,7 @@ const LABELS: Record<string, string> = {
   "setup.activated": "approved the system for activation",
   "setup.services_changed": "updated the services included in setup",
   "setup.assigned": "assigned a setup step",
+  "setup.launch_state_changed": "launch readiness changed",
 };
 
 // Actions about one AI employee, phrased with its name when the audit row identifies it.
@@ -77,6 +79,7 @@ const AGENT_LABELS: Record<string, (name: string) => string> = {
   "agent.config_review_rejected": (n) => `iAcquire declined a held ${n} configuration`,
   "agent.hermes_connected": (n) => `connected the ${n}'s dedicated environment`,
   "agent.enabled": (n) => `enabled the ${n}`,
+  "agent.plan_change_resumed": (n) => `iAcquire switched the ${n} back on after a plan change`,
   "agent.disabled": (n) => `disabled the ${n}`,
 };
 

@@ -7,6 +7,8 @@ import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/au
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { sha256 } from "@/server/security/crypto";
 import { ensureAgentInstances } from "@/server/workforce/service";
+import { revokeClientBusinessCredentialsForOrg } from "@/server/workforce/hermes-client-business-credential";
+import { applyRolePlanChange, type PlanChangeResult } from "@/server/onboarding/employee-sync";
 import { ensureSetupInstance } from "@/server/setup/core";
 import { saveCredential,assertCredentialAdmin } from "@/server/security/credentials";
 import type { SessionUser } from "@/server/auth/service";
@@ -310,6 +312,8 @@ export async function setTenantStatus(admin: SessionUser, orgId: string, status:
     if (status === "suspended") {
       // End client sessions' access immediately: memberships are ignored for suspended tenants.
       await db.query("update billing_accounts set activation_status = 'suspended' where org_id = $1", [orgId]);
+      // The employees' business-tool credentials end with the access; they are issued again when the workspace is back and its profiles are synchronized.
+      await revokeClientBusinessCredentialsForOrg(db, orgId, "workspace_suspended");
     } else if (org.status === "suspended") {
       // Reactivating restores what the setup implies: active for a setup that was activated (whatever happened to the fee since: a refund never pauses a running client),
       // pending for one that never was. Without this the billing page kept saying "Activation: Suspended" for a workspace that was back in use.
@@ -326,9 +330,20 @@ export async function setTenantStatus(admin: SessionUser, orgId: string, status:
   });
 }
 
-export async function setAgentEnabled(admin: SessionUser, orgId: string, agentId: string, enabled: boolean) {
+/**
+ * Switches an employee on or off for a workspace, with a reason. For a CLIENT workspace that is a plan change, and it does the work that follows from it
+ * (src/server/onboarding/employee-sync.ts: configure from the confirmed answers, request provisioning, synchronize, or cancel what was only requested) and says what it did.
+ * The internal agency workspace and demo workspaces keep the plain switch: nothing is configured or provisioned for them, so the result is null.
+ */
+export async function setAgentEnabled(admin: SessionUser, orgId: string, agentId: string, enabled: boolean, reason: string): Promise<PlanChangeResult | null> {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can change plan features.");
-  await withSystem(async (db) => {
+  const why = typeof reason === "string" ? reason.trim() : "";
+  if (why.length < 5) throw new AppError("invalid_input", "Say why the plan is changing (at least 5 characters).");
+  if (why.length > 500) throw new AppError("invalid_input", "Keep the reason under 500 characters.");
+  return withSystem(async (db) => {
+    const { rows: orgRows } = await db.query<{ kind: string; is_demo: boolean }>("select kind, is_demo from organizations where id = $1", [orgId]);
+    const org = orgRows[0];
+    if (org?.kind === "client" && !org.is_demo) return applyRolePlanChange(db, { orgId, agentId, enabled, actor: admin, reason: why });
     const res = await db.query(
       `update agent_instances set enabled = $3,
          status = case when $3 then case when hermes_profile is null then 'setup_required' else 'provisioning' end else 'disabled' end
@@ -336,7 +351,8 @@ export async function setAgentEnabled(admin: SessionUser, orgId: string, agentId
       [agentId, orgId, enabled],
     );
     if (!res.rowCount) throw new AppError("not_found", "AI employee not found.");
-    await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", agentInstanceId: agentId, action: enabled ? "agent.enabled" : "agent.disabled", targetType: "agent_instance", targetId: agentId, result: "success" }, db);
+    await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", agentInstanceId: agentId, action: enabled ? "agent.enabled" : "agent.disabled", targetType: "agent_instance", targetId: agentId, result: "success", metadata: { reason: why } }, db);
+    return null;
   });
 }
 
