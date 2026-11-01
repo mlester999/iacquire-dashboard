@@ -1,15 +1,30 @@
 import "server-only";
-import { readSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import type { AgentRoleKey } from "@/lib/agents";
 import { businessMcpToolNamesForRole } from "@/server/workforce/hermes-business-mcp-policy";
 
 /**
  * Evidence for the A4a acceptance (the first supervised, read-only business-tool task): what the database says before and after, written independently of the code under test.
  *
- * Everything here goes through `readSystem`, which accepts only `select` and `with` statements, so this module cannot become a write path. It returns counts, names and ids, never a
- * record's content (no task titles, contact names, messages or approval text). The counts in `readAuthoritativeCounts` are deliberately plain SQL, not `prepareEmployeeEvidence`: an
- * employee's answer is compared against a query that shares no code with the tool that produced it. Operator procedure: docs/hermes-a4a-acceptance-plan-2026-10-31.md.
+ * Every read here runs in a transaction the database itself holds READ ONLY (`inReadOnlyTransaction`), so this module cannot become a write path whatever its statements say. It returns
+ * counts, names and ids, never a record's content (no task titles, contact names, messages or approval text). The counts in `readAuthoritativeCounts` are deliberately plain SQL, not
+ * `prepareEmployeeEvidence`: an employee's answer is compared against a query that shares no code with the tool that produced it. Operator procedure: docs/hermes-a4a-acceptance-plan-2026-10-31.md.
  */
+
+/**
+ * Runs `fn` in a transaction the database holds READ ONLY: `set transaction read only` is the first statement, so an insert, an update, a delete, a data-modifying `with` or a function that
+ * writes is refused with "cannot execute ... in a read-only transaction", and the mode cannot be switched back inside the transaction (tests/hermes-a4a-evidence.test.ts tries all of these).
+ *
+ * It runs as the application's own database role on purpose. That role owns the tables, so row-level security hides no row from it. A restricted role (select granted on every table) sees
+ * every workspace table as EMPTY, because the tables have row-level security on and no policy names that role (measured: 0 rows where the owner sees them). The write check would then count
+ * nothing before and nothing after and pass on a window in which something was written. Do not point this tool at such a role.
+ */
+export async function inReadOnlyTransaction<T>(fn: (db: Queryable) => Promise<T>): Promise<T> {
+  return withSystem(async (db) => {
+    await db.query("set transaction read only");
+    return fn(db);
+  });
+}
 
 /**
  * The tables an employee's own live Chat turn and its business read are expected to write: the run, the conversation, the audit trail, tool records and the one-minute tool tokens.
@@ -75,7 +90,7 @@ const TABLE_NAME = /^[a-z_][a-z0-9_]*$/;
 const num = (value: unknown) => Number(value ?? 0);
 
 export async function findInternalAgencyOrgId(): Promise<string | null> {
-  return readSystem(async (db) => {
+  return inReadOnlyTransaction(async (db) => {
     const { rows } = await db.query<{ id: string }>("select id from organizations where kind = 'agency' order by created_at asc limit 1");
     return rows[0]?.id ?? null;
   });
@@ -83,7 +98,7 @@ export async function findInternalAgencyOrgId(): Promise<string | null> {
 
 /** The facts an Operations Manager answer is about, counted straight from the tables with no shared code. */
 export async function readAuthoritativeCounts(orgId: string): Promise<AuthoritativeCounts> {
-  return readSystem(async (db) => {
+  return inReadOnlyTransaction(async (db) => {
     const { rows } = await db.query<Record<string, unknown>>(
       `select
          (select count(*) from tasks where org_id = $1 and status in ('open', 'in_progress')) as open_tasks,
@@ -148,7 +163,7 @@ const ROLE_FACT_SQL: Record<Exclude<AgentRoleKey, "operations_manager">, string>
  */
 export async function readRoleFacts(orgId: string, role: AgentRoleKey): Promise<Record<string, number>> {
   if (role === "operations_manager") return { ...(await readAuthoritativeCounts(orgId)) };
-  return readSystem(async (db) => {
+  return inReadOnlyTransaction(async (db) => {
     const { rows } = await db.query<Record<string, unknown>>(ROLE_FACT_SQL[role], [orgId]);
     const facts: Record<string, number> = {};
     for (const [name, value] of Object.entries(rows[0] ?? {})) facts[name] = num(value);
@@ -166,22 +181,26 @@ export async function readRoleFacts(orgId: string, role: AgentRoleKey): Promise<
   });
 }
 
+type WorkspaceTable = { table: string; hasCreated: boolean; hasUpdated: boolean };
+
+async function listTables(db: Queryable): Promise<WorkspaceTable[]> {
+  const { rows } = await db.query<{ table_name: string; has_created: boolean; has_updated: boolean }>(
+    `select c.table_name,
+            bool_or(c.column_name = 'created_at') as has_created,
+            bool_or(c.column_name = 'updated_at') as has_updated
+       from information_schema.columns c
+       join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
+      where c.table_schema = 'public'
+      group by c.table_name
+     having bool_or(c.column_name = 'org_id')
+      order by c.table_name`,
+  );
+  return rows.filter((row) => TABLE_NAME.test(row.table_name)).map((row) => ({ table: row.table_name, hasCreated: row.has_created, hasUpdated: row.has_updated }));
+}
+
 /** Base tables of the public schema that belong to a workspace (have org_id), and whether they record when a row was created or changed. */
-export async function listWorkspaceTables(): Promise<Array<{ table: string; hasCreated: boolean; hasUpdated: boolean }>> {
-  return readSystem(async (db) => {
-    const { rows } = await db.query<{ table_name: string; has_created: boolean; has_updated: boolean }>(
-      `select c.table_name,
-              bool_or(c.column_name = 'created_at') as has_created,
-              bool_or(c.column_name = 'updated_at') as has_updated
-         from information_schema.columns c
-         join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
-        where c.table_schema = 'public'
-        group by c.table_name
-       having bool_or(c.column_name = 'org_id')
-        order by c.table_name`,
-    );
-    return rows.filter((row) => TABLE_NAME.test(row.table_name)).map((row) => ({ table: row.table_name, hasCreated: row.has_created, hasUpdated: row.has_updated }));
-  });
+export async function listWorkspaceTables(): Promise<WorkspaceTable[]> {
+  return inReadOnlyTransaction(listTables);
 }
 
 interface TableStats {
@@ -190,30 +209,36 @@ interface TableStats {
   updated: number;
 }
 
-/** One query per table: the workspace's row count and, when `sinceIso` is given, the rows created and the rows changed (but not created) since then. Null when it cannot be read. */
-async function readTableStats(table: string, hasCreated: boolean, hasUpdated: boolean, orgId: string, sinceIso: string | null): Promise<TableStats | null> {
+/**
+ * One query per table: the workspace's row count and, when `sinceIso` is given, the rows created and the rows changed (but not created) since then. Null when it cannot be read.
+ * It runs under a savepoint: a statement that fails aborts the whole transaction until it is rolled back, and one unreadable table must not turn every later table into "could not be read".
+ */
+async function readTableStats(db: Queryable, table: string, hasCreated: boolean, hasUpdated: boolean, orgId: string, sinceIso: string | null): Promise<TableStats | null> {
   // $2 appears in the statement only when it is used, because Postgres refuses a bound value that nothing refers to.
   const created = sinceIso && hasCreated ? "count(*) filter (where created_at >= $2::timestamptz)" : "0";
   const updated = sinceIso && hasUpdated ? `count(*) filter (where updated_at >= $2::timestamptz${hasCreated ? " and created_at < $2::timestamptz" : ""})` : "0";
   const usesSince = created !== "0" || updated !== "0";
+  await db.query("savepoint read_table");
   try {
-    return await readSystem(async (db) => {
-      const { rows } = await db.query<{ n: number; created: number; updated: number }>(
-        `select count(*)::int as n, ${created}::int as created, ${updated}::int as updated from "${table}" where org_id::text = $1::text`,
-        usesSince ? [orgId, sinceIso] : [orgId],
-      );
-      return { rows: num(rows[0]?.n), created: num(rows[0]?.created), updated: num(rows[0]?.updated) };
-    });
+    const { rows } = await db.query<{ n: number; created: number; updated: number }>(
+      `select count(*)::int as n, ${created}::int as created, ${updated}::int as updated from "${table}" where org_id::text = $1::text`,
+      usesSince ? [orgId, sinceIso] : [orgId],
+    );
+    await db.query("release savepoint read_table");
+    return { rows: num(rows[0]?.n), created: num(rows[0]?.created), updated: num(rows[0]?.updated) };
   } catch {
+    await db.query("rollback to savepoint read_table");
     return null;
   }
 }
 
 /** Row counts of every workspace table for this workspace, now. A table that cannot be counted is null, and then fails the write check closed. */
 export async function readRowCounts(orgId: string): Promise<Record<string, number | null>> {
-  const counts: Record<string, number | null> = {};
-  for (const { table, hasCreated, hasUpdated } of await listWorkspaceTables()) counts[table] = (await readTableStats(table, hasCreated, hasUpdated, orgId, null))?.rows ?? null;
-  return counts;
+  return inReadOnlyTransaction(async (db) => {
+    const counts: Record<string, number | null> = {};
+    for (const { table, hasCreated, hasUpdated } of await listTables(db)) counts[table] = (await readTableStats(db, table, hasCreated, hasUpdated, orgId, null))?.rows ?? null;
+    return counts;
+  });
 }
 
 /**
@@ -222,24 +247,26 @@ export async function readRowCounts(orgId: string): Promise<Record<string, numbe
  * skipped. An update in a table with no updated_at is the one thing neither can see (the operator procedure says so).
  */
 export async function readWriteDeltas(orgId: string, sinceIso: string, baselineCounts: Record<string, number | null> = {}): Promise<TableDelta[]> {
-  const deltas: TableDelta[] = [];
-  for (const { table, hasCreated, hasUpdated } of await listWorkspaceTables()) {
-    const expected = EXPECTED_BOOKKEEPING_TABLES.includes(table);
-    const hasBaseline = Object.prototype.hasOwnProperty.call(baselineCounts, table);
-    const before = hasBaseline ? baselineCounts[table] : undefined;
-    const stats = await readTableStats(table, hasCreated, hasUpdated, orgId, sinceIso);
-    if (!stats || (hasBaseline && before === null)) {
-      deltas.push({ table, created: 0, updated: 0, rowDelta: 0, expected, error: "could not be read" });
-      continue;
+  return inReadOnlyTransaction(async (db) => {
+    const deltas: TableDelta[] = [];
+    for (const { table, hasCreated, hasUpdated } of await listTables(db)) {
+      const expected = EXPECTED_BOOKKEEPING_TABLES.includes(table);
+      const hasBaseline = Object.prototype.hasOwnProperty.call(baselineCounts, table);
+      const before = hasBaseline ? baselineCounts[table] : undefined;
+      const stats = await readTableStats(db, table, hasCreated, hasUpdated, orgId, sinceIso);
+      if (!stats || (hasBaseline && before === null)) {
+        deltas.push({ table, created: 0, updated: 0, rowDelta: 0, expected, error: "could not be read" });
+        continue;
+      }
+      deltas.push({ table, created: stats.created, updated: stats.updated, rowDelta: typeof before === "number" ? stats.rows - before : 0, expected });
     }
-    deltas.push({ table, created: stats.created, updated: stats.updated, rowDelta: typeof before === "number" ? stats.rows - before : 0, expected });
-  }
-  return deltas;
+    return deltas;
+  });
 }
 
 /** What one acceptance run left behind: the run, its tool records and the business audit entries since `sinceIso` (names, results and credential ids only). */
 export async function readRunEvidence(orgId: string, runId: string, sinceIso: string): Promise<RunEvidence> {
-  return readSystem(async (db) => {
+  return inReadOnlyTransaction(async (db) => {
     const run = await db.query<{ role_key: AgentRoleKey; purpose: string; status: string; has_hermes_run: boolean }>(
       `select a.role_key, r.purpose, r.status, (r.hermes_run_id is not null) as has_hermes_run
          from agent_runs r join agent_instances a on a.id = r.agent_instance_id

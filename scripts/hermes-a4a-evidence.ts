@@ -1,6 +1,7 @@
 /**
- * Evidence for the A4a and A4b acceptance (docs/hermes-a4a-acceptance-plan-2026-10-31.md). Read-only: every query goes through `readSystem`, which accepts only select/with statements, and the
- * output is counts, names, run and credential ids and verdicts, never a record's content. Run it only inside the approved window, against the database the founder named.
+ * Evidence for the A4a and A4b acceptance (docs/hermes-a4a-acceptance-plan-2026-10-31.md). Read-only: every query runs in a transaction the database itself holds READ ONLY (it refuses an insert, update,
+ * delete or schema change), and the output is counts, names, run and credential ids and verdicts, never a record's content. It connects with the application's own connection string, not a
+ * restricted role: row-level security would show a restricted role every table as empty. Run it only inside the approved window, against the database the founder named.
  *
  *   node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/hermes-a4a-evidence.ts baseline --out <file> [--role operations_manager]
  *   node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/hermes-a4a-evidence.ts verify --baseline <file> --run <agent run id> [--credential-id <16 hex>] [--role <role>]

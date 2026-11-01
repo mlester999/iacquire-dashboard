@@ -3,8 +3,8 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import {
-  EXPECTED_BOOKKEEPING_TABLES, evaluateA4aEvidence, findInternalAgencyOrgId, listWorkspaceTables, readAuthoritativeCounts, readRoleFacts, readRowCounts, readRunEvidence, readWriteDeltas,
-  reviewedToolRecordNames, type AuthoritativeCounts, type EvidenceInput, type RunEvidence, type TableDelta,
+  EXPECTED_BOOKKEEPING_TABLES, evaluateA4aEvidence, findInternalAgencyOrgId, inReadOnlyTransaction, listWorkspaceTables, readAuthoritativeCounts, readRoleFacts, readRowCounts, readRunEvidence,
+  readWriteDeltas, reviewedToolRecordNames, type AuthoritativeCounts, type EvidenceInput, type RunEvidence, type TableDelta,
 } from "@/server/workforce/hermes-a4a-evidence";
 import { businessMcpToolNamesForRole } from "@/server/workforce/hermes-business-mcp-policy";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
@@ -111,9 +111,16 @@ describe("A4a evidence: the checks", () => {
 });
 
 describe("A4a evidence: the module can only read, and never shows a record", () => {
-  it("uses readSystem only, never a transaction helper, and contains no data-changing statement", () => {
-    expect(source).toContain('import { readSystem } from "@/server/db";');
-    expect(source).not.toMatch(/\bwithSystem\b|\bwithTenant\b|\bwithServiceRole\b/);
+  it("reads only inside one READ ONLY transaction the database enforces, and contains no data-changing statement", () => {
+    expect(source).toContain('import { withSystem, type Queryable } from "@/server/db";');
+    expect(source).not.toMatch(/\breadSystem\b|\bwithTenant\b|\bwithServiceRole\b|\bwithUser\b/);
+    // The one door to the database: withSystem is called once, in the wrapper whose FIRST statement sets the mode, and every read goes through the wrapper.
+    expect(source.match(/\bwithSystem\(/g)).toHaveLength(1);
+    expect(source).toMatch(/withSystem\(async \(db\) => \{\s*await db\.query\("set transaction read only"\);\s*return fn\(db\);/);
+    // Every exported reader uses the wrapper (a new reader added without it changes one of these two numbers).
+    const readers = source.match(/export async function (?!inReadOnlyTransaction)/g)!.length;
+    expect(readers).toBeGreaterThanOrEqual(7);
+    expect(source.match(/\binReadOnlyTransaction\(/g)).toHaveLength(readers);
     const sql = [...source.matchAll(/`([^`]*\b(?:select|with)\b[^`]*)`|"((?:select|with) [^"]*)"/gi)].map((m) => m[1] ?? m[2]).join("\n");
     expect(sql.length).toBeGreaterThan(500);
     expect(sql).not.toMatch(/\b(insert\s+into|update\s+[a-z_"]+\s+set|delete\s+from|drop\s+|alter\s+table|truncate|create\s+(table|index|function))\b/i);
@@ -156,6 +163,55 @@ describe("A4a evidence: the queries, on a seeded database", () => {
   it("counts the facts straight from the tables, for the one workspace", async () => {
     expect(await readAuthoritativeCounts(agency.id)).toEqual({ openTasks: 2, overdueTasks: 1, pendingApprovals: 2, changesRequested: 0, blockedExecutions: 0 });
     expect(await readAuthoritativeCounts(other.id)).toMatchObject({ openTasks: 1, pendingApprovals: 1 });
+  });
+
+  it("refuses every kind of write in the database itself, and leaves the data as it was", async () => {
+    const taskCount = async () => ((await run("select count(*)::int as n from tasks")).rows[0] as { n: number }).n;
+    const before = await taskCount();
+    const attempts: Array<[string, string, unknown[]]> = [
+      ["an insert", "insert into tasks (org_id, title) values ($1, 'T written by the evidence tool')", [agency.id]],
+      ["an update", "update tasks set title = 'changed' where org_id = $1", [agency.id]],
+      ["a delete", "delete from tasks where org_id = $1", [agency.id]],
+      ["a data-changing with (the old select/with text check let this through)", "with gone as (delete from tasks where org_id = $1 returning id) select count(*) from gone", [agency.id]],
+      ["a schema change", "create table evidence_tool_must_not_create_this (id int)", []],
+      ["switching the mode back", "select set_config('transaction_read_only', 'off', true)", []],
+    ];
+    for (const [name, sql, params] of attempts) await expect(inReadOnlyTransaction((db) => db.query(sql, params)), name).rejects.toThrow(/read-only transaction|read-write mode/);
+    // A refused switch leaves the mode as it was: the write that follows is refused too.
+    await expect(inReadOnlyTransaction(async (db) => {
+      await db.query("savepoint attempt");
+      try { await db.query("select set_config('transaction_read_only', 'off', true)"); } catch { await db.query("rollback to savepoint attempt"); }
+      return db.query("insert into tasks (org_id, title) values ($1, 'T written after a refused switch')", [agency.id]);
+    })).rejects.toThrow(/read-only transaction/);
+    expect(await taskCount()).toBe(before);
+    expect((await run("select to_regclass('evidence_tool_must_not_create_this') as t")).rows[0]).toEqual({ t: null });
+  });
+
+  it("reports a table it cannot read and goes on reading the others: a failed statement does not poison the transaction", async () => {
+    const tables = await listWorkspaceTables();
+    const plain = tables.filter((entry) => !entry.hasCreated && !entry.hasUpdated).map((entry) => entry.table);
+    expect(plain.length).toBeGreaterThan(0);
+    // A window start that is not a timestamp makes every table that compares one fail; a table that compares none still reads fine.
+    const deltas = await readWriteDeltas(agency.id, "not-a-timestamp");
+    const failed = deltas.filter((entry) => entry.error).map((entry) => entry.table);
+    expect(failed.length).toBeGreaterThan(0);
+    expect(deltas).toHaveLength(tables.length);
+    expect(deltas.filter((entry) => plain.includes(entry.table) && entry.error)).toEqual([]);
+    const position = (name: string) => tables.findIndex((entry) => entry.table === name);
+    expect(Math.max(...plain.map(position))).toBeGreaterThan(position(failed[0]));
+    expect(evaluateA4aEvidence(input({ deltas })).checks.find((check) => check.id === "zero_business_writes")).toMatchObject({ ok: false });
+  });
+
+  it("must run as the application's own role: a role that can select everything sees the workspace tables as empty, which would hide every write", async () => {
+    await run("do $$ begin if not exists (select 1 from pg_roles where rolname = 'a4a_probe_restricted') then create role a4a_probe_restricted; end if; end $$");
+    await run("grant usage on schema public to a4a_probe_restricted");
+    await run("grant select on all tables in schema public to a4a_probe_restricted");
+    expect((await readAuthoritativeCounts(agency.id)).openTasks).toBeGreaterThan(0);
+    const seenByRestrictedRole = await withSystem(async (db) => {
+      await db.query("set local role a4a_probe_restricted");
+      return ((await db.query<{ n: number }>("select count(*)::int as n from tasks where org_id = $1", [agency.id])).rows[0]).n;
+    });
+    expect(seenByRestrictedRole).toBe(0);
   });
 
   it("lists workspace tables that record when a row was created or changed, and leaves the rest out", async () => {
