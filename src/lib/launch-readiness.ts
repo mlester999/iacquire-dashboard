@@ -344,11 +344,11 @@ function verificationStep(f: LaunchFacts): LaunchStep {
     }
     const v = verification.get(role) ?? { role, state: "none" as const };
     if (v.state === "running") items.push(item({ key, label, state: "in_progress", required: true, owner: "system", detail: "A read-only check on your real records is running." }));
-    else if (v.state === "passed" && v.configVersion === e.configVersion) items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ?? "A read-only check on your real records completed. Nothing was changed or sent." }));
+    else if (v.state === "none") items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Not checked yet. The check reads your real records and changes nothing.", action: { label: "Run final checks", intent: "run_checks" } }));
     // A result for an older configuration says nothing about this one, whether it passed or failed: the check runs again (the sweep starts it by itself).
     else if (v.configVersion !== e.configVersion) items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Its configuration changed since the last check, so the check needs to run again.", action: { label: "Run final checks", intent: "run_checks" } }));
-    else if (v.state === "failed") items.push(item({ key, label, state: "failed", required: true, owner: "you", detail: v.detail ?? "The check did not pass.", action: { label: "Run final checks", intent: "run_checks" } }));
-    else items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Not checked yet. The check reads your real records and changes nothing.", action: { label: "Run final checks", intent: "run_checks" } }));
+    else if (v.state === "passed") items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ?? "A read-only check on your real records completed. Nothing was changed or sent." }));
+    else items.push(item({ key, label, state: "failed", required: true, owner: "you", detail: v.detail ?? "The check did not pass.", action: { label: "Run final checks", intent: "run_checks" } }));
   }
   return { key: "verification", title: "Functional verification", ...summarize(items) };
 }

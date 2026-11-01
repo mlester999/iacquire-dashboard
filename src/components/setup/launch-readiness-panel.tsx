@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CircleAlert, Clock, Hourglass, MinusCircle, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Clock, Hourglass, MinusCircle, XCircle } from "lucide-react";
 import { runLaunchIntentAction } from "@/app/actions/launch-readiness";
 import { Badge, ProgressBar } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -101,7 +101,10 @@ function StepCard({ step, busy, running, onRun }: { step: LaunchStep; busy: bool
           <span className="block text-[14px] font-semibold text-ink">{step.title}</span>
           <span className="block text-[12px] text-muted">{step.summary}</span>
         </span>
-        <Badge tone={STEP_TONE[step.state]}>{STEP_LABEL[step.state]}</Badge>
+        <span className="flex items-center gap-2">
+          <Badge tone={STEP_TONE[step.state]}>{STEP_LABEL[step.state]}</Badge>
+          <ChevronDown aria-hidden className="size-4 text-muted transition-transform group-open:rotate-180" />
+        </span>
       </summary>
       <ul className="mt-3 grid gap-2">
         {step.items.map((item) => (

@@ -206,7 +206,9 @@ describe("what does not apply never blocks", () => {
 describe("functional verification", () => {
   it("asks for the check until it has run, waits for an employee that is not ready, and passes only what ran on the current configuration", () => {
     let r = deriveLaunchReadiness(ready({ verification: [] }));
-    expect(itemOf(r, "verification.operations_manager")).toMatchObject({ state: "action_required", action: { intent: "run_checks" } });
+    expect(itemOf(r, "verification.operations_manager")).toMatchObject({ state: "action_required", detail: expect.stringContaining("Not checked yet"), action: { intent: "run_checks" } });
+    // An employee that was never checked has no older configuration to blame: only a check that ran on another version says "changed".
+    expect(itemOf(r, "verification.operations_manager").detail).not.toContain("configuration changed");
     expect(r.state).toBe("action_required");
 
     r = deriveLaunchReadiness(replaceEmployee(ready({ verification: [] }), "crm_manager", { readiness: { state: "provisioning", chatAvailable: false, workReady: false, description: "", blocking: [] }, provisioning: "in_progress" }));
