@@ -105,6 +105,14 @@ const schema = z.object({
   HERMES_PROVISIONER_ENABLED: bool,
   HERMES_PROVISIONER_TOKEN: z.preprocess(blankToUndefined, z.string().min(32).max(512).optional()),
   HERMES_PROVISIONER_GATEWAY_ID: z.preprocess(blankToUndefined, z.string().uuid().optional()),
+  // Optional ceiling on the profiles the pinned client-only gateway may hold. A new client is admitted all or nothing (never half a team); a configuration sync never needs room. Unset means
+  // no ceiling, which is only right while nothing runs there: the client preflight refuses `--expect enabled` until a number is chosen from the measured footprint.
+  HERMES_PROVISIONER_MAX_PROFILES: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(100_000).optional()),
+  // Minutes a provisioning job may wait or a profile may sit waiting for its first health check before the agency is told once. Alerts only; nothing is failed or cancelled by it.
+  HERMES_PROVISIONER_STALL_MINUTES: z.preprocess(blankToUndefined, z.coerce.number().int().min(5).max(1440).default(30)),
+  // Standing automation, off unless the founder switches it on: after a paying self-service client's questionnaire is submitted and the setup payment is cleared, apply the matching reviewed
+  // industry CRM starter under the authority of the Super Admin who allowed the client's creation (re-checked at run time). Never touches calendars, forms, workflows or assignment rules.
+  CLIENT_CRM_AUTO_SETUP_ENABLED: bool,
   // Restricted, no-tool DeepSeek worker. Its endpoint and HMAC secret are server-only; disabled unless explicitly enabled.
   HERMES_INFERENCE_WORKER_ENABLED: bool,
   // Temporary, no-provider prompt-size diagnostic. Separate from inference and disabled unless explicitly enabled.
