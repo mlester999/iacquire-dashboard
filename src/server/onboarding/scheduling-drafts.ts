@@ -28,9 +28,10 @@ async function insertTypes(db: Queryable, orgId: string, calendarId: string, whi
     position += 1;
     const slug = await freeSlug(async (s) => (await db.query("select 1 from crm_appointment_types where calendar_id = $1 and slug = $2 and archived_at is null", [calendarId, s])).rows.length > 0, slugify(t.name));
     await db.query(
-      `insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, min_notice_minutes, location_kind, public, position)
-       values ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
-      [orgId, calendarId, t.name, slug, t.durationMinutes, t.minNoticeMinutes, t.locationKind, position],
+      `insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, min_notice_minutes, location_kind, public, position,
+         buffer_after_minutes, requires_confirmation, allow_customer_changes, change_cutoff_minutes, meeting_provider)
+       values ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11, $12, $13)`,
+      [orgId, calendarId, t.name, slug, t.durationMinutes, t.minNoticeMinutes, t.locationKind, position, t.bufferAfterMinutes, t.requiresConfirmation, t.allowCustomerChanges, t.changeCutoffMinutes, t.meetingProvider],
     );
   }
   return which.length;

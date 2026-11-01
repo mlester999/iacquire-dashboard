@@ -12,6 +12,19 @@ export const DRAFT_CALENDAR_DESCRIPTION = "Drafted from your onboarding answers.
 export const NOTICE_MINUTES: Record<string, number> = { none: 0, "2h": 120, "24h": 1440, "48h": 2880 };
 export const DEFAULT_NOTICE_MINUTES = 120;
 
+/**
+ * What the booking-policy answers mean for every drafted type. An unanswered question keeps what a hand-made appointment type starts with (no gap, confirmed automatically,
+ * customers may change a booking, no video tool): nothing is assumed on the client's behalf.
+ */
+export const BUFFER_MINUTES: Record<string, number> = { none: 0, "10m": 10, "15m": 15, "30m": 30 };
+export const CUSTOMER_CHANGES: Record<string, { allow: boolean; cutoffMinutes: number }> = {
+  free: { allow: true, cutoffMinutes: 0 },
+  "24h": { allow: true, cutoffMinutes: 1440 },
+  "2h": { allow: true, cutoffMinutes: 120 },
+  none: { allow: false, cutoffMinutes: 0 },
+};
+export const VIDEO_PROVIDER: Record<string, DraftMeetingProvider> = { google_meet: "google_meet", microsoft_teams: "microsoft_teams", own: "none" };
+
 /** The limits of a stored appointment type (src/server/calendars/setup.ts and the table in migration 0029). */
 const NAME_MAX = 80;
 const MINUTES_MIN = 5;
@@ -20,12 +33,21 @@ const MAX_RULES = 50;
 const MAX_TYPES = 10;
 
 export type DraftLocationKind = "in_person" | "phone" | "video";
+/** A fixed link is never drafted: it needs the client's own https address. */
+export type DraftMeetingProvider = "none" | "google_meet" | "microsoft_teams";
 
 export interface DraftAppointmentType {
   name: string;
   durationMinutes: number;
   locationKind: DraftLocationKind;
   minNoticeMinutes: number;
+  bufferAfterMinutes: number;
+  /** A person confirms the booking before it counts. */
+  requiresConfirmation: boolean;
+  allowCustomerChanges: boolean;
+  changeCutoffMinutes: number;
+  /** Only ever set on a video type, from the client's own choice. */
+  meetingProvider: DraftMeetingProvider;
 }
 
 export interface SchedulingDraftPlan {
@@ -78,6 +100,11 @@ export function planSchedulingDrafts(a: Answers): SchedulingDraftPlan {
   const notice = typeof a["d.appt_notice"] === "string" && a["d.appt_notice"] in NOTICE_MINUTES ? NOTICE_MINUTES[a["d.appt_notice"] as string] : DEFAULT_NOTICE_MINUTES;
   const rows = Array.isArray(a["d.appt_types"]) ? (a["d.appt_types"] as Array<Record<string, string>>) : [];
   if (!rows.length) return empty("No appointment types were listed, so no booking calendar was drafted.");
+  const pick = <T>(id: string, table: Record<string, T>, fallback: T): T => (typeof a[id] === "string" && Object.hasOwn(table, a[id] as string) ? table[a[id] as string] : fallback);
+  const buffer = pick("d.appt_buffer", BUFFER_MINUTES, 0);
+  const confirmation = a["d.appt_confirmation"] === "manual";
+  const changes = pick("d.appt_changes", CUSTOMER_CHANGES, { allow: true, cutoffMinutes: 0 });
+  const video = pick<DraftMeetingProvider>("d.appt_video", VIDEO_PROVIDER, "none");
 
   const types: DraftAppointmentType[] = [];
   const skipped: SchedulingDraftPlan["skipped"] = [];
@@ -93,7 +120,11 @@ export function planSchedulingDrafts(a: Answers): SchedulingDraftPlan {
     else if (types.length >= MAX_TYPES) skipped.push({ name, why: `A calendar drafts up to ${MAX_TYPES} types.` });
     else {
       seen.add(name.toLowerCase());
-      types.push({ name, durationMinutes: minutes, locationKind: LOCATION[row.mode] ?? "phone", minNoticeMinutes: notice });
+      const locationKind = LOCATION[row.mode] ?? "phone";
+      types.push({
+        name, durationMinutes: minutes, locationKind, minNoticeMinutes: notice, bufferAfterMinutes: buffer, requiresConfirmation: confirmation,
+        allowCustomerChanges: changes.allow, changeCutoffMinutes: changes.cutoffMinutes, meetingProvider: locationKind === "video" ? video : "none",
+      });
     }
   }
   if (!types.length) return empty("No usable appointment type was listed, so no booking calendar was drafted.", skipped);

@@ -47,6 +47,7 @@ import { answerTimes, loadAnswerRows, toStored } from "@/server/onboarding/answe
 import { connectionFacts } from "@/server/onboarding/connection-facts";
 import { appliedThrough, lockOnboardingRow } from "@/server/onboarding/profile-sync";
 import { proposeSchedulingDrafts } from "@/server/onboarding/scheduling-drafts";
+import { proposeLeadTargeting } from "@/server/onboarding/lead-targeting-draft";
 import { writeBusinessProfile } from "@/server/settings/service";
 import { buildSnapshot, deriveProfile, fieldsToWrite, legacyBaseline, parseProfileSnapshot, type ProfileValues } from "@/lib/onboarding/business-profile";
 import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts";
@@ -753,6 +754,8 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     );
     // Booking rules become a draft calendar and appointment types, never a live one (src/server/onboarding/scheduling-drafts.ts).
     const scheduling = v2 ? await proposeSchedulingDrafts(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : NO_SCHEDULING;
+    // The client's own words about who to look for become a first set of lead-targeting rules, only into an empty profile (src/server/onboarding/lead-targeting-draft.ts).
+    if (v2) await proposeLeadTargeting(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers);
     await ensureSetupInstance(db, ctx.org.orgId);
     if (ctx.org.kind === "client" && !ctx.org.isDemo && ctx.user.emailVerified) {
       await requestProvisioning(db, ctx.org.orgId, ctx.user.id);

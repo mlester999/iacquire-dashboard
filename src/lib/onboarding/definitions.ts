@@ -4,7 +4,7 @@
 import { BUSINESS_GOALS, LANGUAGES, LENGTH_COPY, TONE_COPY, TONES } from "@/lib/agent-settings";
 import type { Answers, ChoiceOption, QuestionDef } from "./types";
 
-export const QUESTIONNAIRE_VERSION = 2;
+export const QUESTIONNAIRE_VERSION = 3;
 
 const opts = (...pairs: Array<[string, string, string?]>): ChoiceOption[] => pairs.map(([value, label, description]) => ({ value, label, description }));
 
@@ -27,6 +27,8 @@ const inIndustry =
     keys.includes(industryOf(a));
 export const wantsAppointments = (a: Answers) => a["b.appointments"] === true;
 export const channelsOf = (a: Answers): string[] => (Array.isArray(a["c.channels"]) ? (a["c.channels"] as string[]) : []);
+/** An appointment type listed as a video appointment: only then is the question about the video tool asked. */
+export const offersVideoAppointments = (a: Answers) => Array.isArray(a["d.appt_types"]) && (a["d.appt_types"] as Array<Record<string, string>>).some((r) => r?.mode === "video");
 export const wantsWebsite = (a: Answers) => a["b.website_need"] === "new" || a["b.website_need"] === "improve";
 
 const APPOINTMENT_GOALS: Record<string, ChoiceOption[]> = {
@@ -317,6 +319,30 @@ export const QUESTIONS: QuestionDef[] = [
     id: "d.appt_notice", section: "D", show: wantsAppointments, title: "How much notice do you need?",
     help: "The earliest slot your AI will offer.", kind: { type: "choice", options: opts(["none", "Same day is fine"], ["2h", "At least 2 hours"], ["24h", "At least 24 hours"], ["48h", "At least 48 hours"]) },
     reviewLabel: "Minimum notice",
+  },
+  {
+    id: "d.appt_buffer", section: "D", show: wantsAppointments, title: "Do you need a gap between appointments?",
+    help: "Time to travel, tidy up or take notes. It is kept free after every appointment, so two are never booked back to back.",
+    kind: { type: "choice", options: opts(["none", "No gap"], ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"]) },
+    reviewLabel: "Gap between appointments",
+  },
+  {
+    id: "d.appt_confirmation", section: "D", show: wantsAppointments, title: "Should a person confirm each booking?",
+    help: "If a person confirms, the time is held for the customer but the booking only counts once someone on your team confirms it.",
+    kind: { type: "choice", options: opts(["auto", "No, bookings are confirmed automatically"], ["manual", "Yes, a team member confirms each booking"]) },
+    reviewLabel: "Booking confirmation",
+  },
+  {
+    id: "d.appt_changes", section: "D", show: wantsAppointments, title: "May customers reschedule or cancel on their own?",
+    help: "This is what a customer can do from their own confirmation link. Your cancellation policy below is still quoted as you wrote it.",
+    kind: { type: "choice", options: opts(["free", "Yes, any time before the appointment"], ["24h", "Yes, until 24 hours before"], ["2h", "Yes, until 2 hours before"], ["none", "No, they contact us"]) },
+    reviewLabel: "Customer changes",
+  },
+  {
+    id: "d.appt_video", section: "D", show: (a) => wantsAppointments(a) && offersVideoAppointments(a), title: "Which tool do you use for video appointments?",
+    help: "A meeting link can only be made from a connected account, which you connect during setup. Nothing is connected for you.",
+    kind: { type: "choice", options: opts(["google_meet", "Google Meet", "Needs a connected Google calendar"], ["microsoft_teams", "Microsoft Teams", "Needs a connected Microsoft 365 calendar"], ["own", "I send my own link", "No connection needed"]) },
+    reviewLabel: "Video tool",
   },
   {
     id: "d.appt_cancellation", section: "D", show: wantsAppointments, sensitive: true, title: "What is your cancellation policy?",

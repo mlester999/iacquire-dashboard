@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DRAFT_CALENDAR_NAME, NOTICE_MINUTES, planSchedulingDrafts, schedulingDraftMessage, weeklyRulesFromHours } from "@/lib/onboarding/scheduling-drafts";
 import { describeAction } from "@/lib/activity";
+import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import type { Answers } from "@/lib/onboarding/types";
+
+/** What a drafted type carries when the client answered none of the booking-policy questions: what a hand-made type starts with. */
+const POLICY_DEFAULTS = { bufferAfterMinutes: 0, requiresConfirmation: false, allowCustomerChanges: true, changeCutoffMinutes: 0, meetingProvider: "none" } as const;
 
 // The pure rules that turn the booking answers of the questionnaire into a plan for a DRAFT calendar. Nothing here is live: the plan only describes rows that take no bookings.
 
@@ -25,8 +29,8 @@ describe("what the plan takes from the booking answers", () => {
     expect(plan.calendarName).toBe(DRAFT_CALENDAR_NAME);
     expect(plan.timezone).toBe("America/Chicago");
     expect(plan.types).toEqual([
-      { name: "Free inspection", durationMinutes: 30, locationKind: "in_person", minNoticeMinutes: 1440 },
-      { name: "Phone quote", durationMinutes: 15, locationKind: "phone", minNoticeMinutes: 1440 },
+      { name: "Free inspection", durationMinutes: 30, locationKind: "in_person", minNoticeMinutes: 1440, ...POLICY_DEFAULTS },
+      { name: "Phone quote", durationMinutes: 15, locationKind: "phone", minNoticeMinutes: 1440, ...POLICY_DEFAULTS },
     ]);
     // Sunday is 0: Monday is 1 and Saturday is 6, minutes from midnight, in the order a person reads them.
     expect(plan.hoursTemplate).toEqual([
@@ -44,6 +48,34 @@ describe("what the plan takes from the booking answers", () => {
     // Not answered: the same 2 hours a hand-made type starts with (src/server/calendars/setup.ts).
     expect(planSchedulingDrafts(base({ "d.appt_notice": undefined })).types[0].minNoticeMinutes).toBe(120);
     expect(planSchedulingDrafts(base({ "d.appt_notice": "next week" })).types[0].minNoticeMinutes).toBe(120);
+  });
+
+  it("takes the booking-policy answers into every drafted type, and assumes nothing when they are missing or not recognised", () => {
+    const plan = planSchedulingDrafts(base({ "d.appt_buffer": "15m", "d.appt_confirmation": "manual", "d.appt_changes": "24h" }));
+    for (const t of plan.types) expect(t).toMatchObject({ bufferAfterMinutes: 15, requiresConfirmation: true, allowCustomerChanges: true, changeCutoffMinutes: 1440, meetingProvider: "none" });
+    expect(planSchedulingDrafts(base({ "d.appt_changes": "none" })).types[0]).toMatchObject({ allowCustomerChanges: false, changeCutoffMinutes: 0 });
+    expect(planSchedulingDrafts(base({ "d.appt_changes": "2h" })).types[0]).toMatchObject({ allowCustomerChanges: true, changeCutoffMinutes: 120 });
+    expect(planSchedulingDrafts(base({ "d.appt_confirmation": "auto" })).types[0].requiresConfirmation).toBe(false);
+    expect(planSchedulingDrafts(base({ "d.appt_buffer": "20m", "d.appt_confirmation": "maybe", "d.appt_changes": "constructor" })).types[0]).toMatchObject(POLICY_DEFAULTS);
+  });
+
+  it("sets a video tool only on video types, only from the client's own choice, and never a fixed link", () => {
+    const a = base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }, { name: "Phone quote", minutes: "15", mode: "phone" }], "d.appt_video": "google_meet" });
+    expect(planSchedulingDrafts(a).types.map((t) => [t.name, t.meetingProvider])).toEqual([["Video consult", "google_meet"], ["Phone quote", "none"]]);
+    expect(planSchedulingDrafts({ ...a, "d.appt_video": "microsoft_teams" }).types[0].meetingProvider).toBe("microsoft_teams");
+    expect(planSchedulingDrafts({ ...a, "d.appt_video": "own" }).types[0].meetingProvider).toBe("none");
+    expect(planSchedulingDrafts({ ...a, "d.appt_video": undefined }).types[0].meetingProvider).toBe("none");
+    expect(planSchedulingDrafts({ ...a, "d.appt_video": "custom_link" }).types[0].meetingProvider).toBe("none");
+  });
+
+  it("asks the booking-policy questions only when appointments are wanted, and the video question only when a video type is listed", () => {
+    for (const id of ["d.appt_buffer", "d.appt_confirmation", "d.appt_changes"]) {
+      expect(QUESTION_BY_ID[id].show!(base()), id).toBe(true);
+      expect(QUESTION_BY_ID[id].show!(base({ "b.appointments": false })), id).toBe(false);
+    }
+    expect(QUESTION_BY_ID["d.appt_video"].show!(base())).toBe(false);
+    expect(QUESTION_BY_ID["d.appt_video"].show!(base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }] }))).toBe(true);
+    expect(QUESTION_BY_ID["d.appt_video"].show!(base({ "b.appointments": false, "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }] }))).toBe(false);
   });
 
   it("falls back to the opening hours when no bookable hours were given, and says so", () => {

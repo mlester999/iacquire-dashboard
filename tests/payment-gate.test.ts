@@ -357,6 +357,9 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/server/maintenance/service.ts",
       "src/server/purchase-intents/service.ts",
       "src/server/setup/agency.ts",
+      // The launch panel reports where the fee stands (the state before payment reads "Questionnaire submitted") and the final checks wait for it. Neither spends anything.
+      "src/server/setup/launch-intents.ts",
+      "src/server/setup/launch-readiness.ts",
       "src/server/setup/snapshots.ts",
       "src/server/workforce/provisioning.ts",
     ].sort());

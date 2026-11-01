@@ -54,6 +54,25 @@ describe("drafting a calendar from the booking answers", () => {
     expect(audit.rows[0].metadata.types).toBe(2);
   });
 
+  it("stores the booking-policy answers on the drafted types: gap, confirmation, customer changes and the client's video tool", async () => {
+    const { org, ctx } = await workspace("Policy Co");
+    await run((db) => proposeSchedulingDrafts(db, ctx, answers({
+      "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }, { name: "Site visit", minutes: "60", mode: "in_person" }],
+      "d.appt_buffer": "30m", "d.appt_confirmation": "manual", "d.appt_changes": "2h", "d.appt_video": "microsoft_teams",
+    })));
+    const rows = (await run((db) => db.query("select name, location_kind, buffer_after_minutes, requires_confirmation, allow_customer_changes, change_cutoff_minutes, meeting_provider from crm_appointment_types where org_id = $1 order by position", [org.id]))).rows;
+    expect(rows).toEqual([
+      { name: "Video consult", location_kind: "video", buffer_after_minutes: 30, requires_confirmation: true, allow_customer_changes: true, change_cutoff_minutes: 120, meeting_provider: "microsoft_teams" },
+      { name: "Site visit", location_kind: "in_person", buffer_after_minutes: 30, requires_confirmation: true, allow_customer_changes: true, change_cutoff_minutes: 120, meeting_provider: "none" },
+    ]);
+    // Answered "no": customers are not given a link to change the booking themselves.
+    const other = await workspace("No Changes Co");
+    await run((db) => proposeSchedulingDrafts(db, other.ctx, answers({ "d.appt_changes": "none" })));
+    const stored = (await run((db) => db.query<{ allow_customer_changes: boolean }>("select allow_customer_changes from crm_appointment_types where org_id = $1", [other.org.id]))).rows;
+    expect(stored.length).toBe(2);
+    expect(stored.every((r) => r.allow_customer_changes === false)).toBe(true);
+  });
+
   it("is a draft in every way that matters: no host, refused by the booking paths, and failing the activation checks until someone assigns a host", async () => {
     const { org, ctx } = await workspace();
     await run((db) => proposeSchedulingDrafts(db, ctx, answers()));
