@@ -1,6 +1,7 @@
 import "server-only";
 import { withUser } from "@/server/db";
-import { workJobStageLabel, WORK_JOB_STATUS_LABELS, type WorkJobStatus } from "@/server/workforce/jobs";
+import { DRAFT_MESSAGE_IDS_SQL, loadDraftCountsForJobs, workJobEvidence, workJobStageLabel, workJobStatusLabel, type WorkJobStatus } from "@/server/workforce/jobs";
+import type { EvidenceMarker } from "@/lib/evidence-class";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export type WorkBoardFilter = "all" | "active" | "attention" | "completed";
@@ -11,6 +12,8 @@ export interface WorkBoardJob {
   title: string;
   status: WorkJobStatus;
   statusLabel: string;
+  /** What kind of thing this work produced, computed on read (nothing is stored). Null until it has produced something; optional so a board built from older data still types. */
+  evidence?: EvidenceMarker | null;
   /** True when the persisted running state has no unexpired worker lease. */
   recoveryPending: boolean;
   stage: string | null;
@@ -46,7 +49,7 @@ function iso(value: Date | null | undefined): string | null {
 export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter = "all"): Promise<WorkBoardJob[]> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) return [];
   const scopeAll = ctx.can("activity.view");
-  return withUser(ctx.user.id, async (db) => {
+  const rows = await withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; capability: string; title: string; status: WorkJobStatus; stage: string | null;
       result_summary: string | null; result_count: number; failure_message: string | null;
@@ -54,12 +57,16 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       employee_name: string; employee_role: string;
       event_message: string | null; event_kind: string | null; event_at: Date | null;
       recovery_pending: boolean;
+      draft_message_ids: unknown;
     }>(
       `select j.id, j.capability, j.title, j.status, j.stage, j.result_summary, j.result_count, j.failure_message,
               j.conversation_id, j.created_at, j.started_at, j.finished_at,
               a.display_name as employee_name, a.role_key as employee_role,
               e.message as event_message, e.kind as event_kind, e.created_at as event_at,
-              (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())) as recovery_pending
+              (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())) as recovery_pending,
+              -- A finished follow-up draft job lists its drafts as they were when it finished; the ids are looked up below, because a viewer may not be allowed to open every
+              -- conversation a draft sits in and the board must count them the way the job panel does.
+              ${DRAFT_MESSAGE_IDS_SQL} as draft_message_ids
          from ai_work_jobs j
          join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
          left join lateral (
@@ -80,12 +87,19 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
         limit 100`,
       [ctx.org.orgId, scopeAll, ctx.user.id, filter],
     );
-    return rows.map((row) => ({
+    return rows;
+  });
+  const draftCounts = await loadDraftCountsForJobs(ctx.org.orgId, rows.map((row) => ({ id: row.id, draftMessageIds: row.draft_message_ids })));
+  return rows.map((row) => {
+    const drafts = draftCounts.get(row.id) ?? null;
+    const evidence = workJobEvidence(row, drafts);
+    return {
       id: row.id,
       capability: row.capability,
       title: row.title,
       status: row.status,
-      statusLabel: row.recovery_pending ? "Recovery pending" : WORK_JOB_STATUS_LABELS[row.status],
+      statusLabel: workJobStatusLabel({ status: row.status, recoveryPending: row.recovery_pending }, evidence, drafts),
+      evidence,
       recoveryPending: row.recovery_pending,
       stage: row.stage,
       stageLabel: workJobStageLabel(row.stage),
@@ -101,7 +115,7 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       latestEvent: row.event_message
         ? { message: row.event_message, kind: row.event_kind ?? "notice", createdAt: iso(row.event_at) ?? new Date(row.created_at).toISOString() }
         : null,
-    }));
+    };
   });
 }
 

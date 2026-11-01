@@ -4,11 +4,11 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { BookOpen, CheckCircle2, ChevronDown, Clock, Download, FileText, Search, ShieldAlert, Trash2, UploadCloud } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronDown, Clock, Download, FileText, History, RotateCcw, Search, ShieldAlert, Trash2, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Textarea } from "@/components/ui/primitives";
 import { PageHero, DataToolbar, CoverageBar } from "@/components/ui/workspace";
-import { Dialog } from "@/components/ui/overlays";
+import { Dialog, Sheet } from "@/components/ui/overlays";
 import { saveKnowledgeAction } from "@/app/actions/knowledge";
 import { reprocessKnowledgeDocumentAction } from "@/app/actions/workforce-knowledge";
 import { KNOWLEDGE_GUIDANCE } from "@/lib/employee-field-guidance";
@@ -23,8 +23,41 @@ interface Section {
   updatedAt: string | null;
   appliedAt: string | null;
   held: boolean;
+  /** The client's own edit while it waits for review. `content` stays the approved text the AI team uses. */
+  pendingContent?: string | null;
   updatedBy: string | null;
 }
+
+/** One saved version of a section, as the History drawer shows it. */
+export interface KnowledgeRevisionView {
+  id: string;
+  version: number;
+  content: string;
+  review_status: "approved" | "held" | "rejected" | "superseded";
+  risk_flags: string[];
+  source: "client" | "onboarding" | "agency" | "restore" | "baseline";
+  restored_from_version: number | null;
+  created_at: string | Date;
+  actor_name: string | null;
+}
+
+// The two actions behind the History drawer are passed in (not imported), so the drawer is offered only where the page wires them.
+type LoadHistory = (section: string) => Promise<{ ok: true; data: KnowledgeRevisionView[] } | { ok: false; error: string }>;
+type RestoreRevision = (section: string, revisionId: string) => Promise<{ ok: true; data: { held: boolean } } | { ok: false; error: string }>;
+
+const REVISION_STATUS: Record<KnowledgeRevisionView["review_status"], { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
+  approved: { label: "Approved", tone: "success" },
+  held: { label: "Waiting for review", tone: "warning" },
+  rejected: { label: "Not approved", tone: "danger" },
+  superseded: { label: "Replaced before review", tone: "neutral" },
+};
+const REVISION_SOURCE: Record<KnowledgeRevisionView["source"], string> = {
+  client: "Edited",
+  onboarding: "From onboarding",
+  agency: "By iAcquire",
+  restore: "Restored",
+  baseline: "Text before history began",
+};
 
 interface Doc {
   id: string;
@@ -47,6 +80,7 @@ function documentStatus(d: Doc) {
   if (d.status === "processing") return d.processing_detail ?? "Processing…";
   if (d.status === "failed") return d.processing_detail ?? "Could not read this document";
   if (d.status === "unsupported") return d.processing_detail ?? "Not searchable; OCR isn't supported";
+  if (d.status === "rejected") return "Not approved for AI use";
   if (d.risk_flags?.length) return "Held for iAcquire review";
   if (d.agent_instance_id) return "Assigned to one employee";
   if (d.has_text && d.applied_at) return "Readable by your AI team";
@@ -58,7 +92,7 @@ function size(n: number) {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone }: { sections: Section[]; documents: Doc[]; canEdit: boolean; accept: string; timeZone: string }) {
+export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone, loadHistory, restoreRevision }: { sections: Section[]; documents: Doc[]; canEdit: boolean; accept: string; timeZone: string; loadHistory?: LoadHistory; restoreRevision?: RestoreRevision }) {
   const filled = sections.filter((s) => s.content.trim()).length;
   const lastApplied = sections.map((s) => s.appliedAt).filter(Boolean).sort().pop() ?? null;
   const [search, setSearch] = React.useState("");
@@ -71,7 +105,7 @@ export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
           {sections.map((s, i) => (
-            <div key={s.key} hidden={!visible.some((v) => v.key === s.key)}><SectionEditor section={s} canEdit={canEdit} timeZone={timeZone} defaultOpen={i === 0 || (!s.content && i < 3)} /></div>
+            <div key={s.key} hidden={!visible.some((v) => v.key === s.key)}><SectionEditor section={s} canEdit={canEdit} timeZone={timeZone} defaultOpen={i === 0 || (!s.content && i < 3)} loadHistory={loadHistory} restoreRevision={restoreRevision} /></div>
           ))}
           {!visible.length && <Card className="p-6 text-center"><p className="text-sm font-semibold">No sections match this view.</p><Button variant="soft" size="sm" className="mt-3" onClick={() => { setFilter("all"); setSearch(""); }}>Show all sections</Button></Card>}
         </div>
@@ -81,7 +115,7 @@ export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone
   );
 }
 
-function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: Section; canEdit: boolean; timeZone: string; defaultOpen: boolean }) {
+function SectionEditor({ section, canEdit, timeZone, defaultOpen, loadHistory, restoreRevision }: { section: Section; canEdit: boolean; timeZone: string; defaultOpen: boolean; loadHistory?: LoadHistory; restoreRevision?: RestoreRevision }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(defaultOpen);
   const [value, setValue] = React.useState(section.content);
@@ -116,11 +150,20 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
               </label>
               <Textarea id={`k-${section.key}`} rows={6} maxLength={12000} value={value} disabled={!canEdit} onChange={(e) => setValue(e.target.value)} />
               {section.held && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">This update is waiting for a quick iAcquire review because it may conflict with AI safety rules. Your AI team keeps using the previous approved knowledge until then.</p>}
+              {section.held && section.pendingContent ? (
+                <div>
+                  <p className="text-[12px] font-medium text-muted">Your update, waiting for review</p>
+                  <pre className="scrollbar-thin mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{section.pendingContent}</pre>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-faint">
                   <Clock className="size-3.5" />
                   {section.updatedAt ? `v${section.version} · ${section.updatedBy ?? "Someone"} · ${formatDateTime(section.updatedAt, timeZone)}` : "Not written yet"}
                 </span>
+                {loadHistory && section.updatedAt ? (
+                  <HistoryDrawer section={section} canEdit={canEdit} timeZone={timeZone} loadHistory={loadHistory} restoreRevision={restoreRevision} />
+                ) : null}
                 {canEdit && (
                   <div className="flex gap-2">
                     {dirty && (
@@ -152,6 +195,86 @@ function SectionEditor({ section, canEdit, timeZone, defaultOpen }: { section: S
         )}
       </AnimatePresence>
     </Card>
+  );
+}
+
+/** Every saved version of one section, newest first, with a way back to an earlier one. A restore is checked again like any edit, so it may be held for review. */
+function HistoryDrawer({ section, canEdit, timeZone, loadHistory, restoreRevision }: { section: Section; canEdit: boolean; timeZone: string; loadHistory: LoadHistory; restoreRevision?: RestoreRevision }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState<KnowledgeRevisionView[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [restoring, setRestoring] = React.useState<string | null>(null);
+  const load = React.useCallback(async () => {
+    setError(null);
+    try {
+      const res = await loadHistory(section.key);
+      if (res.ok) setRows(res.data);
+      else setError(res.error);
+    } catch {
+      setError("The history could not be loaded. Please try again.");
+    }
+  }, [loadHistory, section.key]);
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          setOpen(true);
+          void load();
+        }}
+        aria-label={`Version history for ${section.label}`}
+      >
+        <History className="size-4" aria-hidden /> History
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen} title={`${section.label} history`} description="Every saved version. Restoring one saves it as a new version.">
+        <div className="space-y-3 overflow-y-auto p-5">
+          {error ? <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p> : null}
+          {!rows && !error ? <p className="text-[13px] text-muted" role="status">Loading history…</p> : null}
+          {rows && rows.length === 0 ? <p className="text-[13px] text-muted">No earlier versions yet. Versions are kept from your next save.</p> : null}
+          {rows?.map((rev) => {
+            const status = REVISION_STATUS[rev.review_status];
+            const current = rev.review_status === "approved" && rev.content === section.content;
+            return (
+              <Card key={rev.id} className="p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[13px] font-semibold">Version {rev.version}</p>
+                  <Badge tone={status.tone}>{status.label}</Badge>
+                  {current ? <Badge tone="primary">In use now</Badge> : null}
+                </div>
+                <p className="mt-1 text-[12px] text-muted">
+                  {REVISION_SOURCE[rev.source]}
+                  {rev.restored_from_version ? ` (version ${rev.restored_from_version})` : ""} · {rev.actor_name ?? "Someone"} · {formatDateTime(rev.created_at, timeZone)}
+                </p>
+                <pre className="scrollbar-thin mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{rev.content || "(empty)"}</pre>
+                {canEdit && restoreRevision && !current ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="mt-2"
+                    loading={restoring === rev.id}
+                    aria-label={`Restore version ${rev.version} of ${section.label}`}
+                    onClick={async () => {
+                      setRestoring(rev.id);
+                      const res = await restoreRevision(section.key, rev.id);
+                      setRestoring(null);
+                      if (!res.ok) return toast.error(res.error);
+                      if (res.data.held) toast.warning("Restored for review", { description: "That text may conflict with AI safety rules, so iAcquire reviews it first." });
+                      else toast.success("Version restored", { description: "AI employees use it from their next message." });
+                      router.refresh();
+                      void load();
+                    }}
+                  >
+                    <RotateCcw className="size-4" aria-hidden /> Restore this version
+                  </Button>
+                ) : null}
+              </Card>
+            );
+          })}
+        </div>
+      </Sheet>
+    </>
   );
 }
 

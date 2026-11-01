@@ -448,6 +448,30 @@ describe("what kind of reply each message is", () => {
     expect(chips()[0].text).toContain("using records read at 11:58 AM");
   });
 
+  it("offers Regenerate only on a reply a model wrote (it has a run), never on a server-written one", () => {
+    renderChat({ initialConversation: saved([reply("s1", "A server-written notice.", { v: 1, class: "system_notice" })]) });
+    expect(screen.queryByRole("button", { name: "Regenerate response" })).toBeNull();
+    cleanup();
+    renderChat({ initialConversation: saved([reply("m2", "A model-written reply.", { v: 1, class: "model_response" }, { run_id: "r2" })]) });
+    expect(screen.getByRole("button", { name: "Regenerate response" })).toBeInTheDocument();
+  });
+
+  it("shows the action-unconfirmed chip from the done event without a reload", async () => {
+    const events = [
+      { type: "ready", conversationId: "c5", userMessageId: "u5", assistantMessageId: "a5", runId: "r5", evidence: { v: 1, class: "model_response" } },
+      { type: "done", content: "I have booked it. Nothing was booked.", evidence: { v: 1, class: "model_response", claims: "unbacked_action_claim" } },
+    ];
+    vi.mocked(searchConversationsAction).mockResolvedValue({ ok: true, data: [] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(events.map((event) => `data: ${JSON.stringify(event)}
+
+`).join(""), { headers: { "Content-Type": "text/event-stream" } })));
+    renderChat();
+    fireEvent.change(screen.getByRole("textbox", { name: /Message Zeng/ }), { target: { value: "Book it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(screen.getByText(/Nothing was booked/)).toBeInTheDocument());
+    expect(chips()[0].text).toContain("action unconfirmed");
+  });
+
   it("shows no chip when the ready event carries no marker or a damaged one", async () => {
     const events = [
       { type: "ready", conversationId: "c4", userMessageId: "u4", assistantMessageId: "a4", runId: "r4", evidence: { v: 1, class: "nonsense" } },

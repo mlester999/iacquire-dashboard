@@ -87,7 +87,11 @@ export interface TenantDetail {
     failed_30d: number;
   }>;
   heldVersions: ReviewVersionView[];
+  /** A waiting section edit (content is the waiting text; the approved text is untouched and still in use) or text held by the older code. */
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
+  /** Employee notes held for review, and flagged documents with the text that is held out of every prompt. Both are content, so the D70 rule hides them too. */
+  heldNotes: Array<{ id: string; agent_id: string; agent_role: AgentRoleKey; title: string; content: string; risk_flags: string[]; updated_at: Date }>;
+  heldDocuments: Array<{ id: string; filename: string; scope: "shared" | "assigned"; agent_role: AgentRoleKey | null; held_text: string | null; risk_flags: string[]; created_at: Date }>;
   /**
    * Whether this reader may see the four kinds of content the founder's D70 rule guards, and how much of it was withheld for that reason. The screens read with
    * trusted server access, so row-level security cannot answer for them; this is the same question asked directly (see docs/staff-access-privacy.md).
@@ -182,7 +186,23 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       [orgId],
     );
     const heldKnowledge = await db.query<TenantDetail["heldKnowledge"][number]>(
-      "select section, content, risk_flags, updated_at from company_knowledge where org_id = $1 and review_status = 'pending_agency_review'",
+      `select section, coalesce(pending_content, content) as content,
+              case when pending_content is not null then pending_flags else risk_flags end as risk_flags, updated_at
+       from company_knowledge where org_id = $1 and (pending_content is not null or review_status = 'pending_agency_review') order by section`,
+      [orgId],
+    );
+    const heldNotes = await db.query<TenantDetail["heldNotes"][number]>(
+      `select e.id, e.agent_instance_id as agent_id, a.role_key as agent_role, e.title, e.content, e.risk_flags, e.updated_at
+       from employee_knowledge_entries e join agent_instances a on a.id = e.agent_instance_id
+       where e.org_id = $1 and e.status = 'pending_agency_review' order by e.updated_at`,
+      [orgId],
+    );
+    // A held document has a reason and no released text; the held text is shown capped, since a review needs the start of it and not 200 KB in a browser.
+    const heldDocuments = await db.query<TenantDetail["heldDocuments"][number]>(
+      `select d.id, d.filename, case when d.agent_instance_id is null then 'shared' else 'assigned' end as scope, a.role_key as agent_role,
+              left(d.held_text, 6000) as held_text, d.risk_flags, d.created_at
+       from knowledge_documents d left join agent_instances a on a.id = d.agent_instance_id
+       where d.org_id = $1 and d.status = 'ready' and d.extracted_text is null and d.applied_at is null and cardinality(d.risk_flags) > 0 order by d.created_at`,
       [orgId],
     );
     const heldVersions = access.workforce
@@ -254,7 +274,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
     // row-level security. It withholds them unless the person has an active support session on this client (the same condition the database applies), and keeps
     // the counts so the screen can say what it is not showing instead of looking empty.
     const contentAccess = access.workforce ? await clientContentAccess(db, user.id, orgId) : { sessionRequired: false, hasSession: false, permitted: true };
-    const heldKnowledgeHidden = !contentAccess.permitted ? heldKnowledge.rows.length : 0;
+    const heldKnowledgeHidden = !contentAccess.permitted ? heldKnowledge.rows.length + heldNotes.rows.length + heldDocuments.rows.length : 0;
     const hiddenRunDetails = !contentAccess.permitted ? failedRuns.rows.filter((r) => r.error_message).length : 0;
     return {
       access,
@@ -265,6 +285,12 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       heldVersions,
       heldKnowledge: access.workforce && contentAccess.permitted
         ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
+        : [],
+      heldNotes: access.workforce && contentAccess.permitted
+        ? heldNotes.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
+        : [],
+      heldDocuments: access.workforce && contentAccess.permitted
+        ? heldDocuments.rows.map((item) => ({ ...item, held_text: item.held_text === null ? null : redactReviewText(item.held_text) }))
         : [],
       contentAccess: { ...contentAccess, heldKnowledgeHidden, runDetailsHidden: hiddenRunDetails },
       provisioning: access.workforce ? provisioning.rows : [],
@@ -321,7 +347,11 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
       openTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress','waiting_for_client')") : 0,
       urgentTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress') and priority in ('high','urgent')") : 0,
       provisioningOpen: canViewWorkforce ? await n(`select count(*)::int as n from agent_provisioning_jobs j join organizations o on o.id = j.org_id where ${scope} and j.status in ('requested','in_progress','awaiting_health_check')`) : 0,
-      heldReviews: canViewWorkforce ? await n(`select count(*)::int as n from agent_config_versions v join organizations o on o.id = v.org_id where ${scope} and v.status = 'pending_agency_review'`) : 0,
+      heldReviews: canViewWorkforce ? await n(`select count(*)::int as n from agent_config_versions v join organizations o on o.id = v.org_id where ${scope} and v.status = 'pending_agency_review'`)
+        + await n(`select count(*)::int as n from company_knowledge k join organizations o on o.id = k.org_id where ${scope} and (k.pending_content is not null or k.review_status = 'pending_agency_review')`)
+        + await n(`select count(*)::int as n from employee_knowledge_entries e join organizations o on o.id = e.org_id where ${scope} and e.status = 'pending_agency_review'`)
+        + await n(`select count(*)::int as n from knowledge_documents d join organizations o on o.id = d.org_id where ${scope} and d.status = 'ready' and d.extracted_text is null and d.applied_at is null and cardinality(d.risk_flags) > 0`)
+        : 0,
       newAccessRequests,
       messagesThisMonth: await n("select coalesce(sum(quantity),0)::int as n from usage_events where kind = 'agent_message' and created_at >= date_trunc('month', now())"),
       tokensThisMonth: await n("select coalesce(sum(coalesce(input_tokens,0)+coalesce(output_tokens,0)),0)::int as n from usage_events where created_at >= date_trunc('month', now())"),

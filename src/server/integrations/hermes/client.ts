@@ -43,6 +43,12 @@ export interface HermesConnection {
    */
   roleKey?: AgentRoleKey | null;
   orgKind?: "agency" | "client" | null;
+  /**
+   * Whether this CLIENT employee's profile carries the reviewed business tools (the MCP tool list of its role), read by loadConnection in the same transaction as the workspace switch.
+   * Absent or null means the tier is off for this workspace (the deployment flag or the workspace switch), and then any MCP tool in the profile stays unsafe, exactly as before the tier existed.
+   * `proposals` says the role's change-proposal tools are part of the reviewed list too (the deployment's proposals flag and the workspace's proposals switch are both on).
+   */
+  clientBusinessTools?: { proposals: boolean } | null;
 }
 
 export type HermesErrorKind = "unreachable" | "auth_failed" | "not_found" | "rate_limited" | "bad_response" | "timeout" | "upstream";

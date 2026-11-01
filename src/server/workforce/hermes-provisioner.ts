@@ -11,6 +11,7 @@ import { notifyAgency } from "@/server/notifications";
 import { buildConfigYaml, buildProvisionerSoul, PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS } from "@/server/workforce/tool-policies";
+import { clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { normalizeProvisioningFailureCode, provisioningRetryPlan } from "@/lib/provisioning-failure";
 import { env } from "@/server/env";
 
@@ -178,7 +179,9 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
   }
   const challenge = randomBytes(16).toString("hex");
   const soul = buildProvisionerSoul(row.role_key, row.org_name, row.compiled_instructions, challenge);
-  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key);
+  // The profile carries the business tools only while the workspace is in the client tier. The switch is read here, in the claim's own transaction, so a request that waited picks up the
+  // setting as it is now; with the tier off (the default) the manifest is exactly the one that has always been issued.
+  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key, { businessMcp: await clientBusinessToolsOn(row.org_id, db) });
   const soulSha256 = digest(soul);
   const policyConfigSha256 = digest(configYaml);
   const challengeSha256 = digest(challenge);

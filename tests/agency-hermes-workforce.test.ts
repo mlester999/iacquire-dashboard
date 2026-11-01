@@ -807,7 +807,7 @@ describe("agency Hermes workforce isolation", () => {
           ok: true,
           provider: "deepseek",
           model: "deepseek-flash",
-          content: "Synthetic model response for the internal Sales Assistant.",
+          content: "Synthetic model response for the internal Sales Assistant. I've booked Jane Cruz for 2pm and emailed her the details.",
           usage: { inputTokens: 41, outputTokens: 10, totalTokens: 51 },
           toolSchemas: 0,
           toolCalls: 0,
@@ -860,7 +860,7 @@ describe("agency Hermes workforce isolation", () => {
       ))).rows[0];
       expect(persisted).toEqual({
         user_content: HERMES_INFERENCE_ONLY_CHAT_CANARY,
-        assistant_content: "Synthetic model response for the internal Sales Assistant.",
+        assistant_content: "Synthetic model response for the internal Sales Assistant. I've booked Jane Cruz for 2pm and emailed her the details.",
         assistant_status: "complete",
         run_status: "completed",
       });
@@ -868,6 +868,9 @@ describe("agency Hermes workforce isolation", () => {
       // The restricted check hands the model no workspace records: its reply is stored as a model response that says nothing was read, and the same marker is what the stream announced.
       const marker = (await withSystem((db) => db.query<{ evidence: unknown }>("select evidence from chat_messages where id=$1", [sent.assistantMessageId]))).rows[0].evidence;
       expect(marker).toEqual({ v: 1, class: "model_response" });
+      // The reply says an action was done, and it is stored exactly as written: the unbacked-action check is for a client's employees only (an agency's own employees have real
+      // tools and approvals), so there is no correction line above, no flag on the marker and no audit row for a claim.
+      expect((await withSystem((db) => db.query("select 1 from audit_logs where action = 'workforce.chat_unbacked_claim' and target_id = $1", [sent.runId]))).rows).toHaveLength(0);
 
       const audit = (await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
         "select metadata from audit_logs where action='hermes.inference_only_chat' and target_id=$1",

@@ -7,6 +7,7 @@ import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { blockingUnmet } from "@/lib/employee-requirements";
 import { loadWorkspaceFacts, readinessExtrasFor } from "@/server/workforce/readiness-facts";
 import { loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
+import { clientBusinessMcpRuntimeNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { getAgentByRole, listAgents } from "@/server/workforce/service";
 import { createPipeline } from "@/server/crm/pipelines";
 import { createCalendar, setHostAvailability } from "@/server/calendars/setup";
@@ -215,3 +216,41 @@ describe("the loaders hand every screen the same extras", () => {
   });
 });
 
+describe("a waiting knowledge edit is visible to the launch judge and the employee facts", () => {
+  it("counts a first flagged save as waiting (not 'nothing saved') and an edit next to approved text as one more waiting", async () => {
+    const h = await crmOrg({ name: "Waiting Edit Co" });
+    // A brand-new section whose first save was held: no approved text, one waiting.
+    await withSystem((db) => db.query("insert into company_knowledge (org_id, section, content, pending_content, pending_flags) values ($1, 'faq', '', 'a waiting first save', '{prompt_injection}')", [h.org.id]));
+    expect((await facts(h.org.id)).knowledgeApproved).toBe(false);
+    expect((await facts(h.org.id)).knowledge).toMatchObject({ supplied: 0, heldForReview: 1 });
+    expect((await loadLaunchFactsForOrg(h.org.id))!.knowledge).toEqual({ approved: 0, pending: 1 });
+    // An approved section with a waiting edit stays supplied (its approved text is in use) and the edit is counted as waiting.
+    await withSystem((db) => db.query("insert into company_knowledge (org_id, section, content, review_status, pending_content, pending_flags) values ($1, 'business_description', 'We repair roofs.', 'approved', 'a waiting edit', '{prompt_injection}')", [h.org.id]));
+    expect((await facts(h.org.id)).knowledgeApproved).toBe(true);
+    expect((await facts(h.org.id)).knowledge).toMatchObject({ supplied: 1, heldForReview: 2 });
+    expect((await loadLaunchFactsForOrg(h.org.id))!.knowledge).toEqual({ approved: 1, pending: 2 });
+  });
+});
+
+describe("the reviewed business tools are not reported as tools beyond the role's policy", () => {
+  it("lists only names beyond the role's own reviewed list as excess", async () => {
+    const t = await crmOrg({ name: "Tier Tools Co" });
+    const agent = (await withSystem((db) => db.query<{ id: string; role_key: never }>("select id, role_key from agent_instances where org_id = $1 and role_key = 'sales_assistant'", [t.org.id]))).rows[0];
+    const reviewed = clientBusinessMcpRuntimeNamesForRole("sales_assistant", { proposals: true });
+    expect(reviewed.length).toBeGreaterThan(0);
+    const record = (names: string[]) =>
+      withSystem((db) =>
+        db.query("update agent_instances set tool_inventory_snapshot = $2::jsonb, tool_inventory_digest = $3 where id = $1", [agent.id, JSON.stringify({ tools: names.map((name) => ({ name })) }), "b".repeat(64)]),
+      );
+    const roleTools = async () => (await readinessExtrasFor(t.org.id, [agent])).get(agent.id)?.requirements?.find((r) => r.key === "role_tools");
+
+    await record(["memory", "session_search", "todo_list", ...reviewed]);
+    expect(await roleTools()).toMatchObject({ met: true });
+    // A tool that is neither in the role's policy nor its reviewed list is still reported, by name.
+    await record(["memory", "session_search", "todo_list", ...reviewed, "terminal"]);
+    const excess = await roleTools();
+    expect(excess).toMatchObject({ met: false });
+    expect(excess?.detail).toContain("terminal");
+    for (const name of reviewed) expect(excess?.detail).not.toContain(name);
+  });
+});

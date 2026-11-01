@@ -22,6 +22,8 @@ import {
   usageLimitsSchema,
 } from "@/server/admin/tenants";
 import { connectHermesProfile, decideHeldVersion, runHealthCheck } from "@/server/workforce/service";
+import { decideHeldDocument, decideHeldKnowledge } from "@/server/knowledge/service";
+import { decideHeldEmployeeNote } from "@/server/workforce/knowledge";
 import {
   connectAgencyHermesProfile,
   getAgencyProfileHistory,
@@ -36,7 +38,6 @@ import { createInvitation } from "@/server/auth/service";
 import { copyAgencyUserPermissions, updateAgencyTeamMember, updateAgencyUserPermission, updateAgencyUserPermissions } from "@/server/admin/team";
 import { AGENCY_TEAM_MANAGED_PERMISSIONS, isAgencyTeamPermission, type AgencyPermissionOverrides, type AgencyTeamPermission } from "@/lib/permissions";
 import { acknowledgeInternalFullCapabilities, resetHermesToolPolicy, saveHermesToolPolicy, type HermesBlockableToolset, type HermesPolicyCapability } from "@/server/workforce/tool-policies";
-import { notifyOrgRoles } from "@/server/notifications";
 
 async function agentOrg(agentId: string) {
   const { rows } = await withSystem((db) => db.query<{ org_id: string }>("select org_id from agent_instances where id = $1", [agentId]));
@@ -255,27 +256,38 @@ export async function decideHeldVersionAction(orgId: string, versionId: string, 
   }
 }
 
+// The three held-content decisions share one shape: the agency permission for THIS client is checked first, then the decision, its audit row and the client's
+// notification run in one transaction (see decideHeldKnowledge, decideHeldEmployeeNote and decideHeldDocument).
 export async function decideHeldKnowledgeAction(orgId: string, section: string, approve: boolean) {
   try {
     const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
-    await withSystem(async (db) => {
-      const res = await db.query(
-        approve
-          ? "update company_knowledge set review_status = 'approved', risk_flags = '{}', applied_at = now() where org_id = $1 and section = $2 and review_status = 'pending_agency_review'"
-          : "update company_knowledge set review_status = 'approved', risk_flags = '{}', content = '', applied_at = null where org_id = $1 and section = $2 and review_status = 'pending_agency_review'",
-        [orgId, section],
-      );
-      if (!res.rowCount) throw new AppError("conflict", "Already reviewed.");
-      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-        kind: "knowledge_update_ready",
-        severity: approve ? "success" : "warning",
-        title: approve ? "Knowledge update approved and applied" : "A knowledge update wasn't applied",
-        body: approve ? "Your AI employees use it from their next message." : "It conflicted with AI safety rules. Edit the section or contact support.",
-        link: "/knowledge",
-      });
-      await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: approve ? "knowledge.review_approved" : "knowledge.review_rejected", targetType: "knowledge_section", targetId: section, result: "success" }, db);
-    });
+    await withSystem((db) => decideHeldKnowledge(db, { orgId, section, approve, agencyUserId: user.id }));
     revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/knowledge");
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function decideHeldEmployeeNoteAction(orgId: string, entryId: string, approve: boolean) {
+  try {
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
+    await withSystem((db) => decideHeldEmployeeNote(db, { orgId, entryId, approve, agencyUserId: user.id }));
+    revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/employees");
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function decideHeldDocumentAction(orgId: string, documentId: string, approve: boolean) {
+  try {
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
+    await withSystem((db) => decideHeldDocument(db, { orgId, documentId, approve, agencyUserId: user.id }));
+    revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/knowledge");
     return { ok: true as const };
   } catch (err) {
     return actionError(err);

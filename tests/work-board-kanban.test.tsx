@@ -100,6 +100,36 @@ describe("AI Work Board Kanban", () => {
     expect(screen.getByTestId("job-panel").textContent).toBe("job-1");
   });
 
+  it("keeps finished work that only prepared something out of the Completed lane and the success tone, and shows what kind of work it is", () => {
+    render(<WorkBoardKanban
+      jobs={[
+        job({ id: "job-draft", title: "Follow-up drafts", capability: "pipeline_followup_drafts", status: "completed", statusLabel: "Ready for review", evidence: { v: 1, class: "proposed_change", ledger: { kind: "work_job", id: "job-draft" } }, employeeName: "Sales Assistant", employeeRole: "sales_assistant", finishedAt: "2026-10-23T08:05:00.000Z", resultSummary: "Three drafts saved." }),
+        job({ id: "job-sent", title: "Sent follow-ups", capability: "pipeline_followup_drafts", status: "completed", statusLabel: "Completed", evidence: { v: 1, class: "completed_action", ledger: { kind: "work_job", id: "job-sent" } }, employeeName: "Sales Assistant", employeeRole: "sales_assistant", finishedAt: "2026-10-23T08:06:00.000Z" }),
+        job({ id: "job-read", title: "Pipeline review", capability: "pipeline_review", status: "completed", statusLabel: "Completed", evidence: { v: 1, class: "record_retrieval", ledger: { kind: "work_job", id: "job-read" } }, finishedAt: "2026-10-23T08:07:00.000Z" }),
+      ]}
+      schedules={[]}
+      filter="all"
+      scheduleOperatorEnabled={false}
+      timeZone="UTC"
+      focusJobId={null}
+      referenceTime="2026-10-24T08:00:00.000Z"
+    />);
+    const lane = (name: string) => screen.getByRole("heading", { name }).closest("section") as HTMLElement;
+    // The draft job sits in its own lane, with the chip that says it is a proposal, and not in Completed.
+    expect(within(lane("Prepared, not finished")).getByText("Follow-up drafts")).toBeTruthy();
+    expect(within(lane("Prepared, not finished")).getByText("Ready for review")).toBeTruthy();
+    expect(lane("Prepared, not finished").querySelector("[data-evidence-class=proposed_change]")).not.toBeNull();
+    expect(within(lane("Completed")).queryByText("Follow-up drafts")).toBeNull();
+    // Confirmed and read-only work stay in Completed, each with its own chip.
+    expect(within(lane("Completed")).getByText("Sent follow-ups")).toBeTruthy();
+    expect(within(lane("Completed")).getByText("Pipeline review")).toBeTruthy();
+    expect(lane("Completed").querySelector("[data-evidence-class=completed_action]")).not.toBeNull();
+    expect(lane("Completed").querySelector("[data-evidence-class=record_retrieval]")).not.toBeNull();
+    // The prepared job's status pill is not the green success tone.
+    const draftCard = within(lane("Prepared, not finished")).getByText("Follow-up drafts").closest("article") as HTMLElement;
+    expect(draftCard.innerHTML).not.toMatch(/success/);
+  });
+
   it("filters jobs and projected occurrences together by employee", () => {
     render(<WorkBoardKanban
       jobs={[job(), job({ id: "job-2", title: "Sales follow-up review", status: "blocked", statusLabel: "Blocked", employeeName: "Sales Assistant", employeeRole: "sales_assistant" })]}

@@ -5,7 +5,7 @@ import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-const actions = vi.hoisted(() => ({ dismissCalendarNoticeAction: vi.fn(async () => ({ ok: true as const })), runLaunchIntentAction: vi.fn() }));
+const actions = vi.hoisted(() => ({ getLaunchReadinessAction: vi.fn(() => new Promise<never>(() => {})), dismissCalendarNoticeAction: vi.fn(async () => ({ ok: true as const })), runLaunchIntentAction: vi.fn() }));
 vi.mock("@/app/actions/launch-readiness", () => actions);
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {}, replace() {} }), usePathname: () => "/setup" }));
 vi.mock("next/link", () => ({ default: ({ children, href, ...rest }: { children: React.ReactNode; href: string }) => <a href={href} {...rest}>{children}</a> }));

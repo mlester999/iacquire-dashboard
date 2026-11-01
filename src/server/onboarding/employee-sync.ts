@@ -15,6 +15,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import { compileAgentConfig, defaultSettings, detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler";
 import { createConfigVersion, currentSettings, isReservedProfile, loadCompanyContext, queueSyncJob } from "@/server/workforce/service";
 import { PROVISIONING_PAYMENT_CLEARED_SQL, requestProvisioning } from "@/server/workforce/provisioning";
+import { writeKnowledgeTextTx } from "@/server/knowledge/write";
 import { revokeClientBusinessCredentialsForAgent } from "@/server/workforce/hermes-client-business-credential";
 import { answerTimes, loadAnswerRows, toStored, type AnswerRow } from "@/server/onboarding/answers";
 import { appliedThrough, lockOnboardingRow, type SnapshotRow } from "@/server/onboarding/profile-sync";
@@ -220,7 +221,10 @@ export async function hasUnconfiguredEnabledEmployee(db: Queryable, orgId: strin
 // Knowledge seeded from answers
 // ---------------------------------------------------------------------------
 
-/** Knowledge: writes what onboarding owns; never overwrites text that someone edited in the Knowledge Center. */
+/**
+ * Knowledge: writes what onboarding owns; never overwrites text that someone edited in the Knowledge Center. It goes through the same writer as every other knowledge edit, so
+ * a flagged seed waits in pending_content while the approved text stays in use, and every seeded version is kept in the section's history.
+ */
 export async function seedKnowledgeFromAnswers(
   db: Queryable,
   who: Pick<EmployeeActor, "orgId" | "userId">,
@@ -230,22 +234,30 @@ export async function seedKnowledgeFromAnswers(
   for (const { section, content } of toKnowledgeSections(answers)) {
     const text = sanitizeClientText(content, 12000);
     if (!text) continue;
-    const flags = detectRiskFlags(text);
-    const { rows } = await db.query<{ content: string; seeded_hash: string | null }>("select content, seeded_hash from company_knowledge where org_id = $1 and section = $2", [who.orgId, section]);
+    const flagged = detectRiskFlags(text).length > 0;
+    const { rows } = await db.query<{ content: string; seeded_hash: string | null; pending_content: string | null }>(
+      "select content, seeded_hash, pending_content from company_knowledge where org_id = $1 and section = $2",
+      [who.orgId, section],
+    );
     const current = rows[0];
-    if (current && current.content === text) continue;
+    if (current && current.content === text && current.pending_content === null) continue;
     if (current && current.seeded_hash !== sha256(current.content)) {
       knowledge.kept.push(section);
       continue;
     }
-    const review = flags.length ? "pending_agency_review" : "approved";
-    await db.query(
-      `insert into company_knowledge (org_id, section, content, updated_by, risk_flags, review_status, applied_at, seeded_hash)
-       values ($1, $2, $3, $4, $5, $6, case when $6 = 'approved' then now() end, $7)
-       on conflict (org_id, section) do update set content = excluded.content, version = company_knowledge.version + 1, updated_by = excluded.updated_by,
-         risk_flags = excluded.risk_flags, review_status = excluded.review_status, applied_at = excluded.applied_at, seeded_hash = excluded.seeded_hash`,
-      [who.orgId, section, text, who.userId, flags, review, sha256(text)],
-    );
+    if (current?.pending_content != null) {
+      // A flagged edit is already waiting. Do not queue the same text again, and do not replace one a person wrote.
+      if (flagged && current.pending_content === text) continue;
+      const { rows: held } = await db.query<{ source: string }>(
+        "select source from company_knowledge_revisions where org_id = $1 and section = $2 and review_status = 'held' order by version desc limit 1",
+        [who.orgId, section],
+      );
+      if (held[0] && held[0].source !== "onboarding") {
+        knowledge.kept.push(section);
+        continue;
+      }
+    }
+    await writeKnowledgeTextTx(db, { orgId: who.orgId, section, text, userId: who.userId, source: "onboarding", seededHash: sha256(text), emptySeededHash: sha256("") });
     knowledge.written.push(section);
   }
 }

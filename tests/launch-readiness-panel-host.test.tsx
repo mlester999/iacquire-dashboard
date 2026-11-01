@@ -6,6 +6,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const actions = vi.hoisted(() => ({
+  // The panel asks for the state again after a step runs; here that read never answers, so nothing changes under the test.
+  getLaunchReadinessAction: vi.fn(() => new Promise<never>(() => {})),
   dismissCalendarNoticeAction: vi.fn(async () => ({ ok: true as const })),
   runLaunchIntentAction: vi.fn(async (_intent: string, _params?: unknown) => ({ ok: true as const, data: { ok: true, message: "Done." } })),
 }));
@@ -68,7 +70,7 @@ describe("the host picker", () => {
 
   it("'Make me the host' carries no person, so the server uses the one who pressed it", async () => {
     render(<LaunchReadinessPanel readiness={panel([hostItem])} />);
-    fireEvent.click(screen.getByRole("button", { name: "Make me the host" }));
+    fireEvent.click(screen.getByRole("button", { name: "Make me the host: Host" }));
     await waitFor(() => expect(actions.runLaunchIntentAction).toHaveBeenCalledTimes(1));
     expect(actions.runLaunchIntentAction).toHaveBeenCalledWith("assign_host", undefined);
   });
@@ -87,7 +89,7 @@ describe("the host picker", () => {
 describe("approving the hours", () => {
   it("forwards the digest of the hours that were shown, and nothing else", async () => {
     render(<LaunchReadinessPanel readiness={panel([hoursItem])} />);
-    fireEvent.click(screen.getByRole("button", { name: "Approve these hours" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve these hours: Host availability" }));
     await waitFor(() => expect(actions.runLaunchIntentAction).toHaveBeenCalledTimes(1));
     expect(actions.runLaunchIntentAction).toHaveBeenCalledWith("apply_hours", { hoursDigest: DIGEST });
   });

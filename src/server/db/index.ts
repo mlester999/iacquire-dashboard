@@ -456,6 +456,8 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0113 is the signed marketing registration: it adds the replay ledger and installs a trigger on demo_prospects, so the demo funnel (0100) must already be in. Its prefix
   // is deliberately above the highest number used on any branch: 0105–0109 belong to the workforce migrations and 0110–0112 exist on the release-candidate branch.
   "0113_demo_registration_requests": ["0100_demo_funnel"],
+  // 0117 adds the revision history and a waiting-edit column to the knowledge table (0002, 0045, 0046) and its policies call app.permitted_orgs (0060).
+  "0117_company_knowledge_revisions": ["0002_workforce", "0045_ai_workforce_experience", "0046_knowledge_document_extraction", "0060_rls_initplan"],
 };
 
 /**

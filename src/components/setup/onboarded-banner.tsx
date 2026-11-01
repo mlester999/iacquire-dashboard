@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { ITEM_STATE_LABEL, type LaunchItem, type LaunchReadiness } from "@/lib/launch-readiness";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import type { AgentInstanceRow } from "@/server/workforce/service";
@@ -10,21 +11,37 @@ export interface EmployeeProvisioningState {
   detail: string | null;
 }
 
-/** Reads persisted configuration, health, inventory and job evidence. No elapsed-time progress is inferred. */
-export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared }: {
+type Row = { role: AgentRoleKey; label: string; detail: string; ready: boolean };
+
+/** One employee as the launch judge reads it: the same word the launch panel below shows for that employee, so the two never disagree. */
+function judgedRow(role: AgentRoleKey, item: LaunchItem | undefined): Row {
+  if (!item) return { role, label: "Action required", detail: "This employee has not been created. iAcquire needs to review the workspace.", ready: false };
+  return { role, label: ITEM_STATE_LABEL[item.state], detail: item.detail, ready: item.state === "done" };
+}
+
+/**
+ * Reads persisted configuration, health, inventory and job evidence. No elapsed-time progress is inferred. When the launch judge's reading is given, every number and word comes from
+ * it: there is one answer to "how ready is this client", and a count of employees that merely answer in chat is not it. Without it (the read failed) the employees are listed
+ * from their own records and nothing is counted.
+ */
+export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared, readiness = null }: {
   nativeCrm: boolean;
   crmGuide: boolean;
   agents?: AgentInstanceRow[];
   provisioning?: EmployeeProvisioningState[];
   /** Whether the setup payment is confirmed; employees do not start without it. */
   paymentCleared?: boolean;
+  /** The launch judge's reading of this workspace. */
+  readiness?: LaunchReadiness | null;
 }) {
   const jobs = new Map(provisioning.map((job) => [job.role, job]));
-  const rows = AGENT_ROLE_KEYS.map((role) => {
+  const judged = new Map((readiness?.steps.find((s) => s.key === "employees")?.items ?? []).map((i) => [i.key, i]));
+  const rows: Row[] = AGENT_ROLE_KEYS.map((role) => {
+    if (readiness) return judgedRow(role, judged.get(`employees.${role}`));
     const agent = agents.find((item) => item.role_key === role);
     const job = jobs.get(role);
     if (!agent) return { role, label: "Action required", detail: "This employee has not been created. iAcquire needs to review the workspace.", ready: false };
-    const readiness = deriveEmployeeReadiness({
+    const employee = deriveEmployeeReadiness({
       displayName: agent.display_name, enabled: agent.enabled, status: agent.status,
       configVersion: agent.config_version, lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
       lastHealthOk: agent.last_health_ok, lastHealthDetail: agent.last_health_detail,
@@ -34,7 +51,8 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
       inventoryToolCount: agent.tool_inventory_tool_count, credentialCurrent: agent.credential_ready,
       paymentCleared, extras: agent.readiness_extras,
     });
-    if (readiness.chatAvailable) return { role, label: "Ready", detail: "Verified for authorized chat. Connected workflows depend on their own setup.", ready: true };
+    // Chat being available is not "ready": the launch panel also needs the role's own requirements and a passing final check.
+    if (employee.chatAvailable) return { role, label: "Verified for chat", detail: "Verified for authorized chat. Connected workflows depend on their own setup.", ready: true };
     if (paymentCleared === false && !job) return { role, label: "Waiting for setup payment", detail: `${PAYMENT_REQUIRED_SENTENCE}.`, ready: false };
     if (job?.status === "failed") return { role, label: "Failed · review needed", detail: "Profile setup failed. iAcquire can review the recorded error and retry safely.", ready: false };
     if (job?.status === "requested") return { role, label: "Provisioning requested", detail: "iAcquire has the setup request. A dedicated profile and runtime verification are still required.", ready: false };
@@ -42,9 +60,8 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     if (job?.status === "awaiting_health_check") return { role, label: "Verification required", detail: "The profile is mapped; its connection and tools still need verification.", ready: false };
     if (agent.config_version && !agent.hermes_profile) return { role, label: "Configuration ready", detail: "Business configuration is saved. A dedicated Hermes profile is still needed.", ready: false };
     if (agent.hermes_profile && agent.last_health_ok === false) return { role, label: "Connection required", detail: "The latest connection check did not pass. iAcquire needs to resolve it.", ready: false };
-    return { role, label: "Action required", detail: readiness.description, ready: false };
+    return { role, label: "Action required", detail: employee.description, ready: false };
   });
-  const ready = rows.filter((row) => row.ready).length;
   return (
     <section role="status" aria-label="Your six AI employees" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -53,13 +70,17 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
           <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Meet your AI team</h2>
           <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
         </div>
-        <span className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink">{ready}/6 ready</span>
+        {readiness && (
+          <span data-testid="banner-launch" className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink">
+            {readiness.label}: {readiness.passed} of {readiness.total} checks passed
+          </span>
+        )}
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((row) => {
           const meta = AGENT_BY_KEY[row.role];
           return (
-            <div key={row.role} className="rounded-2xl border border-line bg-surface-2/40 p-4">
+            <div key={row.role} data-employee={row.role} className="rounded-2xl border border-line bg-surface-2/40 p-4">
               <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[12px] font-semibold text-success-ink" : "text-[12px] font-semibold text-warning-ink"}>{row.label}</span></div>
               <p className="mt-2 min-h-12 text-[12px] leading-relaxed text-muted">{row.detail}</p>
               <Link href={row.ready ? `/chat/${meta.slug}` : `/employees/${meta.slug}`} className="mt-3 inline-block text-[12px] font-semibold text-primary hover:underline">{row.ready ? "Open chat" : "View employee"} →</Link>

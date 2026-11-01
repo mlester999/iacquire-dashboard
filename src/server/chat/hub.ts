@@ -8,7 +8,8 @@ export type ChatStreamEvent =
   | { type: "activity"; label: string }
   | { type: "delta"; text: string }
   | { type: "approval"; approvalId: string; title: string }
-  | { type: "done"; content: string }
+  // `evidence` is sent only when the finished reply's marker changed (an unbacked action claim), so the bubble shows it without a reload.
+  | { type: "done"; content: string; evidence?: EvidenceMarker }
   | { type: "cancelled"; content: string }
   | { type: "error"; code: string; message: string; retryable: boolean };
 

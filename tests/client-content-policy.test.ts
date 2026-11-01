@@ -266,7 +266,7 @@ describe("every kind of content the four permissions guard, read through row-lev
       `select tablename, qual from pg_policies where schemaname = 'public' and cmd in ('SELECT', 'ALL')
           and qual ~ 'approvals\.view|activity\.view|knowledge\.view|leads\.view' order by tablename`))).rows;
     expect(rows.map((r) => r.tablename)).toEqual([
-      "agent_runs", "ai_work_events", "ai_work_jobs", "ai_work_report_deliveries", "ai_work_reports", "approval_events", "approval_requests", "audit_logs", "company_knowledge", "crm_support_sessions",
+      "agent_runs", "ai_work_events", "ai_work_jobs", "ai_work_report_deliveries", "ai_work_reports", "approval_events", "approval_requests", "audit_logs", "company_knowledge", "company_knowledge_revisions", "crm_support_sessions",
       "employee_knowledge_entries", "knowledge_documents", "lead_research_requests", "lead_targeting_profiles", "leads",
     ]);
     // The only one of them with a way around the permission is the audit log's Super Admin branch.

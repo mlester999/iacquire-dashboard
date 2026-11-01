@@ -3,14 +3,22 @@ import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AdaptiveOnboarding, OutcomeNotesList } from "@/components/onboarding/adaptive-onboarding";
+import OnboardingPage from "@/app/(setup)/onboarding/page";
 import { AiPrefsForm, ProfileForms, TeamManager } from "@/components/settings/settings-forms";
 import { OnboardingApiProvider, type OnboardingApi } from "@/components/onboarding/onboarding-api";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { buildReviewModel, computeProgress, planScope, type ConnectionFacts } from "@/lib/onboarding/engine";
+import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import type { StoredAnswers, AnswerValue } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion } from "@/server/onboarding/service";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+// One router for every render, so a test can see where the person was sent.
+const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => nav }));
+// The questionnaire page reads the workspace and its saved session; here those are a fixture.
+const server = vi.hoisted(() => ({ ctx: { org: { orgId: "org-1" } }, session: null as unknown, files: { assets: [] as unknown[], documents: [] as unknown[] } }));
+vi.mock("@/server/tenancy/context", () => ({ requireOrgContext: async () => server.ctx }));
+vi.mock("@/server/onboarding/service", () => ({ getOnboardingSession: async () => server.session, listOnboardingFiles: async () => server.files }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 vi.mock("@/app/actions/onboarding", () => ({}));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
@@ -34,7 +42,7 @@ const row = (value: AnswerValue) => ({ value, source: "user" as const, skipped: 
 const facts: ConnectionFacts = { crmLinked: false, aiEmployeesVerified: 0, aiEmployeesTotal: 6, automationMapped: false, channels: { sms: { enabled: false, registration: "not_started" }, whatsapp: { enabled: false, registration: "not_started" }, email: { enabled: false, registration: "not_started" } }, calendarConnected: false, websiteDomainVerified: false, invitedStaff: 0 };
 const draft: Suggestion = { questionId: "a.description", value: "Marko Bar is a real estate business.", reason: "Based on your answers.", basis: "your_answers", source: "ai_suggestion", needsConfirmation: false, limited: true, clarifications: [{ fieldId: "b.services", label: "What services do you primarily provide?", example: "Examples only: property sales or rentals" }] };
 
-function setup(current = "a.description", extra: StoredAnswers = {}, enabledRoles: AgentRoleKey[] = []) {
+function setup(current = "a.description", extra: StoredAnswers = {}, enabledRoles: AgentRoleKey[] = [], props: Partial<React.ComponentProps<typeof AdaptiveOnboarding>> = {}) {
   const answers = { "a.business_name": row("Marko Bar"), "a.industry": row("real_estate"), "a.business_model": row("mixed"), ...extra };
   const session: OnboardingSession = { questionnaireVersion: 2, status: "draft", revision: 1, currentQuestionId: current, answers, progress: computeProgress(answers, planScope(enabledRoles)), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles, websiteAnalysis: null };
   let revision = 1;
@@ -47,7 +55,7 @@ function setup(current = "a.description", extra: StoredAnswers = {}, enabledRole
   } satisfies OnboardingApi;
   const exit = vi.fn();
   const done = vi.fn();
-  const view = render(<OnboardingApiProvider value={api}><div id="onboarding-header-actions" /><AdaptiveOnboarding session={session} assets={[]} documents={[]} onExit={exit} onSubmitted={done} /></OnboardingApiProvider>);
+  const view = render(<OnboardingApiProvider value={api}><div id="onboarding-header-actions" /><AdaptiveOnboarding session={session} assets={[]} documents={[]} onExit={exit} onSubmitted={done} {...props} /></OnboardingApiProvider>);
   return { api, exit, done, view };
 }
 const input = () => document.getElementById("onboarding-input") as HTMLTextAreaElement;
@@ -511,5 +519,106 @@ describe("Settings > Business profile: what reached the employees", () => {
     cleanup();
     await saveProfile({ updated: 0, held: 0, failed: true });
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("Business profile saved", { description: expect.stringMatching(/could not be updated yet/) }));
+  });
+});
+
+describe("a link that opens one question and brings the person back", () => {
+  const titleOf = (id: string) => QUESTION_BY_ID[id].title;
+
+  it("opens the question the link names instead of the saved position", () => {
+    setup("a.description", {}, [], { startQuestionId: "a.timezone" });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(titleOf("a.timezone"));
+  });
+
+  it("keeps the saved position when the question is not one this workspace is asked, or is not a question at all", () => {
+    // The plan has no Lead Hunter, so its qualification question is not asked.
+    setup("a.description", {}, AGENT_ROLE_KEYS.filter((r) => r !== "lead_hunter"), { startQuestionId: "b.qualification" });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(titleOf("a.description"));
+    cleanup();
+    setup("a.description", {}, [], { startQuestionId: "not.a.question" });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(titleOf("a.description"));
+    cleanup();
+    setup("a.description", {}, [], { startQuestionId: null });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(titleOf("a.description"));
+  });
+
+  it("goes on to the review after the one answer, where the person approves it, instead of walking every question after it", () => {
+    setup("a.description", { "a.timezone": row("America/Chicago") }, [], { startQuestionId: "a.timezone" });
+    expect(screen.getByRole("button", { name: "Back to review" })).toBeTruthy();
+    cleanup();
+    setup("a.timezone", { "a.timezone": row("America/Chicago") });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+  });
+
+  it("sends 'Save & exit' back to the page that asked, and to the usual place without one", async () => {
+    setup("a.description", {}, [], { onExit: undefined, returnTo: "/setup" });
+    fireEvent.click(screen.getByRole("button", { name: "Save & exit" }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/setup"));
+    cleanup();
+    nav.push.mockClear();
+    setup("a.description", {}, [], { onExit: undefined });
+    fireEvent.click(screen.getByRole("button", { name: "Save & exit" }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/overview"));
+  });
+
+  it("will not go to an address, a protocol-relative address or a path with anything extra on it, even if the page let one through", async () => {
+    for (const bad of ["https://evil.example", "//evil.example", "/setup?x=1", "/setup/../admin", "javascript:alert(1)", "\\\\evil.example", "/set up"]) {
+      nav.push.mockClear();
+      setup("a.description", {}, [], { onExit: undefined, returnTo: bad });
+      fireEvent.click(screen.getByRole("button", { name: "Save & exit" }));
+      await waitFor(() => expect(nav.push).toHaveBeenCalledTimes(1));
+      expect(nav.push, bad).toHaveBeenCalledWith("/overview");
+      cleanup();
+    }
+  });
+
+  it("after approving, lands on Setup's own view of the submission when the way back is Setup, and on another page when that was the way back", async () => {
+    const submit = async (returnTo: string | null) => {
+      nav.push.mockClear();
+      const { api } = setup("f.review", { "f.review": row(true) }, [], { onSubmitted: undefined, returnTo });
+      api.review.mockResolvedValue({ ok: true, data: { ...buildReviewModel({}, facts, []), blockers: [] } });
+      const approve = await screen.findByRole("button", { name: "Approve setup" });
+      await waitFor(() => expect(approve.hasAttribute("disabled")).toBe(false));
+      fireEvent.click(approve);
+      await waitFor(() => expect(nav.push).toHaveBeenCalledTimes(1));
+      cleanup();
+      return nav.push.mock.calls[0][0];
+    };
+    expect(await submit("/setup")).toBe("/setup?onboarded=1");
+    expect(await submit("/overview")).toBe("/overview");
+    expect(await submit(null)).toBe("/setup?onboarded=1");
+  });
+});
+
+describe("the questionnaire page reads the link's question and way back", () => {
+  const session = (): OnboardingSession => ({ questionnaireVersion: 2, status: "submitted", revision: 4, currentQuestionId: "a.description", answers: {}, progress: computeProgress({}, undefined), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles: [], websiteAnalysis: null });
+  const open = async (params: { question?: string | string[]; return?: string | string[] }) => {
+    server.session = session();
+    const element = (await OnboardingPage({ searchParams: Promise.resolve(params) })) as React.ReactElement<{ startQuestionId: string | null; returnTo: string | null }>;
+    return element.props;
+  };
+
+  it("accepts the questions the questionnaire has, and only those", async () => {
+    expect((await open({ question: "a.timezone" })).startQuestionId).toBe("a.timezone");
+    expect((await open({ question: "f.review" })).startQuestionId).toBe("f.review");
+    expect((await open({ question: ["a.timezone", "a.industry"] })).startQuestionId).toBe("a.timezone");
+    for (const bad of ["", "a.nothing", "A.TIMEZONE", "__proto__", "constructor", "toString", "a.timezone ", "<script>"]) {
+      expect((await open({ question: bad })).startQuestionId, bad).toBeNull();
+    }
+    expect((await open({})).startQuestionId).toBeNull();
+  });
+
+  it("accepts a way back only when it is one of this site's own pages, exactly", async () => {
+    expect((await open({ return: "/setup" })).returnTo).toBe("/setup");
+    expect((await open({ return: "/overview" })).returnTo).toBe("/overview");
+    for (const bad of ["https://evil.example", "http://localhost:3000/setup", "//evil.example", "/\\\\evil.example", "/setup?x=1", "/setup/", "/setup/../admin", "/Setup", "/admin", "/onboarding", "javascript:alert(1)", "", " /setup"]) {
+      expect((await open({ return: bad })).returnTo, bad).toBeNull();
+    }
+    expect((await open({})).returnTo).toBeNull();
+  });
+
+  it("hands the session on unchanged, so the saved position is what the link overrides, not what the server stores", async () => {
+    const props = await open({ question: "a.timezone", return: "/setup" });
+    expect((props as unknown as { session: OnboardingSession }).session.currentQuestionId).toBe("a.description");
   });
 });

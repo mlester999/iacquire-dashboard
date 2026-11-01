@@ -25,6 +25,7 @@ import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { prepareEmployeeEvidence } from "@/server/workforce/employee-evidence";
 import { insertEvidenceBlock } from "@/lib/employee-evidence";
+import { findUnbackedActionClaims, withActionClaimCorrection } from "@/lib/action-claims";
 import { classifyBookingResult, classifyModelTurn, parseEvidenceMarker, serverMarker, systemNoticeMarker, type EvidenceMarker, type ServerEvidenceMarker } from "@/lib/evidence-class";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
@@ -1449,6 +1450,55 @@ async function createInferenceOnlyChatRun(
   });
 }
 
+/** Writes `workforce.employee_evidence_attached`: which run, reply and configuration version a workspace read was handed to. Never stops the chat, and holds no record content. */
+async function recordEvidenceAttached(input: {
+  orgId: string; userId: string; agentId: string; role: AgentRoleKey; runId: string; messageId: string; configVersionId: string | null;
+  sections: ReadonlyArray<{ id: string; state: string }>;
+}): Promise<void> {
+  try {
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.userId,
+      actorKind: "agent",
+      agentInstanceId: input.agentId,
+      action: "workforce.employee_evidence_attached",
+      targetType: "agent_run",
+      targetId: input.runId,
+      result: "success",
+      metadata: {
+        role: input.role,
+        messageId: input.messageId,
+        configVersionId: input.configVersionId,
+        sections: Object.fromEntries(input.sections.map((section) => [section.id, section.state])),
+      },
+    });
+  } catch {
+    // The read and the run already happened; a missing audit row must not stop the person's chat.
+  }
+}
+
+/** What a person is told when asking again would have skipped a reviewed step. Fixed wording, no part of the question is echoed. */
+const REGENERATE_REVIEWED_STEP_NOTICE = "That request is handled by a reviewed step. Send it again as a new message.";
+
+/**
+ * Whether the server, not the model, answers this question: the same list of guards a new message passes before any model is called. A reply to such a question was never a model
+ * reply, and asking the model to answer it again would be a way around those guards.
+ */
+function isReviewedStepRequest(role: AgentRoleKey, content: string, displayName: string): boolean {
+  return Boolean(
+    isAutomationBuilderRequest(content)
+      || workforceChatRefusal(role, content, displayName)
+      || explicitlyAddressedWorkforceRole(role, content)
+      || parseWorkforceChatBookingIntent(role, content).kind !== "none"
+      || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
+      || isScheduleConfirmation(content)
+      || parseWorkforceChatScheduleIntent(role, content).kind !== "none"
+      || parseNamedWorkforceHandoff(role, content)
+      || (role === "lead_hunter" && parseResearchAssignment(content))
+      || parseWorkforceChatAssignment(role, content),
+  );
+}
+
 export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promise<SendResult> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't chat with AI employees.");
   const inferenceOnly = input.inferenceOnly === true;
@@ -1486,11 +1536,14 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     let anchorTime: Date | null = null;
 
     if (input.regenerateMessageId) {
+      // Only a reply a model wrote (it has a run) can be asked again. A refusal, a preview, a saved schedule or a job acknowledgement was written by the server and has no run:
+      // asking the model to answer that question again would skip the reviewed step that handled it the first time.
       const { rows } = await db.query<{ conversation_id: string; created_at: Date }>(
         `select m.conversation_id, m.created_at from chat_messages m
          join chat_conversations c on c.id = m.conversation_id
-         where m.id = $1 and m.role = 'assistant' and c.agent_instance_id = $2 and c.deleted_at is null`,
-        [input.regenerateMessageId, agent.id],
+         where m.id = $1 and m.role = 'assistant' and m.run_id is not null and m.status in ('complete', 'failed', 'cancelled')
+           and m.org_id = $3 and c.agent_instance_id = $2 and c.deleted_at is null`,
+        [input.regenerateMessageId, agent.id, ctx.org.orgId],
       );
       if (!rows[0]) throw new AppError("not_found", "That response can't be regenerated.");
       conversationId = rows[0].conversation_id;
@@ -1596,6 +1649,20 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       assistantMessageId: setup.assistantMessageId,
       runId: setup.runId,
     };
+  }
+
+  // Asking again re-runs the same deterministic guards a new message goes through. If one of them now owns this question (a refusal, a preview, a schedule, a job), the model is not
+  // asked and the earlier reply is left as it was: the person sends the question as a new message so the reviewed step can handle it.
+  if (input.regenerateMessageId && isReviewedStepRequest(input.agentRole, prepared.userContent, agent.display_name)) {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content: REGENERATE_REVIEWED_STEP_NOTICE,
+      evidence: systemNoticeMarker(),
+    });
+    return { conversationId: prepared.conversationId, userMessageId: null, assistantMessageId, runId: null, jobId: null };
   }
 
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
@@ -1948,6 +2015,19 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     );
   }
 
+  // The read happened before this run existed, so its own audit row (workforce.employee_evidence_read) names only the workspace. This second row ties that read to the run, the reply
+  // and the configuration version it was handed to, with the same area names and states and nothing else.
+  await recordEvidenceAttached({
+    orgId: ctx.org.orgId,
+    userId: ctx.user.id,
+    agentId: agent.id,
+    role: input.agentRole,
+    runId: setup.runId,
+    messageId: setup.assistantMessageId,
+    configVersionId: setup.versionId,
+    sections: workspaceEvidence.evidence.sections,
+  });
+
   const abort = new AbortController();
   openChannel(setup.runId, ctx.user.id, abort);
   publish(setup.runId, {
@@ -2038,7 +2118,12 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
     status: "completed" | "failed" | "cancelled" | "timeout" | "interrupted",
     opts: { content?: string; errorCode?: string; usage?: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null },
   ) => {
-    const finalContent = opts.content ?? content;
+    const modelText = opts.content ?? content;
+    // A client's employee cannot book, send or change anything, so a finished reply that says it did is wrong. Its words are kept; a plain line says nothing was done, and the
+    // kinds of action it claimed (never the sentence) are recorded. The agency's own employees are left to their real tools and approvals.
+    let correctedMarker = undefined as EvidenceMarker | undefined;
+    const claimed = status === "completed" && !r.inferenceOnly && r.conn.orgKind === "client" ? findUnbackedActionClaims(modelText) : [];
+    const finalContent = claimed.length ? withActionClaimCorrection(modelText) : modelText;
     const messageStatus = status === "completed" ? "complete" : status === "cancelled" ? "cancelled" : "failed";
     await safeDb(async (db) => {
       await db.query("update chat_messages set content = $2, status = $3, error_code = $4 where id = $1", [
@@ -2047,6 +2132,29 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
         messageStatus,
         opts.errorCode ?? null,
       ]);
+      if (claimed.length) {
+        // The marker was stored with the placeholder row and the application role cannot change it; this is the server's own connection.
+        const { rows: stored } = await db.query<{ evidence: unknown }>("select evidence from chat_messages where id = $1 and org_id = $2", [r.assistantMessageId, r.orgId]);
+        const current = parseEvidenceMarker(stored[0]?.evidence);
+        const base = current?.class === "model_response" ? current : classifyModelTurn([], new Date().toISOString());
+        await db.query("update chat_messages set evidence = $3::jsonb where id = $1 and org_id = $2", [
+          r.assistantMessageId,
+          r.orgId,
+          JSON.stringify({ ...base, claims: "unbacked_action_claim" } satisfies EvidenceMarker),
+        ]);
+        correctedMarker = { ...base, claims: "unbacked_action_claim" };
+        await recordAudit({
+          orgId: r.orgId,
+          actorUserId: r.userId,
+          actorKind: "agent",
+          agentInstanceId: r.agentId,
+          action: "workforce.chat_unbacked_claim",
+          targetType: "agent_run",
+          targetId: r.runId,
+          result: "denied",
+          metadata: { role: r.agentRole, messageId: r.assistantMessageId, categories: claimed },
+        }, db);
+      }
       await db.query(
         `update agent_runs set status = $2, finished_at = now(), error_code = $3, error_message = $4,
            input_tokens = $5, output_tokens = $6, total_tokens = $7 where id = $1`,
@@ -2074,7 +2182,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
         await recordUsage(db, { orgId: r.orgId, userId: r.userId, agentId: r.agentId, kind: "agent_run_failed" });
       }
     });
-    if (status === "completed") publish(r.runId, { type: "done", content: finalContent });
+    if (status === "completed") publish(r.runId, { type: "done", content: finalContent, ...(correctedMarker ? { evidence: correctedMarker } : {}) });
     else if (status === "cancelled") publish(r.runId, { type: "cancelled", content: finalContent });
     else
       publish(r.runId, {

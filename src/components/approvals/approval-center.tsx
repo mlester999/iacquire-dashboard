@@ -26,7 +26,9 @@ import { IconTile } from "@/components/overview/panel";
 import { Dialog, Sheet, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
 import { approvalEventsAction, decideApprovalAction } from "@/app/actions/approvals";
+import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { parseEvidenceMarker } from "@/lib/evidence-class";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 
 interface Approval {
@@ -48,6 +50,10 @@ interface Approval {
   agent_role: string | null;
   requested_by_name: string | null;
   decided_by_name: string | null;
+  /** What kind of thing this is, computed on the server from the approval's own row. Missing or unreadable renders no chip. */
+  evidence?: unknown;
+  /** What happened after a person approved it. Null until then. */
+  outcome?: { label: string; tone: "success" | "warning" | "danger" | "neutral"; detail: string | null } | null;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -86,6 +92,16 @@ function readableTitle(title: string) {
     const text = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(at);
     return zone ? `${text} UTC` : text;
   });
+}
+
+/**
+ * Says what kind of thing the request is (proposed and not applied, done and confirmed ...). A request a person approved and iAcquire applied in its own records ("approved_write")
+ * has no chip: the outcome pill beside it already says exactly what was done ("Approved, waiting to send", "Approved, resumed"), and a second, vaguer label would only contradict it.
+ */
+function ApprovalEvidence({ a, timeZone }: { a: Approval; timeZone: string }) {
+  const marker = parseEvidenceMarker(a.evidence);
+  if (!marker || marker.class === "approved_write") return null;
+  return <EvidenceChip evidence={marker} timeZone={timeZone} />;
 }
 
 function Requester({ a }: { a: Approval }) {
@@ -191,9 +207,8 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
                           <InfoChip>{KIND_LABEL[a.kind] ?? sentenceCase(a.kind)}</InfoChip>
                           <StatusPill tone={RISK[a.risk].tone} icon={a.risk === "high" || a.risk === "critical" ? <AlertTriangle className="size-3" aria-hidden /> : undefined}>{RISK[a.risk].label}</StatusPill>
                           {a.status !== "pending" && <StatusPill tone={STATUS[a.status].tone}>{STATUS[a.status].label}</StatusPill>}
-                          {a.status === "approved" && a.execution_status === "blocked" && <StatusPill tone="neutral">Held — integration not enabled</StatusPill>}
-                          {a.status === "approved" && a.execution_status === "succeeded" && <StatusPill tone="success">Completed</StatusPill>}
-                          {a.status === "approved" && a.execution_status === "failed" && <StatusPill tone="danger">Failed</StatusPill>}
+                          {a.outcome && <StatusPill tone={a.outcome.tone}>{a.outcome.label}</StatusPill>}
+                          <ApprovalEvidence a={a} timeZone={timeZone} />
                         </div>
                         <p className="mt-2.5 text-[15px] font-semibold leading-snug text-ink">{readableTitle(a.title)}</p>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -278,7 +293,7 @@ const EVENT_LABEL: Record<string, string> = {
   expired: "Expired",
   cancelled: "Cancelled",
   execution_started: "Started running",
-  execution_succeeded: "Completed",
+  execution_succeeded: "Finished running",
   execution_failed: "Failed",
   execution_blocked: "Held",
 };
@@ -302,6 +317,7 @@ function ApprovalSheet({ approval, onClose, timeZone }: { approval: Approval | n
           <div className="flex flex-wrap gap-2">
             <StatusPill tone={RISK[approval.risk].tone}>{RISK[approval.risk].label}</StatusPill>
             <StatusPill tone={STATUS[approval.status].tone}>{STATUS[approval.status].label}</StatusPill>
+            <ApprovalEvidence a={approval} timeZone={timeZone} />
           </div>
           <dl className="space-y-4 text-[14px]">
             <div>
@@ -338,16 +354,16 @@ function ApprovalSheet({ approval, onClose, timeZone }: { approval: Approval | n
                 </dd>
               </div>
             </div>
-            {approval.execution_detail && (
+            {approval.outcome && (
               <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
                 <dt className="flex items-center gap-2 text-[12px] font-medium text-ink-2">
-                  {approval.execution_status === "succeeded" ? <CheckCircle2 className="size-3.5 text-success-ink" /> : approval.execution_status === "blocked" ? <Ban className="size-3.5" /> : <MessageSquareWarning className="size-3.5 text-danger-ink" />}
+                  {approval.outcome.tone === "success" ? <CheckCircle2 className="size-3.5 text-success-ink" /> : approval.outcome.tone === "danger" ? <MessageSquareWarning className="size-3.5 text-danger-ink" /> : approval.outcome.tone === "warning" ? <Ban className="size-3.5" /> : <Clock className="size-3.5" />}
                   Outcome
-                  <StatusPill size="sm" tone={approval.execution_status === "succeeded" ? "success" : approval.execution_status === "blocked" ? "neutral" : "danger"}>
-                    {approval.execution_status === "succeeded" ? "Completed" : approval.execution_status === "blocked" ? "Held" : "Failed"}
+                  <StatusPill size="sm" tone={approval.outcome.tone}>
+                    {approval.outcome.label}
                   </StatusPill>
                 </dt>
-                <dd className="mt-1.5 text-[14px] text-ink">{approval.execution_detail}</dd>
+                {approval.outcome.detail && <dd className="mt-1.5 text-[14px] text-ink">{approval.outcome.detail}</dd>}
               </div>
             )}
             {approval.decision_note && (

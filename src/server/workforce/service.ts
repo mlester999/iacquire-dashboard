@@ -36,6 +36,7 @@ import {
 import { notifyAgency, notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/reviews";
+import { clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 
 export interface AgentInstanceRow {
   id: string;
@@ -921,8 +922,8 @@ export async function toolInventorySchemaReady(db: Queryable): Promise<boolean> 
 }
 
 export async function loadConnection(db: Queryable, agentId: string): Promise<HermesConnection | null> {
-  const { rows } = await db.query<{ org_id:string; role_key: AgentRoleKey; org_kind: "agency" | "client"; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
-    `select a.org_id,a.role_key,o.kind as org_kind,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
+  const { rows } = await db.query<{ org_id:string; role_key: AgentRoleKey; org_kind: "agency" | "client"; is_demo: boolean; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
+    `select a.org_id,a.role_key,o.kind as org_kind,o.is_demo,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
      from agent_instances a join organizations o on o.id = a.org_id left join integration_credentials c on c.id = a.credential_id
      where a.id = $1`,
     [agentId],
@@ -934,7 +935,11 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
   if (!apiKey) return null;
   const access = await loadHermesAccessCredentials(db, r.hermes_gateway_id);
   const expectedToolInventoryDigest = await loadPersistedInventoryDigest(db, agentId);
-  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, expectedToolInventoryDigest, roleKey: r.role_key, orgKind: r.org_kind, ...(access ?? {}) };
+  // Only a real client workspace can be in the client business-tool tier. The switches are read in this same transaction (never the cached form), so the inventory verifier and a switch change agree.
+  const clientBusinessTools = r.org_kind === "client" && !r.is_demo && (await clientBusinessToolsOn(r.org_id, db))
+    ? { proposals: await clientBusinessProposalsOn(r.org_id, db) }
+    : null;
+  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, expectedToolInventoryDigest, roleKey: r.role_key, orgKind: r.org_kind, ...(clientBusinessTools ? { clientBusinessTools } : {}), ...(access ?? {}) };
 }
 
 /** Server-only profile connection for a trusted service check. Credentials are never serialized to a client. */

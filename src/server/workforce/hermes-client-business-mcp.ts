@@ -14,7 +14,8 @@ import { loadOrgContextForUser } from "@/server/tenancy/context";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { bearer, buildBusinessMcpServer, buildRoleWorkspaceContext, refuseCredential, serveStatelessBusinessMcp, type ActiveChatRun, type InternalProfile } from "@/server/workforce/hermes-business-mcp";
-import { clientBusinessMcpToolNamesForRole, clientBusinessToolsOn, clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clientBusinessMcpRuntimeNamesForRole, clientBusinessMcpToolNamesForRole, clientBusinessToolsOn, clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { HERMES_BUSINESS_MCP_SERVER, HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 import { clientToolGate } from "@/server/workforce/hermes-client-business-mcp-gate";
 import { recordClientCredentialUse, verifyClientCredential, type ClientCredentialClaims } from "@/server/workforce/hermes-client-business-credential";
 
@@ -30,7 +31,7 @@ import { recordClientCredentialUse, verifyClientCredential, type ClientCredentia
  *     no agency profile, and the workspace's own switch is on (read in the same transaction, so a switch-off is seen by the very next request). Every refusal answers the same 401.
  *  2. The turn. Holding a credential reads nothing. Exactly one running Chat turn of that employee, in that workspace, on its active configuration, must exist, and its person must still
  *     belong to the workspace and hold agents.use. The employee's recorded health is read now; its tool-inventory proof only has to have been valid when the turn started, so a long
- *     turn is not cut short by a proof that lapsed after it began.
+ *     turn is not cut short by a proof that lapsed after it began. That recorded inventory must also carry exactly the role's reviewed business tools (recordedToolsMatchRole).
  *  3. The person. Every read is made for that person: their role and per-person overrides must allow what the tool needs (checked before any tool token exists), and the shared tool
  *     engine limits conversations and conversation counts to what their own row visibility allows (onBehalfOfUserId).
  *  4. The gate (hermes-client-business-mcp-gate.ts), on every call: the plan still includes the role, the employee's allowed actions, and that the part of the workspace the tool reads
@@ -111,6 +112,24 @@ async function authenticateClientCredential(presented: string | null, ipHash: st
 }
 
 /**
+ * Whether the inventory recorded by the employee's last health check carries exactly the business tools its role is reviewed for: its reads, or its reads and its change proposals (the two
+ * lists the inventory verifier accepts), all from the one reviewed server and toolset, and no other MCP tool. A profile verified before its workspace joined the tier, or one that carries a
+ * tool nobody reviewed, cannot take a turn here even though its credential is genuine.
+ */
+function recordedToolsMatchRole(recorded: unknown, role: AgentRoleKey): boolean {
+  if (!Array.isArray(recorded)) return false;
+  const rows = recorded.filter((tool): tool is Record<string, unknown> => typeof tool === "object" && tool !== null);
+  const mcp = rows.filter((tool) => tool.source === "mcp" || typeof tool.sourceServer === "string"
+    || (typeof tool.name === "string" && tool.name.startsWith("mcp__")) || (typeof tool.toolset === "string" && tool.toolset.startsWith("mcp-")));
+  if (mcp.some((tool) => tool.source !== "mcp" || tool.sourceServer !== HERMES_BUSINESS_MCP_SERVER || tool.toolset !== HERMES_BUSINESS_MCP_TOOLSET || typeof tool.name !== "string")) return false;
+  const names = mcp.map((tool) => String(tool.name)).sort();
+  return [false, true].some((proposals) => {
+    const reviewed = clientBusinessMcpRuntimeNamesForRole(role, { proposals });
+    return reviewed.length === names.length && reviewed.every((name, index) => name === names[index]);
+  });
+}
+
+/**
  * The one running Chat turn this credential's employee may read for, or null. The same rules as the internal tier's turn (one running chat turn, started under twenty minutes ago, the
  * employee's active applied configuration, a runtime-ready employee with an unrevoked credential, the person still in the workspace with agents.use), with three differences that
  * belong to a client: the workspace must be an active, non-demo client; the workspace, employee and configuration are all named in the query so another workspace's turn can never
@@ -120,9 +139,10 @@ async function activeClientChatRun(db: Queryable, profile: InternalProfile): Pro
   await db.query("set local statement_timeout='8000ms'");
   const { rows } = await db.query<{
     run_id: string; user_id: string | null; org_id: string; role_key: string; display_name: string; profile: string; active_config_version_id: string | null; run_config_version_id: string | null;
+    recorded_tools: unknown;
   }>(
     `select r.id as run_id, r.user_id, a.org_id, a.role_key, a.display_name, a.hermes_profile as profile,
-            a.active_config_version_id, r.config_version_id as run_config_version_id
+            a.active_config_version_id, r.config_version_id as run_config_version_id, a.tool_inventory_snapshot -> 'tools' as recorded_tools
        from agent_runs r join agent_instances a on a.id = r.agent_instance_id and a.org_id = r.org_id
        join organizations o on o.id = a.org_id
        join agent_config_versions v on v.id = r.config_version_id and v.agent_instance_id = a.id and v.org_id = a.org_id and v.status = 'applied'
@@ -139,6 +159,7 @@ async function activeClientChatRun(db: Queryable, profile: InternalProfile): Pro
   const run = rows[0];
   if (!run.user_id || run.org_id !== profile.orgId || run.profile !== profile.profile || run.role_key !== profile.roleKey || !run.active_config_version_id
     || run.active_config_version_id !== run.run_config_version_id) return null;
+  if (!recordedToolsMatchRole(run.recorded_tools, profile.roleKey)) return null;
   await db.query("select set_config('app.user_id', $1, true)", [run.user_id]);
   const permissions = await db.query<{ can_access_org: boolean; can_chat: boolean }>(
     `select coalesce(app.user_can_access_org($1, $2), false) as can_access_org, coalesce(app.has_permission($2, 'agents.use'), false) as can_chat`,
@@ -237,7 +258,9 @@ async function callClientTool(profile: InternalProfile, name: AgentToolName, arg
 }
 
 async function readClientContext(profile: InternalProfile) {
-  return buildRoleWorkspaceContext(await requireClientRun(profile, "get_role_workspace_context"));
+  const run = await requireClientRun(profile, "get_role_workspace_context");
+  // The read is for the person whose turn this is, so the audit row names them (the internal tier's rows carry no person).
+  return buildRoleWorkspaceContext(run, { actingUserId: run.userId });
 }
 
 const CONTEXT_DESCRIPTIONS: Record<AgentRoleKey, string> = {

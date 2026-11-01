@@ -14,12 +14,19 @@ import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
-import { queueSyncJob, suggestedProfileName } from "@/server/workforce/service";
+import { isReservedProfile, queueSyncJob, suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
 import { roleToolEnforcement, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
 import { env } from "@/server/env";
-import { HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
+import { HERMES_BUSINESS_MCP_SERVER, HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 import { BUSINESS_MCP_CREDENTIAL_ENV_VAR } from "@/server/workforce/hermes-business-mcp-credential";
+import { CLIENT_BUSINESS_MCP_PATH, CLIENT_BUSINESS_MCP_TOKEN_ENV_VAR } from "@/server/workforce/hermes-client-business-credential";
+import { CLIENT_BUSINESS_PROPOSALS_FEATURE, CLIENT_BUSINESS_TOOLS_FEATURE, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clearFeatureCache, setOrgFeatureIn } from "@/server/proposals/features";
+import type { SessionUser } from "@/server/auth/service";
+
+// The Super Admin's emergency revocation lives with the credential ledger; server actions reach it through this module, because no module of the browser-facing tree may name the ledger.
+export { revokeClientBusinessAccessAsAdmin } from "@/server/workforce/hermes-client-business-credential";
 
 /**
  * Generates the agency runbook for provisioning a dedicated Hermes profile for one tenant employee.
@@ -87,7 +94,12 @@ export function buildProvisionerSoul(
   ].join("\n");
 }
 
-export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS, role?: AgentRoleKey): string {
+/**
+ * `options.businessMcp` adds the client business tools: the MCP toolset in place of `no_mcp`, and the one reviewed server entry. It is true only for a workspace in the client tier (the
+ * provisioner reads the switch in its claim transaction); without it, which is the default, the output is exactly what it has always been. The entry names the credential by the variable the
+ * restricted worker writes into the profile's own .env, never by a value, and it is not the profile's API_SERVER_KEY.
+ */
+export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS, role?: AgentRoleKey, options: { businessMcp?: boolean } = {}): string {
   const known = new Set(HERMES_BLOCKABLE_TOOLSETS.map((toolset) => toolset.key));
   if (blockedToolsets.some((toolset) => !known.has(toolset as (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"]))) {
     throw new AppError("invalid_input", "This Hermes policy contains an unsupported toolset.");
@@ -95,7 +107,18 @@ export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLO
   const disabled = [...new Set(blockedToolsets)];
   // With the role tool policy enforced, a CLIENT employee's profile enables only the toolsets its role needs (web research belongs to the Lead Hunter alone); otherwise the shared
   // reviewed set, which is what every profile and the host-side policy package have always used.
-  const apiToolsets = [...(role && roleToolEnforcement() === "enforce" ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS), "no_mcp"];
+  const apiToolsets = [...(role && roleToolEnforcement() === "enforce" ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS), options.businessMcp ? HERMES_BUSINESS_MCP_TOOLSET : "no_mcp"];
+  const businessServer = options.businessMcp
+    ? [
+      `# ${CLIENT_BUSINESS_MCP_TOKEN_ENV_VAR} is this profile's own business tool credential, written into its .env by the restricted worker. It is NOT the profile's API_SERVER_KEY.`,
+      "mcp_servers:",
+      `  ${HERMES_BUSINESS_MCP_SERVER}:`,
+      `    url: ${new URL(CLIENT_BUSINESS_MCP_PATH, env().APP_URL).toString()}`,
+      "    headers:",
+      `      Authorization: "Bearer \${${CLIENT_BUSINESS_MCP_TOKEN_ENV_VAR}}"`,
+      "    tool_timeout: 12",
+    ]
+    : [];
   return [
     "# Merge into this profile's config.yaml. Keep the server-side allowlist in sync with the reviewed portal inventory.",
     "platform_toolsets:",
@@ -109,6 +132,7 @@ export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLO
     "  backend: docker",
     "  docker_forward_env: []",
     "  container_persistent: false",
+    ...businessServer,
     "",
   ].join("\n");
 }
@@ -422,4 +446,108 @@ async function hasOpenJob(db: Queryable, agentId: string, orgId: string) {
     [agentId, orgId],
   );
   return rows.length > 0;
+}
+
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export interface BusinessToolSyncResult {
+  /** The synchronization jobs this call opened, one per employee. */
+  queued: Array<{ agentId: string; jobId: string }>;
+  /** Employees that already had an open setup request. It reads the workspace's switch when the worker claims it, so it needs no second one. */
+  alreadyOpen: string[];
+  /** Employees with nothing to synchronize: switched off, not made by the restricted worker, no applied configuration, or in a workspace that is not active. */
+  skipped: string[];
+}
+
+/**
+ * Brings client employees' Hermes profiles in line with the workspace's business-tool switches. A profile carries the MCP tool list only when the workspace is in the client tier, so when a
+ * switch changes (setClientBusinessTools below) every enabled employee whose profile the restricted worker made gets ONE synchronization job for its applied configuration. The job's
+ * manifest is built when the worker claims it, from the switches as they are then. Until it lands the employee reads as not online (the verifier expects the new tool list and the profile
+ * does not have it yet), and a job that was claimed or finished under the old switch is replaced, never left to complete against the old list.
+ *
+ * It refuses a workspace that is an agency's or a demo, and an employee named in `agentIds` that is mapped from the internal tier (an `iacquire-` or `default` profile), and then writes
+ * nothing. Safe to repeat: the one-open-job rule keeps it to one request per employee. `requestedBy` is the Super Admin who changed the switch.
+ */
+export async function requestBusinessToolSync(db: Queryable, orgId: string, agentIds?: readonly string[], requestedBy: string | null = null): Promise<BusinessToolSyncResult> {
+  if (!UUID_TEXT.test(orgId)) throw new AppError("invalid_input", "The workspace must be an id.");
+  if (agentIds?.some((id) => !UUID_TEXT.test(id))) throw new AppError("invalid_input", "Each employee must be an id.");
+  const { rows: orgs } = await db.query<{ kind: string; is_demo: boolean; status: string }>("select kind,is_demo,status from organizations where id=$1", [orgId]);
+  const org = orgs[0];
+  if (!org) throw new AppError("not_found", "Workspace not found.");
+  if (org.kind !== "client" || org.is_demo) throw new AppError("conflict", "Business tools are only synchronized for a real client workspace, never an agency's or a demo.");
+
+  const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; hermes_profile: string | null; active_config_version_id: string | null; blocked_toolsets: string[] | null }>(
+    "select a.id,a.role_key,a.enabled,a.hermes_profile,a.active_config_version_id," +
+    "coalesce((select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='agent' and p.agent_id=a.id)," +
+    "(select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='client' and p.org_id=a.org_id)," +
+    "(select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='client_default'),$3::text[]) as blocked_toolsets " +
+    "from agent_instances a where a.org_id=$1 and ($2::uuid[] is null or a.id = any($2::uuid[])) order by a.created_at,a.id for update of a",
+    [orgId, agentIds ? [...agentIds] : null, DEFAULT_BLOCKED_TOOLSETS],
+  );
+  if (agentIds) {
+    const found = new Set(rows.map((row) => row.id));
+    if (agentIds.some((id) => !found.has(id))) throw new AppError("not_found", "Employee not found in this workspace.");
+    if (rows.some((row) => row.hermes_profile && isReservedProfile(row.hermes_profile))) throw new AppError("conflict", "An employee mapped from the internal agency tier is never synchronized here.");
+  }
+
+  const result: BusinessToolSyncResult = { queued: [], alreadyOpen: [], skipped: [] };
+  const tierOn = org.status === "active" ? await clientBusinessToolsOn(orgId, db) : false;
+  for (const row of rows) {
+    const versionId = row.active_config_version_id;
+    if (org.status !== "active" || !row.enabled || !versionId || !isAgentRoleKey(row.role_key) || !row.hermes_profile?.startsWith("c-") || isReservedProfile(row.hermes_profile)) {
+      result.skipped.push(row.id);
+      continue;
+    }
+    const policySha = createHash("sha256").update(buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key, { businessMcp: tierOn }), "utf8").digest("hex");
+    // A request that is still waiting reads the switch when it is claimed, so it stays. One that was claimed, or finished, under another policy would complete against the old tool list: replace it.
+    const { rows: replaced } = await db.query<{ id: string }>(
+      "update agent_provisioning_jobs set status='cancelled',lease_token=null,lease_expires_at=null,next_retry_at=null," +
+      "detail='The business tool setting changed, so a new synchronization replaces this one.' " +
+      "where org_id=$1 and agent_instance_id=$2 and kind='sync' and status in ('in_progress','awaiting_health_check') " +
+      "and manifest_policy_config_sha256 is distinct from $3 returning id",
+      [orgId, row.id, policySha],
+    );
+    const jobId = await queueSyncJob(db, orgId, row.id, versionId, requestedBy);
+    if (!jobId) {
+      ((await hasOpenJob(db, row.id, orgId)) ? result.alreadyOpen : result.skipped).push(row.id);
+      continue;
+    }
+    // The employee is not online until the profile has the new tool list and the portal's own check has seen it.
+    await db.query(
+      "update agent_instances set status='provisioning',last_health_ok=null,last_health_detail='Business tool synchronization is pending.' where id=$1 and org_id=$2 and status not in ('disabled','setup_required')",
+      [row.id, orgId],
+    );
+    await recordAudit({
+      orgId, actorUserId: requestedBy, actorKind: requestedBy ? "agency" : "system", agentInstanceId: row.id, action: "agent.business_tools_sync_requested",
+      targetType: "agent_provisioning_job", targetId: jobId, result: "success", metadata: { jobId, businessTools: tierOn, replaced: replaced.length },
+    }, db);
+    result.queued.push({ agentId: row.id, jobId });
+  }
+  return result;
+}
+
+/**
+ * A Super Admin switches a client workspace's business tools (reads) and/or its change proposals on or off, and the employees' profiles are synchronized to match. The switches and the
+ * synchronization request are one transaction, so a failed request leaves the switch where it was and the same call can simply be made again. A synchronization is asked for when the
+ * tools switch changed, or when the proposals switch changed while the tools are really on (with the tools off the proposals switch changes nothing in any profile, so nobody is taken
+ * offline for it). Never for an agency or a demo workspace, and then nothing is written.
+ */
+export async function setClientBusinessTools(user: SessionUser, input: { orgId: string; tools?: boolean; proposals?: boolean }): Promise<{ changed: boolean; sync: BusinessToolSyncResult | null }> {
+  if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can switch a workspace's business tools.");
+  if (input.tools === undefined && input.proposals === undefined) throw new AppError("invalid_input", "Say which business tool switch to change.");
+  if (!UUID_TEXT.test(input.orgId)) throw new AppError("invalid_input", "The workspace must be an id.");
+  try {
+    return await withSystem(async (db) => {
+      const { rows } = await db.query<{ kind: string; is_demo: boolean }>("select kind,is_demo from organizations where id=$1", [input.orgId]);
+      if (!rows[0]) throw new AppError("not_found", "Workspace not found.");
+      if (rows[0].kind !== "client" || rows[0].is_demo) throw new AppError("conflict", "Business tools are switched on only for a real client workspace, never an agency's or a demo.");
+      const toolsChanged = input.tools !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_TOOLS_FEATURE, enabled: input.tools })).changed;
+      const proposalsChanged = input.proposals !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_PROPOSALS_FEATURE, enabled: input.proposals })).changed;
+      const needsSync = toolsChanged || (proposalsChanged && (await clientBusinessToolsOn(input.orgId, db)));
+      const sync = needsSync ? await requestBusinessToolSync(db, input.orgId, undefined, user.id) : null;
+      return { changed: toolsChanged || proposalsChanged, sync };
+    });
+  } finally {
+    clearFeatureCache(input.orgId);
+  }
 }

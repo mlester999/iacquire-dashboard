@@ -166,7 +166,8 @@ describe("what the client sees while the setup payment is unconfirmed", () => {
     banner(false);
     expect(screen.getAllByText("Waiting for setup payment")).toHaveLength(6);
     expect(screen.getAllByText(`${PAYMENT_REQUIRED_SENTENCE}.`)).toHaveLength(6);
-    expect(screen.getByText("0/6 ready")).toBeTruthy();
+    // The banner no longer counts "ready" employees of its own: the launch judge is the only count (tests/client-onboarding-ui.test.tsx).
+    expect(document.body.textContent).not.toMatch(/\d+\s*\/\s*6\s*ready/);
   });
 
   it("says nothing about payment once it is confirmed, or when the page did not ask", () => {

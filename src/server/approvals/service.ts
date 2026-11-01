@@ -3,9 +3,12 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { env } from "@/server/env";
-import { notifyUser } from "@/server/notifications";
+import { notifyAgency, notifyUser } from "@/server/notifications";
+import { writeKnowledgeTextTx } from "@/server/knowledge/write";
+import { sanitizeClientText } from "@/server/workforce/compiler";
 import { applyDraftVersion, loadConnection } from "@/server/workforce/service";
 import { resolveRunApproval } from "@/server/integrations/hermes/client";
+import { classifyApproval, type EvidenceMarker } from "@/lib/evidence-class";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export type ApprovalKind =
@@ -43,6 +46,69 @@ export interface ApprovalRow {
   agent_role: string | null;
   requested_by_name: string | null;
   decided_by_name: string | null;
+  /** follow_up_message only: the drafted message's own status right now (queued, sent, blocked ...). Null for any other kind, or when the message cannot be found. */
+  downstream_status: string | null;
+  /** Why the message was blocked or failed, in the words iAcquire recorded for it. */
+  downstream_detail: string | null;
+  /** What kind of thing this approval is, computed from its own row every time it is read (nothing is stored). */
+  evidence: EvidenceMarker;
+  /** What happened after the decision, in words that do not claim more than the records show. Null until a person has approved it. */
+  outcome: ApprovalOutcome | null;
+}
+
+export type ApprovalOutcomeTone = "success" | "warning" | "danger" | "neutral";
+export interface ApprovalOutcome {
+  label: string;
+  tone: ApprovalOutcomeTone;
+  detail: string | null;
+}
+
+/** Kinds whose approval ends in a message to a customer, so "not sent" is the honest wording when it does not go out. */
+const MESSAGE_KINDS: ReadonlySet<ApprovalKind> = new Set<ApprovalKind>(["follow_up_message", "outreach"]);
+
+/**
+ * What an approved request has actually come to, from its own row and, for a drafted message, the message's current status. "Completed" is only for a booking or an appointment
+ * change, whose executor writes to the calendar before it reports success; "Sent" only once the message itself is sent or delivered; a queued draft is "waiting to send" and a
+ * blocked or failed one is "not sent". Everything else a person approved is "applied" in iAcquire's own records, or says exactly what was handed on (a resumed run, a released step).
+ */
+export function approvalOutcome(row: Pick<ApprovalRow, "kind" | "status" | "execution_status" | "execution_detail" | "downstream_status" | "downstream_detail">): ApprovalOutcome | null {
+  if (row.status !== "approved") return null;
+  const detail = row.execution_detail;
+  const messaging = MESSAGE_KINDS.has(row.kind);
+  switch (row.execution_status) {
+    case "not_started":
+      return null;
+    case "queued":
+    case "running":
+      return { label: "Approved, waiting to run", tone: "neutral", detail };
+    case "failed":
+      return { label: messaging ? "Approved, but not sent" : "Approved, but it couldn't run", tone: "danger", detail };
+    case "blocked":
+      return { label: messaging ? "Approved, but not sent" : "Approved, but held", tone: "warning", detail };
+    case "succeeded":
+      break;
+  }
+  switch (row.kind) {
+    case "appointment_booking":
+    case "appointment_change":
+      return { label: "Completed", tone: "success", detail };
+    case "follow_up_message": {
+      const downstream = row.downstream_status;
+      if (downstream === "sent" || downstream === "delivered" || downstream === "read") return { label: "Sent", tone: "success", detail };
+      if (downstream === "blocked" || downstream === "failed") return { label: "Approved, but not sent", tone: "danger", detail: row.downstream_detail ?? detail };
+      return { label: "Approved, waiting to send", tone: "neutral", detail };
+    }
+    case "tool_action":
+      return { label: "Approved, resumed", tone: "neutral", detail };
+    case "workflow_action":
+      return { label: "Approved, step released", tone: "neutral", detail };
+    case "campaign_activation":
+      return { label: "Approved, scheduled", tone: "neutral", detail };
+    case "standing_authorization":
+      return { label: "Approved, recorded", tone: "neutral", detail };
+    default:
+      return { label: "Approved and applied", tone: "neutral", detail };
+  }
 }
 
 export async function createApproval(
@@ -103,7 +169,8 @@ async function expireStale(orgId: string) {
 const LIST_SQL = `
   select a.id, a.kind, a.title, a.target_type, a.target_label, a.reason, a.expected_effect, a.risk, a.status,
          a.execution_status, a.execution_detail, a.expires_at, a.decided_at, a.decision_note, a.created_at,
-         ai.role_key as agent_role, ru.full_name as requested_by_name, du.full_name as decided_by_name
+         ai.role_key as agent_role, ru.full_name as requested_by_name, du.full_name as decided_by_name,
+         case when a.kind = 'follow_up_message' then a.action ->> 'messageId' end as message_id
   from approval_requests a
   left join agent_instances ai on ai.id = a.agent_instance_id
   left join users ru on ru.id = a.requested_by
@@ -111,16 +178,40 @@ const LIST_SQL = `
 
 export async function listApprovals(ctx: OrgContext, filter: "pending" | "history" | "all" = "pending"): Promise<ApprovalRow[]> {
   await expireStale(ctx.org.orgId);
-  return withUser(ctx.user.id, async (db) => {
+  const listed = await withUser(ctx.user.id, async (db) => {
     const where =
       filter === "pending" ? "a.status = 'pending'" : filter === "history" ? "a.status <> 'pending'" : "true";
-    const { rows } = await db.query<ApprovalRow>(
+    const { rows } = await db.query<Omit<ApprovalRow, "downstream_status" | "downstream_detail" | "evidence" | "outcome"> & { message_id: string | null }>(
       `${LIST_SQL} where a.org_id = $1 and ${where} order by a.created_at desc limit 200`,
       [ctx.org.orgId],
     );
     return rows;
   });
+
+  // A drafted message's status lives in the message, not the approval: an approved draft is only queued until the message itself is sent. Only the status and the recorded reason are
+  // read (never the body), and only for messages of this workspace, so an id from somewhere else finds nothing.
+  const messageIds = [...new Set(listed.map((row) => row.message_id).filter((id): id is string => typeof id === "string" && UUID.test(id)))];
+  const downstream = new Map<string, { status: string; detail: string | null }>();
+  if (messageIds.length) {
+    const { rows } = await withSystem((db) =>
+      db.query<{ id: string; status: string; blocked_reason: string | null; status_detail: string | null }>(
+        "select id, status, blocked_reason, status_detail from conversation_messages where org_id = $1 and id = any($2::uuid[])",
+        [ctx.org.orgId, messageIds],
+      ),
+    );
+    for (const row of rows) downstream.set(row.id, { status: row.status, detail: (row.status_detail ?? row.blocked_reason)?.slice(0, 300) ?? null });
+  }
+
+  return listed.map(({ message_id, ...row }) => {
+    const message = message_id ? downstream.get(message_id) : undefined;
+    const base = { ...row, downstream_status: message?.status ?? null, downstream_detail: message?.detail ?? null };
+    const kind = classifyApproval({ kind: row.kind, status: row.status, execution_status: row.execution_status, downstream: base.downstream_status });
+    const evidence: EvidenceMarker = { v: 1, class: kind.class, ledger: { kind: "approval", id: row.id } };
+    return { ...base, evidence, outcome: approvalOutcome(base) };
+  });
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function getApprovalEvents(ctx: OrgContext, approvalId: string) {
   return withUser(ctx.user.id, async (db) => {
@@ -296,14 +387,21 @@ async function runExecutor(
       const section = String(a.action.section ?? "");
       const content = String(a.action.content ?? "");
       return withSystem(async (db) => {
-        const res = await db.query(
-          `insert into company_knowledge (org_id, section, content, updated_by, applied_at)
-           values ($1, $2, $3, $4, now())
-           on conflict (org_id, section) do update set content = excluded.content, version = company_knowledge.version + 1,
-             updated_by = excluded.updated_by, updated_at = now(), applied_at = now(), review_status = 'approved', risk_flags = '{}'`,
-          [orgId, section, content.slice(0, 12000), actorUserId],
-        );
-        return res.rowCount ? { status: "succeeded" as const, detail: "Knowledge updated. AI employees use it from their next message." } : { status: "failed" as const, detail: "Knowledge section not updated." };
+        // The same writer as the Knowledge Center: a clean text becomes the approved text with a history row, and a flagged one is held for the agency
+        // instead of replacing approved text, so approving a proposal never skips the safety scan.
+        const written = await writeKnowledgeTextTx(db, { orgId, section, text: sanitizeClientText(content, 12000), userId: actorUserId, source: "client" });
+        if (written.held) {
+          const { rows: org } = await db.query<{ name: string }>("select name from organizations where id = $1", [orgId]);
+          await notifyAgency(db, orgId, {
+            kind: "knowledge_update_ready",
+            severity: "warning",
+            title: `${org[0]?.name ?? "A client"}: knowledge update needs review`,
+            body: `Section "${section}" was held because it may conflict with AI safety policy. The previous approved text is still in use.`,
+            link: `/admin/clients/${orgId}?tab=reviews`,
+          });
+          return { status: "blocked" as const, detail: "Held for iAcquire review because the text may conflict with AI safety policy. The previous approved text is still in use." };
+        }
+        return { status: "succeeded" as const, detail: "Knowledge updated. AI employees use it from their next message." };
       });
     }
     case "config_change": {

@@ -19,6 +19,8 @@ export interface KnowledgeSectionState {
   section: string;
   filled: boolean;
   review_status: string;
+  /** An edit is waiting for review next to this section's text (the approved text, if any, stays in use). */
+  waiting?: boolean;
 }
 
 export interface KnowledgeSummary {
@@ -26,7 +28,7 @@ export interface KnowledgeSummary {
   total: number;
   /** Sections with approved text, the only ones an employee may use. */
   supplied: number;
-  /** Sections with text that is still waiting for review, so not yet used. */
+  /** Sections with text that is still waiting for review, so not yet used (a section can be supplied by its approved text and also have an edit waiting). */
   heldForReview: number;
   /** Plain names of the sections that hold nothing. */
   missing: string[];
@@ -43,7 +45,8 @@ export function summarizeKnowledge(rows: readonly KnowledgeSectionState[]): Know
     const row = byKey.get(key);
     if (!row?.filled) missing.push(label);
     else if (row.review_status === "approved") suppliedNames.push(label);
-    else heldForReview += 1;
+    // Waiting text counts as held whether it sits next to approved text, is the section's only text, or is text held by the older code.
+    if (row && (row.waiting === true || (row.filled && row.review_status !== "approved"))) heldForReview += 1;
   }
   return { total: KNOWLEDGE_SECTIONS.length, supplied: suppliedNames.length, heldForReview, missing, suppliedNames };
 }

@@ -7,6 +7,7 @@ import { useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Clock3, ListPlus, RefreshCw, Search, ShieldCheck, Square, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status";
+import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { formatChatTime, fullTimestamp } from "@/lib/conversation-time";
 import { createFindingTaskAction } from "@/app/actions/work";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,8 @@ export interface WorkJob {
   status: "queued" | "running" | "waiting_for_approval" | "blocked" | "failed" | "cancelled" | "completed";
   statusLabel: string;
   recoveryPending: boolean;
+  /** What kind of thing this work produced, as the server computed it. Missing, null or unreadable renders no chip. */
+  evidence?: unknown;
   stage: string | null;
   stageLabel: string | null;
   progress: Record<string, unknown>;
@@ -60,6 +63,63 @@ export interface WorkJob {
   finishedAt: string | null;
   elapsedMs: number | null;
   events: WorkJobEvent[];
+}
+
+/** What each drafted message is doing now, as the server read it from the message itself (the job's own result only holds what was true when it finished). */
+const DRAFT_STATUS: Record<string, { label: string; tone: "warning" | "violet" | "success" | "danger" | "neutral" }> = {
+  waiting: { label: "Draft waiting", tone: "warning" },
+  approved_queued: { label: "Approved, queued", tone: "violet" },
+  sent: { label: "Sent", tone: "success" },
+  blocked: { label: "Blocked", tone: "danger" },
+  discarded: { label: "Discarded", tone: "neutral" },
+  unknown: { label: "Status unavailable", tone: "neutral" },
+};
+
+interface DraftView {
+  key: string;
+  name: string;
+  status: keyof typeof DRAFT_STATUS;
+  detail: string | null;
+  conversationId: string | null;
+}
+
+/** The drafts of a follow-up job that carry a live status. Anything else in the list (an older result, a malformed item) is left out rather than guessed. */
+function liveDrafts(result: Record<string, unknown>): DraftView[] {
+  if (!Array.isArray(result.drafts)) return [];
+  const out: DraftView[] = [];
+  for (const [index, item] of (result.drafts as unknown[]).entries()) {
+    if (typeof item !== "object" || item === null) continue;
+    const draft = item as Record<string, unknown>;
+    if (typeof draft.liveStatus !== "string" || !(draft.liveStatus in DRAFT_STATUS)) continue;
+    out.push({
+      key: typeof draft.messageId === "string" ? draft.messageId : String(index),
+      name: typeof draft.opportunityName === "string" && draft.opportunityName.trim() ? draft.opportunityName.trim().slice(0, 120) : "Follow-up draft",
+      status: draft.liveStatus,
+      detail: typeof draft.liveDetail === "string" && draft.liveDetail.trim() ? draft.liveDetail.trim().slice(0, 200) : null,
+      conversationId: typeof draft.conversationId === "string" ? draft.conversationId : null,
+    });
+  }
+  return out;
+}
+
+/** What a review looked at, from `result.examined`: a list of `{ label, count }`. Absent or malformed means there is nothing to show. */
+function examinedItems(result: Record<string, unknown>): Array<{ label: string; count: number }> {
+  if (!Array.isArray(result.examined)) return [];
+  const out: Array<{ label: string; count: number }> = [];
+  for (const item of result.examined as unknown[]) {
+    if (typeof item !== "object" || item === null) continue;
+    const { label, count } = item as { label?: unknown; count?: unknown };
+    if (typeof label !== "string" || !label.trim() || label.length > 60 || typeof count !== "number" || !Number.isInteger(count) || count < 0) continue;
+    out.push({ label: label.trim(), count });
+  }
+  return out;
+}
+
+/** "120 deals", "1 deal, 3 contacts": the labels are plural nouns and a count of one reads in the singular. */
+function examinedPhrase(items: ReadonlyArray<{ label: string; count: number }>): string {
+  return items
+    .map(({ label, count }) => (count === 1 ? `1 ${label.replace(/ies$/, "y").replace(/([^s])s$/, "$1")}` : `${count} ${label}`))
+    .join(", ");
 }
 
 const TONE: Record<WorkJob["status"], "primary" | "success" | "warning" | "danger" | "neutral" | "violet"> = {
@@ -239,10 +299,16 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   const availabilityZone = availability?.displayTimeZone || availability?.timeZone || zone;
   // What this kind of work does, so the footer never promises "research" or a lead list for a calendar, pipeline or CRM review.
   const leadResearch = job.capability === "lead_research";
+  const drafts = liveDrafts(job.result);
+  const examined = examinedItems(job.result);
+  // Once a person has approved a draft the job's own "nothing was sent" is no longer something to promise; the list says where each draft stands.
+  const draftsApproved = drafts.some((draft) => draft.status === "sent" || draft.status === "approved_queued");
   const footerNote = leadResearch
     ? "Read-only research. CRM imports and outreach need your approval."
     : job.capability === "pipeline_followup_drafts"
-      ? "Drafts stay unsent until a person reviews them. Nothing was sent."
+      ? draftsApproved
+        ? "A draft is sent only after a person approves it. The list shows where each one stands now."
+        : "Drafts stay unsent until a person reviews them. Nothing was sent."
       : "Read-only review. Nothing was changed, booked or sent.";
   const running = job.status === "running" && !job.recoveryPending;
 
@@ -254,6 +320,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
             <StatusPill tone={job.recoveryPending ? "warning" : TONE[job.status]} size="sm" dot={running}>
               {job.statusLabel}
             </StatusPill>
+            <EvidenceChip evidence={job.evidence} timeZone={zone} />
             {elapsed && job.startedAt && !job.recoveryPending && <span className="text-[12px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
             {job.cancelRequested && job.status === "running" && <span className="text-[12px] text-warning-ink">Stop requested</span>}
           </div>
@@ -306,6 +373,30 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
               </div>
             ))}
           </dl>
+        )}
+
+        {examined.length > 0 && (
+          <p className="text-[12px] text-muted" data-testid="work-examined">
+            Checked {examinedPhrase(examined)}.
+          </p>
+        )}
+
+        {drafts.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Follow-up drafts</p>
+            <ul className="space-y-1">
+              {drafts.map((draft) => {
+                const state = DRAFT_STATUS[draft.status];
+                return (
+                  <li key={draft.key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2">
+                    <span className="min-w-0 flex-1 truncate font-medium text-ink" title={draft.name}>{draft.name}</span>
+                    <StatusPill tone={state.tone} size="sm">{draft.status === "blocked" && draft.detail ? `Blocked: ${draft.detail}` : state.label}</StatusPill>
+                    {draft.conversationId && <Link href={`/inbox?conversation=${encodeURIComponent(draft.conversationId)}`} className="font-semibold text-primary hover:underline">Open in Inbox</Link>}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
         {metrics.length > 0 && (

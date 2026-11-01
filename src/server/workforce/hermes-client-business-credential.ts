@@ -1,10 +1,13 @@
 import "server-only";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { recordAudit } from "@/server/audit";
-import type { Queryable } from "@/server/db";
+import type { SessionUser } from "@/server/auth/service";
+import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { notifyAgency } from "@/server/notifications";
 import { sha256 } from "@/server/security/crypto";
+import { queueSyncJob } from "@/server/workforce/service";
 
 /**
  * The credential a CLIENT's Hermes profile presents to the client tier of the business tools. Nothing here is wired to a route.
@@ -29,12 +32,23 @@ export const CLIENT_CREDENTIAL_ROTATION_OVERLAP_HOURS = 48;
 /** How long an allocated id waits for the worker to report its hash before it must be allocated again. */
 export const CLIENT_CREDENTIAL_PENDING_HOURS = 72;
 export const MAX_CLIENT_CREDENTIAL_LENGTH = 100;
+/** The variable the restricted worker writes the credential into in the profile's own .env, and the route the profile's MCP entry points at. The entry names the variable, never a value. */
+export const CLIENT_BUSINESS_MCP_TOKEN_ENV_VAR = "IACQUIRE_BUSINESS_MCP_TOKEN";
+export const CLIENT_BUSINESS_MCP_PATH = "/api/internal/hermes-business/client/mcp";
+/** The warning windows for a credential that is about to lapse, in days before it does: a first notice, then a closer one. */
+export const CLIENT_CREDENTIAL_WARNING_DAYS = [30, 7] as const;
 
 export const CLIENT_CREDENTIAL_AUDIT = {
   issued: "hermes.client_business_mcp.credential_issued",
   rotated: "hermes.client_business_mcp.credential_rotated",
   revoked: "hermes.client_business_mcp.credential_revoked",
   expired: "hermes.client_business_mcp.credential_expired",
+} as const;
+
+/** What an operator did to a client's business tool access, as opposed to what happened to one credential (CLIENT_CREDENTIAL_AUDIT). */
+export const CLIENT_ACCESS_AUDIT = {
+  rotationRequested: "hermes.client_business_mcp.rotation_requested",
+  accessRevoked: "hermes.client_business_mcp.access_revoked",
 } as const;
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -143,14 +157,19 @@ function assertReason(reason: string): void {
 
 interface EmployeeRow {
   hermes_profile: string | null;
+  enabled: boolean;
+  active_config_version_id: string | null;
+  is_demo: boolean;
+  org_status: string;
 }
 
 /** Locks the employee's row (so two rotations of one employee never interleave) and returns it, only if it belongs to this client workspace. */
 async function lockClientEmployee(db: Queryable, orgId: string, agentId: string): Promise<EmployeeRow> {
   if (!UUID_ONLY.test(orgId) || !UUID_ONLY.test(agentId)) throw new AppError("invalid_input", "The workspace and the employee must be ids.");
   const { rows } = await db.query<EmployeeRow>(
-    `select a.hermes_profile from agent_instances a join organizations o on o.id = a.org_id
-     where a.id = $1 and a.org_id = $2 and o.kind = 'client' for update of a`,
+    `select a.hermes_profile, a.enabled, a.active_config_version_id, o.is_demo, o.status as org_status
+       from agent_instances a join organizations o on o.id = a.org_id
+      where a.id = $1 and a.org_id = $2 and o.kind = 'client' for update of a`,
     [agentId, orgId],
   );
   if (!rows[0]) throw new AppError("not_found", "Employee not found.");
@@ -244,7 +263,7 @@ export async function registerClientBusinessCredential(
 
 async function audit(db: Queryable, action: string, orgId: string, agentId: string, credentialId: string, metadata: Record<string, unknown>, actorUserId?: string | null) {
   await recordAudit({
-    orgId, actorUserId: actorUserId ?? null, actorKind: "system", agentInstanceId: agentId, action,
+    orgId, actorUserId: actorUserId ?? null, actorKind: actorUserId ? "agency" : "system", agentInstanceId: agentId, action,
     targetType: "client_business_credential", targetId: credentialId, result: "success", metadata: { jti: credentialId, ...metadata },
   }, db);
 }
@@ -265,21 +284,21 @@ async function endLive(db: Queryable, where: string, params: unknown[], reason: 
 }
 
 /** Ends one credential. The workspace is named too, so an id from another workspace is simply not found. Returns whether a live credential was ended. */
-export async function revokeClientBusinessCredential(db: Queryable, orgId: string, credentialId: string, reason: string, now: Date = new Date()): Promise<boolean> {
+export async function revokeClientBusinessCredential(db: Queryable, orgId: string, credentialId: string, reason: string, now: Date = new Date(), actorUserId?: string | null): Promise<boolean> {
   if (!UUID_ONLY.test(orgId) || !UUID_ONLY.test(credentialId)) return false;
-  return (await endLive(db, "org_id = $1 and id = $2", [orgId, credentialId], reason, now)).length > 0;
+  return (await endLive(db, "org_id = $1 and id = $2", [orgId, credentialId], reason, now, actorUserId)).length > 0;
 }
 
 /** Ends every credential of one employee (a role removed from the plan, a re-mapped profile, a rotation gone wrong). Returns the ids ended. */
-export async function revokeClientBusinessCredentialsForAgent(db: Queryable, orgId: string, agentId: string, reason: string, now: Date = new Date()): Promise<string[]> {
+export async function revokeClientBusinessCredentialsForAgent(db: Queryable, orgId: string, agentId: string, reason: string, now: Date = new Date(), actorUserId?: string | null): Promise<string[]> {
   if (!UUID_ONLY.test(orgId) || !UUID_ONLY.test(agentId)) return [];
-  return endLive(db, "org_id = $1 and agent_instance_id = $2", [orgId, agentId], reason, now);
+  return endLive(db, "org_id = $1 and agent_instance_id = $2", [orgId, agentId], reason, now, actorUserId);
 }
 
 /** Ends every credential of a workspace (suspension, archival, offboarding). Returns the ids ended. */
-export async function revokeClientBusinessCredentialsForOrg(db: Queryable, orgId: string, reason: string, now: Date = new Date()): Promise<string[]> {
+export async function revokeClientBusinessCredentialsForOrg(db: Queryable, orgId: string, reason: string, now: Date = new Date(), actorUserId?: string | null): Promise<string[]> {
   if (!UUID_ONLY.test(orgId)) return [];
-  return endLive(db, "org_id = $1", [orgId], reason, now);
+  return endLive(db, "org_id = $1", [orgId], reason, now, actorUserId);
 }
 
 /** Closes rows whose time has run out, so the ledger says `revoked` (reason `expired`) rather than leaving them live. Safe to run on any schedule. Returns how many were closed. */
@@ -301,4 +320,169 @@ export async function recordClientCredentialUse(db: Queryable, orgId: string, cr
   const used = rows[0];
   if (!used || used.status !== "active") return [];
   return endLive(db, "org_id = $1 and agent_instance_id = $2 and status = 'rotating_out'", [orgId, used.agent_instance_id], "rotation_complete", now);
+}
+
+/**
+ * Asks for a profile to be re-keyed: allocates the id the next credential will carry (a `pending` row that cannot authenticate yet) and opens one synchronization job for the employee's
+ * applied configuration (or finds the one already open), which is how the restricted worker is told. The employee keeps working on its current credential until the worker reports the new secret's hash
+ * (completeClientRotation); that credential then stays valid for at most 48 hours more. Asking again while the id waits returns the same id and finds the open job, so a double press makes one.
+ * Only an enabled employee of an active, real client workspace whose profile the restricted worker made, and only one that has a live credential to replace. One transaction: pass the caller's.
+ */
+export async function rotateClientBusinessCredential(
+  db: Queryable,
+  input: { orgId: string; agentId: string; requestedBy: string | null; now?: Date },
+): Promise<{ credentialId: string; syncJobId: string }> {
+  const now = input.now ?? new Date();
+  const employee = await lockClientEmployee(db, input.orgId, input.agentId);
+  if (employee.is_demo || employee.org_status !== "active") throw new AppError("conflict", "Only an active, real client workspace can have a credential rotated.");
+  if (!employee.enabled) throw new AppError("conflict", "This employee is not part of the plan, so it has no credential to rotate.");
+  if (!employee.hermes_profile?.startsWith("c-")) throw new AppError("conflict", "The employee has no client Hermes profile made by the restricted worker.");
+  const live = await db.query("select 1 from agent_business_credentials where org_id = $1 and agent_instance_id = $2 and status = 'active'", [input.orgId, input.agentId]);
+  if (!live.rows.length) throw new AppError("conflict", "The employee has no live business tool credential to replace.");
+  if (!employee.active_config_version_id) throw new AppError("conflict", "The employee has no applied configuration to synchronize.");
+
+  const credentialId = await allocateClientCredentialId(db, { orgId: input.orgId, agentId: input.agentId, now });
+  let syncJobId = await queueSyncJob(db, input.orgId, input.agentId, employee.active_config_version_id, input.requestedBy);
+  if (!syncJobId) {
+    // A request that is already open will carry the new id, so asking twice finds the same job. Nothing queued and nothing open means the worker cannot be told: refused, and the
+    // allocated id is not kept (the caller's transaction ends).
+    const open = await db.query<{ id: string }>(
+      "select id from agent_provisioning_jobs where org_id = $1 and agent_instance_id = $2 and status in ('requested', 'in_progress', 'awaiting_health_check') order by created_at desc limit 1",
+      [input.orgId, input.agentId],
+    );
+    if (!open.rows[0]) throw new AppError("conflict", "A synchronization cannot be queued for this employee: its profile was not made by the restricted worker, or its gateway is not verified.");
+    syncJobId = open.rows[0].id;
+  }
+  await audit(db, CLIENT_ACCESS_AUDIT.rotationRequested, input.orgId, input.agentId, credentialId, { syncJobId }, input.requestedBy);
+  return { credentialId, syncJobId };
+}
+
+/**
+ * The worker's report that it wrote the new credential: it gives the id it was handed and the hash of the secret it made. The pending row becomes the active credential and the previous
+ * one moves to `rotating_out` for at most 48 hours, ending at once on the first honoured use of the new one. The same report again (a retried completion) changes nothing and says so;
+ * a different hash for an id already completed is refused.
+ */
+export async function completeClientRotation(db: Queryable, ledgerId: string, secretSha256: string, now: Date = new Date()): Promise<{ id: string; duplicate: boolean }> {
+  if (!UUID_ONLY.test(ledgerId)) throw new AppError("invalid_input", "A credential id is a lowercase uuid.");
+  if (!SHA256_HEX.test(secretSha256)) throw new AppError("invalid_input", "The credential's secret hash must be 64 lowercase hexadecimal characters.");
+  const { rows } = await db.query<{ org_id: string; agent_instance_id: string; profile: string; status: string; secret_sha256: string | null }>(
+    "select org_id, agent_instance_id, profile, status, secret_sha256 from agent_business_credentials where id = $1 for update",
+    [ledgerId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("not_found", "No waiting credential with that id.");
+  if (row.status === "pending") {
+    const done = await registerClientBusinessCredential(db, { orgId: row.org_id, agentId: row.agent_instance_id, profile: row.profile, secretSha256, credentialId: ledgerId, now });
+    return { id: done.id, duplicate: false };
+  }
+  if ((row.status === "active" || row.status === "rotating_out") && row.secret_sha256 && equalHashes(row.secret_sha256, secretSha256)) return { id: ledgerId, duplicate: true };
+  throw new AppError("conflict", "That credential was already completed or ended.");
+}
+
+export interface ExpiringClientCredential {
+  id: string;
+  orgId: string;
+  orgName: string;
+  agentId: string;
+  role: AgentRoleKey;
+  expiresAt: Date;
+  /** Whole days left, rounded up: a credential with an hour left has one day. */
+  daysLeft: number;
+}
+
+/**
+ * The live credentials that lapse within `withinDays`, soonest first, for employees that are still enabled in active, real client workspaces. A credential in its rotation overlap is not
+ * listed: it ends within 48 hours by design, and its replacement is the one that matters.
+ */
+export async function expiringClientCredentials(db: Queryable, withinDays: number, now: Date = new Date()): Promise<ExpiringClientCredential[]> {
+  if (!Number.isInteger(withinDays) || withinDays < 1 || withinDays > MAX_CLIENT_CREDENTIAL_DAYS) throw new AppError("invalid_input", `Look ahead between 1 and ${MAX_CLIENT_CREDENTIAL_DAYS} days.`);
+  const { rows } = await db.query<{ id: string; org_id: string; org_name: string; agent_instance_id: string; role_key: string; expires_at: Date | string }>(
+    `select c.id, c.org_id, o.name as org_name, c.agent_instance_id, a.role_key, c.expires_at
+       from agent_business_credentials c
+       join agent_instances a on a.id = c.agent_instance_id and a.org_id = c.org_id
+       join organizations o on o.id = c.org_id
+      where c.status = 'active' and c.expires_at > $1::timestamptz and c.expires_at <= $2::timestamptz
+        and o.kind = 'client' and not o.is_demo and o.status = 'active' and a.enabled
+      order by c.expires_at, c.id`,
+    [iso(now), iso(new Date(now.getTime() + withinDays * DAY))],
+  );
+  return rows.filter((row) => isRole(row.role_key)).map((row) => {
+    const expiresAt = new Date(row.expires_at);
+    return {
+      id: row.id, orgId: row.org_id, orgName: row.org_name, agentId: row.agent_instance_id, role: row.role_key as AgentRoleKey, expiresAt,
+      daysLeft: Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / DAY)),
+    };
+  });
+}
+
+/**
+ * The scheduled job `clientBusinessCredentialExpiry`: closes the credentials whose time has run out (so the ledger says so), and tells the agency, once per credential and warning window
+ * (CLIENT_CREDENTIAL_WARNING_DAYS), that a credential is about to lapse. A credential first seen inside the closer window gets only that notice. In-app notices only: it contacts no
+ * customer, rotates nothing and changes no employee. Safe to run on any schedule and to repeat. Returns what it closed and what it announced.
+ */
+export async function runClientBusinessCredentialExpiry(now: Date = new Date()): Promise<{ closed: number; announced: number }> {
+  return withSystem(async (db) => {
+    const closed = await expireClientBusinessCredentials(db, now);
+    const [wide, near] = CLIENT_CREDENTIAL_WARNING_DAYS;
+    let announced = 0;
+    for (const credential of await expiringClientCredentials(db, wide, now)) {
+      const windowDays = credential.daysLeft <= near ? near : wide;
+      const dedupeKey = `client-credential-expiry:${credential.id}:${windowDays}`;
+      if ((await db.query("select 1 from notifications where dedupe_key = $1 limit 1", [dedupeKey])).rows.length) continue;
+      const who = AGENT_BY_KEY[credential.role].shortName;
+      await notifyAgency(db, credential.orgId, {
+        kind: "agent_status",
+        severity: windowDays === near ? "warning" : "info",
+        title: `${who}'s business tool access for ${credential.orgName} ends in ${credential.daysLeft} day${credential.daysLeft === 1 ? "" : "s"}`,
+        body: "Rotate it before then. When it lapses this AI employee can no longer read the client's business information. Nothing has changed yet.",
+        link: `/admin/clients/${credential.orgId}`,
+        dedupeKey,
+      });
+      // The notice goes to the agency people who can see this client; none may exist, and then nothing was announced.
+      if ((await db.query("select 1 from notifications where dedupe_key = $1 limit 1", [dedupeKey])).rows.length) announced += 1;
+    }
+    return { closed, announced };
+  });
+}
+
+/**
+ * The Super Admin's emergency lever: ends one credential, one employee's credentials, or all of a workspace's, at once and with a reason a person wrote (5 to 500 characters, kept in the
+ * audit trail only). Never for an agency or a demo workspace, and then nothing is written. An id from another workspace is simply not found. Returns how many credentials it ended.
+ */
+export async function revokeClientBusinessAccessAsAdmin(
+  user: Pick<SessionUser, "id" | "platformRole">,
+  input: { orgId: string; agentId?: string; credentialId?: string; reason: string },
+): Promise<{ revoked: number }> {
+  if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can end a client's business tool access.");
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (reason.length < 5) throw new AppError("invalid_input", "Say why this access is being ended (at least 5 characters).");
+  if (reason.length > 500) throw new AppError("invalid_input", "Keep the reason under 500 characters.");
+  if (!UUID_ONLY.test(input.orgId) || (input.agentId !== undefined && !UUID_ONLY.test(input.agentId)) || (input.credentialId !== undefined && !UUID_ONLY.test(input.credentialId))) {
+    throw new AppError("invalid_input", "The workspace, the employee and the credential must be ids.");
+  }
+  if (input.agentId !== undefined && input.credentialId !== undefined) throw new AppError("invalid_input", "End one credential or one employee's credentials, not both.");
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ kind: string; is_demo: boolean }>("select kind, is_demo from organizations where id = $1", [input.orgId]);
+    if (!rows[0]) throw new AppError("not_found", "Workspace not found.");
+    if (rows[0].kind !== "client" || rows[0].is_demo) throw new AppError("conflict", "Business tool access exists only for a real client workspace, never an agency's or a demo.");
+    const now = new Date();
+    let ended: string[];
+    let scope: "credential" | "employee" | "workspace";
+    if (input.credentialId !== undefined) {
+      scope = "credential";
+      ended = (await revokeClientBusinessCredential(db, input.orgId, input.credentialId, "operator_request", now, user.id)) ? [input.credentialId] : [];
+      if (!ended.length) throw new AppError("not_found", "No live credential with that id in this workspace.");
+    } else if (input.agentId !== undefined) {
+      scope = "employee";
+      ended = await revokeClientBusinessCredentialsForAgent(db, input.orgId, input.agentId, "operator_request", now, user.id);
+    } else {
+      scope = "workspace";
+      ended = await revokeClientBusinessCredentialsForOrg(db, input.orgId, "operator_request", now, user.id);
+    }
+    await recordAudit({
+      orgId: input.orgId, actorUserId: user.id, actorKind: "agency", agentInstanceId: input.agentId ?? null, action: CLIENT_ACCESS_AUDIT.accessRevoked,
+      targetType: "workspace", targetId: input.orgId, result: "success", metadata: { scope, count: ended.length, reason },
+    }, db);
+    return { revoked: ended.length };
+  });
 }

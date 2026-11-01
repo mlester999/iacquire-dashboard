@@ -16,6 +16,8 @@ import { ResendInvitationButton, deliverySummary } from "@/components/admin/rese
 import {
   assignStaffAction,
   connectHermesAction,
+  decideHeldDocumentAction,
+  decideHeldEmployeeNoteAction,
   decideHeldKnowledgeAction,
   healthCheckAction,
   inviteClientUserAction,
@@ -64,7 +66,7 @@ function useAction() {
 
 export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string }) {
   const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
-  const held = data.heldVersions.length + data.heldKnowledge.length;
+  const held = data.heldVersions.length + data.heldKnowledge.length + data.heldNotes.length + data.heldDocuments.length;
   // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
   const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
   return (
@@ -609,10 +611,10 @@ export function HeldContentNotice({ count }: { count: number }) {
   );
 }
 
-function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: string; canDecide: boolean }) {
+export function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: string; canDecide: boolean }) {
   const { run } = useAction();
   const held = data.contentAccess.heldKnowledgeHidden;
-  if (!data.heldVersions.length && !data.heldKnowledge.length) {
+  if (!data.heldVersions.length && !data.heldKnowledge.length && !data.heldNotes.length && !data.heldDocuments.length) {
     if (held > 0) return <div className="space-y-4"><HeldContentNotice count={held} /></div>;
     return (
       <Card>
@@ -631,6 +633,7 @@ function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: str
           <CardContent className="space-y-3 pt-5">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[14px] font-semibold">Knowledge · {sentenceCase(k.section)}</p>
+              <span className="text-[12px] text-muted">The text already approved stays in use until you decide.</span>
               {k.risk_flags.map((f) => (
                 <Badge key={f} tone="warning">
                   {f.replace(/_/g, " ")}
@@ -643,6 +646,57 @@ function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: str
                 Approve
               </Button>
               <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
+                Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {data.heldNotes.map((n) => (
+        <Card key={n.id}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Employee note · {AGENT_BY_KEY[n.agent_role]?.shortName ?? sentenceCase(n.agent_role)} · {n.title}</p>
+              {n.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{n.content}</pre>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!canDecide} onClick={() => run(`n-${n.id}`, () => decideHeldEmployeeNoteAction(data.org.id, n.id, true), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`nr-${n.id}`, () => decideHeldEmployeeNoteAction(data.org.id, n.id, false), "Rejected")}>
+                Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {data.heldDocuments.map((d) => (
+        <Card key={d.id}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Document · {d.filename}</p>
+              <Badge tone="neutral">{d.scope === "shared" ? "Shared with every employee" : `Assigned to ${d.agent_role ? AGENT_BY_KEY[d.agent_role]?.shortName ?? sentenceCase(d.agent_role) : "one employee"}`}</Badge>
+              {d.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+            {d.held_text === null ? (
+              <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">This document was held before its text was kept for review, so it cannot be approved. Reject it and ask the client to upload it again.</p>
+            ) : (
+              <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{d.held_text}</pre>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!canDecide || d.held_text === null} onClick={() => run(`d-${d.id}`, () => decideHeldDocumentAction(data.org.id, d.id, true), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`dr-${d.id}`, () => decideHeldDocumentAction(data.org.id, d.id, false), "Rejected")}>
                 Reject
               </Button>
             </div>

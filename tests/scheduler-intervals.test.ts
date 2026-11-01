@@ -217,6 +217,7 @@ describe("the registered jobs", () => {
     aiProactiveBriefings: 5,
     aiHealthProbe: 5,
     provisioningWatchdog: 5,
+    clientBusinessCredentialExpiry: 1440,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
     projectReviewOverdue: 15,

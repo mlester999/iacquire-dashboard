@@ -21,6 +21,8 @@ import {
 } from "@/lib/evidence-class";
 import { EVIDENCE_STATES, type EvidenceState } from "@/lib/employee-evidence";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES } from "@/lib/workforce-capabilities";
+import { describeAction } from "@/lib/activity";
+import { countDraftStatuses, draftLiveStatus, workJobEvidence, workJobStatusLabel, type WorkJobStatus } from "@/server/workforce/jobs";
 
 const READ_AT = "2026-10-26T06:00:00.000Z";
 const quotedList = (text: string) => [...text.matchAll(/['"]([a-z_]+)['"]/g)].map((m) => m[1]);
@@ -293,5 +295,99 @@ describe("the module is pure", () => {
     const specifiers = [...source.matchAll(/(?:^|\n)\s*import\s+(?:type\s+)?[^"']*from\s+["']([^"']+)["']/g)].map((m) => m[1]);
     expect(specifiers.sort()).toEqual(["@/lib/employee-evidence", "@/lib/workforce-capabilities"]);
     expect(source).not.toMatch(/server-only|node:|@\/server|@\/components/);
+  });
+
+  it("keeps the action-claim check pure too: no import at all, so any bundle can use it", () => {
+    const source = readFileSync("src/lib/action-claims.ts", "utf8");
+    expect(source).not.toMatch(/(?:^|\n)\s*import\s/);
+    expect(source).not.toMatch(/server-only|node:|@\/server|@\/components/);
+  });
+});
+
+describe("what a job's result is, computed on read", () => {
+  const job = (capability: string, status: WorkJobStatus) => ({ id: "11111111-1111-4111-8111-111111111111", capability, status });
+  // `blocked` could not go out (or cannot be found); `discarded` was a person's decision and is counted in neither.
+  const drafts = (waiting: number, queued: number, sent: number, blocked = 0, discarded = 0) => ({ total: waiting + queued + sent + blocked + discarded, waiting, queued, sent, blocked });
+
+  it("classifies every capability: a read-only one retrieves, anything that needs a decision only proposes", () => {
+    for (const key of CAPABILITY_KEYS) {
+      const marker = workJobEvidence(job(key, "completed"));
+      expect(marker, key).toMatchObject({ v: 1, ledger: { kind: "work_job" } });
+      expect(marker?.class, key).toBe(classifyCapability(WORKFORCE_CAPABILITIES[key].risk));
+      expect(parseEvidenceMarker(marker), key).not.toBeNull();
+    }
+  });
+
+  it("gives work that has not finished no class, except a request waiting for a decision, which is a proposal", () => {
+    for (const status of ["queued", "running", "blocked", "failed", "cancelled"] as const) expect(workJobEvidence(job("pipeline_review", status)), status).toBeNull();
+    expect(workJobEvidence(job("pipeline_review", "waiting_for_approval"))?.class).toBe("proposed_change");
+    expect(workJobEvidence(job("not_a_capability", "completed"))).toBeNull();
+  });
+
+  it.each<[string, ReturnType<typeof drafts> | null, string]>([
+    ["no live information", null, "proposed_change"],
+    ["a draft still waiting", drafts(1, 0, 0), "proposed_change"],
+    ["one approved and one waiting", drafts(1, 1, 0), "proposed_change"],
+    ["every draft blocked or discarded", drafts(0, 0, 0, 1, 1), "proposed_change"],
+    ["approved and only queued", drafts(0, 2, 0), "approved_write"],
+    ["some sent and some queued", drafts(0, 1, 1), "approved_write"],
+    ["every approved draft sent", drafts(0, 0, 2), "completed_action"],
+    ["sent, with the others discarded by a person", drafts(0, 0, 1, 0, 1), "completed_action"],
+    ["sent, with another blocked after approval", drafts(0, 0, 1, 1), "approved_write"],
+    ["sent, with another that cannot be found", drafts(0, 0, 3, 2), "approved_write"],
+  ])("a follow-up draft job with %s is %s", (_label, counts, cls) => {
+    expect(workJobEvidence(job("pipeline_followup_drafts", "completed"), counts)?.class).toBe(cls);
+  });
+
+  it("counts drafts by where each stands: unknown and blocked are 'blocked', a discarded draft is none of them", () => {
+    expect(countDraftStatuses(["waiting", "approved_queued", "sent", "sent", "blocked", "unknown", "discarded"])).toEqual({ total: 7, waiting: 1, queued: 1, sent: 2, blocked: 2 });
+    expect(countDraftStatuses([])).toEqual({ total: 0, waiting: 0, queued: 0, sent: 0, blocked: 0 });
+  });
+
+  it("keeps 'Completed' for work whose effect is confirmed or that only read, and never for a proposal", () => {
+    const label = (cls: string | null, status: WorkJobStatus = "completed", recoveryPending = false) =>
+      workJobStatusLabel({ status, recoveryPending }, cls ? ({ v: 1, class: cls } as EvidenceMarker) : null);
+    expect(label("record_retrieval")).toBe("Completed");
+    expect(label("completed_action")).toBe("Completed");
+    expect(label("proposed_change")).toBe("Ready for review");
+    expect(label("approved_write")).toBe("Approved, not yet sent");
+    const partly = workJobStatusLabel({ status: "completed", recoveryPending: false }, { v: 1, class: "approved_write" } as EvidenceMarker, drafts(0, 0, 1, 2));
+    expect(partly).toBe("Some drafts not sent");
+    expect(workJobStatusLabel({ status: "completed", recoveryPending: false }, { v: 1, class: "approved_write" } as EvidenceMarker, drafts(0, 1, 1))).toBe("Approved, not yet sent");
+    expect(label(null)).toBe("Completed");
+    expect(label(null, "running")).toBe("Working");
+    expect(label("record_retrieval", "running", true)).toBe("Recovery pending");
+  });
+
+  it("reads a drafted message's status as one of six words and never calls an unknown one anything else", () => {
+    expect(draftLiveStatus("draft")).toBe("waiting");
+    expect(draftLiveStatus("queued")).toBe("approved_queued");
+    expect(draftLiveStatus("sending")).toBe("approved_queued");
+    for (const status of ["sent", "delivered", "read"]) expect(draftLiveStatus(status), status).toBe("sent");
+    expect(draftLiveStatus("blocked", "discarded")).toBe("discarded");
+    expect(draftLiveStatus("blocked", "quiet_hours")).toBe("blocked");
+    expect(draftLiveStatus("failed")).toBe("blocked");
+    for (const status of ["received", "note", "", null, undefined, "something_new"]) expect(draftLiveStatus(status), String(status)).toBe("unknown");
+  });
+});
+
+describe("the plain-language activity labels", () => {
+  it.each<[string, RegExp]>([
+    ["hermes.client_business_mcp.proposal_requested", /asked for a change to be approved/],
+    ["onboarding.resubmitted_unchanged", /resubmitted company setup/],
+    ["crm.calendar_verification_drifted", /no longer passes its checks/],
+    ["crm.calendar_verification_recovered", /passes its checks again/],
+    ["crm.booking_impact_cleared", /closed the notice/],
+    ["workforce.employee_evidence_attached", /tied the records/],
+    ["workforce.chat_unbacked_claim", /described an action nobody recorded/],
+  ])("%s has its own sentence, not the cleaned-up action name", (action, words) => {
+    const text = describeAction(action);
+    expect(text).toMatch(words);
+    expect(text).not.toBe(action.replace(/[._]/g, " "));
+    expect(text).not.toMatch(/[._]/);
+  });
+
+  it("still falls back to a cleaned label for an action it does not know", () => {
+    expect(describeAction("something.brand_new")).toBe("something brand new");
   });
 });

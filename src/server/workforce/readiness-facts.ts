@@ -3,6 +3,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import type { AgentRoleKey } from "@/lib/agents";
 import { evaluateRequirements, type WorkspaceFacts } from "@/lib/employee-requirements";
 import { runtimeToolExposure } from "@/lib/employee-tool-policy";
+import { clientBusinessMcpRuntimeNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
 import type { HealthSummary, ReadinessExtras } from "@/lib/workforce-readiness";
 import { healthProbeSchemaReady } from "@/server/workforce/health-alerts";
 import { hasExplicitTargeting } from "@/lib/leads-targeting";
@@ -70,7 +71,7 @@ export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<
   const r = rows[0];
   // How much knowledge exists, section by section (at most nine small rows; no text is read).
   const knowledgeRows = await db.query<KnowledgeSectionState>(
-    "select section, btrim(content) <> '' as filled, review_status from company_knowledge where org_id = $1",
+    "select section, btrim(content) <> '' as filled, review_status, (pending_content is not null) as waiting from company_knowledge where org_id = $1",
     [orgId],
   );
   const crmEvidence: CrmReadinessEvidence = {
@@ -153,7 +154,9 @@ export async function readinessExtrasFor(orgId: string, agents: ReadonlyArray<{ 
   const suspended = SUSPENDED_TEXT[org?.status ?? "active"] ? { reason: SUSPENDED_TEXT[org?.status ?? "active"] } : null;
   for (const a of agents) {
     // The role's tool policy applies to client employees; the internal agency employees run under their own acknowledged policy.
-    const names = org?.kind === "client" ? tools.get(a.id) : undefined;
+    // The reviewed business tools a client profile may carry when the client tier is on are the role's own list, not excess: only names beyond them are over-exposure.
+    const reviewed = new Set([...clientBusinessMcpRuntimeNamesForRole(a.role_key, { proposals: false }), ...clientBusinessMcpRuntimeNamesForRole(a.role_key, { proposals: true })]);
+    const names = org?.kind === "client" ? tools.get(a.id)?.filter((name) => !reviewed.has(name)) : undefined;
     const runtimeToolsExcess = names ? runtimeToolExposure(a.role_key, names).excess : null;
     out.set(a.id, { requirements: evaluateRequirements(a.role_key, facts, { runtimeToolsExcess }), health: health.get(a.id) ?? null, suspended });
   }

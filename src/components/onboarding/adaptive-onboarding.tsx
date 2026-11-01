@@ -57,6 +57,8 @@ export function AdaptiveOnboarding({
   documents: initialDocuments,
   onSubmitted,
   onExit,
+  startQuestionId = null,
+  returnTo = null,
 }: {
   session: OnboardingSession;
   assets: AssetView[];
@@ -65,19 +67,31 @@ export function AdaptiveOnboarding({
   onSubmitted?: () => void;
   /** Where "Save & exit" goes. Defaults to the dashboard (or the Setup Center once submitted). */
   onExit?: () => void;
+  /** Open this question instead of the saved position (a link from the setup page). Ignored when it is not one this workspace is asked. */
+  startQuestionId?: string | null;
+  /** A page of this site to go back to when the person leaves or finishes. The page has already checked it; a value that is not a plain path of this site is ignored here too. */
+  returnTo?: string | null;
 }) {
   const router = useRouter();
+  const backTo = returnTo && /^\/(?!\/)[A-Za-z0-9/_-]*$/.test(returnTo) ? returnTo : null;
   const api = useOnboardingApi();
   const reduced = useReducedMotion();
   const [answers, setAnswers] = React.useState<StoredAnswers>(session.answers);
-  const [currentId, setCurrentId] = React.useState(session.currentQuestionId);
+  // A deep link opens its question only when this workspace is asked it (the plan and the earlier answers decide that); otherwise the saved position stands.
+  const [linked] = React.useState(() => {
+    if (!startQuestionId) return null;
+    const scoped = planScope(session.enabledRoles);
+    return visibleQuestions(effectiveAnswers(session.answers, scoped), scoped).some((q) => q.id === startQuestionId) ? startQuestionId : null;
+  });
+  const [currentId, setCurrentId] = React.useState(linked ?? session.currentQuestionId);
   const [direction, setDirection] = React.useState(1);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [save, setSave] = React.useState<PipelineState>({ status: "idle", error: null, savedAt: null, rejected: {}, staleBase: false });
   const [navigating, setNavigating] = React.useState(false);
   const [assets, setAssets] = React.useState(initialAssets);
   const [documents, setDocuments] = React.useState(initialDocuments);
-  const [returnToReview, setReturnToReview] = React.useState(false);
+  // Someone sent to fix one answer goes on to the review, where they approve it, instead of being walked through every question after it.
+  const [returnToReview, setReturnToReview] = React.useState(linked !== null && linked !== "f.review");
 
   const [review, setReview] = React.useState<ReviewModel | null>(null);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
@@ -272,7 +286,7 @@ export function AdaptiveOnboarding({
       return;
     }
     toast.success("Progress saved. You can pick up exactly here, on any device.");
-    (onExit ?? (() => router.push(session.status === "submitted" ? "/setup" : "/overview")))();
+    (onExit ?? (() => router.push(backTo ?? (session.status === "submitted" ? "/setup" : "/overview"))))();
   };
 
   const jumpToSection = async (id: SectionId) => {
@@ -374,7 +388,8 @@ export function AdaptiveOnboarding({
     else if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
     else toast.success("Your AI team is being prepared.");
     // Stay in the "submitting" state while the page navigates away.
-    (onSubmitted ?? (() => router.push("/setup?onboarded=1")))();
+    // Setup is where the submission's notes and the launch status are shown, so a way back to it still lands on that view.
+    (onSubmitted ?? (() => router.push(backTo && backTo !== "/setup" ? backTo : "/setup?onboarded=1")))();
   };
 
   // ------------------------------------------------------------------ render

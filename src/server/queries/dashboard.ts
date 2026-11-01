@@ -170,7 +170,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
          (select count(*)::int from crm_opportunities where org_id = $1 and status = 'won' and coalesce(remote_updated_at, synced_at) > now() - interval '30 days') as deals_won,
          (select count(*)::int from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won' and closed_at > now() - interval '30 days') as deals_native_won,
          (select count(*)::int from approval_requests where org_id = $1 and status = 'pending' and expires_at between now() and now() + interval '24 hours') as expiring_approvals,
-         (select count(*)::int from company_knowledge where org_id = $1 and review_status = 'pending_agency_review') as held_knowledge,
+         (select count(*)::int from company_knowledge where org_id = $1 and (pending_content is not null or review_status = 'pending_agency_review')) as held_knowledge,
          (select count(*)::int from leads where org_id = $1 and review_status = 'pending') as pending_leads,
          (select count(*)::int from organization_memberships where org_id = $1 and status = 'active') as members,
          (select count(*)::int from company_knowledge where org_id = $1 and content <> '') as knowledge_sections,

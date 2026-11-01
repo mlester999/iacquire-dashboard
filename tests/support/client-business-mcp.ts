@@ -13,6 +13,8 @@ import { getWorkspace } from "@/server/crm/workspace";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { handleHermesClientBusinessMcp } from "@/server/workforce/hermes-client-business-mcp";
+import { clientBusinessMcpRuntimeNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { HERMES_BUSINESS_MCP_SERVER, HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 import { formatClientCredential, generateClientCredentialSecret, hashClientSecret, registerClientBusinessCredential } from "@/server/workforce/hermes-client-business-credential";
 import type { OrgContext } from "@/server/tenancy/context";
 import { agentId, ctxFor } from "./fixtures";
@@ -49,6 +51,15 @@ export const setProposalsSwitch = (orgId: string, on: boolean) => withSystem((db
 
 /** The signed-in context of one of a tenant's people, as the Approval Center sees them (owner by default). */
 export const personContext = (t: ClientTenant, who: keyof CrmOrg["people"] = "owner"): OrgContext => ctxFor(t.crm.people[who], t.org, CRM_ROLES[who]);
+
+/**
+ * Records, as the portal's last health check would, that the employee's profile carries exactly its role's reviewed business tools (the reads, or with `proposals` the reads and the role's
+ * change proposals). A turn is accepted only against such a recorded inventory, so a fixture for an employee that has been through the client tier records it.
+ */
+export const recordBusinessInventory = (agentId: string, role: AgentRoleKey, proposals = false) => withSystem((db) => db.query(
+  "update agent_instances set tool_inventory_snapshot = $2::jsonb where id = $1",
+  [agentId, JSON.stringify({ tools: clientBusinessMcpRuntimeNamesForRole(role, { proposals }).map((name) => ({ name, toolset: HERMES_BUSINESS_MCP_TOOLSET, source: "mcp", sourceServer: HERMES_BUSINESS_MCP_SERVER, available: true })) })],
+));
 
 let gateway: Promise<{ id: string; baseUrl: string }> | null = null;
 
@@ -159,6 +170,7 @@ export async function provisionedClient(opts: ProvisionedClientOptions): Promise
       await db.query("update agent_instances set credential_id = $2 where id = $1", [id, credential.rows[0].id]);
     });
     await makeRuntimeReady(id, org.id, owner.id);
+    await recordBusinessInventory(id, role);
     await withSystem((db) => db.query("update agent_instances set hermes_base_url = $2, hermes_profile = $3, hermes_gateway_id = $4 where id = $1", [id, gw.baseUrl, profile, gw.id]));
     const secret = generateClientCredentialSecret();
     const registered = await withSystem((db) => registerClientBusinessCredential(db, { orgId: org.id, agentId: id, profile, secretSha256: hashClientSecret(secret) }));

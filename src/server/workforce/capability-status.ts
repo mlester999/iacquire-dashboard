@@ -13,21 +13,36 @@ export async function loadCapabilityActivity(orgId: string, agentIds: readonly s
     const empty = (): CapabilityActivity => ({ lastEvidenceRead: null, completedChatRuns: 0, lastCompletedChatAt: null, scheduledJobsOn: 0 });
     for (const id of agentIds) out.set(id, empty());
 
-    const reads = await q.query<{ agent_instance_id: string; created_at: Date; result: string; metadata: { role?: string; sections?: Record<string, string> } | null }>(
+    type ReadRow = { agent_instance_id: string; created_at: Date; result: string; metadata: { role?: string; sections?: Record<string, string> } | null };
+    const note = (rows: readonly ReadRow[]) => {
+      for (const row of rows) {
+        const entry = out.get(row.agent_instance_id);
+        if (!entry || entry.lastEvidenceRead) continue;
+        const sections = Object.entries(row.metadata?.sections ?? {});
+        // A read where every area was refused for the person asking proves nothing about the data path, so it is skipped rather than counted either way.
+        if (!sections.some(([, state]) => state === "ready" || state === "empty" || state === "not_configured" || state === "unavailable")) continue;
+        const unavailable = sections.filter(([, state]) => state === "unavailable").map(([id]) => id.replaceAll("_", " "));
+        entry.lastEvidenceRead = { at: new Date(row.created_at).toISOString(), ok: row.result === "success" && unavailable.length === 0, unavailableAreas: unavailable, role: row.metadata?.role ?? "" };
+      }
+    };
+    // A read that was handed to a run which then finished is the strongest proof the data path works: the audit row ties it to that run. Those come first.
+    const attached = await q.query<ReadRow>(
+      `select a.agent_instance_id, a.created_at, a.result, a.metadata from audit_logs a
+         join agent_runs r on r.id = case when a.target_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then a.target_id::uuid end and r.org_id = a.org_id
+        where a.org_id = $1 and a.action = 'workforce.employee_evidence_attached' and a.target_type = 'agent_run'
+          and a.agent_instance_id = any($2::uuid[]) and r.status = 'completed'
+        order by a.created_at desc limit 400`,
+      [orgId, [...agentIds]],
+    );
+    note(attached.rows);
+    // An employee with no such row (an older chat, or one whose run never finished) falls back to the plain read record.
+    const reads = await q.query<ReadRow>(
       `select agent_instance_id, created_at, result, metadata from audit_logs
         where org_id = $1 and action = 'workforce.employee_evidence_read' and agent_instance_id = any($2::uuid[])
         order by created_at desc limit 400`,
       [orgId, [...agentIds]],
     );
-    for (const row of reads.rows) {
-      const entry = out.get(row.agent_instance_id);
-      if (!entry || entry.lastEvidenceRead) continue;
-      const sections = Object.entries(row.metadata?.sections ?? {});
-      // A read where every area was refused for the person asking proves nothing about the data path, so it is skipped rather than counted either way.
-      if (!sections.some(([, state]) => state === "ready" || state === "empty" || state === "not_configured" || state === "unavailable")) continue;
-      const unavailable = sections.filter(([, state]) => state === "unavailable").map(([id]) => id.replaceAll("_", " "));
-      entry.lastEvidenceRead = { at: new Date(row.created_at).toISOString(), ok: row.result === "success" && unavailable.length === 0, unavailableAreas: unavailable, role: row.metadata?.role ?? "" };
-    }
+    note(reads.rows);
 
     const chats = await q.query<{ agent_instance_id: string; n: number; last_at: Date | null }>(
       `select agent_instance_id, count(*)::int as n, max(coalesce(finished_at, started_at)) as last_at from agent_runs

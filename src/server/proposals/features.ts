@@ -46,23 +46,31 @@ export async function assertProposalsEnabled(orgId: string, db?: Queryable): Pro
 /** The platform-wide emergency switch for everything a customer can reach (PROPOSALS_PUBLIC_DISABLED). It is checked first, before any database read. */
 export const proposalsPublicDisabled = (): boolean => env().PROPOSALS_PUBLIC_DISABLED;
 
+/**
+ * Switches a feature on or off for one workspace inside the caller's transaction, so a caller that must act on the change (a synchronization that follows a switch) can make both
+ * happen or neither. Super Admin only; audited. The caller clears the cache after it commits (clearFeatureCache).
+ */
+export async function setOrgFeatureIn(db: Queryable, user: SessionUser, input: { orgId: string; feature: string; enabled: boolean }): Promise<{ changed: boolean }> {
+  if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can switch a workspace feature on or off.");
+  if (!FEATURE_RE.test(input.feature)) throw new AppError("invalid_input", "That is not a feature name.");
+  const org = await db.query("select 1 from organizations where id = $1", [input.orgId]);
+  if (!org.rows[0]) throw new AppError("not_found", "Workspace not found.");
+  const before = (await db.query<{ enabled: boolean }>("select enabled from org_features where org_id = $1 and feature = $2 for update", [input.orgId, input.feature])).rows[0]?.enabled === true;
+  if (before === input.enabled) return { changed: false };
+  await db.query(
+    `insert into org_features (org_id, feature, enabled, updated_by) values ($1, $2, $3, $4)
+     on conflict (org_id, feature) do update set enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()`,
+    [input.orgId, input.feature, input.enabled, user.id],
+  );
+  await recordAudit({ orgId: input.orgId, actorUserId: user.id, actorKind: "agency", action: input.enabled ? "feature.enabled" : "feature.disabled", targetType: "workspace", targetId: input.orgId, result: "success", metadata: { feature: input.feature } }, db);
+  return { changed: true };
+}
+
 /** Switches a feature on or off for one workspace. Super Admin only; audited. Returns false when the workspace was already in that state (nothing is written). */
 export async function setOrgFeature(user: SessionUser, input: { orgId: string; feature: string; enabled: boolean }): Promise<{ changed: boolean }> {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can switch a workspace feature on or off.");
   if (!FEATURE_RE.test(input.feature)) throw new AppError("invalid_input", "That is not a feature name.");
-  const out = await withSystem(async (db) => {
-    const org = await db.query("select 1 from organizations where id = $1", [input.orgId]);
-    if (!org.rows[0]) throw new AppError("not_found", "Workspace not found.");
-    const before = (await db.query<{ enabled: boolean }>("select enabled from org_features where org_id = $1 and feature = $2 for update", [input.orgId, input.feature])).rows[0]?.enabled === true;
-    if (before === input.enabled) return { changed: false };
-    await db.query(
-      `insert into org_features (org_id, feature, enabled, updated_by) values ($1, $2, $3, $4)
-       on conflict (org_id, feature) do update set enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()`,
-      [input.orgId, input.feature, input.enabled, user.id],
-    );
-    await recordAudit({ orgId: input.orgId, actorUserId: user.id, actorKind: "agency", action: input.enabled ? "feature.enabled" : "feature.disabled", targetType: "workspace", targetId: input.orgId, result: "success", metadata: { feature: input.feature } }, db);
-    return { changed: true };
-  });
+  const out = await withSystem((db) => setOrgFeatureIn(db, user, input));
   clearFeatureCache(input.orgId);
   return out;
 }

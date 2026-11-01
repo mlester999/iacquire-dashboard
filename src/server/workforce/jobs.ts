@@ -3,6 +3,8 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import { signalWorkJobCancellation } from "@/server/workforce/work-cancel";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { classifyCapability, type EvidenceClass, type EvidenceMarker } from "@/lib/evidence-class";
 
 /**
  * Shared durable work foundation for AI employees.
@@ -69,6 +71,79 @@ export const WORK_JOB_STATUS_LABELS: Record<WorkJobStatus, string> = {
   cancelled: "Stopped",
   completed: "Completed",
 };
+
+/** Where one drafted message stands right now, from the message's own status (the job's result only holds what was true when the job finished). */
+export type DraftLiveStatus = "waiting" | "approved_queued" | "sent" | "blocked" | "discarded" | "unknown";
+
+export function draftLiveStatus(messageStatus: string | null | undefined, blockedReason?: string | null): DraftLiveStatus {
+  switch (messageStatus) {
+    case "draft":
+      return "waiting";
+    case "queued":
+    case "sending":
+      return "approved_queued";
+    case "sent":
+    case "delivered":
+    case "read":
+      return "sent";
+    case "blocked":
+      return blockedReason === "discarded" ? "discarded" : "blocked";
+    case "failed":
+      return "blocked";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * How many of a job's drafts are in each state. `waiting` is not decided yet, `queued` and `sent` were approved by a person, `blocked` could not go out (blocked, failed, or a
+ * message that cannot be found, which is never guessed to be fine), and a draft a person discarded is none of them.
+ */
+export interface DraftCounts {
+  total: number;
+  waiting: number;
+  queued: number;
+  sent: number;
+  blocked: number;
+}
+
+/** Counts one job's drafts from where each one stands now. */
+export function countDraftStatuses(statuses: readonly DraftLiveStatus[]): DraftCounts {
+  const count = (status: DraftLiveStatus) => statuses.filter((s) => s === status).length;
+  return { total: statuses.length, waiting: count("waiting"), queued: count("approved_queued"), sent: count("sent"), blocked: count("blocked") + count("unknown") };
+}
+
+/**
+ * What kind of thing a job's result is, computed from its own row and nothing stored. A job that has not finished has produced nothing yet, so it has no class (the panel shows
+ * no chip) except one waiting for a decision, which is a proposal. A finished read-only review retrieved records. A finished proposal job (follow-up drafts) stays a proposal until a
+ * person has decided its drafts: approved drafts that are only queued are an approved write, and it is a confirmed action only when every approved draft has really been sent.
+ */
+export function workJobEvidence(job: { id: string; capability: string; status: WorkJobStatus }, drafts?: DraftCounts | null): EvidenceMarker | null {
+  const definition = capabilityDefinition(job.capability);
+  if (!definition) return null;
+  const marker = (cls: EvidenceClass): EvidenceMarker => ({ v: 1, class: cls, ledger: { kind: "work_job", id: job.id } });
+  if (job.status === "waiting_for_approval") return marker("proposed_change");
+  if (job.status !== "completed") return null;
+  const base = classifyCapability(definition.risk);
+  if (base !== "proposed_change" || !drafts) return marker(base);
+  const approved = drafts.queued + drafts.sent;
+  if (drafts.waiting > 0 || approved === 0) return marker("proposed_change");
+  // A draft that could not go out (or cannot be found) keeps the job from reading as confirmed, whatever else was sent.
+  return marker(drafts.sent === approved && drafts.blocked === 0 ? "completed_action" : "approved_write");
+}
+
+/**
+ * The status words for a job. A finished review keeps "Completed" (it ran to the end and read what it read), but finished work that only prepared something must not say it was
+ * done: a draft job reads "Ready for review" until a person decides the drafts, and "Completed" is kept for work whose effect is confirmed.
+ */
+export function workJobStatusLabel(job: { status: WorkJobStatus; recoveryPending: boolean }, evidence: EvidenceMarker | null, drafts?: DraftCounts | null): string {
+  if (job.recoveryPending) return "Recovery pending";
+  if (job.status === "completed" && evidence) {
+    if (evidence.class === "proposed_change") return "Ready for review";
+    if (evidence.class === "approved_write") return drafts && drafts.blocked > 0 ? "Some drafts not sent" : "Approved, not yet sent";
+  }
+  return WORK_JOB_STATUS_LABELS[job.status];
+}
 
 export function isTerminalWorkJobStatus(status: WorkJobStatus): boolean {
   return status === "completed" || status === "failed" || status === "cancelled" || status === "blocked";
@@ -554,6 +629,8 @@ export interface WorkJobView {
   status: WorkJobStatus;
   statusLabel: string;
   recoveryPending: boolean;
+  /** What kind of thing this work produced (computed on read, never stored). Null until it has produced something. */
+  evidence: EvidenceMarker | null;
   stage: string | null;
   stageLabel: string | null;
   progress: Record<string, unknown>;
@@ -591,6 +668,76 @@ function canViewJob(ctx: OrgContext, job: WorkJobRow): boolean {
   return ctx.can("activity.view");
 }
 
+const MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A follow-up draft job's result lists the drafts as they were when the job finished, all "draft". This reads each draft's message now (its status and the reason it was blocked,
+ * never its body, and only messages of this workspace) and adds `liveStatus` and `liveDetail` to each, so the panel never keeps saying "draft" after a person approved, sent or
+ * discarded it. Any other job's result is returned as it is. A draft whose message cannot be found is "unknown", not guessed.
+ */
+async function withLiveDraftStatus(orgId: string, job: WorkJobRow): Promise<{ value: Record<string, unknown>; counts: DraftCounts | null }> {
+  const base = job.result ?? {};
+  if (job.capability !== "pipeline_followup_drafts" || !Array.isArray(base.drafts)) return { value: base, counts: null };
+  const drafts = (base.drafts as unknown[]).filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item));
+  const ids = [...new Set(drafts.map((draft) => draft.messageId).filter((id): id is string => typeof id === "string" && MESSAGE_ID.test(id)))];
+  const live = await readLiveDrafts(orgId, ids);
+  const statuses: DraftLiveStatus[] = [];
+  const withStatus = drafts.map((draft) => {
+    const message = typeof draft.messageId === "string" ? live.get(draft.messageId) : undefined;
+    const status = draftLiveStatus(message?.status, message?.reason);
+    statuses.push(status);
+    return { ...draft, liveStatus: status, liveDetail: status === "blocked" ? (message?.detail ?? message?.reason ?? null)?.slice(0, 200) ?? null : null };
+  });
+  return { value: { ...base, drafts: withStatus }, counts: countDraftStatuses(statuses) };
+}
+
+interface LiveDraft {
+  status: string;
+  reason: string | null;
+  detail: string | null;
+}
+
+/** The current status (and the recorded reason, never the body) of drafted messages of this workspace. An id from another workspace finds nothing. */
+async function readLiveDrafts(orgId: string, ids: readonly string[]): Promise<Map<string, LiveDraft>> {
+  const live = new Map<string, LiveDraft>();
+  if (!ids.length) return live;
+  const { rows } = await withSystem((db) =>
+    db.query<{ id: string; status: string; blocked_reason: string | null; status_detail: string | null }>(
+      "select id, status, blocked_reason, status_detail from conversation_messages where org_id = $1 and id = any($2::uuid[])",
+      [orgId, ids],
+    ),
+  );
+  for (const row of rows) live.set(row.id, { status: row.status, reason: row.blocked_reason, detail: row.status_detail });
+  return live;
+}
+
+/**
+ * Draft counts for a list of finished follow-up jobs, for the screens that list many jobs (the work board, the calendar). `draftMessageIds` is each job's drafts' message ids in
+ * order (null for a draft with no usable id). The statuses are read once with trusted access to this workspace's messages, status only, so a person who cannot open a draft's
+ * conversation still sees the draft counted the way the job panel counts it; a draft that cannot be found counts as not sent, never as fine.
+ */
+export async function loadDraftCountsForJobs(orgId: string, jobs: ReadonlyArray<{ id: string; draftMessageIds: unknown }>): Promise<Map<string, DraftCounts>> {
+  const lists = new Map<string, Array<string | null>>();
+  for (const job of jobs) {
+    if (!Array.isArray(job.draftMessageIds)) continue;
+    lists.set(job.id, job.draftMessageIds.map((id) => (typeof id === "string" && MESSAGE_ID.test(id) ? id : null)));
+  }
+  const ids = [...new Set([...lists.values()].flat().filter((id): id is string => id !== null))];
+  const live = await readLiveDrafts(orgId, ids);
+  const out = new Map<string, DraftCounts>();
+  for (const [jobId, list] of lists) {
+    out.set(jobId, countDraftStatuses(list.map((id) => {
+      const message = id ? live.get(id) : undefined;
+      return draftLiveStatus(message?.status, message?.reason);
+    })));
+  }
+  return out;
+}
+
+/** SQL for the column `draft_message_ids` that `loadDraftCountsForJobs` reads (the job table is aliased `j`). Null for any job that is not a finished follow-up draft job. */
+export const DRAFT_MESSAGE_IDS_SQL = `case when j.capability = 'pipeline_followup_drafts' and j.status = 'completed' and jsonb_typeof(j.result -> 'drafts') = 'array'
+  then (select coalesce(jsonb_agg(d ->> 'messageId'), '[]'::jsonb) from jsonb_array_elements(j.result -> 'drafts') d) end`;
+
 export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { afterId?: string | null } = {}): Promise<WorkJobView | null> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) throw new AppError("forbidden", "Your role can't view AI work.");
   const data = await withUser(ctx.user.id, async (db) => {
@@ -613,17 +760,20 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
   const recoveryPending = job.status === "running" && !job.lease_active;
   const elapsedEnd = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
   const started = job.started_at ? new Date(job.started_at).getTime() : null;
+  const result = await withLiveDraftStatus(ctx.org.orgId, job);
+  const evidence = workJobEvidence(job, result.counts);
   return {
     id: job.id,
     capability: job.capability,
     title: job.title,
     status: job.status,
-    statusLabel: recoveryPending ? "Recovery pending" : WORK_JOB_STATUS_LABELS[job.status],
+    statusLabel: workJobStatusLabel({ status: job.status, recoveryPending }, evidence, result.counts),
     recoveryPending,
+    evidence,
     stage: job.stage,
     stageLabel: workJobStageLabel(job.stage),
     progress: job.progress ?? {},
-    result: job.result ?? {},
+    result: result.value,
     resultSummary: job.result_summary,
     resultCount: job.result_count,
     failureCode: job.failure_code,

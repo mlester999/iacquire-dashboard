@@ -1,5 +1,5 @@
 import "server-only";
-import { WORK_JOB_STATUS_LABELS, workJobStageLabel, type WorkJobStatus } from "@/server/workforce/jobs";
+import { DRAFT_MESSAGE_IDS_SQL, WORK_JOB_STATUS_LABELS, loadDraftCountsForJobs, workJobEvidence, workJobStageLabel, workJobStatusLabel, type WorkJobStatus } from "@/server/workforce/jobs";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { validateBusinessHours, type BusinessHours } from "@/lib/messaging";
 import { validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
@@ -149,7 +149,9 @@ export async function getWorkforceCalendarData(
     return { from, to, timezone: ctx.org.timezone, operatorEnabled, jobs: [], jobsTruncated: false, schedules: [] };
   }
 
-  return withUser(ctx.user.id, async (db) => {
+  // A finished follow-up draft job is labelled from where its drafts stand now (see workJobStatusLabel), which needs a trusted read that cannot run inside this transaction.
+  const draftIdsByJob = new Map<string, unknown>();
+  const calendar = await withUser(ctx.user.id, async (db) => {
     let jobs: WorkforceCalendarJob[] = [];
     let jobsTruncated = false;
     if (canReadJobs) {
@@ -160,6 +162,7 @@ export async function getWorkforceCalendarData(
         employee_name: string; employee_role: AgentRoleKey;
         scheduled: string | null; scheduled_at: string | null; schedule_id: string | null; origin: string | null;
         research_scheduled: string | null; research_schedule_id: string | null; research_schedule_slot: string | null;
+        draft_message_ids: unknown;
       }>(
         `select j.id, j.capability, j.title, j.status, j.stage, j.result_summary, j.result_count, j.failure_message,
                 j.created_at, j.started_at, j.finished_at,
@@ -168,7 +171,8 @@ export async function getWorkforceCalendarData(
                 j.input->>'scheduleId' as schedule_id, j.input->>'origin' as origin,
                 j.input->'criteria'->>'scheduled' as research_scheduled,
                 j.input->'criteria'->>'scheduleId' as research_schedule_id,
-                j.input->'criteria'->>'scheduleSlot' as research_schedule_slot
+                j.input->'criteria'->>'scheduleSlot' as research_schedule_slot,
+                ${DRAFT_MESSAGE_IDS_SQL} as draft_message_ids
            from ai_work_jobs j
            join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
           where j.org_id = $1
@@ -198,6 +202,7 @@ export async function getWorkforceCalendarData(
         const createdAt = new Date(row.created_at);
         const timing = scheduledJobTime(row, createdAt);
         if (timing.startsAt < range.from || timing.startsAt >= range.to) return [];
+        draftIdsByJob.set(row.id, row.draft_message_ids);
         return [{
           id: row.id,
           kind: "job" as const,
@@ -270,4 +275,10 @@ export async function getWorkforceCalendarData(
 
     return { from, to, timezone: ctx.org.timezone, operatorEnabled, jobs, jobsTruncated, schedules };
   });
+  const draftCounts = await loadDraftCountsForJobs(ctx.org.orgId, calendar.jobs.map((job) => ({ id: job.id, draftMessageIds: draftIdsByJob.get(job.id) })));
+  const jobs = calendar.jobs.map((job) => {
+    const drafts = draftCounts.get(job.id) ?? null;
+    return { ...job, statusLabel: workJobStatusLabel({ status: job.status, recoveryPending: false }, workJobEvidence(job, drafts), drafts) };
+  });
+  return { ...calendar, jobs };
 }

@@ -115,7 +115,7 @@ type StreamEvent =
   | { type: "activity"; label: string }
   | { type: "delta"; text: string }
   | { type: "approval"; approvalId: string; title: string }
-  | { type: "done"; content: string }
+  | { type: "done"; content: string; evidence?: EvidenceMarker }
   | { type: "cancelled"; content: string }
   | { type: "error"; code: string; message: string; retryable: boolean };
 
@@ -408,7 +408,7 @@ export function ChatWorkspace(props: Props) {
               toast(ev.title, { description: "Waiting for approval in the Approval Center.", action: { label: "Review", onClick: () => window.open("/approvals", "_self") } });
               break;
             case "done":
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: ev.content, status: "complete" } : m)));
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: ev.content, status: "complete", evidence: parseEvidenceMarker(ev.evidence) ?? m.evidence } : m)));
               break;
             case "cancelled":
               setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: ev.content, status: "cancelled" } : m)));
@@ -933,7 +933,7 @@ function AssistantBubble({
                 </button>
               </Tooltip>
             )}
-            {isLast && canRetry && (
+            {isLast && canRetry && message.run_id && (
               <Tooltip content={message.status === "failed" ? "Try again" : "Regenerate"}>
                 <button type="button" onClick={onRegenerate} className="flex size-7 items-center justify-center rounded-lg hover:bg-surface-2 hover:text-ink" aria-label={message.status === "failed" ? "Try again" : "Regenerate response"}>
                   <RefreshCw className="size-3.5" />

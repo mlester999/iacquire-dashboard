@@ -190,10 +190,12 @@ describe("the role-context tool is the chat snapshot, bound to a live Chat turn"
   it("records only area names and states in the audit trail", async () => {
     await startTurn("lead_hunter", admin.id);
     await readContext("lead_hunter");
-    const { rows } = await withSystem((db) => db.query<{ result: string; metadata: { sections?: string } }>(
-      "select result, metadata from audit_logs where org_id = $1 and action = 'hermes.business_mcp.read' and result = 'success' order by created_at desc limit 1", [agency.id],
+    const { rows } = await withSystem((db) => db.query<{ result: string; metadata: { sections?: string }; actor_user_id: string | null }>(
+      "select result, metadata, actor_user_id from audit_logs where org_id = $1 and action = 'hermes.business_mcp.read' and result = 'success' order by created_at desc limit 1", [agency.id],
     ));
     expect(rows[0].metadata.sections).toMatch(/^leads:/);
+    // The internal tier passes no acting person to the shared engine, so its success rows carry none (the person is reachable through the run id).
+    expect(rows[0].actor_user_id).toBeNull();
     expect(JSON.stringify(rows[0])).not.toMatch(/Bridge Only Lead|Neighbour/);
     const executions = await withSystem((db) => db.query<{ tool_name: string; status: string }>("select tool_name, status from tool_executions where org_id = $1 and tool_name = 'mcp.get_role_workspace_context'", [agency.id]));
     expect(executions.rows.length).toBeGreaterThan(0);

@@ -200,7 +200,7 @@ async function readInternalOperations(run: ActiveChatRun) {
  * asking. One code path means one set of reads, one set of states ("empty", "not set up", "could not be read", "no permission", "switched off") and one set of limits, so the model never
  * gets two different answers to the same question. This is the run-binding and audit around it; it adds no reads of its own.
  */
-export async function buildRoleWorkspaceContext(run: ActiveChatRun) {
+export async function buildRoleWorkspaceContext(run: ActiveChatRun, options: { actingUserId?: string } = {}) {
   const ctx = await requireWorkspaceUser(run, HERMES_BUSINESS_CONTEXT_TOOL);
   const prepared = await prepareEmployeeEvidence(ctx, { agentId: run.agentId, roleKey: run.roleKey });
   const evidence = fitEvidence(boundEvidence(prepared.evidence));
@@ -210,7 +210,7 @@ export async function buildRoleWorkspaceContext(run: ActiveChatRun) {
     role: run.roleKey,
     // Area names and their states only; never a record, a name or a count.
     sections: evidence.sections.map((section) => `${section.id}:${section.state}`).join(",").slice(0, 400),
-  }));
+  }, options.actingUserId));
   return { status: "available", note: RECORDS_ARE_DATA, evidence, ...(internalOperations ? { internalOperations } : {}) };
 }
 
@@ -218,14 +218,18 @@ async function readRoleWorkspaceContext(profile: InternalProfile) {
   return buildRoleWorkspaceContext(await requireRun(profile));
 }
 
-async function auditMcpRead(db: Queryable, run: ActiveChatRun, tool: string, result: "success" | "denied" | "failure", metadata: Record<string, unknown>) {
+/**
+ * `actingUserId` names the person whose Chat turn the read was for. The client tier passes it, so a client's own people can be told from the audit trail who an employee read for; the internal
+ * tier passes nothing and its rows are exactly what they were (the person is still reachable through the run id).
+ */
+async function auditMcpRead(db: Queryable, run: ActiveChatRun, tool: string, result: "success" | "denied" | "failure", metadata: Record<string, unknown>, actingUserId?: string) {
   await db.query(
     `insert into tool_executions (run_id,org_id,tool_name,label,status,finished_at)
      values ($1,$2,$3,$4,$5,now())`,
     [run.runId, run.orgId, `mcp.${tool}`.slice(0, 120), "Reading iAcquire workspace information", result === "success" ? "completed" : "failed"],
   );
   await recordAudit({
-    orgId: run.orgId, actorKind: "agent", agentInstanceId: run.agentId, action: "hermes.business_mcp.read",
+    orgId: run.orgId, ...(actingUserId ? { actorUserId: actingUserId } : {}), actorKind: "agent", agentInstanceId: run.agentId, action: "hermes.business_mcp.read",
     targetType: "agent_run", targetId: run.runId, result, metadata: { tool, role: run.roleKey, jti: run.credentialId, ...metadata },
   }, db);
 }

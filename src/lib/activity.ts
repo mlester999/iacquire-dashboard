@@ -70,6 +70,13 @@ const LABELS: Record<string, string> = {
   "setup.services_changed": "updated the services included in setup",
   "setup.assigned": "assigned a setup step",
   "setup.launch_state_changed": "launch readiness changed",
+  "hermes.client_business_mcp.proposal_requested": "asked for a change to be approved (nothing was changed yet)",
+  "onboarding.resubmitted_unchanged": "resubmitted company setup with no changes",
+  "crm.calendar_verification_drifted": "found that a booking calendar no longer passes its checks",
+  "crm.calendar_verification_recovered": "found that a booking calendar passes its checks again",
+  "crm.booking_impact_cleared": "closed the notice about upcoming bookings a calendar change affected",
+  "workforce.employee_evidence_attached": "tied the records an AI employee read to its reply",
+  "workforce.chat_unbacked_claim": "added a note to an AI reply that described an action nobody recorded",
 };
 
 // Actions about one AI employee, phrased with its name when the audit row identifies it.

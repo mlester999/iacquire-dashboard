@@ -8,6 +8,7 @@ import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
+import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { WorkJobPanel } from "@/components/work/job-progress";
 import { AGENT_BY_KEY, AGENT_ROLES, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import {
@@ -43,6 +44,7 @@ const LANE_DEFS = [
   { key: "recovery", label: "Recovery pending", hint: "No active worker lease" },
   { key: "waiting", label: "Waiting for approval", hint: "A person must decide" },
   { key: "blocked", label: "Blocked", hint: "Needs a person" },
+  { key: "prepared", label: "Prepared, not finished", hint: "Drafts waiting for a decision or still to send" },
   { key: "completed", label: "Completed", hint: "Saved execution evidence" },
   { key: "failed", label: "Failed", hint: "Execution did not complete" },
   { key: "cancelled", label: "Cancelled", hint: "Stop request recorded" },
@@ -60,10 +62,16 @@ const JOB_TONE: Record<WorkBoardJob["status"], "primary" | "success" | "warning"
   completed: "success",
 };
 
+/** A finished job that only prepared something (drafts nobody has decided on, or approved ones not yet sent) has not completed its effect, so it never sits in the green Completed lane. */
+function onlyPrepared(job: WorkBoardJob): boolean {
+  return job.status === "completed" && (job.evidence?.class === "proposed_change" || job.evidence?.class === "approved_write");
+}
+
 function jobLane(job: WorkBoardJob): Exclude<LaneKey, "planned"> {
   if (job.recoveryPending) return "recovery";
   if (job.status === "running") return "working";
   if (job.status === "waiting_for_approval") return "waiting";
+  if (onlyPrepared(job)) return "prepared";
   return job.status;
 }
 
@@ -136,7 +144,7 @@ function JobCard({
 }) {
   const meta = roleKey(job.employeeRole) ? AGENT_BY_KEY[job.employeeRole as keyof typeof AGENT_BY_KEY] : null;
   const href = jobHref(job);
-  const tone = job.recoveryPending ? "warning" : JOB_TONE[job.status];
+  const tone = job.recoveryPending ? "warning" : onlyPrepared(job) ? "neutral" : JOB_TONE[job.status];
   const detail = job.recoveryPending
     ? "No active worker lease is recorded. Recovery is pending."
     : job.status === "running"
@@ -150,6 +158,7 @@ function JobCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusPill tone={tone} size="sm" dot={job.status === "running" && !job.recoveryPending}>{job.statusLabel}</StatusPill>
+            <EvidenceChip evidence={job.evidence} />
             <span className="truncate text-[12px] text-muted">{job.employeeName}</span>
           </div>
           <button type="button" onClick={onToggle} aria-expanded={expanded} className="mt-2 block w-full text-left">

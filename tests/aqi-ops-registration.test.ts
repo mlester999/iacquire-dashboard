@@ -138,6 +138,7 @@ describe("scheduled jobs", () => {
       "aiProactiveBriefings",
       "aiHealthProbe",
       "provisioningWatchdog",
+      "clientBusinessCredentialExpiry",
       "customerPaymentReconcile",
       "invoiceOverdueSweep",
       "invoiceReminders",

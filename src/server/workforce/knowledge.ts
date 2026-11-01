@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { notifyAgency } from "@/server/notifications";
+import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import {
   compileKnowledgeSections,
   detectRiskFlags,
@@ -227,12 +227,55 @@ export async function saveEmployeeKnowledgeEntry(
         kind: "knowledge_update_ready",
         severity: "warning",
         title: `${ctx.org.name}: an employee knowledge note needs review`,
-        body: `“${title}” was held because it may conflict with AI safety policy.`,
-        link: `/admin/clients/${ctx.org.orgId}`,
+        body: `“${title}” was held because it may conflict with AI safety policy. It is not used until the agency approves it.`,
+        link: `/admin/clients/${ctx.org.orgId}?tab=reviews`,
       });
     }
   });
   return { ...saved, held: flags.length > 0 };
+}
+
+/**
+ * The agency's decision on a held employee note. Approve makes it a note the employee uses from its next message; reject marks it rejected and it is never used.
+ * Runs in the caller's transaction after the agency permission check for this client, and names the organization so another client's note is "not found".
+ */
+export async function decideHeldEmployeeNote(db: Queryable, input: { orgId: string; entryId: string; approve: boolean; agencyUserId: string }) {
+  const { orgId, entryId, approve, agencyUserId } = input;
+  const { rows } = await db.query<{ title: string; agent_instance_id: string; risk_flags: string[] }>(
+    "select title, agent_instance_id, risk_flags from employee_knowledge_entries where id = $1 and org_id = $2 and status = 'pending_agency_review' for update",
+    [entryId, orgId],
+  );
+  const entry = rows[0];
+  if (!entry) throw new AppError("not_found", "That note is not waiting for review.");
+  await db.query("update employee_knowledge_entries set status = $3::text, risk_flags = case when $3::text = 'approved' then '{}' else risk_flags end where id = $1 and org_id = $2", [
+    entryId,
+    orgId,
+    approve ? "approved" : "rejected",
+  ]);
+  await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+    kind: "knowledge_update_ready",
+    severity: approve ? "success" : "warning",
+    title: approve ? "An employee note was approved" : "An employee note wasn't approved",
+    body: approve
+      ? `“${entry.title}” is now used by that employee from its next message.`
+      : `“${entry.title}” conflicted with AI safety rules and won't be used. Edit the note or contact support.`,
+    link: "/employees",
+  });
+  await recordAudit(
+    {
+      orgId,
+      actorUserId: agencyUserId,
+      actorKind: "agency",
+      agentInstanceId: entry.agent_instance_id,
+      action: approve ? "knowledge.note_review_approved" : "knowledge.note_review_rejected",
+      targetType: "employee_knowledge_entry",
+      targetId: entryId,
+      result: "success",
+      metadata: { flags: entry.risk_flags },
+    },
+    db,
+  );
+  return { approved: approve };
 }
 
 export async function archiveEmployeeKnowledgeEntry(ctx: OrgContext, agentId: string, entryId: string) {

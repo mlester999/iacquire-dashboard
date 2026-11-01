@@ -28,6 +28,7 @@ export interface TableSpec {
 const TABLES: TableSpec[] = [
   { file: "business/profile.json", table: "company_profiles" },
   { file: "business/knowledge.json", table: "company_knowledge", order: "section" },
+  { file: "business/knowledge-revisions.json", table: "company_knowledge_revisions", order: "created_at" },
   { file: "business/onboarding-answers.json", table: "onboarding_answers" },
   { file: "business/knowledge-documents.json", table: "knowledge_documents", order: "created_at" },
   { file: "business/messaging-settings.json", table: "messaging_settings" },
@@ -330,7 +331,7 @@ Exported ${now.toISOString()}.
 
 ## What is in this archive
 
-- **business/**: your profile, knowledge, onboarding answers and messaging settings.
+- **business/**: your profile, knowledge (with every earlier saved version of each section), onboarding answers and messaging settings.
 - **customers/** and **conversations/**: your contacts, their consent history, and every conversation and message, as readable JSON.
 - **sales/**, **appointments/**, **retention/**: leads, pipeline, appointments, reminders and customer programs, and the private feedback your customers gave you (with how your team followed it up).
 - **reputation/**: your reputation settings (what counts as low feedback, how long your team has to acknowledge it), your review request batches, the review sites you connected (never their sign-in), the public reviews they returned, and the replies your team wrote to them with their history.
