@@ -157,6 +157,10 @@ export async function startGateway(runtime: PinnedRuntime, home: string, port: n
     {
       env: cleanRuntimeEnv({
         PYTHONPATH: source, HERMES_HOME: home, API_SERVER_ENABLED: "true", API_SERVER_HOST: "127.0.0.1", API_SERVER_PORT: String(port), API_SERVER_KEY: rootKey,
+        // Hermes keeps a host-wide lock so that only one gateway runs per host and OS user, and a second gateway started at the same moment exits quietly with code 0. Test files run in
+        // parallel, so two of them starting a gateway together made one fail ("exited early"). A lock folder inside this gateway's own disposable home makes every test gateway
+        // independent, as if each had a host of its own; nothing the proof checks depends on that lock.
+        HERMES_GATEWAY_LOCK_DIR: path.join(home, "gateway-locks"),
       }),
       cwd: tmpdir(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
     },
