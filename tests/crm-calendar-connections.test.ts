@@ -22,6 +22,7 @@ import { decryptSecret, sha256 } from "@/server/security/crypto";
 import { agencyActor, startSupportSession } from "@/server/crm/actor";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
+import { activateCalendar } from "@/server/calendars/activation";
 import { bookingPageActor, bookNativeAppointment, cancelNativeAppointment, rescheduleNativeAppointment } from "@/server/calendars/booking";
 import {
   calendarConnectionSettings, completeCalendarOAuth, connectCalDav, connectIcsFeed, DEFAULT_RETURN_PATH, decodeCalendarNotice, disconnectCalendar, listMyConnections, listSyncRuns, listTeamConnections,
@@ -604,6 +605,35 @@ describe("google busy sync", () => {
     await syncConnectionBusy(conn.connectionId!, { now: NOW, force: true });
     const notes = await withSystem((db) => db.query("select title from notifications where user_id = $1 and kind = 'crm_calendar_sync'", [c.people.owner.id]));
     expect(notes.rows).toHaveLength(1);
+  });
+
+  it("a verified Meet calendar is noticed when its host's sign-in stops working (through the real sync), and a real reconnect clears it", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    const g = googleFake();
+    const { calendarId } = await nativeSetup(c, { meetingProvider: "google_meet" });
+    const conn = await connectGoogle(c);
+    await withSystem((db) => db.query("update crm_calendars set status = 'draft', public = false, is_default = false where id = $1", [calendarId]));
+    expect((await activateCalendar(c.actor("owner"), calendarId, { now: NOW })).activated).toBe(true);
+    const state = async () => (await withSystem((db) => db.query<{ drift: { failing: string[]; reason: string } | null }>("select verification -> 'drift' as drift from crm_calendars where id = $1", [calendarId]))).rows[0].drift;
+    const audits = async (action: string) => (await withSystem((db) => db.query("select 1 from audit_logs where org_id = $1 and action = $2", [c.org.id, action]))).rows.length;
+    expect(await state()).toBeNull();
+
+    // The provider refuses the saved sign-in: the connection is marked, and the calendar that needs it for Meet links is recorded as no longer passing its checks (once).
+    g.accessToken = "ya29.revoked";
+    g.refreshFails = true;
+    expect(await syncConnectionBusy(conn.connectionId!, { now: NOW, force: true })).toMatchObject({ status: "needs_reauth" });
+    expect(await state()).toMatchObject({ failing: ["connections"], reason: "connection_needs_reauth" });
+    expect(await audits("crm.calendar_verification_drifted")).toBe(1);
+    expect(await syncConnectionBusy(conn.connectionId!, { now: NOW })).toMatchObject({ status: "skipped" });
+    expect(await audits("crm.calendar_verification_drifted")).toBe(1);
+
+    // The host signs in again through the real flow: the same row is connected again and the recovery is recorded.
+    g.refreshFails = false;
+    g.accessToken = "ya29.synthetic-access-1";
+    const again = await connectGoogle(c);
+    expect(again.connectionId).toBe(conn.connectionId);
+    expect(await state()).toBeNull();
+    expect(await audits("crm.calendar_verification_recovered")).toBe(1);
   });
 
   it("a saved sign-in that can no longer be decrypted asks the person to reconnect instead of failing silently", async () => {

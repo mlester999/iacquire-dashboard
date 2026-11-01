@@ -7,7 +7,7 @@ import { resolveCapabilities } from "@/server/crm/workspace";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { employeeAbilities } from "@/server/workforce/abilities";
 import { roleAbilitiesAllow } from "@/server/workforce/employee-evidence";
-import { clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clientBusinessProposalToolNamesForRole, clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 
 /**
@@ -50,6 +50,19 @@ const CRM_PART: Partial<Record<AgentToolName, CrmCapability>> = {
   list_opportunities: "opportunities",
 };
 
+/**
+ * Which part of the CRM a change would land in, for the tools that may be PROPOSED. Only consulted for a proposal, so a gate asked about a change while proposals are off decides exactly
+ * what it always did. A change to something this workspace keeps in another system is refused now, never sent to a person for approval (the tool's own plan refuses it as well). A task
+ * is iAcquire's own whatever the CRM mode, so it has no entry.
+ */
+const PROPOSAL_CRM_PART: Partial<Record<AgentToolName, CrmCapability>> = {
+  update_contact: "contacts",
+  apply_tag: "contacts",
+  remove_tag: "contacts",
+  create_opportunity: "opportunities",
+  move_opportunity_stage: "opportunities",
+};
+
 /** Who owns one capability of the workspace right now: "native", "ghl", or null when the workspace has no CRM record yet. Reads only. */
 async function peekCapabilityOwner(db: Queryable, orgId: string, capability: CrmCapability): Promise<CapabilityProvider | null> {
   const { rows } = await db.query<{ mode: CrmMode; provider: CapabilityProvider | null }>(
@@ -84,7 +97,11 @@ export async function clientToolGate(db: Queryable, input: { orgId: string; agen
   if (abilities === null) return closed("abilities_unreadable", "What this employee is allowed to do could not be confirmed just now, so nothing was read.");
   if (!roleAbilitiesAllow(input.roleKey, abilities)) return closed("abilities_off", "Every action this employee may take is switched off in Allowed actions, so nothing was read.");
 
-  const part = CRM_PART[input.tool];
+  // A change passes only as a PROPOSAL: the deployment's flag, the workspace's switch (read in this same transaction, so a switch-off is seen by the very next call) and the role's own
+  // list of changes it may ask for must all agree. A tool that is not a plain read or such a change (a message, a booking) never passes. Everything below is then the same as for a read.
+  const kind = AGENT_TOOLS[input.tool].kind;
+  const proposing = kind === "write" && clientBusinessProposalToolNamesForRole(input.roleKey).includes(input.tool) && (await clientBusinessProposalsOn(input.orgId, db));
+  const part = proposing ? PROPOSAL_CRM_PART[input.tool] : CRM_PART[input.tool];
   if (part) {
     const owner = await peekCapabilityOwner(db, input.orgId, part);
     if (owner === null) return closed("crm_not_set_up", "This workspace's CRM is not set up yet, so there is nothing to read.");
@@ -104,7 +121,6 @@ export async function clientToolGate(db: Queryable, input: { orgId: string; agen
     if (owner !== "native") return closed("crm_elsewhere", OTHER_SYSTEM);
     if (!(await inboxEnabledFor(input.orgId, db))) return closed("inbox_not_enabled", "The shared inbox is not switched on for this workspace yet, so conversations cannot be read.");
   }
-  // A tool that is not a read never passes this gate: the proposals phase (changes as approval requests) adds its own path and does not widen this one.
-  if (AGENT_TOOLS[input.tool].kind !== "read") return closed("tool_not_available", "This tool is not available.");
-  return { ok: true };
+  if (kind === "read" || proposing) return { ok: true };
+  return closed("tool_not_available", kind === "write" ? "Asking for changes is not switched on for this workspace, so this tool is not available." : "This tool is not available.");
 }

@@ -11,6 +11,7 @@ import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { crmOwners } from "@/server/setup/native-evidence";
+import { latestOnboardingNotes } from "@/server/onboarding/service";
 import { CALENDAR_NOTICE_COOKIE, calendarNoticeFor } from "@/server/calendars/connections";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
@@ -71,11 +72,23 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
   // The one honest launch state, from the workspace's own records. If it cannot be read the checklist below still works and nothing is claimed.
   const launch = await getLaunchReadiness(ctx).catch(() => null);
+  // What the submission just kept, held or skipped, shown once the person lands here after submitting. A failed read shows nothing.
+  const outcomeNotes = onboarded === "1" ? await latestOnboardingNotes(ctx).catch(() => []) : [];
   // A Google or Microsoft sign-in that started from this page comes back here with one short message in a cookie that names this page. The panel shows it once and clears the cookie; a message left for a CRM page is not shown here.
   const calendarNotice = calendarNoticeFor((await cookies()).get(CALENDAR_NOTICE_COOKIE)?.value, "setup");
   return (
     <>
       {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} />}
+      {outcomeNotes.length > 0 && (
+        <section aria-label="What your submission changed" data-testid="outcome-notes" className="mx-auto mb-6 max-w-6xl rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
+          <h2 className="text-[15px] font-semibold text-ink">What your submission changed</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-snug text-muted">
+            {outcomeNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       <SetupPaymentLine cleared={paymentCleared} billingHref={ctx.can("billing.view") ? "/settings/billing" : null} />
       {launch && <LaunchReadinessPanel readiness={launch} calendarNotice={calendarNotice ? { ok: calendarNotice.kind === "success", text: calendarNotice.message } : null} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />

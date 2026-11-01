@@ -18,7 +18,7 @@ import { listAssets } from "@/server/assets/service";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
 import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { analyzeWebsite, digestAnalysis, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
-import { QUESTION_BY_ID, QUESTIONS, INDUSTRY_OPTIONS, questionOptions } from "@/lib/onboarding/definitions";
+import { QUESTION_BY_ID, QUESTIONS, INDUSTRY_OPTIONS, questionOptions, wantsAppointments } from "@/lib/onboarding/definitions";
 import { workspaceEntitlements } from "@/server/entitlements";
 import {
   QUESTIONNAIRE_VERSION,
@@ -48,11 +48,16 @@ import { generateEmployeeSettings, type GeneratedSettings } from "@/server/onboa
 import { hasUnconfiguredEnabledEmployee, seedKnowledgeFromAnswers, syncEmployeesFromAnswers, type GeneratedEmployee } from "@/server/onboarding/employee-sync";
 import { answerTimes, loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { connectionFacts } from "@/server/onboarding/connection-facts";
-import { appliedThrough, lockOnboardingRow } from "@/server/onboarding/profile-sync";
+import { appliedThrough, lockOnboardingRow, submissionBaselines } from "@/server/onboarding/profile-sync";
+import { pendingChangesOf } from "@/server/onboarding/pending-changes";
 import { proposeSchedulingDrafts } from "@/server/onboarding/scheduling-drafts";
 import { proposeLeadTargeting } from "@/server/onboarding/lead-targeting-draft";
 import { writeBusinessProfile } from "@/server/settings/service";
-import { buildSnapshot, deriveProfile, fieldsToWrite, legacyBaseline, parseProfileSnapshot, type ProfileValues } from "@/lib/onboarding/business-profile";
+import {
+  buildOutcomeNotes, buildSnapshot, deriveMessaging, derivePreferences, deriveProfile, fieldsToWrite, hoursKey, keysToWrite, legacyBaseline, MESSAGING_KEYS, PREFERENCE_KEYS, PROFILE_KEYS,
+  type MessagingKey, type OutcomeNote, type PreferenceKey, type ProfileKey, type ProfileValues,
+} from "@/lib/onboarding/business-profile";
+import { validateBusinessHours } from "@/lib/messaging";
 import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts";
 
 // ===========================================================================
@@ -162,10 +167,10 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
     const scope = planScope(enabledRoles);
     const stored = toStored(rows);
     const analysisRow = rows.find((r) => r.question_id === WEBSITE_ANALYSIS_KEY);
-    const newest = rows.filter((r) => QUESTION_BY_ID[r.question_id]).reduce<number>((n, r) => Math.max(n, new Date(r.updated_at).getTime()), 0);
     const submittedAt = s?.submitted_at ? new Date(s.submitted_at) : null;
-    // A Settings edit that left nothing waiting counts as applied (src/server/onboarding/profile-sync.ts), so it is not "unsubmitted changes".
-    const appliedAt = submittedAt ? appliedThrough({ snapshot: parseProfileSnapshot(s?.submitted_snapshot), submittedAt }) : 0;
+    // One rule for "answers saved after the last approval", shared with the launch judge (src/server/onboarding/pending-changes.ts). A Settings edit that left nothing waiting
+    // counts as applied, so it is not "unsubmitted changes".
+    const pending = pendingChangesOf(rows, s ? { submittedAt: s.submitted_at, snapshot: s.submitted_snapshot } : null);
     return {
       questionnaireVersion: s?.questionnaire_version ?? 1,
       status: s?.status ?? "draft",
@@ -175,7 +180,7 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
       progress: computeProgress(stored, scope),
       completedAt: s?.completed_at ? new Date(s.completed_at).toISOString() : null,
       submittedAt: submittedAt?.toISOString() ?? null,
-      hasUnsubmittedChanges: Boolean(submittedAt && newest > appliedAt),
+      hasUnsubmittedChanges: pending.pending,
       enabledRoles,
       websiteAnalysis: analysisRow ? summarizeAnalysis(analysisRow.value as StoredAnalysis, stored) : null,
     } satisfies OnboardingSession;
@@ -523,6 +528,8 @@ export interface OnboardingOutcome {
   knowledge: { written: string[]; kept: string[] };
   /** What the booking answers did: a draft calendar made or extended, or why nothing was (never live: see src/server/onboarding/scheduling-drafts.ts). */
   scheduling: SchedulingDraftOutcome;
+  /** What a re-submission kept, held, skipped or left unchanged, in plain words (empty when there is nothing to say). */
+  notes: OutcomeNote[];
 }
 
 const NO_SCHEDULING: SchedulingDraftOutcome = { state: "skipped", typesAdded: 0, skipped: [] };
@@ -599,10 +606,14 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
            where a.org_id = $1 and a.enabled order by a.role_key`,
           [ctx.org.orgId],
         );
+        const notes = buildOutcomeNotes({ reSubmission: true, quiet: true, knowledgeKept: [], employees: [], scheduling: { state: "unchanged" }, wantsAppointments: false, targetingKept: false, leftAsEdited: { profile: [], messaging: [], preferences: [] } });
+        // Nothing was applied, but the person is told so, and the page they land on must not show the notes of an earlier submission instead.
+        await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.resubmitted_unchanged", targetType: "organization", targetId: ctx.org.orgId, result: "success", metadata: { notes: notesForAudit(notes) } }, db);
         return {
           employees: rows.map((row) => ({ role: row.role_key, name: row.display_name, summary: row.summary ?? "Configuration requires review.", configStatus: "unchanged", agentStatus: row.status })),
           knowledge: { written: [], kept: [] },
           scheduling: { state: "unchanged", typesAdded: 0, skipped: [] },
+          notes,
         } satisfies OnboardingOutcome;
       }
     }
@@ -614,26 +625,34 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     );
     // The profile facts go through the one writer Settings uses. A re-submission writes only the facts whose answers changed since the last submission, so a later edit
     // in Settings > Business profile is not undone by an unrelated change of answers; the first submission writes them all.
+    const answerRows = v2 ? await loadAnswerRows(db, ctx.org.orgId) : [];
     let baseline: Partial<ProfileValues> | null = null;
     if (derived && prior.status === "submitted") {
-      baseline = prior.snapshot?.fields ?? legacyBaseline(derived, answerTimes(await loadAnswerRows(db, ctx.org.orgId)), prior.submittedAt?.getTime() ?? 0);
+      baseline = prior.snapshot?.fields ?? legacyBaseline(derived, answerTimes(answerRows), prior.submittedAt?.getTime() ?? 0);
     }
+    const factsToWrite = derived ? fieldsToWrite(derived, baseline) : null;
     const profile = await writeBusinessProfile(
       db,
       ctx,
-      derived
-        ? fieldsToWrite(derived, baseline)
-        : { name: b.companyName, industry: b.industry, website, region: b.operatingArea, description: b.description, services: b.services, idealCustomers: b.idealCustomers },
+      factsToWrite ?? { name: b.companyName, industry: b.industry, website, region: b.operatingArea, description: b.description, services: b.services, idealCustomers: b.idealCustomers },
     );
+    // The messaging values and the company-wide preferences have a second editor in Settings too, so, like the profile facts, a re-submission writes each one only when its
+    // answers changed since the last submission. The first submission writes them all.
+    const derivedMessaging = v2 ? deriveMessaging(v2.answers) : null;
+    const derivedPrefs = v2 ? derivePreferences(v2.answers) : null;
+    const baselines = derivedMessaging && derivedPrefs ? submissionBaselines(prior, answerRows, { messaging: derivedMessaging, prefs: derivedPrefs }) : null;
+    const prefKeys: readonly PreferenceKey[] = derivedPrefs ? keysToWrite(PREFERENCE_KEYS, derivedPrefs, baselines?.prefs ?? null) : PREFERENCE_KEYS;
+    const messagingKeys: readonly MessagingKey[] = derivedMessaging ? keysToWrite(MESSAGING_KEYS, derivedMessaging, baselines?.messaging ?? null) : MESSAGING_KEYS;
+    const prefPatch = Object.fromEntries(prefKeys.map((key) => [key, data.communication[key]]));
     await db.query(
       `insert into company_profiles (org_id, goals, goals_other, ai_preferences, updated_by) values ($1, $2, $3, $4, $5)
        on conflict (org_id) do update set goals = excluded.goals, goals_other = excluded.goals_other,
          ai_preferences = company_profiles.ai_preferences || excluded.ai_preferences, updated_by = excluded.updated_by`,
-      [ctx.org.orgId, goalLabels, sanitizeClientText(data.goals.other, 500), JSON.stringify(data.communication), ctx.user.id],
+      [ctx.org.orgId, goalLabels, sanitizeClientText(data.goals.other, 500), JSON.stringify(prefPatch), ctx.user.id],
     );
 
     const knowledge: OnboardingOutcome["knowledge"] = { written: [], kept: [] };
-    if (v2) await applyV2Extras(db, ctx, v2, knowledge);
+    if (v2) await applyV2Extras(db, ctx, v2, knowledge, messagingKeys);
     else await seedLegacyKnowledge(db, ctx, data);
 
     // The per-employee work lives with the rest of "what an employee's configuration is, from the answers" (src/server/onboarding/employee-sync.ts).
@@ -650,12 +669,12 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
        values ($1, now(), 'submitted', now(), 6, $2, $3::jsonb)
        on conflict (org_id) do update set completed_at = coalesce(onboarding_responses.completed_at, now()), status = 'submitted', submitted_at = now(),
          current_step = 6, updated_by = excluded.updated_by, submitted_snapshot = coalesce(excluded.submitted_snapshot, onboarding_responses.submitted_snapshot)`,
-      [ctx.org.orgId, ctx.user.id, derived ? JSON.stringify(buildSnapshot(derived, stamp)) : null],
+      [ctx.org.orgId, ctx.user.id, derived ? JSON.stringify(buildSnapshot(derived, stamp, derivedMessaging && derivedPrefs ? { messaging: derivedMessaging, prefs: derivedPrefs } : {})) : null],
     );
     // Booking rules become a draft calendar and appointment types, never a live one (src/server/onboarding/scheduling-drafts.ts).
     const scheduling = v2 ? await proposeSchedulingDrafts(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : NO_SCHEDULING;
     // The client's own words about who to look for become a first set of lead-targeting rules, only into an empty profile (src/server/onboarding/lead-targeting-draft.ts).
-    if (v2) await proposeLeadTargeting(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers);
+    const targeting = v2 ? await proposeLeadTargeting(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : null;
     await ensureSetupInstance(db, ctx.org.orgId);
     if (ctx.org.kind === "client" && !ctx.org.isDemo && ctx.user.emailVerified) {
       await requestProvisioning(db, ctx.org.orgId, ctx.user.id);
@@ -668,11 +687,27 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       body: `${out.length} AI employee configuration${out.length === 1 ? "" : "s"} prepared.`,
       link: `/admin/clients/${ctx.org.orgId}`,
     });
+    // What this submission left as someone edited it elsewhere: a value it did not write because its answers had not changed, while the workspace holds something else.
+    const leftAsEdited = baselines && derived && derivedMessaging && derivedPrefs && factsToWrite
+      ? await leftAsEditedIn(db, ctx.org.orgId, { derived, wroteFacts: Object.keys(factsToWrite) as ProfileKey[], live: profile.values, messaging: derivedMessaging, wroteMessaging: messagingKeys, prefs: derivedPrefs, wrotePrefs: prefKeys })
+      : { profile: [], messaging: [], preferences: [] };
+    const notes = buildOutcomeNotes({
+      reSubmission: Boolean(v2 && !v2.firstSubmission),
+      knowledgeKept: knowledge.kept,
+      employees: out,
+      scheduling,
+      wantsAppointments: Boolean(v2 && wantsAppointments(v2.answers)),
+      targetingKept: targeting?.state === "kept",
+      leftAsEdited,
+    });
     await recordAudit(
-      { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success", metadata: { employees: selected, version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state } },
+      {
+        orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success",
+        metadata: { employees: selected, version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state, notes: notesForAudit(notes) },
+      },
       db,
     );
-    return { employees: out, knowledge, scheduling };
+    return { employees: out, knowledge, scheduling, notes };
   });
   // Submitting company information is verifiable from recorded data, so it can complete its step.
   try {
@@ -681,6 +716,37 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     if (process.env.NODE_ENV !== "test") console.error("[iacquire] setup sync after onboarding failed", err);
   }
   return outcome;
+}
+
+/** The notes as the audit row keeps them: whole lines (a list of plain strings would be cut short by the audit's own limit), a bounded number of bounded ones. */
+const notesForAudit = (notes: OutcomeNote[]) => notes.slice(0, 12).map((n) => ({ key: n.key, message: n.message.slice(0, 500) }));
+
+/** Whether the workspace holds a different value than the answers say, for each fact, messaging value and preference this submission did not write. Reads only. */
+async function leftAsEditedIn(
+  db: Queryable,
+  orgId: string,
+  i: {
+    derived: ProfileValues; wroteFacts: readonly ProfileKey[]; live: ProfileValues;
+    messaging: Record<MessagingKey, string>; wroteMessaging: readonly MessagingKey[];
+    prefs: Record<PreferenceKey, string>; wrotePrefs: readonly PreferenceKey[];
+  },
+): Promise<{ profile: ProfileKey[]; messaging: MessagingKey[]; preferences: PreferenceKey[] }> {
+  // A blank time zone or colour in the answers means "keep what the workspace has", so it is never a difference.
+  const profile = PROFILE_KEYS.filter((key) => !i.wroteFacts.includes(key) && i.derived[key] !== "" && i.live[key] !== i.derived[key]);
+  const { rows } = await db.query<{ business_hours: unknown; reply_business_hours_only: boolean; followup_preset: string; ai_preferences: Record<string, unknown> | null }>(
+    `select s.business_hours, s.reply_business_hours_only, s.followup_preset, p.ai_preferences
+       from messaging_settings s left join company_profiles p on p.org_id = s.org_id where s.org_id = $1`,
+    [orgId],
+  );
+  const live = rows[0];
+  const messaging = !live ? [] : MESSAGING_KEYS.filter((key) => {
+    if (i.wroteMessaging.includes(key)) return false;
+    const value = key === "hours" ? hoursKey(validateBusinessHours(live.business_hours ?? {})) : key === "replyHours" ? (live.reply_business_hours_only ? "business_hours" : "always") : live.followup_preset;
+    return value !== i.messaging[key];
+  });
+  const stored = live?.ai_preferences ?? {};
+  const preferences = PREFERENCE_KEYS.filter((key) => !i.wrotePrefs.includes(key) && typeof stored[key] === "string" && stored[key] !== i.prefs[key]);
+  return { profile, messaging, preferences };
 }
 
 async function seedLegacyKnowledge(db: Queryable, ctx: OrgContext, data: OnboardingData) {
@@ -701,7 +767,7 @@ async function seedLegacyKnowledge(db: Queryable, ctx: OrgContext, data: Onboard
 }
 
 /** Contact details, brand colours, messaging preferences and knowledge: everything beyond the six configurations. */
-async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowledge: OnboardingOutcome["knowledge"]) {
+async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowledge: OnboardingOutcome["knowledge"], messagingKeys: readonly MessagingKey[]) {
   const a = v2.answers;
   const str = (id: string) => (typeof a[id] === "string" ? (a[id] as string) : "");
   // The time zone and the main brand colour are business-profile facts and go through the one writer (writeBusinessProfile); what is left here has no editor in Settings.
@@ -716,13 +782,20 @@ async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowl
   // Preferences only. Automatic replies and channel senders stay off until the owner enables them and each sender is verified.
   const prefs = toMessagingPreferences(a);
   await db.query("insert into messaging_settings (org_id) values ($1) on conflict do nothing", [ctx.org.orgId]);
-  if (v2.firstSubmission) {
-    await db.query(
-      "update messaging_settings set business_hours = $2, reply_business_hours_only = $3, followup_preset = $4, updated_by = $5 where org_id = $1",
-      [ctx.org.orgId, JSON.stringify(prefs.businessHours ?? {}), prefs.replyBusinessHoursOnly, prefs.followupPreset, ctx.user.id],
-    );
-  } else if (prefs.businessHours) {
-    await db.query("update messaging_settings set business_hours = $2, updated_by = $3 where org_id = $1 and business_hours = '{}'::jsonb", [ctx.org.orgId, JSON.stringify(prefs.businessHours), ctx.user.id]);
+  // Each value is written only when its answers changed since the last submission (the first submission writes all three), so a later edit in Settings > Messaging is not undone
+  // by an unrelated change of answers, and a questionnaire edit made after the first submission now applies.
+  const sets: string[] = [];
+  const params: unknown[] = [ctx.org.orgId];
+  const set = (fragment: string, value: unknown) => {
+    params.push(value);
+    sets.push(fragment.replace("?", `$${params.length}`));
+  };
+  if (messagingKeys.includes("hours")) set("business_hours = ?", JSON.stringify(prefs.businessHours ?? {}));
+  if (messagingKeys.includes("replyHours")) set("reply_business_hours_only = ?", prefs.replyBusinessHoursOnly);
+  if (messagingKeys.includes("followup")) set("followup_preset = ?", prefs.followupPreset);
+  if (sets.length) {
+    params.push(ctx.user.id);
+    await db.query(`update messaging_settings set ${sets.join(", ")}, updated_by = $${params.length} where org_id = $1`, params);
   }
 
   // Knowledge: write what onboarding owns; never overwrite text that someone edited in the Knowledge Center.
@@ -749,6 +822,22 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
   }) : [];
   const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
   return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, firstSubmission, generated });
+}
+
+/**
+ * What the most recent submission said it kept, held, skipped or left unchanged (the notes the person saw in the toast), for the page they land on afterwards. The notes are
+ * kept in that submission's audit row (a submission that changed nothing writes one too, so an earlier submission's notes are never shown for it). Names the person's own workspace; nothing from another one can be read.
+ */
+export async function latestOnboardingNotes(ctx: OrgContext): Promise<string[]> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ metadata: { notes?: unknown } }>("select metadata from audit_logs where org_id = $1 and action in ('onboarding.completed', 'onboarding.resubmitted_unchanged') order by id desc limit 1", [ctx.org.orgId]),
+  );
+  const notes = rows[0]?.metadata?.notes;
+  if (!Array.isArray(notes)) return [];
+  return notes
+    .map((n: unknown) => (typeof n === "string" ? n : n && typeof n === "object" && typeof (n as { message?: unknown }).message === "string" ? (n as { message: string }).message : ""))
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 export function summaryOfIndustry(answers: StoredAnswers): string {

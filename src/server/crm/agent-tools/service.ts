@@ -16,6 +16,7 @@ import { HANDLERS, type ToolContext, type ToolOutput, type WritePlan } from "@/s
 import { verifyAgentToolToken, type VerifiedAgentToken } from "@/server/crm/agent-tools/tokens";
 import { env } from "@/server/env";
 import { loadOrgContextForUser } from "@/server/tenancy/context";
+import { clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
 
@@ -227,9 +228,26 @@ async function findCallApproval(db: Queryable, s: CallScope, tool: AgentToolName
   return { id: e.id, status: e.status, executionStatus: e.execution_status, expired: e.expired, created: false };
 }
 
+/**
+ * How many of one client employee's requests may wait for a person at once (client business tier only). An employee that keeps asking, whether by a runaway loop or text in a record it
+ * read, must not bury the Approval Center: past this, new requests are refused until people have answered some. A request that is already waiting is never refused by it.
+ */
+export const MAX_PENDING_CLIENT_PROPOSALS = 25;
+
 /** Records a CRM update approval for a write the employee may not (or may never) make on its own. Idempotent per run, tool, arguments and call. */
 async function requestApprovalForCall(db: Queryable, s: CallScope, tool: AgentToolName, input: Record<string, unknown>, plan: WritePlan, callRef: string, forcedApproval = false): Promise<CallApproval> {
   const key = approvalKey(s, tool, input, callRef);
+  if (forcedApproval && s.actingUserId) {
+    const already = await findCallApproval(db, s, tool, input, callRef);
+    if (already) return already;
+    const waiting = await db.query<{ n: number }>(
+      "select count(*)::int as n from approval_requests where org_id = $1 and agent_instance_id = $2 and kind = 'crm_update' and status = 'pending' and action->>'source' = 'agent_tool' and (expires_at is null or expires_at > now())",
+      [s.agent.org_id, s.agent.id],
+    );
+    if ((waiting.rows[0]?.n ?? 0) >= MAX_PENDING_CLIENT_PROPOSALS) {
+      throw new AppError("rate_limited", `${s.agent.display_name} already has ${MAX_PENDING_CLIENT_PROPOSALS} requests waiting for a person. Nothing was asked for; try again once some have been answered.`);
+    }
+  }
   const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : `${s.agent.display_name} asked to ${plan.summary}.`;
   const why = plan.highImpact ? ` This always needs a person: ${plan.highImpact.charAt(0).toLowerCase()}${plan.highImpact.slice(1)}` : "";
   const id = await createApproval(db, {
@@ -453,6 +471,13 @@ export async function executeApprovedAgentToolCall(input: { orgId: string; appro
   }
   const s = scopeFor({ tokenId: accessId, orgId: input.orgId, agentInstanceId: agent.id, runId, scopes }, agent);
   const def = AGENT_TOOLS[tool];
+  // A request an employee made through the client business tier is carried out only while that tier's proposals are still on for this workspace (the deployment's flag and the workspace's
+  // switch, read now). A person approved it while they were, but switching the feature off must stop what it asked for from running later. Every other approval is unaffected.
+  if (agent.org_kind === "client" && a.forcedApproval === true && !(await withSystem((db) => clientBusinessProposalsOn(input.orgId, db)))) {
+    const detail = "Approved, but this feature is switched off. Nothing was changed.";
+    await safeLog(s, { tool, startedAt, approvalId: input.approvalId, callRef: typeof a.callRef === "string" ? a.callRef.slice(0, 100) : input.approvalId, approved: true, outcome: "refused", result: "denied", detail });
+    return { status: "blocked", detail };
+  }
   if (!agent.enabled || !allowsTool(s, def)) return { status: "blocked", detail: `${agent.display_name} is no longer allowed to ${def.label.toLowerCase()}, so nothing was changed.` };
   const callRef = typeof a.callRef === "string" ? a.callRef.slice(0, 100) : input.approvalId;
   const base = { tool, startedAt, approvalId: input.approvalId, callRef, approved: true };

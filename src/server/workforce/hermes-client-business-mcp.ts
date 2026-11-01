@@ -14,7 +14,7 @@ import { loadOrgContextForUser } from "@/server/tenancy/context";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { bearer, buildBusinessMcpServer, buildRoleWorkspaceContext, refuseCredential, serveStatelessBusinessMcp, type ActiveChatRun, type InternalProfile } from "@/server/workforce/hermes-business-mcp";
-import { clientBusinessMcpToolNamesForRole, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clientBusinessMcpToolNamesForRole, clientBusinessToolsOn, clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { clientToolGate } from "@/server/workforce/hermes-client-business-mcp-gate";
 import { recordClientCredentialUse, verifyClientCredential, type ClientCredentialClaims } from "@/server/workforce/hermes-client-business-credential";
 
@@ -36,9 +36,13 @@ import { recordClientCredentialUse, verifyClientCredential, type ClientCredentia
  *  4. The gate (hermes-client-business-mcp-gate.ts), on every call: the plan still includes the role, the employee's allowed actions, and that the part of the workspace the tool reads
  *     exists and is iAcquire's own. A workspace whose CRM is elsewhere answers "unavailable", never an empty list.
  *
- * This phase is READ ONLY. The tool list is the role's reads (clientBusinessMcpToolNamesForRole with no proposals) and nothing here can write: a tool that is not a read is refused by the
- * gate before any token exists. The proposals phase (changes as approval requests), the per-workspace and per-person rate limits and the extra audit are the next package and plug in at the
- * two marked seams below.
+ * Two phases share this handler. Reads are always on. PROPOSALS, only when the deployment's proposals flag and the workspace's own switch are both on (read in the same transaction as the
+ * gate, on every call), add the role's changes to the tool list. A proposal never changes a record: the shared tool engine is always told to force approval, so a change becomes one pending
+ * approval request (asked for by the person whose Chat turn it is, valid for 72 hours, one per distinct request in a turn) that a person must approve in the Approval Center, and that is
+ * blocked at execution if the proposals flag or switch has gone off by then (executeApprovedAgentToolCall). A message, a booking request or a send request is never offered at all.
+ *
+ * Every tool call and context read is also counted per workspace and per person (RATE_LIMITS.clientBusinessMcpByOrg and ...ByUser), once the turn and its person are known, so one busy
+ * workspace or person cannot use up another's allowance. The per-employee limit is counted by the engine itself and by the route; this handler does not count it a third time.
  */
 
 const TURN_MESSAGE = "This employee can use business information only during its own active, authenticated Chat turn.";
@@ -144,10 +148,23 @@ async function activeClientChatRun(db: Queryable, profile: InternalProfile): Pro
   return { ...profile, runId: run.run_id, userId: run.user_id, configVersionId: run.active_config_version_id, displayName: run.display_name, orgKind: "client" };
 }
 
-async function requireClientRun(profile: InternalProfile): Promise<ActiveChatRun> {
+/**
+ * The turn, then the two limits. The person's limit is counted first, so a person who is over theirs does not also use up the workspace's allowance; both keys name the workspace, so a
+ * person who belongs to two workspaces has a separate allowance in each. A refusal here is written to the audit trail with the reason only, and creates nothing else.
+ */
+async function requireClientRun(profile: InternalProfile, tool: string): Promise<ActiveChatRun> {
   const run = await withSystem((db) => activeClientChatRun(db, profile));
   if (!run) throw new AppError("forbidden", TURN_MESSAGE);
-  // SEAM (proposals and limits package): the per-workspace and per-person limits (RATE_LIMITS.clientBusinessMcpByOrg and ...ByUser) are consumed here, once the turn and its person are known.
+  const limits = [
+    { scope: "person", rule: RATE_LIMITS.clientBusinessMcpByUser, key: `${run.orgId}:${run.userId}` },
+    { scope: "workspace", rule: RATE_LIMITS.clientBusinessMcpByOrg, key: run.orgId },
+  ] as const;
+  for (const limit of limits) {
+    const result = await consumeRateLimit(limit.rule, limit.key);
+    if (result.allowed) continue;
+    await auditClientCall(run, tool, "denied", { reason: "rate_limited", scope: limit.scope });
+    throw new AppError("rate_limited", `Too many business tool requests for this ${limit.scope} just now. Wait ${result.retryAfterSeconds} seconds and try again.`, { retryAfterSeconds: result.retryAfterSeconds });
+  }
   return run;
 }
 
@@ -165,14 +182,28 @@ async function auditClientCall(run: ActiveChatRun, tool: string, result: "succes
   });
 }
 
+/**
+ * One row for a change that became an approval request: the workspace, the employee, the person who asked and the approval, plus the tool and role. The request itself (what would change)
+ * lives in the approval and is not copied here. Written only when the engine really recorded or found a request, so a refused proposal leaves no such row.
+ */
+async function auditClientProposal(run: ActiveChatRun, tool: AgentToolName, reply: Extract<AgentToolReply, { ok: true }>): Promise<void> {
+  if (!reply.approvalId) return;
+  const approvalId = reply.approvalId;
+  await withSystem((db) => recordAudit({
+    orgId: run.orgId, actorUserId: run.userId, actorKind: "agent", agentInstanceId: run.agentId, action: "hermes.client_business_mcp.proposal_requested",
+    targetType: "approval", targetId: approvalId, approvalId, result: "success", metadata: { tier: "client", tool, role: run.roleKey, jti: run.credentialId, runId: run.runId, outcome: reply.status },
+  }, db));
+}
+
 const unavailable = (tool: AgentToolName, detail: string): AgentToolReply => ({ ok: true, httpStatus: 200, status: "unavailable", tool, result: { available: false, detail }, detail });
 
 /**
  * One tool call, made for the person whose Chat turn this is. Every refusal happens before a tool token exists, so a refused call creates nothing: no token, approval, run or record.
- * Order: the turn, the person's membership, the person's own permissions for what the tool needs, the call-time gate, and only then a one-minute token scoped to this one tool.
+ * Order: the turn and the limits, the person's membership, the person's own permissions for what the tool needs (a viewer who may not edit contacts is refused here, before any approval
+ * request could exist), the call-time gate, and only then a one-minute token scoped to this one tool.
  */
 async function callClientTool(profile: InternalProfile, name: AgentToolName, args: Record<string, unknown>, callId: string): Promise<AgentToolReply> {
-  const run = await requireClientRun(profile);
+  const run = await requireClientRun(profile, name);
   const def = AGENT_TOOLS[name];
   const person = await loadOrgContextForUser(run.userId, run.orgId);
   if (!person) {
@@ -192,10 +223,13 @@ async function callClientTool(profile: InternalProfile, name: AgentToolName, arg
   }
   const issued = await withSystem((db) => issueAgentToolToken(db, { orgId: run.orgId, agentInstanceId: run.agentId, runId: run.runId, scopes: [def.scope], ttlMinutes: 1 }));
   try {
-    // SEAM (proposals package): this phase offers and passes reads only (the gate refuses any other kind). forceApprovalWrites stays true so that, whatever is listed later, a write can
-    // only ever become an approval request here and never run.
-    const reply = await callAgentTool({ token: issued.token, tool: name, callId, forceApprovalWrites: true, onBehalfOfUserId: run.userId, readArgs: async () => args });
+    // forceApprovalWrites is always true: whatever the employee's own mode, a change asked for here can only become an approval request and never runs. A change is called without the
+    // gateway's request id, so the engine keys its approval by the arguments: the same request twice in one turn (a retry, a replay) is one approval, not two for a person to answer.
+    const reply = await callAgentTool({
+      token: issued.token, tool: name, callId: def.kind === "write" ? null : callId, forceApprovalWrites: true, onBehalfOfUserId: run.userId, readArgs: async () => args,
+    });
     if (!reply.ok) await auditClientCall(run, name, reply.httpStatus < 500 ? "denied" : "failure", { code: reply.code });
+    else if (def.kind === "write") await auditClientProposal(run, name, reply);
     return reply;
   } finally {
     await withSystem((db) => revokeAgentToolToken(db, issued.tokenId));
@@ -203,7 +237,7 @@ async function callClientTool(profile: InternalProfile, name: AgentToolName, arg
 }
 
 async function readClientContext(profile: InternalProfile) {
-  return buildRoleWorkspaceContext(await requireClientRun(profile));
+  return buildRoleWorkspaceContext(await requireClientRun(profile, "get_role_workspace_context"));
 }
 
 const CONTEXT_DESCRIPTIONS: Record<AgentRoleKey, string> = {
@@ -215,9 +249,10 @@ const CONTEXT_DESCRIPTIONS: Record<AgentRoleKey, string> = {
   performance_analyst: "Read the measured business counts that the person you are talking with is allowed to see, for the last 30 days against the 30 before.",
 };
 
-function makeClientServer(profile: InternalProfile) {
+/** The tool list is the policy module's and nothing else's: the role's reads, plus its changes when this workspace is in the proposals phase. */
+function makeClientServer(profile: InternalProfile, proposals: boolean) {
   return buildBusinessMcpServer({
-    names: clientBusinessMcpToolNamesForRole(profile.roleKey),
+    names: clientBusinessMcpToolNamesForRole(profile.roleKey, { proposals }),
     contextDescription: CONTEXT_DESCRIPTIONS[profile.roleKey],
     readContext: () => readClientContext(profile),
     callTool: (name, args, callId) => callClientTool(profile, name, args, callId),
@@ -241,5 +276,9 @@ export async function handleHermesClientBusinessMcp(request: Request): Promise<R
   const profile = auth.profile;
   const rate = await consumeRateLimit(RATE_LIMITS.agentToolCallsByEmployee, profile.agentId);
   if (!rate.allowed) return plain(429, "Too many requests", { "Retry-After": String(rate.retryAfterSeconds) });
-  return serveStatelessBusinessMcp(makeClientServer(profile), request, config.APP_URL);
+  // With the deployment's proposals flag off this reads nothing. A read that fails offers the reads alone: a smaller list is the safe way to be wrong, and the gate decides again per call.
+  const proposals = config.HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED
+    ? await withSystem((db) => clientBusinessProposalsOn(profile.orgId, db)).catch(() => false)
+    : false;
+  return serveStatelessBusinessMcp(makeClientServer(profile, proposals), request, config.APP_URL);
 }

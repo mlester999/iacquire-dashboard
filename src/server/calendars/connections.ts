@@ -409,6 +409,18 @@ export async function markNeedsReauth(db: Queryable, h: Pick<ConnectionHandle, "
     dedupeKey: `crm-cal-reauth:${h.id}:${since}`,
   });
   await recordAudit({ orgId: h.orgId, actorKind: "system", action: "crm.calendar_reauth_required", targetType: "crm_calendar_connection", targetId: h.id, result: "failure", metadata: { provider: h.provider } }, db);
+  // A host whose account stops working can take a verified calendar out of shape (Meet links, busy times): record that once. It runs in a savepoint inside this transaction.
+  const { reverifyWithinTx } = await import("@/server/calendars/reverify");
+  await reverifyWithinTx(db, h.orgId, "connection_needs_reauth");
+}
+
+/**
+ * Re-checks the workspace's verified calendars after a connection change has committed (a disconnect, new options, a reconnect), so a calendar that stopped being valid, or became
+ * valid again, is recorded once. Advisory: it never fails the change. Loaded when needed: reverify.ts imports activation.ts, which imports this module.
+ */
+async function recheckCalendars(orgId: string, reason: string): Promise<void> {
+  const { reverifyAfterCommit } = await import("@/server/calendars/reverify");
+  await reverifyAfterCommit(orgId, reason);
 }
 
 // ---------------------------------------------------------------------------
@@ -614,6 +626,8 @@ export async function completeCalendarOAuth(user: { id: string }, provider: OAut
       tokenExpiresAt: new Date(tokens.expiresAt), scopes, calendars, writeByDefault: true,
     }, { userId: user.id }),
   );
+  // A host who reconnects can put a calendar that stopped being valid back in order: record the recovery.
+  await recheckCalendars(consumed.org_id, "calendar_connected");
   return { returnPath, connectionId: saved.id, outcome: "connected" };
 }
 
@@ -722,7 +736,7 @@ export interface ConnectionOptionsInput {
 /** The person's own choices for a connection: which calendars make them busy, and whether (and where) their appointments are added. */
 export async function updateConnectionOptions(actor: CrmActor, id: string, input: ConnectionOptionsInput): Promise<ConnectionView> {
   const userId = assertConnector(actor);
-  return crmWrite(actor, async (db) => {
+  const view = await crmWrite(actor, async (db) => {
     const { rows } = await db.query<ConnectionRow>(`select ${VIEW_COLUMNS} from crm_calendar_connections c where c.id = $1 and c.org_id = $2 for update`, [id, actor.orgId]);
     const c = rows[0];
     if (!c || c.status === "disconnected") throw new AppError("not_found", "That calendar connection no longer exists.");
@@ -762,6 +776,9 @@ export async function updateConnectionOptions(actor: CrmActor, id: string, input
     const after = await db.query<ConnectionRow>(`select ${VIEW_COLUMNS} from crm_calendar_connections c where c.id = $1`, [id]);
     return toView(after.rows[0]);
   });
+  // Turning off adding events or conflict checking changes what a verified calendar's connection check finds.
+  await recheckCalendars(actor.orgId, "connection_options_changed");
+  return view;
 }
 
 /**
@@ -796,6 +813,8 @@ export async function disconnectCalendar(actor: CrmActor, id: string): Promise<{
     }
     return { provider: c.provider, creds: unseal(c.credentials) };
   });
+  // A host who disconnects can take a verified calendar out of shape (a Meet link has no account to be made through): record that once.
+  await recheckCalendars(actor.orgId, "calendar_disconnected");
   // Revoking talks to the provider, so it happens after the commit; the connection is already gone either way.
   let revoked = false;
   if (captured.creds?.kind === "oauth" && captured.provider === "google") revoked = await revokeToken("google", captured.creds.refreshToken ?? captured.creds.accessToken).catch(() => false);

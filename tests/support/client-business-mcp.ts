@@ -14,13 +14,15 @@ import { createAppointmentType, createCalendar, setHostAvailability } from "@/se
 import { suggestedProfileName } from "@/server/workforce/service";
 import { handleHermesClientBusinessMcp } from "@/server/workforce/hermes-client-business-mcp";
 import { formatClientCredential, generateClientCredentialSecret, hashClientSecret, registerClientBusinessCredential } from "@/server/workforce/hermes-client-business-credential";
-import { agentId } from "./fixtures";
-import { crmOrg, type CrmOrg, type CrmPerson } from "./crm";
+import type { OrgContext } from "@/server/tenancy/context";
+import { agentId, ctxFor } from "./fixtures";
+import { CRM_ROLES, crmOrg, type CrmOrg, type CrmPerson } from "./crm";
 import { clearSetupPayment } from "./billing";
 import { makeRuntimeReady } from "./runtime-ready";
 
 export const CLIENT_MCP_URL = "https://portal.example.test/api/internal/hermes-business/client/mcp";
 export const CLIENT_MCP_FEATURE = "client_business_tools";
+export const CLIENT_PROPOSALS_FEATURE = "client_business_proposals";
 const WEEKDAYS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 17 * 60 }));
 
 /** Switches the deployment's client-tier flag for the rest of the file (or until it is called again) and forgets the cached environment. */
@@ -29,6 +31,24 @@ export function setClientTier(on: boolean) {
   vi.stubEnv("HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED", "false");
   resetEnvCache();
 }
+
+/**
+ * The proposals phase for the rest of the file: the deployment's client tier and proposals flags on (or the proposals flag off again with `on = false`, the tier staying on). A workspace is
+ * in the phase only when its own switch is on as well (setProposalsSwitch), so a test chooses which tenants take part.
+ */
+export function setClientProposals(on: boolean) {
+  vi.stubEnv("HERMES_CLIENT_BUSINESS_MCP_ENABLED", "true");
+  vi.stubEnv("HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED", on ? "true" : "false");
+  resetEnvCache();
+}
+
+/** One workspace's own proposals switch (org_features), written the way a Super Admin's switch is stored. */
+export const setProposalsSwitch = (orgId: string, on: boolean) => withSystem((db) => db.query(
+  "insert into org_features (org_id, feature, enabled) values ($1, $2, $3) on conflict (org_id, feature) do update set enabled = $3", [orgId, CLIENT_PROPOSALS_FEATURE, on],
+));
+
+/** The signed-in context of one of a tenant's people, as the Approval Center sees them (owner by default). */
+export const personContext = (t: ClientTenant, who: keyof CrmOrg["people"] = "owner"): OrgContext => ctxFor(t.crm.people[who], t.org, CRM_ROLES[who]);
 
 let gateway: Promise<{ id: string; baseUrl: string }> | null = null;
 

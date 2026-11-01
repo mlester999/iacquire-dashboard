@@ -7,13 +7,21 @@ import type { OrgContext } from "@/server/tenancy/context";
 import { assertCan, memberActor } from "@/server/crm/actor";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { PROVISIONING_PAYMENT_NOTE } from "@/lib/billing-clearance";
+import { grantableRoles } from "@/lib/permissions";
+import { confirmedAnswers } from "@/lib/onboarding/engine";
 import type { LaunchIntent, LaunchIntentParams } from "@/lib/launch-readiness";
 import { LAUNCH_VERIFICATION_CAPABILITY, launchVerificationInput, launchVerificationKey } from "@/lib/launch-verification";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { activateCalendar, applyApprovedCalendarHours, assignHostIfNone } from "@/server/calendars/activation";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
+import { createInvitation, deliverInvitation, recordInvitationDelivery } from "@/server/auth/service";
+import type { OutgoingEmail } from "@/server/email";
+import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
+import { approvedAnswersOf, readPendingAnswerChanges } from "@/server/onboarding/pending-changes";
+import { applyPipelineStagesFromAnswers, confirmRegionDefaults } from "@/server/onboarding/workspace-drafts";
+import { provisionClientCrm } from "@/server/onboarding/crm-provisioning";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
-import { findLaunchCalendar, loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { findLaunchCalendar, listedTeamOf, loadLaunchFacts, teamInviteState } from "@/server/setup/launch-readiness";
 import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 
 // The buttons of the guided launch setup. Each one is a thing the client could already do in the CRM; here it is one click from the checklist that names it, runs the real
@@ -21,6 +29,11 @@ import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 // anyone or contacts a provider. A host is only ever a person the client chose (the one who pressed the button, or an active member picked from the list), and hours are only ever the
 // ones the client's own answers suggested AND the client approved exactly as shown (a digest the server recomputes). The three calendar steps open only after the questionnaire is
 // submitted and the setup payment is confirmed.
+//
+// Four more steps are the client's own decisions about their workspace, and each one is a button a person presses, never something that runs by itself: inviting the team they listed
+// (an email to each new person, only to an address they typed, never to someone who is already a member or already invited), confirming the currency and phone country that go with
+// their time zone, adding their own sales steps as a pipeline, and asking the automatic CRM setup to run again. Each one asks for the permission its service needs before anything is
+// read, refuses a sample workspace, and writes nothing when it is refused. None of them turns a customer-facing switch on.
 
 export interface LaunchIntentResult {
   /** The step did what it names. False: it could not yet, and `message` says why in the client's words. */
@@ -37,16 +50,29 @@ async function calendarOrThrow(orgId: string) {
 }
 
 /**
- * The calendar steps are the client's own, and they open in order: the questionnaire is submitted, then the setup payment is confirmed. Before either, the step is refused and
- * nothing is changed. A sample workspace has no setup fee, so it is never held on one.
+ * The setup steps are the client's own, and they open in order: the questionnaire is submitted, then (for the steps that change the workspace's CRM or calendar) the setup payment is
+ * confirmed. Before either, the step is refused and nothing is changed. A sample workspace has no setup fee, so it is never held on one.
  */
-async function assertCalendarStepsOpen(orgId: string) {
+async function assertStepsOpen(orgId: string, what: string, needsPayment = true) {
   const org = await withSystem(async (db) => {
     const row = (await db.query<{ submitted: boolean; is_demo: boolean }>("select onboarding_completed_at is not null as submitted, is_demo from organizations where id = $1", [orgId])).rows[0];
     return row ? { ...row, cleared: row.is_demo ? null : await isSetupPaymentCleared(db, orgId) } : null;
   });
   if (!org?.submitted) throw new AppError("conflict", "Submit your company information first.");
-  if (org.cleared === false) throw new AppError("conflict", "The setup payment is not confirmed, so the calendar steps are not open yet.");
+  if (needsPayment && org.cleared === false) throw new AppError("conflict", `The setup payment is not confirmed, so the ${what} steps are not open yet.`);
+}
+
+const assertCalendarStepsOpen = (orgId: string) => assertStepsOpen(orgId, "calendar");
+
+/** The four steps that act on the client's own workspace for their own reasons are not for a sample workspace: nothing here may reach a real inbox or a real record from one. */
+function assertRealWorkspace(ctx: OrgContext) {
+  if (ctx.org.isDemo) throw new AppError("forbidden", "A sample workspace cannot do this.");
+}
+
+/** What the client saved after their last approval is not what the workspace runs on, so a step that reads their answers waits until they approve it. */
+async function assertNothingWaitingApproval(orgId: string) {
+  const change = await withSystem((db) => readPendingAnswerChanges(db, orgId));
+  if (change.pending) throw new AppError("conflict", "You changed your company setup and have not approved it yet. Approve your changes first, then try this again.");
 }
 
 /** A person who may be made a host: an active member of this workspace with an active account. Another workspace's user, and someone who left, are "not found". */
@@ -71,12 +97,20 @@ export async function runLaunchIntent(ctx: OrgContext, intent: LaunchIntent, par
 
 async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIntentParams): Promise<LaunchIntentResult> {
   if (ctx.org.kind !== "client") throw new AppError("forbidden", "Launch setup applies to a client workspace.");
-  if (intent !== "run_checks") {
+  if (intent === "assign_host" || intent === "apply_hours" || intent === "activate_calendar") {
     // Each calendar step re-checks the permission it needs again; this refuses first, before anything is read.
     assertCan(memberActor(ctx), "calendars.manage");
     await assertCalendarStepsOpen(ctx.org.orgId);
   }
   switch (intent) {
+    case "send_team_invitations":
+      return sendTeamInvitations(ctx);
+    case "confirm_region_defaults":
+      return confirmRegion(ctx);
+    case "apply_pipeline_stages":
+      return applyPipelineStages(ctx);
+    case "retry_crm_setup":
+      return retryCrmSetup(ctx);
     case "assign_host": {
       const cal = await calendarOrThrow(ctx.org.orgId);
       // The host is the person chosen from the workspace's own members, or the person who pressed the button: never anyone the client did not pick.
@@ -118,6 +152,133 @@ async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIn
     }
     case "run_checks":
       return startLaunchVerification(ctx);
+  }
+}
+
+const peopleWord = (n: number) => (n === 1 ? "1 person" : `${n} people`);
+
+/**
+ * Invites the people the client listed as talking to customers, because the person pressed the button. The list is the team answer as last approved (the same one the panel counted
+ * from), one invitation per new email. Someone who is already a member, and someone whose invitation is still open, is skipped: pressing it again sends nothing. All the new invitations
+ * are made in one transaction under a lock of its own, so two presses at once cannot invite the same address twice; the emails go out after it commits, and each one's real outcome is
+ * recorded and told (an email that could not be sent is said to be unsent, and can be resent from Team settings).
+ */
+async function sendTeamInvitations(ctx: OrgContext): Promise<LaunchIntentResult> {
+  const orgId = ctx.org.orgId;
+  // The same permission as Team settings: first, before anything is read.
+  if (!ctx.can("team.manage")) throw new AppError("forbidden", "Only owners and admins can invite teammates.");
+  assertRealWorkspace(ctx);
+  await assertStepsOpen(orgId, "team", false);
+  const answers = await withSystem(async (db) => {
+    const rows = await loadAnswerRows(db, orgId);
+    const change = await readPendingAnswerChanges(db, orgId, rows);
+    return change.pending ? approvedAnswersOf(rows, change) : confirmedAnswers(toStored(rows));
+  });
+  const listed = listedTeamOf(answers);
+  if (!listed.length) return { ok: false, message: "You have not listed anyone in your team answer, so there is nobody to invite. Add people in your company setup, and approve it." };
+  const allowedRoles = grantableRoles(ctx.role);
+
+  const made = await withSystem(async (db) => {
+    await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`launch-team:${orgId}`]);
+    // Read again inside the lock: a member who joined, or an invitation sent from Team settings, since the page was read is respected.
+    const state = await teamInviteState(db, orgId, listed.map((p) => p.email));
+    const created: Array<{ name: string; invitationId: string; message: OutgoingEmail }> = [];
+    const skipped = { members: 0, invited: 0, notAllowed: 0 };
+    for (const person of listed) {
+      if (state.members.has(person.email)) { skipped.members += 1; continue; }
+      if (state.pending.has(person.email)) { skipped.invited += 1; continue; }
+      if (!allowedRoles.includes(person.role)) { skipped.notAllowed += 1; continue; }
+      const invite = await createInvitation({ orgId, email: person.email, role: person.role, invitedBy: ctx.user.id }, db);
+      await recordAudit({
+        orgId, actorUserId: ctx.user.id, actorKind: "user", action: "team.invited", targetType: "invitation", targetId: invite.id, result: "success", metadata: { role: person.role, via: "launch_setup" },
+      }, db);
+      created.push({ name: person.name, invitationId: invite.id, message: invite.message });
+    }
+    return { created, skipped };
+  });
+
+  const outcome = { sent: 0, waiting: 0, failed: 0 };
+  for (const invite of made.created) {
+    const delivery = await deliverInvitation(invite.message);
+    await recordInvitationDelivery(invite.invitationId, delivery);
+    if (delivery.status === "sent") outcome.sent += 1;
+    else if (delivery.status === "failed") outcome.failed += 1;
+    else outcome.waiting += 1;
+  }
+  const notes = [
+    made.skipped.members ? `${peopleWord(made.skipped.members)} already on your team` : null,
+    made.skipped.invited ? `${peopleWord(made.skipped.invited)} already ${made.skipped.invited === 1 ? "has" : "have"} an invitation waiting` : null,
+    made.skipped.notAllowed ? `${peopleWord(made.skipped.notAllowed)} could not be invited with a role your access cannot grant` : null,
+  ].filter((n): n is string => n !== null);
+  const skippedNote = notes.length ? ` Not invited: ${notes.join("; ")}.` : "";
+  if (!made.created.length) return { ok: made.skipped.notAllowed === 0, message: `Nobody new to invite, so nothing was sent.${skippedNote}` };
+  const delivery = [
+    outcome.sent ? `${outcome.sent} emailed` : null,
+    outcome.waiting ? `${outcome.waiting} waiting in the email queue` : null,
+    outcome.failed ? `${outcome.failed} could not be emailed (resend ${outcome.failed === 1 ? "it" : "them"} from Team settings)` : null,
+  ].filter((n): n is string => n !== null).join(", ");
+  return { ok: outcome.failed === 0, message: `Created ${made.created.length === 1 ? "1 invitation" : `${made.created.length} invitations`}: ${delivery}.${skippedNote}` };
+}
+
+/** Confirms the currency and phone country that go with the workspace's time zone, because the person chose to. The CRM's own settings service validates, writes and audits it. */
+async function confirmRegion(ctx: OrgContext): Promise<LaunchIntentResult> {
+  if (!ctx.can("workspace.manage_profile") && !ctx.can("crm.provider.manage")) throw new AppError("forbidden", "Only an owner or admin can change the workspace's currency and phone country.");
+  assertRealWorkspace(ctx);
+  await assertStepsOpen(ctx.org.orgId, "setup");
+  await assertNothingWaitingApproval(ctx.org.orgId);
+  const res = await confirmRegionDefaults(ctx);
+  if (res.state === "applied") return { ok: true, message: `Your workspace now uses ${res.defaults.currency} and +${res.defaults.callingCode}. Change them any time in your CRM settings.` };
+  if (res.state === "unchanged") return { ok: true, message: "Your workspace already uses these values. Nothing was changed." };
+  if (res.reason === "no_suggestion") return { ok: false, message: "Your time zone does not point to one country, so there is nothing to suggest. Set the currency and phone country in your CRM settings." };
+  if (res.reason === "edited") return { ok: false, message: "The currency or phone country was already set by someone, so it was left alone." };
+  return { ok: false, message: "There are already deals, proposals or invoices in your current currency, so it was not changed." };
+}
+
+/** Adds the client's own sales steps as a new pipeline, because the person chose to. It only ever adds: no existing pipeline or stage is edited or deleted. */
+async function applyPipelineStages(ctx: OrgContext): Promise<LaunchIntentResult> {
+  assertCan(memberActor(ctx), "pipelines.manage");
+  assertRealWorkspace(ctx);
+  await assertStepsOpen(ctx.org.orgId, "setup");
+  await assertNothingWaitingApproval(ctx.org.orgId);
+  const res = await applyPipelineStagesFromAnswers(ctx);
+  if (res.state === "created") {
+    return { ok: true, message: `Your sales steps are now a pipeline with ${res.stages} stages${res.madeDefault ? ", and it is your default pipeline" : ". Your existing pipeline is still your default"}. Nothing that was already there was changed.` };
+  }
+  if (res.state === "unchanged") return { ok: true, message: "Your sales steps are already in your CRM as a pipeline. Nothing was changed." };
+  if (res.reason === "no_plan") return { ok: false, message: "Your sales process answer is not a clear list of steps, so no pipeline was made. List three to eight steps, one per line, in your company setup." };
+  if (res.reason === "not_native") return { ok: false, message: "Your pipelines are kept in another system, so iAcquire does not add one here." };
+  return { ok: false, message: "Your CRM already has the most pipelines it can hold, so none was added." };
+}
+
+/**
+ * Asks the automatic industry CRM setup to run again. It is the same idempotent setup that runs after the payment: it acts under the agency person who created the workspace (never the
+ * client's own identity), writes nothing if anything is unclear, and does nothing when a live application already exists. The person pressing it may only ask; what it did is read back
+ * from what it returns.
+ */
+async function retryCrmSetup(ctx: OrgContext): Promise<LaunchIntentResult> {
+  if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only an owner or admin can ask for the CRM setup to run again.");
+  assertRealWorkspace(ctx);
+  await assertStepsOpen(ctx.org.orgId, "setup");
+  // The setup picks the industry starter and prefills values from the client's answers, and once it lands it is one-shot: it must not read an edit the client has not approved.
+  await assertNothingWaitingApproval(ctx.org.orgId);
+  const res = await provisionClientCrm(ctx.org.orgId, { trigger: "launch_retry" });
+  switch (res.state) {
+    case "applied":
+      // Some sections can fail while the application still lands: say so, instead of claiming everything is in the CRM (the panel shows the same as partial).
+      if (res.status === "partially_applied") return { ok: false, message: "Part of your industry setup was applied, and iAcquire reviews the rest. Nothing was sent to anyone." };
+      return res.replayed
+        ? { ok: true, message: "Your industry CRM was already set up. Nothing was changed." }
+        : { ok: true, message: "Your industry CRM is set up: its pipeline, tags and fields are in your CRM now. Nothing was sent to anyone." };
+    case "already_set_up":
+      return { ok: false, message: "A setup for your industry was already applied here, or was undone by a person, so nothing was changed. iAcquire reviews it from here." };
+    case "waiting_for_a_person":
+      return { ok: false, message: "A person at iAcquire has to apply your industry setup. They have been told, and nothing was added to your CRM." };
+    case "failed":
+      return { ok: false, message: "The setup did not finish, and nothing was added. iAcquire has been told." };
+    case "disabled":
+      return { ok: false, message: "The automatic setup is switched off for now, so iAcquire sets up your CRM by hand." };
+    default:
+      return { ok: false, message: "The setup is not ready to run for your workspace yet, so nothing was changed." };
   }
 }
 

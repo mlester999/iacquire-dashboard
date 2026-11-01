@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
-import { channelIsReady, connectionSteps, deriveLaunchReadiness, fingerprintOf, STALL_MINUTES, summarizeWeeklyHours, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
+import { actionKind, channelIsReady, connectionSteps, deriveLaunchReadiness, employeeStages, fingerprintOf, LAUNCH_INTENTS, STALL_MINUTES, summarizeWeeklyHours, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
 
 // "100% Ready to Launch" must mean every applicable, required setup and verification check passed, and nothing less: not a queued job, not a drafted calendar, not a green badge.
 
@@ -907,5 +907,377 @@ describe("the fingerprint says 'something changed', and only that", () => {
       fingerprintOf(deriveLaunchReadiness(provisioningLead({ startedAt: ago(500) }), NOW)),
     ]);
     expect(seen.size).toBe(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round B: intents, informational items, the capacity hold, the employees' path and the customer-facing switches
+// ---------------------------------------------------------------------------
+
+const everyItem = (r: ReturnType<typeof deriveLaunchReadiness>) => r.steps.flatMap((s) => s.items);
+const NOT_READY = { state: "provisioning" as const, chatAvailable: false, workReady: false, description: "", blocking: [] as string[] };
+const STEP = (connection: string, inventory: string, requirements = "upcoming", last = "upcoming") => [
+  { key: "configuration", state: "done" as const }, { key: "connection", state: connection as "done" }, { key: "inventory", state: inventory as "done" }, { key: "requirements", state: requirements as "done" }, { key: "ready", state: last as "done" },
+];
+
+describe("the intents a button can run", () => {
+  it("lists every step, and every intent an item can offer is one of them", () => {
+    expect([...LAUNCH_INTENTS].sort()).toEqual(["activate_calendar", "apply_hours", "apply_pipeline_stages", "assign_host", "confirm_region_defaults", "retry_crm_setup", "run_checks", "send_team_invitations"]);
+    const offering = ready({
+      team: { listed: 2, members: 0, pending: 0, toInviteNames: ["Ana", "Ben"], canManage: true },
+      crm: { ...ready().crm, region: { state: "offer", currency: "PHP", callingCode: "63", country: "the Philippines" }, pipelineDraft: { state: "offer", stages: ["Enquiry", "Quote"], makesDefault: true } },
+    });
+    const intents = everyItem(deriveLaunchReadiness(offering)).flatMap((i) => (i.action?.intent ? [i.action.intent] : []));
+    expect(intents.sort()).toEqual(["apply_pipeline_stages", "confirm_region_defaults", "send_team_invitations"]);
+    for (const intent of intents) expect(LAUNCH_INTENTS).toContain(intent);
+  });
+
+  it("tells a step that runs here from a link to another screen", () => {
+    expect(actionKind({ intent: "run_checks" })).toBe("internal");
+    expect(actionKind({})).toBe("external");
+    expect(actionKind({ intent: "run_checks", kind: "external" })).toBe("external");
+  });
+});
+
+describe("the team the client listed", () => {
+  const listed = (over: Partial<NonNullable<LaunchFacts["team"]>> = {}) => ready({ team: { listed: 2, members: 0, pending: 0, toInviteNames: ["Ana Cruz", "Ben Lee"], canManage: true, ...over } });
+
+  it("shows nothing when nobody was listed, and never counts towards the percentage when somebody was", () => {
+    const none = deriveLaunchReadiness(ready());
+    expect(everyItem(none).some((i) => i.key === "knowledge.team")).toBe(false);
+    expect(everyItem(deriveLaunchReadiness(ready({ team: { listed: 0, members: 0, pending: 0, toInviteNames: [] } }))).some((i) => i.key === "knowledge.team")).toBe(false);
+    const open = deriveLaunchReadiness(listed());
+    const item = itemOf(open, "knowledge.team");
+    expect(item).toMatchObject({ state: "action_required", required: false, owner: "you", action: { label: "Send 2 invitations", intent: "send_team_invitations" } });
+    expect(item.detail).toContain("Ana Cruz");
+    expect(item.detail).toContain("pressing this emails");
+    expect(item.detail).toContain("and only then");
+    expect([open.state, open.percent, open.passed, open.total]).toEqual([none.state, none.percent, none.passed, none.total]);
+    expect(open.blocking).toEqual([]);
+  });
+
+  it("offers a button only to a person who may invite, and words the single case in the singular", () => {
+    expect(itemOf(deriveLaunchReadiness(listed({ canManage: false })), "knowledge.team").action).toBeUndefined();
+    expect(itemOf(deriveLaunchReadiness(listed({ canManage: false })), "knowledge.team").detail).toContain("Only an owner or admin");
+    expect(itemOf(deriveLaunchReadiness(listed({ toInviteNames: ["Ana Cruz"], listed: 1 })), "knowledge.team").action?.label).toBe("Send 1 invitation");
+  });
+
+  it("names each address and role the button emails, and counts only the people this viewer may invite", () => {
+    const people = [
+      { name: "Ana Cruz", email: "ana@client.example", role: "sales_rep" as const },
+      { name: "Ben Lee", email: "ben@client.example", role: "admin" as const },
+    ];
+    const all = itemOf(deriveLaunchReadiness(listed({ invitable: people })), "knowledge.team");
+    expect(all.action?.label).toBe("Send 2 invitations");
+    expect(all.detail).toContain("Ana Cruz, ana@client.example, as Sales Representative");
+    expect(all.detail).toContain("Ben Lee, ben@client.example, as Manager");
+    // Someone whose listed role the viewer cannot grant is not counted and not emailed: the count is what the button sends.
+    const some = itemOf(deriveLaunchReadiness(listed({ invitable: [people[0]] })), "knowledge.team");
+    expect(some.action?.label).toBe("Send 1 invitation");
+    expect(some.detail).toContain("ana@client.example");
+    expect(some.detail).not.toContain("ben@client.example");
+    expect(some.detail).toContain("1 more person is listed with access you cannot give");
+    // Nobody the viewer may invite: no button at all, and no address shown.
+    const none = itemOf(deriveLaunchReadiness(listed({ invitable: [] })), "knowledge.team");
+    expect(none.action).toBeUndefined();
+    expect(none.detail).toContain("an owner has to send these invitations");
+    // A read with no viewer (no addresses): names only, as before.
+    expect(itemOf(deriveLaunchReadiness(listed()), "knowledge.team").detail).not.toContain("@");
+  });
+
+  it("reads waiting while invitations are open, and done once everyone joined", () => {
+    expect(itemOf(deriveLaunchReadiness(listed({ toInviteNames: [], pending: 2 })), "knowledge.team")).toMatchObject({ state: "in_progress", required: false });
+    const joined = itemOf(deriveLaunchReadiness(listed({ toInviteNames: [], members: 2 })), "knowledge.team");
+    expect(joined).toMatchObject({ state: "done", required: false });
+    expect(joined.action).toBeUndefined();
+  });
+
+  it("never lets an optional in-progress item turn a ready client into provisioning", () => {
+    expect(deriveLaunchReadiness(listed({ toInviteNames: [], pending: 2 })).state).toBe("ready_to_launch");
+  });
+});
+
+describe("a person to take over customer conversations", () => {
+  it("is not applicable until a customer channel is wanted, and then reads the staff profiles", () => {
+    const noChannel = ready({ channels: [{ channel: "email", wanted: false, enabled: false, registration: "not_started" }], handoff: { ownerHasNotifyChannel: false, eligibleStaff: 0 } });
+    expect(itemOf(deriveLaunchReadiness(noChannel), "knowledge.handoff")).toMatchObject({ state: "not_applicable", required: false });
+    const covered = itemOf(deriveLaunchReadiness(ready({ handoff: { ownerHasNotifyChannel: true, eligibleStaff: 2 } })), "knowledge.handoff");
+    expect(covered).toMatchObject({ state: "done", required: false });
+    expect(covered.detail).toContain("2 people are set up");
+    const nobody = deriveLaunchReadiness(ready({ handoff: { ownerHasNotifyChannel: false, eligibleStaff: 0 } }));
+    expect(itemOf(nobody, "knowledge.handoff")).toMatchObject({ state: "action_required", required: false, action: { href: "/settings/escalations" } });
+    // Informational: the same percentage and the same state as a client with someone set up.
+    const fine = deriveLaunchReadiness(ready({ handoff: { ownerHasNotifyChannel: true, eligibleStaff: 1 } }));
+    expect([nobody.state, nobody.percent, nobody.total]).toEqual([fine.state, fine.percent, fine.total]);
+    expect(nobody.blocking).toEqual([]);
+  });
+
+  it("says nothing when the facts did not read it", () => {
+    expect(everyItem(deriveLaunchReadiness(ready())).some((i) => i.key === "knowledge.handoff")).toBe(false);
+  });
+});
+
+describe("currency, phone country and the client's own pipeline stages", () => {
+  const region = { state: "offer" as const, currency: "PHP", callingCode: "63", country: "the Philippines" };
+  const draft = { state: "offer" as const, stages: ["Enquiry", "Site visit", "Quote"], makesDefault: true };
+
+  it("offers each one as an optional step the client confirms, with the exact values in the words", () => {
+    const r = deriveLaunchReadiness(ready({ crm: { ...ready().crm, region, pipelineDraft: draft } }));
+    expect(itemOf(r, "crm.region")).toMatchObject({ state: "action_required", required: false, owner: "you", action: { label: "Use PHP and +63", intent: "confirm_region_defaults" } });
+    expect(itemOf(r, "crm.region").detail).toContain("Nothing changes until you confirm");
+    expect(itemOf(r, "crm.stages")).toMatchObject({ state: "action_required", required: false, owner: "you", action: { intent: "apply_pipeline_stages" } });
+    expect(itemOf(r, "crm.stages").detail).toContain("Enquiry, Site visit, Quote");
+    expect(itemOf(r, "crm.stages").detail).toContain("never edited or deleted");
+    expect(r.state).toBe("ready_to_launch");
+    expect(r.percent).toBe(100);
+  });
+
+  it("reads done once it is in place, and offers no button to a person who may not", () => {
+    const r = deriveLaunchReadiness(ready({ crm: { ...ready().crm, region: { ...region, state: "matches" }, pipelineDraft: { state: "applied", stages: [] } } }));
+    expect(itemOf(r, "crm.region")).toMatchObject({ state: "done", required: false });
+    expect(itemOf(r, "crm.stages")).toMatchObject({ state: "done", required: false });
+    expect(itemOf(r, "crm.region").action).toBeUndefined();
+    const limited = deriveLaunchReadiness(ready({ crm: { ...ready().crm, region: { ...region, canConfirm: false }, pipelineDraft: { ...draft, canApply: false } } }));
+    expect(itemOf(limited, "crm.region").action).toBeUndefined();
+    expect(itemOf(limited, "crm.stages").action).toBeUndefined();
+  });
+
+  it("is left out of a CRM another system keeps", () => {
+    const r = deriveLaunchReadiness(ready({ crm: { mode: "ghl", blueprint: "none", pipelineReady: false, providerConnected: true, region, pipelineDraft: draft } }));
+    expect(everyItem(r).some((i) => i.key === "crm.region" || i.key === "crm.stages")).toBe(false);
+  });
+});
+
+describe("asking the automatic CRM setup to run again", () => {
+  const failed = (over: Partial<LaunchFacts["crm"]> = {}) => ready({ crm: { ...ready().crm, blueprint: "failed", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 }, ...over } });
+
+  it("is offered on a failed setup only to a person who may ask, and the item stays iAcquire's", () => {
+    expect(itemOf(deriveLaunchReadiness(failed({ canRetry: true })), "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire", action: { label: "Try the setup again", intent: "retry_crm_setup" } });
+    expect(itemOf(deriveLaunchReadiness(failed()), "crm.blueprint").action).toBeUndefined();
+  });
+
+  it("is offered on a setup that has waited too long, and not on one that is still young or waiting for a person", () => {
+    const waiting = (since: string, over: Partial<LaunchFacts["crm"]> = {}) => ready({ crm: { ...ready().crm, blueprint: "none", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 }, waitingSince: since, canRetry: true, ...over } });
+    const now = new Date("2026-10-26T12:00:00Z");
+    const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
+    const old = itemOf(deriveLaunchReadiness(waiting(minutesAgo(STALL_MINUTES.crm + 5)), now), "crm.blueprint");
+    expect(old).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true, action: { intent: "retry_crm_setup" } });
+    const young = itemOf(deriveLaunchReadiness(waiting(minutesAgo(5)), now), "crm.blueprint");
+    expect(young).toMatchObject({ state: "in_progress" });
+    expect(young.action).toBeUndefined();
+    expect(itemOf(deriveLaunchReadiness(failed({ blueprint: "waiting_for_a_person", canRetry: true })), "crm.blueprint").action).toBeUndefined();
+  });
+});
+
+describe("waiting for room on the client runtime", () => {
+  const held = (over: Partial<EmployeeFact> = {}) => replaceEmployee(ready(), "lead_hunter", {
+    provisioning: "requested", configVersion: null, readiness: NOT_READY, capacityHeld: true, startedAt: "2026-10-26T11:50:00.000Z", ...over,
+  });
+  const now = new Date("2026-10-26T12:00:00Z");
+
+  it("says Waiting for capacity, is iAcquire's, and is neither failed nor ready", () => {
+    const r = deriveLaunchReadiness(held(), now);
+    const i = itemOf(r, "employees.lead_hunter");
+    expect(i).toMatchObject({ state: "in_progress", owner: "iacquire", required: true });
+    expect(i.detail).toContain("Waiting for capacity (iAcquire)");
+    expect(i.detail).toContain("Nothing has failed");
+    expect(r.state).toBe("provisioning");
+    expect(r.percent).toBeLessThan(100);
+    expect(r.blocking).toEqual([]);
+    expect(itemOf(r, "employees.lead_hunter").state).not.toBe("done");
+  });
+
+  it("is still a hold when the worker answered no room (a failed attempt), never a failure", () => {
+    const r = deriveLaunchReadiness(held({ provisioning: "failed", provisioningDetail: "capacity_exceeded", attempts: 3 }), now);
+    expect(itemOf(r, "employees.lead_hunter")).toMatchObject({ state: "in_progress", owner: "iacquire" });
+    expect(itemOf(r, "employees.lead_hunter").detail).toContain("Waiting for capacity");
+  });
+
+  it("does not hide a long hold: after the threshold it is iAcquire's to look at, in words about room", () => {
+    const r = deriveLaunchReadiness(held({ startedAt: new Date(now.getTime() - (STALL_MINUTES.provisioning + 10) * 60_000).toISOString() }), now);
+    const i = itemOf(r, "employees.lead_hunter");
+    expect(i).toMatchObject({ state: "action_required", owner: "iacquire", stalled: true });
+    expect(i.detail).toContain("Waiting for room");
+    expect(r.state).toBe("action_required");
+  });
+
+  it("is only a hold while the facts say so: a queued job without the flag is the ordinary queue", () => {
+    const i = itemOf(deriveLaunchReadiness(held({ capacityHeld: false }), now), "employees.lead_hunter");
+    expect(i.detail).not.toContain("capacity");
+    expect(i.owner).toBe("system");
+  });
+});
+
+describe("each employee's path", () => {
+  const stagesOf = (e: EmployeeFact, f: LaunchFacts = ready()) => itemOf(deriveLaunchReadiness(replaceEmployee(f, e.role, e)), `employees.${e.role}`).stages;
+  const states = (e: EmployeeFact) => stagesOf(e)?.map((s) => `${s.key}:${s.state}`);
+  const base = employee("lead_hunter");
+
+  it("shows a ready employee as done at every stage, with text labels", () => {
+    const s = stagesOf({ ...base, provisioning: "succeeded" })!;
+    expect(s.map((x) => x.key)).toEqual(["queued", "profile", "verified", "tools", "ready"]);
+    expect(s.every((x) => x.state === "done")).toBe(true);
+    expect(s.map((x) => x.label)).toEqual(["Queued", "Profile created", "Connection verified", "Tools verified", "Ready for work"]);
+  });
+
+  it("does not call a queued job a created profile", () => {
+    const queued = states({ ...base, provisioning: "requested", configVersion: null, readiness: NOT_READY, readinessSteps: STEP("upcoming", "upcoming") });
+    expect(queued).toEqual(["queued:done", "profile:pending", "verified:pending", "tools:pending", "ready:pending"]);
+    const creating = states({ ...base, provisioning: "in_progress", configVersion: null, readiness: NOT_READY, readinessSteps: STEP("upcoming", "upcoming") });
+    expect(creating).toEqual(["queued:done", "profile:in_progress", "verified:pending", "tools:pending", "ready:pending"]);
+  });
+
+  it("moves one stage at a time as the stored facts arrive", () => {
+    const profile = states({ ...base, provisioning: "awaiting_health_check", configVersion: null, readiness: NOT_READY, readinessSteps: STEP("current", "upcoming") });
+    expect(profile).toEqual(["queued:done", "profile:done", "verified:in_progress", "tools:pending", "ready:pending"]);
+    const verified = states({ ...base, provisioning: "succeeded", readiness: NOT_READY, readinessSteps: STEP("done", "current") });
+    expect(verified).toEqual(["queued:done", "profile:done", "verified:done", "tools:in_progress", "ready:pending"]);
+    const waitingOnRole = states({ ...base, provisioning: "succeeded", readiness: { state: "ready", chatAvailable: true, workReady: false, description: "", blocking: ["Approved knowledge"] }, readinessSteps: STEP("done", "done", "current") });
+    expect(waitingOnRole).toEqual(["queued:done", "profile:done", "verified:done", "tools:done", "ready:action_required"]);
+  });
+
+  it("marks the stage that failed, and nothing after it as reached", () => {
+    expect(states({ ...base, provisioning: "failed", attempts: 3, configVersion: null, readiness: NOT_READY, readinessSteps: STEP("upcoming", "upcoming") })).toEqual(["queued:done", "profile:failed", "verified:pending", "tools:pending", "ready:pending"]);
+    expect(states({ ...base, provisioning: "awaiting_health_check", healthFailed: true, configVersion: null, readiness: NOT_READY, readinessSteps: STEP("blocked", "upcoming") })).toEqual(["queued:done", "profile:done", "verified:failed", "tools:pending", "ready:pending"]);
+  });
+
+  it("reads a capacity hold as a queued job whose profile has not begun", () => {
+    expect(states({ ...base, provisioning: "requested", configVersion: null, readiness: NOT_READY, capacityHeld: true })).toEqual(["queued:done", "profile:pending", "verified:pending", "tools:pending", "ready:pending"]);
+  });
+
+  it("has no path for an employee that is not part of the plan, or an Appointment Setter for a business that books nothing", () => {
+    expect(stagesOf({ ...base, entitled: false })).toBeUndefined();
+    const noBooking = ready({ appointments: { wanted: false, calendar: null, externalCalendarConnected: false } });
+    expect(itemOf(deriveLaunchReadiness(noBooking), "employees.appointment_setter").stages).toBeUndefined();
+    expect(itemOf(deriveLaunchReadiness(noBooking), "employees.lead_hunter").stages).toBeDefined();
+  });
+
+  it("is kept on an employee that stalled", () => {
+    const now = new Date("2026-10-26T12:00:00Z");
+    const f = replaceEmployee(ready(), "lead_hunter", { provisioning: "in_progress", configVersion: null, readiness: NOT_READY, startedAt: new Date(now.getTime() - 120 * 60_000).toISOString() });
+    const i = itemOf(deriveLaunchReadiness(f, now), "employees.lead_hunter");
+    expect(i.stalled).toBe(true);
+    expect(i.stages?.map((s) => s.key)).toEqual(["queued", "profile", "verified", "tools", "ready"]);
+  });
+
+  it("never shows a later stage done before an earlier one, for any combination of facts", () => {
+    const provisioning = ["none", "requested", "in_progress", "awaiting_health_check", "succeeded", "failed", "retrying", "cancelled"] as const;
+    const stepStates = ["done", "current", "upcoming", "blocked"] as const;
+    const order = ["queued", "profile", "verified", "tools", "ready"];
+    let checked = 0;
+    for (const p of provisioning) for (const conn of stepStates) for (const inv of stepStates) for (const workReady of [false, true]) for (const chat of [false, true]) for (const healthFailed of [false, true]) for (const capacityHeld of [false, true]) {
+      const e = employee("crm_manager", { provisioning: p, healthFailed, capacityHeld, readinessSteps: STEP(conn, inv), readiness: { state: "ready", chatAvailable: chat, workReady, description: "", blocking: [] } });
+      const stages = employeeStages({ appointments: { wanted: true, calendar: null, externalCalendarConnected: false } }, e)!;
+      expect(stages.map((s) => s.key)).toEqual(order);
+      const firstOpen = stages.findIndex((s) => s.state !== "done");
+      // Everything after the first stage that is not done has not been reached.
+      for (const [i, s] of stages.entries()) if (firstOpen !== -1 && i > firstOpen) expect(s.state, JSON.stringify({ p, conn, inv, workReady, chat })).toBe("pending");
+      // A created profile needs more than a queued job: "profile" is done only for a job that reached its health check or finished, or for later evidence.
+      if (p === "requested" || p === "in_progress" || p === "retrying" || p === "failed" || p === "none") {
+        const later = conn === "done" || inv === "done" || chat || workReady;
+        if (!later) expect(stages[1].state).not.toBe("done");
+      }
+      checked += 1;
+    }
+    expect(checked).toBe(provisioning.length * 4 * 4 * 2 * 2 * 2 * 2);
+  });
+});
+
+describe("the customer-facing switches", () => {
+  const controls = [
+    { key: "booking_page", label: "Public booking page", on: false, wanted: true, href: "/crm/calendars/cal-1" },
+    { key: "auto_reply", label: "AI replies to customers", on: false, wanted: true, href: "/settings/messaging" },
+    { key: "channel.email", label: "Email", on: true, wanted: true, href: "/settings/messaging" },
+    { key: "website", label: "Public website", on: false, wanted: false, href: "/website" },
+  ];
+
+  it("lists them as they are without saying who turned one on, every row not required", () => {
+    const r = deriveLaunchReadiness(ready({ launchControls: controls }));
+    expect(r.controls).toHaveLength(4);
+    expect(r.controls!.every((c) => c.required === false)).toBe(true);
+    const detail = (key: string) => r.controls!.find((c) => c.key === key)!.detail;
+    expect(detail("booking_page")).toBe("Off. You asked for this. Nothing in this setup turns it on: it stays off until a person switches it on.");
+    expect(detail("website")).toBe("Off. Nothing in this setup turns it on: it stays off until a person switches it on.");
+    expect(detail("channel.email")).toBe("On.");
+    // Nothing records who flipped a switch, so no row claims it was the client (or promises the client a switch they do not have).
+    expect(r.controls!.some((c) => /you switched|switch it on yourself|until you turn it on/i.test(c.detail))).toBe(false);
+    // A channel is switched on by iAcquire once it is verified: the same ownership the integrations step states.
+    const channels = deriveLaunchReadiness(ready({ launchControls: [{ key: "channel.sms", label: "SMS", on: false, wanted: true, href: "/settings/messaging" }] }));
+    expect(channels.controls![0].detail).toBe("Off. You asked for this. iAcquire switches a channel on once it is set up and verified; nothing in this setup turns it on.");
+    expect(r.controls!.map((c) => c.href)).toEqual(["/crm/calendars/cal-1", "/settings/messaging", "/settings/messaging", "/website"]);
+  });
+
+  it("never moves the state, the percentage, the checks counted or the fingerprint, and omits the list when the facts have none", () => {
+    const plain = deriveLaunchReadiness(ready());
+    const withControls = deriveLaunchReadiness(ready({ launchControls: controls }));
+    expect(plain.controls).toBeUndefined();
+    expect([withControls.state, withControls.percent, withControls.passed, withControls.total]).toEqual([plain.state, plain.percent, plain.passed, plain.total]);
+    expect(fingerprintOf(withControls)).toBe(fingerprintOf(plain));
+    // Not even with every switch on, and not for a client that is far from ready.
+    const allOn = deriveLaunchReadiness(ready({ launchControls: controls.map((c) => ({ ...c, on: true })) }));
+    expect(allOn.percent).toBe(plain.percent);
+    const early = ready({ knowledge: { approved: 0, pending: 0 } });
+    expect(deriveLaunchReadiness({ ...early, launchControls: controls }).percent).toBe(deriveLaunchReadiness(early).percent);
+  });
+});
+
+describe("a booking summary that is informational", () => {
+  it("states the saved rules in words and never changes the percentage", () => {
+    const plain = deriveLaunchReadiness(ready());
+    const r = deriveLaunchReadiness(ready({ bookingSettings: { lateCancelHours: 24, aiBookingEnabled: false, remindersEnabled: false } }));
+    const i = itemOf(r, "calendar.booking_settings");
+    expect(i).toMatchObject({ state: "done", required: false });
+    expect(i.detail).toContain("only proposes a booking, and a person confirms it");
+    expect(i.detail).toContain("less than 24 hours");
+    expect(i.detail).toContain("Reminders to customers are off");
+    expect([r.state, r.percent, r.total]).toEqual([plain.state, plain.percent, plain.total]);
+    const loose = itemOf(deriveLaunchReadiness(ready({ bookingSettings: { lateCancelHours: null, aiBookingEnabled: true, remindersEnabled: true } })), "calendar.booking_settings");
+    expect(loose.detail).toContain("may book on its own, because you turned that on");
+    expect(loose.detail).toContain("No late-cancellation rule");
+    expect(loose.detail).toContain("Reminders to customers are on");
+  });
+});
+
+describe("a check that had nothing to read", () => {
+  it("says Nothing to check yet, and is still a pass that counts towards 100%", () => {
+    const f = ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { ...passed(role), nothingToCheck: true } : passed(role))) });
+    const r = deriveLaunchReadiness(f);
+    const i = itemOf(r, "verification.crm_manager");
+    expect(i).toMatchObject({ state: "done", required: true });
+    expect(i.detail).toContain("Nothing to check yet");
+    expect(r.state).toBe("ready_to_launch");
+    expect(r.percent).toBe(100);
+    expect(itemOf(r, "verification.sales_assistant").detail).not.toContain("Nothing to check yet");
+  });
+
+  it("keeps what the check itself recorded after the plain words", () => {
+    const f = ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { role, state: "passed" as const, configVersion: 3, detail: "CRM quality review. Checked 0 contacts and 0 companies. Nothing to review yet.", nothingToCheck: true } : passed(role))) });
+    expect(itemOf(deriveLaunchReadiness(f), "verification.crm_manager").detail).toBe("Nothing to check yet. CRM quality review. Checked 0 contacts and 0 companies. Nothing to review yet.");
+  });
+
+  it("does not turn a failed check or a stale one into a pass", () => {
+    const stale = deriveLaunchReadiness(ready({ verification: AGENT_ROLE_KEYS.map((role) => (role === "crm_manager" ? { ...passed(role, 2), nothingToCheck: true } : passed(role))) }));
+    expect(itemOf(stale, "verification.crm_manager").state).toBe("action_required");
+    expect(itemOf(stale, "verification.crm_manager").detail).not.toContain("Nothing to check yet");
+  });
+});
+
+describe("the fingerprint and the new data", () => {
+  it("ignores the employees' paths, the switches and the optional lines, and moves for a required one", () => {
+    const base = fingerprintOf(deriveLaunchReadiness(ready()));
+    const extras = ready({
+      launchControls: [{ key: "booking_page", label: "x", on: true, wanted: true, href: "/x" }],
+      team: { listed: 1, members: 0, pending: 0, toInviteNames: ["Ana"], canManage: true },
+      handoff: { ownerHasNotifyChannel: false, eligibleStaff: 0 },
+      bookingSettings: { lateCancelHours: 12, aiBookingEnabled: true, remindersEnabled: true },
+      crm: { ...ready().crm, region: { state: "offer", currency: "USD", callingCode: "1", country: "the United States" }, pipelineDraft: { state: "offer", stages: ["A", "B", "C"] } },
+    });
+    expect(fingerprintOf(deriveLaunchReadiness(extras))).toBe(base);
+    // A real hold (a queued job that waits for room) is a required item that is in progress and iAcquire's, so it does move the fingerprint; its paths and wording alone do not.
+    const heldJob = (over: Partial<EmployeeFact> = {}) => replaceEmployee(ready(), "lead_hunter", { provisioning: "requested", configVersion: null, readiness: NOT_READY, capacityHeld: true, startedAt: "2026-10-26T11:50:00.000Z", ...over });
+    const held = fingerprintOf(deriveLaunchReadiness(heldJob()));
+    expect(held).not.toBe(base);
+    expect(fingerprintOf(deriveLaunchReadiness(heldJob({ readinessSteps: STEP("done", "done"), startedAt: "2026-10-26T09:00:00.000Z", provisioningDetail: "another sentence" })))).toBe(held);
+    expect(fingerprintOf(deriveLaunchReadiness(ready({ knowledge: { approved: 0, pending: 0 } })))).not.toBe(base);
   });
 });

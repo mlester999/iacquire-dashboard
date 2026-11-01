@@ -7,7 +7,9 @@ import { actionError, AppError } from "@/server/errors";
 import {
   aiPrefsInputSchema,
   changeMemberRole,
+  getTeamSuggestions,
   inviteMember,
+  previewAiPreferencesApply,
   profileSchema,
   revokeInvite,
   revokeMember,
@@ -29,9 +31,10 @@ function zodFail(err: unknown) {
 export async function updateProfileAction(input: z.input<typeof profileSchema>) {
   try {
     const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
-    await updateProfile(ctx, input);
+    const data = await updateProfile(ctx, input);
     revalidatePath("/", "layout");
-    return { ok: true as const };
+    // The employees the save reached are said as they are: a version waiting for review is reported as waiting, never as applied.
+    return { ok: true as const, data: { employees: { updated: data.employees.updated.length, held: data.employees.held.length, failed: data.employees.failed } } };
   } catch (err) {
     return zodFail(err);
   }
@@ -44,6 +47,26 @@ export async function updateAiPreferencesAction(input: z.input<typeof aiPrefsInp
     revalidatePath("/settings/ai");
     revalidatePath("/employees");
     return { ok: true as const, data: res };
+  } catch (err) {
+    return zodFail(err);
+  }
+}
+
+/** Which employees an AI-preferences apply would change, and which of their own edits it would replace. Reads only. */
+export async function previewAiPreferencesApplyAction(input: Parameters<typeof previewAiPreferencesApply>[1]) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    return { ok: true as const, data: await previewAiPreferencesApply(ctx, input) };
+  } catch (err) {
+    return zodFail(err);
+  }
+}
+
+/** The people listed in setup who are not on the team yet, for Settings > Team. */
+export async function teamSuggestionsAction() {
+  try {
+    const ctx = await requireOrgContextOrThrow("team.manage");
+    return { ok: true as const, data: await getTeamSuggestions(ctx) };
   } catch (err) {
     return zodFail(err);
   }
@@ -77,9 +100,10 @@ export async function revokeMemberAction(userId: string) {
   try {
     const ctx = await requireOrgContextOrThrow("team.manage");
     if (userId === ctx.user.id) throw new AppError("invalid_input", "You can't remove yourself here.");
-    await revokeMember(ctx, userId);
+    const data = await revokeMember(ctx, userId);
     revalidatePath("/settings/team");
-    return { ok: true as const };
+    // Bookings the person leaves behind are said, never moved: the screen shows the sentence after "Access removed".
+    return { ok: true as const, data };
   } catch (err) {
     return zodFail(err);
   }

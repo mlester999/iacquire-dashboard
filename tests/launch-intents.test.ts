@@ -7,6 +7,7 @@ import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
+import { LAUNCH_INTENTS } from "@/lib/launch-readiness";
 import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
 import { agentId, ctxFor } from "./support/fixtures";
 import { approveHours, checkJobs, count, draftClient, itemOf, readyClient, settled } from "./support/launch";
@@ -257,5 +258,25 @@ describe("each step that ran leaves the launch ledger a row, and a refused one l
     // A step the person may not run is refused before anything is read, so the ledger hears nothing of it.
     await expect(runLaunchIntent(ctxFor(c.people.sales, c.org, "sales_rep"), "assign_host")).rejects.toThrow(/role doesn.t allow this/i);
     expect((await rows(c.org.id)).length).toBe(settledCount);
+  }, 180_000);
+});
+
+describe("every step the panel can offer is handled by the server, and refused for a member without the permission", () => {
+  it("refuses each step that changes the workspace for a viewer, before anything is read, and names a client workspace for anything else", async () => {
+    const c = await readyClient({ name: "Every Step Roofing", timezone: "Asia/Manila" });
+    await withSystem((db) => db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'd.team', $2::jsonb)", [c.org.id, JSON.stringify([{ name: "Ana Cruz", email: "ana-steps@client.example", role: "support" }])]));
+    const viewer = ctxFor(c.people.viewer, c.org, "viewer");
+    const writing = LAUNCH_INTENTS.filter((intent) => intent !== "run_checks");
+    expect(writing).toHaveLength(LAUNCH_INTENTS.length - 1);
+    for (const intent of writing) await expect(runLaunchIntent(viewer, intent), intent).rejects.toMatchObject({ code: "forbidden" });
+    // Nothing was written by any of them: no invitation, no pipeline, no region, no application, no host.
+    const n = async (sql: string) => Number((await withSystem((db) => db.query<{ n: string }>(sql, [c.org.id]))).rows[0].n);
+    expect(await n("select count(*) as n from invitations where org_id = $1")).toBe(0);
+    expect(await n("select count(*) as n from audit_logs where org_id = $1 and action in ('onboarding.region_defaults_applied', 'onboarding.pipeline_stages_applied', 'team.invited', 'crm.auto_setup_applied', 'setup.launch_host_chosen')")).toBe(0);
+
+    // The same steps are refused outside a client workspace, whoever presses them.
+    const asAgency = { ...c.ctx, org: { ...c.ctx.org, kind: "agency" as const } };
+    for (const intent of LAUNCH_INTENTS) await expect(runLaunchIntent(asAgency, intent), intent).rejects.toMatchObject({ code: "forbidden" });
+    expect(await n("select count(*) as n from invitations where org_id = $1")).toBe(0);
   }, 180_000);
 });

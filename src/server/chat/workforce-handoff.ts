@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import type { WorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { systemNoticeMarker } from "@/lib/evidence-class";
 import { AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { appendWorkEvent } from "@/server/workforce/jobs";
@@ -73,10 +74,11 @@ export async function createWorkforceChatHandoff(ctx: OrgContext, input: Workfor
         );
         conversationId = rows[0].id;
         const notice = `Task routed from ${source.shortName} to ${target.shortName}. Requested work: ${assignment.title}. Supported scope: ${assignment.acknowledgement}`;
+        // The notice is server wording about a job it queued; the job panel beside it carries the job's own state.
         await db.query(
-          `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, client_message_id)
-           values ($1, $2, 'notice', $3, 'complete', $4, $5)`,
-          [conversationId, ctx.org.orgId, notice, job.jobId, clientMessageId],
+          `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, client_message_id, evidence)
+           values ($1, $2, 'notice', $3, 'complete', $4, $5, $6::jsonb)`,
+          [conversationId, ctx.org.orgId, notice, job.jobId, clientMessageId, JSON.stringify(systemNoticeMarker())],
         );
         await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [conversationId, ctx.org.orgId]);
       }

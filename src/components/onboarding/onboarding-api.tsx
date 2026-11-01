@@ -12,6 +12,7 @@ import {
 import type { PipelinePayload, PipelineSaveResult } from "@/lib/onboarding/save-pipeline";
 import type { ReviewModel } from "@/lib/onboarding/engine";
 import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts";
+import type { OutcomeNote } from "@/lib/onboarding/business-profile";
 import type { Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
 import type { AssistanceOptions } from "@/lib/onboarding/assistance";
@@ -28,8 +29,8 @@ export interface OnboardingApi {
   suggest(questionId: string, options?: AssistanceOptions, signal?: AbortSignal): Promise<Result<Suggestion>>;
   readWebsite(url: string): Promise<Result<WebsiteAnalysisSummary>>;
   review(): Promise<Result<ReviewModel>>;
-  /** `scheduling` is what the booking answers did: a draft calendar made or extended, or why not (never live). Absent in the preview. */
-  submit(): Promise<Result<{ scheduling?: SchedulingDraftOutcome }>>;
+  /** `scheduling` is what the booking answers did: a draft calendar made or extended, or why not (never live). `notes` is what a re-submission kept, held, skipped or left unchanged. Both absent in the preview. */
+  submit(): Promise<Result<{ scheduling?: SchedulingDraftOutcome; notes?: OutcomeNote[] }>>;
   uploadImage(kind: "logo" | "image" | "reference", file: File): Promise<Result<AssetView>>;
   uploadDocument(file: File): Promise<Result<{ id: string; filename: string }>>;
   removeAsset(id: string): Promise<Result<unknown>>;

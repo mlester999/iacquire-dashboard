@@ -2,6 +2,7 @@ import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { isValidTimeZone } from "@/lib/calendars/slots";
 import type { ReadinessState } from "@/lib/workforce-readiness";
 import { countWord } from "@/lib/onboarding/engine";
+import { ROLE_LABELS, type OrgRole } from "@/lib/permissions";
 
 // One honest answer to "is this client ready to launch?", built only from facts that were read from the workspace's own records. Pure: no I/O. Nothing here is inferred from a
 // queued job, a drafted calendar or a green badge: a step is done only when the thing it names is true, and "100% Ready to Launch" means every applicable, required setup and
@@ -32,8 +33,14 @@ export const ITEM_STATE_LABEL: Record<ItemState, string> = {
 /** Who has to move next on an item that is not done. */
 export type ItemOwner = "you" | "iacquire" | "system";
 
+/**
+ * Every step a button in the guided setup can run. The server action takes its list of valid names from here, so a step that is not in it is refused before anything is read.
+ * None of them turns a customer-facing thing on: the three that write to the workspace (the team invitations, the region defaults, the pipeline stages) are the client's own
+ * decision, pressed by a person, and the last one only asks the automatic CRM setup to run again.
+ */
+export const LAUNCH_INTENTS = ["assign_host", "apply_hours", "activate_calendar", "run_checks", "send_team_invitations", "confirm_region_defaults", "apply_pipeline_stages", "retry_crm_setup"] as const;
 /** A button that does the next step inside the guided setup (an intent the page runs) or a link to the screen where it is done. */
-export type LaunchIntent = "assign_host" | "apply_hours" | "activate_calendar" | "run_checks";
+export type LaunchIntent = (typeof LAUNCH_INTENTS)[number];
 /** What an intent needs besides its name. The server checks both again: the person is the signed-in one, the host must be an active member of this workspace, and the digest must still describe what is true. */
 export interface LaunchIntentParams {
   /** assign_host: the person to make the host. Left out, the person who pressed the button. */
@@ -46,6 +53,40 @@ export interface LaunchAction {
   href?: string;
   intent?: LaunchIntent;
   params?: LaunchIntentParams;
+  /** "internal" runs inside the guided setup (an intent); "external" opens another screen. Left out, `actionKind` says which from the other fields. */
+  kind?: "external" | "internal";
+}
+
+/** Whether an action runs here (an intent) or opens another screen (a link), for a panel that treats the two differently. */
+export function actionKind(a: Pick<LaunchAction, "intent" | "kind">): "external" | "internal" {
+  return a.kind ?? (a.intent ? "internal" : "external");
+}
+
+/**
+ * The path of one employee's setup, one stage per thing that is stored: a job exists (queued), its profile was created (profile), its connection check passed (verified), its tool
+ * inventory was recorded (tools), and its role has what it needs (ready). A stage is never "done" before an earlier one: the evidence of a later stage is also evidence of the earlier ones.
+ * "pending" is a stage that has not been reached yet; the others read as they do for an item.
+ */
+export type StageState = "done" | "in_progress" | "pending" | "action_required" | "failed";
+export interface LaunchStage {
+  key: "queued" | "profile" | "verified" | "tools" | "ready";
+  label: string;
+  state: StageState;
+}
+
+/** A customer-facing switch and where it is flipped. Informational: a row is never required, never counts towards the percentage, and nothing here ever turns one on. */
+export interface LaunchControlFact {
+  key: string;
+  label: string;
+  on: boolean;
+  /** The client's own answers say they want this (they asked for the channel, or for appointments). */
+  wanted: boolean;
+  /** The screen where the person flips it. */
+  href: string;
+}
+export interface LaunchControl extends LaunchControlFact {
+  required: false;
+  detail: string;
 }
 
 export interface LaunchItem {
@@ -65,6 +106,8 @@ export interface LaunchItem {
   hostChoices?: Array<{ id: string; name: string }>;
   /** What the client's own part of this step involves (for example the records they add for a domain). Guidance only: it is never a state and never counts as verified. */
   guidance?: string[];
+  /** An employee's path, from stored facts only. Present on an employee that is part of the plan, absent otherwise. */
+  stages?: LaunchStage[];
 }
 
 export type StepKey = "profile" | "knowledge" | "crm" | "calendar" | "integrations" | "employees" | "verification";
@@ -90,6 +133,8 @@ export interface LaunchReadiness {
   steps: LaunchStep[];
   /** Required items that need someone to act (or failed), in step order. */
   blocking: LaunchItem[];
+  /** The customer-facing switches, each off until the client turns it on. Present when the facts carried them. */
+  controls?: LaunchControl[];
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +235,13 @@ export interface EmployeeFact {
   leaseExpired?: boolean;
   /** iAcquire was really told this wait is long (a recorded notice for it). The words "iAcquire has been alerted" are used only when this is true. */
   stallAlerted?: boolean;
+  /**
+   * The profile job is held back only because the client runtime is at its profile ceiling (the claim's own capacity rule), or the worker answered capacity_exceeded. Nothing
+   * failed; it starts by itself once there is room. Absent or false: not held for room.
+   */
+  capacityHeld?: boolean;
+  /** The employee's own readiness steps, as stored, for the stages. Absent: the stages fall back to what `readiness` says. */
+  readinessSteps?: Array<{ key: string; state: "done" | "current" | "upcoming" | "blocked" | "not_applicable" }>;
 }
 
 export type VerificationFact =
@@ -206,7 +258,15 @@ export type VerificationFact =
     }
   /** The check is held for a person's approval (a work job in waiting_for_approval): that is a review, not a run. */
   | { role: AgentRoleKey; state: "awaiting_review" }
-  | { role: AgentRoleKey; state: "passed" | "failed"; /** The configuration version the check was run against. */ configVersion: number | null; detail: string | null };
+  | {
+      role: AgentRoleKey;
+      state: "passed" | "failed";
+      /** The configuration version the check was run against. */
+      configVersion: number | null;
+      detail: string | null;
+      /** A passed check that read nothing because the records it reads do not exist yet (an empty CRM). Still a pass: a new client is legitimately empty. */
+      nothingToCheck?: boolean;
+    };
 
 export interface ChannelFact {
   channel: "sms" | "whatsapp" | "email";
@@ -254,6 +314,12 @@ export interface LaunchFacts {
     waitingSince?: string | null;
     /** iAcquire was really told this wait is long. */
     waitingAlerted?: boolean;
+    /** The person looking may ask for the automatic setup to run again (they manage the workspace profile, and the automatic setup is on here). Absent: no button. */
+    canRetry?: boolean;
+    /** What the client's time zone suggests for currency and phone country: on offer, or already in place. Absent: nothing to say. */
+    region?: { state: "offer" | "matches"; currency: string; callingCode: string; country: string; canConfirm?: boolean };
+    /** The client's own sales steps as a pipeline: on offer, or already in the CRM. Absent: nothing to say (no clean list of steps, or the CRM cannot take it). */
+    pipelineDraft?: { state: "offer" | "applied"; stages: string[]; makesDefault?: boolean; canApply?: boolean };
   };
   /** True: appointments are wanted. False: not wanted. Null: the questionnaire does not say. */
   appointments: {
@@ -273,6 +339,18 @@ export interface LaunchFacts {
    * "unsubmitted changes". It blocks 100% until the client approves. Absent: nothing is waiting.
    */
   pendingAnswerChanges?: boolean;
+  /**
+   * The people the client listed as talking to customers (the team answer, as last approved) and how far each one is. `toInviteNames` are names only. `invitable` carries the address and
+   * role each invitation would go out with, and is read only for a viewer who may send them (never for a system read), so the button names exactly who is emailed and as what; it holds
+   * only the people that viewer may invite. Absent or with nobody listed: the workspace listed no one, so no line is shown.
+   */
+  team?: { listed: number; members: number; pending: number; toInviteNames: string[]; invitable?: Array<{ name: string; email: string; role: OrgRole }>; canManage?: boolean };
+  /** Whether a person is set up to take over a customer conversation: read from the staff profiles, never from free text. Absent: not read. */
+  handoff?: { ownerHasNotifyChannel: boolean; eligibleStaff: number };
+  /** The workspace's booking rules that decide what happens after a booking, as saved (or the defaults when nothing was saved). Absent: not read. */
+  bookingSettings?: { lateCancelHours: number | null; aiBookingEnabled: boolean; remindersEnabled: boolean };
+  /** Every customer-facing switch and its real state. Absent: not read. */
+  launchControls?: LaunchControlFact[];
 }
 
 // ---------------------------------------------------------------------------
@@ -313,10 +391,11 @@ const howLong = (ms: number) => {
  * An item that waited too long: iAcquire's to look at, and said so in plain words. "iAcquire has been alerted" is written only when a recorded alert exists (`alerted`); otherwise it
  * says what is true, that the item is waiting on iAcquire, and promises nothing.
  */
-function stalledItem(i: LaunchItem, what: string, waited: number, since: string, alerted: boolean | undefined, extra = ""): LaunchItem {
+function stalledItem(i: LaunchItem, what: string, waited: number, since: string, alerted: boolean | undefined, extra = "", action?: LaunchAction): LaunchItem {
   return {
     key: i.key, label: i.label, state: "action_required", required: i.required, owner: "iacquire", stalled: true, stalledSince: since,
     detail: `${what} has taken ${howLong(waited)}, longer than expected.${extra} ${alerted ? "iAcquire has been alerted." : "It is waiting on iAcquire."} Nothing is needed from you.`,
+    ...(action ? { action } : {}),
   };
 }
 
@@ -346,6 +425,46 @@ function profileStep(f: LaunchFacts): LaunchStep {
   return { key: "profile", title: "Business profile", ...summarize(items) };
 }
 
+/**
+ * The people the client listed as talking to customers. Informational and never required: a business with no team is not held up, and nobody is invited until the owner presses the
+ * button (an invitation is an email to a third party). Shown only when the client listed someone.
+ */
+function teamItem(f: LaunchFacts): LaunchItem | null {
+  const t = f.team;
+  if (!t || t.listed === 0) return null;
+  const base = { key: "knowledge.team", label: "Invite your team", required: false, owner: "you" } as const;
+  const n = t.toInviteNames.length;
+  if (n > 0) {
+    const who = namesOf(t.toInviteNames.map((name) => ({ name })));
+    if (t.canManage === false) return { ...base, state: "action_required", detail: `You listed ${plural(n, "person", "people")} who talk to customers (${who}) and nobody has been invited. Only an owner or admin can send invitations.` };
+    // The viewer is shown the address and the access level each invitation goes out with before it is sent, and the count is only the people they may actually invite.
+    const sendable = t.invitable;
+    if (sendable && sendable.length === 0) {
+      return { ...base, state: "action_required", detail: `You listed ${plural(n, "person", "people")} who talk to customers (${who}) and nobody has been invited. The access you listed for them is higher than the access you can give, so an owner has to send these invitations.` };
+    }
+    const m = sendable ? sendable.length : n;
+    const lines = sendable ? sendable.map((p) => `${p.name}, ${p.email}, as ${ROLE_LABELS[p.role]}`).join("; ") : who;
+    const left = sendable && m < n ? ` ${plural(n - m, "more person is", "more people are")} listed with access you cannot give, so an owner has to invite ${n - m === 1 ? "them" : "those"}.` : "";
+    return { ...base, state: "action_required", detail: `You listed ${plural(n, "person", "people")} who talk to customers. Nobody has been invited: pressing this emails ${lines}, and only then. It does not hold up launch.${left}`,
+      action: { label: m === 1 ? "Send 1 invitation" : `Send ${m} invitations`, intent: "send_team_invitations" } };
+  }
+  if (t.pending > 0) return { ...base, state: "in_progress", detail: `${plural(t.pending, "invitation is", "invitations are")} waiting to be accepted.${t.members ? ` ${plural(t.members, "person has", "people have")} already joined.` : ""}` };
+  return { ...base, state: "done", detail: `${t.members === 1 ? "The person" : "Everyone"} you listed ${t.members === 1 ? "is" : "are"} on your team.` };
+}
+
+/** Whether a person would actually be told when a customer needs one, judged from the staff profiles. Not applicable until the client wants a customer channel; never required. */
+function handoffItem(f: LaunchFacts): LaunchItem | null {
+  const h = f.handoff;
+  const base = { key: "knowledge.handoff", label: "A person to take over customer conversations", required: false, owner: "you" } as const;
+  if (!f.channels.some((c) => c.wanted)) return h ? { ...base, state: "not_applicable", detail: "You have not asked for a customer channel yet, so nobody needs to take over a conversation yet." } : null;
+  if (!h) return null;
+  if (h.eligibleStaff > 0) {
+    return { ...base, state: "done", detail: `${plural(h.eligibleStaff, "person is", "people are")} set up to be told when a customer asks for a person${h.ownerHasNotifyChannel ? "" : ", and the owner has no way to be notified"}.` };
+  }
+  return { ...base, state: "action_required", detail: "Nobody is set up to be told when a customer asks for a person, so a hand-off would wait unclaimed. Choose who is notified, and how, in escalation settings. This does not hold up launch.",
+    action: { label: "Set up escalations", href: "/settings/escalations" } };
+}
+
 function knowledgeStep(f: LaunchFacts): LaunchStep {
   const { approved, pending } = f.knowledge;
   const items: LaunchItem[] = [];
@@ -360,6 +479,10 @@ function knowledgeStep(f: LaunchFacts): LaunchStep {
   if (approved > 0 && pending > 0) {
     items.push(item({ key: "knowledge.pending", label: "More knowledge waiting", state: "awaiting_review", required: false, owner: "iacquire", detail: `${plural(pending, "more section is", "more sections are")} waiting for iAcquire's review. This does not hold up launch.`, action: { label: "See your knowledge", href: "/knowledge" } }));
   }
+  const team = teamItem(f);
+  if (team) items.push(item(team));
+  const handoff = handoffItem(f);
+  if (handoff) items.push(item(handoff));
   return { key: "knowledge", title: "Knowledge and approvals", ...summarize(items) };
 }
 
@@ -367,13 +490,15 @@ function knowledgeStep(f: LaunchFacts): LaunchStep {
 function blueprintItem(c: LaunchFacts["crm"], clock: Clock, started: boolean): LaunchItem {
   const base = { key: "crm.blueprint", label: "Industry CRM setup", required: true, owner: "iacquire" } as const;
   const summary = c.blueprintSummary?.trim();
+  // Asking the automatic setup to run again is offered only to a person who may, and only where the automation is on and nothing from it exists to be repeated.
+  const retry: LaunchAction | undefined = c.canRetry ? { label: "Try the setup again", intent: "retry_crm_setup" } : undefined;
   switch (c.blueprint) {
     case "verified":
       return { ...base, state: "done", detail: "Your pipeline, stages, tags and fields for your industry are in place, and each one was found in your CRM." };
     case "waiting_for_a_person":
       return { ...base, state: "action_required", detail: "A person at iAcquire has to apply your industry starter. Nothing has been added to your CRM yet, and nothing is needed from you." };
     case "failed":
-      return { ...base, state: "action_required", detail: summary || "Your industry CRM setup did not finish. iAcquire will review it and apply it again. Nothing is needed from you." };
+      return { ...base, state: "action_required", detail: summary || "Your industry CRM setup did not finish. iAcquire will review it and apply it again. Nothing is needed from you.", ...(retry ? { action: retry } : {}) };
     case "partial":
       return { ...base, state: "action_required", detail: summary || "Your industry CRM setup was only partly applied. iAcquire will finish it. Nothing is needed from you." };
     case "missing_records":
@@ -384,7 +509,7 @@ function blueprintItem(c: LaunchFacts["crm"], clock: Clock, started: boolean): L
         : "Your industry CRM is being set up by iAcquire. Nothing is needed from you." };
       // The automatic setup waits for the questionnaire AND the setup fee: until both have happened nothing is late, and it is not iAcquire that is being waited for.
       const waited = started ? waitedPast(clock, c.waitingSince, clock.stall.crm) : null;
-      return waited === null || !c.waitingSince ? waiting : stalledItem(waiting, "Setting up your industry CRM", waited, c.waitingSince, c.waitingAlerted);
+      return waited === null || !c.waitingSince ? waiting : stalledItem(waiting, "Setting up your industry CRM", waited, c.waitingSince, c.waitingAlerted, "", retry);
     }
   }
 }
@@ -401,6 +526,32 @@ function crmRecordsItem(c: LaunchFacts["crm"]): LaunchItem {
   return { ...base, state: "in_progress", detail: "Your tags, contact fields and forms arrive with the CRM setup." };
 }
 
+/** The currency and phone country that go with the client's time zone. A suggestion the client confirms: optional, never required, and never written by itself. */
+function regionItem(c: LaunchFacts["crm"]): LaunchItem | null {
+  const r = c.region;
+  if (!r) return null;
+  const base = { key: "crm.region", label: "Currency and phone country", required: false, owner: "you" } as const;
+  const code = `+${r.callingCode}`;
+  if (r.state === "matches") return { ...base, state: "done", detail: `Your workspace uses ${r.currency} and ${code} (${r.country}).` };
+  const detail = `Your time zone suggests ${r.currency} and ${code} (${r.country}). Quotes, proposals and invoices use the currency, and customers' local phone numbers are read with the country code. Nothing changes until you confirm, and it does not hold up launch.`;
+  return r.canConfirm === false
+    ? { ...base, state: "action_required", detail: `${detail} Only an owner or admin can confirm it.` }
+    : { ...base, state: "action_required", detail, action: { label: `Use ${r.currency} and ${code}`, intent: "confirm_region_defaults" } };
+}
+
+/** The client's own sales steps as a pipeline. Optional: it only ever adds a new pipeline, and an existing one is never edited or deleted. */
+function pipelineDraftItem(c: LaunchFacts["crm"]): LaunchItem | null {
+  const d = c.pipelineDraft;
+  if (!d) return null;
+  const base = { key: "crm.stages", label: "Your sales steps as pipeline stages", required: false, owner: "you" } as const;
+  if (d.state === "applied") return { ...base, state: "done", detail: "Your sales steps are in your CRM as a pipeline." };
+  const steps = d.stages.join(", ");
+  const detail = `You described these sales steps: ${steps}. A new pipeline called "Your sales process" would be added with them${d.makesDefault ? " and become your default pipeline, because your current one has not been used" : ""}. Your existing pipelines and stages are never edited or deleted, and it does not hold up launch.`;
+  return d.canApply === false
+    ? { ...base, state: "action_required", detail: `${detail} Only an owner or admin can add it.` }
+    : { ...base, state: "action_required", detail, action: { label: "Add my sales steps", intent: "apply_pipeline_stages" } };
+}
+
 function crmStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const c = f.crm;
   const items: LaunchItem[] = [];
@@ -413,6 +564,10 @@ function crmStep(f: LaunchFacts, clock: Clock): LaunchStep {
       : { key: "crm.pipeline", label: "Sales pipeline", state: waiting ? "in_progress" : "action_required", required: true, owner: "iacquire",
         detail: waiting ? "The pipeline arrives with the CRM setup." : "Your CRM has no active pipeline with at least two stages, one of them open. iAcquire needs to review it." }));
     items.push(item(crmRecordsItem(c)));
+    const region = regionItem(c);
+    if (region) items.push(item(region));
+    const stages = pipelineDraftItem(c);
+    if (stages) items.push(item(stages));
   } else {
     items.push(item(c.providerConnected
       ? { key: "crm.provider", label: "CRM connection", state: "done", required: true, owner: "iacquire", detail: "Your CRM provider connection is verified." }
@@ -653,7 +808,18 @@ function calendarStep(f: LaunchFacts): LaunchStep {
     ? { key: "calendar.public", label: "Public booking page", state: "failed", required: true, owner: "you", detail: `Your public booking page is on, but the calendar does not pass its checks: ${failing.detail} Fix it, or turn the page off until it does.${manage ? "" : ` ${ask}`}`,
         ...(manage ? { action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } } : {}) }
     : { key: "calendar.public", label: "Public booking page", state: "done", required: false, owner: "you", detail: cal.bookingPageOn ? "Your public booking page is on." : "Your public booking page is off. Customers cannot book until you turn it on yourself." }));
+  const rules = bookingRulesItem(f.bookingSettings);
+  if (rules) items.push(item(rules));
   return { key: "calendar", title, ...summarize(items) };
+}
+
+/** What happens after someone books, in the client's own settings, in words. Informational: a summary of saved rules, never a check, never required. */
+function bookingRulesItem(b: LaunchFacts["bookingSettings"]): LaunchItem | null {
+  if (!b) return null;
+  const late = b.lateCancelHours === null ? "No late-cancellation rule is set." : `A cancellation less than ${plural(b.lateCancelHours, "hour", "hours")} before the start counts as late.`;
+  const ai = b.aiBookingEnabled ? "The Appointment Setter may book on its own, because you turned that on." : "The Appointment Setter only proposes a booking, and a person confirms it.";
+  const reminders = b.remindersEnabled ? "Reminders to customers are on." : "Reminders to customers are off until you turn them on.";
+  return { key: "calendar.booking_settings", label: "Booking rules", state: "done", required: false, owner: "you", detail: `${ai} ${late} ${reminders}`, action: { label: "Review booking rules", href: "/appointments" } };
 }
 
 const CHANNEL_LABEL: Record<ChannelFact["channel"], string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
@@ -724,15 +890,59 @@ function channelItem(c: ChannelFact): LaunchItem {
 
 /** A profile job that is still open and has waited past the provisioning threshold. Only the job states that mean "somebody is on it" can stall: not started and cancelled never do. */
 function stalledProvisioning(i: LaunchItem, e: EmployeeFact, clock: Clock): LaunchItem {
-  if (!e.startedAt || !(e.provisioning === "requested" || e.provisioning === "in_progress" || e.provisioning === "awaiting_health_check" || e.provisioning === "retrying")) return i;
+  const open = e.provisioning === "requested" || e.provisioning === "in_progress" || e.provisioning === "awaiting_health_check" || e.provisioning === "retrying" || (e.capacityHeld === true && e.provisioning === "failed");
+  if (!e.startedAt || !open) return i;
   const waited = waitedPast(clock, e.startedAt, clock.stall.provisioning);
   if (waited === null) return i;
-  return stalledItem(i, "Setting up its profile", waited, e.startedAt, e.stallAlerted, e.leaseExpired ? " Nothing is working on it right now." : "");
+  const what = e.capacityHeld ? "Waiting for room to set up its profile" : "Setting up its profile";
+  return stalledItem(i, what, waited, e.startedAt, e.stallAlerted, e.leaseExpired ? " Nothing is working on it right now." : "");
+}
+
+const STAGE_LABEL: Record<LaunchStage["key"], string> = { queued: "Queued", profile: "Profile created", verified: "Connection verified", tools: "Tools verified", ready: "Ready for work" };
+
+/**
+ * The path of one employee's setup, from what is stored: a profile job exists, the profile was created, the connection check passed, the tool inventory was recorded, and the
+ * role has what it needs. Every stage is judged on its own evidence and then made consistent with the later ones: a stage that has later evidence is done too, so a later stage is
+ * never done while an earlier one is not. A queued job is not a created profile: only a job that reached the health check or finished says the profile exists. The first stage that
+ * is not done carries the current state (under way, failed or waiting on something) and every stage after it has not been reached. Not part of the plan: no stages.
+ */
+export function employeeStages(f: Pick<LaunchFacts, "appointments">, e: EmployeeFact): LaunchStage[] | undefined {
+  if (!e.entitled || (e.role === "appointment_setter" && f.appointments.wanted === false)) return undefined;
+  const step = (key: string) => e.readinessSteps?.find((s) => s.key === key)?.state;
+  const verified = step("connection") ? step("connection") === "done" : e.readiness.chatAvailable;
+  const tools = step("inventory") ? step("inventory") === "done" : e.readiness.chatAvailable;
+  const ready = e.readiness.workReady;
+  const profile = e.provisioning === "awaiting_health_check" || e.provisioning === "succeeded" || verified || tools || ready;
+  const queued = e.provisioning !== "none" && e.provisioning !== "cancelled" || profile;
+  const reached: Array<[LaunchStage["key"], boolean]> = [["queued", queued], ["profile", profile], ["verified", verified || tools || ready], ["tools", tools || ready], ["ready", ready]];
+  const firstOpen = reached.findIndex(([, done]) => !done);
+  return reached.map(([key, done], index): LaunchStage => {
+    const label = STAGE_LABEL[key];
+    if (done) return { key, label, state: "done" };
+    if (index > firstOpen) return { key, label, state: "pending" };
+    return { key, label, state: currentStageState(key, e) };
+  });
+}
+
+/** The state of the stage an employee is at: what is happening to it right now, said from the same facts the item uses. */
+function currentStageState(key: LaunchStage["key"], e: EmployeeFact): StageState {
+  switch (key) {
+    case "queued": return "pending";
+    case "profile":
+      if (e.capacityHeld) return "pending";
+      if (e.provisioning === "failed") return "failed";
+      return e.provisioning === "in_progress" || e.provisioning === "retrying" ? "in_progress" : "pending";
+    case "verified": return e.healthFailed ? "failed" : "in_progress";
+    case "tools": return "in_progress";
+    case "ready": return e.readiness.blocking.length ? "action_required" : "in_progress";
+  }
 }
 
 function employeeItem(f: LaunchFacts, e: EmployeeFact, clock: Clock): LaunchItem {
   const found = employeeItemNow(f, e);
-  return found.state === "in_progress" ? stalledProvisioning(found, e, clock) : found;
+  const judged = found.state === "in_progress" ? stalledProvisioning(found, e, clock) : found;
+  const stages = employeeStages(f, e);
+  return stages ? { ...judged, stages } : judged;
 }
 
 function employeeItemNow(f: LaunchFacts, e: EmployeeFact): LaunchItem {
@@ -746,6 +956,11 @@ function employeeItemNow(f: LaunchFacts, e: EmployeeFact): LaunchItem {
     return { key, label, state: "action_required", required: true, owner: "you", detail: "Starts after your setup payment is confirmed.", ...(f.canOpenBilling ? { action: { label: "Open billing", href: "/settings/billing" } } : {}) };
   }
   if (e.heldForReview) return { key, label, state: "awaiting_review", required: true, owner: "iacquire", detail: "A configuration change is waiting for iAcquire's review. Nothing runs on it until it is approved." };
+  // The runtime is full: nothing failed and nothing is needed from the client. It is iAcquire's to make room, and the setup starts by itself once there is. Said before a failure,
+  // because a worker that answered "no room" is a hold, not a broken profile.
+  if (e.capacityHeld && (e.provisioning === "requested" || e.provisioning === "retrying" || e.provisioning === "failed")) {
+    return { key, label, state: "in_progress", required: true, owner: "iacquire", detail: "Waiting for capacity (iAcquire). The system that hosts AI employees is at its limit, so setting up this profile is on hold until iAcquire makes room. Nothing has failed and nothing is needed from you." };
+  }
   // The attempt count is what the job recorded; the raw failure note and the check's own words are for iAcquire and are never put in front of the client.
   if (e.provisioning === "failed") {
     const used = e.attempts > 0 ? ` (${e.attempts} of ${e.maxAttempts} attempts used)` : "";
@@ -813,6 +1028,8 @@ function verificationStep(f: LaunchFacts, clock: Clock): LaunchStep {
     else if (v.state === "none") items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Not checked yet. The check reads your real records and changes nothing.", action: { label: "Run final checks", intent: "run_checks" } }));
     // A result for an older configuration says nothing about this one, whether it passed or failed: the check runs again (the sweep starts it by itself).
     else if (v.configVersion !== e.configVersion) items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Its configuration changed since the last check, so the check needs to run again.", action: { label: "Run final checks", intent: "run_checks" } }));
+    // A check that had no records to read is still a pass (a new client is legitimately empty), and it says so first, then keeps the check's own account of what it counted.
+    else if (v.state === "passed" && v.nothingToCheck) items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ? `Nothing to check yet. ${v.detail}` : "Nothing to check yet: there are no records for this check to read, so it passed without examining anything." }));
     else if (v.state === "passed") items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ?? "A read-only check on your real records completed. Nothing was changed or sent." }));
     else items.push(item({ key, label, state: "failed", required: true, owner: "you", detail: v.detail ?? "The check did not pass.", action: { label: "Run final checks", intent: "run_checks" } }));
   }
@@ -838,6 +1055,24 @@ function summarize(items: LaunchItem[]): { state: StepState; summary: string; it
 }
 
 /**
+ * The customer-facing switches as rows for the "final activation" hand-off. Every row is informational: not required, so none of them can move the percentage or hold up launch, and
+ * none is ever flipped from here. The words say only what the facts know: whether it is on, and what this setup does about it (nothing). Nothing records who turned a switch on (the
+ * client, a teammate, iAcquire's staff), so no row says who did. A channel is the one switch with a known owner: iAcquire stores its credential, runs the provider test and switches it
+ * on once it is verified (the same words as the integrations step), so a channel row never promises a switch for the client.
+ */
+function controlsOf(facts: LaunchControlFact[]): LaunchControl[] {
+  return facts.map((c) => {
+    const asked = c.wanted ? " You asked for this." : "";
+    const detail = c.on
+      ? "On."
+      : c.key.startsWith("channel.")
+        ? `Off.${asked} iAcquire switches a channel on once it is set up and verified; nothing in this setup turns it on.`
+        : `Off.${asked} Nothing in this setup turns it on: it stays off until a person switches it on.`;
+    return { ...c, required: false as const, detail };
+  });
+}
+
+/**
  * `now` makes the judge time-aware: an employee's profile, a final check or the industry CRM setup that has been in progress for longer than its threshold (STALL_MINUTES, or the
  * `stall` the server read from the environment) becomes an action for iAcquire instead of "in progress, nothing is needed" for ever. Left out, nothing is ever called stalled.
  */
@@ -848,7 +1083,7 @@ export function deriveLaunchReadiness(f: LaunchFacts, now?: Date, stall: Partial
   const passed = required.filter((i) => i.state === "done").length;
   const total = required.length;
   const blocking = required.filter((i) => i.state === "action_required" || i.state === "failed");
-  const base = { passed, total, steps, blocking };
+  const base = { passed, total, steps, blocking, ...(f.launchControls ? { controls: controlsOf(f.launchControls) } : {}) };
 
   if (!f.submitted) {
     return { ...base, state: "not_started", label: LAUNCH_STATE_LABEL.not_started, headline: "Start with your company information", detail: "Answer a few short questions about your business once. Everything else is set up from your answers.", percent: 0 };

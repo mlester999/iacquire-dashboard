@@ -10,6 +10,7 @@ export const LAUNCH_PREVIEW_VIEWS: readonly LaunchPreviewView[] = ["unpaid", "wo
 const employee = (role: AgentRoleKey, over: Partial<EmployeeFact> = {}): EmployeeFact => ({
   role, entitled: true, provisioning: "succeeded", provisioningDetail: null, attempts: 1, maxAttempts: 3, nextRetryAt: null, healthFailed: false, healthDetail: null, heldForReview: false, configVersion: 3,
   readiness: { state: "ready", chatAvailable: true, workReady: true, description: "Ready for authorized work.", blocking: [] },
+  readinessSteps: [{ key: "configuration", state: "done" }, { key: "connection", state: "done" }, { key: "inventory", state: "done" }, { key: "requirements", state: "done" }, { key: "ready", state: "done" }],
   ...over,
 });
 const notReady = (state: EmployeeFact["readiness"]["state"], description: string, blocking: string[] = []): EmployeeFact["readiness"] => ({ state, chatAvailable: false, workReady: false, description, blocking });
@@ -35,6 +36,16 @@ function base(): LaunchFacts {
     channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: false, enabled: false, registration: "not_started" }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
     employees: AGENT_ROLE_KEYS.map((role) => employee(role)),
     verification: AGENT_ROLE_KEYS.map(passed),
+    handoff: { ownerHasNotifyChannel: true, eligibleStaff: 2 },
+    bookingSettings: { lateCancelHours: 24, aiBookingEnabled: false, remindersEnabled: false },
+    launchControls: [
+      { key: "booking_page", label: "Public booking page", on: false, wanted: true, href: "/crm/calendars/preview" },
+      { key: "ai_booking", label: "Appointment Setter books on its own", on: false, wanted: false, href: "/appointments" },
+      { key: "auto_reply", label: "AI replies to customers", on: false, wanted: true, href: "/settings/messaging" },
+      { key: "channel.email", label: "Email", on: true, wanted: true, href: "/settings/messaging" },
+      { key: "channel.sms", label: "SMS", on: false, wanted: false, href: "/settings/messaging" },
+      { key: "channel.whatsapp", label: "WhatsApp", on: false, wanted: false, href: "/settings/messaging" },
+    ],
   };
 }
 
@@ -51,13 +62,14 @@ export function launchPreview(view: LaunchPreviewView): LaunchReadiness {
     case "working":
       return deriveLaunchReadiness({
         ...f,
-        employees: AGENT_ROLE_KEYS.map((role, i) => employee(role, i < 2 ? {} : { provisioning: i < 4 ? "in_progress" : "requested", attempts: 0, configVersion: null, readiness: notReady("provisioning", "Its dedicated profile is being created.") })),
+        employees: AGENT_ROLE_KEYS.map((role, i) => employee(role, i < 2 ? {} : { provisioning: i < 4 ? "in_progress" : "requested", attempts: 0, configVersion: null, capacityHeld: i === 5, readinessSteps: [{ key: "configuration", state: "done" }, { key: "connection", state: "upcoming" }, { key: "inventory", state: "upcoming" }, { key: "ready", state: "upcoming" }], readiness: notReady("provisioning", "Its dedicated profile is being created.") })),
         verification: AGENT_ROLE_KEYS.slice(0, 2).map(passed),
       });
     case "action":
       return deriveLaunchReadiness({
         ...f, knowledge: { approved: 5, pending: 2 },
-        crm: { ...f.crm, blueprint: "waiting_for_a_person", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 } },
+        team: { listed: 2, members: 0, pending: 0, toInviteNames: ["Marcus Hale", "Priya Nair"], canManage: true },
+        crm: { ...f.crm, blueprint: "waiting_for_a_person", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 }, region: { state: "offer", currency: "USD", callingCode: "1", country: "United States", canConfirm: true }, pipelineDraft: { state: "offer", stages: ["Enquiry", "Site visit", "Quote sent", "Won", "Lost"], makesDefault: true, canApply: true } },
         channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: true, enabled: false, registration: "pending", statedSender: "+1 512 555 0100", credentialStored: true }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
         appointments: { wanted: true, calendar: draftCalendar(), externalCalendarConnected: false, hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "invited" }] },
         employees: AGENT_ROLE_KEYS.map((role) => (role === "appointment_setter"

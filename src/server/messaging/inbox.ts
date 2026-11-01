@@ -12,6 +12,8 @@ import { maskCustomerLinks } from "@/server/messaging/redact";
 import { getConversationListItem, listConversationsPage, type ConversationFilters, type ConversationListItem } from "@/server/messaging/inbox-list";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { unconfirmedOutcome, validateBusinessHours, type BusinessHours, type Channel, type CustomFollowUp, type FollowUpPreset, type MessageStatus } from "@/lib/messaging";
+import { syncMessagingToAnswers } from "@/server/onboarding/profile-sync";
+import { hoursKey } from "@/lib/onboarding/business-profile";
 import { describeConversationEvent, isConversationOutcome, type ConversationOutcome } from "@/lib/inbox";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
@@ -653,7 +655,13 @@ export async function updateMessagingSettings(ctx: OrgContext, input: MessagingS
     if (v !== undefined && (!Number.isInteger(v) || v < lo || v > hi)) throw new AppError("invalid_input", `The ${label} owner window must be between ${lo} and ${hi} seconds.`);
   }
   await withSystem(async (db) => {
+    // The questionnaire's row first, as a submission takes it: the answers the hours and the reply and follow-up choices come from follow this edit in the same transaction, so
+    // a later re-submission does not write the old ones back and the questionnaire shows what the workspace says (src/server/onboarding/profile-sync.ts).
+    if (hours !== undefined || input.replyBusinessHoursOnly !== undefined || input.followUpPreset !== undefined) {
+      await syncMessagingToAnswers(db, ctx, { businessHours: hours ?? undefined, replyBusinessHoursOnly: input.replyBusinessHoursOnly, followUpPreset: input.followUpPreset });
+    }
     await db.query("insert into messaging_settings (org_id) values ($1) on conflict do nothing", [ctx.org.orgId]);
+    const was = hours ? (await db.query<{ business_hours: unknown }>("select business_hours from messaging_settings where org_id = $1", [ctx.org.orgId])).rows[0]?.business_hours : undefined;
     await db.query(
       `update messaging_settings set auto_reply_enabled = coalesce($2, auto_reply_enabled), reply_business_hours_only = coalesce($3, reply_business_hours_only),
          business_hours = coalesce($4::jsonb, business_hours), followup_preset = coalesce($5, followup_preset),
@@ -662,7 +670,7 @@ export async function updateMessagingSettings(ctx: OrgContext, input: MessagingS
        where org_id = $1`,
       [ctx.org.orgId, input.autoReplyEnabled ?? null, input.replyBusinessHoursOnly ?? null, hours ? JSON.stringify(hours) : null, input.followUpPreset ?? null, input.followUpCustom !== undefined, custom ? JSON.stringify(custom) : null, input.ownerTimeoutUrgentSeconds ?? null, input.ownerTimeoutNormalSeconds ?? null, ctx.user.id],
     );
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "messaging.settings_changed", targetType: "messaging_settings", targetId: ctx.org.orgId, result: "success", metadata: { autoReply: input.autoReplyEnabled, preset: input.followUpPreset } }, db);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "messaging.settings_changed", targetType: "messaging_settings", targetId: ctx.org.orgId, result: "success", metadata: { autoReply: input.autoReplyEnabled, preset: input.followUpPreset, hoursChanged: hours ? hoursKey(hours) !== hoursKey(validateBusinessHours(was ?? {})) : false, replyBusinessHoursOnly: input.replyBusinessHoursOnly, followUpPreset: input.followUpPreset } }, db);
   });
 }
 

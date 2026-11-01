@@ -4,12 +4,16 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { createInvitation, normalizeEmail } from "@/server/auth/service";
-import { createConfigVersion, currentSettings } from "@/server/workforce/service";
+import { createConfigVersion } from "@/server/workforce/service";
 import { sanitizeClientText } from "@/server/workforce/compiler";
-import { lockOnboardingRow, syncProfileToAnswers } from "@/server/onboarding/profile-sync";
+import { lockOnboardingRow, syncPreferencesToAnswers, syncProfileToAnswers } from "@/server/onboarding/profile-sync";
+import { refreshEmployeesFromWorkspace } from "@/server/onboarding/employee-sync";
+import { manualOverridesFromHistory } from "@/server/onboarding/employee-generator";
 import { onRoleChanged } from "@/server/staff/service";
-import { aiPreferencesSchema } from "@/lib/agent-settings";
-import { PROFILE_KEYS, PROFILE_LIMITS, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
+import { attentionWarning, checkBookingsAfterChange } from "@/server/calendars/impact";
+import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings, type AiPreferences } from "@/lib/agent-settings";
+import { PREFERENCE_KEYS, PROFILE_KEYS, PROFILE_LIMITS, type PreferenceKey, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
 import { configAttribution } from "@/lib/config-review";
 import { scanInstructionText } from "@/lib/instruction-risk";
 import { grantableRoles, type OrgRole } from "@/lib/permissions";
@@ -21,6 +25,9 @@ import type { OrgContext } from "@/server/tenancy/context";
 // ---------------------------------------------------------------------------
 // Business profile
 // ---------------------------------------------------------------------------
+
+/** The roles the setup question offers for a teammate. Anything else stored in that answer (an owner, say) is not offered as an invitation. */
+const SUGGESTED_ROLES: ReadonlySet<string> = new Set<OrgRole>(["sales_rep", "support", "admin", "viewer"]);
 
 export const profileSchema = z.object({
   name: z.string().trim().min(2, "Add your company name.").max(120),
@@ -65,7 +72,26 @@ export async function getProfile(ctx: OrgContext) {
   });
 }
 
-export async function updateProfile(ctx: OrgContext, input: z.input<typeof profileSchema>) {
+/** What a business-profile save did, as far as the person's employees are concerned. `held` are new versions waiting for iAcquire's review: they are NOT what the employee runs. */
+export interface ProfileSaveResult {
+  changed: ProfileKey[];
+  employees: { updated: AgentRoleKey[]; held: AgentRoleKey[]; /** The profile was saved but the employees could not be brought up to date; they keep what they had. */ failed: boolean };
+}
+
+/** The facts short enough to be worth keeping, as they were and as they are, in the audit row. The long texts only say how long they became. */
+const AUDITED_FACTS: readonly ProfileKey[] = ["name", "industry", "website", "region", "timezone", "brandColor"];
+
+function profileChangeAudit(changed: readonly ProfileKey[], before: ProfileValues, after: ProfileValues) {
+  const short = changed.filter((key) => AUDITED_FACTS.includes(key));
+  const long = changed.filter((key) => !AUDITED_FACTS.includes(key));
+  return {
+    before: Object.fromEntries(short.map((key) => [key, before[key].slice(0, 200)])),
+    after: Object.fromEntries(short.map((key) => [key, after[key].slice(0, 200)])),
+    lengths: Object.fromEntries(long.map((key) => [key, [before[key].length, after[key].length]])),
+  };
+}
+
+export async function updateProfile(ctx: OrgContext, input: z.input<typeof profileSchema>): Promise<ProfileSaveResult> {
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and admins can edit the business profile.");
   const d = profileSchema.parse(input);
   if (!isValidTimeZone(d.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
@@ -80,14 +106,33 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
     await syncProfileToAnswers(db, ctx, { changed: res.changed, values: res.values });
     return res;
   });
+  // The edit has committed: the employees now catch up with it, each one on its own terms (a new attributed version only when its instructions differ, every setting the client
+  // changed kept). A problem here never takes the saved profile back; the employees keep what they had and the launch checklist says they are behind.
+  const employees: ProfileSaveResult["employees"] = { updated: [], held: [], failed: false };
+  if (written.changed.length) {
+    try {
+      const refreshed = await withSystem((db) => refreshEmployeesFromWorkspace(db, ctx, { reason: "Business profile updated in Settings", keys: written.changed }));
+      employees.updated = refreshed.updated;
+      employees.held = refreshed.held;
+    } catch (err) {
+      employees.failed = true;
+      if (process.env.NODE_ENV !== "test") console.error("[iacquire] bringing the employees up to date after a profile edit failed", (err as { code?: string }).code ?? (err as Error).name);
+    }
+  }
   await recordAudit({
     orgId: ctx.org.orgId,
     actorUserId: ctx.user.id,
     actorKind: ctx.user.platformRole !== "none" ? "agency" : "user",
     action: "settings.profile_updated",
     result: "success",
-    metadata: { riskFlags: written.riskFlags, changed: written.changed },
+    metadata: {
+      riskFlags: written.riskFlags,
+      changed: written.changed,
+      ...profileChangeAudit(written.changed, written.before, written.values),
+      employees: { updated: employees.updated.length, held: employees.held.length, failed: employees.failed },
+    },
   });
+  return { changed: written.changed, employees };
 }
 
 /**
@@ -100,7 +145,7 @@ export async function writeBusinessProfile(
   db: Queryable,
   ctx: { org: { orgId: string }; user: { id: string } },
   fields: Partial<ProfileValues>,
-): Promise<{ changed: ProfileKey[]; riskFlags: string[]; values: ProfileValues }> {
+): Promise<{ changed: ProfileKey[]; riskFlags: string[]; values: ProfileValues; before: ProfileValues }> {
   const clean: Partial<ProfileValues> = {};
   for (const key of PROFILE_KEYS) {
     const raw = fields[key];
@@ -175,7 +220,7 @@ export async function writeBusinessProfile(
       values,
     );
   }
-  return { changed, riskFlags: [...new Set(findings.map((finding) => finding.code))], values: { ...now, ...Object.fromEntries(changed.map((key) => [key, clean[key]])) } as ProfileValues };
+  return { changed, riskFlags: [...new Set(findings.map((finding) => finding.code))], values: { ...now, ...Object.fromEntries(changed.map((key) => [key, clean[key]])) } as ProfileValues, before: now };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,44 +229,152 @@ export async function writeBusinessProfile(
 
 export const aiPrefsInputSchema = aiPreferencesSchema.extend({
   chatRetentionDays: z.enum(["forever", "30", "90", "365"]).default("forever"),
+  /** Off unless the person asks: saving the preferences changes the company's defaults, not each employee. */
   applyToEmployees: z.boolean().default(false),
+  /** Also replace the fields an employee's own configuration changed. Off: those fields are kept and reported. */
+  replaceOwnEdits: z.boolean().default(false),
 });
 
-export async function updateAiPreferences(ctx: OrgContext, input: z.input<typeof aiPrefsInputSchema>) {
+/** The change request every company-wide apply is recorded with: how a later apply tells these versions from an employee's own edit. */
+export const COMPANY_WIDE_PREFERENCES_APPLIED = "Company-wide AI preferences applied";
+
+const PREFERENCE_LABEL: Record<PreferenceKey, string> = {
+  tone: "Tone", replyLength: "Reply length", language: "Language", companyRules: "Company rules", neverPromise: "Never promise", escalateWhen: "Ask a human when",
+};
+
+export interface AiPrefsApplySkip {
+  role: AgentRoleKey;
+  fields: PreferenceKey[];
+  /** client_edit: the employee's own wording was kept. blocked: the new version could not be made (the reason is in `detail`); the other employees were not affected. */
+  why: "client_edit" | "blocked";
+  detail?: string;
+}
+
+export interface AiPrefsApplyResult {
+  /** New attributed versions that are now applied. */
+  updated: AgentRoleKey[];
+  /** A new version was made but waits for iAcquire's review: the employee still runs what it had. */
+  held: AgentRoleKey[];
+  skipped: AiPrefsApplySkip[];
+}
+
+export interface AiPrefsApplyPreview {
+  employees: Array<{ role: AgentRoleKey; name: string; /** Fields that would get the new value. */ changes: Array<{ field: PreferenceKey; label: string }>; /** Fields the employee's own configuration changed and that would be replaced. */ replaces: Array<{ field: PreferenceKey; label: string }> }>;
+}
+
+interface ApplyTarget {
+  agentId: string;
+  role: AgentRoleKey;
+  settings: AgentSettings;
+  /** Fields the employee's own configuration changed (an earlier company-wide apply does not count: it carried the company's value). */
+  owned: ReadonlySet<string>;
+}
+
+/** The enabled employees that run a configuration, with what each one's own edits are. */
+async function applyTargets(db: Queryable, orgId: string): Promise<ApplyTarget[]> {
+  const { rows } = await db.query<{ id: string; role_key: string; settings: unknown }>(
+    `select a.id, a.role_key, v.settings from agent_instances a join agent_roles r on r.key = a.role_key join agent_config_versions v on v.id = a.active_config_version_id
+      where a.org_id = $1 and a.enabled order by r.sort_order`,
+    [orgId],
+  );
+  const out: ApplyTarget[] = [];
+  for (const row of rows) {
+    const parsed = agentSettingsSchema.safeParse(row.settings);
+    if (!parsed.success || !isAgentRoleKey(row.role_key)) continue;
+    const { rows: history } = await db.query<{ source: string; settings: unknown; change_request: string | null }>(
+      "select source, settings, change_request from agent_config_versions where agent_instance_id = $1 and org_id = $2 and applied_at is not null order by version",
+      [row.id, orgId],
+    );
+    const owned = manualOverridesFromHistory(history.map((v) => ({ source: v.change_request === COMPANY_WIDE_PREFERENCES_APPLIED ? "onboarding" : v.source, settings: v.settings })));
+    out.push({ agentId: row.id, role: row.role_key, settings: parsed.data, owned });
+  }
+  return out;
+}
+
+/** Per employee: the fields that differ from the new preferences, and which of those the employee's own configuration owns. */
+function planApply(target: ApplyTarget, prefs: AiPreferences) {
+  const planned = PREFERENCE_KEYS.filter((field) => target.settings[field] !== prefs[field]);
+  return { planned, own: planned.filter((field) => target.owned.has(field)) };
+}
+
+/** Which employees would get new values, and which fields would replace something the client edited on that employee. Reads only. */
+export async function previewAiPreferencesApply(ctx: OrgContext, input: z.input<typeof aiPreferencesSchema>): Promise<AiPrefsApplyPreview> {
+  if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can change AI preferences.");
+  const prefs = aiPreferencesSchema.parse(input);
+  const targets = await withSystem((db) => applyTargets(db, ctx.org.orgId));
+  const label = (field: PreferenceKey) => ({ field, label: PREFERENCE_LABEL[field] });
+  return {
+    employees: targets
+      .map((t) => {
+        const { planned, own } = planApply(t, prefs);
+        return { role: t.role, name: AGENT_BY_KEY[t.role].shortName, changes: planned.filter((f) => !own.includes(f)).map(label), replaces: own.map(label) };
+      })
+      .filter((e) => e.changes.length || e.replaces.length),
+  };
+}
+
+export async function updateAiPreferences(ctx: OrgContext, input: z.input<typeof aiPrefsInputSchema>): Promise<AiPrefsApplyResult> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can change AI preferences.");
   const d = aiPrefsInputSchema.parse(input);
-  const { applyToEmployees, chatRetentionDays, ...prefs } = d;
+  const { applyToEmployees, replaceOwnEdits, chatRetentionDays, ...prefs } = d;
   const stored = { ...prefs, chatRetentionDays: chatRetentionDays === "forever" ? null : Number(chatRetentionDays) };
-  await withUser(ctx.user.id, (db) =>
-    db.query(
+  // The questionnaire's row first, as a submission takes it. The preferences are saved and the answers they come from follow in the same transaction, so a later re-submission
+  // does not write the old preferences back and the questionnaire shows what the company says.
+  const changed = await withUser(ctx.user.id, async (db) => {
+    await lockOnboardingRow(db, ctx.org.orgId);
+    const { rows } = await db.query<{ ai_preferences: unknown }>("select ai_preferences from company_profiles where org_id = $1", [ctx.org.orgId]);
+    const before = aiPreferencesSchema.parse(rows[0]?.ai_preferences ?? {});
+    await db.query(
       `insert into company_profiles (org_id, ai_preferences, updated_by) values ($1, $2, $3)
        on conflict (org_id) do update set ai_preferences = excluded.ai_preferences, updated_by = excluded.updated_by`,
       [ctx.org.orgId, JSON.stringify(stored), ctx.user.id],
-    ),
-  );
-  let updated = 0;
+    );
+    const keys = PREFERENCE_KEYS.filter((key) => before[key] !== prefs[key]);
+    await syncPreferencesToAnswers(db, ctx, { changed: keys, values: prefs });
+    return keys;
+  });
+
+  const result: AiPrefsApplyResult = { updated: [], held: [], skipped: [] };
   if (applyToEmployees) {
     await withSystem(async (db) => {
-      const { rows } = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and active_config_version_id is not null", [ctx.org.orgId]);
-      for (const a of rows) {
-        const { settings } = await currentSettings(db, a.id, ctx.org.orgId);
-        const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
-        await createConfigVersion(db, {
-          orgId: ctx.org.orgId,
-          agentId: a.id,
-          settings: { ...settings, tone: prefs.tone, replyLength: prefs.replyLength, language: prefs.language, companyRules: prefs.companyRules, neverPromise: prefs.neverPromise, escalateWhen: prefs.escalateWhen },
-          source: attribution.source,
-          actorKind: attribution.actorKind,
-          changeRequest: "Company-wide AI preferences applied",
-          userId: ctx.user.id,
-          apply: true,
-        });
-        updated++;
+      const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
+      for (const target of await applyTargets(db, ctx.org.orgId)) {
+        const { planned, own } = planApply(target, prefs);
+        const write = replaceOwnEdits ? planned : planned.filter((field) => !own.includes(field));
+        if (!replaceOwnEdits && own.length) result.skipped.push({ role: target.role, fields: own, why: "client_edit" });
+        if (!write.length) continue;
+        // One employee's version cannot take the others down with it: each is made in a savepoint of its own.
+        await db.query("savepoint ai_preferences_employee");
+        try {
+          const version = await createConfigVersion(db, {
+            orgId: ctx.org.orgId,
+            agentId: target.agentId,
+            settings: { ...target.settings, ...(Object.fromEntries(write.map((field) => [field, prefs[field]])) as Partial<AiPreferences>) },
+            source: attribution.source,
+            actorKind: attribution.actorKind,
+            changeRequest: COMPANY_WIDE_PREFERENCES_APPLIED,
+            userId: ctx.user.id,
+            apply: true,
+          });
+          await db.query("release savepoint ai_preferences_employee");
+          (version.status === "applied" ? result.updated : result.held).push(target.role);
+        } catch (err) {
+          await db.query("rollback to savepoint ai_preferences_employee");
+          await db.query("release savepoint ai_preferences_employee");
+          result.skipped.push({ role: target.role, fields: write, why: "blocked", detail: err instanceof AppError ? err.message : "This employee could not be updated." });
+        }
       }
     });
   }
-  await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "settings.ai_preferences_updated", result: "success", metadata: { applyToEmployees, updated } });
-  return { updated };
+  await recordAudit({
+    orgId: ctx.org.orgId,
+    actorUserId: ctx.user.id,
+    actorKind: "user",
+    action: "settings.ai_preferences_updated",
+    result: "success",
+    metadata: { applyToEmployees, replaceOwnEdits, changed, updated: result.updated.length, held: result.held.length, skipped: result.skipped.length },
+  });
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +402,47 @@ export async function getTeam(ctx: OrgContext) {
       ).rows
     : [];
   return { members, invites };
+}
+
+export interface TeamSuggestion {
+  name: string;
+  email: string;
+  role: OrgRole;
+  /** The person this list names as taking appointments. Informational: inviting them gives nobody hours. */
+  hosts: boolean;
+  /** The signed-in person's own role is allowed to grant this one. */
+  canInvite: boolean;
+}
+
+/**
+ * The people the client listed in setup ("Who on your team talks to customers?") who are not on the team yet: not a member and without an open invitation. Nothing is sent from
+ * here; each one is invited with the same action as anyone else, by the person's own click. Empty for someone who cannot manage the team.
+ */
+export async function getTeamSuggestions(ctx: OrgContext): Promise<TeamSuggestion[]> {
+  if (!ctx.can("team.manage")) return [];
+  const { rows } = await withUser(ctx.user.id, (db) =>
+    db.query<{ value: unknown; skipped: boolean; needs_confirmation: boolean }>("select value, skipped, needs_confirmation from onboarding_answers where org_id = $1 and question_id = 'd.team'", [ctx.org.orgId]),
+  );
+  const answer = rows[0];
+  if (!answer || answer.skipped || answer.needs_confirmation || !Array.isArray(answer.value)) return [];
+  const { members, open } = await withSystem(async (db) => ({
+    members: (await db.query<{ email: string }>("select u.email from organization_memberships m join users u on u.id = m.user_id where m.org_id = $1 and m.status = 'active'", [ctx.org.orgId])).rows,
+    open: (await db.query<{ email: string }>("select email from invitations where org_id = $1 and accepted_at is null and revoked_at is null and expires_at > now()", [ctx.org.orgId])).rows,
+  }));
+  const taken = new Set([...members, ...open].map((r) => normalizeEmail(r.email)));
+  const grantable = grantableRoles(ctx.role);
+  const seen = new Set<string>();
+  const out: TeamSuggestion[] = [];
+  for (const raw of answer.value as unknown[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const email = typeof row.email === "string" ? normalizeEmail(row.email) : "";
+    const role = typeof row.role === "string" ? (row.role as OrgRole) : null;
+    if (!email || !z.string().email().safeParse(email).success || !role || !SUGGESTED_ROLES.has(role) || taken.has(email) || seen.has(email)) continue;
+    seen.add(email);
+    out.push({ name: typeof row.name === "string" ? row.name.trim().slice(0, 80) : "", email, role, hosts: row.hosts === "yes", canInvite: grantable.includes(role) });
+  }
+  return out;
 }
 
 export async function inviteMember(ctx: OrgContext, emailInput: string, role: OrgRole) {
@@ -296,7 +490,12 @@ export async function changeMemberRole(ctx: OrgContext, userId: string, role: Or
   });
 }
 
-export async function revokeMember(ctx: OrgContext, userId: string) {
+/**
+ * Ends a person's access. Once that has committed, a host who left can leave a verified calendar with nobody to take bookings and their upcoming bookings with a host who is no
+ * longer a member: the calendars are re-checked (the drift is recorded and the owners and admins told, once) and the bookings that need a look are listed. Nothing is cancelled or
+ * moved. The sentence for the screen comes back as `warning`, or null when nothing needs a look.
+ */
+export async function revokeMember(ctx: OrgContext, userId: string): Promise<{ warning: string | null }> {
   if (!ctx.can("team.manage")) throw new AppError("forbidden", "Only owners and admins can remove teammates.");
   const current = await targetRole(ctx.org.orgId, userId);
   if (!current) throw new AppError("not_found", "Teammate not found.");
@@ -306,6 +505,11 @@ export async function revokeMember(ctx: OrgContext, userId: string) {
     await db.query("update organization_memberships set status = 'revoked' where org_id = $1 and user_id = $2", [ctx.org.orgId, userId]);
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "team.access_revoked", targetType: "user", targetId: userId, result: "success" }, db);
   });
+  // Advisory and after the commit, so neither can undo or fail the removal. reverify.ts is loaded when needed: it imports the calendar activation module.
+  const affected = await checkBookingsAfterChange(ctx.org.orgId, { userIds: [userId] });
+  const { reverifyAfterCommit } = await import("@/server/calendars/reverify");
+  await reverifyAfterCommit(ctx.org.orgId, "member_removed");
+  return { warning: attentionWarning(affected) };
 }
 
 export async function revokeInvite(ctx: OrgContext, inviteId: string) {

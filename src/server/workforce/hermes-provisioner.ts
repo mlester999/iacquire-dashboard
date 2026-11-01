@@ -134,6 +134,13 @@ const ELIGIBLE_JOBS =
   "or (j.kind='sync' and a.hermes_profile is not null and a.hermes_gateway_id=g.id and j.source_job_id is not null " +
   "and exists (select 1 from agent_provisioning_jobs p where p.id=j.source_job_id and p.agent_instance_id=a.id and p.org_id=a.org_id and p.kind='provision' and p.result_reference like 'provisioner:v1:%'))) ";
 
+/**
+ * The claim's own two rules as SQL, for the launch panel's "waiting for capacity" reading of one workspace: a job counts as held only when it passes every claim condition
+ * (ELIGIBLE_JOBS, with the gateway as $1) except room (WITHIN_PROFILE_CAPACITY, with the ceiling as $2). One definition, so the panel and the claim cannot drift apart.
+ */
+export const PROVISIONER_ELIGIBLE_JOBS_SQL = ELIGIBLE_JOBS;
+export const PROVISIONER_WITHIN_CAPACITY_SQL = WITHIN_PROFILE_CAPACITY;
+
 async function claimInTransaction(db: Queryable, gatewayId: string) {
   const maxProfiles = env().HERMES_PROVISIONER_MAX_PROFILES ?? null;
   const { rows: candidates } = await db.query<{ id: string }>(

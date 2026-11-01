@@ -27,6 +27,7 @@ import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { ChatRail, type ConversationItem, type ListState } from "@/components/chat/chat-rail";
 import { EmployeeChatInfo } from "@/components/chat/employee-chat-info";
+import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
@@ -38,6 +39,7 @@ import {
 import { type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness, type EmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { chatNavTargets } from "@/lib/chat-navigation";
+import { parseEvidenceMarker, type EvidenceMarker } from "@/lib/evidence-class";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { detectBrowserTimeZone, resolveChatTimeZone } from "@/lib/chat-timezone";
 import { chatDateSeparatorLabel, conversationDateKey, formatChatTime } from "@/lib/conversation-time";
@@ -53,6 +55,8 @@ export interface ChatMessage {
   run_id: string | null;
   work_job_id: string | null;
   error_code: string | null;
+  /** What kind of reply this is. Absent or null on a message from before the marker existed: no chip is shown for it. */
+  evidence?: EvidenceMarker | null;
   created_at: string;
 }
 
@@ -106,7 +110,7 @@ function subscribeToTimeZoneChanges(onChange: () => void) {
 const serverBrowserTimeZone = () => null;
 
 type StreamEvent =
-  | { type: "ready"; conversationId: string; userMessageId: string | null; assistantMessageId: string; runId: string }
+  | { type: "ready"; conversationId: string; userMessageId: string | null; assistantMessageId: string; runId: string; evidence?: unknown }
   | { type: "snapshot"; content: string }
   | { type: "activity"; label: string }
   | { type: "delta"; text: string }
@@ -385,7 +389,7 @@ export function ChatWorkspace(props: Props) {
                 if (next.some((m) => m.id === ev.assistantMessageId)) return next;
                 return [
                   ...next,
-                  { id: ev.assistantMessageId, role: "assistant", content: "", status: "streaming", run_id: ev.runId, work_job_id: null, error_code: null, created_at: new Date().toISOString() },
+                  { id: ev.assistantMessageId, role: "assistant", content: "", status: "streaming", run_id: ev.runId, work_job_id: null, error_code: null, evidence: parseEvidenceMarker(ev.evidence), created_at: new Date().toISOString() },
                 ];
               });
               break;
@@ -910,6 +914,7 @@ function AssistantBubble({
           </div>
         )}
         {message.work_job_id && <WorkJobPanel jobId={message.work_job_id} className="mt-2" compact />}
+        {!thinking && message.status !== "failed" && message.evidence && <EvidenceChip evidence={message.evidence} timeZone={timeZone} className="mt-2" />}
         {!streaming && (
           <div className="mt-2 flex min-h-7 items-center gap-1 text-faint">
             {message.content && (

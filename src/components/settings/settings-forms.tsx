@@ -49,16 +49,19 @@ import {
   changeRoleAction,
   inviteMemberAction,
   listSessionsAction,
+  previewAiPreferencesApplyAction,
   revokeInviteAction,
   revokeMemberAction,
   revokeSessionAction,
   saveNotificationPrefsAction,
+  teamSuggestionsAction,
   updateAiPreferencesAction,
   updateProfileAction,
   updateUserProfileAction,
 } from "@/app/actions/settings";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AiPreferences, type ReplyLength } from "@/lib/agent-settings";
 import { COMPANY_FIELD_GUIDANCE, SHARED_EMPLOYEE_GUIDANCE } from "@/lib/employee-field-guidance";
+import { aiPreferencesApplyMessage, employeeUpdateMessage } from "@/lib/onboarding/business-profile";
 import { grantableRoles, ROLE_DESCRIPTIONS, ROLE_LABELS, type OrgRole } from "@/lib/permissions";
 import type { EmailPreference } from "@/lib/ops";
 import type { NotificationPrefsView } from "@/lib/notification-groups";
@@ -116,7 +119,10 @@ export function ProfileForms({
                 const res = await updateProfileAction(p);
                 setPending(null);
                 if (!res.ok) return toast.error(res.error);
-                toast.success("Business profile saved");
+                // What reached the employees is said as it is: a version waiting for review is never reported as applied.
+                const said = employeeUpdateMessage(res.data.employees);
+                if (res.data.employees.failed) toast.warning("Business profile saved", { description: said });
+                else toast.success("Business profile saved", said ? { description: said } : undefined);
                 router.refresh();
               }}
             />
@@ -241,13 +247,32 @@ export function TeamManager({
   const [role, setRole] = React.useState<OrgRole>("viewer");
   const [pending, setPending] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState<(typeof members)[number] | null>(null);
-  const run = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
+  const [suggested, setSuggested] = React.useState<Array<{ name: string; email: string; role: OrgRole; hosts: boolean; canInvite: boolean }>>([]);
+  // The people listed in setup who are not on the team yet. Read when the page opens; each one is invited by the person's own click.
+  React.useEffect(() => {
+    if (!canManage) return;
+    let live = true;
+    void teamSuggestionsAction().then((res) => {
+      if (live && res.ok) setSuggested(res.data);
+    });
+    return () => {
+      live = false;
+    };
+  }, [canManage, members.length, invites.length]);
+  const run = async (key: string, fn: () => Promise<{ ok: boolean; error?: string; data?: unknown }>, msg: string) => {
     setPending(key);
     const res = await fn();
     setPending(null);
-    if (!res.ok) return toast.error(res.error ?? "Something went wrong.");
+    if (!res.ok) {
+      toast.error(res.error ?? "Something went wrong.");
+      return false;
+    }
     toast.success(msg);
+    // A change that was saved but leaves something for a person to look at (a host's upcoming bookings after they were removed) says so, after the success.
+    const warning = (res.data as { warning?: unknown } | null | undefined)?.warning;
+    if (typeof warning === "string" && warning) toast.warning(warning, { duration: 12000 });
     router.refresh();
+    return true;
   };
   return (
     <div className="space-y-6">
@@ -292,6 +317,75 @@ export function TeamManager({
                 </li>
               );
             })}
+          </ul>
+        </Panel>
+      )}
+      {canManage && suggested.length > 0 && (
+        <Panel
+          icon={<Sparkles />}
+          tone="violet"
+          title="Suggested from your setup"
+          description="You listed these people when you set up. Nothing is sent until you press Invite."
+          aside={
+            suggested.some((x) => x.canInvite) ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={pending === "s-all"}
+                onClick={async () => {
+                  setPending("s-all");
+                  const done: string[] = [];
+                  for (const person of suggested.filter((x) => x.canInvite)) {
+                    const res = await inviteMemberAction(person.email, person.role);
+                    if (!res.ok) {
+                      toast.error(res.error ?? "Something went wrong.");
+                      break;
+                    }
+                    done.push(person.email);
+                  }
+                  setPending(null);
+                  if (done.length) {
+                    toast.success(`${done.length} invitation${done.length === 1 ? "" : "s"} sent`);
+                    setSuggested((list) => list.filter((x) => !done.includes(x.email)));
+                    router.refresh();
+                  }
+                }}
+              >
+                <UserPlus className="size-4" /> Invite everyone
+              </Button>
+            ) : undefined
+          }
+          flush
+        >
+          <ul className="divide-y divide-line border-t border-line" aria-label="Suggested from your setup">
+            {suggested.map((person) => (
+              <li key={person.email} className="management-row flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+                <div className="flex min-w-0 flex-1 items-center gap-3.5">
+                  <AvatarTile name={person.name || person.email} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-semibold text-ink" title={person.name || person.email}>{person.name || person.email}</p>
+                    <p className="truncate text-[13px] text-muted" title={person.email}>{person.email}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <RolePill role={person.role} />
+                      {person.hosts && <StatusPill tone="neutral" size="sm">Takes appointments</StatusPill>}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="sm:shrink-0"
+                  disabled={!person.canInvite}
+                  title={person.canInvite ? undefined : "Your role can't grant that access level."}
+                  loading={pending === `s-${person.email}`}
+                  onClick={() =>
+                    run(`s-${person.email}`, () => inviteMemberAction(person.email, person.role), `Invitation sent to ${person.email}`).then((sent) => sent && setSuggested((list) => list.filter((x) => x.email !== person.email)))
+                  }
+                >
+                  <UserPlus className="size-4" /> Invite
+                </Button>
+              </li>
+            ))}
           </ul>
         </Panel>
       )}
@@ -417,9 +511,33 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
   const router = useRouter();
   const [p, setP] = React.useState(prefs);
   const [r, setR] = React.useState(retention);
-  const [apply, setApply] = React.useState(true);
+  // Off unless asked for: saving changes the company's defaults, and "apply" is a separate, previewed choice.
+  const [apply, setApply] = React.useState(false);
+  const [replaceOwn, setReplaceOwn] = React.useState(false);
+  type ApplyPreview = Extract<Awaited<ReturnType<typeof previewAiPreferencesApplyAction>>, { ok: true }>["data"];
+  const [fetched, setFetched] = React.useState<{ key: string; data: ApplyPreview } | null>(null);
   const [pending, setPending] = React.useState(false);
   const dirty = JSON.stringify(p) !== JSON.stringify(prefs) || r !== retention;
+  // Which employees would change, and which of their own edits would be replaced, shown before anything is applied. A preview is shown only for the preferences as they are now.
+  const previewKey = JSON.stringify(p);
+  React.useEffect(() => {
+    if (!canEdit || !apply) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      void previewAiPreferencesApplyAction(JSON.parse(previewKey)).then((res) => {
+        if (live && res.ok) setFetched({ key: previewKey, data: res.data });
+      });
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [apply, canEdit, previewKey]);
+  const preview = apply && fetched?.key === previewKey ? fetched.data : null;
+  const replacing = (preview?.employees ?? []).filter((e) => e.replaces.length > 0);
+  // Who really gets a version on save: an employee with a field to change, or (only while the replace switch is on) one whose own wording would be replaced. An employee whose every
+  // differing field is the client's own is kept as it is, and gets no version.
+  const gettingVersion = (preview?.employees ?? []).filter((e) => e.changes.length > 0 || (replaceOwn && e.replaces.length > 0)).length;
   return (
     <div className="space-y-6">
       {!canEdit && (
@@ -445,10 +563,16 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
               }}
               onSave={async () => {
                 setPending(true);
-                const res = await updateAiPreferencesAction({ ...p, chatRetentionDays: r as never, applyToEmployees: apply });
+                const res = await updateAiPreferencesAction({ ...p, chatRetentionDays: r as never, applyToEmployees: apply, replaceOwnEdits: apply && replaceOwn });
                 setPending(false);
                 if (!res.ok) return toast.error(res.error);
-                toast.success("AI preferences saved", { description: res.data.updated ? `Applied to ${res.data.updated} employee${res.data.updated === 1 ? "" : "s"}.` : undefined });
+                const said = aiPreferencesApplyMessage({
+                  updated: res.data.updated.length,
+                  held: res.data.held.length,
+                  keptOwn: res.data.skipped.filter((x) => x.why === "client_edit").length,
+                  blocked: res.data.skipped.filter((x) => x.why === "blocked").length,
+                });
+                toast.success("AI preferences saved", said ? { description: said } : undefined);
                 router.refresh();
               }}
             />
@@ -509,9 +633,36 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
           </GuidedField>
         </div>
         {canEdit && (
-          <SettingRow as="label" icon={<RefreshCw />} tone="primary" title="Apply to all configured employees now" description="Creates a new configuration version for each employee.">
+          <SettingRow as="label" icon={<RefreshCw />} tone="primary" title="Apply to all configured employees now" description="Off by default. Creates a new configuration version for each employee, and keeps any wording you changed on an employee unless you choose otherwise.">
             <Switch checked={apply} onCheckedChange={setApply} aria-label="Apply to all configured employees" />
           </SettingRow>
+        )}
+        {canEdit && apply && preview && (
+          <div className="space-y-3" aria-live="polite">
+            <p className="text-[13px] text-muted" data-testid="apply-preview-summary">
+              {gettingVersion
+                ? `${gettingVersion} employee${gettingVersion === 1 ? " would" : "s would"} get a new version.`
+                : preview.employees.length
+                  ? "No employee would get a new version: the differences are wording you changed on an employee, which is kept unless you choose to replace it."
+                  : "Every employee already has these preferences."}
+            </p>
+            {replacing.length > 0 && (
+              <Notice tone="warning" icon={<Lock />} title="Some employees have wording of their own">
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {replacing.map((e) => (
+                    <li key={e.role}>
+                      {e.name}: {e.replaces.map((x) => x.label).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2">These fields are kept as they are unless you choose to replace them.</p>
+                <label className="mt-3 flex items-center gap-2 text-[13px] font-medium text-ink-2">
+                  <Switch checked={replaceOwn} onCheckedChange={setReplaceOwn} aria-label="Also replace the wording I changed on these employees" />
+                  Also replace the wording I changed on these employees
+                </label>
+              </Notice>
+            )}
+          </div>
         )}
       </Panel>
     </div>

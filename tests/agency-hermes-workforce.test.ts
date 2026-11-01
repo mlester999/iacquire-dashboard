@@ -865,6 +865,10 @@ describe("agency Hermes workforce isolation", () => {
         run_status: "completed",
       });
 
+      // The restricted check hands the model no workspace records: its reply is stored as a model response that says nothing was read, and the same marker is what the stream announced.
+      const marker = (await withSystem((db) => db.query<{ evidence: unknown }>("select evidence from chat_messages where id=$1", [sent.assistantMessageId]))).rows[0].evidence;
+      expect(marker).toEqual({ v: 1, class: "model_response" });
+
       const audit = (await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
         "select metadata from audit_logs where action='hermes.inference_only_chat' and target_id=$1",
         [sent.runId],

@@ -293,6 +293,46 @@ describe("two clients from the questionnaire to ready to launch", () => {
     }
   }, 240_000);
 
+  it("hands each ready client its activation controls, offers the optional refinements without moving 100%, and says plainly when a check had nothing to read", async () => {
+    const ra = await readiness(a);
+    const rb = await readiness(b);
+    for (const r of [ra, rb]) {
+      // Final activation: every customer-facing switch is listed, none is required, and every one is still off because nobody turned it on.
+      expect(r.controls!.length).toBeGreaterThan(3);
+      expect(r.controls!.every((c) => c.required === false && c.on === false)).toBe(true);
+      expect(r.controls!.every((c) => c.detail.startsWith("Off."))).toBe(true);
+    }
+    expect(ra.controls!.find((c) => c.key === "booking_page")).toMatchObject({ on: false, wanted: true, href: expect.stringContaining("/crm/calendars/") });
+    expect(rb.controls!.some((c) => c.key === "booking_page")).toBe(false);
+    expect(ra.controls!.find((c) => c.key === "channel.email")).toMatchObject({ on: false });
+
+    // The suggested currency and phone country follow each client's own time zone; they are offered, never applied by themselves, and they do not move the percentage.
+    expect(itemOf(ra, "crm.region")).toMatchObject({ state: "action_required", required: false, action: { label: "Use USD and +1", intent: "confirm_region_defaults" } });
+    expect(itemOf(rb, "crm.region")).toMatchObject({ state: "action_required", required: false, action: { label: "Use PHP and +63", intent: "confirm_region_defaults" } });
+    for (const r of [ra, rb]) expect(r).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    const workspaceOf = async (c: Client) => (await withSystem((db) => db.query<{ default_currency: string; default_calling_code: string | null }>("select default_currency, default_calling_code from crm_workspaces where org_id = $1", [c.org.id]))).rows[0];
+    expect(await workspaceOf(b)).toEqual({ default_currency: "USD", default_calling_code: null });
+    expect(await runLaunchIntent(b.ctx, "confirm_region_defaults")).toMatchObject({ ok: true });
+    expect(await workspaceOf(b)).toEqual({ default_currency: "PHP", default_calling_code: "63" });
+    // Confirming one client's values touches no other, and the confirmed client is still at 100%.
+    expect(await workspaceOf(a)).toEqual({ default_currency: "USD", default_calling_code: null });
+    expect(await readiness(b)).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(itemOf(await readiness(b), "crm.region").state).toBe("done");
+
+    // Each employee's path is complete, and an employee outside the plan has none.
+    for (const role of AGENT_ROLE_KEYS) expect(itemOf(ra, `employees.${role}`).stages!.every((s) => s.state === "done")).toBe(true);
+    expect(itemOf(rb, "employees.sales_assistant").stages).toBeUndefined();
+    expect(itemOf(rb, "employees.appointment_setter").stages).toBeUndefined();
+
+    // A new client's CRM is legitimately empty: the checks that read it passed on nothing, and say so. The others read real records.
+    for (const r of [ra, rb]) {
+      for (const role of ["crm_manager", "performance_analyst"] as const) expect(itemOf(r, `verification.${role}`), role).toMatchObject({ state: "done", detail: expect.stringContaining("Nothing to check yet") });
+      expect(itemOf(r, "verification.operations_manager").detail).not.toContain("Nothing to check yet");
+    }
+    // The employees' team answer is empty here, so no invitation was offered, and nothing was invited.
+    expect((await withSystem((db) => db.query("select 1 from invitations where org_id = any($1::uuid[])", [[a.org.id, b.org.id]]))).rows).toHaveLength(0);
+  }, 180_000);
+
   it("did all of it without sending a message, booking anyone or turning on a public page", async () => {
     for (const c of [a, b]) {
       expect(await count(c.org.id, "appointment_bookings")).toBe(0);

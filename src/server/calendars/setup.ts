@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { isValidTimeZone, type WeeklyRule } from "@/lib/calendars/slots";
+import { checkBookingsAfterChange, type BookingNeedingAttention } from "@/server/calendars/impact";
 
 export type Assignment = "single" | "round_robin" | "collective";
 export type LocationKind = "phone" | "video" | "in_person" | "custom" | "none";
@@ -203,6 +204,20 @@ export interface CalendarInput {
 export const DRAFT_HIDDEN_MESSAGE = "This calendar is still a draft. Verify and activate it before turning on its booking page or making it the default.";
 
 /**
+ * Once a write has committed: re-runs the activation checks for the workspace's verified calendars and records (once) what newly fails or passes again. Advisory, so it never
+ * fails the change that just succeeded. Loaded when needed: reverify.ts imports activation.ts, which imports this module.
+ */
+async function recheckCalendars(orgId: string, reason: string): Promise<void> {
+  const { reverifyAfterCommit } = await import("@/server/calendars/reverify");
+  await reverifyAfterCommit(orgId, reason);
+}
+
+/** What a write that can leave existing bookings behind hands back: the upcoming bookings that no longer fit. Nothing was cancelled or moved. */
+export interface BookingImpact {
+  affected: BookingNeedingAttention[];
+}
+
+/**
  * Copies a calendar's suggested weekly hours and time zone to the given hosts, inside the caller's transaction. Only hosts with no weekly
  * hours at all receive them: anyone who already has hours keeps them untouched (hours belong to the person, across every calendar). A host
  * whose time zone is already set to a different zone than the hours are written in is NOT given them: business-local hours read in the
@@ -326,23 +341,25 @@ export async function createCalendar(actor: CrmActor, input: CalendarInput): Pro
 }
 
 /** Changes a calendar's settings. Turning the booking page on here applies the same check as setCalendarPublic. */
-export async function updateCalendar(actor: CrmActor, id: string, input: Partial<CalendarInput>): Promise<{ hoursApplied: string[]; hoursNeedZoneChoice: string[] }> {
+export async function updateCalendar(actor: CrmActor, id: string, input: Partial<CalendarInput>): Promise<{ hoursApplied: string[]; hoursNeedZoneChoice: string[] } & BookingImpact> {
   assertCan(actor, "calendars.manage");
   checkCalendar(input);
-  return crmWrite(actor, async (db) => {
+  const done = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     const cur = await db.query<{ assignment: Assignment; public: boolean; status: CalendarStatus }>(
       "select assignment, public, status from crm_calendars where id = $1 and org_id = $2 and archived_at is null for update",
       [id, actor.orgId],
     );
     if (!cur.rows[0]) throw new AppError("not_found", "Calendar not found.");
+    let removed: string[] = [];
     if (cur.rows[0].status === "draft" && (input.public === true || input.isDefault)) throw new AppError("conflict", DRAFT_HIDDEN_MESSAGE);
     const assignment = input.assignment ?? cur.rows[0].assignment;
     if (input.members) {
       if (!input.members.length) throw new AppError("invalid_input", "A calendar needs at least one host.");
       if (assignment === "single" && input.members.length > 1) throw new AppError("invalid_input", "A one-person calendar has exactly one host. Use round robin or collective for a team.");
       await assertHosts(db, actor.orgId, input.members.map((m) => m.userId));
-      await db.query("delete from crm_calendar_members where calendar_id = $1 and org_id = $2 and not (user_id = any($3::uuid[]))", [id, actor.orgId, input.members.map((m) => m.userId)]);
+      const left = await db.query<{ user_id: string }>("delete from crm_calendar_members where calendar_id = $1 and org_id = $2 and not (user_id = any($3::uuid[])) returning user_id", [id, actor.orgId, input.members.map((m) => m.userId)]);
+      removed = left.rows.map((r) => r.user_id);
       for (const m of input.members) {
         await db.query(
           `insert into crm_calendar_members (org_id, calendar_id, user_id, priority) values ($1, $2, $3, $4) on conflict (calendar_id, user_id) do update set priority = excluded.priority, active = true`,
@@ -375,8 +392,12 @@ export async function updateCalendar(actor: CrmActor, id: string, input: Partial
       await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_hours_applied", targetType: "crm_calendar", targetId: id, result: "success", metadata: { hosts: hoursApplied.length } }, db);
     }
     // Hosts left without hours because they already work in another time zone: the caller says so rather than implying everyone has hours.
-    return { hoursApplied, hoursNeedZoneChoice: template?.needsZoneChoice ?? [] };
+    return { hoursApplied, hoursNeedZoneChoice: template?.needsZoneChoice ?? [], removed };
   });
+  // The host list changed: bookings of the people taken off this calendar are listed (never moved), and the verified calendars are checked again.
+  const affected = done.removed.length ? await checkBookingsAfterChange(actor.orgId, { userIds: done.removed, calendarId: id }) : [];
+  if (input.members) await recheckCalendars(actor.orgId, "calendar_hosts_changed");
+  return { hoursApplied: done.hoursApplied, hoursNeedZoneChoice: done.hoursNeedZoneChoice, affected };
 }
 
 /**
@@ -413,6 +434,7 @@ export async function archiveCalendar(actor: CrmActor, id: string): Promise<void
     );
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_archived", targetType: "crm_calendar", targetId: id, result: "success" }, db);
   });
+  await recheckCalendars(actor.orgId, "calendar_archived");
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +535,7 @@ export async function createAppointmentType(actor: CrmActor, calendarId: string,
   assertCan(actor, "calendars.manage");
   checkType(input);
   if (!(input.requireEmail ?? true) && !(input.requirePhone ?? false)) throw new AppError("invalid_input", "Ask for at least an email address or a phone number, so you can reach the person who booked.");
-  return crmWrite(actor, async (db) => {
+  const created = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     const cal = await db.query("select 1 from crm_calendars where id = $1 and org_id = $2 and archived_at is null", [calendarId, actor.orgId]);
     if (!cal.rows.length) throw new AppError("not_found", "Calendar not found.");
@@ -537,6 +559,8 @@ export async function createAppointmentType(actor: CrmActor, calendarId: string,
     }, db);
     return { id: rows[0].id };
   });
+  await recheckCalendars(actor.orgId, "appointment_type_added");
+  return created;
 }
 
 export async function updateAppointmentType(actor: CrmActor, id: string, input: Partial<AppointmentTypeInput>): Promise<void> {
@@ -598,6 +622,7 @@ export async function updateAppointmentType(actor: CrmActor, id: string, input: 
       }, db);
     }
   });
+  await recheckCalendars(actor.orgId, "appointment_type_changed");
 }
 
 /** Shows or hides one appointment type on its calendar's booking page. Staff and the AI can still book a hidden type. */
@@ -636,7 +661,7 @@ export async function reorderAppointmentTypes(actor: CrmActor, calendarId: strin
 /** Copies an appointment type, settings and questions included, to the end of the same calendar. The copy starts hidden from the booking page. */
 export async function duplicateAppointmentType(actor: CrmActor, id: string): Promise<{ id: string }> {
   assertCan(actor, "calendars.manage");
-  return crmWrite(actor, async (db) => {
+  const copy = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     const cur = await db.query<{ calendar_id: string; name: string }>(
       `select t.calendar_id, t.name from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id and c.org_id = t.org_id
@@ -664,6 +689,8 @@ export async function duplicateAppointmentType(actor: CrmActor, id: string): Pro
     }, db);
     return { id: rows[0].id };
   });
+  await recheckCalendars(actor.orgId, "appointment_type_added");
+  return copy;
 }
 
 export async function archiveAppointmentType(actor: CrmActor, id: string): Promise<void> {
@@ -674,6 +701,7 @@ export async function archiveAppointmentType(actor: CrmActor, id: string): Promi
     if (!res.rowCount) throw new AppError("not_found", "Appointment type not found.");
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.appointment_type_archived", targetType: "crm_appointment_type", targetId: id, result: "success", metadata: { calendarId: res.rows[0].calendar_id } }, db);
   });
+  await recheckCalendars(actor.orgId, "appointment_type_archived");
 }
 
 // ---------------------------------------------------------------------------
@@ -729,7 +757,7 @@ export async function listHostAvailability(actor: CrmActor): Promise<{ hosts: Ho
 }
 
 /** Sets one person's weekly hours. People set their own; changing someone else's needs calendar management. */
-export async function setHostAvailability(actor: CrmActor, userId: string, input: { timezone: string; accepting?: boolean; rules: Array<{ weekday: number; startMinute: number; endMinute: number }> }): Promise<void> {
+export async function setHostAvailability(actor: CrmActor, userId: string, input: { timezone: string; accepting?: boolean; rules: Array<{ weekday: number; startMinute: number; endMinute: number }> }): Promise<BookingImpact> {
   assertCan(actor, "appointments.view");
   if (userId !== actor.userId) assertCan(actor, "calendars.manage", "Changing someone else's hours needs calendar management.");
   if (!isValidTimeZone(input.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
@@ -743,7 +771,7 @@ export async function setHostAvailability(actor: CrmActor, userId: string, input
     const day = input.rules.filter((r) => r.weekday === d).sort((a, b) => a.startMinute - b.startMinute);
     for (let i = 1; i < day.length; i++) if (day[i].startMinute < day[i - 1].endMinute) throw new AppError("invalid_input", "Time ranges on the same day can't overlap.");
   }
-  await crmWrite(actor, async (db) => {
+  const changed = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     await assertHosts(db, actor.orgId, [userId]);
     const prior = await db.query<{ timezone: string; accepting: boolean }>("select timezone, accepting from crm_host_settings where org_id = $1 and user_id = $2", [actor.orgId, userId]);
@@ -766,16 +794,23 @@ export async function setHostAvailability(actor: CrmActor, userId: string, input
         metadata: { userId, timezone: [prior.rows[0]?.timezone ?? null, input.timezone], accepting: [prior.rows[0]?.accepting ?? null, accepting], ranges: input.rules.length, before: priorRules.rows.length },
       }, db);
     }
+    return !same;
   });
+  // Saving the same hours again changes nothing, so it checks nothing. A real change lists the host's upcoming bookings that no longer fit (they are never moved or cancelled)
+  // and re-checks the verified calendars: removed hours, a paused host or a changed time zone can each stop a calendar from offering a time.
+  if (!changed) return { affected: [] };
+  const affected = await checkBookingsAfterChange(actor.orgId, { userIds: [userId] });
+  await recheckCalendars(actor.orgId, "host_hours_changed");
+  return { affected };
 }
 
-export async function addAvailabilityOverride(actor: CrmActor, input: { userId: string | null; date: string; startMinute: number | null; endMinute: number | null; reason?: string | null }): Promise<{ id: string }> {
+export async function addAvailabilityOverride(actor: CrmActor, input: { userId: string | null; date: string; startMinute: number | null; endMinute: number | null; reason?: string | null }): Promise<{ id: string } & BookingImpact> {
   assertCan(actor, "appointments.view");
   if (input.userId !== actor.userId) assertCan(actor, "calendars.manage", "Adding time off for someone else, or for everyone, needs calendar management.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || Number.isNaN(Date.parse(input.date))) throw new AppError("invalid_input", "Choose a date.");
   if ((input.startMinute === null) !== (input.endMinute === null)) throw new AppError("invalid_input", "Give both a start and an end, or neither for the whole day.");
   if (input.startMinute !== null && input.endMinute !== null && (input.endMinute <= input.startMinute || input.startMinute < 0 || input.endMinute > 1440)) throw new AppError("invalid_input", "The start must be before the end.");
-  return crmWrite(actor, async (db) => {
+  const added = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     if (input.userId) await assertHosts(db, actor.orgId, [input.userId]);
     const { rows } = await db.query<{ id: string }>(
@@ -788,6 +823,9 @@ export async function addAvailabilityOverride(actor: CrmActor, input: { userId: 
     }, db);
     return { id: rows[0].id };
   });
+  const affected = await bookingsOnDay(actor.orgId, input.userId, input.date);
+  await recheckCalendars(actor.orgId, "day_exception_changed");
+  return { ...added, affected };
 }
 
 export async function deleteAvailabilityOverride(actor: CrmActor, id: string): Promise<void> {
@@ -803,6 +841,17 @@ export async function deleteAvailabilityOverride(actor: CrmActor, id: string): P
       metadata: { userId: rows[0].user_id, date: rows[0].on_date, removed: 1 },
     }, db);
   });
+  // Giving time back can only open a calendar up (it may clear a recorded problem), so only the calendars are checked.
+  await recheckCalendars(actor.orgId, "day_exception_removed");
+}
+
+/**
+ * The upcoming bookings a day exception can leave outside someone's hours: those that start on that date in any zone (the window is padded by the widest offset either way, so
+ * a host in Auckland or Honolulu is covered), for one host or, for a workspace-wide day, every host. Listed only, never changed.
+ */
+async function bookingsOnDay(orgId: string, userId: string | null, date: string): Promise<BookingNeedingAttention[]> {
+  const day = new Date(`${date}T00:00:00Z`).getTime();
+  return checkBookingsAfterChange(orgId, { ...(userId ? { userIds: [userId] } : {}), from: new Date(day - 14 * 3_600_000), to: new Date(day + 38 * 3_600_000) });
 }
 
 const isRealDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
@@ -821,7 +870,7 @@ function assertExceptionOwner(actor: CrmActor, userId: string | null) {
 export async function setDayException(
   actor: CrmActor,
   input: { userId: string | null; date: string; windows: Array<{ startMinute: number; endMinute: number }> | null; reason?: string | null },
-): Promise<{ ids: string[] }> {
+): Promise<{ ids: string[] } & BookingImpact> {
   assertExceptionOwner(actor, input.userId);
   if (!isRealDate(input.date)) throw new AppError("invalid_input", "Choose a date.");
   if (input.reason && input.reason.trim().length > 120) throw new AppError("invalid_input", "Keep the reason to 120 characters.");
@@ -836,7 +885,7 @@ export async function setDayException(
     }
     for (let i = 1; i < windows.length; i++) if (windows[i].startMinute < windows[i - 1].endMinute) throw new AppError("invalid_input", "Time ranges on the same day can't overlap.");
   }
-  return crmWrite(actor, async (db) => {
+  const set = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     if (input.userId) await assertHosts(db, actor.orgId, [input.userId]);
     const prior = await db.query<{ start_minute: number | null; end_minute: number | null }>(
@@ -859,21 +908,26 @@ export async function setDayException(
     }
     // The same day set the same way again changes nothing, so it leaves nothing in the trail.
     const key = (list: Array<{ startMinute: number | null; endMinute: number | null }>) => list.map((r) => `${r.startMinute}-${r.endMinute}`).sort().join(",");
-    if (key(prior.rows.map((r) => ({ startMinute: r.start_minute, endMinute: r.end_minute }))) !== key(rows)) {
+    const changed = key(prior.rows.map((r) => ({ startMinute: r.start_minute, endMinute: r.end_minute }))) !== key(rows);
+    if (changed) {
       await recordAudit({
         orgId: actor.orgId, ...auditActor(actor), action: "crm.availability_override_added", targetType: "crm_availability_override", targetId: ids[0], result: "success",
         metadata: { userId: input.userId, date: input.date, wholeDay: windows === null, windows: windows?.length ?? 0, replaced: prior.rows.length },
       }, db);
     }
-    return { ids };
+    return { ids, changed };
   });
+  if (!set.changed) return { ids: set.ids, affected: [] };
+  const affected = await bookingsOnDay(actor.orgId, input.userId, input.date);
+  await recheckCalendars(actor.orgId, "day_exception_changed");
+  return { ids: set.ids, affected };
 }
 
 /** Removes every exception on one day for a person (or the workspace holiday), so the weekly hours apply again. */
 export async function clearDayException(actor: CrmActor, input: { userId: string | null; date: string }): Promise<{ removed: number }> {
   assertExceptionOwner(actor, input.userId);
   if (!isRealDate(input.date)) throw new AppError("invalid_input", "Choose a date.");
-  return crmWrite(actor, async (db) => {
+  const cleared = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "calendars");
     const res = await db.query(
       "delete from crm_availability_overrides where org_id = $1 and on_date = $2 and (($3::uuid is null and user_id is null) or user_id = $3::uuid)",
@@ -886,6 +940,9 @@ export async function clearDayException(actor: CrmActor, input: { userId: string
     }, db);
     return { removed: res.rowCount };
   });
+  // Giving a day back can only open a calendar up (it may clear a recorded problem), so only the calendars are checked.
+  await recheckCalendars(actor.orgId, "day_exception_removed");
+  return cleared;
 }
 
 // ---------------------------------------------------------------------------

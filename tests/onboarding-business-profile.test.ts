@@ -5,7 +5,11 @@ import { withSystem, withUser } from "@/server/db";
 import { getProfile, updateProfile, writeBusinessProfile } from "@/server/settings/service";
 import { getOnboardingSession, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { loadCompanyContext } from "@/server/workforce/service";
-import { parseProfileSnapshot } from "@/lib/onboarding/business-profile";
+import {
+  baselineOf, buildSnapshot, deriveMessaging, derivePreferences, deriveProfile, hoursKey, keysToWrite, messagingAnswerPatches, MESSAGING_ANSWERS, MESSAGING_KEYS, parseProfileSnapshot,
+  preferenceAnswerPatches, snapshotAfterSettings, snapshotWithExtras,
+} from "@/lib/onboarding/business-profile";
+import { readPendingAnswerChanges } from "@/server/onboarding/pending-changes";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { submitRealOnboarding } from "./support/billing";
 
@@ -306,5 +310,133 @@ describe("lock order between Settings and a submission", () => {
     expect(body.indexOf("lockOnboardingRow(")).toBeGreaterThan(-1);
     expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("update organizations set"));
     expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("writeBusinessProfile("));
+  });
+});
+
+describe("the messaging and preference rules, pure", () => {
+  const answers = (extra: Record<string, unknown> = {}) => ({ "a.hours": { mon: [["09:00", "17:00"]] }, "c.response_hours": "business_hours", "d.followup": "gentle", "c.tone": "casual", ...extra }) as never;
+
+  it("reads what the answers say about the messaging values and the preferences", () => {
+    expect(deriveMessaging(answers())).toEqual({ hours: JSON.stringify([["mon", [["09:00", "17:00"]]]]), replyHours: "business_hours", followup: "gentle" });
+    expect(deriveMessaging({} as never)).toEqual({ hours: "", replyHours: "always", followup: "balanced" });
+    expect(derivePreferences(answers()).tone).toBe("casual");
+    expect(derivePreferences({} as never)).toMatchObject({ tone: "friendly", replyLength: "concise", language: "English", companyRules: "" });
+    // The same hours written in another day order are the same hours.
+    expect(hoursKey({ tue: [["10:00", "12:00"]], mon: [["09:00", "10:00"]] })).toBe(hoursKey({ mon: [["09:00", "10:00"]], tue: [["10:00", "12:00"]] }));
+    expect(hoursKey({ mon: [] })).toBe("");
+  });
+
+  it("keeps the new snapshot keys through build, parse and a Settings edit, and reads an old snapshot as before", () => {
+    const derived = deriveProfile({ "a.business_name": "Snap" } as never);
+    const built = buildSnapshot(derived, new Date("2026-11-02T10:00:00Z"), { messaging: deriveMessaging(answers()), prefs: derivePreferences(answers()) });
+    expect(parseProfileSnapshot(JSON.parse(JSON.stringify(built)))).toEqual(built);
+    expect(parseProfileSnapshot(JSON.parse(JSON.stringify(built)))?.messaging?.followup).toBe("gentle");
+    const old = { version: 1, fields: { name: "Snap" }, appliedThrough: "2026-11-02T10:00:00.000Z" };
+    expect(parseProfileSnapshot(old)).toEqual(old);
+    expect(parseProfileSnapshot({ ...old, messaging: { followup: 3, hours: "x" }, prefs: "no" })?.messaging).toEqual({ hours: "x" });
+    const after = snapshotAfterSettings(built, { ...derived, name: "Snapped" }, ["name"], { advanceTo: null });
+    expect(after.messaging).toEqual(built.messaging);
+    expect(after.prefs).toEqual(built.prefs);
+    const extra = snapshotWithExtras(built, { messaging: { followup: "off" } }, { advanceTo: new Date("2026-11-03T10:00:00Z") });
+    expect(extra.messaging).toMatchObject({ followup: "off", replyHours: "business_hours" });
+    expect(extra.appliedThrough).toBe("2026-11-03T10:00:00.000Z");
+    expect(snapshotWithExtras(built, {}, { advanceTo: null }).appliedThrough).toBe(built.appliedThrough);
+  });
+
+  it("writes a key only when its answers changed since the baseline, and everything on a first submission", () => {
+    const derived = { hours: "H", replyHours: "always", followup: "gentle" };
+    expect(keysToWrite(MESSAGING_KEYS, derived, null)).toEqual(["hours", "replyHours", "followup"]);
+    expect(keysToWrite(MESSAGING_KEYS, derived, { hours: "H", replyHours: "always", followup: "gentle" })).toEqual([]);
+    expect(keysToWrite(MESSAGING_KEYS, derived, { hours: "H", replyHours: "business_hours" })).toEqual(["replyHours", "followup"]);
+    // No snapshot value: the key counts as changed only when one of its answers was edited after the submission.
+    const baseline = baselineOf(MESSAGING_KEYS, MESSAGING_ANSWERS, derived, { followup: "off" }, { "a.hours": 100, "c.response_hours": 300, "d.followup": 300 }, 200);
+    expect(baseline).toEqual({ hours: "H", followup: "off" });
+    expect(keysToWrite(MESSAGING_KEYS, derived, baseline)).toEqual(["replyHours", "followup"]);
+  });
+
+  it("turns a Messaging edit into answers only where the value is exactly an answer", () => {
+    expect(messagingAnswerPatches({ businessHours: { tue: [["10:00", "16:00"]] }, replyBusinessHoursOnly: false, followUpPreset: "persistent" }, {})).toEqual([
+      { id: "a.hours", value: { tue: [["10:00", "16:00"]] }, key: "hours" },
+      { id: "c.response_hours", value: "always", key: "replyHours" },
+      { id: "d.followup", value: "persistent", key: "followup" },
+    ]);
+    expect(messagingAnswerPatches({ followUpPreset: "custom" }, {})).toEqual([]);
+    expect(messagingAnswerPatches({ followUpPreset: "nonsense" }, {})).toEqual([]);
+    expect(messagingAnswerPatches({}, {})).toEqual([]);
+  });
+
+  it("turns a preference edit into answers, leaves out what has none, and takes the topics line off the never-promise text", () => {
+    const values = { tone: "casual", replyLength: "balanced", language: "English", companyRules: "Rules.", neverPromise: "No guarantees.", escalateWhen: "Anything odd." } as const;
+    expect(preferenceAnswerPatches(["tone", "replyLength", "language", "companyRules", "neverPromise", "escalateWhen"], values, {}).map((p) => [p.id, p.value])).toEqual([
+      ["c.tone", "casual"], ["c.reply_length", "balanced"], ["c.language", "English"], ["c.company_rules", "Rules."], ["c.never_promise", "No guarantees."],
+    ]);
+    // The answers join a line about the picked topics onto never-promise by themselves, so a text that already ends with it does not get a second one.
+    const withTopics = { "c.sensitive_topics": ["pricing"], "c.never_promise": "No guarantees." } as never;
+    const joined = derivePreferences(withTopics).neverPromise;
+    expect(joined).toContain("Never answer without a person");
+    expect(preferenceAnswerPatches(["neverPromise"], { ...values, neverPromise: joined }, withTopics).map((p) => p.value)).toEqual(["No guarantees."]);
+    const topicsLine = joined.slice("No guarantees.".length).trim();
+    expect(preferenceAnswerPatches(["neverPromise"], { ...values, neverPromise: `No guarantees. No discounts. ${topicsLine}` }, withTopics).map((p) => p.value)).toEqual(["No guarantees. No discounts."]);
+    // A tone that is not one of the options is not an answer, and neither is a text longer than the question allows.
+    expect(preferenceAnswerPatches(["tone"], { ...values, tone: "sarcastic" }, {})).toEqual([]);
+    expect(preferenceAnswerPatches(["companyRules"], { ...values, companyRules: "x".repeat(1600) }, {})).toEqual([]);
+  });
+});
+
+describe("one rule for answers waiting for approval", () => {
+  it("getOnboardingSession uses the shared rule and agrees with it in every state", async () => {
+    const src = readFileSync(path.resolve(import.meta.dirname, "..", "src/server/onboarding/service.ts"), "utf8");
+    const session = src.slice(src.indexOf("export async function getOnboardingSession"), src.indexOf("export interface StepAnswerInput"));
+    expect(session).toContain("pendingChangesOf(");
+    expect(session).not.toContain("newest");
+    expect(src).toContain('from "@/server/onboarding/pending-changes"');
+
+    const { org, ctx } = await submitRealOnboarding({ name: "Shared Rule Co", clearPayment: true });
+    const agree = async () => {
+      const shared = await withSystem((db) => readPendingAnswerChanges(db, org.id));
+      expect((await getOnboardingSession(ctx)).hasUnsubmittedChanges).toBe(shared.pending);
+      return shared.pending;
+    };
+    expect(await agree()).toBe(false);
+    await save(ctx, { "c.tone": "casual" });
+    expect(await agree()).toBe(true);
+    await resubmit(ctx);
+    expect(await agree()).toBe(false);
+    await settingsEdit(ctx, { services: "Edited in Settings with nothing waiting" });
+    expect(await agree()).toBe(false);
+  }, 120_000);
+});
+
+describe("updateProfile says what it did", () => {
+  it("returns what changed and what reached the employees", async () => {
+    const { ctx } = await submitRealOnboarding({ name: "Result Co", clearPayment: true });
+    const p = (await getProfile(ctx))!;
+    const saved = await updateProfile(ctx, { name: p.name, industry: p.industry ?? "", website: "", region: p.region ?? "", timezone: p.timezone, description: p.description ?? "", services: "Brand new services text", idealCustomers: p.ideal_customers ?? "", brandColor: "" });
+    expect(saved.changed).toEqual(["services"]);
+    expect(saved.employees.updated.length + saved.employees.held.length).toBeGreaterThan(0);
+    expect(saved.employees.failed).toBe(false);
+  }, 120_000);
+});
+
+describe("lock order for the other two Settings editors", () => {
+  // Same rule as above: everything that writes the workspace takes the questionnaire's row first, so a submission and a Settings save cannot wait for each other.
+  const read = (file: string) => readFileSync(path.resolve(import.meta.dirname, "..", file), "utf8");
+
+  it("Settings > AI preferences takes the questionnaire's row before it writes the preferences", () => {
+    const src = read("src/server/settings/service.ts");
+    const body = src.slice(src.indexOf("export async function updateAiPreferences"), src.indexOf("// Team"));
+    expect(body.indexOf("lockOnboardingRow(")).toBeGreaterThan(-1);
+    expect(body.indexOf("lockOnboardingRow(")).toBeLessThan(body.indexOf("insert into company_profiles"));
+  });
+
+  it("Settings > Messaging follows the questionnaire's answers before it writes messaging_settings", () => {
+    const src = read("src/server/messaging/inbox.ts");
+    const body = src.slice(src.indexOf("export async function updateMessagingSettings"), src.indexOf("export async function setChannelEnabled"));
+    expect(body.indexOf("syncMessagingToAnswers(")).toBeGreaterThan(-1);
+    expect(body.indexOf("syncMessagingToAnswers(")).toBeLessThan(body.indexOf("update messaging_settings set"));
+    const sync = read("src/server/onboarding/profile-sync.ts");
+    const fn = sync.slice(sync.indexOf("export async function syncMessagingToAnswers"), sync.indexOf("export async function syncPreferencesToAnswers"));
+    expect(fn.indexOf("lockOnboardingRow(")).toBeGreaterThan(-1);
+    expect(fn.indexOf("lockOnboardingRow(")).toBeLessThan(fn.indexOf("writePatches("));
   });
 });

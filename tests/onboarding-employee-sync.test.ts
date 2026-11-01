@@ -2,12 +2,13 @@
 // longer ignores an employee with no configuration, a Settings edit reaching the employees without touching their settings, and the report of who is behind. Embedded
 // Postgres on the real migrations; nothing talks to a provider.
 import { describe, expect, it } from "vitest";
-import { withSystem } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
-import { getProfile, updateProfile } from "@/server/settings/service";
+import { getProfile, writeBusinessProfile } from "@/server/settings/service";
+import { lockOnboardingRow, syncProfileToAnswers } from "@/server/onboarding/profile-sync";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { employeeSyncState, hasUnconfiguredEnabledEmployee, refreshEmployeesFromWorkspace, syncEmployeesFromAnswers } from "@/server/onboarding/employee-sync";
@@ -35,12 +36,20 @@ const createdAudits = async (orgId: string, role: AgentRoleKey) => Number((await
 let internal: Awaited<ReturnType<typeof createOrg>> | null = null;
 const internalWorkspace = async () => (internal ??= await createOrg({ name: "Internal Workspace", kind: "agency" }));
 
-/** The whole Settings form, as the browser sends it: the current profile with a few facts changed. */
+/**
+ * The whole Settings form, as the browser sends it: the current profile with a few facts changed. Written the way Settings writes it (the profile, then the answers that follow it)
+ * but WITHOUT the catch-up of the employees that updateProfile now runs after it, so these tests can run that catch-up themselves and look at each step. The catch-up through
+ * updateProfile is covered in tests/onboarding-employee-sync-settings.test.ts.
+ */
 async function settingsEdit(ctx: Ctx, patch: Partial<Record<"name" | "industry" | "website" | "region" | "timezone" | "description" | "services" | "idealCustomers" | "brandColor", string>>) {
   const p = (await getProfile(ctx))!;
-  await updateProfile(ctx, {
-    name: p.name, industry: p.industry ?? "", website: p.website ?? "", region: p.region ?? "", timezone: p.timezone, description: p.description ?? "", services: p.services ?? "",
-    idealCustomers: p.ideal_customers ?? "", brandColor: p.brand_color ?? "", ...patch,
+  await withUser(ctx.user.id, async (db) => {
+    await lockOnboardingRow(db, ctx.org.orgId);
+    const res = await writeBusinessProfile(db, ctx, {
+      name: p.name, industry: p.industry ?? "", website: p.website ?? "", region: p.region ?? "", timezone: p.timezone, description: p.description ?? "", services: p.services ?? "",
+      idealCustomers: p.ideal_customers ?? "", brandColor: p.brand_color ?? "", ...patch,
+    });
+    await syncProfileToAnswers(db, ctx, { changed: res.changed, values: res.values });
   });
 }
 const save = (ctx: Ctx, answers: Record<string, unknown>) => saveOnboardingStep(ctx, { answers: Object.fromEntries(Object.entries(answers).map(([k, value]) => [k, { value }])) });

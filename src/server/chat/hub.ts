@@ -1,7 +1,9 @@
 import "server-only";
+import type { EvidenceMarker } from "@/lib/evidence-class";
 
 export type ChatStreamEvent =
-  | { type: "ready"; conversationId: string; userMessageId: string | null; assistantMessageId: string; runId: string }
+  // `evidence` is the marker already stored on the reply's row, so the bubble can show what kind of reply it is while it streams.
+  | { type: "ready"; conversationId: string; userMessageId: string | null; assistantMessageId: string; runId: string; evidence?: EvidenceMarker }
   | { type: "snapshot"; content: string }
   | { type: "activity"; label: string }
   | { type: "delta"; text: string }

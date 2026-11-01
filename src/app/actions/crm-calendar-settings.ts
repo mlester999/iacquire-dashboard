@@ -9,6 +9,8 @@ import {
   archiveAppointmentType, archiveCalendar, clearDayException, createAppointmentType, createCalendar, deleteAvailabilityOverride, duplicateAppointmentType,
   reorderAppointmentTypes, setAppointmentTypePublic, setCalendarPublic, setDayException, setHostAvailability, updateAppointmentType, updateCalendar,
 } from "@/server/calendars/setup";
+import { attentionWarning } from "@/server/calendars/impact";
+import type { BookingImpact } from "@/server/calendars/setup";
 import type { Permission } from "@/lib/permissions";
 
 // Calendar, appointment type, working hours and booking page settings. Every action resolves the actor on the server and the services
@@ -30,6 +32,19 @@ async function act<T>(orgId: string | null | undefined, permission: Permission, 
     if (opts.refresh !== false) refresh(actor);
     return out;
   });
+}
+
+/**
+ * What a screen needs from a change that can leave existing bookings behind: the sentence to show ("N upcoming bookings are outside these hours; review them") and which
+ * bookings it is about. Nothing was cancelled or moved; a person opens each booking and decides with the customer.
+ */
+function withImpact<T extends BookingImpact>(result: T) {
+  const { affected, ...rest } = result;
+  return {
+    ...rest,
+    warning: attentionWarning(affected),
+    bookingsToReview: affected.map((b) => ({ id: b.id, startAt: b.startAt, contactLabel: b.contactLabel, reason: b.reason })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +120,7 @@ export async function createCalendarAction(orgId: string | null, input: Omit<z.i
 }
 
 export async function updateCalendarAction(orgId: string | null, id: string, input: Partial<z.input<typeof calendarInput>>) {
-  return act(orgId, "calendars.manage", (actor) => updateCalendar(actor, uuid.parse(id), calendarInput.partial().parse(input)));
+  return act(orgId, "calendars.manage", async (actor) => withImpact(await updateCalendar(actor, uuid.parse(id), calendarInput.partial().parse(input))));
 }
 
 export async function archiveCalendarAction(orgId: string | null, id: string) {
@@ -154,7 +169,7 @@ export async function setHostAvailabilityAction(orgId: string | null, userId: st
     accepting: z.boolean().optional(),
     rules: z.array(minuteRange.extend({ weekday: z.number().int().min(0).max(6) })).max(50, { error: "Too many time ranges." }),
   });
-  return act(orgId, "appointments.view", (actor) => setHostAvailability(actor, uuid.parse(userId), parsed.parse(input)));
+  return act(orgId, "appointments.view", async (actor) => withImpact(await setHostAvailability(actor, uuid.parse(userId), parsed.parse(input))));
 }
 
 export async function setDayExceptionAction(orgId: string | null, input: { userId: string | null; date: string; windows: Array<{ startMinute: number; endMinute: number }> | null; reason?: string | null }) {
@@ -164,7 +179,7 @@ export async function setDayExceptionAction(orgId: string | null, input: { userI
     windows: z.array(minuteRange).max(6, { error: "Use at most 6 time ranges in a day." }).nullable(),
     reason: z.string().max(500, { error: "Keep the reason to 120 characters." }).nullable().optional(),
   });
-  return act(orgId, "appointments.view", (actor) => setDayException(actor, parsed.parse(input)));
+  return act(orgId, "appointments.view", async (actor) => withImpact(await setDayException(actor, parsed.parse(input))));
 }
 
 export async function clearDayExceptionAction(orgId: string | null, input: { userId: string | null; date: string }) {

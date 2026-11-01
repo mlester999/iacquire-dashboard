@@ -196,3 +196,30 @@ describe("started by a passing health check", () => {
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
   }, 180_000);
 });
+
+describe("the sweep only ever runs checks", () => {
+  it("never applies the refinements the client confirms, never invites the listed team and never asks the CRM setup to run", async () => {
+    const c = await readyClient({ name: "Sweep Offers Roofing", timezone: "Asia/Manila" });
+    await withSystem((db) => db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'd.sales_process', to_jsonb($2::text)), ($1, 'd.team', $3::jsonb)", [
+      c.org.id, "1. Enquiry. 2. Qualify. 3. Quote. 4. Book the job.", JSON.stringify([{ name: "Ana Cruz", email: "ana-sweep@client.example", role: "sales_rep" }]),
+    ]));
+    const offered = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(offered, "crm.region").action).toMatchObject({ intent: "confirm_region_defaults" });
+    expect(itemOf(offered, "crm.stages").action).toMatchObject({ intent: "apply_pipeline_stages" });
+    expect(itemOf(offered, "knowledge.team").action).toMatchObject({ intent: "send_team_invitations" });
+
+    expect((await sweepLaunchVerification(c.org.id)).queued.length).toBe(6);
+    await settled(c.org.id, 6);
+    await sweepLaunchVerificationAfter(c.org.id, "a test event");
+    // Offered, and still only offered: the client has not pressed anything.
+    const q = async (sql: string) => Number((await withSystem((db) => db.query<{ n: string }>(sql, [c.org.id]))).rows[0].n);
+    expect(await q("select count(*) as n from crm_workspaces where org_id = $1 and (default_currency <> 'USD' or default_calling_code is not null)")).toBe(0);
+    expect(await q("select count(*) as n from crm_pipelines where org_id = $1 and name = 'Your sales process'")).toBe(0);
+    expect(await q("select count(*) as n from invitations where org_id = $1")).toBe(0);
+    expect(await q("select count(*) as n from audit_logs where org_id = $1 and action in ('onboarding.region_defaults_applied', 'onboarding.pipeline_stages_applied', 'team.invited', 'crm.auto_setup_applied', 'crm.auto_setup_failed')")).toBe(0);
+    // The optional lines never held up the state: the client is at 100% with all three still on offer.
+    const after = (await getLaunchReadiness(c.ctx))!;
+    expect(after).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(itemOf(after, "knowledge.team").state).toBe("action_required");
+  }, 180_000);
+});

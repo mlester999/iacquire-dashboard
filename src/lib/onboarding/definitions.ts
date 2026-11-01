@@ -304,7 +304,7 @@ export const QUESTIONS: QuestionDef[] = [
   // ───────────────────────────── D · Sales and appointments ─────────────────────────────
   {
     id: "d.team", section: "D", title: "Who on your team talks to customers?",
-    help: "Add the people who should receive hand-offs. Adding someone here does not send an invitation; you'll review and send invitations from Team settings.",
+    help: "Add the people who should receive hand-offs. Adding someone here does not send an invitation; you'll see each address and role, and send the invitations yourself, from your setup checklist or Team settings.",
     kind: { type: "list", maxRows: 12, addLabel: "Add a person", fields: [
       { key: "name", label: "Name", type: "text", max: 80, required: true },
       { key: "email", label: "Email", type: "email", max: 320, required: true },

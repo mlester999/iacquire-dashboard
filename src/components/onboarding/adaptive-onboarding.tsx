@@ -27,11 +27,29 @@ import {
 } from "@/lib/onboarding/engine";
 import { createSavePipeline, type PipelineState, type SavePipeline } from "@/lib/onboarding/save-pipeline";
 import { schedulingDraftMessage } from "@/lib/onboarding/scheduling-drafts";
+import type { OutcomeNote } from "@/lib/onboarding/business-profile";
 import { type AnswerSource, type AnswerValue, type QuestionDef, type SectionId, type StoredAnswers } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
 
 type SiteSuggestion = WebsiteAnalysisSummary["suggestions"][number];
+
+/**
+ * What a submission kept, held, skipped or left unchanged, one line each, after the sentence about the booking calendar when there is one. Used in the toast after approving and on
+ * the setup page the person lands on.
+ */
+export function OutcomeNotesList({ drafted, notes }: { drafted?: string | null; notes: ReadonlyArray<Pick<OutcomeNote, "message"> & { key?: string }> }) {
+  return (
+    <div data-testid="outcome-notes" className="space-y-1.5 text-[13px] leading-snug">
+      {drafted ? <p>{drafted}</p> : null}
+      <ul className="list-disc space-y-1 pl-4">
+        {notes.map((note) => (
+          <li key={note.key ?? note.message}>{note.message}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function AdaptiveOnboarding({
   session,
@@ -349,9 +367,11 @@ export function AdaptiveOnboarding({
       setReviewError(res.error);
       return;
     }
-    // A draft booking calendar made from the answers is said out loud, with the fact that it is not live.
+    // A draft booking calendar made from the answers is said out loud, with the fact that it is not live, and so is everything a re-submission kept, held, skipped or left alone.
     const drafted = res.data.scheduling ? schedulingDraftMessage(res.data.scheduling) : null;
-    if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
+    const notes = res.data.notes ?? [];
+    if (notes.length) toast.success("Your AI team is being prepared.", { description: <OutcomeNotesList drafted={drafted} notes={notes} />, duration: 20000 });
+    else if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
     else toast.success("Your AI team is being prepared.");
     // Stay in the "submitting" state while the page navigates away.
     (onSubmitted ?? (() => router.push("/setup?onboarded=1")))();

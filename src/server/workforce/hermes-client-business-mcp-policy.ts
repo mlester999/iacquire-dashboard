@@ -31,9 +31,15 @@ export const CLIENT_BUSINESS_TOOL_MATRIX: Record<AgentRoleKey, readonly AgentToo
   performance_analyst: ["crm_summary_report", "list_opportunities"],
 };
 
+/**
+ * What a client's employee is never offered, in any phase: the tools that could reach a customer or put a booking on a calendar without a person in the loop. A catalog `proposal`-kind tool
+ * is already left out by the `write` filter below; this list names them so a later catalog change cannot slip one in, and so a test can say exactly what is kept out.
+ */
+export const CLIENT_NEVER_OFFERED_TOOLS: readonly AgentToolName[] = ["request_appointment", "prepare_message", "request_send_approval"];
+
 /** The CRM changes a role may PROPOSE: every `write` tool its scopes allow. They only ever become approval requests. A `proposal`-kind tool (a message or a booking) is never offered. */
 export function clientBusinessProposalToolNamesForRole(role: AgentRoleKey): AgentToolName[] {
-  return toolsForRole(role).filter((name) => AGENT_TOOLS[name].kind === "write");
+  return toolsForRole(role).filter((name) => AGENT_TOOLS[name].kind === "write" && !CLIENT_NEVER_OFFERED_TOOLS.includes(name));
 }
 
 /** Names exposed to a client employee's model. The matrix is narrowed to read tools the role's scopes allow; proposals are added only when asked for. */

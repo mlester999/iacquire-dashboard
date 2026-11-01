@@ -454,6 +454,8 @@ describe("E. the rollout tests and the inbox QA seed touch nothing outside the i
     expect(writers).toEqual([
       "scripts/ui-qa-inbox-seed.qa.ts",
       "src/server/messaging/inbox-rollout.ts",
+      "tests/hermes-client-business-mcp-gate.test.ts", // flips one test workspace's own row to prove the gate follows the switch
+      "tests/support/client-business-mcp.ts", // the client business-tool fixture switches the sample workspace's inbox on, like the fixtures above
       "tests/support/fixtures.ts",
       "tests/support/messaging.ts",
       "tests/unified-inbox-rollout.test.ts", // one UPDATE that the note's CHECK constraint must reject, in a test about the constraint

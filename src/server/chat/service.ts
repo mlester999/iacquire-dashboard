@@ -25,6 +25,7 @@ import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { prepareEmployeeEvidence } from "@/server/workforce/employee-evidence";
 import { insertEvidenceBlock } from "@/lib/employee-evidence";
+import { classifyBookingResult, classifyModelTurn, parseEvidenceMarker, serverMarker, systemNoticeMarker, type EvidenceMarker, type ServerEvidenceMarker } from "@/lib/evidence-class";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createResearchRequest } from "@/server/leads/service";
@@ -336,15 +337,32 @@ function scheduleCadenceLabel(cadence: WorkforceScheduleCadence, rule: Workforce
   return `every ${weekdays.map((day) => names[day]).join(" and ")} at ${rule?.localTime ?? "the selected time"}`;
 }
 
+/**
+ * What is stored with a reply the server wrote. A reply nobody marked is a system notice, and a server-composed reply is never a model response whatever a caller passes: only the
+ * run's own placeholder row (inserted where the run starts) carries that class.
+ */
+function serverEvidenceJson(marker?: ServerEvidenceMarker): string {
+  const cls: string | undefined = marker?.class;
+  return JSON.stringify(!marker || cls === "model_response" ? systemNoticeMarker() : marker);
+}
+
+/** The class of a booking reply from what the calendar service returned, naming the row that backs it. */
+function bookingResultEvidence(status: BookingResult["status"], ids: { bookingId?: string | null; approvalId?: string | null }): ServerEvidenceMarker {
+  const cls = classifyBookingResult(status);
+  if (cls === "system_notice") return serverMarker(cls);
+  if (status === "awaiting_approval" && ids.approvalId) return serverMarker(cls, { kind: "approval", id: ids.approvalId });
+  return ids.bookingId ? serverMarker(cls, { kind: "appointment_booking", id: ids.bookingId }) : serverMarker(cls);
+}
+
 async function insertChatScheduleReply(
   db: Queryable,
   ctx: OrgContext,
-  input: { conversationId: string; agentId: string; content: string },
+  input: { conversationId: string; agentId: string; content: string; evidence?: ServerEvidenceMarker },
 ): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
-    `insert into chat_messages (conversation_id, org_id, role, content, status)
-     values ($1, $2, 'assistant', $3, 'complete') returning id`,
-    [input.conversationId, ctx.org.orgId, input.content],
+    `insert into chat_messages (conversation_id, org_id, role, content, status, evidence)
+     values ($1, $2, 'assistant', $3, 'complete', $4::jsonb) returning id`,
+    [input.conversationId, ctx.org.orgId, input.content, serverEvidenceJson(input.evidence)],
   );
   await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId]);
   await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId, kind: "agent_message" });
@@ -368,11 +386,12 @@ async function handleChatScheduleAction(
     const conversation = conversations[0];
     if (!conversation) throw new AppError("not_found", "Conversation not found.");
 
-    const reply = async (content: string) => {
+    const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
       const assistantMessageId = await insertChatScheduleReply(db, ctx, {
         conversationId: input.conversationId,
         agentId: input.agentId,
         content,
+        evidence,
       });
       return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
     };
@@ -455,7 +474,7 @@ async function handleChatScheduleAction(
         ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
         : "";
       const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}. The next planned time is ${nextLabel} (${timezone}).${existingNotice} It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled. Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
-      return reply(content);
+      return reply(content, serverMarker("proposed_change"));
     }
 
     if (!pending) {
@@ -560,7 +579,7 @@ async function handleChatScheduleAction(
       // Saving is already durable in this transaction; the prior preview contains the exact time.
     }
     const content = `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
-    return reply(content);
+    return reply(content, serverMarker("approved_write", { kind: "schedule", id: saved.id }));
   });
 }
 
@@ -579,6 +598,8 @@ export interface ChatMessageRow {
   run_id: string | null;
   work_job_id: string | null;
   error_code: string | null;
+  /** What kind of reply this is. Null for a row written before the marker existed, and for any marker that does not parse. */
+  evidence: EvidenceMarker | null;
   created_at: Date;
 }
 
@@ -586,13 +607,15 @@ async function persistChatAssistantMessage(
   input: {
     orgId: string; userId: string; agentId: string; conversationId: string; content: string; workJobId?: string | null;
     refusal?: { role: AgentRoleKey; reason: string };
+    /** Defaults to a system notice. */
+    evidence?: ServerEvidenceMarker;
   },
 ): Promise<string> {
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string }>(
-      `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id)
-       values ($1, $2, 'assistant', $3, 'complete', $4) returning id`,
-      [input.conversationId, input.orgId, input.content, input.workJobId ?? null],
+      `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, evidence)
+       values ($1, $2, 'assistant', $3, 'complete', $4, $5::jsonb) returning id`,
+      [input.conversationId, input.orgId, input.content, input.workJobId ?? null, serverEvidenceJson(input.evidence)],
     );
     await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, input.orgId]);
     await recordUsage(db, { orgId: input.orgId, userId: input.userId, agentId: input.agentId, kind: "agent_message" });
@@ -652,13 +675,14 @@ async function handleChatBookingIntent(
   ctx: OrgContext,
   input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatBookingIntent },
 ): Promise<SendResult> {
-  const reply = async (content: string) => {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,
       userId: ctx.user.id,
       agentId: input.agentId,
       conversationId: input.conversationId,
       content,
+      evidence,
     });
     return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
   };
@@ -751,7 +775,7 @@ async function handleChatBookingIntent(
       return true;
     });
     if (!stored) return reply("A booking request is already being processed in this conversation. Check Appointments before requesting another one.");
-    return reply(`Appointment preview for ${chatSafeText(contact.name)}: ${formatSlot(proposal.startAt, timeZone)}. This does not hold or book the slot. Reply “confirm booking” to submit it; the calendar will be checked again and the workspace approval rules still apply. This preview expires in 15 minutes.`);
+    return reply(`Appointment preview for ${chatSafeText(contact.name)}: ${formatSlot(proposal.startAt, timeZone)}. This does not hold or book the slot. Reply “confirm booking” to submit it; the calendar will be checked again and the workspace approval rules still apply. This preview expires in 15 minutes.`, serverMarker("proposed_change"));
   }
 
   const initial = await withSystem(async (db) => {
@@ -792,9 +816,10 @@ async function handleChatBookingIntent(
   }
 
   if (pending.status === "accepted" && pending.bookingId && pending.bookingStatus) {
-    if (pending.bookingStatus === "booked") return reply(`This appointment was already submitted and the calendar confirmed it for ${formatSlot(pending.startAt, pending.timeZone)}. [View Appointments](/appointments).`);
-    if (pending.bookingStatus === "awaiting_approval") return reply(`This appointment request is already waiting for an owner or admin's approval; it is not booked yet. [Review approvals](/approvals).`);
-    if (pending.bookingStatus === "needs_manual") return reply("This appointment request was already submitted and still needs a person to add it to the calendar. [Open Appointments](/appointments).");
+    const earlier = bookingResultEvidence(pending.bookingStatus, { bookingId: pending.bookingId });
+    if (pending.bookingStatus === "booked") return reply(`This appointment was already submitted and the calendar confirmed it for ${formatSlot(pending.startAt, pending.timeZone)}. [View Appointments](/appointments).`, earlier);
+    if (pending.bookingStatus === "awaiting_approval") return reply(`This appointment request is already waiting for an owner or admin's approval; it is not booked yet. [Review approvals](/approvals).`, earlier);
+    if (pending.bookingStatus === "needs_manual") return reply("This appointment request was already submitted and still needs a person to add it to the calendar. [Open Appointments](/appointments).", earlier);
     return reply("This appointment preview was already used. Check Appointments before requesting a new time.");
   }
   if (pending.status === "cancelled") return reply("This appointment preview was discarded. No booking was made.");
@@ -890,11 +915,19 @@ async function handleChatBookingIntent(
   await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2 and pending_workforce_booking->>'proposalId' = $4", [
     input.conversationId, ctx.org.orgId, JSON.stringify(claimed), claimed.proposalId,
   ]));
-  return reply(bookingResultReply(result, claimed));
+  return reply(bookingResultReply(result, claimed), bookingResultEvidence(result.status, {
+    bookingId: "bookingId" in result ? result.bookingId : null,
+    approvalId: result.status === "awaiting_approval" ? result.approvalId : null,
+  }));
 }
 
 function appointmentChangePermissionsAllowed(ctx: OrgContext): boolean {
   return ctx.can("agents.use") && ctx.can("contacts.view") && ctx.can("appointments.view") && ctx.can("appointments.book");
+}
+
+/** A change request is only ever a proposal here: the appointment changes when an owner or admin approves it, and the Approval Center says what happened then. */
+function appointmentChangeEvidence(pending: PendingChatAppointmentChange): ServerEvidenceMarker {
+  return pending.approvalId ? serverMarker("proposed_change", { kind: "approval", id: pending.approvalId }) : serverMarker("proposed_change");
 }
 
 function appointmentChangeReplyText(pending: PendingChatAppointmentChange): string {
@@ -913,13 +946,14 @@ async function handleChatAppointmentChangeIntent(
   ctx: OrgContext,
   input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatAppointmentChangeIntent },
 ): Promise<SendResult> {
-  const reply = async (content: string) => {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,
       userId: ctx.user.id,
       agentId: input.agentId,
       conversationId: input.conversationId,
       content,
+      evidence,
     });
     return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
   };
@@ -1024,7 +1058,7 @@ async function handleChatAppointmentChangeIntent(
       return true;
     });
     if (!stored) return reply("An appointment change request is already being submitted in this conversation. Check Approvals before trying again.");
-    return reply(appointmentChangeReplyText(proposal));
+    return reply(appointmentChangeReplyText(proposal), appointmentChangeEvidence(proposal));
   }
 
   const initial = await withSystem(async (db) => {
@@ -1055,7 +1089,7 @@ async function handleChatAppointmentChangeIntent(
     }
     return reply(pending.status === "expired" ? "This appointment change preview expired. No appointment was changed." : "Appointment change preview discarded. No appointment was changed.");
   }
-  if (pending.status === "accepted" && pending.approvalId) return reply(appointmentChangeReplyText(pending));
+  if (pending.status === "accepted" && pending.approvalId) return reply(appointmentChangeReplyText(pending), appointmentChangeEvidence(pending));
   if (pending.status === "cancelled") return reply("This appointment change preview was discarded. No appointment was changed.");
   if (pending.status === "expired" || Date.parse(pending.expiresAt) <= Date.now()) {
     pending.status = "expired";
@@ -1181,7 +1215,7 @@ async function handleChatAppointmentChangeIntent(
   if (request.status === "changed") return reply("This appointment preview changed while I was confirming it. No change request was submitted; prepare a fresh preview.");
   if (request.status === "stale") return reply("This appointment changed before I could submit the approval request. No appointment was changed; prepare a fresh request.");
   if (request.status === "failed") return reply("I couldn't save the approval request. No appointment was changed; check Approvals before trying again.");
-  return reply(appointmentChangeReplyText(request.pending));
+  return reply(appointmentChangeReplyText(request.pending), appointmentChangeEvidence(request.pending));
 }
 
 // ---------------------------------------------------------------------------
@@ -1232,15 +1266,17 @@ export async function getConversation(ctx: OrgContext, conversationId: string, b
       [conversationId, ctx.org.orgId],
     );
     if (!conv[0]) return null;
-    const { rows } = await db.query<ChatMessageRow>(
+    const { rows } = await db.query<Omit<ChatMessageRow, "evidence"> & { evidence: unknown }>(
       `select * from (
-         select id, role, content, status, run_id, work_job_id, error_code, created_at from chat_messages
+         select id, role, content, status, run_id, work_job_id, error_code, evidence, created_at from chat_messages
          where conversation_id = $1 and status <> 'superseded' and ($2::timestamptz is null or created_at < $2::timestamptz)
          order by created_at desc limit 60
        ) t order by created_at asc`,
       [conversationId, before ?? null],
     );
-    return { conversation: conv[0], messages: rows, hasMore: rows.length === 60 };
+    // A marker is read strictly: a row from before the marker existed, or one that does not parse, has none and shows no chip.
+    const messages: ChatMessageRow[] = rows.map((row) => ({ ...row, evidence: parseEvidenceMarker(row.evidence) }));
+    return { conversation: conv[0], messages, hasMore: rows.length === 60 };
   });
 }
 
@@ -1386,8 +1422,9 @@ async function createInferenceOnlyChatRun(
       throw new AppError("agent_unavailable", "This internal employee connection could not be verified.");
     }
     const { rows: msg } = await db.query<{ id: string }>(
-      "insert into chat_messages (conversation_id, org_id, role, content, status) values ($1, $2, 'assistant', '', 'streaming') returning id",
-      [prepared.conversationId, ctx.org.orgId],
+      "insert into chat_messages (conversation_id, org_id, role, content, status, evidence) values ($1, $2, 'assistant', '', 'streaming', $3::jsonb) returning id",
+      // The restricted check hands the model no workspace records, so nothing was read for this reply.
+      [prepared.conversationId, ctx.org.orgId, JSON.stringify(classifyModelTurn([], new Date().toISOString()))],
     );
     const idempotencyKey = `chat:${msg[0].id}`;
     const { rows: run } = await db.query<{ id: string }>(
@@ -1528,6 +1565,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       userMessageId: prepared.userMessageId,
       assistantMessageId: setup.assistantMessageId,
       runId: setup.runId,
+      evidence: classifyModelTurn([], new Date().toISOString()),
     });
     void executeRun({
       runId: setup.runId,
@@ -1848,6 +1886,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   // Read the facts this role needs as the signed-in person, outside the setup transaction (these are separate, row-level-security reads). The employee has no way to call
   // iAcquireOS itself, so every run is handed a verified snapshot instead of being left to guess. It never throws: a section that cannot be read says so.
   const workspaceEvidence = await prepareEmployeeEvidence(ctx, { agentId: agent.id, roleKey: input.agentRole });
+  // The reply is a language model's. The marker lists only the areas that were really read for it, taken from the same object that built the snapshot the model was handed.
+  const modelEvidence = classifyModelTurn(workspaceEvidence.evidence.sections, workspaceEvidence.evidence.generatedAt);
 
   const setup: ChatSetupResult = await withSystem(async (db) => {
     if (input.regenerateMessageId) {
@@ -1873,8 +1913,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     const conn = await loadConnection(db, agent.id);
     if (!conn) throw new AppError("agent_unavailable", "This employee isn't connected yet.");
     const { rows: msg } = await db.query<{ id: string }>(
-      "insert into chat_messages (conversation_id, org_id, role, content, status) values ($1, $2, 'assistant', '', 'streaming') returning id",
-      [prepared.conversationId, ctx.org.orgId],
+      "insert into chat_messages (conversation_id, org_id, role, content, status, evidence) values ($1, $2, 'assistant', '', 'streaming', $3::jsonb) returning id",
+      [prepared.conversationId, ctx.org.orgId, JSON.stringify(modelEvidence)],
     );
     const idempotencyKey = `chat:${msg[0].id}`;
     const { rows: run } = await db.query<{ id: string }>(
@@ -1916,6 +1956,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     userMessageId: prepared.userMessageId,
     assistantMessageId: setup.assistantMessageId,
     runId: setup.runId,
+    evidence: modelEvidence,
   });
 
   // 3. Start the Hermes run and consume it in the background.

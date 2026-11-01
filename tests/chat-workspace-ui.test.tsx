@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { ChatWorkspace } from "@/components/chat/chat-workspace";
+import { ChatWorkspace, type ChatMessage } from "@/components/chat/chat-workspace";
 import { ShellProvider } from "@/components/shell/shell-context";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { AGENT_BY_KEY, AGENT_ROLES } from "@/lib/agents";
@@ -370,5 +370,95 @@ describe("dedicated employee chat surface", () => {
     cleanup();
     renderChat({ allowRestrictedInferenceMode: false });
     expect(screen.queryByRole("button", { name: "Run restricted no-tool Chat check" })).toBeNull();
+  });
+});
+
+describe("what kind of reply each message is", () => {
+  const stamp = "2026-10-21T03:59:30.000Z";
+  // The marker is deliberately untyped here: some cases pass damaged ones, which is what arrives if a row is bad.
+  const reply = (id: string, content: string, evidence?: unknown, over: Record<string, unknown> = {}) => ({
+    id, role: "assistant", content, status: "complete", run_id: null, work_job_id: null, error_code: null, created_at: stamp, ...(evidence === undefined ? {} : { evidence }), ...over,
+  }) as ChatMessage;
+  const saved = (messages: ChatMessage[]) => ({ id: "c9", title: "Marked replies", messages: [history.messages[0], ...messages] });
+  const chips = () => Array.from(document.querySelectorAll("[data-evidence-class]")).map((el) => ({ cls: el.getAttribute("data-evidence-class"), text: el.textContent ?? "" }));
+
+  it("shows a chip on each saved reply that carries a marker, and none on a legacy reply or a message of the person's own", () => {
+    renderChat({ initialConversation: saved([
+      reply("a1", "Here is the summary you asked for.", { v: 1, class: "model_response", records: { readAt: "2026-10-21T03:58:00.000Z", areas: [{ id: "work_board", state: "ready" }] } }),
+      reply("a2", "No preview to confirm.", { v: 1, class: "system_notice" }),
+      reply("a3", "Appointment preview for Jane.", { v: 1, class: "proposed_change" }),
+      reply("a4", "Saved the schedule, paused.", { v: 1, class: "approved_write", ledger: { kind: "schedule", id: "s1" } }),
+      reply("a5", "An older reply from before the marker existed.", null),
+      reply("a6", "Another old reply, with the field missing entirely."),
+    ]) });
+    const found = chips();
+    expect(found.map((c) => c.cls)).toEqual(["model_response", "system_notice", "proposed_change", "approved_write"]);
+    // 03:58Z is 11:58 AM in the chat's time zone (Asia/Manila).
+    expect(found[0].text).toContain("Written by AI, using records read at 11:58 AM");
+    expect(found[3].text).toContain("Approved and applied");
+    expect(screen.getByText("An older reply from before the marker existed.")).toBeInTheDocument();
+  });
+
+  it("renders no chip for a damaged marker, however it was damaged", () => {
+    renderChat({ initialConversation: saved([
+      reply("b1", "Unknown class.", { v: 1, class: "guess" }),
+      reply("b2", "Model-only field on a server reply.", { v: 1, class: "proposed_change", records: { readAt: stamp, areas: [{ id: "crm", state: "ready" }] } }),
+      reply("b3", "Not an object.", "completed_action"),
+      reply("b4", "Wrong version.", { v: 9, class: "completed_action" }),
+    ]) });
+    expect(chips()).toEqual([]);
+    expect(screen.getByText("Wrong version.")).toBeInTheDocument();
+  });
+
+  it("never shows Done on anything but a confirmed action", () => {
+    renderChat({ initialConversation: saved([
+      reply("d1", "Model.", { v: 1, class: "model_response" }),
+      reply("d2", "Notice.", { v: 1, class: "system_notice" }),
+      reply("d3", "Proposal.", { v: 1, class: "proposed_change" }),
+      reply("d4", "Written.", { v: 1, class: "approved_write" }),
+      reply("d5", "Confirmed.", { v: 1, class: "completed_action", ledger: { kind: "appointment_booking", id: "b1" } }),
+    ]) });
+    for (const chip of chips()) {
+      if (chip.cls === "completed_action") expect(chip.text).toContain("Done");
+      else expect(chip.text, chip.cls ?? "").not.toMatch(/\b(done|completed?)\b/i);
+    }
+    expect(chips()).toHaveLength(5);
+  });
+
+  it("hides the chip on a reply that failed, where the error is the truth", () => {
+    renderChat({ initialConversation: saved([reply("f1", "", { v: 1, class: "model_response" }, { status: "failed", run_id: "r1", error_code: "run_failed" })]) });
+    expect(chips()).toEqual([]);
+    expect(screen.getByText(/Your AI employee couldn't finish this request/)).toBeInTheDocument();
+  });
+
+  it("shows the chip from the ready event while the reply is still streaming, and keeps it when the reply finishes", async () => {
+    const events = [
+      { type: "ready", conversationId: "c3", userMessageId: "u3", assistantMessageId: "a3", runId: "r3", evidence: { v: 1, class: "model_response", records: { readAt: "2026-10-21T03:58:00.000Z", areas: [{ id: "work_board", state: "empty" }] } } },
+      { type: "delta", text: "Nothing needs attention" },
+      { type: "done", content: "Nothing needs attention right now." },
+    ];
+    vi.mocked(searchConversationsAction).mockResolvedValue({ ok: true, data: [] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } })));
+    renderChat();
+    fireEvent.change(screen.getByRole("textbox", { name: /Message Zeng/ }), { target: { value: "What needs attention?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(screen.getByText("Nothing needs attention right now.")).toBeInTheDocument());
+    expect(chips()).toHaveLength(1);
+    expect(chips()[0].cls).toBe("model_response");
+    expect(chips()[0].text).toContain("using records read at 11:58 AM");
+  });
+
+  it("shows no chip when the ready event carries no marker or a damaged one", async () => {
+    const events = [
+      { type: "ready", conversationId: "c4", userMessageId: "u4", assistantMessageId: "a4", runId: "r4", evidence: { v: 1, class: "nonsense" } },
+      { type: "done", content: "An answer with no usable marker." },
+    ];
+    vi.mocked(searchConversationsAction).mockResolvedValue({ ok: true, data: [] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } })));
+    renderChat();
+    fireEvent.change(screen.getByRole("textbox", { name: /Message Zeng/ }), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(screen.getByText("An answer with no usable marker.")).toBeInTheDocument());
+    expect(chips()).toEqual([]);
   });
 });

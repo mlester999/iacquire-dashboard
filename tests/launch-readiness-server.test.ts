@@ -21,11 +21,11 @@ vi.mock("@/server/tenancy/context", async (original) => ({ ...(await original<ty
 
 import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import type { LaunchItem, LaunchReadiness } from "@/lib/launch-readiness";
+import { fingerprintOf, type LaunchItem, type LaunchReadiness } from "@/lib/launch-readiness";
 import type { OrgContext } from "@/server/tenancy/context";
 import { LaunchReadinessPanel } from "@/components/setup/launch-readiness-panel";
 import SetupPage from "@/app/(portal)/setup/page";
-import { dismissCalendarNoticeAction } from "@/app/actions/launch-readiness";
+import { dismissCalendarNoticeAction, getLaunchReadinessAction } from "@/app/actions/launch-readiness";
 import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, calendarNoticeFor, encodeCalendarNotice, noticeSurfaceOf } from "@/server/calendars/connections";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { startLaunchVerification } from "@/server/setup/launch-intents";
@@ -36,11 +36,11 @@ import { recordAudit } from "@/server/audit";
 import { statedSender } from "@/server/onboarding/connection-facts";
 import { listChannelStatus } from "@/server/messaging/channels";
 import { AgencyChannelSetup } from "@/components/crm/communications/agency-channel-setup";
-import { agentId, ctxFor } from "./support/fixtures";
+import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { crmOrg } from "./support/crm";
 import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { applyRealBlueprint, readyClient } from "./support/launch";
+import { applyRealBlueprint, readyClient, settled } from "./support/launch";
 
 const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
 const stepOf = (r: LaunchReadiness, key: string) => r.steps.find((s) => s.key === key)!;
@@ -431,6 +431,31 @@ describe("the Setup page shows the calendar sign-in notice once", () => {
     expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toBeNull();
   }, 120_000);
 
+  it("lists what the submission kept, held or skipped only when the person has just submitted, and only this workspace's", async () => {
+    const c = await submitRealOnboarding({ name: "Outcome Notes Roofing", clearPayment: true });
+    mocks.ctx = submitted(c.ctx);
+    mocks.jar.clear();
+    const notesOf = (tree: unknown) => elementsOf(tree).find((e) => e.props["data-testid"] === "outcome-notes");
+    await withSystem((db) => db.query(
+      "insert into audit_logs (org_id, actor_kind, action, result, metadata) values ($1, 'system', 'onboarding.completed', 'success', $2::jsonb)",
+      [c.org.id, JSON.stringify({ notes: [{ key: "messaging.kept", message: "Left as set in Messaging settings: opening hours." }, { key: "profile.kept", message: "Left as edited in Settings: industry." }] })],
+    ));
+    // Landing after a submission shows the notes, in the person's own words.
+    const after = notesOf(await SetupPage({ searchParams: Promise.resolve({ onboarded: "1" }) }));
+    expect(after).toBeDefined();
+    const text = JSON.stringify(after!.props.children);
+    expect(text).toContain("Left as set in Messaging settings: opening hours.");
+    expect(text).toContain("Left as edited in Settings: industry.");
+    // Opening the page any other way does not repeat them.
+    expect(notesOf(await SetupPage({ searchParams: Promise.resolve({}) }))).toBeUndefined();
+    expect(notesOf(await SetupPage({ searchParams: Promise.resolve({ onboarded: "0" }) }))).toBeUndefined();
+    // Another workspace's submission is never shown here.
+    const other = await submitRealOnboarding({ name: "Other Outcome Roofing", clearPayment: true });
+    mocks.ctx = submitted(other.ctx);
+    const others = notesOf(await SetupPage({ searchParams: Promise.resolve({ onboarded: "1" }) }));
+    expect(others ? JSON.stringify(others.props.children) : "").not.toContain("opening hours");
+  }, 120_000);
+
   it("does not show a notice that a CRM page's sign-in left, and leaves it for that page", async () => {
     const c = await submitRealOnboarding({ name: "Other Page Roofing", clearPayment: true });
     mocks.ctx = submitted(c.ctx);
@@ -533,4 +558,146 @@ describe("reading the Setup page writes nothing", () => {
     for (let i = 0; i < 3; i += 1) expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))).toBeDefined();
     expect(await writes()).toBe(before);
   }, 120_000);
+});
+
+describe("the customer-facing switches are read from the workspace's own rows", () => {
+  const controlOf = (r: LaunchReadiness, key: string) => r.controls!.find((c) => c.key === key)!;
+
+  it("lists every switch off for a new client, every row not required, and shows one on only because a person turned it on", async () => {
+    const c = await readyClient({ name: "Controls Roofing", timezone: "America/Chicago" });
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(r.controls!.map((x) => x.key)).toEqual(["booking_page", "ai_booking", "auto_reply", "channel.email", "channel.sms", "channel.whatsapp"]);
+    expect(r.controls!.every((x) => x.required === false && x.on === false)).toBe(true);
+    expect(controlOf(r, "booking_page")).toMatchObject({ wanted: true, href: `/crm/calendars/${c.calendarId}` });
+    expect(controlOf(r, "auto_reply").href).toBe("/settings/messaging");
+    expect(controlOf(r, "ai_booking").href).toBe("/appointments");
+
+    // The switches are flipped by a person in their own screens; the panel only reports them.
+    await withSystem(async (db) => {
+      await db.query("update crm_calendars set public = true where id = $1", [c.calendarId]);
+      await db.query("insert into messaging_settings (org_id, auto_reply_enabled) values ($1, true) on conflict (org_id) do update set auto_reply_enabled = true", [c.org.id]);
+      await db.query("insert into appointment_settings (org_id, ai_booking_enabled) values ($1, true) on conflict (org_id) do update set ai_booking_enabled = true", [c.org.id]);
+    });
+    const on = (await getLaunchReadiness(c.ctx))!;
+    for (const key of ["booking_page", "auto_reply", "ai_booking"]) expect(controlOf(on, key), key).toMatchObject({ on: true, detail: "On." });
+    expect(controlOf(on, "channel.email").on).toBe(false);
+    // Not one of them is a check: the state and the percentage are what they were.
+    expect([on.state, on.percent, on.passed, on.total]).toEqual([r.state, r.percent, r.passed, r.total]);
+    // The booking summary says what the saved rules are, in words, and it is not required.
+    expect(itemOf(on, "calendar.booking_settings")).toMatchObject({ state: "done", required: false });
+    expect(itemOf(on, "calendar.booking_settings").detail).toContain("may book on its own, because you turned that on");
+  }, 120_000);
+
+  it("leaves another workspace's switches alone, and has no calendar control for a workspace with no calendar", async () => {
+    const a = await readyClient({ name: "Controls Apart A", timezone: "America/Chicago" });
+    const b = await crmOrg({ name: "Controls Apart B", timezone: "America/Chicago" });
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [b.org.id]));
+    await withSystem((db) => db.query("update crm_calendars set public = true where id = $1", [a.calendarId]));
+    const rb = (await getLaunchReadiness(ctxFor(b.people.owner, b.org, "owner")))!;
+    expect(rb.controls!.some((x) => x.key === "booking_page" || x.key === "ai_booking")).toBe(false);
+    expect(rb.controls!.every((x) => x.on === false)).toBe(true);
+  }, 120_000);
+
+  it("shows the website as a switch only when the workspace has one, and on only when it is published", async () => {
+    const c = await readyClient({ name: "Controls Website Roofing", timezone: "America/Chicago" });
+    expect(((await getLaunchReadiness(c.ctx))!).controls!.some((x) => x.key === "website")).toBe(false);
+    await withSystem((db) => db.query(
+      "insert into websites (org_id, name, kind, template_key, subdomain, draft_content) values ($1, 'Main site', 'website', 'local.services', $2, '{}'::jsonb)",
+      [c.org.id, `controls-${c.org.id.slice(0, 8)}`],
+    ));
+    expect(controlOf((await getLaunchReadiness(c.ctx))!, "website")).toMatchObject({ on: false, wanted: false, href: "/website", required: false });
+  }, 120_000);
+});
+
+describe("a person to take over customer conversations, read from the staff profiles", () => {
+  it("reads a member who has no profile row as their role's defaults, and never creates the rows by reading", async () => {
+    const c = await readyClient({ name: "Handoff Roofing", timezone: "America/Chicago" });
+    const profiles = async () => Number((await withSystem((db) => db.query<{ n: string }>("select count(*) as n from staff_profiles where org_id = $1", [c.org.id]))).rows[0].n);
+    const before = await profiles();
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    // Owner, admin, sales, support and appointment setter can respond and are on by default; the viewer cannot respond.
+    expect(facts.handoff).toEqual({ ownerHasNotifyChannel: true, eligibleStaff: 5 });
+    await getLaunchReadiness(c.ctx);
+    expect(await profiles()).toBe(before);
+    // No customer channel is wanted yet, so the line says it does not apply.
+    expect(itemOf((await getLaunchReadiness(c.ctx))!, "knowledge.handoff")).toMatchObject({ state: "not_applicable", required: false });
+  }, 120_000);
+
+  it("is done for a wanted channel when someone is set up, and needs setting up (without blocking launch) when nobody can be told", async () => {
+    const c = await readyClient({ name: "Handoff Wanted Roofing", timezone: "America/Chicago" });
+    await withSystem((db) => db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'c.channels', '[\"email\"]'::jsonb)", [c.org.id]));
+    const covered = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(covered, "knowledge.handoff")).toMatchObject({ state: "done", required: false });
+    expect(itemOf(covered, "knowledge.handoff").detail).toContain("5 people are set up");
+
+    // Everyone's notifications are off and nobody is authorized for a customer asking for a person.
+    await withSystem(async (db) => {
+      await db.query("insert into staff_profiles (org_id, user_id, escalation_categories, notify_email, notify_sms, notify_whatsapp) select org_id, user_id, '{}', false, false, false from organization_memberships where org_id = $1", [c.org.id]);
+    });
+    const nobody = (await getLaunchReadiness(c.ctx))!;
+    expect((await loadLaunchFacts(c.ctx))!.handoff).toEqual({ ownerHasNotifyChannel: false, eligibleStaff: 0 });
+    expect(itemOf(nobody, "knowledge.handoff")).toMatchObject({ state: "action_required", required: false, action: { href: "/settings/escalations" } });
+    expect(nobody.blocking.map((i) => i.key)).not.toContain("knowledge.handoff");
+    expect([nobody.passed, nobody.total]).toEqual([covered.passed, covered.total]);
+
+    // Another workspace's profiles do not count for this one.
+    const other = await readyClient({ name: "Handoff Other Roofing", timezone: "America/Chicago" });
+    expect((await loadLaunchFacts(other.ctx))!.handoff!.eligibleStaff).toBe(5);
+  }, 180_000);
+});
+
+describe("a check that read nothing, and one that read something", () => {
+  it("says Nothing to check yet for an empty CRM and keeps it a pass, and reads a check that examined records as an ordinary pass", async () => {
+    const c = await readyClient({ name: "Nothing Yet Roofing", timezone: "Asia/Manila" });
+    await startLaunchVerification(c.ctx);
+    await settled(c.org.id, 6);
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(r).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(itemOf(r, "verification.crm_manager")).toMatchObject({ state: "done", required: true, detail: expect.stringContaining("Nothing to check yet") });
+
+    // The same check, had it found records: not the empty wording, and the words the check itself recorded.
+    const crm = await agentId(c.org.id, "crm_manager");
+    await withSystem((db) => db.query(
+      `update ai_work_jobs set result = jsonb_set(result, '{examined}', '[{"label":"contacts","count":3},{"label":"companies","count":0}]'::jsonb)
+        where org_id = $1 and agent_instance_id = $2 and input ->> 'launchVerification' = 'true'`, [c.org.id, crm]));
+    const seen = itemOf((await getLaunchReadiness(c.ctx))!, "verification.crm_manager");
+    expect(seen.state).toBe("done");
+    expect(seen.detail).not.toContain("Nothing to check yet");
+
+    // A result that carries no counts at all is not "empty": it keeps its own words.
+    await withSystem((db) => db.query(
+      `update ai_work_jobs set result = result - 'examined' where org_id = $1 and agent_instance_id = $2 and input ->> 'launchVerification' = 'true'`, [c.org.id, crm]));
+    expect(itemOf((await getLaunchReadiness(c.ctx))!, "verification.crm_manager").detail).not.toContain("Nothing to check yet");
+  }, 180_000);
+});
+
+describe("the polling action", () => {
+  it("returns the readiness with a fingerprint that is stable, moves with a required change, and writes nothing", async () => {
+    const c = await readyClient({ name: "Poll Roofing", timezone: "America/Chicago" });
+    mocks.ctx = submitted(c.ctx);
+    const writes = async () => (await withSystem((db) => db.query<{ n: string }>(
+      "select (select count(*) from audit_logs where org_id = $1) + (select count(*) from notifications where org_id = $1) as n", [c.org.id],
+    ))).rows[0].n;
+    const before = await writes();
+    const one = await getLaunchReadinessAction();
+    const two = await getLaunchReadinessAction();
+    expect(one.fingerprint).toBe(fingerprintOf(one.readiness));
+    expect(one.fingerprint).toBe(two.fingerprint);
+    expect(one.readiness).toMatchObject({ state: "action_required" });
+    expect(await writes()).toBe(before);
+
+    await startLaunchVerification(c.ctx);
+    await settled(c.org.id, 6);
+    const done = await getLaunchReadinessAction();
+    expect(done.readiness.state).toBe("ready_to_launch");
+    expect(done.fingerprint).not.toBe(one.fingerprint);
+  }, 180_000);
+
+  it("is refused for a workspace that is not a client's", async () => {
+    const agency = await createOrg({ name: "Poll Agency", kind: "agency" });
+    const user = await createUser();
+    await addMember(agency.id, user.id, "owner");
+    mocks.ctx = submitted(ctxFor(user, agency, "owner"));
+    await expect(getLaunchReadinessAction()).rejects.toThrow(/client workspace/i);
+  }, 60_000);
 });

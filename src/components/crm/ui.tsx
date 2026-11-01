@@ -33,6 +33,9 @@ export function useCrmAction() {
         }
         const msg = typeof success === "function" ? success(res.data) : success;
         if (msg) toast.success(msg);
+        // A change that was saved but leaves something for a person to look at (for example bookings now outside the new hours) says so, in its own words, after the success.
+        const warning = (res.data as { warning?: unknown } | null | undefined)?.warning;
+        if (typeof warning === "string" && warning) toast.warning(warning, { duration: 12000 });
         router.refresh();
         // Actions that return nothing still report success as a truthy value, so `if (await run(...))` works for them too.
         return (res.data ?? true) as T;
