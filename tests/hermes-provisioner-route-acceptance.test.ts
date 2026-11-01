@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as claimRoute } from "@/app/api/internal/hermes-provisioner/claim/route";
 import { POST as completeRoute } from "@/app/api/internal/hermes-provisioner/complete/route";
@@ -87,6 +89,7 @@ async function onboard(name: string, description: string, service: string, custo
     "a.business_model": "local",
     "a.description": description,
     "a.timezone": "America/Chicago",
+    "a.hours": { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] },
     "a.contact_email": owner.email,
     "a.territories": "Austin, Texas",
     "a.target_customers": customer,
@@ -279,6 +282,10 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
     resetEnvCache();
     const disabled = await postJson(claimRoute, { gatewayId }, workerToken);
     expect(disabled.status).toBe(503);
+    // The worker reads a switched-off portal (healthy and idle) by this phrase in the answer; reword the route and it would read the switch as an outage.
+    const workerText = /PORTAL_DISABLED_TEXT\s*=\s*"([^"]+)"/.exec(readFileSync(path.join(process.cwd(), "services", "hermes-provisioner", "worker.py"), "utf8"))?.[1] ?? "";
+    expect(workerText).not.toBe("");
+    expect(((await disabled.json()) as { error: string }).error).toContain(workerText);
     vi.stubEnv("HERMES_PROVISIONER_ENABLED", "true");
     resetEnvCache();
 

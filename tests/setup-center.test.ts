@@ -766,6 +766,17 @@ describe("provisioning and verification contracts", () => {
     }
   });
 
+  it("says only what is true about who prepares an AI employee: a restricted worker prepares it, and it is ready only after the portal's own health check", () => {
+    const text = PROVISIONERS.hermes_employees.unavailableReason;
+    expect(text).toMatch(/restricted worker prepares each client employee/);
+    expect(text).toMatch(/ready only after the portal's own health check passes/);
+    expect(text).toMatch(/a queued job or a created profile proves nothing/);
+    // The old text sent the team to a hand-run runbook on a named host, which is no longer how a client employee is prepared and no longer all the portal says.
+    expect(text).not.toMatch(/runbook|VPS/);
+    // A claim of readiness, or of work done on the client's behalf, is never in it.
+    expect(text).not.toMatch(/is created|are created|has been created|is ready\.|are ready\./i);
+  });
+
   it("has a connector for every check, and unimplemented ones always explain themselves and never pass", async () => {
     // The GoHighLevel versions of the CRM, calendar and sender checks are what a GoHighLevel workspace still gets: none can verify.
     for (const [key, c] of [...CHECK_KEYS.map((k) => [k, CONNECTORS[k]] as const), ...Object.entries(GHL_CONNECTORS)]) {

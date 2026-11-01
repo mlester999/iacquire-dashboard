@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { normalizeProvisioningFailureCode, PROVISIONING_FAILURE_CODES, UNCLASSIFIED_FAILURE_CODE } from "@/lib/provisioning-failure";
+import { classifyProvisioningFailure, normalizeProvisioningFailureCode, PROVISIONING_FAILURE_CODES, UNCLASSIFIED_FAILURE_CODE } from "@/lib/provisioning-failure";
 
 // The worker (services/hermes-provisioner/worker.py) and the portal (src/lib/provisioning-failure.ts) must agree on the failure codes a job can end with. A code the portal does
 // not know used to make the whole completion fail validation, so the failure was never recorded and the job sat in progress. This reads the real worker source.
@@ -10,7 +10,7 @@ const worker = readFileSync(path.join(process.cwd(), "services", "hermes-provisi
 // Codes the worker raises only while it starts up, before it has claimed anything: it exits and no job is ever failed with them.
 const START_UP_ONLY = new Set([
   "client_model_config_invalid", "client_model_config_missing", "hermes_cli_unavailable", "hermes_cli_preflight_failed",
-  "portal_url_invalid", "portal_url_must_use_https", "provisioner_credentials_missing", "unsupported_profile_create_cli", "worker_must_not_run_as_root",
+  "max_profiles_invalid", "portal_url_invalid", "portal_url_must_use_https", "provisioner_credentials_missing", "unsupported_profile_create_cli", "worker_must_not_run_as_root",
 ]);
 
 const literalCodes = new Set([...worker.matchAll(/ProvisioningError\(\s*"([a-z0-9_]+)"\s*\)/g)].map((match) => match[1]));
@@ -37,6 +37,33 @@ describe("the portal accepts every failure code the worker can raise while a job
     const unknown = jobTime.filter((code) => !(PROVISIONING_FAILURE_CODES as readonly string[]).includes(code));
     expect(unknown).toEqual([]);
     for (const code of jobTime) expect(normalizeProvisioningFailureCode(code)).toBe(code);
+  });
+
+  it("raises capacity_exceeded for a new profile at its ceiling, and the portal knows and retries it", () => {
+    // The worker's own ceiling (IACQUIRE_PROVISIONER_MAX_PROFILES) is a job-time code: the portal must record it as a transient wait, never as an unclassified failure.
+    expect(literalCodes.has("capacity_exceeded")).toBe(true);
+    expect(worker).toContain("count_client_profiles() >= self.max_profiles");
+    expect(normalizeProvisioningFailureCode("capacity_exceeded")).toBe("capacity_exceeded");
+    expect(classifyProvisioningFailure("capacity_exceeded")).toBe("transient");
+  });
+
+  it("keeps the loop's own stop reasons out of the job failure codes", () => {
+    // These appear only in the worker's one-line log and in the heartbeat state, never as the code of a completion the portal has to accept.
+    for (const reason of ["portal_unauthorized", "hermes_unreachable"]) expect(literalCodes.has(reason), reason).toBe(false);
+    expect(worker).toContain('"worker stopped code=portal_unauthorized"');
+    expect(worker).toContain('"worker stopped code=hermes_unreachable"');
+  });
+
+  it("tells a switched-off portal apart by words both routes actually say", () => {
+    // The worker treats a 503 whose error contains PORTAL_DISABLED_TEXT as "healthy and idle" and any other 503 as an outage (its health check fails after fifteen minutes of
+    // those). Both routes return the same sentence for a switched-off provisioner, so rewording either one has to fail here, not in production.
+    const text = /PORTAL_DISABLED_TEXT\s*=\s*"([^"]+)"/.exec(worker)?.[1];
+    expect(text).toBeTruthy();
+    for (const route of ["claim", "complete"]) {
+      const source = readFileSync(path.join(process.cwd(), "src", "app", "api", "internal", "hermes-provisioner", route, "route.ts"), "utf8");
+      const sentence = /NextResponse\.json\(\{ error: "([^"]*)" \}, \{ status: 503/.exec(source)?.[1] ?? "";
+      expect(sentence, route).toContain(text as string);
+    }
   });
 
   it("knows every canary_failed_<reason> the worker can build", () => {

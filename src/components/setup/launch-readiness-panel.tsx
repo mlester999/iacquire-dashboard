@@ -3,12 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronDown, CircleAlert, Clock, Hourglass, MinusCircle, XCircle } from "lucide-react";
-import { runLaunchIntentAction } from "@/app/actions/launch-readiness";
+import { dismissCalendarNoticeAction, runLaunchIntentAction } from "@/app/actions/launch-readiness";
 import { Badge, ProgressBar } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { ITEM_STATE_LABEL, type ItemOwner, type ItemState, type LaunchIntent, type LaunchItem, type LaunchReadiness, type LaunchState, type LaunchStep, type StepState } from "@/lib/launch-readiness";
 import { cn } from "@/lib/utils";
 
+const ANCHOR_BUTTON = "inline-flex h-11 select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line-strong bg-transparent px-3 text-[14px] font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8";
 const OWNER_LABEL: Record<ItemOwner, string> = { you: "You", iacquire: "iAcquire", system: "Automatic" };
 type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "violet";
 const STATE_TONE: Record<LaunchState, Tone> = {
@@ -33,12 +34,21 @@ function ItemIcon({ state }: { state: ItemState }) {
 /** How often the page re-reads the workspace while setup is running by itself. The state is always the stored one; this only asks for it again. */
 const REFRESH_MS = 10_000;
 
-/** `preview` is for the design preview page only: the buttons say so and run nothing. */
-export function LaunchReadinessPanel({ readiness, preview = false }: { readiness: LaunchReadiness; preview?: boolean }) {
+type Notice = { ok: boolean; text: string };
+
+/**
+ * `preview` is for the design preview page only: the buttons say so and run nothing. `calendarNotice` is the one-time message a Google or Microsoft sign-in left for this page; it
+ * is shown once and the server is told to forget it, so reloading the page does not show it again.
+ */
+export function LaunchReadinessPanel({ readiness, preview = false, calendarNotice = null }: { readiness: LaunchReadiness; preview?: boolean; calendarNotice?: Notice | null }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [running, setRunning] = React.useState<LaunchIntent | null>(null);
-  const [notice, setNotice] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [notice, setNotice] = React.useState<Notice | null>(calendarNotice);
+  const hadCalendarNotice = calendarNotice !== null;
+  React.useEffect(() => {
+    if (hadCalendarNotice && !preview) void dismissCalendarNoticeAction();
+  }, [hadCalendarNotice, preview]);
 
   // While setup is working by itself, ask for the stored state again. Nothing is estimated from elapsed time.
   const waiting = readiness.state === "provisioning" && !preview;
@@ -127,13 +137,21 @@ function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boole
           {!item.required && item.state !== "not_applicable" && <Badge tone="outline">Optional</Badge>}
         </div>
         <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{item.detail}</p>
+        {item.guidance && item.guidance.length > 0 && item.state !== "done" && (
+          <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[12px] leading-relaxed text-muted" aria-label="What this involves">
+            {item.guidance.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        )}
         {item.state !== "done" && item.state !== "not_applicable" && !(item.state === "in_progress" && item.owner === "you") && <p className="mt-0.5 text-[12px] text-muted">Next move: {OWNER_LABEL[item.owner]}</p>}
       </div>
       {action?.intent && (
         <Button size="sm" variant="secondary" loading={busy && running === action.intent} disabled={busy} onClick={() => onRun(action.intent as LaunchIntent)}>{action.label}</Button>
       )}
       {action?.href && !action.intent && (
-        <ButtonLink href={action.href} size="sm" variant="outline">{action.label}</ButtonLink>
+        // A route handler (the provider sign-in start) is not a page: a plain link makes the browser load it, where the app's own link would try to render it.
+        action.href.startsWith("/api/")
+          ? <a href={action.href} className={ANCHOR_BUTTON}>{action.label}</a>
+          : <ButtonLink href={action.href} size="sm" variant="outline">{action.label}</ButtonLink>
       )}
     </li>
   );

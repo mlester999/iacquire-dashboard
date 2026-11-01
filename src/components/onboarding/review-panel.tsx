@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/primitives";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { AGENT_BY_KEY } from "@/lib/agents";
-import type { ReviewModel, ReviewRow } from "@/lib/onboarding/engine";
+import { countWord, type ReviewModel, type ReviewRow } from "@/lib/onboarding/engine";
 import { cn } from "@/lib/utils";
 
 const HOURS_PART = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/;
@@ -98,6 +98,8 @@ export function ReviewPanel({
   }
 
   const blockers = review.blockers.filter((b) => !b.startsWith("Confirm that you approve"));
+  const included = review.plan.included.length;
+  const total = included + review.plan.notIncluded.length;
   return (
     <div className="space-y-6">
       {blockers.length > 0 && (
@@ -159,9 +161,50 @@ export function ReviewPanel({
         ))}
       </section>
 
+      <section aria-labelledby="rv-plan" className="space-y-3">
+        <h2 id="rv-plan" className="text-[15px] font-semibold">
+          What your plan includes
+        </h2>
+        <div className="rounded-2xl border border-line bg-surface p-4">
+          <p className="text-[14px] font-medium">
+            {included === total ? `Your plan includes all ${countWord(total)} AI employees.` : included === 0 ? "Your plan includes none of the AI employees yet." : `Your plan includes ${countWord(included)} of the ${countWord(total)} AI employees.`}
+          </p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {review.plan.included.map((role) => (
+              <li key={role} className="flex items-start gap-2 text-[14px]">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden />
+                <span>{AGENT_BY_KEY[role].name}</span>
+              </li>
+            ))}
+            {review.plan.notIncluded.map((role) => (
+              <li key={role} className="flex items-start gap-2 text-[14px] text-muted">
+                <span aria-hidden className="mt-0.5 grid size-4 shrink-0 place-items-center text-[14px] leading-none">&ndash;</span>
+                <span>
+                  {AGENT_BY_KEY[role].name}: not part of your plan, so it does not hold up launch
+                </span>
+              </li>
+            ))}
+          </ul>
+          {review.plan.addOns.length > 0 && (
+            <ul className="mt-3 divide-y divide-line border-t border-line">
+              {review.plan.addOns.map((o) => (
+                <li key={o.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
+                  <span className="font-medium">{o.label}</span>
+                  <span className="flex items-center gap-2 text-muted">
+                    <StatusPill tone={o.state === "included" ? "success" : "neutral"} size="sm">{o.state === "included" ? "Included" : "Not included"}</StatusPill>
+                    <span className="max-w-[28rem] text-right text-[13px]">{o.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 text-[13px] text-muted">Your CRM, inbox, booking and website are not part of any plan limit.</p>
+        </div>
+      </section>
+
       <section aria-labelledby="rv-team" className="space-y-3">
         <h2 id="rv-team" className="text-[15px] font-semibold">
-          How your six AI employees will be set up
+          {included > 0 ? `How your ${countWord(included)} AI employee${included === 1 ? "" : "s"} will be set up` : "How your AI employees will be set up"}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {review.employees.map((e) => (

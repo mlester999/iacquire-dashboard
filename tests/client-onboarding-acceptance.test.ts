@@ -19,6 +19,7 @@ async function onboard(name: string, description: string, service: string, custo
     "a.business_model": "local",
     "a.description": description,
     "a.timezone": "America/Chicago",
+    "a.hours": { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] },
     "a.contact_email": owner.email,
     "a.territories": "Austin, Texas",
     "a.target_customers": customer,

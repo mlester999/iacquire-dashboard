@@ -120,29 +120,45 @@ export function pollMinutesFor(provider: CalendarProvider): number {
 
 export const CALENDAR_NOTICE_COOKIE = "iaq_calendar_notice";
 
+/** The page a notice was left for. A notice with no page named is a CRM one: before the Setup page could start a sign-in, only CRM pages did. */
+export type CalendarNoticeSurface = "setup" | "crm";
+
 export interface CalendarNotice {
   kind: "success" | "info" | "error";
   provider: string;
   message: string;
+  from?: CalendarNoticeSurface;
 }
+
+/** Which page a sign-in sends the person back to, from the return path it was started with. */
+export const noticeSurfaceOf = (returnPath: string): CalendarNoticeSurface => (returnPath === "/setup" || returnPath.startsWith("/setup?") ? "setup" : "crm");
 
 export function encodeCalendarNotice(n: CalendarNotice): string {
-  return encodeURIComponent(JSON.stringify({ kind: n.kind, provider: n.provider.slice(0, 20), message: n.message.slice(0, 300) }));
+  return encodeURIComponent(JSON.stringify({ kind: n.kind, provider: n.provider.slice(0, 20), message: n.message.slice(0, 300), from: n.from ?? "crm" }));
 }
 
-export function decodeCalendarNotice(raw: string | undefined | null): CalendarNotice | null {
+export function decodeCalendarNotice(raw: string | undefined | null): (CalendarNotice & { from: CalendarNoticeSurface }) | null {
   if (!raw || raw.length > 2000) return null;
   try {
     const v = JSON.parse(decodeURIComponent(raw)) as Partial<CalendarNotice>;
     if (!v || !["success", "info", "error"].includes(v.kind ?? "") || typeof v.message !== "string") return null;
-    return { kind: v.kind as CalendarNotice["kind"], provider: String(v.provider ?? "").slice(0, 20), message: v.message.slice(0, 300) };
+    return { kind: v.kind as CalendarNotice["kind"], provider: String(v.provider ?? "").slice(0, 20), message: v.message.slice(0, 300), from: v.from === "setup" ? "setup" : "crm" };
   } catch {
     return null;
   }
 }
 
-/** Cookie options for the notice: readable only by the server, sent only to CRM pages, gone after a minute. */
-export const CALENDAR_NOTICE_COOKIE_OPTIONS = { httpOnly: true, sameSite: "lax" as const, path: "/crm", maxAge: 60, secure: process.env.NODE_ENV === "production" };
+/** The notice for one page: a message left for the other page is not shown here (and is not cleared by this page either). */
+export function calendarNoticeFor(raw: string | undefined | null, surface: CalendarNoticeSurface): (CalendarNotice & { from: CalendarNoticeSurface }) | null {
+  const notice = decodeCalendarNotice(raw);
+  return notice && notice.from === surface ? notice : null;
+}
+
+/**
+ * Cookie options for the notice: readable only by the server and gone after a minute. It is sent with every page (path "/") because a sign-in can now come back to the Setup
+ * page as well as the CRM's own pages. The notice names the page it is for and only that page shows it; it carries one short message, never a code or token.
+ */
+export const CALENDAR_NOTICE_COOKIE_OPTIONS = { httpOnly: true, sameSite: "lax" as const, path: "/", maxAge: 60, secure: process.env.NODE_ENV === "production" };
 
 // ---------------------------------------------------------------------------
 // Authorization
@@ -479,11 +495,12 @@ async function saveConnection(db: Queryable, s: SaveInput, actorForAudit: { user
 // Google and Microsoft (OAuth)
 // ---------------------------------------------------------------------------
 
-const RETURN_PATH = /^\/crm\/[A-Za-z0-9/_?=&.-]*$|^\/crm$/;
+// A sign-in may come back to the CRM's own pages, or to the guided Setup page (with an optional query) that sent the person: nothing else, never another site.
+const RETURN_PATH = /^\/crm\/[A-Za-z0-9/_?=&.-]*$|^\/crm$|^\/setup(?:\?[A-Za-z0-9_=&.-]*)?$/;
 export const DEFAULT_RETURN_PATH = "/crm/calendar-connections";
 
 export function safeReturnPath(raw: string | null | undefined): string {
-  return raw && raw.length <= 300 && RETURN_PATH.test(raw) && !raw.includes("//") ? raw : DEFAULT_RETURN_PATH;
+  return raw && raw.length <= 300 && RETURN_PATH.test(raw) && !raw.includes("//") && !raw.includes("..") ? raw : DEFAULT_RETURN_PATH;
 }
 
 /**

@@ -109,6 +109,41 @@ REVIEWED_TOOLSET_FOR_TOOL = {
     "vision_analyze": "vision",
 }
 MAX_AUDIT_BYTES = 10 * 1024 * 1024
+# audit.jsonl is the live file; audit.1.jsonl (newest) to audit.5.jsonl (oldest) are kept, anything older is dropped.
+AUDIT_ROTATED_FILES = 5
+_AUDIT_LOCK = threading.Lock()
+
+# Loop timing. An empty queue is polled slowly, a failing portal even more slowly, and a result that could not be delivered is retried while its lease lasts.
+IDLE_SLEEP_SECONDS = 5
+CLAIM_ERROR_SLEEP_SECONDS = 10
+COMPLETE_RETRY_DELAYS = (2, 4, 8, 16)
+# Start-up gate: wait for Hermes with a bounded backoff instead of exiting, so a Hermes restart or outage does not need a person.
+GATE_RETRY_INITIAL_SECONDS = 5
+GATE_RETRY_MAX_SECONDS = 60
+# A gateway that is merely starting answers with an incomplete catalog; a real contract defect must still end in a visible stop, so this many in a row exits.
+GATE_CONTRACT_FAILURE_LIMIT = 10
+GATE_RETRY_CODES = {"http_unavailable", "runtime_tool_inventory_incomplete"}
+# This many Hermes connection failures in a row (no answer in between) mean the shared loopback is gone, for example after a gateway restart gave the container a new
+# network namespace. Exiting non-zero lets Docker restart the worker into the current one.
+LOOPBACK_UNAVAILABLE_EXIT_THRESHOLD = 20
+# An idle worker makes no Hermes call of its own, so it asks the loopback whether it is still there this often. With the threshold above, a loopback that has been gone for about
+# ten minutes ends the worker even when no job was ever claimed (a restarted gateway leaves an idle worker in a dead namespace: its claims fail too, and nothing else would exit).
+IDLE_PROBE_INTERVAL_SECONDS = 30
+
+HEARTBEAT_INTERVAL_SECONDS = 30
+HEARTBEAT_MAX_AGE_SECONDS = 600
+CLAIM_MAX_AGE_SECONDS = 15 * 60
+HEARTBEAT_STATES = frozenset({
+    "starting", "waiting_for_hermes", "idle", "processing", "portal_disabled",
+    "portal_unreachable", "unauthorized", "hermes_unreachable", "stopping",
+})
+# States in which the worker has decided it cannot work: the health check reports them as unhealthy whatever the heartbeat age.
+UNHEALTHY_HEARTBEAT_STATES = frozenset({"unauthorized", "hermes_unreachable"})
+# A claim answer with this text means the portal's provisioner switch is off: nothing is wrong with the worker, so it is healthy and idle.
+PORTAL_DISABLED_TEXT = "not enabled"
+
+# The mode of a secret file is only meaningful on a POSIX file system (local Windows test runs have no such bits).
+_ENFORCE_FILE_MODES = os.name != "nt"
 
 
 def inventory_policy(toolsets: "set[str] | frozenset[str]") -> tuple[set[str], set[str]]:
@@ -559,6 +594,23 @@ class HermesApi:
             raise ProvisioningError("unsafe_hermes_api_origin")
         self.base = base_url.rstrip("/")
         self.http = JsonHttp(timeout=timeout)
+        # Connection failures in a row with no answer in between; the worker loop exits on a long run of them (see LOOPBACK_UNAVAILABLE_EXIT_THRESHOLD).
+        self.consecutive_unavailable = 0
+
+    def _send(self, url: str, method: str, headers: dict[str, str], body: dict[str, Any] | None):
+        try:
+            result = self.http.request(url, method, headers, body)
+        except ProvisioningError as error:
+            if error.code == "http_unavailable":
+                self.consecutive_unavailable += 1
+            raise
+        self.consecutive_unavailable = 0
+        return result
+
+    def probe(self) -> int:
+        """One unauthenticated request to the loopback root: any answer, whatever its status, shows the gateway is listening. Only a missing answer counts as a failure."""
+        status, _ = self._send(self.base + "/health", "GET", {"Accept": "application/json"}, None)
+        return status
 
     def _url(self, profile: str, path: str) -> str:
         if not PROFILE_RE.fullmatch(profile) or not path.startswith("/v1/"):
@@ -576,7 +628,7 @@ class HermesApi:
             headers["Content-Type"] = "application/json"
         if extra_headers:
             headers.update(extra_headers)
-        status, data = self.http.request(self._url(profile, path), method, headers, body)
+        status, data = self._send(self._url(profile, path), method, headers, body)
         return status, data
 
     def json_request_default(self, key: str, path: str, method: str = "GET", body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None):
@@ -585,7 +637,7 @@ class HermesApi:
             headers["Content-Type"] = "application/json"
         if extra_headers:
             headers.update(extra_headers)
-        status, data = self.http.request(self._default_url(path), method, headers, body)
+        status, data = self._send(self._default_url(path), method, headers, body)
         return status, data
 
     def read_events(self, profile: str, key: str, run_id: str, timeout: int = 120) -> str:
@@ -741,6 +793,95 @@ def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_p
     return stable_digest
 
 
+def _marker_is_valid(marker: dict[str, Any] | None, profile: str, gateway_id: str | None) -> bool:
+    """An ownership marker names this profile, this gateway (when known) and three real ids."""
+    return bool(
+        marker
+        and marker.get("schemaVersion") == 1
+        and marker.get("profile") == profile
+        and (marker.get("gatewayId") == gateway_id if gateway_id is not None else _is_uuid(marker.get("gatewayId")))
+        and _is_uuid(marker.get("orgId"))
+        and _is_uuid(marker.get("agentId"))
+        and _is_uuid(marker.get("sourceProvisionJobId"))
+    )
+
+
+def _journal_is_valid(journal: dict[str, Any] | None, profile: str, gateway_id: str | None) -> bool:
+    return bool(
+        journal
+        and journal.get("schemaVersion") == 1
+        and journal.get("profile") == profile
+        and (journal.get("gatewayId") == gateway_id if gateway_id is not None else _is_uuid(journal.get("gatewayId")))
+        and _is_uuid(journal.get("jobId"))
+        and _is_uuid(journal.get("orgId"))
+        and _is_uuid(journal.get("agentId"))
+    )
+
+
+def _read_json_state(path: Path) -> dict[str, Any] | None:
+    if path.is_symlink():
+        raise ProvisioningError("unsafe_profile_path")
+    if not path.exists():
+        return None
+    _require_regular_file(path)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        raise ProvisioningError("profile_state_invalid") from None
+    if not isinstance(value, dict):
+        raise ProvisioningError("profile_state_invalid")
+    return value
+
+
+def _open_audit_file(path: Path) -> int:
+    """Open the live audit file for append with the owner, type and mode checks; the caller closes the descriptor."""
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("audit file is not regular")
+        if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            raise OSError("audit file owner mismatch")
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _rotate_audit_files(state_root: Path) -> None:
+    """audit.jsonl -> audit.1.jsonl -> ... -> audit.5.jsonl (the oldest is dropped), each kept 0600 and owned by the worker.
+
+    Every existing file is checked before the first rename, so a symlink or a foreign file anywhere in the chain refuses the whole rotation and nothing moves.
+    """
+    paths = [state_root / ("audit.jsonl" if index == 0 else "audit." + str(index) + ".jsonl") for index in range(AUDIT_ROTATED_FILES + 1)]
+    for path in paths:
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("audit rotation target is not a regular file")
+        if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            raise OSError("audit rotation target owner mismatch")
+    for index in range(AUDIT_ROTATED_FILES - 1, -1, -1):
+        try:
+            os.replace(paths[index], paths[index + 1])
+        except FileNotFoundError:
+            continue
+        os.chmod(paths[index + 1], 0o600)
+    if os.name != "nt":
+        dir_fd = os.open(state_root, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
+
 class RestrictedProvisioner:
     def __init__(
         self,
@@ -753,6 +894,7 @@ class RestrictedProvisioner:
         profile_model_env: dict[str, str] | None = None,
         profile_model_config: dict[str, Any] | None = None,
         run_command: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+        max_profiles: int | None = None,
     ):
         self.home = home.resolve()
         self.profile_root = self.home / "profiles"
@@ -766,6 +908,8 @@ class RestrictedProvisioner:
             None if profile_model_config is None else _validate_model_block(profile_model_config)
         )
         self.run_command = run_command
+        # The worker's own ceiling on client profiles (None = no ceiling). The portal's claim gate is the first line; this is the backstop.
+        self.max_profiles = max_profiles
         if self.home == Path("/") or not self.profile_root.exists() or self.profile_root.is_symlink():
             raise ProvisioningError("unsafe_hermes_home")
         if self.state_root.exists() and self.state_root.is_symlink():
@@ -896,33 +1040,28 @@ class RestrictedProvisioner:
 
     def _append_audit(self, record: dict[str, Any]) -> None:
         path = self.state_root / "audit.jsonl"
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
+        payload = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8") + b"\n"
         try:
-            fd = os.open(path, flags, 0o600)
-            try:
-                info = os.fstat(fd)
-                if not stat.S_ISREG(info.st_mode):
-                    raise OSError("audit file is not regular")
-                if hasattr(os, "getuid") and info.st_uid != os.getuid():
-                    raise OSError("audit file owner mismatch")
-                if info.st_size > MAX_AUDIT_BYTES:
-                    raise OSError("audit file size limit reached")
-                if hasattr(os, "fchmod"):
-                    os.fchmod(fd, 0o600)
-                payload = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8") + b"\n"
-                if info.st_size + len(payload) > MAX_AUDIT_BYTES:
-                    raise OSError("audit file size limit reached")
-                remaining = memoryview(payload)
-                while remaining:
-                    written = os.write(fd, remaining)
-                    if written <= 0:
-                        raise OSError("audit append failed")
-                    remaining = remaining[written:]
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+            with _AUDIT_LOCK:
+                fd = _open_audit_file(path)
+                try:
+                    size = os.fstat(fd).st_size
+                    if size > 0 and size + len(payload) > MAX_AUDIT_BYTES:
+                        # Rotate instead of failing closed forever; a refused rotation raises and leaves every file as it was.
+                        os.close(fd)
+                        fd = -1
+                        _rotate_audit_files(self.state_root)
+                        fd = _open_audit_file(path)
+                    remaining = memoryview(payload)
+                    while remaining:
+                        written = os.write(fd, remaining)
+                        if written <= 0:
+                            raise OSError("audit append failed")
+                        remaining = remaining[written:]
+                    os.fsync(fd)
+                finally:
+                    if fd >= 0:
+                        os.close(fd)
         except OSError:
             raise ProvisioningError("audit_log_unavailable") from None
 
@@ -935,25 +1074,30 @@ class RestrictedProvisioner:
         self.__inventory_digest = value
 
     def _valid_profile_owner(self, marker: dict[str, Any] | None, profile: str) -> bool:
-        return bool(
-            marker
-            and marker.get("schemaVersion") == 1
-            and marker.get("profile") == profile
-            and marker.get("gatewayId") == self.gateway_id
-            and _is_uuid(marker.get("orgId"))
-            and _is_uuid(marker.get("agentId"))
-            and _is_uuid(marker.get("sourceProvisionJobId"))
-        )
+        return _marker_is_valid(marker, profile, self.gateway_id)
 
     def _valid_profile_journal(self, journal: dict[str, Any] | None, profile: str) -> bool:
-        return bool(
-            journal
-            and journal.get("schemaVersion") == 1
-            and journal.get("profile") == profile
-            and journal.get("gatewayId") == self.gateway_id
-            and _is_uuid(journal.get("jobId"))
-            and _is_uuid(journal.get("orgId"))
-            and _is_uuid(journal.get("agentId"))
+        return _journal_is_valid(journal, profile, self.gateway_id)
+
+    def hermes_unreachable_streak(self) -> int:
+        """How many Hermes connection attempts in a row have failed without an answer (0 when the API object does not count)."""
+        count = getattr(self.api, "consecutive_unavailable", 0)
+        return count if isinstance(count, int) else 0
+
+    def probe_hermes(self) -> None:
+        """Ask the loopback whether it still answers, so the failure streak keeps counting while no job is running. A missing answer is the streak's business, never an error here."""
+        probe = getattr(self.api, "probe", None)
+        if not callable(probe):
+            return
+        try:
+            probe()
+        except ProvisioningError:
+            pass
+
+    def count_client_profiles(self) -> int:
+        return sum(
+            1 for entry in self.profile_root.iterdir()
+            if PROFILE_RE.fullmatch(entry.name) and entry.is_dir() and not entry.is_symlink()
         )
 
     def _profile_dir(self, name: str) -> Path:
@@ -970,18 +1114,7 @@ class RestrictedProvisioner:
         return self.state_root / (profile + ".json")
 
     def _read_json_file(self, path: Path) -> dict[str, Any] | None:
-        if path.is_symlink():
-            raise ProvisioningError("unsafe_profile_path")
-        if not path.exists():
-            return None
-        _require_regular_file(path)
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            raise ProvisioningError("profile_state_invalid") from None
-        if not isinstance(value, dict):
-            raise ProvisioningError("profile_state_invalid")
-        return value
+        return _read_json_state(path)
 
     def _prepare_profile(self, manifest: Manifest, profile_dir: Path) -> str:
         marker_path = profile_dir / ".iacquire-provisioner.json"
@@ -1028,6 +1161,9 @@ class RestrictedProvisioner:
         else:
             if journal and journal.get("jobId") != manifest.job_id:
                 raise ProvisioningError("profile_ownership_conflict")
+            # A NEW profile only: a sync or a resumed provision never reaches this branch. Nothing is written and the CLI is not run when the home is full.
+            if self.max_profiles is not None and self.count_client_profiles() >= self.max_profiles:
+                raise ProvisioningError("capacity_exceeded")
             journal = {
                 "schemaVersion": 1,
                 "jobId": manifest.job_id,
@@ -1514,12 +1650,99 @@ def _sanitize_worker_environment(home: Path, api_base: str) -> None:
     os.environ.update(clean)
 
 
-def _write_worker_heartbeat(state_root: Path) -> None:
-    payload = json.dumps({"at": int(time.time())}, separators=(",", ":")).encode("ascii")
+def _audit_bytes(state_root: Path) -> int:
+    try:
+        info = (state_root / "audit.jsonl").lstat()
+    except OSError:
+        return 0
+    return info.st_size if stat.S_ISREG(info.st_mode) else 0
+
+
+def _write_worker_heartbeat(
+    state_root: Path,
+    state: str = "starting",
+    last_claim_ok_at: int | None = None,
+    last_job_at: int | None = None,
+    now: float | None = None,
+) -> None:
+    """Heartbeat v2: { at, state, lastClaimOkAt, lastJobAt, auditBytes }. Epoch seconds; counts and state names only."""
+    if state not in HEARTBEAT_STATES:
+        raise ValueError("unknown heartbeat state")
+    payload = json.dumps(
+        {
+            "at": int(time.time() if now is None else now),
+            "state": state,
+            "lastClaimOkAt": last_claim_ok_at,
+            "lastJobAt": last_job_at,
+            "auditBytes": _audit_bytes(state_root),
+        },
+        separators=(",", ":"),
+    ).encode("ascii")
     _atomic_write(state_root / "heartbeat.json", payload)
 
 
-def _worker_healthcheck() -> bool:
+class Heartbeat:
+    """The worker's liveness record, written by the loop and, while a long job runs, by a small daemon thread.
+
+    `lastClaimOkAt` is the last time the portal answered a claim (a "provisioner is disabled" answer counts: the portal is reachable and the worker is idle). Until the first
+    answer it holds the moment the loop began, so a portal that was never reachable turns the health check red after the same 15 minutes. Writing is best effort: a heartbeat
+    that cannot be written simply goes stale, which is itself the signal.
+    """
+
+    def __init__(self, state_root: Path | None = None, clock: Callable[[], float] = time.time, interval: float = HEARTBEAT_INTERVAL_SECONDS):
+        self.state_root = state_root
+        self.clock = clock
+        self.interval = interval
+        self.state = "starting"
+        self.last_claim_ok_at: int | None = None
+        self.last_job_at: int | None = None
+        self._lock = threading.Lock()
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {"state": self.state, "lastClaimOkAt": self.last_claim_ok_at, "lastJobAt": self.last_job_at}
+
+    def begin_claiming(self) -> None:
+        with self._lock:
+            if self.last_claim_ok_at is None:
+                self.last_claim_ok_at = int(self.clock())
+
+    def update(self, state: str | None = None, *, claim_ok: bool = False, job_done: bool = False) -> None:
+        """Change what changed and write the file; with no arguments it only refreshes `at`."""
+        with self._lock:
+            if state is not None:
+                self.state = state
+            now = int(self.clock())
+            if claim_ok:
+                self.last_claim_ok_at = now
+            if job_done:
+                self.last_job_at = now
+            if self.state_root is None:
+                return
+            try:
+                _write_worker_heartbeat(self.state_root, self.state, self.last_claim_ok_at, self.last_job_at, now)
+            except (ProvisioningError, OSError):
+                pass
+
+    @contextlib.contextmanager
+    def keep_alive(self):
+        """Refresh the heartbeat every interval while the body runs (a job can take longer than the loop's own writes)."""
+        done = threading.Event()
+
+        def beat() -> None:
+            while not done.wait(self.interval):
+                self.update()
+
+        thread = threading.Thread(target=beat, name="heartbeat", daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            done.set()
+            thread.join(timeout=5)
+
+
+def _worker_healthcheck(now: float | None = None) -> bool:
     home = Path(os.environ.get("HERMES_HOME", "/opt/data")).resolve()
     path = home / "iacquire-provisioner-state" / "heartbeat.json"
     if path.is_symlink():
@@ -1531,10 +1754,25 @@ def _worker_healthcheck() -> bool:
         if hasattr(os, "getuid") and info.st_uid != os.getuid():
             return False
         payload = json.loads(path.read_text(encoding="ascii"))
-        if not isinstance(payload, dict) or set(payload) != {"at"} or not isinstance(payload["at"], int):
+        if not isinstance(payload, dict) or set(payload) != {"at", "state", "lastClaimOkAt", "lastJobAt", "auditBytes"}:
             return False
-        age = int(time.time()) - payload["at"]
-        return 0 <= age <= 600
+        at, state = payload["at"], payload["state"]
+        claim_ok, job_at, audit_bytes = payload["lastClaimOkAt"], payload["lastJobAt"], payload["auditBytes"]
+        if type(at) is not int or not isinstance(state, str) or state not in HEARTBEAT_STATES:
+            return False
+        if any(value is not None and type(value) is not int for value in (claim_ok, job_at)):
+            return False
+        if type(audit_bytes) is not int or audit_bytes < 0:
+            return False
+        current = int(time.time() if now is None else now)
+        if not 0 <= current - at <= HEARTBEAT_MAX_AGE_SECONDS:
+            return False
+        if state in UNHEALTHY_HEARTBEAT_STATES:
+            return False
+        if claim_ok is None:
+            # Nothing has been claimed yet: only the start-up states may say so.
+            return state in {"starting", "waiting_for_hermes"}
+        return 0 <= current - claim_ok <= CLAIM_MAX_AGE_SECONDS
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return False
 
@@ -1596,13 +1834,384 @@ def _load_client_model_config(home: Path) -> dict[str, Any]:
     return model
 
 
+def _log_id(value: Any) -> str:
+    return value if _is_uuid(value) else "-"
+
+
+def _log_code(value: Any) -> str:
+    return value if isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,100}", value) else "-"
+
+
+def _print_line(line: str) -> None:
+    print(line, flush=True)
+
+
+def _lease_expiry_epoch(manifest: Any) -> float | None:
+    value = manifest.get("expiresAt") if isinstance(manifest, dict) else None
+    if not isinstance(value, str):
+        return None
+    try:
+        expiry = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return expiry.timestamp() if expiry.tzinfo is not None else None
+
+
+def _portal_says_disabled(response: Any) -> bool:
+    error = response.get("error") if isinstance(response, dict) else None
+    return isinstance(error, str) and PORTAL_DISABLED_TEXT in error
+
+
+def _wait_for_hermes(
+    check: Callable[[], Any],
+    heartbeat: Heartbeat,
+    sleep: Callable[[float], Any],
+    stop: Any,
+    out: Callable[[str], None] = _print_line,
+) -> bool:
+    """Run the start-up inventory gate until it passes, backing off 5 s doubling to 60 s (state `waiting_for_hermes`); False if asked to stop first.
+
+    Nothing is claimed while it fails, so this is as closed as exiting was. Only a gateway that is unreachable or still starting is waited for; a catalog that stays
+    incomplete GATE_CONTRACT_FAILURE_LIMIT times in a row, or any other failure, ends the start-up as before so a real defect stays visible.
+    """
+    delay = GATE_RETRY_INITIAL_SECONDS
+    contract_failures = 0
+    last_code = ""
+    while not stop.is_set():
+        try:
+            check()
+            return True
+        except ProvisioningError as error:
+            if error.code not in GATE_RETRY_CODES:
+                raise
+            contract_failures = contract_failures + 1 if error.code == "runtime_tool_inventory_incomplete" else 0
+            if contract_failures >= GATE_CONTRACT_FAILURE_LIMIT:
+                raise
+            heartbeat.update("waiting_for_hermes")
+            if error.code != last_code:
+                out("gate waiting code=" + error.code)
+                last_code = error.code
+            sleep(delay)
+            delay = min(delay * 2, GATE_RETRY_MAX_SECONDS)
+    return False
+
+
+class WorkerLoop:
+    """Claim, process and report jobs. Everything that touches the outside world is injected, so the loop is tested with a fake portal and a fake clock.
+
+    http.request(url, method, headers, body) -> (status, data); provisioner.process(manifest) -> result dict or raises ProvisioningError; clock() -> epoch seconds;
+    sleep(seconds); stop.is_set(). run() returns 0 after a requested stop and 1 when the worker decided it cannot work (the portal refuses its token, or the Hermes
+    loopback has stopped answering), so Docker restarts it.
+    """
+
+    def __init__(
+        self,
+        http: Any,
+        provisioner: Any,
+        clock: Callable[[], float],
+        sleep: Callable[[float], Any],
+        stop: Any,
+        *,
+        base: str,
+        headers: dict[str, str],
+        gateway_id: str,
+        heartbeat: Heartbeat | None = None,
+        out: Callable[[str], None] = _print_line,
+    ):
+        self.http = http
+        self.provisioner = provisioner
+        self.clock = clock
+        self.sleep = sleep
+        self.stop = stop
+        self.base = base
+        self.headers = headers
+        self.gateway_id = gateway_id
+        self.heartbeat = heartbeat if heartbeat is not None else Heartbeat(None, clock)
+        self.out = out
+        self._next_probe_at: float | None = None
+
+    def _request(self, path: str, body: dict[str, Any]) -> tuple[int | None, Any]:
+        try:
+            return self.http.request(self.base + path, "POST", self.headers, body)
+        except Exception:
+            # No message is kept: third-party errors can carry request data. A missing answer is what matters.
+            return None, None
+
+    def _loopback_gone(self) -> bool:
+        """While idle, ask the Hermes loopback now and then and report whether it has been silent for LOOPBACK_UNAVAILABLE_EXIT_THRESHOLD answers in a row.
+
+        Nothing else in an idle loop touches Hermes, so without this a worker whose network namespace went stale (the gateway restarted under it) would sit in portal_unreachable
+        forever. A provisioner that cannot probe (no probe_hermes) never ends the loop this way.
+        """
+        probe = getattr(self.provisioner, "probe_hermes", None)
+        if not callable(probe):
+            return False
+        now = self.clock()
+        if self._next_probe_at is not None and now < self._next_probe_at:
+            return False
+        self._next_probe_at = now + IDLE_PROBE_INTERVAL_SECONDS
+        try:
+            probe()
+        except Exception:
+            # The probe never takes the loop down; a missing answer is counted by the provisioner.
+            pass
+        streak = getattr(self.provisioner, "hermes_unreachable_streak", None)
+        return callable(streak) and streak() >= LOOPBACK_UNAVAILABLE_EXIT_THRESHOLD
+
+    def run(self) -> int:
+        self.heartbeat.begin_claiming()
+        self.heartbeat.update("idle")
+        while not self.stop.is_set():
+            self.heartbeat.update()
+            if self._loopback_gone():
+                self.heartbeat.update("hermes_unreachable")
+                self.out("worker stopped code=hermes_unreachable")
+                return 1
+            status, response = self._request("/claim", {"gatewayId": self.gateway_id})
+            if status in (401, 403):
+                self.heartbeat.update("unauthorized")
+                self.out("worker stopped code=portal_unauthorized")
+                return 1
+            if status == 503 and _portal_says_disabled(response):
+                self.heartbeat.update("portal_disabled", claim_ok=True)
+                self.sleep(CLAIM_ERROR_SLEEP_SECONDS)
+                continue
+            if status != 200 or not isinstance(response, dict):
+                self.heartbeat.update("portal_unreachable")
+                self.sleep(CLAIM_ERROR_SLEEP_SECONDS)
+                continue
+            self.heartbeat.update("idle", claim_ok=True)
+            manifest = response.get("job")
+            if manifest is None:
+                self.sleep(IDLE_SLEEP_SECONDS)
+                continue
+            code = self._run_job(manifest)
+            if code:
+                return code
+        self.heartbeat.update("stopping")
+        return 0
+
+    def _run_job(self, manifest: Any) -> int:
+        raw = manifest if isinstance(manifest, dict) else {}
+        job_id = _log_id(raw.get("jobId"))
+        kind = raw.get("kind") if raw.get("kind") in {"provision", "sync"} else "-"
+        self.heartbeat.update("processing")
+        with self.heartbeat.keep_alive():
+            code: str | None = None
+            try:
+                result = self.provisioner.process(manifest)
+            except ProvisioningError as error:
+                code = error.code
+                result = {
+                    "ok": False,
+                    "jobId": raw.get("jobId"),
+                    "leaseToken": raw.get("leaseToken"),
+                    "gatewayId": self.gateway_id,
+                    "code": error.code,
+                }
+            except Exception:
+                # Nothing to report with: the lease runs out and the job is claimed again.
+                self.out(f"job={job_id} kind={kind} outcome=failed code=worker_internal_error delivery=none attempts=0")
+                self.heartbeat.update("idle", job_done=True)
+                self.sleep(CLAIM_ERROR_SLEEP_SECONDS)
+                return 0
+            delivery, attempts = self._deliver(result, _lease_expiry_epoch(manifest))
+        outcome = "failed" if code else "succeeded"
+        self.out(f"job={job_id} kind={kind} outcome={outcome} code={_log_code(code)} delivery={delivery} attempts={attempts}")
+        if delivery == "unauthorized":
+            self.heartbeat.update("unauthorized", job_done=True)
+            self.out("worker stopped code=portal_unauthorized")
+            return 1
+        streak = getattr(self.provisioner, "hermes_unreachable_streak", None)
+        if callable(streak) and streak() >= LOOPBACK_UNAVAILABLE_EXIT_THRESHOLD:
+            self.heartbeat.update("hermes_unreachable", job_done=True)
+            self.out("worker stopped code=hermes_unreachable")
+            return 1
+        self.heartbeat.update("idle", job_done=True)
+        return 0
+
+    def _deliver(self, result: dict[str, Any], lease_expires_at: float | None) -> tuple[str, int]:
+        """Post the result, retrying a transient failure while the lease is valid. The portal accepts a replay as a duplicate, so retrying is safe.
+
+        Returns (delivered | dropped | undelivered | unauthorized, attempts). 401 and 403 mean the token or gateway is wrong and retrying cannot help; 409 means the lease is
+        no longer current (another claim owns the job) and the result is dropped; so is any other answer that repeating the request would not change.
+        """
+        attempts = 0
+        while True:
+            attempts += 1
+            status, _ = self._request("/complete", result)
+            if status in (200, 202):
+                return "delivered", attempts
+            if status in (401, 403):
+                return "unauthorized", attempts
+            if status == 409 or (isinstance(status, int) and 400 <= status < 500 and status not in (408, 425, 429)):
+                return "dropped", attempts
+            if attempts > len(COMPLETE_RETRY_DELAYS) or self.stop.is_set():
+                return "undelivered", attempts
+            self.sleep(COMPLETE_RETRY_DELAYS[attempts - 1])
+            if lease_expires_at is None or self.clock() >= lease_expires_at:
+                return "undelivered", attempts
+
+
+def verify_home(home: Path, gateway_id: str | None = None) -> dict[str, Any]:
+    """Read-only check of a client profile home (after a restore, or before a deployment). Counts and codes only; it never returns a name, a path or a secret.
+
+    Every client profile needs a valid ownership marker for this gateway, a private regular `.env` (mode 0600, owned by the worker) holding one well-formed API key, a
+    SOUL.md and a config.yaml, and no symlinks. Any profile outside the c- namespace is an agency profile and fails the check. Journals without a profile directory are
+    reported as `orphanJournals` (an interrupted provision that a retry resumes), not as a failure.
+    """
+    problems: dict[str, int] = {}
+
+    def problem(code: str) -> None:
+        problems[code] = problems.get(code, 0) + 1
+
+    root = Path(home).resolve()
+    profile_root = root / "profiles"
+    state_root: Path | None = root / "iacquire-provisioner-state"
+    profiles = 0
+    orphan_journals = 0
+    if not profile_root.is_dir() or profile_root.is_symlink():
+        problem("unsafe_hermes_home")
+        return {"ok": False, "profiles": 0, "orphanJournals": 0, "problems": problems}
+    if state_root is not None and state_root.is_symlink():
+        problem("unsafe_hermes_home")
+        state_root = None
+    names: set[str] = set()
+    for entry in sorted(profile_root.iterdir(), key=lambda item: item.name):
+        if entry.is_symlink() or not entry.is_dir():
+            problem("unsafe_hermes_home")
+            continue
+        if entry.name == "default":
+            continue
+        if not PROFILE_RE.fullmatch(entry.name):
+            problem("agency_profile_found")
+            continue
+        profiles += 1
+        names.add(entry.name)
+        try:
+            marker = _read_json_state(entry / ".iacquire-provisioner.json")
+            journal = _read_json_state(state_root / (entry.name + ".json")) if state_root is not None and state_root.exists() else None
+        except ProvisioningError as error:
+            problem(error.code)
+            continue
+        marker_ok = _marker_is_valid(marker, entry.name, gateway_id)
+        if not marker_ok and not _journal_is_valid(journal, entry.name, gateway_id):
+            problem("agency_profile_found")
+            continue
+        if marker is not None and journal is not None and (
+            marker.get("orgId") != journal.get("orgId")
+            or marker.get("agentId") != journal.get("agentId")
+            or marker.get("profile") != journal.get("profile")
+            or marker.get("gatewayId") != journal.get("gatewayId")
+            or marker.get("sourceProvisionJobId") != journal.get("jobId")
+        ):
+            problem("profile_ownership_conflict")
+        if not marker_ok:
+            problem("profile_marker_missing")
+        _verify_profile_files(entry, problem)
+    if state_root is not None and state_root.is_dir():
+        for journal_path in state_root.iterdir():
+            stem = journal_path.name[:-5] if journal_path.name.endswith(".json") else ""
+            if stem and PROFILE_RE.fullmatch(stem) and stem not in names:
+                orphan_journals += 1
+    return {"ok": not problems, "profiles": profiles, "orphanJournals": orphan_journals, "problems": problems}
+
+
+def _mode_is_private(info: os.stat_result) -> bool:
+    return not _ENFORCE_FILE_MODES or stat.S_IMODE(info.st_mode) & 0o077 == 0
+
+
+def _verify_profile_files(profile_dir: Path, problem: Callable[[str], None]) -> None:
+    try:
+        children = list(profile_dir.iterdir())
+    except OSError:
+        problem("unsafe_profile_path")
+        return
+    if any(child.is_symlink() for child in children):
+        problem("unsafe_profile_path")
+        return
+    try:
+        if not _mode_is_private(profile_dir.lstat()):
+            problem("profile_dir_mode_invalid")
+    except OSError:
+        problem("unsafe_profile_path")
+    for name in ("SOUL.md", "config.yaml"):
+        if not (profile_dir / name).is_file():
+            problem("profile_file_missing")
+    env_path = profile_dir / ".env"
+    try:
+        info = env_path.lstat()
+    except FileNotFoundError:
+        problem("profile_key_missing")
+        return
+    except OSError:
+        problem("unsafe_profile_path")
+        return
+    if not stat.S_ISREG(info.st_mode):
+        problem("unsafe_profile_path")
+        return
+    if (hasattr(os, "getuid") and info.st_uid != os.getuid()) or not _mode_is_private(info):
+        problem("profile_env_mode_invalid")
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        problem("profile_key_invalid")
+        return
+    values = [line.partition("=")[2] for line in lines if line.startswith("API_SERVER_KEY=")]
+    if len(values) != 1 or not API_KEY_RE.fullmatch(values[0]):
+        problem("profile_key_invalid")
+
+
+def _verify_home_command() -> int:
+    """`worker.py --verify-home`: print counts and codes, exit 0 for a clean home and 1 otherwise."""
+    home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
+    gateway_id: str | None = os.environ.get("IACQUIRE_PROVISIONER_GATEWAY_ID") or None
+    gateway_invalid = gateway_id is not None and not _is_uuid(gateway_id)
+    report = verify_home(home, None if gateway_invalid else gateway_id)
+    problems = dict(report["problems"])
+    if gateway_invalid:
+        problems["gateway_id_invalid"] = 1
+    print(f"verify-home profiles={report['profiles']} orphan_journals={report['orphanJournals']} problems={sum(problems.values())}")
+    for code in sorted(problems):
+        print(f"problem code={code} count={problems[code]}")
+    ok = not problems
+    print("verify-home result=" + ("ok" if ok else "failed"))
+    return 0 if ok else 1
+
+
+def _load_max_profiles() -> int | None:
+    """IACQUIRE_PROVISIONER_MAX_PROFILES: the worker's own ceiling on client profiles; unset or empty means no ceiling. Read before the environment is sanitised."""
+    value = os.environ.get("IACQUIRE_PROVISIONER_MAX_PROFILES", "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[1-9][0-9]{0,5}", value):
+        raise ProvisioningError("max_profiles_invalid")
+    return int(value)
+
+
 def run_worker() -> None:
+    max_profiles = _load_max_profiles()
     home, cli, portal_url, token, gateway_id, version, bootstrap_api_key, profile_model_env = _validate_runtime()
     profile_model_config = _load_client_model_config(home)
     api = HermesApi(os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642"))
-    # This read-only check happens before audit/heartbeat writes and before the first portal claim.
+    stop = threading.Event()
+
+    def request_stop(_signum, _frame):
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    heartbeat = Heartbeat(home / "iacquire-provisioner-state")
+    heartbeat.update("starting")
+    # This read-only check happens before audit writes and before the first portal claim; it waits for Hermes (backoff, no exit) rather than claiming anything unverified.
     # The default profile belongs to this isolated runtime and is never an agency profile.
-    verify_complete_catalog(api, "default", bootstrap_api_key, default_profile=True)
+    if not _wait_for_hermes(
+        lambda: verify_complete_catalog(api, "default", bootstrap_api_key, default_profile=True),
+        heartbeat,
+        stop.wait,
+        stop,
+    ):
+        return
     worker = RestrictedProvisioner(
         home=home,
         hermes_cli=cli,
@@ -1611,58 +2220,29 @@ def run_worker() -> None:
         hermes_version=version,
         profile_model_env=profile_model_env,
         profile_model_config=profile_model_config,
+        max_profiles=max_profiles,
     )
-    http = JsonHttp(timeout=30)
-    headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"}
-    base = portal_url + "/api/internal/hermes-provisioner"
-    stopped = False
-
-    def stop(_signum, _frame):
-        nonlocal stopped
-        stopped = True
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-    while not stopped:
-        _write_worker_heartbeat(worker.state_root)
-        try:
-            status, response = http.request(
-                base + "/claim",
-                "POST",
-                headers,
-                {"gatewayId": gateway_id},
-            )
-            if status != 200 or not isinstance(response, dict):
-                time.sleep(10)
-                continue
-            manifest = response.get("job")
-            if manifest is None:
-                time.sleep(5)
-                continue
-            try:
-                result = worker.process(manifest)
-            except ProvisioningError as error:
-                raw = manifest if isinstance(manifest, dict) else {}
-                result = {
-                    "ok": False,
-                    "jobId": raw.get("jobId"),
-                    "leaseToken": raw.get("leaseToken"),
-                    "gatewayId": gateway_id,
-                    "code": error.code,
-                }
-            status, _ = http.request(base + "/complete", "POST", headers, result)
-            if status not in {200, 202}:
-                time.sleep(10)
-        except ProvisioningError:
-            time.sleep(10)
-        except Exception:
-            # No exception message is emitted because third-party errors can include request data.
-            time.sleep(10)
+    loop = WorkerLoop(
+        JsonHttp(timeout=30),
+        worker,
+        time.time,
+        stop.wait,
+        stop,
+        base=portal_url + "/api/internal/hermes-provisioner",
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"},
+        gateway_id=gateway_id,
+        heartbeat=heartbeat,
+    )
+    code = loop.run()
+    if code:
+        raise SystemExit(code)
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--healthcheck"]:
         raise SystemExit(0 if _worker_healthcheck() else 1)
+    if sys.argv[1:] == ["--verify-home"]:
+        raise SystemExit(_verify_home_command())
     if sys.argv[1:] not in ([], ["--run"]):
         print("Hermes provisioner stopped: invalid_worker_command", file=sys.stderr)
         raise SystemExit(2)

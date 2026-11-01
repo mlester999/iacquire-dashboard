@@ -1,6 +1,7 @@
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { isValidTimeZone } from "@/lib/calendars/slots";
 import type { ReadinessState } from "@/lib/workforce-readiness";
+import { countWord } from "@/lib/onboarding/engine";
 
 // One honest answer to "is this client ready to launch?", built only from facts that were read from the workspace's own records. Pure: no I/O. Nothing here is inferred from a
 // queued job, a drafted calendar or a green badge: a step is done only when the thing it names is true, and "100% Ready to Launch" means every applicable, required setup and
@@ -48,6 +49,8 @@ export interface LaunchItem {
   detail: string;
   owner: ItemOwner;
   action?: LaunchAction;
+  /** What the client's own part of this step involves (for example the records they add for a domain). Guidance only: it is never a state and never counts as verified. */
+  guidance?: string[];
 }
 
 export type StepKey = "profile" | "knowledge" | "crm" | "calendar" | "integrations" | "employees" | "verification";
@@ -98,6 +101,8 @@ export interface CalendarFacts {
   types: number;
   /** An appointment type needs a video link from a connected Google or Microsoft account. */
   needsVideoConnection: boolean;
+  /** Which provider's account the video appointment types need (Google Meet, Microsoft Teams). Empty when it is not known; absent in older facts. */
+  videoProviders?: Array<"google" | "microsoft">;
   /** The activation checks (hosts, hours, time zone, types, connections, a real open time within two weeks), read now; null when they could not be read. */
   checks: CalendarCheckFact[] | null;
   bookingPageOn: boolean;
@@ -112,7 +117,16 @@ export interface EmployeeFact {
   entitled: boolean;
   /** Provisioning of the employee's own profile, from its persisted job. */
   provisioning: ProvisioningFact;
+  /** The job's recorded note. For iAcquire's eyes: the client never reads it. */
   provisioningDetail: string | null;
+  /** Attempts the profile job has used, the most it gets, and when the next automatic try is due (null: none is scheduled). */
+  attempts: number;
+  maxAttempts: number;
+  nextRetryAt: string | null;
+  /** The employee's last connection check ran and did not pass. */
+  healthFailed: boolean;
+  /** What that check recorded. For iAcquire's eyes: the client never reads it. */
+  healthDetail: string | null;
   readiness: { state: ReadinessState; chatAvailable: boolean; workReady: boolean; description: string; blocking: string[] };
   /** A configuration change for this employee is held for iAcquire's review. */
   heldForReview: boolean;
@@ -131,7 +145,20 @@ export interface ChannelFact {
   wanted: boolean;
   enabled: boolean;
   registration: string;
+  /**
+   * What the client wrote as the sender of this channel (their questionnaire answer), or null when they gave none. A hint for the person who connects the channel: it is never
+   * verified and never counts towards "connected". Absent (undefined) when the facts did not read it.
+   */
+  statedSender?: string | null;
+  /** A provider credential is stored for the channel. Absent when the facts did not read it. */
+  credentialStored?: boolean;
 }
+
+/**
+ * What the CRM setup evidence says (src/server/setup/native-evidence.ts), judged by the server from the workspace's own records. "none" is nothing applied and nothing failed yet.
+ * Only "verified" counts: the newest application of every live Blueprint finished and every record it created is still in the CRM.
+ */
+export type CrmBlueprintFact = "none" | "verified" | "partial" | "failed" | "missing_records" | "waiting_for_a_person";
 
 export interface LaunchFacts {
   /** The questionnaire was submitted (the workspace's onboarding completed). */
@@ -142,7 +169,19 @@ export interface LaunchFacts {
   canOpenBilling: boolean;
   profile: { companyName: boolean; industry: boolean; description: boolean; timezone: string | null; timezoneAnswered: boolean };
   knowledge: { approved: number; pending: number };
-  crm: { mode: "native" | "ghl" | "hybrid"; blueprintApplied: boolean; pipelineReady: boolean; providerConnected: boolean };
+  crm: {
+    mode: "native" | "ghl" | "hybrid";
+    blueprint: CrmBlueprintFact;
+    /** The evidence's client-safe summary for a Blueprint that is not verified. Never the agency's detail. */
+    blueprintSummary?: string | null;
+    /** The automatic industry setup is switched on in this deployment (it reads the same either way: iAcquire is setting it up). */
+    automaticSetup?: boolean;
+    /** A non-archived pipeline with at least two non-archived stages, one of them open. */
+    pipelineReady: boolean;
+    /** Tags, contact fields and forms in the CRM, and whether they match what the Blueprint created. */
+    records?: { state: "in_place" | "missing" | "pending"; tags: number; contactFields: number; forms: number };
+    providerConnected: boolean;
+  };
   /** True: appointments are wanted. False: not wanted. Null: the questionnaire does not say. */
   appointments: { wanted: boolean | null; calendar: CalendarFacts | null; externalCalendarConnected: boolean };
   channels: ChannelFact[];
@@ -189,23 +228,74 @@ function knowledgeStep(f: LaunchFacts): LaunchStep {
   return { key: "knowledge", title: "Knowledge and approvals", ...summarize(items) };
 }
 
+/** The industry CRM setup, judged from the Blueprint evidence: only a verified one is done, and everything that is not verified is iAcquire's to fix, never the client's. */
+function blueprintItem(c: LaunchFacts["crm"]): LaunchItem {
+  const base = { key: "crm.blueprint", label: "Industry CRM setup", required: true, owner: "iacquire" } as const;
+  const summary = c.blueprintSummary?.trim();
+  switch (c.blueprint) {
+    case "verified":
+      return { ...base, state: "done", detail: "Your pipeline, stages, tags and fields for your industry are in place, and each one was found in your CRM." };
+    case "waiting_for_a_person":
+      return { ...base, state: "action_required", detail: "A person at iAcquire has to apply your industry starter. Nothing has been added to your CRM yet, and nothing is needed from you." };
+    case "failed":
+      return { ...base, state: "action_required", detail: summary || "Your industry CRM setup did not finish. iAcquire will review it and apply it again. Nothing is needed from you." };
+    case "partial":
+      return { ...base, state: "action_required", detail: summary || "Your industry CRM setup was only partly applied. iAcquire will finish it. Nothing is needed from you." };
+    case "missing_records":
+      return { ...base, state: "action_required", detail: summary || "Some items your CRM setup created are no longer in your CRM. iAcquire will review this with you." };
+    case "none":
+      return { ...base, state: "in_progress", detail: c.automaticSetup
+        ? "Your industry CRM is being set up by iAcquire's automatic setup. Nothing is needed from you."
+        : "Your industry CRM is being set up by iAcquire. Nothing is needed from you." };
+  }
+}
+
+function crmRecordsItem(c: LaunchFacts["crm"]): LaunchItem {
+  const base = { key: "crm.records", label: "Tags, contact fields and forms", required: false, owner: "iacquire" } as const;
+  const r = c.records;
+  if (r?.state === "in_place") return { ...base, state: "done", detail: `Your CRM has ${plural(r.tags, "tag", "tags")}, ${plural(r.contactFields, "contact field", "contact fields")} and ${plural(r.forms, "form", "forms")}, and every one your setup created is there.` };
+  if (r?.state === "missing") {
+    // Missing records and an unverified Industry CRM setup are the same condition on the server, and that setup line is the one that holds launch up: this line must not say the opposite.
+    const heldUp = c.blueprint !== "verified" ? "The Industry CRM setup line above is what holds launch up." : "This does not hold up launch.";
+    return { ...base, state: "action_required", detail: `Some tags, fields or forms from your setup are missing from your CRM. iAcquire will review this with you. ${heldUp}` };
+  }
+  return { ...base, state: "in_progress", detail: "Your tags, contact fields and forms arrive with the CRM setup." };
+}
+
 function crmStep(f: LaunchFacts): LaunchStep {
   const c = f.crm;
   const items: LaunchItem[] = [];
   if (c.mode === "native") {
-    items.push(item(c.blueprintApplied
-      ? { key: "crm.blueprint", label: "Industry CRM setup", state: "done", required: true, owner: "iacquire", detail: "Your pipeline, stages, tags and fields for your industry are in place." }
-      : { key: "crm.blueprint", label: "Industry CRM setup", state: "in_progress", required: true, owner: "iacquire", detail: "iAcquire applies the CRM setup for your industry. Nothing is needed from you." }));
+    items.push(item(blueprintItem(c)));
+    // A pipeline that exists is done whatever the Blueprint says; one that does not exist is waited for while the setup has not run (or is waiting for a person), and reviewed once it has.
+    const waiting = c.blueprint === "none" || c.blueprint === "waiting_for_a_person" || c.blueprint === "failed";
     items.push(item(c.pipelineReady
-      ? { key: "crm.pipeline", label: "Sales pipeline", state: "done", required: true, owner: "iacquire", detail: "An active pipeline with stages is ready for your leads and deals." }
-      : { key: "crm.pipeline", label: "Sales pipeline", state: c.blueprintApplied ? "action_required" : "in_progress", required: true, owner: "iacquire",
-        detail: c.blueprintApplied ? "The CRM setup is applied but has no active pipeline stage. iAcquire needs to review it." : "The pipeline arrives with the CRM setup." }));
+      ? { key: "crm.pipeline", label: "Sales pipeline", state: "done", required: true, owner: "iacquire", detail: "An active pipeline with at least two stages, one of them open, is ready for your leads and deals." }
+      : { key: "crm.pipeline", label: "Sales pipeline", state: waiting ? "in_progress" : "action_required", required: true, owner: "iacquire",
+        detail: waiting ? "The pipeline arrives with the CRM setup." : "Your CRM has no active pipeline with at least two stages, one of them open. iAcquire needs to review it." }));
+    items.push(item(crmRecordsItem(c)));
   } else {
     items.push(item(c.providerConnected
       ? { key: "crm.provider", label: "CRM connection", state: "done", required: true, owner: "iacquire", detail: "Your CRM provider connection is verified." }
       : { key: "crm.provider", label: "CRM connection", state: "in_progress", required: true, owner: "iacquire", detail: "iAcquire links and verifies your CRM. Nothing is needed from you." }));
   }
   return { key: "crm", title: "CRM and pipeline", ...summarize(items) };
+}
+
+/** Where the guided setup sends the person after a Google or Microsoft sign-in: back here (the server accepts only this path and the CRM's own pages). */
+export const OAUTH_RETURN_TO_SETUP = "/setup";
+
+/**
+ * The button for a missing meeting-tool connection. When the appointment types name exactly one provider, it starts that provider's sign-in and comes back to Setup. When they name
+ * both, or the facts do not say, it opens the connections screen, which offers each provider.
+ */
+function calendarConnectAction(cal: CalendarFacts): LaunchAction {
+  const providers = cal.videoProviders ?? [];
+  if (providers.length === 1) {
+    const provider = providers[0];
+    return { label: `Connect ${provider === "google" ? "Google" : "Microsoft"}`, href: `/api/crm/calendar-oauth/${provider}/start?return=${OAUTH_RETURN_TO_SETUP}` };
+  }
+  return { label: "Connect a calendar", href: "/crm/calendar-connections" };
 }
 
 function calendarStep(f: LaunchFacts): LaunchStep {
@@ -247,7 +337,7 @@ function calendarStep(f: LaunchFacts): LaunchStep {
     ? { key: "calendar.types", label: "Appointment types", state: "done", required: true, owner: "you", detail: `${plural(cal.types, "appointment type is", "appointment types are")} ready to book.` }
     : { key: "calendar.types", label: "Appointment types", state: "action_required", required: true, owner: "you", detail: "Add at least one appointment type.", action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } }));
   if (cal.needsVideoConnection && !a.externalCalendarConnected) {
-    items.push(item({ key: "calendar.connection", label: "Google or Microsoft connection", state: "action_required", required: true, owner: "you", detail: "A video appointment needs a connected Google or Microsoft account to make the meeting link.", action: { label: "Connect a calendar", href: "/crm/calendar-connections" } }));
+    items.push(item({ key: "calendar.connection", label: "Google or Microsoft connection", state: "action_required", required: true, owner: "you", detail: "A video appointment needs a connected Google or Microsoft account to make the meeting link.", action: calendarConnectAction(cal) }));
   }
   // The checks that need everything above: shown once there is a host, read live, never remembered.
   const slot = failed("slot");
@@ -270,7 +360,24 @@ function calendarStep(f: LaunchFacts): LaunchStep {
 }
 
 const CHANNEL_LABEL: Record<ChannelFact["channel"], string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
-const CHANNEL_HREF: Record<ChannelFact["channel"], string> = { sms: "/inbox/settings", whatsapp: "/inbox/settings", email: "/inbox/settings" };
+/** Where a client sees each channel's status. Setting a channel up (the credential, the provider test, switching it on) is iAcquire's job, so nothing here is a "connect" button. */
+const CHANNEL_HREF: Record<ChannelFact["channel"], string> = { sms: "/settings/messaging", whatsapp: "/settings/messaging", email: "/settings/messaging" };
+const CHANNEL_SENDER_NOUN: Record<ChannelFact["channel"], string> = { sms: "text number", whatsapp: "WhatsApp number", email: "sending address" };
+
+/**
+ * What the client's own part of connecting a channel involves, in plain words. Guidance only: it describes the outside steps and proves nothing, so it is never a state and
+ * never makes a channel look connected. The panel shows it only for a channel the client said they want that is not connected yet.
+ */
+export function connectionSteps(channel: ChannelFact["channel"]): string[] {
+  switch (channel) {
+    case "email":
+      return ["iAcquire sends you the DNS records for your sending domain. You add them where your domain is managed.", "Nothing is sent from your domain until iAcquire has verified it."];
+    case "sms":
+      return ["Confirm the business details iAcquire needs to register your number with the carrier.", "Approve the registration and number fees iAcquire tells you about before anything is charged.", "Texts start only after the carrier approves the registration."];
+    case "whatsapp":
+      return ["Have an approved Meta (Facebook) Business account for your company.", "iAcquire connects your WhatsApp Business number once Meta approves it.", "Nothing is sent on WhatsApp until the connection is verified."];
+  }
+}
 
 export function channelIsReady(c: Pick<ChannelFact, "channel" | "enabled" | "registration">): boolean {
   if (!c.enabled) return false;
@@ -283,15 +390,39 @@ function integrationsStep(f: LaunchFacts): LaunchStep {
   if (!wanted.length) {
     return { key: "integrations", title: "Required integrations", state: "not_applicable", summary: "You have not asked for a customer channel, so nothing needs connecting yet.", items: [item({ key: "integrations.none", label: "Customer channels", state: "not_applicable", required: false, owner: "you", detail: "Email, SMS and WhatsApp are connected only when you choose them in your company setup." })] };
   }
-  const items = wanted.map((c) => item(channelIsReady(c)
-    ? { key: `integrations.${c.channel}`, label: CHANNEL_LABEL[c.channel], state: "done", required: true, owner: "you", detail: `${CHANNEL_LABEL[c.channel]} is connected and verified.` }
-    : { key: `integrations.${c.channel}`, label: CHANNEL_LABEL[c.channel], state: "action_required", required: true, owner: "you",
-      detail: c.channel === "email" ? "Connect and verify your sending address."
-        : c.registration === "pending" ? `${CHANNEL_LABEL[c.channel]} registration is with the carrier. Nothing is sent until it is approved.`
-        : c.registration === "rejected" ? `${CHANNEL_LABEL[c.channel]} registration was rejected. Review it and send it again. Nothing is sent until it is approved.`
-        : `Connect ${CHANNEL_LABEL[c.channel]}. Nothing is sent until it is verified.`,
-      action: { label: `Connect ${CHANNEL_LABEL[c.channel]}`, href: CHANNEL_HREF[c.channel] } }));
-  return { key: "integrations", title: "Required integrations", ...summarize(items) };
+  return { key: "integrations", title: "Required integrations", ...summarize(wanted.map((c) => item(channelItem(c)))) };
+}
+
+/**
+ * One customer channel the client asked for. The split of who moves next follows who can: the client gives the sender and any carrier or Meta paperwork; iAcquire stores the
+ * provider credential, runs the provider's test and switches the channel on, so those are never a button for the client. What the client wrote as their sender is shown as what
+ * they said and never makes the channel look connected: only the recorded provider test and an approved registration do (channelIsReady).
+ */
+function channelItem(c: ChannelFact): LaunchItem {
+  const key = `integrations.${c.channel}`;
+  const label = CHANNEL_LABEL[c.channel];
+  if (channelIsReady(c)) return { key, label, state: "done", required: true, owner: "iacquire", detail: `${label} is connected and verified.` };
+  const stated = c.statedSender?.trim() ? ` You told us your ${CHANNEL_SENDER_NOUN[c.channel]}: ${c.statedSender.trim()}. iAcquire still verifies it.` : "";
+  const guidance = connectionSteps(c.channel);
+  if (c.registration === "rejected") {
+    return { key, label, state: "action_required", required: true, owner: "you", guidance,
+      detail: `${label} registration was rejected. Review the details with iAcquire and send them again. Nothing is sent until it is approved.${stated}`,
+      action: { label: "See channel status", href: CHANNEL_HREF[c.channel] } };
+  }
+  // A text number can be left blank in the questionnaire (iAcquire helps get one); an email address or a WhatsApp number cannot be connected without the client's own.
+  if (c.statedSender === null && c.channel !== "sms") {
+    return { key, label, state: "action_required", required: true, owner: "you", guidance,
+      detail: `Tell us which ${CHANNEL_SENDER_NOUN[c.channel]} to use. iAcquire connects and verifies it, and nothing is sent until it is verified.`,
+      action: { label: "Add your sender", href: "/onboarding" } };
+  }
+  if (c.registration === "pending") {
+    return { key, label, state: "in_progress", required: true, owner: "iacquire", guidance,
+      detail: `${label} registration is with ${c.channel === "whatsapp" ? "Meta" : "the carrier"}, and iAcquire is following it. Nothing is sent until it is approved.${stated}` };
+  }
+  return { key, label, state: "in_progress", required: true, owner: "iacquire", guidance,
+    detail: c.credentialStored
+      ? `iAcquire has saved the credentials for ${label} and still has to test it and switch it on. Nothing is sent until it is verified and switched on.${stated}`
+      : `iAcquire connects, tests and switches on your ${label} sender. Nothing is sent until it is verified.${stated}` };
 }
 
 function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
@@ -305,10 +436,19 @@ function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
     return { key, label, state: "action_required", required: true, owner: "you", detail: "Starts after your setup payment is confirmed.", ...(f.canOpenBilling ? { action: { label: "Open billing", href: "/settings/billing" } } : {}) };
   }
   if (e.heldForReview) return { key, label, state: "awaiting_review", required: true, owner: "iacquire", detail: "A configuration change is waiting for iAcquire's review. Nothing runs on it until it is approved." };
-  if (e.provisioning === "failed") return { key, label, state: "failed", required: true, owner: "iacquire", detail: "Setting up its profile failed. iAcquire can review the recorded error and retry safely." };
-  if (e.provisioning === "retrying") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Setting up its profile hit a temporary problem and is being tried again automatically. Nothing is needed from you, and iAcquire is told if it does not recover." };
+  // The attempt count is what the job recorded; the raw failure note and the check's own words are for iAcquire and are never put in front of the client.
+  if (e.provisioning === "failed") {
+    const used = e.attempts > 0 ? ` (${e.attempts} of ${e.maxAttempts} attempts used)` : "";
+    return { key, label, state: "failed", required: true, owner: "iacquire", detail: `Setting up its profile did not finish${used}. iAcquire can review it and retry. Nothing is needed from you.` };
+  }
+  if (e.provisioning === "retrying") {
+    const next = Math.min(e.attempts + 1, e.maxAttempts);
+    return { key, label, state: "in_progress", required: true, owner: "system", detail: `Attempt ${next} of ${e.maxAttempts}: setting up its profile hit a temporary problem and is being tried again automatically. Nothing is needed from you, and iAcquire is told if it does not recover.` };
+  }
   if (e.provisioning === "requested") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its dedicated profile is queued. It is not ready until its identity and tools are verified." };
   if (e.provisioning === "in_progress") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its dedicated profile is being created. Verification has not passed yet." };
+  // A check that ran and did not pass is a failure someone has to look at, never "being verified": waiting stays in progress only while no check has failed.
+  if (e.healthFailed) return { key, label, state: "action_required", required: true, owner: "iacquire", detail: "Its profile exists, but its last connection check did not pass, so it is not ready. iAcquire can review it and retry. Nothing is needed from you." };
   if (e.provisioning === "awaiting_health_check") return { key, label, state: "in_progress", required: true, owner: "system", detail: "Its profile exists. Its connection and tool inventory are being verified." };
   if (e.readiness.chatAvailable && e.readiness.blocking.length) {
     return { key, label, state: "action_required", required: true, owner: "you", detail: `Verified and waiting for what its role needs: ${e.readiness.blocking.join("; ")}.` };
@@ -320,9 +460,12 @@ function employeeItem(f: LaunchFacts, e: EmployeeFact): LaunchItem {
 function employeesStep(f: LaunchFacts): LaunchStep {
   const byRole = new Map(f.employees.map((e) => [e.role, e]));
   // A role with no record at all is an employee that was never created: that is something iAcquire must look at, never a quiet "not applicable".
-  const missing = (role: AgentRoleKey): EmployeeFact => ({ role, entitled: true, provisioning: "succeeded", provisioningDetail: null, readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "This employee has not been created. iAcquire needs to review the workspace.", blocking: [] }, heldForReview: false, configVersion: null });
+  const missing = (role: AgentRoleKey): EmployeeFact => ({ role, entitled: true, provisioning: "succeeded", provisioningDetail: null, attempts: 0, maxAttempts: 3, nextRetryAt: null, healthFailed: false, healthDetail: null, readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "This employee has not been created. iAcquire needs to review the workspace.", blocking: [] }, heldForReview: false, configVersion: null });
   const items = AGENT_ROLE_KEYS.map((role) => employeeItem(f, byRole.get(role) ?? missing(role)));
-  return { key: "employees", title: "Your six AI employees", ...summarize(items) };
+  // The title counts what the plan includes, the way the review does, so the two screens agree.
+  const included = AGENT_ROLE_KEYS.filter((role) => byRole.get(role)?.entitled ?? true).length;
+  const title = included === AGENT_ROLE_KEYS.length ? `Your ${countWord(included)} AI employees` : included === 0 ? "Your AI employees" : `Your ${countWord(included)} AI employee${included === 1 ? "" : "s"}`;
+  return { key: "employees", title, ...summarize(items) };
 }
 
 function verificationStep(f: LaunchFacts): LaunchStep {

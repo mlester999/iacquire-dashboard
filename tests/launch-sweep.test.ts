@@ -55,6 +55,20 @@ describe("the launch sweep", () => {
     expect(await checkJobs(c.org.id)).toBe(6);
   }, 180_000);
 
+  it("starts no check for an employee whose connection check failed, and shows it as iAcquire's to look at", async () => {
+    const c = await readyClient({ name: "Sweep Health Failed", timezone: "UTC" });
+    const sales = await agentId(c.org.id, "sales_assistant");
+    await withSystem((db) => db.query("update agent_instances set last_health_ok = false, last_health_detail = 'The gateway did not answer.', last_health_check_at = now() where id = $1", [sales]));
+    const swept = await sweepLaunchVerification(c.org.id);
+    expect(swept.queued).not.toContain("sales_assistant");
+    await settled(c.org.id, 5);
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.sales_assistant")).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(itemOf(r, "employees.sales_assistant").detail).not.toContain("gateway");
+    expect(r.state).toBe("action_required");
+    expect(await checkJobs(c.org.id)).toBe(5);
+  }, 180_000);
+
   it("starts nothing before the questionnaire is submitted, before the setup payment is confirmed, or for a paused or not-ready employee", async () => {
     const c = await readyClient({ name: "Sweep Gates", timezone: "UTC" });
     await withSystem((db) => db.query("update billing_accounts set setup_payment_status = 'invoiced', waiver_reason = null, waived_at = null where org_id = $1", [c.org.id]));

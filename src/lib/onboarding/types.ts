@@ -1,4 +1,5 @@
 // Shared shapes for the adaptive onboarding questionnaire. Pure types: no I/O.
+import type { AgentRoleKey } from "@/lib/agents";
 
 export const ONBOARDING_SECTIONS = [
   { id: "A", slug: "business", title: "Business profile", short: "Business", blurb: "Who you are and where you operate." },
@@ -24,6 +25,8 @@ export interface ListField {
   max?: number;
   required?: boolean;
   placeholder?: string;
+  /** Adaptive rule for the field inside a row. Omitted means always shown. A hidden field keeps whatever was saved but is not asked. */
+  show?: (a: Answers) => boolean;
 }
 
 export type QuestionKind =
@@ -31,7 +34,8 @@ export type QuestionKind =
   | { type: "longtext"; max: number; placeholder?: string; rows?: number }
   | { type: "email" }
   | { type: "phone" }
-  | { type: "url" }
+  /** `httpsOnly`: a link a customer will be sent to (a meeting room). It must start with https://, and a query string is kept because a room link may need it. */
+  | { type: "url"; httpsOnly?: boolean }
   | { type: "timezone" }
   | { type: "choice"; options: ChoiceOption[] }
   | { type: "multi"; options: ChoiceOption[]; max?: number }
@@ -56,9 +60,13 @@ export interface QuestionDef {
   /** Concrete example shown beside the input so nobody has to guess what a good answer looks like. */
   example?: string;
   required?: boolean;
+  /** Required only while this is true (for example, opening hours once replies are limited to them). A question that is `required` is always required. */
+  requiredWhen?: (a: Answers) => boolean;
   kind: QuestionKind;
   /** Adaptive rule. Omitted means always shown. */
   show?: (a: Answers) => boolean;
+  /** Asked only when at least one of these employees is in the plan. Omitted means asked whatever the plan is. */
+  roles?: AgentRoleKey[];
   /** The optional AI assistant can suggest an answer for this question. */
   assist?: AssistKind;
   /**
@@ -68,6 +76,11 @@ export interface QuestionDef {
   sensitive?: boolean;
   /** Short label used in the review summary; defaults to the title. */
   reviewLabel?: string;
+}
+
+/** What the plan changes about the questionnaire. Omitted everywhere means every employee is in the plan. */
+export interface QuestionScope {
+  roles: readonly AgentRoleKey[];
 }
 
 export type AnswerSource = "user" | "ai_suggestion" | "website_analysis" | "prefill";

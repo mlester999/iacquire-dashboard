@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/server/env";
 import { toPublicError } from "@/server/errors";
 import { resolveCrmActor } from "@/server/crm/request";
-import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, DEFAULT_RETURN_PATH, encodeCalendarNotice, safeReturnPath, startCalendarOAuth } from "@/server/calendars/connections";
+import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, DEFAULT_RETURN_PATH, encodeCalendarNotice, noticeSurfaceOf, safeReturnPath, startCalendarOAuth } from "@/server/calendars/connections";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const returnPath = safeReturnPath(req.nextUrl.searchParams.get("return"));
   const back = (message: string) => {
     const res = NextResponse.redirect(`${base}${returnPath}`, { status: 303 });
-    res.cookies.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ kind: "error", provider, message }), CALENDAR_NOTICE_COOKIE_OPTIONS);
+    res.cookies.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ kind: "error", provider, message, from: noticeSurfaceOf(returnPath) }), CALENDAR_NOTICE_COOKIE_OPTIONS);
     res.headers.set("Cache-Control", "no-store");
     return res;
   };

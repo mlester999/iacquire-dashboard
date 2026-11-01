@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import json
 import base64
+import contextlib
 import hashlib
 import hmac
+import io
 import os
+import shutil
 import stat
 import subprocess
+import sys
 import tempfile
+import threading
+import time
 import unittest
 import uuid
 import yaml
@@ -17,9 +23,15 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
+import worker as worker_module
 from worker import (
+    Heartbeat,
     ProvisioningError,
     RestrictedProvisioner,
+    WorkerLoop,
+    _load_max_profiles,
+    _verify_home_command,
+    _wait_for_hermes,
     _load_bootstrap_api_key,
     _bootstrap_api_key_file_is_private,
     _load_service_token,
@@ -34,6 +46,7 @@ from worker import (
     parse_policy_config,
     render_config,
     verify_complete_catalog,
+    verify_home,
 )
 
 
@@ -925,6 +938,907 @@ class RestrictedProvisionerTests(unittest.TestCase):
             self.assertTrue(_worker_healthcheck())
             (state_root / "heartbeat.json").write_text('{"at":0}', encoding="ascii")
             self.assertFalse(_worker_healthcheck())
+
+
+    # --- audit log rotation -------------------------------------------------------------------------------------------------------------------------
+
+    def second_manifest(self, **updates: Any) -> dict[str, Any]:
+        return new_manifest(gatewayId=self.gateway_id, profile="c-northwind-0123456789ab-sales-assistant", role="sales_assistant", **updates)
+
+    def test_audit_log_rotates_at_its_cap_and_the_next_job_succeeds(self):
+        self.provisioner.process(self.manifest)
+        audit = self.provisioner.state_root / "audit.jsonl"
+        first_job_line = audit.read_text(encoding="utf-8")
+        with patch.object(worker_module, "MAX_AUDIT_BYTES", audit.stat().st_size + 10):
+            result = self.provisioner.process(self.second_manifest())
+        self.assertTrue(result["ok"])
+        rotated = self.provisioner.state_root / "audit.1.jsonl"
+        self.assertEqual(rotated.read_text(encoding="utf-8"), first_job_line)
+        live = audit.read_text(encoding="utf-8")
+        self.assertIn('"outcome":"succeeded"', live)
+        self.assertNotEqual(live, first_job_line)
+        if os.name != "nt":
+            for path in (audit, rotated):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                self.assertEqual(path.stat().st_uid, os.getuid())
+
+    def test_audit_log_keeps_five_rotated_files_and_drops_the_oldest(self):
+        root = self.provisioner.state_root
+        with patch.object(worker_module, "MAX_AUDIT_BYTES", 300):
+            for index in range(9):
+                self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest", "n": index, "pad": "x" * 150})
+        names = sorted(path.name for path in root.glob("audit*.jsonl"))
+        self.assertEqual(names, ["audit.1.jsonl", "audit.2.jsonl", "audit.3.jsonl", "audit.4.jsonl", "audit.5.jsonl", "audit.jsonl"])
+        # Newest first: audit.1 holds the record just before the live one, and nothing older than the fifth rotation survives.
+        newest_rotated = json.loads((root / "audit.1.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(newest_rotated["n"], 7)
+        live = json.loads((root / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(live["n"], 8)
+        oldest = json.loads((root / "audit.5.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(oldest["n"], 3)
+
+    def test_audit_rotation_refuses_a_symlinked_target_and_changes_nothing(self):
+        root = self.provisioner.state_root
+        outside = Path(self.temp.name) / "outside.txt"
+        outside.write_text("untouched", encoding="utf-8")
+        try:
+            os.symlink(outside, root / "audit.1.jsonl")
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not available here")
+        with patch.object(worker_module, "MAX_AUDIT_BYTES", 200):
+            self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest", "pad": "x" * 150})
+            before = (root / "audit.jsonl").read_text(encoding="utf-8")
+            with self.assertRaisesRegex(ProvisioningError, "audit_log_unavailable"):
+                self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest", "pad": "y" * 150})
+        self.assertEqual((root / "audit.jsonl").read_text(encoding="utf-8"), before)
+        self.assertTrue((root / "audit.1.jsonl").is_symlink())
+        self.assertEqual(outside.read_text(encoding="utf-8"), "untouched")
+
+    def test_audit_rotation_refuses_a_target_that_is_not_a_regular_file(self):
+        # The same lstat check that refuses a symlink, exercised with a directory so it also runs where symlinks cannot be created.
+        root = self.provisioner.state_root
+        (root / "audit.3.jsonl").mkdir()
+        with patch.object(worker_module, "MAX_AUDIT_BYTES", 200):
+            self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest", "pad": "x" * 150})
+            before = (root / "audit.jsonl").read_text(encoding="utf-8")
+            with self.assertRaisesRegex(ProvisioningError, "audit_log_unavailable"):
+                self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest", "pad": "y" * 150})
+        self.assertEqual((root / "audit.jsonl").read_text(encoding="utf-8"), before)
+        self.assertFalse((root / "audit.1.jsonl").exists())
+
+    def test_audit_file_that_is_a_symlink_is_still_refused(self):
+        outside = Path(self.temp.name) / "outside-audit.txt"
+        outside.write_text("untouched", encoding="utf-8")
+        try:
+            os.symlink(outside, self.provisioner.state_root / "audit.jsonl")
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not available here")
+        if not hasattr(os, "O_NOFOLLOW"):
+            self.skipTest("O_NOFOLLOW is not available here")
+        with self.assertRaisesRegex(ProvisioningError, "audit_log_unavailable"):
+            self.provisioner._append_audit({"at": "t", "outcome": "rejected", "code": "invalid_manifest"})
+        self.assertEqual(outside.read_text(encoding="utf-8"), "untouched")
+
+    def test_the_provisioner_exposes_the_hermes_failure_streak_to_the_loop(self):
+        self.assertEqual(self.provisioner.hermes_unreachable_streak(), 0)
+        self.api.consecutive_unavailable = 7
+        self.assertEqual(self.provisioner.hermes_unreachable_streak(), 7)
+
+    # --- capacity backstop --------------------------------------------------------------------------------------------------------------------------
+
+    def provisioner_with_ceiling(self, ceiling: int | None) -> RestrictedProvisioner:
+        return RestrictedProvisioner(
+            home=self.home,
+            hermes_cli=Path("/opt/hermes/bin/hermes"),
+            api=self.api,
+            gateway_id=self.gateway_id,
+            hermes_version="hermes v0.21.5-test",
+            run_command=self.run_command,
+            max_profiles=ceiling,
+        )
+
+    def test_provision_at_the_ceiling_raises_capacity_exceeded_and_runs_no_cli(self):
+        provisioner = self.provisioner_with_ceiling(1)
+        provisioner.process(self.manifest)
+        self.assertEqual(len(self.commands), 1)
+        second = self.second_manifest()
+        with self.assertRaisesRegex(ProvisioningError, "capacity_exceeded"):
+            provisioner.process(second)
+        self.assertEqual(len(self.commands), 1)
+        self.assertFalse((self.home / "profiles" / second["profile"]).exists())
+        # Nothing was written for the refused profile: no recovery journal that a later startup would have to explain.
+        self.assertFalse((provisioner.state_root / (second["profile"] + ".json")).exists())
+        self.assertIn('"code":"capacity_exceeded"', (provisioner.state_root / "audit.jsonl").read_text(encoding="utf-8"))
+
+    def test_sync_and_a_resumed_provision_are_unaffected_by_the_ceiling(self):
+        provisioner = self.provisioner_with_ceiling(1)
+        provisioner.process(self.manifest)
+        # The same provision job again (a retry) resumes its own profile.
+        again = provisioner.process(self.manifest)
+        self.assertEqual(again["profile"], self.manifest["profile"])
+        self.assertEqual(len(self.commands), 1)
+        sync = new_manifest(
+            gatewayId=self.gateway_id,
+            jobId=uid(),
+            leaseToken=uid(),
+            kind="sync",
+            sourceProvisionJobId=self.manifest["jobId"],
+            orgId=self.manifest["orgId"],
+            agentId=self.manifest["agentId"],
+            profile=self.manifest["profile"],
+            configVersionId=uid(),
+            configVersion=2,
+        )
+        result = provisioner.process(sync)
+        self.assertTrue(result["ok"])
+        self.assertNotIn("apiKey", result)
+        self.assertEqual(len(self.commands), 1)
+
+    def test_ceiling_counts_only_client_profiles_and_none_means_no_ceiling(self):
+        (self.home / "profiles" / "default").mkdir()
+        provisioner = self.provisioner_with_ceiling(1)
+        self.assertEqual(provisioner.count_client_profiles(), 0)
+        provisioner.process(self.manifest)
+        self.assertEqual(provisioner.count_client_profiles(), 1)
+        unlimited = self.provisioner_with_ceiling(None)
+        unlimited.process(self.second_manifest())
+        self.assertEqual(unlimited.count_client_profiles(), 2)
+
+    def test_max_profiles_setting_accepts_only_a_positive_integer(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(_load_max_profiles())
+        with patch.dict(os.environ, {"IACQUIRE_PROVISIONER_MAX_PROFILES": " "}, clear=True):
+            self.assertIsNone(_load_max_profiles())
+        with patch.dict(os.environ, {"IACQUIRE_PROVISIONER_MAX_PROFILES": "12"}, clear=True):
+            self.assertEqual(_load_max_profiles(), 12)
+        for bad in ("0", "-1", "abc", "1.5", "012", "1000000"):
+            with patch.dict(os.environ, {"IACQUIRE_PROVISIONER_MAX_PROFILES": bad}, clear=True), self.assertRaisesRegex(ProvisioningError, "max_profiles_invalid"):
+                _load_max_profiles()
+
+    # --- --verify-home ------------------------------------------------------------------------------------------------------------------------------
+
+    def clean_home_copy(self) -> Path:
+        """A copy of a home that really went through a provision, so the checks run against what the worker writes."""
+        self.provisioner.process(self.manifest)
+        copy = Path(self.temp.name) / ("copy-" + uid())
+        shutil.copytree(self.home, copy)
+        return copy
+
+    def test_verify_home_passes_a_clean_home(self):
+        copy = self.clean_home_copy()
+        report = verify_home(copy, self.gateway_id)
+        self.assertEqual(report, {"ok": True, "profiles": 1, "orphanJournals": 0, "problems": {}})
+        # An empty home is clean too.
+        empty = Path(self.temp.name) / "empty"
+        (empty / "profiles").mkdir(parents=True)
+        self.assertEqual(verify_home(empty, self.gateway_id), {"ok": True, "profiles": 0, "orphanJournals": 0, "problems": {}})
+
+    def test_verify_home_fails_for_an_agency_profile(self):
+        copy = self.clean_home_copy()
+        (copy / "profiles" / "operations-manager").mkdir()
+        report = verify_home(copy, self.gateway_id)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["problems"], {"agency_profile_found": 1})
+        # A c- name with no marker and no journal is not a client profile either.
+        stray = self.clean_home_copy()
+        (stray / "profiles" / "c-stray").mkdir()
+        self.assertEqual(verify_home(stray, self.gateway_id)["problems"], {"agency_profile_found": 1})
+
+    def test_verify_home_fails_for_a_missing_marker_or_another_gateways_marker(self):
+        copy = self.clean_home_copy()
+        marker = copy / "profiles" / self.manifest["profile"] / ".iacquire-provisioner.json"
+        original = marker.read_text(encoding="utf-8")
+        marker.unlink()
+        report = verify_home(copy, self.gateway_id)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["problems"], {"profile_marker_missing": 1})
+        marker.write_text(original, encoding="utf-8")
+        self.assertTrue(verify_home(copy, self.gateway_id)["ok"])
+        # The marker belongs to this gateway only.
+        wrong = verify_home(copy, uid())
+        self.assertFalse(wrong["ok"])
+        self.assertIn("agency_profile_found", wrong["problems"])
+
+    def test_verify_home_fails_for_a_bad_mode(self):
+        copy = self.clean_home_copy()
+        env_path = copy / "profiles" / self.manifest["profile"] / ".env"
+        env_path.chmod(0o644)
+        # Windows has no mode bits, so the check is switched on explicitly; on Linux it is always on.
+        with patch.object(worker_module, "_ENFORCE_FILE_MODES", True):
+            report = verify_home(copy, self.gateway_id)
+        self.assertFalse(report["ok"])
+        self.assertIn("profile_env_mode_invalid", report["problems"])
+
+    def test_verify_home_fails_for_a_malformed_or_missing_key(self):
+        copy = self.clean_home_copy()
+        env_path = copy / "profiles" / self.manifest["profile"] / ".env"
+        good = env_path.read_text(encoding="utf-8")
+        for broken in ("API_SERVER_KEY=short\n", "API_SERVER_KEY=" + "G" * 64 + "\n", "NOTHING=here\n", good + good):
+            env_path.write_text(broken, encoding="utf-8")
+            if os.name != "nt":
+                env_path.chmod(0o600)
+            report = verify_home(copy, self.gateway_id)
+            self.assertEqual(report["problems"], {"profile_key_invalid": 1}, broken)
+        env_path.unlink()
+        self.assertEqual(verify_home(copy, self.gateway_id)["problems"], {"profile_key_missing": 1})
+
+    def test_verify_home_reports_orphan_journals_without_failing(self):
+        copy = self.clean_home_copy()
+        journal = json.loads((copy / "iacquire-provisioner-state" / (self.manifest["profile"] + ".json")).read_text(encoding="utf-8"))
+        journal["profile"] = "c-gone-0123456789ab-lead-hunter"
+        (copy / "iacquire-provisioner-state" / "c-gone-0123456789ab-lead-hunter.json").write_text(json.dumps(journal), encoding="utf-8")
+        report = verify_home(copy, self.gateway_id)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["orphanJournals"], 1)
+
+    def test_verify_home_command_prints_counts_and_codes_only_and_exits_zero_or_one(self):
+        copy = self.clean_home_copy()
+        api_key = (copy / "profiles" / self.manifest["profile"] / ".env").read_text(encoding="utf-8").split("=", 1)[1].strip()
+
+        def run() -> tuple[int, str]:
+            buffer = io.StringIO()
+            with patch.dict(os.environ, {"HERMES_HOME": str(copy), "IACQUIRE_PROVISIONER_GATEWAY_ID": self.gateway_id}, clear=True), contextlib.redirect_stdout(buffer):
+                code = _verify_home_command()
+            return code, buffer.getvalue()
+
+        code, output = run()
+        self.assertEqual(code, 0)
+        self.assertEqual(output.splitlines(), ["verify-home profiles=1 orphan_journals=0 problems=0", "verify-home result=ok"])
+        (copy / "profiles" / "operations-manager").mkdir()
+        (copy / "profiles" / self.manifest["profile"] / ".env").write_text("API_SERVER_KEY=short\n", encoding="utf-8")
+        code, output = run()
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            output.splitlines(),
+            [
+                "verify-home profiles=1 orphan_journals=0 problems=2",
+                "problem code=agency_profile_found count=1",
+                "problem code=profile_key_invalid count=1",
+                "verify-home result=failed",
+            ],
+        )
+        for secret in (api_key, self.manifest["profile"], self.manifest["orgId"], self.manifest["soul"][:20], "operations-manager"):
+            self.assertNotIn(secret, output)
+
+    def test_verify_home_runs_from_the_command_line_and_does_not_modify_the_home(self):
+        copy = self.clean_home_copy()
+
+        def snapshot() -> dict[str, tuple[int, float]]:
+            return {str(path.relative_to(copy)): (path.stat().st_size, path.stat().st_mtime) for path in sorted(copy.rglob("*"))}
+
+        before = snapshot()
+        env = {key: value for key, value in os.environ.items() if key in {"PATH", "SYSTEMROOT", "TEMP", "TMP"}}
+        env.update({"HERMES_HOME": str(copy), "IACQUIRE_PROVISIONER_GATEWAY_ID": self.gateway_id, "PYTHONDONTWRITEBYTECODE": "1"})
+        done = subprocess.run([sys.executable, "-B", str(Path(worker_module.__file__)), "--verify-home"], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("verify-home result=ok", done.stdout)
+        self.assertEqual(snapshot(), before)
+        (copy / "profiles" / "operations-manager").mkdir()
+        done = subprocess.run([sys.executable, "-B", str(Path(worker_module.__file__)), "--verify-home"], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("problem code=agency_profile_found count=1", done.stdout)
+
+
+
+class FakeClock:
+    """Epoch seconds that only move when the loop sleeps, so retry timing is exact and no test waits."""
+
+    def __init__(self):
+        self.now = datetime.now(timezone.utc).timestamp()
+        self.sleeps: list[float] = []
+        self.on_sleep: Any = None
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+        if self.on_sleep is not None:
+            self.on_sleep(len(self.sleeps))
+
+
+class FakePortal:
+    """Scripted portal: each path has a list of answers (status, body) or an exception to raise; the last answer repeats."""
+
+    def __init__(self, claim: list[Any], complete: list[Any] | None = None):
+        self.answers = {"/claim": list(claim), "/complete": list(complete or [(200, {"ok": True})])}
+        self.calls: list[tuple[str, dict[str, Any] | None]] = []
+        self.headers_seen: list[dict[str, str]] = []
+        # A loop that regresses into spinning must fail its assertions, not hang the suite: past this many calls the loop is told to stop.
+        self.stop: Any = None
+
+    def request(self, url: str, method: str, headers: dict[str, str], body: dict[str, Any] | None = None):
+        path = "/" + url.rsplit("/", 1)[1]
+        self.calls.append((path, body))
+        self.headers_seen.append(headers)
+        if len(self.calls) > 60 and self.stop is not None:
+            self.stop.set()
+        queue = self.answers[path]
+        answer = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def paths(self) -> list[str]:
+        return [path for path, _ in self.calls]
+
+
+class FakeProvisioner:
+    def __init__(self, outcomes: list[Any] | None = None):
+        self.outcomes = list(outcomes or [])
+        self.processed: list[Any] = []
+        self.streak = 0
+        self.on_process: Any = None
+
+    def process(self, manifest: Any) -> dict[str, Any]:
+        self.processed.append(manifest)
+        if self.on_process is not None:
+            self.on_process()
+        outcome = self.outcomes.pop(0) if self.outcomes else {"ok": True, "jobId": manifest["jobId"]}
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    def hermes_unreachable_streak(self) -> int:
+        return self.streak
+
+
+class ProbingProvisioner(FakeProvisioner):
+    """A provisioner that can ask the Hermes loopback whether it answers: `gone` makes every probe fail, the way a stale network namespace does."""
+
+    def __init__(self, gone: bool):
+        super().__init__()
+        self.gone = gone
+        self.probes = 0
+
+    def probe_hermes(self) -> None:
+        self.probes += 1
+        self.streak = self.streak + 1 if self.gone else 0
+
+
+GATEWAY = "11111111-1111-4111-8111-111111111111"
+
+
+def job_manifest(clock: FakeClock, **updates: Any) -> dict[str, Any]:
+    manifest = {
+        "jobId": uid(),
+        "leaseToken": uid(),
+        "gatewayId": GATEWAY,
+        "kind": "provision",
+        "orgId": uid(),
+        "agentId": uid(),
+        "profile": "c-secret-tenant-name-0123456789ab",
+        "role": "lead_hunter",
+        "soul": "SECRET-SOUL-TEXT do not print",
+        "configYaml": "SECRET-CONFIG-TEXT",
+        "expiresAt": datetime.fromtimestamp(clock.now + 600, timezone.utc).isoformat(),
+    }
+    manifest.update(updates)
+    return manifest
+
+
+class WorkerLoopTests(unittest.TestCase):
+    def setUp(self):
+        self.clock = FakeClock()
+        self.stop = threading.Event()
+        self.lines: list[str] = []
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.state_root = Path(self.temp.name) / "state"
+        self.state_root.mkdir(mode=0o700)
+        self.heartbeat = Heartbeat(self.state_root, self.clock)
+
+    def loop(self, portal: FakePortal, provisioner: FakeProvisioner | None = None) -> WorkerLoop:
+        self.portal = portal
+        portal.stop = self.stop
+        self.provisioner = provisioner or FakeProvisioner()
+        return WorkerLoop(
+            portal,
+            self.provisioner,
+            self.clock,
+            self.clock.sleep,
+            self.stop,
+            base="https://portal.example.invalid/api/internal/hermes-provisioner",
+            headers={"Authorization": "Bearer test-token"},
+            gateway_id=GATEWAY,
+            heartbeat=self.heartbeat,
+            out=self.lines.append,
+        )
+
+    def stop_after_sleeps(self, count: int) -> None:
+        self.clock.on_sleep = lambda n: self.stop.set() if n >= count else None
+
+    def beat(self) -> dict[str, Any]:
+        return json.loads((self.state_root / "heartbeat.json").read_text(encoding="ascii"))
+
+    def test_an_empty_queue_sleeps_five_seconds_and_stays_idle(self):
+        self.stop_after_sleeps(2)
+        code = self.loop(FakePortal([(200, {"job": None})])).run()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.clock.sleeps, [5, 5])
+        self.assertEqual(self.portal.paths(), ["/claim", "/claim"])
+        self.assertEqual(self.portal.calls[0][1], {"gatewayId": GATEWAY})
+        self.assertEqual(self.provisioner.processed, [])
+        self.assertEqual(self.beat()["state"], "stopping")
+
+    def test_a_failing_claim_sleeps_ten_seconds_and_the_heartbeat_says_portal_unreachable(self):
+        states: list[str] = []
+        self.clock.on_sleep = lambda n: (states.append(self.beat()["state"]), self.stop.set() if n >= 2 else None)
+        self.loop(FakePortal([(503, {"error": "The restricted Hermes provisioner could not be reached."}), ProvisioningError("http_unavailable")])).run()
+        self.assertEqual(self.clock.sleeps, [10, 10])
+        self.assertEqual(states, ["portal_unreachable", "portal_unreachable"])
+        self.assertEqual(self.provisioner.processed, [])
+
+    def test_a_portal_that_is_switched_off_counts_as_healthy_and_idle(self):
+        states: list[tuple[str, int | None]] = []
+        start = self.clock.now
+        self.clock.on_sleep = lambda n: (states.append((self.beat()["state"], self.beat()["lastClaimOkAt"])), self.stop.set())
+        self.loop(FakePortal([(503, {"error": "The restricted Hermes provisioner is not enabled."})])).run()
+        self.assertEqual(states, [("portal_disabled", int(start))])
+        self.assertEqual(self.clock.sleeps, [10])
+
+    def test_a_success_posts_exactly_once_and_prints_one_code_only_line(self):
+        manifest = job_manifest(self.clock)
+        result = {"ok": True, "jobId": manifest["jobId"], "leaseToken": manifest["leaseToken"], "apiKey": "a" * 64}
+        start = self.clock.now
+        self.stop_after_sleeps(1)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(200, {"ok": True})]), FakeProvisioner([result]))
+        loop.run()
+        self.assertEqual(self.portal.paths(), ["/claim", "/complete", "/claim"])
+        self.assertEqual(self.portal.calls[1][1], result)
+        self.assertEqual(self.provisioner.processed, [manifest])
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=succeeded code=- delivery=delivered attempts=1"])
+        self.assertEqual(self.beat()["lastJobAt"], int(start))
+
+    def test_two_503_completions_then_200_deliver_one_result_in_three_attempts(self):
+        manifest = job_manifest(self.clock)
+        result = {"ok": True, "jobId": manifest["jobId"]}
+        self.stop_after_sleeps(3)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(503, None), ProvisioningError("http_unavailable"), (200, {"ok": True})]), FakeProvisioner([result]))
+        loop.run()
+        completes = [body for path, body in self.portal.calls if path == "/complete"]
+        self.assertEqual(completes, [result, result, result])
+        self.assertEqual(self.clock.sleeps[:3], [2, 4, 5])
+        self.assertEqual(len(self.provisioner.processed), 1)
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=succeeded code=- delivery=delivered attempts=3"])
+
+    def test_delivery_gives_up_after_five_attempts_with_two_four_eight_sixteen_second_waits(self):
+        manifest = job_manifest(self.clock)
+        self.stop_after_sleeps(5)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(503, None)]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}]))
+        loop.run()
+        self.assertEqual(self.portal.paths().count("/complete"), 5)
+        self.assertEqual(self.clock.sleeps[:4], [2, 4, 8, 16])
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=succeeded code=- delivery=undelivered attempts=5"])
+
+    def test_delivery_stops_retrying_when_the_lease_has_run_out(self):
+        manifest = job_manifest(self.clock)
+        manifest["expiresAt"] = datetime.fromtimestamp(self.clock.now + 5, timezone.utc).isoformat()
+        self.stop_after_sleeps(3)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(503, None)]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}]))
+        loop.run()
+        # Attempt 1 fails, wait 2 s (lease still valid), attempt 2 fails, wait 4 s (lease now over): no third attempt.
+        self.assertEqual(self.portal.paths().count("/complete"), 2)
+        self.assertIn("delivery=undelivered attempts=2", self.lines[0])
+
+    def test_a_409_is_dropped_without_a_retry(self):
+        manifest = job_manifest(self.clock)
+        self.stop_after_sleeps(1)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(409, {"error": "lease"})]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}]))
+        code = loop.run()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.portal.paths().count("/complete"), 1)
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=succeeded code=- delivery=dropped attempts=1"])
+
+    def test_a_completion_is_retried_for_the_answers_a_repeat_could_change_and_dropped_for_the_rest(self):
+        for status in (408, 425, 429, 500, 502, 503):
+            with self.subTest(retried=status):
+                self.lines.clear()
+                self.stop.clear()
+                self.clock.sleeps.clear()
+                self.clock.on_sleep = None
+                manifest = job_manifest(self.clock)
+                self.stop_after_sleeps(5)
+                self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(status, None)]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}])).run()
+                self.assertEqual(self.portal.paths().count("/complete"), 5)
+                self.assertEqual(self.clock.sleeps[:4], [2, 4, 8, 16])
+                self.assertIn("delivery=undelivered attempts=5", self.lines[0])
+        for status in (400, 404, 410, 422):
+            with self.subTest(dropped=status):
+                self.lines.clear()
+                self.stop.clear()
+                self.clock.sleeps.clear()
+                self.clock.on_sleep = None
+                manifest = job_manifest(self.clock)
+                self.stop_after_sleeps(1)
+                self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(status, {"error": "no"})]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}])).run()
+                self.assertEqual(self.portal.paths().count("/complete"), 1)
+                self.assertIn("delivery=dropped attempts=1", self.lines[0])
+
+    def test_the_worker_reads_a_switched_off_portal_by_the_words_the_route_uses(self):
+        # The same sentence is asserted against the route's own source by tests/hermes-provisioner-code-parity.test.ts.
+        self.assertEqual(worker_module.PORTAL_DISABLED_TEXT, "not enabled")
+        self.assertTrue(worker_module._portal_says_disabled({"error": "The restricted Hermes provisioner is not enabled."}))
+        self.assertFalse(worker_module._portal_says_disabled({"error": "The restricted Hermes provisioner could not be reached."}))
+        self.assertFalse(worker_module._portal_says_disabled(None))
+        self.assertFalse(worker_module._portal_says_disabled({"error": 503}))
+
+    def test_a_401_or_403_when_reporting_stops_the_worker_and_reports_unhealthy(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                self.lines.clear()
+                self.stop.clear()
+                self.clock.sleeps.clear()
+                manifest = job_manifest(self.clock)
+                loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": manifest})], [(status, {"error": "no"})]), FakeProvisioner([{"ok": True, "jobId": manifest["jobId"]}]))
+                code = loop.run()
+                self.assertEqual(code, 1)
+                self.assertEqual(self.portal.paths(), ["/claim", "/complete"])
+                self.assertEqual(self.clock.sleeps, [])
+                self.assertEqual(self.beat()["state"], "unauthorized")
+                self.assertIn("worker stopped code=portal_unauthorized", self.lines)
+
+    def test_a_401_on_the_claim_stops_before_any_work(self):
+        code = self.loop(FakePortal([(401, {"error": "Unauthorized."})])).run()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.provisioner.processed, [])
+        self.assertEqual(self.beat()["state"], "unauthorized")
+        self.assertEqual(self.lines, ["worker stopped code=portal_unauthorized"])
+
+    def test_a_stop_request_ends_the_loop_between_jobs(self):
+        first, second = job_manifest(self.clock), job_manifest(self.clock)
+        loop = self.loop(FakePortal([(200, {"job": first}), (200, {"job": second})]), FakeProvisioner())
+        self.provisioner.on_process = self.stop.set
+        code = loop.run()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.provisioner.processed, [first])
+        self.assertEqual(self.portal.paths(), ["/claim", "/complete"])
+        self.assertEqual(self.beat()["state"], "stopping")
+
+    def test_a_failed_job_posts_the_exact_failure_payload(self):
+        manifest = job_manifest(self.clock)
+        self.stop_after_sleeps(1)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})]), FakeProvisioner([ProvisioningError("profile_gateway_discovery_timeout")]))
+        loop.run()
+        self.assertEqual(
+            self.portal.calls[1],
+            ("/complete", {"ok": False, "jobId": manifest["jobId"], "leaseToken": manifest["leaseToken"], "gatewayId": GATEWAY, "code": "profile_gateway_discovery_timeout"}),
+        )
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=failed code=profile_gateway_discovery_timeout delivery=delivered attempts=1"])
+
+    def test_stdout_holds_ids_and_codes_only(self):
+        manifest = job_manifest(self.clock)
+        hostile = {"jobId": "sk-live-do-not-print", "leaseToken": "secret-lease", "kind": "rm -rf", "soul": "SECRET-SOUL-TEXT"}
+        self.stop_after_sleeps(2)
+        loop = self.loop(
+            FakePortal([(200, {"job": manifest}), (200, {"job": hostile}), (200, {"job": None})]),
+            FakeProvisioner([{"ok": True, "jobId": manifest["jobId"], "apiKey": "b" * 64}, ProvisioningError("Bad Code With Secrets sk-live")]),
+        )
+        loop.run()
+        text = "\n".join(self.lines)
+        self.assertEqual(len(self.lines), 2)
+        self.assertIn(manifest["jobId"], text)
+        for forbidden in (
+            manifest["orgId"], manifest["agentId"], manifest["leaseToken"], manifest["profile"], "SECRET-SOUL-TEXT", "SECRET-CONFIG-TEXT",
+            "b" * 64, "sk-live", "secret-lease", "rm -rf", "Bad Code",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertEqual(self.lines[1], "job=- kind=- outcome=failed code=- delivery=delivered attempts=1")
+
+    def test_a_job_that_crashes_unexpectedly_reports_nothing_and_waits(self):
+        manifest = job_manifest(self.clock)
+        self.stop_after_sleeps(1)
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})]), FakeProvisioner([RuntimeError("token=abc secret")]))
+        loop.run()
+        self.assertEqual(self.portal.paths(), ["/claim"])
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=failed code=worker_internal_error delivery=none attempts=0"])
+        self.assertEqual(self.clock.sleeps[0], 10)
+
+    def test_a_run_of_hermes_connection_failures_reports_the_result_then_exits_non_zero(self):
+        manifest = job_manifest(self.clock)
+        provisioner = FakeProvisioner([ProvisioningError("http_unavailable")])
+        provisioner.streak = 20
+        loop = self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": manifest})]), provisioner)
+        code = loop.run()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.portal.paths(), ["/claim", "/complete"])
+        self.assertEqual(self.portal.calls[1][1]["code"], "http_unavailable")
+        self.assertEqual(self.lines[-1], "worker stopped code=hermes_unreachable")
+        self.assertEqual(self.beat()["state"], "hermes_unreachable")
+        # A shorter run does not exit.
+        provisioner = FakeProvisioner([ProvisioningError("http_unavailable")])
+        provisioner.streak = 19
+        self.stop.clear()
+        self.lines.clear()
+        self.stop_after_sleeps(1)
+        self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})]), provisioner).run()
+        self.assertNotIn("worker stopped code=hermes_unreachable", self.lines)
+
+    def test_the_hermes_api_counts_connection_failures_in_a_row_and_resets_on_an_answer(self):
+        api = HermesApi("http://127.0.0.1:8642")
+        answers: list[Any] = [ProvisioningError("http_unavailable")] * 3 + [(200, {"ok": True})]
+
+        class Http:
+            def request(self, url, method, headers, body=None):
+                answer = answers.pop(0)
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
+
+        api.http = Http()  # type: ignore[assignment]
+        for expected in (1, 2, 3):
+            with self.assertRaisesRegex(ProvisioningError, "http_unavailable"):
+                api.json_request("c-a-1", "k" * 64, "/v1/models")
+            self.assertEqual(api.consecutive_unavailable, expected)
+        self.assertEqual(api.json_request_default("k" * 64, "/v1/models"), (200, {"ok": True}))
+        self.assertEqual(api.consecutive_unavailable, 0)
+
+    def test_the_healthcheck_fails_after_fifteen_unreachable_minutes_and_passes_when_the_portal_is_disabled(self):
+        home = Path(self.temp.name) / "hermes-home"
+        state_root = home / "iacquire-provisioner-state"
+        state_root.mkdir(parents=True, mode=0o700)
+        heartbeat = Heartbeat(state_root, self.clock)
+
+        def build(portal: FakePortal) -> WorkerLoop:
+            self.stop.clear()
+            self.clock.sleeps.clear()
+            self.portal = portal
+            return WorkerLoop(portal, FakeProvisioner(), self.clock, self.clock.sleep, self.stop, base="https://p.example.invalid/x", headers={}, gateway_id=GATEWAY, heartbeat=heartbeat, out=self.lines.append)
+
+        def healthy() -> bool:
+            with patch.dict(os.environ, {"HERMES_HOME": str(home)}, clear=True):
+                return _worker_healthcheck(now=self.clock.now)
+
+        # Unreachable for 16 minutes (a 60 s heartbeat refresh each loop keeps `at` fresh, so only the claim age can fail it).
+        checks: list[bool] = []
+
+        def after_sleep(count: int) -> None:
+            self.clock.now += 50
+            checks.append(healthy())
+            if self.clock.now - start > 16 * 60:
+                self.stop.set()
+
+        start = self.clock.now
+        loop = build(FakePortal([ProvisioningError("http_unavailable")]))
+        self.clock.on_sleep = after_sleep
+        loop.run()
+        self.assertTrue(checks[0], "a portal that has only just failed is still healthy")
+        self.assertFalse(checks[-1], "unreachable for over 15 minutes is unhealthy")
+        # The same portal switched off is healthy-idle for as long as it likes.
+        start = self.clock.now
+        checks.clear()
+        loop = build(FakePortal([(503, {"error": "The restricted Hermes provisioner is not enabled."})]))
+        self.clock.on_sleep = after_sleep
+        loop.run()
+        self.assertGreater(len(checks), 10)
+        self.assertTrue(all(checks))
+
+    def test_an_idle_worker_whose_loopback_is_gone_exits_so_docker_restarts_it_into_a_fresh_namespace(self):
+        # The gateway restarted under the worker: every claim fails (no egress in the stale namespace) and Hermes does not answer either. No job is ever claimed.
+        provisioner = ProbingProvisioner(gone=True)
+        code = self.loop(FakePortal([ProvisioningError("http_unavailable")]), provisioner).run()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.beat()["state"], "hermes_unreachable")
+        self.assertEqual(self.lines, ["worker stopped code=hermes_unreachable"])
+        self.assertEqual(self.provisioner.processed, [])
+        # It took about ten minutes of silence (twenty probes thirty seconds apart), not one missed answer.
+        self.assertEqual(provisioner.probes, 20)
+        self.assertGreaterEqual(sum(self.clock.sleeps), 19 * 30)
+        self.assertLess(sum(self.clock.sleeps), 20 * 30 + 10)
+
+    def test_an_idle_worker_with_an_empty_queue_also_exits_when_the_loopback_is_gone(self):
+        provisioner = ProbingProvisioner(gone=True)
+        # An empty queue is polled every five seconds, so ten minutes is well over the fake portal's own safety cap of sixty calls: use a cap of our own.
+        loop = self.loop(FakePortal([(200, {"job": None})]), provisioner)
+        self.portal.stop = threading.Event()
+        self.stop_after_sleeps(400)
+        code = loop.run()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.lines, ["worker stopped code=hermes_unreachable"])
+        self.assertEqual(provisioner.probes, 20)
+
+    def test_a_portal_outage_alone_never_ends_the_worker_while_the_loopback_answers(self):
+        # The portal is unreachable for a long time but Hermes answers every probe: that is an outage to wait out, not a stale namespace.
+        provisioner = ProbingProvisioner(gone=False)
+        loop = self.loop(FakePortal([ProvisioningError("http_unavailable")]), provisioner)
+        self.portal.stop = threading.Event()
+        self.stop_after_sleeps(300)
+        code = loop.run()
+        self.assertEqual(code, 0)
+        # Three thousand seconds of failed claims and a probe every thirty: far past the ten minutes that end a worker whose loopback is gone.
+        self.assertGreater(provisioner.probes, 60)
+        self.assertEqual(self.lines, [])
+        self.assertEqual(self.beat()["state"], "stopping")
+
+    def test_a_loopback_that_answers_once_resets_the_count(self):
+        provisioner = ProbingProvisioner(gone=True)
+
+        def flip(_count: int) -> None:
+            # Silent for fifteen probes, one answer, then silent again: the count starts over, so the worker is still running after thirty probes.
+            if provisioner.probes == 15:
+                provisioner.gone = False
+            elif provisioner.probes == 16:
+                provisioner.gone = True
+            if provisioner.probes >= 30 or _count > 1000:
+                self.stop.set()
+
+        self.clock.on_sleep = flip
+        loop = self.loop(FakePortal([(200, {"job": None})]), provisioner)
+        self.portal.stop = threading.Event()
+        code = loop.run()
+        self.assertEqual(code, 0)
+        self.assertEqual(provisioner.probes, 30)
+        self.assertLess(provisioner.streak, 20)
+        self.assertGreater(provisioner.streak, 0)
+
+    def test_the_hermes_api_probe_counts_a_missing_answer_and_treats_any_status_as_an_answer(self):
+        api = HermesApi("http://127.0.0.1:8642")
+        answers: list[Any] = [ProvisioningError("http_unavailable"), ProvisioningError("http_unavailable"), (404, None), (200, {"status": "ok"})]
+        urls: list[tuple[str, str]] = []
+
+        class Http:
+            def request(self, url, method, headers, body=None):
+                urls.append((method, url))
+                answer = answers.pop(0)
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
+
+        api.http = Http()  # type: ignore[assignment]
+        for expected in (1, 2):
+            with self.assertRaisesRegex(ProvisioningError, "http_unavailable"):
+                api.probe()
+            self.assertEqual(api.consecutive_unavailable, expected)
+        # A 404 still proves something is listening, so the streak ends.
+        self.assertEqual(api.probe(), 404)
+        self.assertEqual(api.consecutive_unavailable, 0)
+        self.assertEqual(api.probe(), 200)
+        self.assertEqual(urls[0], ("GET", "http://127.0.0.1:8642/health"))
+        # The provisioner's own probe never raises: the streak is the report.
+        answers[:] = [ProvisioningError("http_unavailable")]
+        provisioner = RestrictedProvisioner.__new__(RestrictedProvisioner)
+        provisioner.api = api
+        provisioner.probe_hermes()
+        self.assertEqual(provisioner.hermes_unreachable_streak(), 1)
+
+    def test_a_job_keeps_the_heartbeat_fresh_from_a_daemon_thread(self):
+        ticks = iter(range(1_000_000, 2_000_000))
+        heartbeat = Heartbeat(self.state_root, lambda: next(ticks), interval=0.01)
+        heartbeat.update("processing")
+        first = self.beat()["at"]
+        with heartbeat.keep_alive():
+            deadline = time.monotonic() + 5
+            while self.beat()["at"] == first and time.monotonic() < deadline:
+                time.sleep(0.01)
+        self.assertGreater(self.beat()["at"], first)
+        self.assertEqual(self.beat()["state"], "processing")
+        self.assertEqual(self.beat()["auditBytes"], 0)
+        self.assertEqual([thread.name for thread in threading.enumerate() if thread.name == "heartbeat"], [])
+
+
+class HeartbeatHealthcheckTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        self.state_root = self.home / "iacquire-provisioner-state"
+        self.state_root.mkdir(mode=0o700)
+        self.now = 1_800_000_000
+
+    def check(self) -> bool:
+        with patch.dict(os.environ, {"HERMES_HOME": str(self.home)}, clear=True):
+            return _worker_healthcheck(now=self.now)
+
+    def write(self, state: str, claim_ok: int | None, job: int | None = None, at: int | None = None) -> None:
+        _write_worker_heartbeat(self.state_root, state, claim_ok, job, self.now if at is None else at)
+
+    def test_heartbeat_v2_has_exactly_the_five_documented_fields(self):
+        (self.state_root / "audit.jsonl").write_bytes(b"x" * 123)
+        self.write("idle", self.now - 5, self.now - 60)
+        payload = json.loads((self.state_root / "heartbeat.json").read_text(encoding="ascii"))
+        self.assertEqual(payload, {"at": self.now, "state": "idle", "lastClaimOkAt": self.now - 5, "lastJobAt": self.now - 60, "auditBytes": 123})
+        with self.assertRaises(ValueError):
+            self.write("made_up_state", None)
+
+    def test_the_healthcheck_follows_the_documented_rules(self):
+        self.write("idle", self.now - 60)
+        self.assertTrue(self.check())
+        # The heartbeat itself is stale (a hung process).
+        self.write("idle", self.now - 60, at=self.now - 601)
+        self.assertFalse(self.check())
+        self.write("idle", self.now - 60, at=self.now - 600)
+        self.assertTrue(self.check())
+        # The portal has not answered a claim for more than 15 minutes.
+        self.write("portal_unreachable", self.now - 901)
+        self.assertFalse(self.check())
+        self.write("portal_unreachable", self.now - 900)
+        self.assertTrue(self.check())
+        # A switched-off portal answers, so it keeps the claim time fresh and is healthy.
+        self.write("portal_disabled", self.now)
+        self.assertTrue(self.check())
+        # The worker's own decisions.
+        for state in ("unauthorized", "hermes_unreachable"):
+            self.write(state, self.now)
+            self.assertFalse(self.check(), state)
+        # Nothing claimed yet is fine only while starting or waiting for Hermes.
+        for state, expected in (("starting", True), ("waiting_for_hermes", True), ("idle", False), ("processing", False)):
+            self.write(state, None)
+            self.assertEqual(self.check(), expected, state)
+
+    def test_the_healthcheck_rejects_the_old_shape_extra_fields_and_wrong_types(self):
+        path = self.state_root / "heartbeat.json"
+        for payload in (
+            {"at": self.now},
+            {"at": self.now, "state": "idle", "lastClaimOkAt": self.now, "lastJobAt": None, "auditBytes": 0, "extra": 1},
+            {"at": self.now, "state": "idle", "lastClaimOkAt": "now", "lastJobAt": None, "auditBytes": 0},
+            {"at": self.now, "state": "idle", "lastClaimOkAt": self.now, "lastJobAt": None, "auditBytes": -1},
+            {"at": self.now, "state": "bogus", "lastClaimOkAt": self.now, "lastJobAt": None, "auditBytes": 0},
+            {"at": True, "state": "idle", "lastClaimOkAt": self.now, "lastJobAt": None, "auditBytes": 0},
+        ):
+            path.write_text(json.dumps(payload), encoding="ascii")
+            self.assertFalse(self.check(), payload)
+        path.write_text("{not json", encoding="ascii")
+        self.assertFalse(self.check())
+
+
+class StartupGateTests(unittest.TestCase):
+    def setUp(self):
+        self.stop = threading.Event()
+        self.sleeps: list[float] = []
+        self.lines: list[str] = []
+        self.heartbeat = Heartbeat(None)
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+
+    def gate(self, codes: list[str | None], **kwargs: Any) -> bool:
+        queue = list(codes)
+
+        def check() -> None:
+            code = queue.pop(0)
+            if code is not None:
+                raise ProvisioningError(code)
+
+        return _wait_for_hermes(check, self.heartbeat, self.sleep, self.stop, self.lines.append)
+
+    def test_the_gate_waits_with_a_doubling_backoff_capped_at_sixty_seconds(self):
+        self.assertTrue(self.gate(["http_unavailable"] * 7 + [None]))
+        self.assertEqual(self.sleeps, [5, 10, 20, 40, 60, 60, 60])
+        self.assertEqual(self.heartbeat.snapshot()["state"], "waiting_for_hermes")
+        self.assertEqual(self.lines, ["gate waiting code=http_unavailable"])
+
+    def test_a_gateway_that_is_up_passes_without_waiting(self):
+        self.assertTrue(self.gate([None]))
+        self.assertEqual(self.sleeps, [])
+        self.assertEqual(self.heartbeat.snapshot()["state"], "starting")
+
+    def test_an_incomplete_catalog_is_waited_for_a_while_and_then_ends_the_start_up(self):
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            self.gate(["runtime_tool_inventory_incomplete"] * 10)
+        self.assertEqual(len(self.sleeps), 9)
+        # A gateway that is merely starting recovers inside the limit.
+        self.sleeps.clear()
+        self.assertTrue(self.gate(["runtime_tool_inventory_incomplete"] * 9 + [None]))
+
+    def test_other_failures_still_end_the_start_up_at_once(self):
+        with self.assertRaisesRegex(ProvisioningError, "invalid_profile_route"):
+            self.gate(["invalid_profile_route"])
+        self.assertEqual(self.sleeps, [])
+
+    def test_a_stop_request_ends_the_wait(self):
+        self.stop.set()
+        self.assertFalse(self.gate([None]))
+        self.assertEqual(self.sleeps, [])
+        self.stop.clear()
+        stopping = lambda seconds: (self.sleeps.append(seconds), self.stop.set())
+        queue = ["http_unavailable"] * 5
+
+        def check() -> None:
+            raise ProvisioningError(queue.pop(0))
+
+        self.assertFalse(_wait_for_hermes(check, self.heartbeat, stopping, self.stop, self.lines.append))
+        self.assertEqual(self.sleeps, [5])
 
 
 if __name__ == "__main__":

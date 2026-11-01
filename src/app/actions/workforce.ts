@@ -14,7 +14,7 @@ import { agentSettingsSchema, aiPreferencesSchema, onboardingSchema, type AgentS
 import { configAttribution } from "@/lib/config-review";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { getOnboardingSession } from "@/server/onboarding/service";
-import { confirmedAnswers, toLegacyData } from "@/lib/onboarding/engine";
+import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
 import { generateEmployeeSettings } from "@/server/onboarding/employee-generator";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 
@@ -97,7 +97,8 @@ export async function regenerateEmployeeSettingsAction(role: string) {
     } else {
       const session = await getOnboardingSession(ctx);
       if (session.status !== "submitted" || session.hasUnsubmittedChanges) throw new AppError("conflict", "Approve your latest company information before regenerating employee preferences.");
-      const confirmed = confirmedAnswers(session.answers);
+      // Scoped to the plan like the submission is: an answer for an employee the plan does not include must not feed the regenerated preferences.
+      const confirmed = confirmedAnswers(session.answers, planScope(session.enabledRoles));
       data = toLegacyData(confirmed, session.enabledRoles);
       knowledge = await withUser(ctx.user.id, async (db) => {
         const { rows } = await db.query<{ content: string }>(

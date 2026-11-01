@@ -83,7 +83,7 @@ export function QuestionInput(props: InputProps) {
 
 function TextLike({ q, value, error, onChange, inputId = INPUT_ID }: InputProps) {
   const t = q.kind.type;
-  const max = q.kind.type === "text" ? q.kind.max : 320;
+  const max = q.kind.type === "text" ? q.kind.max : q.kind.type === "url" && q.kind.httpsOnly ? 500 : 320;
   const placeholder = q.kind.type === "text" ? q.kind.placeholder : q.example;
   return (
     <Input
@@ -295,11 +295,14 @@ function HoursInput({ value, onChange }: InputProps) {
 // Repeatable rows
 // ---------------------------------------------------------------------------
 
-function ListInput({ q, value, onChange, inputId = INPUT_ID }: InputProps) {
+function ListInput({ q, value, answers, onChange, inputId = INPUT_ID }: InputProps) {
   if (q.kind.type !== "list") return null;
-  const { fields, maxRows, addLabel } = q.kind;
+  const { maxRows, addLabel } = q.kind;
+  // A field with its own rule (who takes appointments, when appointments are not wanted) is not asked, but a blank row still carries every key.
+  const allFields = q.kind.fields;
+  const fields = allFields.filter((f) => !f.show || f.show(answers));
   const rows = (Array.isArray(value) ? value : []) as Array<Record<string, string>>;
-  const blank = () => Object.fromEntries(fields.map((f) => [f.key, ""]));
+  const blank = () => Object.fromEntries(allFields.map((f) => [f.key, ""]));
   const update = (i: number, key: string, v: string) => onChange(rows.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
   return (
     <div className="space-y-3">

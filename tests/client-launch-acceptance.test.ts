@@ -9,7 +9,6 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { memberActor } from "@/server/crm/actor";
 import { getWorkspace } from "@/server/crm/workspace";
-import { listPipelines } from "@/server/crm/pipelines";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { getProvisioningBundle } from "@/server/workforce/provisioning";
@@ -26,7 +25,7 @@ import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { checkJobs, count, itemOf, markBlueprintApplied, settled } from "./support/launch";
+import { applyRealBlueprint, checkJobs, count, itemOf, settled } from "./support/launch";
 
 const OFFICE_HOURS = { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] };
 
@@ -207,14 +206,17 @@ describe("two clients from the questionnaire to ready to launch", () => {
   }, 180_000);
 
   it("reaches 100% Ready to Launch for both, with the calendar built through its own checks and the final checks started by themselves", async () => {
+    // The industry CRM is a REAL Blueprint, applied the way an agency Super Admin applies it, and it goes in before any employee is ready: an apply starts the final checks of the
+    // employees that already are. The panel then judges the CRM from what the apply left in the workspace, not from a row made for the test.
+    for (const c of [a, b]) {
+      await getWorkspace(memberActor(c.ctx));
+      const applied = await applyRealBlueprint(c.org.id);
+      expect(applied.status).toBe("applied");
+      expect(await count(c.org.id, "crm_blueprint_links")).toBeGreaterThan(0);
+      expect((await loadLaunchFacts(c.ctx))!.crm).toMatchObject({ blueprint: "verified", pipelineReady: true });
+    }
     await simulateVerifiedProfiles(a);
     await simulateVerifiedProfiles(b);
-    for (const c of [a, b]) {
-      const actor = memberActor(c.ctx);
-      await getWorkspace(actor);
-      await listPipelines(actor, { ensureDefault: true });
-      await markBlueprintApplied(c.org.id);
-    }
     // Everything is in place for both except what only the roofing company can do (choose its host), the Appointment Setter that waits for a calendar that takes bookings, and the
     // checks that have not run. Hours and activation wait behind the host: they are in progress, not blocking, until there is one.
     const before = await readiness(a);
@@ -249,6 +251,8 @@ describe("two clients from the questionnaire to ready to launch", () => {
     expect(ra).toMatchObject({ state: "ready_to_launch", label: "100% Ready to Launch", percent: 100, blocking: [] });
     expect(rb).toMatchObject({ state: "ready_to_launch", percent: 100, blocking: [] });
     expect(ra.passed).toBe(ra.total);
+    // The CRM line is done because the evidence is verified, for both clients.
+    for (const r of [ra, rb]) expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "done", owner: "iacquire" });
     // The dental practice's plan and answers leave out the Sales Assistant, the Appointment Setter's checks and the calendar; they are shown as not applicable, never as done.
     expect(itemOf(rb, "employees.sales_assistant").state).toBe("not_applicable");
     expect(itemOf(rb, "verification.sales_assistant").state).toBe("not_applicable");
@@ -316,7 +320,8 @@ describe("a booking tool that needs a connection keeps the client honest", () =>
     const refused = await runLaunchIntent(c.ctx, "activate_calendar");
     expect(refused.ok).toBe(false);
     const r = await readiness(c);
-    expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "you", action: { href: "/crm/calendar-connections" } });
+    // The sign-in starts the provider the video appointment names and returns to Setup, not to the CRM.
+    expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "you", action: { href: "/api/crm/calendar-oauth/google/start?return=/setup" } });
     expect(r.state).toBe("action_required");
     expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("draft");
   }, 180_000);
@@ -326,11 +331,10 @@ describe("a change the client makes later", () => {
   it("keeps the client's own edits, updates the employees the change touches, and re-checks only those", async () => {
     const c = await onboard({ ...dental, name: "Change Later Dental", entitled: AGENT_ROLE_KEYS });
     await clearSetupPayment(c.org.id);
-    await simulateVerifiedProfiles(c);
     const actor = memberActor(c.ctx);
     await getWorkspace(actor);
-    await listPipelines(actor, { ensureDefault: true });
-    await markBlueprintApplied(c.org.id);
+    await applyRealBlueprint(c.org.id);
+    await simulateVerifiedProfiles(c);
     await pickUpSetupEvidence(c.org.id, "a Blueprint apply");
     const roles = AGENT_ROLE_KEYS.filter((role) => role !== "appointment_setter"); // this client books no appointments
     await settled(c.org.id, roles.length);

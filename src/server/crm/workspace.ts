@@ -117,19 +117,34 @@ export async function isSwitching(db: Queryable, orgId: string): Promise<boolean
   return rows[0]?.switching === true;
 }
 
-export async function updateWorkspaceSettings(actor: CrmActor, input: { defaultCurrency?: string; defaultCallingCode?: string | null }): Promise<void> {
+type WorkspaceSettingsInput = { defaultCurrency?: string; defaultCallingCode?: string | null };
+
+function assertSettingsInput(actor: CrmActor, input: WorkspaceSettingsInput): void {
   if (!actor.can("workspace.manage_profile") && !actor.can("crm.provider.manage")) assertCan(actor, "workspace.manage_profile");
   if (input.defaultCurrency !== undefined && !/^[A-Z]{3}$/.test(input.defaultCurrency)) throw new AppError("invalid_input", "Use a three-letter currency code such as USD or PHP.");
   if (input.defaultCallingCode && !/^[0-9]{1,3}$/.test(input.defaultCallingCode)) throw new AppError("invalid_input", "Use the country calling code digits only, for example 63.");
-  await crmWrite(actor, async (db) => {
-    await loadWorkspace(db, actor.orgId, { allowAgencyBootstrap: actor.kind === "member" && actor.userId !== null });
-    await db.query(
-      `update crm_workspaces set default_currency = coalesce($2, default_currency),
-         default_calling_code = case when $3::boolean then $4 else default_calling_code end, updated_by = $5 where org_id = $1`,
-      [actor.orgId, input.defaultCurrency ?? null, input.defaultCallingCode !== undefined, input.defaultCallingCode || null, actor.userId],
-    );
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workspace_settings_updated", targetType: "crm_workspace", targetId: actor.orgId, result: "success", metadata: { defaultCurrency: input.defaultCurrency ?? null, defaultCallingCode: input.defaultCallingCode ?? null } }, db);
-  });
+}
+
+/** The write of updateWorkspaceSettings, inside a transaction the caller owns. Callers check the input first (assertSettingsInput). */
+async function writeWorkspaceSettings(db: Queryable, actor: CrmActor, input: WorkspaceSettingsInput): Promise<void> {
+  await loadWorkspace(db, actor.orgId, { allowAgencyBootstrap: actor.kind === "member" && actor.userId !== null });
+  await db.query(
+    `update crm_workspaces set default_currency = coalesce($2, default_currency),
+       default_calling_code = case when $3::boolean then $4 else default_calling_code end, updated_by = $5 where org_id = $1`,
+    [actor.orgId, input.defaultCurrency ?? null, input.defaultCallingCode !== undefined, input.defaultCallingCode || null, actor.userId],
+  );
+  await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workspace_settings_updated", targetType: "crm_workspace", targetId: actor.orgId, result: "success", metadata: { defaultCurrency: input.defaultCurrency ?? null, defaultCallingCode: input.defaultCallingCode ?? null } }, db);
+}
+
+export async function updateWorkspaceSettings(actor: CrmActor, input: WorkspaceSettingsInput): Promise<void> {
+  assertSettingsInput(actor, input);
+  await crmWrite(actor, (db) => writeWorkspaceSettings(db, actor, input));
+}
+
+/** updateWorkspaceSettings inside the caller's own transaction: the same permission, validation, write and audit row. */
+export async function updateWorkspaceSettingsIn(db: Queryable, actor: CrmActor, input: WorkspaceSettingsInput): Promise<void> {
+  assertSettingsInput(actor, input);
+  await writeWorkspaceSettings(db, actor, input);
 }
 
 /** Counts for the CRM overview. Everything is a count of real rows; nothing is estimated. */

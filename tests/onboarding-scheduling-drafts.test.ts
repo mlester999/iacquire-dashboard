@@ -73,6 +73,41 @@ describe("drafting a calendar from the booking answers", () => {
     expect(stored.every((r) => r.allow_customer_changes === false)).toBe(true);
   });
 
+  it("stores the client's own https link as a custom_link type, a clean start-time step for an odd length, and no link or step when none applies", async () => {
+    const { org, ctx } = await workspace("Own Link Co");
+    const link = "https://meet.example.com/room/own";
+    await run((db) => proposeSchedulingDrafts(db, ctx, answers({
+      "d.appt_types": [{ name: "Video consult", minutes: "50", mode: "video" }, { name: "Site visit", minutes: "45", mode: "in_person" }, { name: "Phone quote", minutes: "30", mode: "phone" }],
+      "d.appt_video": "own", "d.appt_video_link": link, "d.appt_buffer": "10m",
+    })));
+    const rows = (await run((db) => db.query("select name, meeting_provider, meeting_link, slot_interval_minutes from crm_appointment_types where org_id = $1 order by position", [org.id]))).rows;
+    expect(rows).toEqual([
+      { name: "Video consult", meeting_provider: "custom_link", meeting_link: link, slot_interval_minutes: 60 },
+      { name: "Site visit", meeting_provider: "none", meeting_link: null, slot_interval_minutes: null },
+      { name: "Phone quote", meeting_provider: "none", meeting_link: null, slot_interval_minutes: null },
+    ]);
+    // Own link chosen but none given, and a link that is not https: both stay "none" (the database refuses custom_link with no address), and the submission still drafts.
+    for (const [name, given] of [["No Link Co", undefined], ["Plain Http Co", "http://meet.example.com/x"]] as const) {
+      const other = await workspace(name);
+      const out = await run((db) => proposeSchedulingDrafts(db, other.ctx, answers({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }], "d.appt_video": "own", "d.appt_video_link": given })));
+      expect(out.state).toBe("created");
+      const stored = (await run((db) => db.query("select meeting_provider, meeting_link from crm_appointment_types where org_id = $1", [other.org.id]))).rows;
+      expect(stored).toEqual([{ meeting_provider: "none", meeting_link: null }]);
+    }
+  });
+
+  it("shows the client's suggested hours with the outcome and applies them to nobody", async () => {
+    const { org, ctx } = await workspace("Hours Shown Co");
+    const out = await run((db) => proposeSchedulingDrafts(db, ctx, answers()));
+    expect(out.proposedHours).toEqual([{ weekday: 1, startMinute: 540, endMinute: 1020 }, { weekday: 2, startMinute: 540, endMinute: 1020 }]);
+    const written = await run((db) => db.query("select (select count(*) from crm_availability_rules where org_id = $1)::int as rules, (select count(*) from crm_host_settings where org_id = $1)::int as settings", [org.id]));
+    expect(written.rows[0]).toEqual({ rules: 0, settings: 0 });
+    // Nothing suggested, nothing shown.
+    const bare = await workspace("No Hours Co");
+    const none = await run((db) => proposeSchedulingDrafts(db, bare.ctx, answers({ "d.appt_availability": undefined })));
+    expect(none.proposedHours).toBeUndefined();
+  });
+
   it("is a draft in every way that matters: no host, refused by the booking paths, and failing the activation checks until someone assigns a host", async () => {
     const { org, ctx } = await workspace();
     await run((db) => proposeSchedulingDrafts(db, ctx, answers()));
@@ -283,7 +318,7 @@ async function submitRealOnboardingWithBooking(name: string) {
     "a.business_name": name, "a.industry": "home_services", "a.business_model": "local", "a.description": "We repair residential roofs after storm damage.",
     "a.timezone": "America/Chicago", "a.contact_email": owner.email, "a.territories": "Austin, Texas", "a.target_customers": "Austin homeowners",
     "b.goals": ["more_leads", "more_appointments"], "b.services": "Roof repair and inspection", "b.ideal_customer": "Austin homeowners", "b.appointments": true, "b.website_need": "have",
-    "d.appt_types": [{ name: "Free inspection", minutes: "30", mode: "in_person" }], "d.appt_notice": "2h", "d.pricing_policy": "never", "f.review": true,
+    "d.appt_types": [{ name: "Free inspection", minutes: "30", mode: "in_person" }], "d.appt_notice": "2h", "d.appt_availability": { mon: [["09:00", "17:00"]] }, "d.pricing_policy": "never", "f.review": true,
   };
   const saved = await saveOnboardingStep(c, { answers: Object.fromEntries(Object.entries(given).map(([k, value]) => [k, { value }])), currentQuestionId: "f.review" });
   if (Object.keys(saved.rejected).length) throw new Error(`rejected: ${JSON.stringify(saved.rejected)}`);

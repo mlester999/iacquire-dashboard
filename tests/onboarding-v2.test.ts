@@ -31,6 +31,8 @@ const baseAnswers = (): Answers => ({
   "a.business_model": "local",
   "a.description": "We repair and replace roofs for homeowners in Austin.",
   "a.timezone": "America/Chicago",
+  // Appointments are wanted and bookable hours are not given, so opening hours are required.
+  "a.hours": { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] },
   "a.contact_email": "hello@brightside.test",
   "b.goals": ["more_leads", "more_appointments"],
   "b.appointments": true,
@@ -85,6 +87,25 @@ describe("adaptive question rules", () => {
     expect([...new Set(QUESTIONS.map((q) => q.section))].sort()).toEqual(["A", "B", "C", "D", "E", "F"]);
     expect(QUESTIONS.at(-1)?.id).toBe("f.review");
     expect(visibleQuestions(baseAnswers()).length).toBeGreaterThan(30);
+  });
+});
+
+describe("questions added for the host, the calendar and the video link", () => {
+  it("sit in the sales section after the bookable hours, and are unique", () => {
+    const order = QUESTIONS.map((q) => q.id);
+    for (const id of ["d.appt_host", "d.appt_busy_calendar", "d.appt_video_link"]) {
+      expect(QUESTION_BY_ID[id].section).toBe("D");
+      expect(order.indexOf(id)).toBeGreaterThan(order.indexOf("d.appt_availability"));
+    }
+    expect(order.indexOf("d.appt_video_link")).toBeGreaterThan(order.indexOf("d.appt_video"));
+    expect(new Set(order).size).toBe(order.length);
+  });
+
+  it("never turns the opening hours into a question that is always required", () => {
+    expect(QUESTION_BY_ID["a.hours"].required).toBeFalsy();
+    expect(QUESTION_BY_ID["a.hours"].requiredWhen).toBeTypeOf("function");
+    // A business that does not book and has no reply limit is never asked for them.
+    expect(computeProgress(stored({ ...baseAnswers(), "b.appointments": false, "a.hours": {} })).requiredOutstanding).not.toContain("a.hours");
   });
 });
 

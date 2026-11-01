@@ -93,6 +93,8 @@ describe("the final checks decide 100% Ready to Launch", () => {
     const r = (await getLaunchReadiness(c.ctx))!;
     expect(r.state).not.toBe("ready_to_launch");
     expect(itemOf(r, "employees.sales_assistant").state).not.toBe("done");
+    // Its connection check failed, so it is a failure for iAcquire to look at, not something "being verified".
+    expect(itemOf(r, "employees.sales_assistant")).toMatchObject({ state: "action_required", owner: "iacquire" });
     expect(itemOf(r, "verification.sales_assistant").state).toBe("in_progress");
   }, 180_000);
 

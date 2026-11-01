@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { DRAFT_CALENDAR_NAME, NOTICE_MINUTES, planSchedulingDrafts, schedulingDraftMessage, weeklyRulesFromHours } from "@/lib/onboarding/scheduling-drafts";
+import { DRAFT_CALENDAR_NAME, NOTICE_MINUTES, planSchedulingDrafts, schedulingDraftMessage, slotIntervalFor, validMeetingLink, weeklyRulesFromHours } from "@/lib/onboarding/scheduling-drafts";
+import { validateAnswer } from "@/lib/onboarding/engine";
 import { describeAction } from "@/lib/activity";
 import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import { toRoleAnswers } from "@/lib/onboarding/engine";
 import type { Answers } from "@/lib/onboarding/types";
 
 /** What a drafted type carries when the client answered none of the booking-policy questions: what a hand-made type starts with. */
-const POLICY_DEFAULTS = { bufferAfterMinutes: 0, requiresConfirmation: false, allowCustomerChanges: true, changeCutoffMinutes: 0, meetingProvider: "none" } as const;
+const POLICY_DEFAULTS = { bufferAfterMinutes: 0, requiresConfirmation: false, allowCustomerChanges: true, changeCutoffMinutes: 0, meetingProvider: "none", meetingLink: null, slotIntervalMinutes: null } as const;
 
 // The pure rules that turn the booking answers of the questionnaire into a plan for a DRAFT calendar. Nothing here is live: the plan only describes rows that take no bookings.
 
@@ -60,13 +61,65 @@ describe("what the plan takes from the booking answers", () => {
     expect(planSchedulingDrafts(base({ "d.appt_buffer": "20m", "d.appt_confirmation": "maybe", "d.appt_changes": "constructor" })).types[0]).toMatchObject(POLICY_DEFAULTS);
   });
 
-  it("sets a video tool only on video types, only from the client's own choice, and never a fixed link", () => {
+  it("sets a video tool only on video types, only from the client's own choice, and no link unless the client gave a valid one", () => {
     const a = base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }, { name: "Phone quote", minutes: "15", mode: "phone" }], "d.appt_video": "google_meet" });
     expect(planSchedulingDrafts(a).types.map((t) => [t.name, t.meetingProvider])).toEqual([["Video consult", "google_meet"], ["Phone quote", "none"]]);
     expect(planSchedulingDrafts({ ...a, "d.appt_video": "microsoft_teams" }).types[0].meetingProvider).toBe("microsoft_teams");
     expect(planSchedulingDrafts({ ...a, "d.appt_video": "own" }).types[0].meetingProvider).toBe("none");
     expect(planSchedulingDrafts({ ...a, "d.appt_video": undefined }).types[0].meetingProvider).toBe("none");
     expect(planSchedulingDrafts({ ...a, "d.appt_video": "custom_link" }).types[0].meetingProvider).toBe("none");
+  });
+
+  it("makes an own-link video type a custom_link type with the client's https link, only on video types and only when they chose to send their own", () => {
+    const video = [{ name: "Video consult", minutes: "30", mode: "video" }, { name: "Phone quote", minutes: "15", mode: "phone" }];
+    const link = "https://meet.example.com/room/abc?pwd=1";
+    const plan = planSchedulingDrafts(base({ "d.appt_types": video, "d.appt_video": "own", "d.appt_video_link": link }));
+    expect(plan.types.map((t) => [t.name, t.meetingProvider, t.meetingLink])).toEqual([["Video consult", "custom_link", link], ["Phone quote", "none", null]]);
+    // Without a link the type stays "none": the database refuses custom_link with no address.
+    for (const given of [undefined, "", "   "]) {
+      expect(planSchedulingDrafts(base({ "d.appt_types": video, "d.appt_video": "own", "d.appt_video_link": given })).types[0]).toMatchObject({ meetingProvider: "none", meetingLink: null });
+    }
+    // A link left over from an earlier answer does nothing once the client picked another tool, or none.
+    expect(planSchedulingDrafts(base({ "d.appt_types": video, "d.appt_video": "google_meet", "d.appt_video_link": link })).types[0]).toMatchObject({ meetingProvider: "google_meet", meetingLink: null });
+    expect(planSchedulingDrafts(base({ "d.appt_types": video, "d.appt_video_link": link })).types[0]).toMatchObject({ meetingProvider: "none", meetingLink: null });
+  });
+
+  it("rejects a link that is not https, in the question and again in the plan", () => {
+    const question = QUESTION_BY_ID["d.appt_video_link"];
+    expect(validateAnswer(question, "http://meet.example.com/room").ok).toBe(false);
+    expect(validateAnswer(question, "javascript:alert(1)").ok).toBe(false);
+    expect(validateAnswer(question, "https://meet.example.com/room")).toMatchObject({ ok: true });
+    for (const bad of ["http://meet.example.com/x", "ftp://meet.example.com/x", "meet.example.com/x", "https://", "https://localhost/x", "https://user:pw@meet.example.com/x", "https://meet.example.com/a b", `https://meet.example.com/${"x".repeat(500)}`, 42, null]) {
+      expect(validMeetingLink(bad), String(bad)).toBeNull();
+    }
+    expect(validMeetingLink("  https://meet.example.com/x  ")).toBe("https://meet.example.com/x");
+    // A stored http value (it cannot be saved, but the plan never trusts it) never becomes a link.
+    const plan = planSchedulingDrafts(base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }], "d.appt_video": "own", "d.appt_video_link": "http://meet.example.com/x" }));
+    expect(plan.types[0]).toMatchObject({ meetingProvider: "none", meetingLink: null });
+  });
+
+  it("asks for the link only when the client sends their own, and the host and busy-calendar questions only when appointments are wanted", () => {
+    const own = base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }], "d.appt_video": "own" });
+    expect(QUESTION_BY_ID["d.appt_video_link"].show!(own)).toBe(true);
+    expect(QUESTION_BY_ID["d.appt_video_link"].show!({ ...own, "d.appt_video": "google_meet" })).toBe(false);
+    expect(QUESTION_BY_ID["d.appt_video_link"].show!({ ...own, "b.appointments": false })).toBe(false);
+    for (const id of ["d.appt_host", "d.appt_busy_calendar"]) {
+      expect(QUESTION_BY_ID[id].show!(base()), id).toBe(true);
+      expect(QUESTION_BY_ID[id].show!(base({ "b.appointments": false })), id).toBe(false);
+      expect(QUESTION_BY_ID[id].required, id).toBeFalsy();
+    }
+  });
+
+  it("exposes the host and busy-calendar choices on the plan, and invents neither when the client did not choose", () => {
+    expect(planSchedulingDrafts(base())).toMatchObject({ hostChoice: null, busyCalendar: null });
+    expect(planSchedulingDrafts(base({ "d.appt_host": "owner", "d.appt_busy_calendar": "google" }))).toMatchObject({ hostChoice: "owner", busyCalendar: "google" });
+    expect(planSchedulingDrafts(base({ "d.appt_host": "team", "d.appt_busy_calendar": "microsoft" }))).toMatchObject({ hostChoice: "team", busyCalendar: "microsoft" });
+    expect(planSchedulingDrafts(base({ "d.appt_busy_calendar": "none" })).busyCalendar).toBe("none");
+    expect(planSchedulingDrafts(base({ "d.appt_host": "somebody", "d.appt_busy_calendar": "icloud" }))).toMatchObject({ hostChoice: null, busyCalendar: null });
+    // No appointments: nothing is chosen or exposed.
+    expect(planSchedulingDrafts(base({ "b.appointments": false, "d.appt_host": "owner" }))).toMatchObject({ hostChoice: null, busyCalendar: null });
+    // The client's hours stay on the plan for them to approve, whoever the host is.
+    expect(planSchedulingDrafts(base({ "d.appt_host": "owner" })).hoursTemplate.length).toBeGreaterThan(0);
   });
 
   it("asks the booking-policy questions only when appointments are wanted, and the video question only when a video type is listed", () => {
@@ -143,6 +196,39 @@ describe("what the plan takes from the booking answers", () => {
   });
 });
 
+describe("the start-time step of a drafted type", () => {
+  it("rounds length plus gap up to 5, never below 15, only when the length is not a multiple of 15", () => {
+    expect(slotIntervalFor(50, 0)).toBe(50);
+    expect(slotIntervalFor(50, 10)).toBe(60);
+    expect(slotIntervalFor(50, 15)).toBe(65);
+    expect(slotIntervalFor(20, 10)).toBe(30);
+    expect(slotIntervalFor(25, 0)).toBe(25);
+    expect(slotIntervalFor(12, 0)).toBe(15);
+    expect(slotIntervalFor(7, 3)).toBe(15);
+    expect(slotIntervalFor(52, 0)).toBe(55);
+  });
+
+  it("leaves a length that is a multiple of 15 on the type's own step, and a step the database would refuse", () => {
+    for (const minutes of [15, 30, 45, 60, 90]) {
+      for (const gap of [0, 10, 30]) expect(slotIntervalFor(minutes, gap), `${minutes}+${gap}`).toBeNull();
+    }
+    expect(slotIntervalFor(0, 0)).toBeNull();
+    expect(slotIntervalFor(700, 30)).toBeNull();
+    expect(slotIntervalFor(235, 0)).toBe(235);
+    expect(slotIntervalFor(236, 10)).toBeNull();
+  });
+
+  it("is on the drafted type: a 50-minute type with a gap gets a clean step, 15, 30 and 45 minutes get none", () => {
+    const plan = planSchedulingDrafts(base({
+      "d.appt_types": [{ name: "Long look", minutes: "50", mode: "in_person" }, { name: "Quick", minutes: "15", mode: "phone" }, { name: "Standard", minutes: "30", mode: "phone" }, { name: "Walkthrough", minutes: "45", mode: "in_person" }],
+      "d.appt_buffer": "10m",
+    }));
+    expect(plan.types.map((t) => [t.name, t.slotIntervalMinutes])).toEqual([["Long look", 60], ["Quick", null], ["Standard", null], ["Walkthrough", null]]);
+    // No answers: nothing about 15 or 30 changes from what a hand-made type does.
+    expect(planSchedulingDrafts(base()).types.map((t) => t.slotIntervalMinutes)).toEqual([null, null]);
+  });
+});
+
 describe("weekly rules from opening hours", () => {
   it("keeps ranges in order, drops one that overlaps an earlier range of the same day, and caps the list", () => {
     expect(weeklyRulesFromHours({ wed: [["13:00", "17:00"], ["09:00", "14:00"]] })).toEqual([
@@ -162,6 +248,15 @@ describe("the sentence shown after a submission", () => {
   it("says nothing when nothing happened or nothing applies", () => {
     expect(schedulingDraftMessage({ state: "unchanged", calendarId: "c", typesAdded: 0, skipped: [] })).toBeNull();
     expect(schedulingDraftMessage({ state: "skipped", reason: "You already have a calendar.", typesAdded: 0, skipped: [] })).toBeNull();
+  });
+
+  it("says the submitter is now the host and that no hours are set, even when no type was added", () => {
+    const host = { choice: "owner", state: "assigned" } as const;
+    expect(schedulingDraftMessage({ state: "created", calendarId: "c", typesAdded: 1, skipped: [], host })).toMatch(/drafted a booking calendar.*You are now the host.*No working hours are set/is);
+    expect(schedulingDraftMessage({ state: "unchanged", calendarId: "c", typesAdded: 0, skipped: [], host })).toMatch(/^You are now the host.*No working hours are set for you yet/);
+    // A host who was not added is not announced.
+    expect(schedulingDraftMessage({ state: "unchanged", calendarId: "c", typesAdded: 0, skipped: [], host: { choice: "owner", state: "unchanged" } })).toBeNull();
+    expect(schedulingDraftMessage({ state: "unchanged", calendarId: "c", typesAdded: 0, skipped: [], host: { choice: "team", state: "waiting" } })).toBeNull();
   });
 
   it("names the types it left out so the owner can add them by hand", () => {

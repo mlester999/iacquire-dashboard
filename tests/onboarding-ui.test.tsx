@@ -4,7 +4,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AdaptiveOnboarding } from "@/components/onboarding/adaptive-onboarding";
 import { OnboardingApiProvider, type OnboardingApi } from "@/components/onboarding/onboarding-api";
-import { buildReviewModel, computeProgress, type ConnectionFacts } from "@/lib/onboarding/engine";
+import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { buildReviewModel, computeProgress, planScope, type ConnectionFacts } from "@/lib/onboarding/engine";
 import type { StoredAnswers, AnswerValue } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion } from "@/server/onboarding/service";
 
@@ -23,14 +24,14 @@ const row = (value: AnswerValue) => ({ value, source: "user" as const, skipped: 
 const facts: ConnectionFacts = { crmLinked: false, aiEmployeesVerified: 0, aiEmployeesTotal: 6, automationMapped: false, channels: { sms: { enabled: false, registration: "not_started" }, whatsapp: { enabled: false, registration: "not_started" }, email: { enabled: false, registration: "not_started" } }, calendarConnected: false, websiteDomainVerified: false, invitedStaff: 0 };
 const draft: Suggestion = { questionId: "a.description", value: "Marko Bar is a real estate business.", reason: "Based on your answers.", basis: "your_answers", source: "ai_suggestion", needsConfirmation: false, limited: true, clarifications: [{ fieldId: "b.services", label: "What services do you primarily provide?", example: "Examples only: property sales or rentals" }] };
 
-function setup(current = "a.description", extra: StoredAnswers = {}) {
+function setup(current = "a.description", extra: StoredAnswers = {}, enabledRoles: AgentRoleKey[] = []) {
   const answers = { "a.business_name": row("Marko Bar"), "a.industry": row("real_estate"), "a.business_model": row("mixed"), ...extra };
-  const session: OnboardingSession = { questionnaireVersion: 2, status: "draft", revision: 1, currentQuestionId: current, answers, progress: computeProgress(answers), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles: [], websiteAnalysis: null };
+  const session: OnboardingSession = { questionnaireVersion: 2, status: "draft", revision: 1, currentQuestionId: current, answers, progress: computeProgress(answers, planScope(enabledRoles)), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles, websiteAnalysis: null };
   let revision = 1;
   const api = {
     save: vi.fn<OnboardingApi["save"]>().mockImplementation(async () => ({ ok: true, data: { revision: ++revision, rejected: {}, staleBase: false } })),
     suggest: vi.fn<OnboardingApi["suggest"]>().mockResolvedValue({ ok: true, data: draft }),
-    review: vi.fn<OnboardingApi["review"]>().mockResolvedValue({ ok: true, data: { ...buildReviewModel(answers, facts, []), ...(current === "f.review" ? { blockers: [] } : {}) } }),
+    review: vi.fn<OnboardingApi["review"]>().mockResolvedValue({ ok: true, data: { ...buildReviewModel(answers, facts, enabledRoles, planScope(enabledRoles)), ...(current === "f.review" ? { blockers: [] } : {}) } }),
     submit: vi.fn<OnboardingApi["submit"]>().mockResolvedValue({ ok: true, data: {} }),
     readWebsite: vi.fn(), uploadImage: vi.fn(), uploadDocument: vi.fn(), removeAsset: vi.fn(), setAssetVariant: vi.fn(),
   } satisfies OnboardingApi;
@@ -76,6 +77,44 @@ describe("premium onboarding interaction", () => {
     expect(within(panel).getByRole("progressbar", { name: "Setup progress" })).toBeTruthy();
     expect(screen.queryByText(/A · Business profile/)).toBeNull();
     expect(screen.getByText("See an example").closest("details")?.open).toBe(false);
+  });
+
+  it("skips a question that belongs to an employee the plan leaves out, and asks it on the full plan", async () => {
+    const withoutHunter = AGENT_ROLE_KEYS.filter((r) => r !== "lead_hunter");
+    const narrow = setup("b.ideal_customer", {}, withoutHunter);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "What services or offers do you sell?" });
+    expect(screen.queryByRole("heading", { name: /worth a conversation/ })).toBeNull();
+    expect(narrow.api.save.mock.calls.length).toBeLessThanOrEqual(1);
+    cleanup();
+    setup("b.ideal_customer", {}, [...AGENT_ROLE_KEYS]);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "What makes a lead worth a conversation with your team?" });
+  });
+
+  it("counts fewer questions for a plan that leaves an employee out", () => {
+    setup("a.business_name", {}, [...AGENT_ROLE_KEYS]);
+    const full = Number(screen.getByText(/^Question \d+ of \d+$/).textContent?.match(/of (\d+)/)?.[1]);
+    cleanup();
+    setup("a.business_name", {}, AGENT_ROLE_KEYS.filter((r) => r !== "lead_hunter" && r !== "performance_analyst"));
+    expect(Number(screen.getByText(/^Question \d+ of \d+$/).textContent?.match(/of (\d+)/)?.[1])).toBe(full - 2);
+  });
+
+  it("calls opening hours required once replies are limited to them, and optional otherwise", () => {
+    setup("a.hours", { "c.response_hours": row("business_hours") });
+    expect(screen.getByText("Required")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    cleanup();
+    setup("a.hours", { "c.response_hours": row("always") });
+    expect(screen.getByText("Optional")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Skip for now" })).toBeTruthy();
+  });
+
+  it("will not move past the opening hours while a business-hours-only preference has none", () => {
+    const { api } = setup("a.hours", { "c.response_hours": row("business_hours") });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("alert").textContent).toContain("required");
+    expect(api.save).not.toHaveBeenCalled();
   });
 
   it("validates required answers before advancing", () => {

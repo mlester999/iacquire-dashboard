@@ -4,8 +4,8 @@
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { LANGUAGES, TONES, type OnboardingData, type Tone, type ReplyLength } from "@/lib/agent-settings";
 import { normalizeEmail, normalizePhone, validateBusinessHours, type BusinessHours, WEEKDAYS } from "@/lib/messaging";
-import { INDUSTRY_OPTIONS, QUESTIONS, QUESTION_BY_ID, QUESTIONNAIRE_VERSION, questionOptions, wantsAppointments, wantsWebsite, channelsOf } from "./definitions";
-import { ONBOARDING_SECTIONS, type AnswerValue, type Answers, type QuestionDef, type SectionId, type StoredAnswer, type StoredAnswers } from "./types";
+import { INDUSTRY_OPTIONS, QUESTIONS, QUESTION_BY_ID, QUESTIONNAIRE_VERSION, hasHours, questionOptions, wantsAppointments, wantsWebsite, channelsOf } from "./definitions";
+import { ONBOARDING_SECTIONS, type AnswerValue, type Answers, type QuestionDef, type QuestionScope, type SectionId, type StoredAnswer, type StoredAnswers } from "./types";
 
 export { QUESTIONNAIRE_VERSION };
 
@@ -21,6 +21,21 @@ export function isValidTimeZone(tz: string) {
     return tz.length > 0 && tz.length <= 64;
   } catch {
     return false;
+  }
+}
+
+/** A link customers are sent to must be https (the calendar refuses anything else). Unlike a website address, its query string is kept: a room link may need it. */
+export function validateSecureLink(raw: string): Validation {
+  const value = raw.trim();
+  if (!value) return { ok: true, value: "" };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https:\/\//i.test(value)) return fail("Use a secure link that starts with https://.");
+  try {
+    const u = new URL(/^https:\/\//i.test(value) ? value : `https://${value}`);
+    if (u.protocol !== "https:" || !u.hostname.includes(".") || u.username || u.password) return fail("That link doesn't look right. It must start with https://.");
+    const link = u.toString();
+    return link.length <= 500 ? { ok: true, value: link } : fail("That link is too long.");
+  } catch {
+    return fail("That link doesn't look right. It must start with https://.");
   }
 }
 
@@ -40,9 +55,23 @@ export function normalizeWebsite(raw: string): string | null {
 // Visibility and ordering
 // ---------------------------------------------------------------------------
 
-export function visibleQuestions(answers: Answers): QuestionDef[] {
-  return QUESTIONS.filter((q) => !q.show || q.show(answers));
+/**
+ * The scope for a workspace's plan. A workspace whose list of employees is empty has no plan to go by (nothing is enabled yet), so it gets the whole
+ * questionnaire rather than one with the employee-only questions quietly missing.
+ */
+export function planScope(enabledRoles: readonly AgentRoleKey[]): QuestionScope | undefined {
+  return enabledRoles.length ? { roles: enabledRoles } : undefined;
 }
+
+/** A question with `roles` is asked only when at least one of them is in the plan. */
+const inPlan = (q: QuestionDef, scope?: QuestionScope) => !q.roles || !scope || q.roles.some((role) => scope.roles.includes(role));
+
+export function visibleQuestions(answers: Answers, scope?: QuestionScope): QuestionDef[] {
+  return QUESTIONS.filter((q) => inPlan(q, scope) && (!q.show || q.show(answers)));
+}
+
+/** Required always, or required while the question's own condition holds (opening hours once replies are limited to them). */
+export const isRequired = (q: QuestionDef, answers: Answers = {}): boolean => Boolean(q.required) || Boolean(q.requiredWhen?.(answers));
 
 export function answersOf(stored: StoredAnswers): Answers {
   const out: Answers = {};
@@ -55,10 +84,10 @@ export function answersOf(stored: StoredAnswers): Answers {
  * earlier question (booking switched off, for example); its saved value is kept in case the user changes their
  * mind, but it must not count toward progress or flow into any configuration.
  */
-export function effectiveStored(stored: StoredAnswers): StoredAnswers {
+export function effectiveStored(stored: StoredAnswers, scope?: QuestionScope): StoredAnswers {
   let current = stored;
   for (let i = 0; i < 5; i += 1) {
-    const visible = new Set(visibleQuestions(answersOf(current)).map((q) => q.id));
+    const visible = new Set(visibleQuestions(answersOf(current), scope).map((q) => q.id));
     const next: StoredAnswers = {};
     for (const [id, a] of Object.entries(current)) if (visible.has(id) || !QUESTION_BY_ID[id]) next[id] = a;
     if (Object.keys(next).length === Object.keys(current).length) return next;
@@ -67,7 +96,7 @@ export function effectiveStored(stored: StoredAnswers): StoredAnswers {
   return current;
 }
 
-export const effectiveAnswers = (stored: StoredAnswers): Answers => answersOf(effectiveStored(stored));
+export const effectiveAnswers = (stored: StoredAnswers, scope?: QuestionScope): Answers => answersOf(effectiveStored(stored, scope));
 
 // ---------------------------------------------------------------------------
 // Validation (one function per kind, shared by browser and server)
@@ -106,6 +135,7 @@ export function validateAnswer(q: QuestionDef, raw: unknown, answers: Answers = 
     }
     case "url": {
       if (typeof raw !== "string") return fail("Enter a web address.");
+      if (k.httpsOnly) return validateSecureLink(raw);
       const site = normalizeWebsite(raw);
       return site === null ? fail("That website address doesn't look right.") : { ok: true, value: site };
     }
@@ -152,7 +182,8 @@ export function validateAnswer(q: QuestionDef, raw: unknown, answers: Answers = 
             }
           } else if (f.type === "select") {
             if (text && !f.options?.some((o) => o.value === text)) return fail("Choose one of the options.");
-            row[f.key] = text;
+            // An optional choice nobody made is left out, so a row keeps the shape it always had.
+            if (text || f.required) row[f.key] = text;
           } else if (f.type === "number") {
             const n = Number(text);
             if (text.trim() && (!Number.isInteger(n) || n < 1 || n > 1440)) return fail("Use a whole number of minutes between 1 and 1440.");
@@ -192,12 +223,13 @@ export function validateAnswer(q: QuestionDef, raw: unknown, answers: Answers = 
 
 export type QuestionState = "answered" | "skipped" | "needs_confirmation" | "outstanding";
 
-export function questionState(q: QuestionDef, stored: StoredAnswer | undefined): QuestionState {
+export function questionState(q: QuestionDef, stored: StoredAnswer | undefined, answers?: Answers): QuestionState {
   if (!stored) return "outstanding";
   // Approval only counts while it is a "yes"; changing an answer withdraws it.
   if (q.kind.type === "review") return stored.value === true ? "answered" : "outstanding";
-  if (stored.skipped) return q.required ? "outstanding" : "skipped";
-  if (isEmptyValue(stored.value)) return "outstanding";
+  if (stored.skipped) return isRequired(q, answers) ? "outstanding" : "skipped";
+  // Hours with no open range ({} or days that all say closed) are not an answer.
+  if (q.kind.type === "hours" ? !hasHours(stored.value) : isEmptyValue(stored.value)) return "outstanding";
   if (stored.needsConfirmation) return "needs_confirmation";
   return "answered";
 }
@@ -217,16 +249,16 @@ export interface Progress {
   needsConfirmation: string[];
 }
 
-export function computeProgress(storedAll: StoredAnswers): Progress {
-  const stored = effectiveStored(storedAll);
+export function computeProgress(storedAll: StoredAnswers, scope?: QuestionScope): Progress {
+  const stored = effectiveStored(storedAll, scope);
   const answers = answersOf(stored);
-  const visible = visibleQuestions(answers).filter((q) => q.kind.type !== "review");
+  const visible = visibleQuestions(answers, scope).filter((q) => q.kind.type !== "review");
   const sections = new Map<SectionId, SectionProgress>(ONBOARDING_SECTIONS.map((s) => [s.id, { id: s.id, total: 0, done: 0, requiredOutstanding: 0 }]));
   const requiredOutstanding: string[] = [];
   const needsConfirmation: string[] = [];
   let done = 0;
   for (const q of visible) {
-    const state = questionState(q, stored[q.id]);
+    const state = questionState(q, stored[q.id], answers);
     const sec = sections.get(q.section)!;
     sec.total += 1;
     if (state === "answered" || state === "skipped") {
@@ -234,7 +266,7 @@ export function computeProgress(storedAll: StoredAnswers): Progress {
       done += 1;
     }
     if (state === "needs_confirmation") needsConfirmation.push(q.id);
-    if (q.required && state !== "answered") {
+    if (isRequired(q, answers) && state !== "answered") {
       sec.requiredOutstanding += 1;
       requiredOutstanding.push(q.id);
     }
@@ -244,21 +276,22 @@ export function computeProgress(storedAll: StoredAnswers): Progress {
 }
 
 /** Picks where to resume. The saved question may have become hidden by a later answer; never strand the user. */
-export function resolveCurrentQuestion(stored: StoredAnswers, savedId: string | null | undefined): string {
-  const visible = visibleQuestions(effectiveAnswers(stored));
+export function resolveCurrentQuestion(stored: StoredAnswers, savedId: string | null | undefined, scope?: QuestionScope): string {
+  const answers = effectiveAnswers(stored, scope);
+  const visible = visibleQuestions(answers, scope);
   if (savedId && visible.some((q) => q.id === savedId)) return savedId;
   if (savedId && QUESTION_BY_ID[savedId]) {
     const at = QUESTIONS.findIndex((q) => q.id === savedId);
     const later = QUESTIONS.slice(at + 1).find((q) => visible.includes(q));
     if (later) return later.id;
   }
-  const open = visible.find((q) => q.kind.type !== "review" && questionState(q, stored[q.id]) === "outstanding" && q.required);
+  const open = visible.find((q) => q.kind.type !== "review" && questionState(q, stored[q.id], answers) === "outstanding" && isRequired(q, answers));
   // Everything required is answered (a prefilled or earlier setup): continue at the review rather than question one.
   return (open ?? visible.find((q) => q.kind.type === "review") ?? visible[0]).id;
 }
 
-export function neighbour(stored: StoredAnswers, currentId: string, direction: 1 | -1): string | null {
-  const visible = visibleQuestions(effectiveAnswers(stored));
+export function neighbour(stored: StoredAnswers, currentId: string, direction: 1 | -1, scope?: QuestionScope): string | null {
+  const visible = visibleQuestions(effectiveAnswers(stored, scope), scope);
   const i = visible.findIndex((q) => q.id === currentId);
   const next = visible[i + direction];
   return next ? next.id : null;
@@ -269,8 +302,8 @@ export interface SubmitCheck {
   blockers: string[];
 }
 
-export function submitCheck(stored: StoredAnswers): SubmitCheck {
-  const progress = computeProgress(stored);
+export function submitCheck(stored: StoredAnswers, scope?: QuestionScope): SubmitCheck {
+  const progress = computeProgress(stored, scope);
   const blockers: string[] = [];
   for (const id of progress.requiredOutstanding) {
     if (id === "f.review") continue;
@@ -314,6 +347,8 @@ export function describeValue(q: QuestionDef, value: AnswerValue | undefined, an
       return (value as Array<Record<string, string>>)
         .map((row) =>
           k.fields
+            // A hidden field keeps its saved value but is no longer asked, so the review does not read it back as an answer.
+            .filter((f) => !f.show || f.show(answers))
             .map((f) => (f.type === "select" ? f.options?.find((o) => o.value === row[f.key])?.label ?? row[f.key] : f.key === "minutes" ? `${row[f.key]} min` : row[f.key]))
             .filter(Boolean)
             .join(" · "),
@@ -343,15 +378,22 @@ const rows = (a: Answers, id: string): Array<Record<string, string>> => (Array.i
 const labelFor = (id: string, value: string, a: Answers) => questionOptions(QUESTION_BY_ID[id], a).find((o) => o.value === value)?.label ?? value;
 const labelsFor = (id: string, a: Answers) => list(a, id).map((v) => labelFor(id, v, a));
 const joinParts = (parts: Array<string | false | null | undefined>, sep = "\n\n") => parts.filter((p): p is string => Boolean(p && p.trim())).join(sep);
+/** "Prefix: label, label." for a multi-choice answer, or nothing when it is empty. */
+const labelsLine = (prefix: string, id: string, a: Answers) => {
+  const labels = labelsFor(id, a);
+  return labels.length ? `${prefix}: ${labels.join(", ")}.` : "";
+};
+/** "Prefix: label." for a single-choice answer, or nothing when it is empty. */
+const labelLine = (prefix: string, id: string, a: Answers) => (s(a, id) ? `${prefix}: ${labelFor(id, s(a, id), a)}.` : "");
 
 export function industryLabel(a: Answers): string {
   return INDUSTRY_OPTIONS.find((o) => o.value === s(a, "a.industry"))?.label ?? "";
 }
 
 /** Only confirmed answers feed approved knowledge; AI-suggested text must be checked first. */
-export function confirmedAnswers(storedAll: StoredAnswers): Answers {
+export function confirmedAnswers(storedAll: StoredAnswers, scope?: QuestionScope): Answers {
   const out: Answers = {};
-  for (const [id, a] of Object.entries(effectiveStored(storedAll))) {
+  for (const [id, a] of Object.entries(effectiveStored(storedAll, scope))) {
     if (a.skipped || a.needsConfirmation || a.value === null || a.value === undefined) continue;
     out[id] = a.value;
   }
@@ -376,9 +418,21 @@ export function toRoleAnswers(a: Answers): Record<AgentRoleKey, Record<string, s
   for (const role of AGENT_ROLE_KEYS) out[role] = {};
   out.operations_manager.priorities = joinParts([goals && `Main goals: ${goals}.`, s(a, "c.company_rules")], " ");
   out.operations_manager.approval_rules = joinParts([a["c.ai_behavior"] && `Preferred autonomy: ${labelFor("c.ai_behavior", s(a, "c.ai_behavior"), a)}.`, s(a, "d.handoff_rules")], " ");
-  out.lead_hunter.targets = joinParts([s(a, "b.ideal_customer"), s(a, "b.ag_target_clients"), s(a, "a.target_customers")], " ");
-  out.lead_hunter.qualification = joinParts([s(a, "b.qualification"), s(a, "a.territories") && `Service areas: ${s(a, "a.territories")}`], " ");
-  out.appointment_setter.meeting_types = appointmentLines(a).join("; ") || (wantsAppointments(a) ? "" : "Appointment booking is not enabled; hand booking requests to a person.");
+  // The short structured answers come first so the 1,000-character cap trims the client's long free text, never them. The budget and the kinds of client are for deciding who is worth
+  // pursuing: they go to the Lead Hunter only, never into knowledge a customer-facing employee could quote.
+  out.lead_hunter.targets = joinParts([labelsLine("Typical clients", "b.re_buyers", a), s(a, "b.ideal_customer"), s(a, "b.ag_target_clients"), s(a, "a.target_customers")], " ");
+  out.lead_hunter.qualification = joinParts(
+    [
+      s(a, "b.ag_min_budget") && s(a, "b.ag_min_budget") !== "none" && `${labelLine("Smallest budget the business takes on", "b.ag_min_budget", a)} Politely qualify out leads below it and never state it to a lead.`,
+      s(a, "b.qualification"),
+      s(a, "a.territories") && `Service areas: ${s(a, "a.territories")}`,
+    ],
+    " ",
+  );
+  const appointmentList = appointmentLines(a).join("; ");
+  out.appointment_setter.meeting_types = appointmentList
+    ? joinParts([labelLine("Main reason people book", "b.appointment_goal", a), appointmentList], " ")
+    : wantsAppointments(a) ? "" : "Appointment booking is not enabled; hand booking requests to a person.";
   // A role answer is stored with at most 1,000 characters. The client's own cancellation wording is quoted exactly, so when the whole does not fit it is the extra policy lines that
   // give way, last first, never the cancellation text.
   const cancellation = s(a, "d.appt_cancellation");
@@ -396,11 +450,12 @@ export function toRoleAnswers(a: Answers): Record<AgentRoleKey, Record<string, s
   out.crm_manager.important_info = s(a, "d.handoff_requirements");
   out.crm_manager.stages = joinParts([a["b.sales_model"] && `Sales model: ${labelFor("b.sales_model", s(a, "b.sales_model"), a)}.`, s(a, "d.sales_process")], " ");
   out.performance_analyst.results = joinParts([goals && `Goals: ${goals}.`, a["b.lead_target"] && `Monthly lead target: ${labelFor("b.lead_target", s(a, "b.lead_target"), a)}.`], " ");
-  out.performance_analyst.metrics = "Leads, qualified leads, appointments booked, response time and conversions from recorded data.";
+  out.performance_analyst.metrics = joinParts(["Leads, qualified leads, appointments booked, response time and conversions from recorded data.", labelsLine("Lead sources to report on", "b.lead_sources", a)], " ");
   for (const role of AGENT_ROLE_KEYS) {
     for (const key of Object.keys(out[role])) {
       const allowed = AGENT_BY_KEY[role].questions.some((q) => q.id === key);
       if (!allowed || !out[role][key].trim()) delete out[role][key];
+      else if (out[role][key].length > ROLE_ANSWER_MAX) out[role][key] = out[role][key].slice(0, ROLE_ANSWER_MAX).trimEnd();
     }
   }
   return out;
@@ -441,16 +496,40 @@ export function toLegacyData(a: Answers, enabledRoles: AgentRoleKey[]): Onboardi
 export function toKnowledgeSections(a: Answers): Array<{ section: string; content: string }> {
   const faqs = rows(a, "e.faqs").map((r) => `Q: ${r.question}\nA: ${r.answer}`).join("\n\n");
   const pricing = a["d.pricing_policy"] === "never" ? "Do not share prices. Hand pricing questions to a person." : joinParts([s(a, "d.pricing_info"), a["d.discount_rules"] && `Discounts: ${labelFor("d.discount_rules", s(a, "d.discount_rules"), a)}.`], " ");
+  // Emergency handling is an instruction the client gave, so it belongs with the hand-off rules. It is the client's own choice from a fixed list, never advice.
+  const emergency = joinParts([labelLine("When someone describes an emergency", "d.hc_emergency", a), labelLine("Emergency call-outs", "b.hs_emergency", a)], " ");
   const out = [
     { section: "business_description", content: s(a, "a.description") },
-    { section: "products_services", content: joinParts([s(a, "b.services"), s(a, "e.products")]) },
+    {
+      section: "products_services",
+      content: joinParts([
+        s(a, "b.services"),
+        s(a, "e.products"),
+        labelsLine("Services people ask about most", "b.hc_services", a),
+        labelsLine("Types of property handled", "b.re_property_types", a),
+        labelsLine("Ways clients can work with us", "b.pr_engagements", a),
+      ]),
+    },
     { section: "faq", content: faqs },
     { section: "approved_pricing", content: pricing },
     { section: "business_hours", content: joinParts([formatHours(a["a.hours"] as BusinessHours), s(a, "a.timezone") && `Time zone: ${s(a, "a.timezone")}`], " · ") },
-    { section: "policies", content: joinParts([s(a, "e.policies"), s(a, "d.appt_cancellation")]) },
-    { section: "customer_service", content: joinParts([s(a, "e.support_info"), s(a, "a.contact_phone") && `Phone: ${s(a, "a.contact_phone")}`, s(a, "a.contact_email") && `Email: ${s(a, "a.contact_email")}`], "\n") },
+    { section: "policies", content: joinParts([s(a, "e.policies"), s(a, "d.appt_cancellation"), s(a, "d.hc_insurance") && `Insurance and payment options: ${s(a, "d.hc_insurance")}`]) },
+    {
+      section: "customer_service",
+      content: joinParts(
+        [
+          s(a, "e.support_info"),
+          s(a, "a.contact_phone") && `Phone: ${s(a, "a.contact_phone")}`,
+          s(a, "a.contact_email") && `Email: ${s(a, "a.contact_email")}`,
+          labelLine("Property viewings", "d.re_viewings", a),
+          s(a, "d.ag_discovery") && `What happens on a discovery call: ${s(a, "d.ag_discovery")}`,
+          labelLine("How jobs are priced", "d.hs_quote", a),
+        ],
+        "\n",
+      ),
+    },
     { section: "brand_voice", content: joinParts([a["c.tone"] && `Tone: ${labelFor("c.tone", s(a, "c.tone"), a)}.`, s(a, "c.company_rules")], " ") },
-    { section: "escalation", content: joinParts([labelsFor("c.human_escalation", a).length ? `Hand off to a person when: ${labelsFor("c.human_escalation", a).join(", ")}.` : "", s(a, "d.handoff_rules")], " ") },
+    { section: "escalation", content: joinParts([labelsFor("c.human_escalation", a).length ? `Hand off to a person when: ${labelsFor("c.human_escalation", a).join(", ")}.` : "", emergency, s(a, "d.handoff_rules")], " ") },
   ];
   return out.filter((x) => x.content.trim()).map((x) => ({ section: x.section, content: x.content.slice(0, 12000) }));
 }
@@ -508,8 +587,46 @@ export interface ReviewRow {
   state: QuestionState;
   source: StoredAnswer["source"] | null;
 }
+/** A paid extra the plan can include. Information for the client: core CRM, inbox, booking and the website are not plan-gated and never appear here. */
+export interface PlanAddOn {
+  key: "automation_studio" | "managed_storage";
+  label: string;
+  state: "included" | "not_included";
+  detail: string;
+}
+
+/** What the workspace's plan includes: which of the six employees are switched on for it, and the paid extras. Read from the workspace, never assumed to be six. */
+export interface PlanSummary {
+  included: AgentRoleKey[];
+  notIncluded: AgentRoleKey[];
+  addOns: PlanAddOn[];
+}
+
+/** The paid extras from what the workspace is entitled to (src/server/entitlements.ts reads the plan and decides; this only words it). Shaped to match its answer without importing the plan rules into a module the browser loads. */
+export function planAddOns(entitlements: { studio: { entitled: boolean; reason: string }; managedStorage: boolean }): PlanAddOn[] {
+  return [
+    {
+      key: "automation_studio",
+      label: "Automation Studio",
+      state: entitlements.studio.entitled ? "included" : "not_included",
+      detail: entitlements.studio.entitled ? "Included with your Managed Maintenance plan." : entitlements.studio.reason,
+    },
+    {
+      key: "managed_storage",
+      label: "Managed media storage",
+      state: entitlements.managedStorage ? "included" : "not_included",
+      detail: entitlements.managedStorage ? "Included with your Managed Maintenance plan." : "Comes with the Managed Maintenance plan. Posts can still be written without it.",
+    },
+  ];
+}
+
+const COUNT_WORDS = ["no", "one", "two", "three", "four", "five", "six"];
+/** A small count in words ("five"), so a heading never says six when the plan holds fewer. */
+export const countWord = (n: number): string => COUNT_WORDS[n] ?? String(n);
+
 export interface ReviewModel {
   sections: Array<{ id: SectionId; title: string; rows: ReviewRow[] }>;
+  plan: PlanSummary;
   employees: Array<{ role: AgentRoleKey; name: string; tagline: string; configuredFrom: string[]; gaps: string[] }>;
   messaging: Array<{ label: string; value: string }>;
   permissions: string[];
@@ -521,10 +638,10 @@ export interface ReviewModel {
   canSubmit: boolean;
 }
 
-export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[]): ReviewModel {
-  const stored = effectiveStored(storedAll);
+export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[], scope?: QuestionScope, addOns: PlanAddOn[] = []): ReviewModel {
+  const stored = effectiveStored(storedAll, scope);
   const a = answersOf(stored);
-  const visible = visibleQuestions(a);
+  const visible = visibleQuestions(a, scope);
   const sections = ONBOARDING_SECTIONS.filter((sec) => sec.id !== "F").map((sec) => ({
     id: sec.id,
     title: sec.title,
@@ -532,12 +649,15 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
       .filter((q) => q.section === sec.id)
       .map((q) => {
         const st = stored[q.id];
+        let value = st && !st.skipped ? describeValue(q, st.value, a) : "";
+        // Blank bookable hours mean the opening hours (the booking rules fall back to them), so the review says so instead of "Not answered".
+        if (q.id === "d.appt_availability" && !value && hasHours(a["a.hours"])) value = `Same as your opening hours: ${formatHours(a["a.hours"] as BusinessHours)}`;
         return {
           questionId: q.id,
           label: q.reviewLabel ?? q.title,
-          value: st && !st.skipped ? describeValue(q, st.value, a) : "",
-          required: Boolean(q.required),
-          state: questionState(q, st),
+          value,
+          required: isRequired(q, a),
+          state: questionState(q, st, a),
           source: st?.source ?? null,
         } satisfies ReviewRow;
       }),
@@ -608,11 +728,12 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   humanTasks.push(native
     ? { key: "crm", label: "Apply your industry CRM Blueprint and check pipelines, tags and fields", owner: "iacquire" }
     : { key: "crm", label: "Link your CRM location and apply the iAcquire master snapshot", owner: "iacquire" });
-  humanTasks.push({ key: "profiles", label: "Create and verify your six AI employees", owner: "iacquire" });
+  humanTasks.push({ key: "profiles", label: enabledRoles.length ? `Create and verify your ${countWord(enabledRoles.length)} AI employee${enabledRoles.length === 1 ? "" : "s"}` : "Create and verify your AI employees", owner: "iacquire" });
   humanTasks.push({ key: "test", label: "Run safe tests before anything customer-facing is activated", owner: "iacquire" });
 
-  const check = submitCheck(storedAll);
-  return { sections, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
+  const check = submitCheck(storedAll, scope);
+  const plan: PlanSummary = { included: AGENT_ROLE_KEYS.filter((r) => enabledRoles.includes(r)), notIncluded: AGENT_ROLE_KEYS.filter((r) => !enabledRoles.includes(r)), addOns };
+  return { sections, plan, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
 }
 
 /**

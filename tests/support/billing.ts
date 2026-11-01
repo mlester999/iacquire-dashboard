@@ -48,10 +48,12 @@ export async function markActivated(orgId: string) {
  * Runs the real questionnaire to its end for a new client (the same answers as tests/client-onboarding-acceptance.test.ts) and submits it, so what the submission does
  * with provisioning is the product's own code. The workspace has a verified owner and an unpaid setup fee unless the caller clears it first.
  */
-export async function submitRealOnboarding(opts: { name: string; clearPayment?: boolean }) {
+export async function submitRealOnboarding(opts: { name: string; clearPayment?: boolean; disableRoles?: string[]; extraAnswers?: Record<string, unknown> }) {
   const { saveOnboardingStep, submitOnboarding } = await import("@/server/onboarding/service");
   const org = await createOrg({ name: opts.name });
   if (opts.clearPayment) await clearSetupPayment(org.id);
+  // A plan that leaves employees out: those employees are switched off before the questionnaire is opened, the way a narrower plan has them.
+  if (opts.disableRoles?.length) await withSystem((db) => db.query("update agent_instances set enabled = false where org_id = $1 and role_key = any($2::text[])", [org.id, opts.disableRoles]));
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const ctx = ctxFor(owner, org, "owner");
@@ -61,6 +63,7 @@ export async function submitRealOnboarding(opts: { name: string; clearPayment?: 
     "a.business_model": "local",
     "a.description": "We repair residential roofs after storm damage.",
     "a.timezone": "America/Chicago",
+    "a.hours": { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] },
     "a.contact_email": owner.email,
     "a.territories": "Austin, Texas",
     "a.target_customers": "Austin homeowners",
@@ -71,6 +74,7 @@ export async function submitRealOnboarding(opts: { name: string; clearPayment?: 
     "b.website_need": "have",
     "d.pricing_policy": "never",
     "f.review": true,
+    ...opts.extraAnswers,
   };
   const saved = await saveOnboardingStep(ctx, { answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])), currentQuestionId: "f.review" });
   if (Object.keys(saved.rejected).length) throw new Error(`The test questionnaire was rejected: ${JSON.stringify(saved.rejected)}`);

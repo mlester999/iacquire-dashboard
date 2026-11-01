@@ -24,8 +24,8 @@ import { createAppointmentType, createCalendar, setHostAvailability } from "@/se
 import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
 import { bookingPageActor, bookNativeAppointment, cancelNativeAppointment, rescheduleNativeAppointment } from "@/server/calendars/booking";
 import {
-  calendarConnectionSettings, completeCalendarOAuth, connectCalDav, connectIcsFeed, disconnectCalendar, listMyConnections, listSyncRuns, listTeamConnections,
-  startCalendarOAuth, updateConnectionOptions,
+  calendarConnectionSettings, completeCalendarOAuth, connectCalDav, connectIcsFeed, DEFAULT_RETURN_PATH, decodeCalendarNotice, disconnectCalendar, listMyConnections, listSyncRuns, listTeamConnections,
+  safeReturnPath, startCalendarOAuth, updateConnectionOptions,
 } from "@/server/calendars/connections";
 import { DELETED_HASH, externalRef, syncConnectionBusy, syncDueConnections, writeBackDue } from "@/server/calendars/sync";
 import { assertPublicHttps, hostResolver } from "@/server/calendars/adapters/http";
@@ -1155,6 +1155,58 @@ describe("oauth routes", () => {
     } finally {
       session.user = null;
     }
+  });
+});
+
+describe("a sign-in that returns to the guided Setup page", () => {
+  const req = (path: string, headers: Record<string, string> = {}) => new NextRequest(`http://localhost:3000${path}`, { headers });
+  const params = (provider: string) => ({ params: Promise.resolve({ provider }) });
+
+  it("accepts the Setup page, with or without a simple query, and still refuses everything else", () => {
+    for (const ok of ["/setup", "/setup?x=1", "/setup?connected=calendar&tab=2", "/crm/calendar-connections", "/crm/calendar-connections?tab=mine", "/crm"]) expect(safeReturnPath(ok), ok).toBe(ok);
+    for (const bad of ["//evil.example", "https://evil.example", "https://evil.example/setup", "/setup/../admin", "/setup/anything", "/setupx", "/setup?x=/admin", "/setup?x=../admin", "/crm/../admin", "/crm//evil.example", "/admin", "javascript:alert(1)", "", null, undefined]) {
+      expect(safeReturnPath(bad as string | null | undefined), String(bad)).toBe(DEFAULT_RETURN_PATH);
+    }
+    expect(safeReturnPath(`/setup?${"a".repeat(400)}`)).toBe(DEFAULT_RETURN_PATH);
+  });
+
+  it("remembers the Setup page as where to come back to, and the callback sends the person there with the notice for the Setup page to read", async () => {
+    const c = await crmOrg({ timezone: "Asia/Manila" });
+    googleFake();
+    const { url } = await startCalendarOAuth(c.actor("owner"), "google", { returnPath: "/setup?connected=calendar" });
+    const state = new URL(url).searchParams.get("state")!;
+    expect((await withSystem((db) => db.query<{ return_path: string }>("select return_path from crm_calendar_oauth_states where org_id = $1", [c.org.id]))).rows[0].return_path).toBe("/setup?connected=calendar");
+    session.user = { id: c.people.owner.id };
+    try {
+      const res = await oauthCallback(req(`/api/crm/calendar-oauth/google/callback?state=${state}&code=good-code`), params("google"));
+      expect(res.status).toBe(303);
+      expect(res.headers.get("location")).toBe("http://localhost:3000/setup?connected=calendar");
+      const cookie = res.headers.get("set-cookie") ?? "";
+      expect(decodeURIComponent(decodeURIComponent(cookie))).toContain("is connected");
+      // The Setup page is not under /crm, so the notice is sent with every path; nothing in it is a code or a token.
+      expect(cookie).toMatch(/Path=\/(;|$)/i);
+      expect(cookie).not.toMatch(/Path=\/crm/i);
+      expect(cookie).not.toContain("good-code");
+      // The page reads the cookie through Next, which decodes the value once; the notice decodes itself the rest of the way.
+      const notice = decodeCalendarNotice(decodeURIComponent(/iaq_calendar_notice=([^;]+)/.exec(cookie)?.[1] ?? ""));
+      // The notice names the page it is for, so the CRM page does not show (or leave behind) a message meant for Setup.
+      expect(notice).toMatchObject({ kind: "success", provider: "google", from: "setup" });
+    } finally {
+      session.user = null;
+    }
+  });
+
+  it("sends a sign-in that could not start back to the Setup page with the reason, and ignores a return address that is not ours", async () => {
+    const back = await oauthStart(req("/api/crm/calendar-oauth/google/start?return=/setup", { "sec-fetch-site": "cross-site" }), params("google"));
+    expect(back.headers.get("location")).toBe("http://localhost:3000/setup");
+    expect(decodeURIComponent(decodeURIComponent(back.headers.get("set-cookie") ?? ""))).toMatch(/didn't start from iAcquire/);
+    const noticeOf = (res: Response) => decodeCalendarNotice(decodeURIComponent(/iaq_calendar_notice=([^;]+)/.exec(res.headers.get("set-cookie") ?? "")?.[1] ?? ""));
+    expect(noticeOf(back)).toMatchObject({ kind: "error", from: "setup" });
+    const evil = await oauthStart(req(`/api/crm/calendar-oauth/google/start?return=${encodeURIComponent("//evil.example")}`, { "sec-fetch-site": "cross-site" }), params("google"));
+    expect(evil.headers.get("location")).toBe("http://localhost:3000/crm/calendar-connections");
+    expect(noticeOf(evil)).toMatchObject({ kind: "error", from: "crm" });
+    const traversal = await oauthStart(req(`/api/crm/calendar-oauth/google/start?return=${encodeURIComponent("/setup/../admin")}`, { "sec-fetch-site": "cross-site" }), params("google"));
+    expect(traversal.headers.get("location")).toBe("http://localhost:3000/crm/calendar-connections");
   });
 });
 

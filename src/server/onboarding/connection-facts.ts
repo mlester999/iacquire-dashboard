@@ -1,6 +1,8 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
-import type { ConnectionFacts } from "@/lib/onboarding/engine";
+import { confirmedAnswers, type ConnectionFacts } from "@/lib/onboarding/engine";
+import type { Answers } from "@/lib/onboarding/types";
+import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { installState } from "@/lib/webchat/rules";
 import { runtimeReadySql } from "@/lib/employee-runtime";
 import { NATIVE_BOOKABLE_CALENDARS_SQL } from "@/server/workforce/readiness-facts";
@@ -55,4 +57,21 @@ export async function connectionFacts(db: Queryable, orgId: string): Promise<Con
     return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, invitedStaff: staff, ...optional };
   }
   return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, invitedStaff: staff, ...optional };
+}
+
+type SenderChannel = "sms" | "whatsapp" | "email";
+const SENDER_ANSWER: Record<SenderChannel, string> = { sms: "c.sms_sender", whatsapp: "c.whatsapp_number", email: "c.email_sender" };
+
+/** What the client wrote as the sender of a channel, from answers already read: their text, trimmed, or null when they gave none. */
+export function statedSenderOf(answers: Answers, channel: SenderChannel): string | null {
+  const value = answers[SENDER_ANSWER[channel]];
+  return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, 200) : null;
+}
+
+/**
+ * The sender the client gave for a channel in the questionnaire (confirmed answers only), for the person who sets the channel up. It is a hint: it is never saved as the channel's
+ * sender and never counts as verified, because a verified sender comes only from the provider's own test (src/server/messaging/channels.ts). Trusted code: every query names `orgId`.
+ */
+export async function statedSender(db: Queryable, orgId: string, channel: SenderChannel): Promise<string | null> {
+  return statedSenderOf(confirmedAnswers(toStored(await loadAnswerRows(db, orgId))), channel);
 }

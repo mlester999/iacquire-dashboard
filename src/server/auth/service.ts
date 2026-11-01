@@ -592,6 +592,11 @@ export async function applyInvitation(db: Queryable, inviteId: string, userId: s
        on conflict (org_id, user_id) do update set role = excluded.role, status = 'active', updated_at = now()`,
       [inv.org_id, userId, inv.role, inv.invited_by],
     );
+    // A team member the owner marked as taking appointments becomes a host of the onboarding calendar (never with hours). This is the one place every acceptance path
+    // goes through (new account, signed-in account, Supabase sign-up). Loaded when needed: the scheduling code pulls in the calendar and CRM modules, which this one must not
+    // load for every sign-in. It never throws, so accepting an invitation does not depend on a calendar.
+    const { assignInvitedHostFromAnswers } = await import("@/server/onboarding/scheduling-drafts");
+    await assignInvitedHostFromAnswers(db, { orgId: inv.org_id, userId });
   } else if (inv.platform_role) {
     if (inv.platform_role === "agency_super_admin") throw new InvitationError("Super Admin ownership cannot be granted through an invitation.");
     if (!(["agency_staff", "agency_manager"] as string[]).includes(inv.platform_role) || !inv.agency_scope_mode) {

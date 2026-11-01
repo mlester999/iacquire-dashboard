@@ -265,5 +265,136 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertIn('ENTRYPOINT ["/opt/iacquire-hermes/.venv/bin/python"', dockerfile)
 
 
+
+def mounts(service: dict) -> dict[str, tuple[str, str, bool]]:
+    """target -> (named volume or bind source, kind, read-only) for every mount of a Compose service."""
+    result: dict[str, tuple[str, str, bool]] = {}
+    for mount in service.get("volumes", []):
+        if isinstance(mount, dict):
+            result[mount["target"]] = (mount["source"], mount["type"], bool(mount.get("read_only")))
+        else:
+            source, target = mount.split(":")[:2]
+            result[target] = (source, "volume", False)
+    return result
+
+
+class ClientRuntimeLimitsAndPolicyTests(unittest.TestCase):
+    """The resource limits, restart policies, health checks and the exact set of mounts and networks are part of the isolation story, so they are pinned."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (ROOT / "compose.client.yaml").read_text(encoding="utf-8")
+        cls.compose = yaml.safe_load(cls.text)
+        cls.services = cls.compose["services"]
+        cls.hermes = cls.services["hermes-client"]
+        cls.worker = cls.services["hermes-provisioner"]
+
+    def test_resource_limits_are_set_on_both_long_running_services(self):
+        self.assertEqual((self.hermes["mem_limit"], self.hermes["cpus"], self.hermes["pids_limit"]), ("2g", 1.0, 256))
+        self.assertEqual((self.worker["mem_limit"], self.worker["cpus"], self.worker["pids_limit"]), ("512m", 0.5, 128))
+        self.assertEqual(self.hermes["stop_grace_period"], "60s")
+        self.assertEqual(self.worker["stop_grace_period"], "30s")
+
+    def test_both_long_running_services_restart_unless_an_operator_stopped_them(self):
+        self.assertEqual(self.hermes["restart"], "unless-stopped")
+        self.assertEqual(self.worker["restart"], "unless-stopped")
+        # The one-shot initialisers must never come back by themselves.
+        self.assertEqual(self.services["init-hermes-home"]["restart"], "no")
+        self.assertEqual(self.services["init-worker-home"]["restart"], "no")
+
+    def test_health_check_commands_and_timing(self):
+        health = self.hermes["healthcheck"]
+        self.assertEqual(health["test"][:3], ["CMD", "/opt/hermes/.venv/bin/python", "-c"])
+        self.assertIn("http://127.0.0.1:8642/health", health["test"][3])
+        worker_health = self.worker["healthcheck"]
+        self.assertEqual(worker_health["test"], ["CMD", "/opt/iacquire-hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py", "--healthcheck"])
+        for check in (health, worker_health):
+            self.assertEqual((check["interval"], check["timeout"], check["retries"], check["start_period"]), ("30s", "5s", 3, "90s"))
+        # The worker starts only once Hermes answers and the worker home exists.
+        self.assertEqual(self.worker["depends_on"]["hermes-client"]["condition"], "service_healthy")
+        self.assertEqual(self.worker["depends_on"]["init-worker-home"]["condition"], "service_completed_successfully")
+
+    def test_container_logs_rotate(self):
+        self.assertEqual(self.hermes["logging"], {"driver": "local", "options": {"max-size": "10m", "max-file": "3"}})
+        self.assertEqual(self.worker["logging"], {"driver": "local", "options": {"max-size": "5m", "max-file": "3"}})
+
+    def test_the_named_volume_set_is_exact(self):
+        self.assertEqual(set(self.compose["volumes"]), {"hermes_home", "client_profiles", "worker_home"})
+        hermes_mounts = mounts(self.hermes)
+        self.assertEqual(
+            {target: (kind, readonly) for target, (_, kind, readonly) in hermes_mounts.items()},
+            {
+                "/opt/data": ("volume", False),
+                "/opt/data/profiles": ("volume", False),
+                "/opt/data/config.yaml": ("bind", True),
+                "/run/secrets/hermes_api_key": ("bind", True),
+            },
+        )
+        self.assertEqual(hermes_mounts["/opt/data"][0], "hermes_home")
+        self.assertEqual(hermes_mounts["/opt/data/profiles"][0], "client_profiles")
+        worker_mounts = mounts(self.worker)
+        self.assertEqual(
+            {target: (kind, readonly) for target, (_, kind, readonly) in worker_mounts.items()},
+            {
+                "/opt/data": ("volume", False),
+                "/opt/data/profiles": ("volume", False),
+                "/opt/data/config.yaml": ("bind", True),
+                "/run/secrets/hermes_api_key": ("bind", True),
+                "/run/secrets/provisioner_token": ("bind", True),
+                "/run/secrets/profile_model_env.json": ("bind", True),
+            },
+        )
+        self.assertEqual(worker_mounts["/opt/data"][0], "worker_home")
+        self.assertEqual(worker_mounts["/opt/data/profiles"][0], "client_profiles")
+        # No bind mount reaches a host directory: every bind source is a variable naming one private file.
+        for service in (self.hermes, self.worker):
+            for source, kind, _ in mounts(service).values():
+                if kind == "bind":
+                    self.assertTrue(source.startswith("${"), source)
+
+    def test_the_network_set_is_exact_and_the_private_network_is_internal(self):
+        self.assertEqual(set(self.compose["networks"]), {"client_egress", "hermes_private"})
+        self.assertIs(self.compose["networks"]["hermes_private"]["internal"], True)
+        self.assertNotIn("internal", self.compose["networks"]["client_egress"])
+        self.assertEqual(self.hermes["networks"], ["client_egress", "hermes_private"])
+        # The worker has no network of its own: it shares the gateway's, so it reaches Hermes on loopback and the portal over that same egress.
+        self.assertEqual(self.worker["network_mode"], "service:hermes-client")
+        self.assertNotIn("networks", self.worker)
+        for name in ("init-hermes-home", "init-worker-home"):
+            self.assertEqual(self.services[name]["network_mode"], "none")
+
+    def test_no_service_publishes_a_port_or_gets_privileges(self):
+        for name, service in self.services.items():
+            self.assertNotIn("ports", service, name)
+            self.assertNotIn("privileged", service, name)
+            self.assertNotIn("pid", service, name)
+            self.assertNotIn("devices", service, name)
+            self.assertNotEqual(service.get("network_mode"), "host", name)
+            self.assertNotIn("docker.sock", str(service.get("volumes", [])), name)
+        for needle in ("docker.sock", "privileged", "\n    ports:"):
+            self.assertNotIn(needle, self.text)
+        self.assertEqual(self.worker["cap_drop"], ["ALL"])
+        self.assertNotIn("cap_add", self.worker)
+
+    def test_the_gateway_allows_one_concurrent_run(self):
+        config = yaml.safe_load((ROOT / "client-config.yaml.example").read_text(encoding="utf-8"))
+        self.assertEqual(config["gateway"]["api_server"]["max_concurrent_runs"], 1)
+        self.assertIs(config["gateway"]["multiplex_profiles"], True)
+
+    def test_the_workers_profile_ceiling_is_wired_from_the_env_file_to_the_container(self):
+        self.assertEqual(self.worker["environment"]["IACQUIRE_PROVISIONER_MAX_PROFILES"], "${IACQUIRE_PROVISIONER_MAX_PROFILES:-}")
+        self.assertNotIn("IACQUIRE_PROVISIONER_MAX_PROFILES", self.hermes["environment"])
+        env_example = (ROOT / "client.env.example").read_text(encoding="utf-8")
+        match = re.search(r"(?m)^IACQUIRE_PROVISIONER_MAX_PROFILES=([0-9]*)$", env_example)
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(int(match.group(1)), 1)
+
+    def test_no_secret_value_is_declared_inline_in_the_worker_environment(self):
+        for name, value in self.worker["environment"].items():
+            if "TOKEN" in name or "KEY" in name or "SECRET" in name:
+                self.assertTrue(name.endswith("_FILE"), name)
+                self.assertTrue(str(value).startswith("/run/secrets/"), name)
+
+
 if __name__ == "__main__":
     unittest.main()

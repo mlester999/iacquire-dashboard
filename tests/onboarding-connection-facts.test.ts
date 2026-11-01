@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { buildReviewModel, type ConnectionFacts } from "@/lib/onboarding/engine";
-import { connectionFacts } from "@/server/onboarding/connection-facts";
+import { connectionFacts, statedSender, statedSenderOf } from "@/server/onboarding/connection-facts";
 import type { Answers, StoredAnswers } from "@/lib/onboarding/types";
 import { createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { addMember, createOrg, createUser } from "./support/fixtures";
@@ -151,5 +151,35 @@ describe("the calendar line of the review agrees with the employee requirements"
     expect(await connected()).toBe(true);
     await run((db) => db.query("update organization_memberships set status = 'revoked' where org_id = $1 and user_id = $2", [c.org.id, c.people.owner.id]));
     expect(await connected()).toBe(false);
+  });
+});
+
+describe("the sender the client stated is a hint and nothing more", () => {
+  const answer = (orgId: string, id: string, value: unknown, extra = "") =>
+    run((db) => db.query(`insert into onboarding_answers (org_id, question_id, value${extra ? ", needs_confirmation, source" : ""}) values ($1, $2, $3::jsonb${extra ? ", true, 'website_analysis'" : ""})`, [orgId, id, JSON.stringify(value)]));
+
+  it("reads each channel's own answer, trimmed, and null when there is none or it is empty", () => {
+    const answers: Answers = { "c.channels": ["sms", "whatsapp", "email"], "c.sms_sender": "  +1 512 555 0100 ", "c.whatsapp_number": "   ", "c.email_sender": "hello@brightside.example" };
+    expect(statedSenderOf(answers, "sms")).toBe("+1 512 555 0100");
+    expect(statedSenderOf(answers, "whatsapp")).toBeNull();
+    expect(statedSenderOf(answers, "email")).toBe("hello@brightside.example");
+    expect(statedSenderOf({}, "email")).toBeNull();
+    expect(statedSenderOf({ "c.sms_sender": 5 as never }, "sms")).toBeNull();
+    expect(statedSenderOf({ "c.sms_sender": "9".repeat(500) }, "sms")!.length).toBe(200);
+  });
+
+  it("reads the stated sender from this workspace's confirmed answers only: another workspace's and an unconfirmed guess never count", async () => {
+    const a = await workspace("Sender A Co");
+    const b = await workspace("Sender B Co");
+    await answer(a.org.id, "c.channels", ["sms", "email"]);
+    await answer(a.org.id, "c.sms_sender", "+1 512 555 0100");
+    await answer(a.org.id, "c.email_sender", "guess@website.example", "unconfirmed");
+    await answer(b.org.id, "c.channels", ["sms"]);
+    expect(await run((db) => statedSender(db, a.org.id, "sms"))).toBe("+1 512 555 0100");
+    expect(await run((db) => statedSender(db, a.org.id, "email"))).toBeNull();
+    expect(await run((db) => statedSender(db, b.org.id, "sms"))).toBeNull();
+    // Reading it connects nothing: the connection facts still say the channel is off and unverified.
+    const f = await run((db) => connectionFacts(db, a.org.id));
+    expect(f.channels.sms).toEqual({ enabled: false, registration: "not_started" });
   });
 });

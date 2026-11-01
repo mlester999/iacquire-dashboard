@@ -3,18 +3,32 @@ import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { getWorkspace } from "@/server/crm/workspace";
-import { listPipelines } from "@/server/crm/pipelines";
+import { applyBlueprint, previewApplication } from "@/server/crm/blueprints/apply";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { agentId, ctxFor } from "./fixtures";
-import { crmOrg } from "./crm";
+import { agencyPeople, crmOrg } from "./crm";
 import { clearSetupPayment } from "./billing";
 import { makeRuntimeReady } from "./runtime-ready";
-import { insertPublishedBlueprint, smallContent } from "./blueprints";
+import { confirmation, insertPublishedBlueprint, smallContent } from "./blueprints";
 
 export const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
 export const WEEKDAYS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 17 * 60 }));
 
-/** The record an applied industry Blueprint leaves (the apply service has its own tests); the launch panel reads this record, not the Blueprint's contents. */
+/**
+ * Applies a REAL small Blueprint (a pipeline with stages, tags, a contact field, a configuration value, a template and a workflow) the way an agency Super Admin does: preview, then
+ * the confirmed apply. The launch panel judges the CRM from what this leaves in the workspace, so a test that uses it proves the real evidence, not a hand-made row. Needs the
+ * workspace's CRM to exist (getWorkspace) and must run before any employee is ready for work, because an apply starts the final checks of employees that already are.
+ */
+export async function applyRealBlueprint(orgId: string) {
+  const { superAdmin } = await agencyPeople();
+  const bp = await insertPublishedBlueprint(smallContent());
+  const options = { strategy: "add_missing" as const };
+  const preview = await previewApplication(superAdmin, orgId, { blueprintId: bp.blueprintId, version: bp.version, options });
+  const { application } = await applyBlueprint(superAdmin, orgId, { blueprintId: bp.blueprintId, version: bp.version, options, planDigest: preview.plan.digest, idempotencyKey: confirmation() });
+  return { blueprintId: bp.blueprintId, applicationId: application.id, status: application.status };
+}
+
+/** An EMPTY applied-Blueprint record, for the pure-panel tests that need "an application exists" and nothing more. The launch tests that prove the CRM use applyRealBlueprint. */
 export async function markBlueprintApplied(orgId: string) {
   const bp = await insertPublishedBlueprint(smallContent());
   await withSystem((db) => db.query(
@@ -38,8 +52,7 @@ export async function readyClient(opts: { name: string; timezone: string; notice
   await clearSetupPayment(c.org.id);
   const actor = c.actor("owner");
   await getWorkspace(actor);
-  await listPipelines(actor, { ensureDefault: true });
-  await markBlueprintApplied(c.org.id);
+  await applyRealBlueprint(c.org.id);
   await setHostAvailability(actor, owner.id, { timezone: opts.timezone, rules: WEEKDAYS });
   const calendar = await createCalendar(actor, { name: "Consultations", members: [{ userId: owner.id }], isDefault: true });
   await createAppointmentType(actor, calendar.id, { name: "Free consultation", durationMinutes: 30, minNoticeMinutes: opts.noticeMinutes ?? 60, maxDaysAhead: 30 });

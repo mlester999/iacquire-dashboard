@@ -21,6 +21,7 @@ import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
 import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { analyzeWebsite, digestAnalysis, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
 import { QUESTION_BY_ID, QUESTIONS, INDUSTRY_OPTIONS, questionOptions } from "@/lib/onboarding/definitions";
+import { workspaceEntitlements } from "@/server/entitlements";
 import {
   QUESTIONNAIRE_VERSION,
   buildReviewModel,
@@ -29,13 +30,17 @@ import {
   describeValue,
   effectiveAnswers,
   industryLabel,
+  isRequired,
   legacyToAnswers,
+  planAddOns,
+  planScope,
   resolveCurrentQuestion,
   submitCheck,
   toKnowledgeSections,
   toLegacyData,
   toMessagingPreferences,
   validateAnswer,
+  visibleQuestions,
   type Progress,
   type ReviewModel,
 } from "@/lib/onboarding/engine";
@@ -78,6 +83,15 @@ export interface WebsiteAnalysisSummary {
 }
 
 const WEBSITE_ANALYSIS_KEY = "x.website_analysis";
+
+/** The employees switched on for this workspace's plan: what the questionnaire adapts to (src/lib/onboarding/engine.ts planScope). */
+async function enabledRolesOf(db: Queryable, orgId: string): Promise<AgentRoleKey[]> {
+  const { rows } = await db.query<{ role_key: string }>(
+    "select a.role_key from agent_instances a join agent_roles r on r.key = a.role_key where a.org_id = $1 and a.enabled order by r.sort_order",
+    [orgId],
+  );
+  return rows.map((a) => a.role_key).filter(isAgentRoleKey);
+}
 
 const sectionIndex = (questionId: string) => Math.max(1, ONBOARDING_SECTIONS.findIndex((s) => s.id === QUESTION_BY_ID[questionId]?.section) + 1);
 
@@ -146,10 +160,8 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
       questionnaire_version: number; current_question_id: string | null; status: "draft" | "submitted"; revision: number; completed_at: Date | null; submitted_at: Date | null; submitted_snapshot: unknown;
     }>("select questionnaire_version, current_question_id, status, revision, completed_at, submitted_at, submitted_snapshot from onboarding_responses where org_id = $1", [orgId]);
     const s = sessionRows[0];
-    const { rows: agents } = await db.query<{ role_key: string }>(
-      "select a.role_key from agent_instances a join agent_roles r on r.key = a.role_key where a.org_id = $1 and a.enabled order by r.sort_order",
-      [orgId],
-    );
+    const enabledRoles = await enabledRolesOf(db, orgId);
+    const scope = planScope(enabledRoles);
     const stored = toStored(rows);
     const analysisRow = rows.find((r) => r.question_id === WEBSITE_ANALYSIS_KEY);
     const newest = rows.filter((r) => QUESTION_BY_ID[r.question_id]).reduce<number>((n, r) => Math.max(n, new Date(r.updated_at).getTime()), 0);
@@ -160,13 +172,13 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
       questionnaireVersion: s?.questionnaire_version ?? 1,
       status: s?.status ?? "draft",
       revision: s?.revision ?? 0,
-      currentQuestionId: resolveCurrentQuestion(stored, s?.current_question_id),
+      currentQuestionId: resolveCurrentQuestion(stored, s?.current_question_id, scope),
       answers: stored,
-      progress: computeProgress(stored),
+      progress: computeProgress(stored, scope),
       completedAt: s?.completed_at ? new Date(s.completed_at).toISOString() : null,
       submittedAt: submittedAt?.toISOString() ?? null,
       hasUnsubmittedChanges: Boolean(submittedAt && newest > appliedAt),
-      enabledRoles: agents.map((a) => a.role_key).filter(isAgentRoleKey),
+      enabledRoles,
       websiteAnalysis: analysisRow ? summarizeAnalysis(analysisRow.value as StoredAnalysis, stored) : null,
     } satisfies OnboardingSession;
   });
@@ -209,8 +221,9 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
   return withUser(ctx.user.id, async (db) => {
     const orgId = ctx.org.orgId;
     const existing = toStored(await loadAnswerRows(db, orgId));
+    const scope = planScope(await enabledRolesOf(db, orgId));
     // Dynamic options (appointment goals depend on industry) validate against the answers as they will be after this save.
-    const merged: Answers = effectiveAnswers(existing);
+    const merged: Answers = effectiveAnswers(existing, scope);
     for (const id of ids) {
       const a = input.answers[id];
       if (a.skipped) delete merged[id];
@@ -222,7 +235,7 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
       const q = QUESTION_BY_ID[id];
       const a = input.answers[id];
       if (a.skipped) {
-        if (q.required) {
+        if (isRequired(q, merged)) {
           rejected[id] = "This question is required.";
           continue;
         }
@@ -251,7 +264,7 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
       await db.query("update onboarding_answers set value = 'false'::jsonb where org_id = $1 and question_id = 'f.review' and value = 'true'::jsonb", [orgId]);
     }
     const stored = toStored(await loadAnswerRows(db, orgId));
-    const position = resolveCurrentQuestion(stored, input.currentQuestionId ?? null);
+    const position = resolveCurrentQuestion(stored, input.currentQuestionId ?? null, scope);
     const { rows } = await db.query<{ revision: number }>(
       `insert into onboarding_responses (org_id, current_step, questionnaire_version, current_question_id, revision, updated_by)
        values ($1, $2, $3, $4, 1, $5)
@@ -265,7 +278,7 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
       revision,
       savedAt: new Date().toISOString(),
       currentQuestionId: position,
-      progress: computeProgress(stored),
+      progress: computeProgress(stored, scope),
       staleBase: input.baseRevision !== undefined && revision - 1 !== input.baseRevision,
       rejected,
     };
@@ -287,8 +300,8 @@ export async function listOnboardingFiles(ctx: OrgContext) {
 
 export async function getOnboardingReview(ctx: OrgContext): Promise<ReviewModel> {
   const session = await getOnboardingSession(ctx);
-  const facts = await withSystem((db) => connectionFacts(db, ctx.org.orgId));
-  return buildReviewModel(session.answers, facts, session.enabledRoles);
+  const { facts, entitlements } = await withSystem(async (db) => ({ facts: await connectionFacts(db, ctx.org.orgId), entitlements: await workspaceEntitlements(db, ctx.org.orgId) }));
+  return buildReviewModel(session.answers, facts, session.enabledRoles, planScope(session.enabledRoles), planAddOns(entitlements));
 }
 
 // ---------------------------------------------------------------------------
@@ -394,8 +407,9 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
   const burst = await consumeRateLimit({ name: "onboarding:assist:user", limit: 8, windowSeconds: 60 }, `${ctx.org.orgId}:${ctx.user.id}`);
   if (!burst.allowed) throw new AppError("rate_limited", "Please wait a minute before requesting another suggestion.", { retryAfterSeconds: burst.retryAfterSeconds });
   const session = await getOnboardingSession(ctx);
-  const answers = confirmedAnswers(session.answers);
-  if (q.show && !q.show(answers)) throw new AppError("invalid_input", "This question isn't part of your current setup.");
+  const scope = planScope(session.enabledRoles);
+  const answers = confirmedAnswers(session.answers, scope);
+  if (!visibleQuestions(answers, scope).some((v) => v.id === q.id)) throw new AppError("invalid_input", "This question isn't part of your current setup.");
   for (const [id, value] of Object.entries(input.clarifications)) {
     if (!plan.ask.includes(id)) throw new AppError("invalid_input", "Those details don't belong to this question.");
     if (value) answers[id] = value; // Explicit user details for this request, never persisted as answers.
@@ -854,9 +868,10 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and managers can complete company setup.");
   if (!ctx.user.emailVerified) throw new AppError("forbidden", "Verify your email before activating your AI team.");
   const session = await getOnboardingSession(ctx);
-  const check = submitCheck(session.answers);
+  const scope = planScope(session.enabledRoles);
+  const check = submitCheck(session.answers, scope);
   if (!check.canSubmit) throw new AppError("invalid_input", check.blockers[0] ?? "Finish the remaining questions first.");
-  const confirmed = confirmedAnswers(session.answers);
+  const confirmed = confirmedAnswers(session.answers, scope);
   const data = toLegacyData(confirmed, session.enabledRoles);
   const firstSubmission = !session.completedAt;
   const approvedKnowledge = firstSubmission ? await withUser(ctx.user.id, async (db) => {

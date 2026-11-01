@@ -4,6 +4,7 @@ import { requireAgency, agencyCanAccessOrg } from "@/server/tenancy/context";
 import { withSystem } from "@/server/db";
 import { env } from "@/server/env";
 import { recordAudit } from "@/server/audit";
+import { statedSender } from "@/server/onboarding/connection-facts";
 import { listChannelStatus } from "@/server/messaging/channels";
 import { twilioWebhookUrl } from "@/server/messaging/transports/twilio";
 import { RESEND_REQUIRED_EVENTS } from "@/server/messaging/transports/resend";
@@ -26,6 +27,12 @@ export default async function ClientCommunicationsPage({ params }: { params: Pro
   const org = await withSystem((db) => db.query<{ name: string }>("select name from organizations where id = $1 and kind = 'client'", [id]));
   if (!org.rows[0]) notFound();
   const channels = await listChannelStatus(id);
+  // What the client said in the questionnaire, shown beside each channel so the sender is not asked for twice.
+  const statedSenders = await withSystem(async (db) => ({
+    sms: await statedSender(db, id, "sms"),
+    whatsapp: await statedSender(db, id, "whatsapp"),
+    email: await statedSender(db, id, "email"),
+  }));
   await recordAudit({ orgId: id, actorUserId: user.id, actorKind: "agency", action: "messaging.channel_setup_viewed", targetType: "organization", targetId: id, result: "success" });
   const e = env();
   const base = e.APP_URL.replace(/\/+$/, "");
@@ -53,7 +60,7 @@ export default async function ClientCommunicationsPage({ params }: { params: Pro
         tone="neutral"
         description="Choose the provider for each channel, store its credential in the vault, test it, then switch it on. Credentials are replace-only: once saved they are never shown again, to anyone."
       />
-      <AgencyChannelSetup orgId={id} channels={JSON.parse(JSON.stringify(channels))} webhooks={webhooks} superAdmin={user.platformRole === "agency_super_admin"} timeZone={user.timezone} />
+      <AgencyChannelSetup orgId={id} channels={JSON.parse(JSON.stringify(channels))} webhooks={webhooks} superAdmin={user.platformRole === "agency_super_admin"} timeZone={user.timezone} statedSenders={statedSenders} />
     </div>
   );
 }

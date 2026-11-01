@@ -5,7 +5,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { SetupPaymentLine } from "@/components/setup/setup-payment-line";
 import { ReviewPanel } from "@/components/onboarding/review-panel";
 import { WorkforceGallery } from "@/components/workforce/gallery";
-import { buildReviewModel, type ConnectionFacts } from "@/lib/onboarding/engine";
+import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { buildReviewModel, planAddOns, planScope, type ConnectionFacts } from "@/lib/onboarding/engine";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import { SETUP_PAYMENT_CONFIRMED, SETUP_PAYMENT_WAITING, setupPaymentLine } from "@/lib/onboarding/setup-payment-line";
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
@@ -121,5 +122,48 @@ describe("the employee cards while Setup required", () => {
     const paused = cards.find((c) => within(c).queryByText("Paused"));
     expect(paused).toBeTruthy();
     expect(within(paused!).queryByText(/Setup required:/)).toBeNull();
+  });
+});
+
+describe("the review's plan", () => {
+  const answers: StoredAnswers = Object.fromEntries(
+    Object.entries({ "a.business_name": "Plan Co", "a.industry": "healthcare", "a.business_model": "local" } as Record<string, AnswerValue>).map(([id, value]) => [id, { value, source: "user" as const, skipped: false, needsConfirmation: false, updatedAt: "2026-10-21T04:00:00Z" }]),
+  );
+  const facts: ConnectionFacts = {
+    crmLinked: false, aiEmployeesVerified: 0, aiEmployeesTotal: 6, automationMapped: false,
+    channels: { sms: { enabled: false, registration: "not_started" }, whatsapp: { enabled: false, registration: "not_started" }, email: { enabled: false, registration: "not_started" } },
+    calendarConnected: false, websiteDomainVerified: false, invitedStaff: 0,
+  };
+  const show = (roles: readonly AgentRoleKey[], studio = false) =>
+    render(<ReviewPanel review={buildReviewModel(answers, facts, [...roles], planScope(roles), planAddOns({ studio: { entitled: studio, reason: "Automation Studio is part of the optional Managed Maintenance plan." }, managedStorage: studio }))} loading={false} error={null} confirmed={false} submitting={false} alreadySubmitted={false} onRetry={() => {}} onEdit={() => {}} onConfirmChange={() => {}} onSubmit={() => {}} hideSubmit />);
+
+  it("says five for a plan that leaves one employee out, names the one that is not part of it, and does not say six", () => {
+    show(AGENT_ROLE_KEYS.filter((r) => r !== "sales_assistant"));
+    const plan = screen.getByRole("region", { name: "What your plan includes" });
+    expect(plan.textContent).toContain("Your plan includes five of the six AI employees.");
+    expect(plan.textContent).toMatch(/AI Sales Assistant: not part of your plan, so it does not hold up launch/);
+    expect(within(plan).getAllByRole("listitem").length).toBeGreaterThanOrEqual(6);
+    expect(screen.getByRole("heading", { name: "How your five AI employees will be set up" })).toBeTruthy();
+    expect(screen.queryByText(/six AI employees will be set up/)).toBeNull();
+    expect(screen.getByText("Create and verify your five AI employees")).toBeTruthy();
+  });
+
+  it("says six for the full plan", () => {
+    show(AGENT_ROLE_KEYS);
+    expect(screen.getByRole("region", { name: "What your plan includes" }).textContent).toContain("Your plan includes all six AI employees.");
+    expect(screen.getByRole("heading", { name: "How your six AI employees will be set up" })).toBeTruthy();
+  });
+
+  it("shows the paid extras as information, included only when the plan has them", () => {
+    const { unmount } = show(AGENT_ROLE_KEYS, false);
+    let plan = screen.getByRole("region", { name: "What your plan includes" });
+    expect(within(plan).getAllByText("Not included")).toHaveLength(2);
+    expect(plan.textContent).toContain("Automation Studio");
+    expect(plan.textContent).toContain("Your CRM, inbox, booking and website are not part of any plan limit.");
+    unmount();
+    show(AGENT_ROLE_KEYS, true);
+    plan = screen.getByRole("region", { name: "What your plan includes" });
+    expect(within(plan).getAllByText("Included")).toHaveLength(2);
+    expect(within(plan).queryByText("Not included")).toBeNull();
   });
 });

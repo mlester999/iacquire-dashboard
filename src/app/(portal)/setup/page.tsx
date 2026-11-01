@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { ClipboardCheck } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getClientSetupSnapshot } from "@/server/setup/snapshots";
@@ -10,6 +11,7 @@ import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { crmOwners } from "@/server/setup/native-evidence";
+import { CALENDAR_NOTICE_COOKIE, calendarNoticeFor } from "@/server/calendars/connections";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { firstName } from "@/lib/utils";
@@ -69,11 +71,13 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
   // The one honest launch state, from the workspace's own records. If it cannot be read the checklist below still works and nothing is claimed.
   const launch = await getLaunchReadiness(ctx).catch(() => null);
+  // A Google or Microsoft sign-in that started from this page comes back here with one short message in a cookie that names this page. The panel shows it once and clears the cookie; a message left for a CRM page is not shown here.
+  const calendarNotice = calendarNoticeFor((await cookies()).get(CALENDAR_NOTICE_COOKIE)?.value, "setup");
   return (
     <>
       {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} />}
       <SetupPaymentLine cleared={paymentCleared} billingHref={ctx.can("billing.view") ? "/settings/billing" : null} />
-      {launch && <LaunchReadinessPanel readiness={launch} />}
+      {launch && <LaunchReadinessPanel readiness={launch} calendarNotice={calendarNotice ? { ok: calendarNotice.kind === "success", text: calendarNotice.message } : null} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
+import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
@@ -9,6 +10,7 @@ import {
   type CalendarCheckFact,
   type CalendarFacts,
   type ChannelFact,
+  type CrmBlueprintFact,
   type EmployeeFact,
   type LaunchFacts,
   type LaunchReadiness,
@@ -20,6 +22,9 @@ import type { Answers } from "@/lib/onboarding/types";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { verifyCalendarInTx } from "@/server/calendars/activation";
+import { MAX_PROVISIONING_ATTEMPTS } from "@/lib/provisioning-failure";
+import { actualDataModel, blueprintEvidence, loadBlueprintState, manifestEvidence } from "@/server/setup/native-evidence";
+import { statedSenderOf } from "@/server/onboarding/connection-facts";
 import { listAgents, listAgentsForSystem, type AgentInstanceRow } from "@/server/workforce/service";
 import { loadWorkspaceFacts } from "@/server/workforce/readiness-facts";
 
@@ -34,8 +39,57 @@ async function answersOf(db: Queryable, orgId: string): Promise<Answers> {
   return confirmedAnswers(toStored(await loadAnswerRows(db, orgId)));
 }
 
-/** The attempts a job gets before a person decides (the worker's claim stops at the same number). */
-const MAX_PROVISIONING_ATTEMPTS = 3;
+type CrmFacts = Pick<LaunchFacts["crm"], "blueprint" | "blueprintSummary" | "automaticSetup" | "pipelineReady" | "records">;
+
+/** At least two non-archived stages, one of them open, in a non-archived native pipeline. The questionnaire's employee requirements only ask for the open stage; the launch asks for a usable board. */
+const USABLE_PIPELINE_SQL = `select exists (
+  select 1 from crm_pipelines p
+   where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
+     and (select count(*) from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null) >= 2
+     and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null and s.kind = 'open')
+) as ok`;
+
+/**
+ * The industry CRM setup of a native workspace, judged from the Blueprint evidence (the agency's own check): done only when the newest application of every live Blueprint
+ * finished and every record it created is still in the CRM. With no application at all, the newest automatic-setup audit row says whether the automation is waiting for a person
+ * or failed; any application (or a rollback) outranks an older audit row, because it is the record of what really happened to the CRM.
+ */
+async function crmFacts(db: Queryable, orgId: string): Promise<CrmFacts> {
+  const state = await loadBlueprintState(db, orgId);
+  const evidence = blueprintEvidence(state);
+  const actual = await actualDataModel(db, orgId);
+  const manifest = manifestEvidence(state, actual);
+  const pipelineReady = (await db.query<{ ok: boolean }>(USABLE_PIPELINE_SQL, [orgId])).rows[0]?.ok === true;
+  const automaticSetup = env().CLIENT_CRM_AUTO_SETUP_ENABLED;
+
+  let blueprint: CrmBlueprintFact;
+  let summary: string | null = null;
+  if (!state.latest.length) {
+    const last = (await db.query<{ action: string }>(
+      "select action from audit_logs where org_id = $1 and action in ('crm.auto_setup_applied', 'crm.auto_setup_failed', 'crm.auto_setup_waiting_for_person') order by created_at desc, id desc limit 1",
+      [orgId],
+    )).rows[0]?.action;
+    if (last === "crm.auto_setup_waiting_for_person") blueprint = "waiting_for_a_person";
+    else if (last === "crm.auto_setup_failed") {
+      blueprint = "failed";
+      summary = "The automatic setup of your industry CRM did not finish. iAcquire will review it and apply it. Nothing is needed from you.";
+    } else blueprint = "none";
+  } else if (!state.live.length) {
+    // The newest application failed or was rolled back: either way nothing from it is in the CRM, and iAcquire has to apply it again.
+    blueprint = "failed";
+    summary = evidence.summary;
+  } else if (evidence.missing.length || manifest.status === "failed") {
+    blueprint = "missing_records";
+    summary = evidence.missing.length ? evidence.summary : manifest.summary;
+  } else if (evidence.status !== "verified") {
+    blueprint = "partial";
+    summary = evidence.summary;
+  } else {
+    blueprint = "verified";
+  }
+  const recordsState = manifest.status === "failed" ? "missing" : blueprint === "verified" ? "in_place" : "pending";
+  return { blueprint, blueprintSummary: summary, automaticSetup, pipelineReady, records: { state: recordsState, tags: actual.tags, contactFields: actual.contactFields, forms: actual.forms } };
+}
 
 /**
  * A failed attempt is "failed" for a person only when no retry is coming: all attempts used, or no retry time. A transient failure (the model provider or the network was
@@ -73,8 +127,9 @@ async function calendarFacts(db: Queryable, orgId: string): Promise<CalendarFact
       where cm.calendar_id = $1 and cm.org_id = $2 and cm.active`,
     [cal.id, orgId],
   )).rows[0];
-  const types = (await db.query<{ total: number; video: boolean }>(
-    `select count(*)::int as total, coalesce(bool_or(meeting_provider in ('google_meet', 'microsoft_teams')), false) as video
+  const types = (await db.query<{ total: number; video: boolean; google: boolean; microsoft: boolean }>(
+    `select count(*)::int as total, coalesce(bool_or(meeting_provider in ('google_meet', 'microsoft_teams')), false) as video,
+            coalesce(bool_or(meeting_provider = 'google_meet'), false) as google, coalesce(bool_or(meeting_provider = 'microsoft_teams'), false) as microsoft
        from crm_appointment_types where calendar_id = $1 and org_id = $2 and archived_at is null`,
     [cal.id, orgId],
   )).rows[0];
@@ -92,7 +147,7 @@ async function calendarFacts(db: Queryable, orgId: string): Promise<CalendarFact
   }
   return {
     id: cal.id, status: cal.status, hosts: total, hostsWithHours: withHours, hasSuggestedHours: cal.suggested, types: types?.total ?? 0,
-    needsVideoConnection: types?.video === true, checks, bookingPageOn: cal.public,
+    needsVideoConnection: types?.video === true, videoProviders: [...(types?.google ? ["google" as const] : []), ...(types?.microsoft ? ["microsoft" as const] : [])], checks, bookingPageOn: cal.public,
   };
 }
 
@@ -140,6 +195,12 @@ function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { sta
       entitled: agent.enabled,
       provisioning: provisioningOf(job?.status ?? null, job?.attempts ?? null, job?.nextRetryAt ?? null),
       provisioningDetail: job?.detail ?? null,
+      attempts: job?.attempts ?? 0,
+      maxAttempts: MAX_PROVISIONING_ATTEMPTS,
+      nextRetryAt: job?.nextRetryAt ? new Date(job.nextRetryAt).toISOString() : null,
+      // Only a check that ran and said no: "not checked yet" (null) is waiting, not failing.
+      healthFailed: agent.last_health_ok === false,
+      healthDetail: agent.last_health_detail,
       readiness: { state: readiness.state, chatAvailable: readiness.chatAvailable, workReady: readiness.workReady, description: readiness.description, blocking: readiness.blocking.map((b) => b.label) },
       heldForReview: held.has(role),
       configVersion: agent.config_version,
@@ -174,13 +235,17 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     const answers = await answersOf(db, orgId);
     const workspace = await loadWorkspaceFacts(db, orgId);
     const mode = (await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native";
-    const blueprint = Number((await db.query<{ n: string }>("select count(*) as n from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied')", [orgId])).rows[0]?.n ?? 0) > 0;
+    const crm = mode === "native" ? await crmFacts(db, orgId) : null;
     const providerConnected = Number((await db.query<{ n: string }>("select count(*) as n from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null", [orgId])).rows[0]?.n ?? 0) > 0;
     const calendar = mode === "ghl" ? null : await calendarFacts(db, orgId);
     const externalCalendarConnected = mode === "native"
       ? Number((await db.query<{ n: string }>("select count(*) as n from crm_calendar_connections where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0
       : Number((await db.query<{ n: string }>("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0;
-    const channelRows = (await db.query<{ channel: ChannelFact["channel"]; enabled: boolean; registration_status: string }>("select channel, enabled, registration_status from messaging_channels where org_id = $1", [orgId])).rows;
+    const channelRows = (await db.query<{ channel: ChannelFact["channel"]; enabled: boolean; registration_status: string; credential: boolean }>(
+      `select mc.channel, mc.enabled, mc.registration_status, (c.id is not null and c.revoked_at is null) as credential
+         from messaging_channels mc left join integration_credentials c on c.id = mc.credential_id where mc.org_id = $1`,
+      [orgId],
+    )).rows;
     const jobs = new Map<AgentRoleKey, { status: string | null; detail: string | null; attempts: number | null; nextRetryAt: Date | string | null }>();
     for (const r of (await db.query<{ role: AgentRoleKey; status: string | null; detail: string | null; attempt_count: number | null; next_retry_at: Date | string | null }>(
       `select distinct on (a.role_key) a.role_key as role, j.status, j.detail, j.attempt_count, j.next_retry_at
@@ -195,10 +260,10 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     )).rows.map((r) => r.role));
     const paymentCleared = org.is_demo ? null : await isSetupPaymentCleared(db, orgId);
     const verification = await verificationFacts(db, orgId);
-    return { org, answers, workspace, mode, blueprint, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification };
+    return { org, answers, workspace, mode, crm, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification };
   });
   if (!read) return null;
-  const { org, answers, workspace, mode, blueprint, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification } = read;
+  const { org, answers, workspace, mode, crm, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification } = read;
 
   const wantedChannels = Array.isArray(answers["c.channels"]) ? (answers["c.channels"] as string[]) : [];
   // A booking calendar that is already taking bookings answers "do you book appointments?" even if the questionnaire was never asked.
@@ -217,11 +282,14 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
       timezoneAnswered,
     },
     knowledge: { approved: workspace.knowledge?.supplied ?? 0, pending: workspace.knowledge?.heldForReview ?? 0 },
-    crm: { mode, blueprintApplied: blueprint, pipelineReady: workspace.pipelineReady, providerConnected },
+    crm: crm ? { mode, ...crm, providerConnected } : { mode, blueprint: "none", pipelineReady: workspace.pipelineReady, providerConnected },
     appointments: { wanted: wantsAppointments, calendar, externalCalendarConnected },
     channels: CHANNELS.map((channel): ChannelFact => {
       const row = channelRows.find((r) => r.channel === channel);
-      return { channel, wanted: wantedChannels.includes(channel), enabled: row?.enabled ?? false, registration: row?.registration_status ?? "not_started" };
+      return {
+        channel, wanted: wantedChannels.includes(channel), enabled: row?.enabled ?? false, registration: row?.registration_status ?? "not_started",
+        statedSender: statedSenderOf(answers, channel), credentialStored: row?.credential ?? false,
+      };
     }),
     employees: employeeFacts(agents, jobs, held, paymentCleared),
     verification,

@@ -124,7 +124,9 @@ services:
       args:
         HERMES_BASE_IMAGE: ${HERMES_BASE_IMAGE:?Set a reviewed Hermes image digest}
     profiles: [provisioner]
-    restart: on-failure:3
+    # Not on-failure:3: the worker survives a Hermes outage on its own (start-up wait, heartbeat) and exits non-zero only to be restarted into a fresh network namespace
+    # or after the portal refused its token, so Docker must always bring it back unless an operator stopped it.
+    restart: unless-stopped
     user: "10000:10000"
     read_only: true
     init: true
@@ -134,6 +136,8 @@ services:
       HERMES_PROVISIONER_API_BASE: http://127.0.0.1:8642
       IACQUIRE_PROVISIONER_URL: ${IACQUIRE_PROVISIONER_URL:?Set the iAcquireOS HTTPS origin}
       IACQUIRE_PROVISIONER_GATEWAY_ID: ${IACQUIRE_PROVISIONER_GATEWAY_ID:?Set the pinned gateway UUID}
+      # The worker's own ceiling on client profiles; empty means no ceiling here (the portal's gate still applies).
+      IACQUIRE_PROVISIONER_MAX_PROFILES: ${IACQUIRE_PROVISIONER_MAX_PROFILES:-}
       IACQUIRE_PROVISIONER_TOKEN_FILE: /run/secrets/provisioner_token
       HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE: /run/secrets/hermes_api_key
       IACQUIRE_PROFILE_MODEL_ENV_FILE: /run/secrets/profile_model_env.json

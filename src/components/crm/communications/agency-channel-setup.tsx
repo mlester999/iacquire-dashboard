@@ -101,10 +101,18 @@ interface Props {
   webhooks: Record<Channel, WebhookInfo>;
   superAdmin: boolean;
   timeZone: string;
+  /**
+   * What the client wrote as the sender of each channel in their questionnaire (read with statedSender in src/server/onboarding/connection-facts.ts). A hint for the person
+   * setting the channel up: it fills an empty sender field and is shown as "the client said", and it is never saved or counted as verified until the provider test passes.
+   */
+  statedSenders?: Partial<Record<Channel, string | null>>;
 }
 
+/** The note that goes with a stated sender wherever it is shown. */
+const STATED_NOTE = "Not verified: it counts only after the provider's capability test passes.";
+
 /** Per-channel provider setup for one client. Read-only for staff; super admins store credentials, test, switch on and off, and move back to GoHighLevel. */
-export function AgencyChannelSetup({ orgId, channels, webhooks, superAdmin, timeZone }: Props) {
+export function AgencyChannelSetup({ orgId, channels, webhooks, superAdmin, timeZone, statedSenders }: Props) {
   const [editing, setEditing] = React.useState<Channel | null>(null);
   const ordered = ORDER.map((c) => channels.find((x) => x.channel === c)).filter((c): c is ChannelStatus => Boolean(c));
   return (
@@ -115,16 +123,16 @@ export function AgencyChannelSetup({ orgId, channels, webhooks, superAdmin, time
       <ul className="grid gap-4 xl:grid-cols-3" aria-label="Channels">
         {ordered.map((c) => (
           <li key={c.channel}>
-            <ChannelSetupCard orgId={orgId} c={c} webhook={webhooks[c.channel]} superAdmin={superAdmin} timeZone={timeZone} onEdit={() => setEditing(c.channel)} />
+            <ChannelSetupCard orgId={orgId} c={c} webhook={webhooks[c.channel]} superAdmin={superAdmin} timeZone={timeZone} stated={statedSenders?.[c.channel] ?? null} onEdit={() => setEditing(c.channel)} />
           </li>
         ))}
       </ul>
-      {editing && <SetupDialog orgId={orgId} c={ordered.find((x) => x.channel === editing)!} onClose={() => setEditing(null)} />}
+      {editing && <SetupDialog orgId={orgId} c={ordered.find((x) => x.channel === editing)!} stated={statedSenders?.[editing] ?? null} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: { orgId: string; c: ChannelStatus; webhook: WebhookInfo; superAdmin: boolean; timeZone: string; onEdit: () => void }) {
+function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, stated, onEdit }: { orgId: string; c: ChannelStatus; webhook: WebhookInfo; superAdmin: boolean; timeZone: string; stated: string | null; onEdit: () => void }) {
   const { run, busy } = useCrmAction();
   // The run just made, tied to the setup it tested: after "Edit setup", "Back to GoHighLevel" or a newer stored result it no longer shows.
   const [lastRun, setLastRun] = React.useState<TestRun | null>(null);
@@ -154,6 +162,12 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
       <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
         <dt className="text-muted">Sender</dt>
         <dd className="min-w-0 truncate">{c.senderIdentity ?? <span className="text-muted">Not set</span>}</dd>
+        {stated && senderAddress(c.channel, stated) !== senderAddress(c.channel, c.senderIdentity) && (
+          <>
+            <dt className="text-muted">Client said</dt>
+            <dd className="min-w-0"><span className="break-words">{stated}</span> <span className="text-muted">{STATED_NOTE}</span></dd>
+          </>
+        )}
         {c.native && (
           <>
             <dt className="text-muted">Sender id</dt>
@@ -264,12 +278,13 @@ function ChannelSetupCard({ orgId, c, webhook, superAdmin, timeZone, onEdit }: {
 }
 
 /** The provider form for one channel. Secret fields are password inputs that start empty and are never filled from the server. */
-function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; onClose: () => void }) {
+function SetupDialog({ orgId, c, stated, onClose }: { orgId: string; c: ChannelStatus; stated: string | null; onClose: () => void }) {
   const { run, busy } = useCrmAction();
   const native = NATIVE[c.channel];
   const same = c.native && c.provider === native.provider;
   const keepable = same && c.credentialStored;
-  const [senderIdentity, setSenderIdentity] = React.useState(same ? c.senderIdentity ?? "" : "");
+  // The client's own words fill an empty field only. They are a starting point for the person who enters the sender; saving and the provider test are what make it real.
+  const [senderIdentity, setSenderIdentity] = React.useState((same ? c.senderIdentity ?? "" : "") || stated || "");
   const [senderId, setSenderId] = React.useState(same ? c.senderId ?? "" : "");
   const [accountId, setAccountId] = React.useState(same ? c.accountId ?? "" : "");
   const [inboundAddress, setInboundAddress] = React.useState(same ? c.inboundAddress ?? "" : "");
@@ -308,6 +323,7 @@ function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; o
     if (ok) onClose();
   }
 
+  const statedHint = stated ? ` The client said: ${stated}. ${STATED_NOTE}` : "";
   const secretHint = keepable ? "A credential is stored. Leave this empty to keep it; anything you type replaces it." : "Stored encrypted in the credential vault. It's never shown again.";
   const description = !c.enabled
     ? "Saving stores the sender and (if you typed one) the credential. A new or changed setup needs a passing capability test before it can be switched on."
@@ -334,7 +350,7 @@ function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; o
             <Field label="Resend API key" htmlFor="cs-secret" hint={`${secretHint} ${RESEND_ACCOUNT_NOTE}`}>
               <Input id="cs-secret" type="password" autoComplete="new-password" spellCheck={false} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={keepable ? "Stored: leave empty to keep" : "re_…"} maxLength={4096} />
             </Field>
-            <Field label="From address" htmlFor="cs-identity" hint="What customers see, for example Mango Clinic <hello@mangoclinic.com>. Its domain must be verified in Resend.">
+            <Field label="From address" htmlFor="cs-identity" hint={`What customers see, for example Mango Clinic <hello@mangoclinic.com>. Its domain must be verified in Resend.${statedHint}`}>
               <Input id="cs-identity" value={senderIdentity} onChange={(e) => setSenderIdentity(e.target.value)} maxLength={200} />
             </Field>
             <Field label="Resend domain id" htmlFor="cs-sender" hint="Resend, Domains, then the domain: its id.">
@@ -364,7 +380,7 @@ function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; o
             <Field label="Messaging Service SID or number" htmlFor="cs-sender" hint="MG… for a Messaging Service, or the Twilio number in international format.">
               <Input id="cs-sender" value={senderId} onChange={(e) => setSenderId(e.target.value.trim())} spellCheck={false} maxLength={200} className="font-mono" />
             </Field>
-            <Field label="Number customers see" htmlFor="cs-identity" hint="International format, for example +639171234567.">
+            <Field label="Number customers see" htmlFor="cs-identity" hint={`International format, for example +639171234567.${statedHint}`}>
               <Input id="cs-identity" type="tel" value={senderIdentity} onChange={(e) => setSenderIdentity(e.target.value)} maxLength={200} />
             </Field>
           </>
@@ -380,7 +396,7 @@ function SetupDialog({ orgId, c, onClose }: { orgId: string; c: ChannelStatus; o
             <Field label="Phone number ID" htmlFor="cs-sender" hint="WhatsApp Manager, Phone numbers: the number's id (digits only), not the number itself.">
               <Input id="cs-sender" value={senderId} onChange={(e) => setSenderId(e.target.value.trim())} inputMode="numeric" maxLength={200} className="font-mono" />
             </Field>
-            <Field label="WhatsApp number customers see" htmlFor="cs-identity" hint="International format.">
+            <Field label="WhatsApp number customers see" htmlFor="cs-identity" hint={`International format.${statedHint}`}>
               <Input id="cs-identity" type="tel" value={senderIdentity} onChange={(e) => setSenderIdentity(e.target.value)} maxLength={200} />
             </Field>
           </>

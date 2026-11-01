@@ -8,7 +8,7 @@ export type LaunchPreviewView = "unpaid" | "working" | "action" | "review" | "re
 export const LAUNCH_PREVIEW_VIEWS: readonly LaunchPreviewView[] = ["unpaid", "working", "action", "review", "ready"];
 
 const employee = (role: AgentRoleKey, over: Partial<EmployeeFact> = {}): EmployeeFact => ({
-  role, entitled: true, provisioning: "succeeded", provisioningDetail: null, heldForReview: false, configVersion: 3,
+  role, entitled: true, provisioning: "succeeded", provisioningDetail: null, attempts: 1, maxAttempts: 3, nextRetryAt: null, healthFailed: false, healthDetail: null, heldForReview: false, configVersion: 3,
   readiness: { state: "ready", chatAvailable: true, workReady: true, description: "Ready for authorized work.", blocking: [] },
   ...over,
 });
@@ -22,9 +22,9 @@ function base(): LaunchFacts {
     submitted: true, paymentCleared: true, canOpenBilling: true,
     profile: { companyName: true, industry: true, description: true, timezone: "America/Chicago", timezoneAnswered: true },
     knowledge: { approved: 5, pending: 0 },
-    crm: { mode: "native", blueprintApplied: true, pipelineReady: true, providerConnected: false },
+    crm: { mode: "native", blueprint: "verified", pipelineReady: true, records: { state: "in_place", tags: 12, contactFields: 8, forms: 2 }, providerConnected: false },
     appointments: { wanted: true, calendar: calendar(), externalCalendarConnected: false },
-    channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required" }, { channel: "sms", wanted: false, enabled: false, registration: "not_started" }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
+    channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: false, enabled: false, registration: "not_started" }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
     employees: AGENT_ROLE_KEYS.map((role) => employee(role)),
     verification: AGENT_ROLE_KEYS.map(passed),
   };
@@ -35,7 +35,7 @@ export function launchPreview(view: LaunchPreviewView): LaunchReadiness {
   switch (view) {
     case "unpaid":
       return deriveLaunchReadiness({
-        ...f, paymentCleared: false, knowledge: { approved: 0, pending: 0 }, crm: { ...f.crm, blueprintApplied: false, pipelineReady: false },
+        ...f, paymentCleared: false, knowledge: { approved: 0, pending: 0 }, crm: { ...f.crm, blueprint: "none", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 } },
         appointments: { wanted: true, calendar: calendar({ status: "draft", hosts: 0, hostsWithHours: 0, checks: null }), externalCalendarConnected: false },
         employees: AGENT_ROLE_KEYS.map((role) => employee(role, { provisioning: "none", configVersion: null, readiness: notReady("pending_setup", "Waiting for your setup payment.") })),
         verification: [],
@@ -43,16 +43,19 @@ export function launchPreview(view: LaunchPreviewView): LaunchReadiness {
     case "working":
       return deriveLaunchReadiness({
         ...f,
-        employees: AGENT_ROLE_KEYS.map((role, i) => employee(role, i < 2 ? {} : { provisioning: i < 4 ? "in_progress" : "requested", configVersion: null, readiness: notReady("provisioning", "Its dedicated profile is being created.") })),
+        employees: AGENT_ROLE_KEYS.map((role, i) => employee(role, i < 2 ? {} : { provisioning: i < 4 ? "in_progress" : "requested", attempts: 0, configVersion: null, readiness: notReady("provisioning", "Its dedicated profile is being created.") })),
         verification: AGENT_ROLE_KEYS.slice(0, 2).map(passed),
       });
     case "action":
       return deriveLaunchReadiness({
         ...f, knowledge: { approved: 5, pending: 2 },
+        crm: { ...f.crm, blueprint: "waiting_for_a_person", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 } },
+        channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: true, enabled: false, registration: "pending", statedSender: "+1 512 555 0100", credentialStored: true }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
         appointments: { wanted: true, calendar: calendar({ status: "draft", hosts: 0, hostsWithHours: 0, checks: null }), externalCalendarConnected: false },
         employees: AGENT_ROLE_KEYS.map((role) => (role === "appointment_setter"
           ? employee(role, { readiness: { state: "ready", chatAvailable: true, workReady: false, description: "Waiting for a calendar that takes bookings.", blocking: ["A calendar that takes bookings"] } })
-          : role === "lead_hunter" ? employee(role, { provisioning: "failed", configVersion: null, readiness: notReady("pending_setup", "Setting up its profile failed.") }) : employee(role))),
+          : role === "lead_hunter" ? employee(role, { provisioning: "failed", attempts: 3, configVersion: null, readiness: notReady("pending_setup", "Setting up its profile failed.") })
+          : role === "sales_assistant" ? employee(role, { provisioning: "awaiting_health_check", healthFailed: true, healthDetail: "The Hermes gateway did not answer.", configVersion: null, readiness: notReady("pending_setup", "Its connection check did not pass.") }) : employee(role))),
         verification: AGENT_ROLE_KEYS.filter((r) => r !== "appointment_setter" && r !== "lead_hunter").slice(0, 2).map(passed),
       });
     case "review":

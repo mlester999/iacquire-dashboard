@@ -39,7 +39,7 @@ These are point-in-time idle measurements, not a load test. The proposed client 
 
 ## Startup inventory gate
 
-Before writing worker heartbeat/audit state or claiming a job, startup performs two authenticated reads of the default profile's complete catalog. The native contract, complete=true, explicit safe allowlist, exact toolsets, tool provenance and names, challenge echo, optional HMAC, and stable digest are required. Each read has a distinct challenge, a cache-busting query value, and no-store headers. An absent or unadvertised route, missing metadata, unsafe tools, invalid HMAC, or changing catalog exits before any job is claimed. Each new or synchronized client profile is checked again with its own key before a success callback.
+Before writing worker heartbeat/audit state or claiming a job, startup performs two authenticated reads of the default profile's complete catalog. The native contract, complete=true, explicit safe allowlist, exact toolsets, tool provenance and names, challenge echo, optional HMAC, and stable digest are required. Each read has a distinct challenge, a cache-busting query value, and no-store headers. While the gateway is unreachable, or answers with an incomplete catalog (an absent or unadvertised route, missing metadata, unsafe tools, invalid HMAC, or a changing catalog), the worker waits and claims nothing: it retries with a 5 s backoff doubling to 60 s, and its heartbeat state is `waiting_for_hermes`, which the health check treats as healthy while nothing has been claimed yet. An incomplete catalog that persists for 10 attempts in a row exits non-zero so a real contract defect is visible, and any other failure exits at once. Each new or synchronized client profile is checked again with its own key before a success callback.
 
 ## Private files
 
@@ -55,7 +55,15 @@ For example, an operator can create key files locally using a secret manager or 
 
 ## Resource and health limits
 
-The initial acceptance caps are 1 CPU and 2 GiB for Hermes and 0.5 CPU and 512 MiB for the worker; the API server is limited to one concurrent run. These caps are starting limits for the verified KVM 2 host, not a load-tested production capacity claim. The Hermes container health check reads `/health`; the worker health check requires a fresh private heartbeat. Both services rotate container logs. The JSONL worker audit remains mode `0600` on the persistent worker volume and fails closed if it cannot be written.
+The initial acceptance caps are 1 CPU and 2 GiB for Hermes and 0.5 CPU and 512 MiB for the worker; the API server is limited to one concurrent run. These caps are starting limits for the verified KVM 2 host, not a load-tested production capacity claim. The Hermes container health check reads `/health`. The worker health check reads its private heartbeat file (version 2: time, state, last claim answer, last job, audit size) and is healthy only while that heartbeat is under 10 minutes old, the state is not `unauthorized` or `hermes_unreachable`, and the portal has answered a claim within the last 15 minutes. A portal that is deliberately switched off still answers, so it counts as healthy and idle. Both services rotate container logs.
+
+The JSONL worker audit remains mode `0600` on the persistent worker volume and fails closed if it cannot be written. It rotates at 10 MiB: `audit.jsonl` is the live file and `audit.1.jsonl` (newest) to `audit.5.jsonl` (oldest) are kept, anything older is dropped, so those numbered files are expected and are not a leak.
+
+## Restart policy and when the worker exits
+
+The worker service uses `restart: unless-stopped`. It survives a Hermes or portal outage on its own and exits non-zero only to be restarted into a fresh network namespace: when the portal refuses its token (401 or 403), or when the Hermes loopback has stopped answering. The loopback is counted from every Hermes call and, while the worker is idle, by a probe of the loopback root every 30 seconds, so about ten minutes of silence ends an idle worker as well; a portal outage alone (the loopback still answers) never does. Docker does not restart a container for being unhealthy, so this exit is what recovers a worker left in a stale namespace after the gateway restarts.
+
+`IACQUIRE_PROVISIONER_MAX_PROFILES` is the worker's own ceiling on client profiles (empty means none here; the portal's gate still applies). After a restore, or before a deployment, `python worker.py --verify-home` checks every client profile home read-only (ownership marker for this gateway, private `.env`, SOUL and config present, no symlinks, no agency profile) and prints counts and codes only.
 
 ## Enablement sequence
 

@@ -3,7 +3,7 @@ import { auditSupportView, type CrmActor } from "@/server/crm/actor";
 import type { CrmScope } from "@/server/crm/page";
 import { getWorkspace } from "@/server/crm/workspace";
 import {
-  CALENDAR_NOTICE_COOKIE, calendarConnectionSettings, decodeCalendarNotice, listMyConnections, listSyncRuns, listTeamConnections,
+  CALENDAR_NOTICE_COOKIE, calendarConnectionSettings, calendarNoticeFor, listMyConnections, listSyncRuns, listTeamConnections,
 } from "@/server/calendars/connections";
 import { GhlOwnedNotice } from "@/components/crm/ghl-owned";
 import { CalendarConnectionsWorkspace } from "@/components/crm/scheduling/connections/calendar-connections";
@@ -25,7 +25,7 @@ export async function CalendarConnectionsView({ actor, scope }: { actor: CrmActo
     listSyncRuns(actor, { limit: 20 }),
   ]);
   // A one-time message from the sign-in round trip (set by the OAuth routes; client workspace only).
-  const notice = scope.agency ? null : decodeCalendarNotice((await cookies()).get(CALENDAR_NOTICE_COOKIE)?.value);
+  const notice = scope.agency ? null : calendarNoticeFor((await cookies()).get(CALENDAR_NOTICE_COOKIE)?.value, "crm");
   await auditSupportView(actor, "calendar-connections");
   return (
     <CalendarConnectionsWorkspace

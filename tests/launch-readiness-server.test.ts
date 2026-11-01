@@ -1,16 +1,45 @@
 // The launch-readiness facts, read from a real (test) database: a client's own records decide every line of the answer, a drafted calendar is not a calendar that takes bookings, and
 // another client's work never moves this client's state. Test database only; no Hermes writes, nothing sent, nobody booked.
-import { describe, expect, it } from "vitest";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+// The Setup page and its notice action read the signed-in workspace and the cookie jar: here they are a fixture's context and a map. Nothing is rendered by a browser.
+const mocks = vi.hoisted(() => ({ ctx: null as unknown, jar: new Map<string, string>(), deleted: [] as Array<{ name: string; path?: string }> }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => (mocks.jar.has(name) ? { name, value: mocks.jar.get(name)! } : undefined),
+    delete: (target: string | { name: string; path?: string }) => {
+      const { name, path } = typeof target === "string" ? { name: target, path: undefined } : target;
+      mocks.jar.delete(name);
+      mocks.deleted.push({ name, path });
+    },
+  }),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {}, replace() {} }), usePathname: () => "/setup" }));
+vi.mock("@/server/tenancy/context", async (original) => ({ ...(await original<typeof import("@/server/tenancy/context")>()), requireOrgContext: async () => mocks.ctx, requireOrgContextOrThrow: async () => mocks.ctx }));
+
 import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import type { LaunchReadiness } from "@/lib/launch-readiness";
+import type { LaunchItem, LaunchReadiness } from "@/lib/launch-readiness";
+import type { OrgContext } from "@/server/tenancy/context";
+import { LaunchReadinessPanel } from "@/components/setup/launch-readiness-panel";
+import SetupPage from "@/app/(portal)/setup/page";
+import { dismissCalendarNoticeAction } from "@/app/actions/launch-readiness";
+import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, calendarNoticeFor, encodeCalendarNotice, noticeSurfaceOf } from "@/server/calendars/connections";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { activateCalendar, applyCalendarHoursTemplate, verifyCalendar } from "@/server/calendars/activation";
 import { updateCalendar } from "@/server/calendars/setup";
-import { ctxFor } from "./support/fixtures";
+import { getWorkspace } from "@/server/crm/workspace";
+import { recordAudit } from "@/server/audit";
+import { statedSender } from "@/server/onboarding/connection-facts";
+import { listChannelStatus } from "@/server/messaging/channels";
+import { AgencyChannelSetup } from "@/components/crm/communications/agency-channel-setup";
+import { agentId, ctxFor } from "./support/fixtures";
 import { crmOrg } from "./support/crm";
 import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
+import { applyRealBlueprint } from "./support/launch";
 
 const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
 const stepOf = (r: LaunchReadiness, key: string) => r.steps.find((s) => s.key === key)!;
@@ -150,4 +179,301 @@ describe("the launch facts are read from the workspace's own records", () => {
     const asAgency = ctxFor(user.people.owner, { id: ctx.id, name: "Agency", slug: "agency" }, "owner");
     expect(await loadLaunchFacts(asAgency)).toBeNull();
   }, 120_000);
+});
+
+/** A submitted, paid client with its CRM workspace and no industry setup yet: what the CRM, channel and employee facts are read from. */
+async function submittedCrmClient(name: string, over: { channels?: string[]; senders?: Record<string, string> } = {}) {
+  const c = await crmOrg({ name, timezone: "America/Chicago" });
+  await withSystem((db) => db.query("update organizations set onboarding_completed_at = now(), industry = 'home_services' where id = $1", [c.org.id]));
+  await clearSetupPayment(c.org.id);
+  const answers: Record<string, unknown> = { "a.timezone": "America/Chicago", "b.appointments": false, ...(over.channels ? { "c.channels": over.channels } : {}), ...over.senders };
+  await withSystem(async (db) => {
+    for (const [id, value] of Object.entries(answers)) await db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, $2, $3::jsonb)", [c.org.id, id, JSON.stringify(value)]);
+  });
+  await getWorkspace(c.actor("owner"));
+  return { ...c, ctx: ctxFor(c.people.owner, c.org, "owner") };
+}
+type CrmClient = Awaited<ReturnType<typeof submittedCrmClient>>;
+const crmOf = async (c: CrmClient) => (await getLaunchReadiness(c.ctx))!;
+const q = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await withSystem((db) => db.query<T>(sql, params))).rows;
+
+describe("the CRM setup is judged from the Blueprint evidence in the workspace's own records", () => {
+  it("is being set up while nothing has been applied and nothing has failed, and is not done", async () => {
+    const c = await submittedCrmClient("Nothing Applied Roofing");
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.crm).toMatchObject({ mode: "native", blueprint: "none" });
+    const r = await crmOf(c);
+    expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "in_progress", owner: "iacquire" });
+    expect(itemOf(r, "crm.blueprint").detail).toContain("being set up");
+  }, 120_000);
+
+  it("is verified, and done, only after a real Blueprint was applied and everything it created is in the CRM", async () => {
+    const c = await submittedCrmClient("Verified Roofing");
+    await applyRealBlueprint(c.org.id);
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.crm).toMatchObject({ blueprint: "verified", pipelineReady: true, records: { state: "in_place" } });
+    expect(facts.crm.records!.tags).toBeGreaterThan(0);
+    const r = await crmOf(c);
+    expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "done", owner: "iacquire" });
+    expect(itemOf(r, "crm.pipeline").state).toBe("done");
+    expect(itemOf(r, "crm.records")).toMatchObject({ state: "done", required: false });
+    expect(stepOf(r, "crm").state).toBe("done");
+  }, 120_000);
+
+  it("drops out of done when a stage the Blueprint created is deleted, and names it as iAcquire's to review", async () => {
+    const c = await submittedCrmClient("Deleted Stage Roofing");
+    await applyRealBlueprint(c.org.id);
+    const stage = (await q<{ native_id: string }>("select native_id from crm_blueprint_links where org_id = $1 and asset_type = 'stage' order by asset_id limit 1", [c.org.id]))[0];
+    expect(stage).toBeTruthy();
+    await withSystem((db) => db.query("delete from crm_pipeline_stages where org_id = $1 and id = $2", [c.org.id, stage.native_id]));
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.crm.blueprint).toBe("missing_records");
+    expect(facts.crm.records!.state).toBe("missing");
+    const r = await crmOf(c);
+    expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(itemOf(r, "crm.blueprint").detail).toContain("no longer in the CRM");
+    expect(r.blocking.map((i) => i.key)).toContain("crm.blueprint");
+    expect(r.state).toBe("action_required");
+    // The pipeline still has stages, so it is not the pipeline that fails.
+    expect(itemOf(r, "crm.pipeline").state).toBe("done");
+  }, 120_000);
+
+  it("is partial when the application only partly applied, and failed when it did not apply", async () => {
+    const partial = await submittedCrmClient("Partial Roofing");
+    await applyRealBlueprint(partial.org.id);
+    await withSystem((db) => db.query("update crm_blueprint_applications set status = 'partially_applied' where org_id = $1", [partial.org.id]));
+    expect((await loadLaunchFacts(partial.ctx))!.crm.blueprint).toBe("partial");
+    expect(itemOf(await crmOf(partial), "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire", detail: expect.stringContaining("partly applied") });
+
+    const failed = await submittedCrmClient("Failed Roofing");
+    await applyRealBlueprint(failed.org.id);
+    await withSystem((db) => db.query("update crm_blueprint_applications set status = 'failed', error = 'The apply stopped.' where org_id = $1", [failed.org.id]));
+    expect((await loadLaunchFacts(failed.ctx))!.crm.blueprint).toBe("failed");
+    const r = await crmOf(failed);
+    expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire", detail: expect.stringContaining("didn't finish") });
+    expect(r.state).toBe("action_required");
+  }, 120_000);
+
+  it("waits for a person when the automatic setup could not run, says so, and is overtaken by any real application", async () => {
+    const c = await submittedCrmClient("Waiting Roofing");
+    await withSystem((db) => recordAudit({ orgId: c.org.id, actorKind: "system", action: "crm.auto_setup_waiting_for_person", targetType: "workspace", targetId: c.org.id, result: "denied", metadata: { starterKey: "home-services", mapping: "matched" } }, db));
+    expect((await loadLaunchFacts(c.ctx))!.crm.blueprint).toBe("waiting_for_a_person");
+    const waiting = itemOf(await crmOf(c), "crm.blueprint");
+    expect(waiting).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(waiting.detail).toContain("A person at iAcquire has to apply your industry starter");
+    // The agency applies it by hand: the record of what really happened outranks the older note.
+    await applyRealBlueprint(c.org.id);
+    expect((await loadLaunchFacts(c.ctx))!.crm.blueprint).toBe("verified");
+  }, 120_000);
+
+  it("reads the newest automatic-setup note: a failed run is iAcquire's to look at and never done", async () => {
+    const c = await submittedCrmClient("Auto Failed Roofing");
+    await withSystem((db) => recordAudit({ orgId: c.org.id, actorKind: "system", action: "crm.auto_setup_failed", targetType: "workspace", targetId: c.org.id, result: "failure", metadata: { starterKey: "home-services", mapping: "closest", reason: "internal detail that must not reach the client" } }, db));
+    expect((await loadLaunchFacts(c.ctx))!.crm.blueprint).toBe("failed");
+    const r = await crmOf(c);
+    expect(itemOf(r, "crm.blueprint")).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(JSON.stringify(r.steps)).not.toContain("internal detail");
+  }, 120_000);
+
+  it("keeps another client's setup out of this client's state", async () => {
+    const a = await submittedCrmClient("Isolated CRM A");
+    const b = await submittedCrmClient("Isolated CRM B");
+    await applyRealBlueprint(a.org.id);
+    expect((await loadLaunchFacts(a.ctx))!.crm.blueprint).toBe("verified");
+    expect((await loadLaunchFacts(b.ctx))!.crm.blueprint).toBe("none");
+    expect(itemOf(await crmOf(b), "crm.blueprint").state).toBe("in_progress");
+  }, 120_000);
+
+  it("needs a pipeline with at least two stages, one of them open: one stage, archived stages and a board of only closed stages are not enough", async () => {
+    const pipelineWith = async (c: CrmClient, stages: Array<{ kind: string; archived?: boolean }>) => {
+      const id = (await q<{ id: string }>("insert into crm_pipelines (org_id, name, provider, is_default, position) values ($1, 'Hand made', 'native', true, 0) returning id", [c.org.id]))[0].id;
+      for (const [i, s] of stages.entries()) {
+        await withSystem((db) => db.query("insert into crm_pipeline_stages (org_id, pipeline_id, name, kind, position, archived_at) values ($1, $2, $3, $4, $5, $6)", [c.org.id, id, `Stage ${i}`, s.kind, i, s.archived ? new Date() : null]));
+      }
+    };
+    const pipelineReady = async (c: CrmClient) => (await loadLaunchFacts(c.ctx))!.crm.pipelineReady;
+    const one = await submittedCrmClient("One Stage Roofing");
+    await pipelineWith(one, [{ kind: "open" }]);
+    expect(await pipelineReady(one)).toBe(false);
+    expect(itemOf(await crmOf(one), "crm.pipeline").state).not.toBe("done");
+    const archived = await submittedCrmClient("Archived Stage Roofing");
+    await pipelineWith(archived, [{ kind: "open" }, { kind: "open", archived: true }]);
+    expect(await pipelineReady(archived)).toBe(false);
+    const closed = await submittedCrmClient("Closed Only Roofing");
+    await pipelineWith(closed, [{ kind: "won" }, { kind: "lost" }]);
+    expect(await pipelineReady(closed)).toBe(false);
+    const good = await submittedCrmClient("Two Stage Roofing");
+    await pipelineWith(good, [{ kind: "open" }, { kind: "won" }]);
+    expect(await pipelineReady(good)).toBe(true);
+    expect(itemOf(await crmOf(good), "crm.pipeline").state).toBe("done");
+  }, 120_000);
+});
+
+describe("channels are read with the client's own words kept apart from what is verified", () => {
+  it("shows the sender the client gave, owner iAcquire, no button, and a channel that has no credential is never connected", async () => {
+    const c = await submittedCrmClient("Channels Roofing", { channels: ["sms", "email"], senders: { "c.sms_sender": "+1 512 555 0100", "c.email_sender": "hello@channels-roofing.example" } });
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.channels.find((f) => f.channel === "sms")).toMatchObject({ wanted: true, enabled: false, statedSender: "+1 512 555 0100", credentialStored: false });
+    expect(facts.channels.find((f) => f.channel === "whatsapp")).toMatchObject({ wanted: false, statedSender: null });
+    const r = await crmOf(c);
+    for (const channel of ["sms", "email"] as const) {
+      const i = itemOf(r, `integrations.${channel}`);
+      expect(i, channel).toMatchObject({ state: "in_progress", owner: "iacquire" });
+      expect(i.action, channel).toBeUndefined();
+    }
+    expect(itemOf(r, "integrations.sms").detail).toContain("+1 512 555 0100");
+    expect(itemOf(r, "integrations.email").detail).toContain("hello@channels-roofing.example");
+    expect(stepOf(r, "integrations").state).not.toBe("done");
+  }, 120_000);
+
+  it("asks the client for the sender only when an email address or WhatsApp number was not given, and reads a pending registration as iAcquire's wait", async () => {
+    const c = await submittedCrmClient("Missing Sender Roofing", { channels: ["email", "sms"] });
+    await withSystem((db) => db.query("insert into messaging_channels (org_id, channel, enabled, registration_status) values ($1, 'sms', false, 'pending')", [c.org.id]));
+    const r = await crmOf(c);
+    expect(itemOf(r, "integrations.email")).toMatchObject({ state: "action_required", owner: "you", action: { href: "/onboarding" } });
+    expect(itemOf(r, "integrations.sms")).toMatchObject({ state: "in_progress", owner: "iacquire" });
+    expect(itemOf(r, "integrations.sms").detail).toContain("registration is with the carrier");
+  }, 120_000);
+
+  it("shows the agency what the client said beside the channel, marked not verified, and nothing when the client said nothing", async () => {
+    const c = await submittedCrmClient("Card Hint Roofing", { channels: ["sms", "email"], senders: { "c.sms_sender": "+1 512 555 0100" } });
+    const webhooks = { email: { url: "https://p.example/api/webhooks/resend", ready: true, note: "n" }, sms: { url: "https://p.example/api/webhooks/twilio/inbound", ready: true, note: "n" }, whatsapp: { url: "https://p.example/api/webhooks/meta-whatsapp", ready: true, note: "n" } };
+    const render = async (statedSenders?: Record<string, string | null>) => renderToStaticMarkup(React.createElement(AgencyChannelSetup, { orgId: c.org.id, channels: await listChannelStatus(c.org.id), webhooks, superAdmin: true, timeZone: "UTC", statedSenders }));
+    const hinted = await render({ sms: await withSystem((db) => statedSender(db, c.org.id, "sms")), email: await withSystem((db) => statedSender(db, c.org.id, "email")) });
+    expect(hinted).toContain("Client said");
+    expect(hinted).toContain("+1 512 555 0100");
+    expect(hinted).toContain("Not verified");
+    expect(hinted.match(/Client said/g)).toHaveLength(1);
+    expect(await render()).not.toContain("Client said");
+    // Showing it saved nothing: the channel still has no sender and is not verified.
+    expect(await q("select 1 from messaging_channels where org_id = $1 and (sender_identity is not null or sender_verified_at is not null)", [c.org.id])).toHaveLength(0);
+  }, 120_000);
+
+  it("reads the stated sender for the agency's channel setup from confirmed answers only, and never sets a sender itself", async () => {
+    const c = await submittedCrmClient("Hint Roofing", { channels: ["sms", "whatsapp"], senders: { "c.sms_sender": "  +63 917 123 4567  " } });
+    expect(await withSystem((db) => statedSender(db, c.org.id, "sms"))).toBe("+63 917 123 4567");
+    expect(await withSystem((db) => statedSender(db, c.org.id, "whatsapp"))).toBeNull();
+    const other = await submittedCrmClient("Other Hint Roofing", { channels: ["sms"] });
+    expect(await withSystem((db) => statedSender(db, other.org.id, "sms"))).toBeNull();
+    // Reading the hint changed nothing: no channel row was written.
+    expect(await q("select 1 from messaging_channels where org_id = $1", [c.org.id])).toHaveLength(0);
+  }, 120_000);
+});
+
+describe("employees show their real provisioning and health state", () => {
+  it("turns a failing connection check into action required for iAcquire, and an awaiting job with no failed check stays in progress", async () => {
+    const c = await submitRealOnboarding({ name: "Health Roofing", clearPayment: true });
+    const agent = await agentId(c.org.id, "sales_assistant");
+    await withSystem((db) => db.query("update agent_provisioning_jobs set status = 'awaiting_health_check' where agent_instance_id = $1 and kind = 'provision'", [agent]));
+    let r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.sales_assistant")).toMatchObject({ state: "in_progress", owner: "system" });
+    // A check that ran and failed. The recorded words are for iAcquire: the client never reads them.
+    await withSystem((db) => db.query("update agent_instances set last_health_ok = false, last_health_detail = 'Hermes could not be reached at 10.9.8.7', last_health_check_at = now() where id = $1", [agent]));
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.employees.find((e) => e.role === "sales_assistant")).toMatchObject({ healthFailed: true, healthDetail: "Hermes could not be reached at 10.9.8.7", provisioning: "awaiting_health_check" });
+    r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.sales_assistant")).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(itemOf(r, "employees.sales_assistant").detail).not.toContain("being verified");
+    expect(JSON.stringify(r.steps)).not.toContain("10.9.8.7");
+    expect(r.state).toBe("action_required");
+    // When the check passes it is no longer a failure. It is done only once the employee is really ready for work (the Sales Assistant also waits for what its role needs), never before.
+    await makeRuntimeReady(agent, c.org.id, c.owner.id);
+    expect((await loadLaunchFacts(c.ctx))!.employees.find((e) => e.role === "sales_assistant")!.healthFailed).toBe(false);
+    expect(itemOf((await getLaunchReadiness(c.ctx))!, "employees.sales_assistant").state).not.toBe("action_required");
+  }, 120_000);
+
+  it("reads 'Attempt n of 3' for a failed job that will be retried, and failed with iAcquire as the owner once the attempts are used", async () => {
+    const c = await submitRealOnboarding({ name: "Attempts Roofing", clearPayment: true });
+    const agent = await agentId(c.org.id, "lead_hunter");
+    await withSystem((db) => db.query("update agent_provisioning_jobs set status = 'failed', attempt_count = 1, next_retry_at = now() + interval '5 minutes', detail = 'worker said no' where agent_instance_id = $1 and kind = 'provision'", [agent]));
+    let r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.lead_hunter")).toMatchObject({ state: "in_progress", owner: "system", detail: expect.stringContaining("Attempt 2 of 3") });
+    const fact = (await loadLaunchFacts(c.ctx))!.employees.find((e) => e.role === "lead_hunter")!;
+    expect(fact).toMatchObject({ provisioning: "retrying", attempts: 1, maxAttempts: 3 });
+    expect(fact.nextRetryAt).not.toBeNull();
+    await withSystem((db) => db.query("update agent_provisioning_jobs set attempt_count = 3 where agent_instance_id = $1 and kind = 'provision'", [agent]));
+    r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.lead_hunter")).toMatchObject({ state: "failed", owner: "iacquire", detail: expect.stringContaining("iAcquire can review it and retry") });
+    expect(JSON.stringify(r.steps)).not.toContain("worker said no");
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// The Setup page after a calendar sign-in: the notice is shown once
+// ---------------------------------------------------------------------------
+
+type El = { type: unknown; props: Record<string, unknown> };
+const isEl = (n: unknown): n is El => Boolean(n) && typeof n === "object" && "props" in (n as object) && "type" in (n as object);
+function elementsOf(node: unknown, out: El[] = []): El[] {
+  if (Array.isArray(node)) node.forEach((n) => elementsOf(n, out));
+  else if (isEl(node)) {
+    out.push(node);
+    elementsOf(node.props.children, out);
+  }
+  return out;
+}
+/** The context a fixture built before the questionnaire was submitted, as the page sees it after: the checklist only appears once the company information is in. */
+const submitted = (ctx: OrgContext): OrgContext => ({ ...ctx, org: { ...ctx.org, onboardingCompletedAt: new Date().toISOString() } });
+const panelOf = (tree: unknown) => elementsOf(tree).find((e) => e.type === LaunchReadinessPanel);
+
+describe("the Setup page shows the calendar sign-in notice once", () => {
+  it("hands the notice a calendar sign-in left to the panel, as success or as a problem, and nothing when there is none", async () => {
+    const c = await submitRealOnboarding({ name: "Notice Roofing", clearPayment: true });
+    mocks.ctx = submitted(c.ctx);
+    mocks.jar.clear();
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toBeNull();
+    mocks.jar.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ kind: "success", provider: "google", message: "Google is connected.", from: "setup" }));
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toEqual({ ok: true, text: "Google is connected." });
+    mocks.jar.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ kind: "error", provider: "google", message: "Google isn't set up by iAcquire yet.", from: "setup" }));
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toEqual({ ok: false, text: "Google isn't set up by iAcquire yet." });
+    mocks.jar.set(CALENDAR_NOTICE_COOKIE, "not a notice");
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toBeNull();
+  }, 120_000);
+
+  it("does not show a notice that a CRM page's sign-in left, and leaves it for that page", async () => {
+    const c = await submitRealOnboarding({ name: "Other Page Roofing", clearPayment: true });
+    mocks.ctx = submitted(c.ctx);
+    mocks.deleted.length = 0;
+    const left = encodeCalendarNotice({ kind: "success", provider: "google", message: "Google is connected.", from: noticeSurfaceOf("/crm/calendar-connections") });
+    mocks.jar.set(CALENDAR_NOTICE_COOKIE, left);
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toBeNull();
+    // Nothing was handed to the panel, so nothing forgets it: the CRM page can still show it.
+    expect(mocks.jar.get(CALENDAR_NOTICE_COOKIE)).toBe(left);
+    expect(calendarNoticeFor(left, "crm")).toMatchObject({ message: "Google is connected.", from: "crm" });
+    expect(calendarNoticeFor(left, "setup")).toBeNull();
+    // An older notice that names no page was a CRM one, and a Setup notice is not shown on the CRM page.
+    expect(calendarNoticeFor(encodeURIComponent(JSON.stringify({ kind: "info", provider: "google", message: "Cancelled." })), "crm")).toMatchObject({ message: "Cancelled." });
+    expect(calendarNoticeFor(encodeCalendarNotice({ kind: "info", provider: "google", message: "Cancelled.", from: noticeSurfaceOf("/setup?connected=calendar") }), "crm")).toBeNull();
+  }, 120_000);
+
+  it("forgets the notice once the panel has shown it, so the page shows it only the one time", async () => {
+    const c = await submitRealOnboarding({ name: "Once Roofing", clearPayment: true });
+    mocks.ctx = submitted(c.ctx);
+    mocks.deleted.length = 0;
+    mocks.jar.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ kind: "success", provider: "microsoft", message: "Microsoft is connected.", from: "setup" }));
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toMatchObject({ text: "Microsoft is connected." });
+    expect(await dismissCalendarNoticeAction()).toMatchObject({ ok: true });
+    // Removed on the path it was set on (every page), not only the page that happens to be open.
+    expect(mocks.deleted).toEqual([{ name: CALENDAR_NOTICE_COOKIE, path: CALENDAR_NOTICE_COOKIE_OPTIONS.path }]);
+    expect(CALENDAR_NOTICE_COOKIE_OPTIONS.path).toBe("/");
+    expect(panelOf(await SetupPage({ searchParams: Promise.resolve({}) }))?.props.calendarNotice).toBeNull();
+  }, 120_000);
+
+  it("renders the notice, a channel's guidance and the provider sign-in as a plain link the browser loads", () => {
+    const item = (over: Partial<LaunchItem>): LaunchItem => ({ key: "x", label: "X", state: "action_required", required: true, detail: "Detail.", owner: "you", ...over });
+    const readiness: LaunchReadiness = {
+      state: "action_required", label: "Action required", headline: "Action required", detail: "One thing needs you.", percent: 50, passed: 1, total: 2, blocking: [],
+      steps: [
+        { key: "calendar", title: "Calendar and availability", state: "action_required", summary: "0 of 1 checks passed.", items: [item({ key: "calendar.connection", label: "Google connection", action: { label: "Connect Google", href: "/api/crm/calendar-oauth/google/start?return=/setup" } })] },
+        { key: "integrations", title: "Required integrations", state: "in_progress", summary: "0 of 1 checks passed.", items: [item({ key: "integrations.email", label: "Email", state: "in_progress", owner: "iacquire", guidance: ["iAcquire sends you the DNS records for your sending domain."], action: { label: "See channel status", href: "/settings/messaging" } })] },
+      ],
+    };
+    const html = renderToStaticMarkup(React.createElement(LaunchReadinessPanel, { readiness, calendarNotice: { ok: true, text: "Google is connected." } }));
+    expect(html).toContain("Google is connected.");
+    expect(html).toContain("iAcquire sends you the DNS records for your sending domain.");
+    // The sign-in start is a route handler, so it is a plain anchor; the status screen is a page and stays an app link.
+    expect(html).toMatch(/<a [^>]*href="\/api\/crm\/calendar-oauth\/google\/start\?return=\/setup"/);
+    expect(html).toContain('href="/settings/messaging"');
+    expect(renderToStaticMarkup(React.createElement(LaunchReadinessPanel, { readiness }))).not.toContain("Google is connected.");
+  });
 });

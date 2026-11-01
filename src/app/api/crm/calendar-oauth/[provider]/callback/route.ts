@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/server/env";
 import { toPublicError } from "@/server/errors";
 import { getCurrentUser } from "@/server/auth/session";
-import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, completeCalendarOAuth, DEFAULT_RETURN_PATH, encodeCalendarNotice, PROVIDER_LABELS, type CalendarNotice } from "@/server/calendars/connections";
+import { CALENDAR_NOTICE_COOKIE, CALENDAR_NOTICE_COOKIE_OPTIONS, completeCalendarOAuth, DEFAULT_RETURN_PATH, encodeCalendarNotice, noticeSurfaceOf, PROVIDER_LABELS, type CalendarNotice } from "@/server/calendars/connections";
 import { syncConnectionBusy } from "@/server/calendars/sync";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const q = req.nextUrl.searchParams;
   const finish = (path: string, notice: CalendarNotice) => {
     const res = NextResponse.redirect(`${base}${path}`, { status: 303 });
-    res.cookies.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice(notice), CALENDAR_NOTICE_COOKIE_OPTIONS);
+    res.cookies.set(CALENDAR_NOTICE_COOKIE, encodeCalendarNotice({ ...notice, from: noticeSurfaceOf(path) }), CALENDAR_NOTICE_COOKIE_OPTIONS);
     // The sign-in code is in this URL: never let it travel on as a referrer, and never cache the response.
     res.headers.set("Referrer-Policy", "no-referrer");
     res.headers.set("Cache-Control", "no-store");

@@ -181,6 +181,27 @@ describe("employee workspace server action boundary", () => {
     expect(orgId).toBe("22222222-2222-4222-8222-222222222222");
   });
 
+  it("generates a client's suggestions from the answers its plan asks for, never from one saved for an employee the plan leaves out", async () => {
+    state.ctx = {
+      ...internalContext("agency_super_admin"),
+      user: { id: "11111111-1111-4111-8111-111111111111", platformRole: "none" },
+      org: { orgId: "22222222-2222-4222-8222-222222222222", kind: "client", name: "Client", timezone: "UTC" },
+    };
+    const saved = (value: string) => ({ value, skipped: false, source: "user" as const, needsConfirmation: false, updatedAt: "2026-11-01T00:00:00Z" });
+    calls.getOnboardingSession.mockResolvedValue({
+      status: "submitted", hasUnsubmittedChanges: false, enabledRoles: ["appointment_setter", "crm_manager"],
+      answers: { "a.business_name": saved("Plan Co"), "b.qualification": saved("Hidden-marker for the Lead Hunter."), "b.lead_target": saved("50_150") },
+    });
+
+    const result = await regenerateEmployeeSettingsAction("appointment_setter");
+
+    expect(result).toMatchObject({ ok: true });
+    const [data] = calls.generateEmployeeSettings.mock.calls[0] as unknown as [OnboardingData];
+    expect(data.business.companyName).toBe("Plan Co");
+    expect(JSON.stringify(data)).not.toContain("Hidden-marker");
+    expect(Object.keys(data.workforce.answers)).toEqual(["appointment_setter", "crm_manager"]);
+  });
+
   it("keeps client generation behind an approved onboarding submission", async () => {
     state.ctx = {
       ...internalContext("agency_super_admin"),

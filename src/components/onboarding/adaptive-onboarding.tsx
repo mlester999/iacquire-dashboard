@@ -17,7 +17,9 @@ import {
   computeProgress,
   effectiveAnswers,
   isEmptyValue,
+  isRequired,
   neighbour,
+  planScope,
   questionState,
   validateAnswer,
   visibleQuestions,
@@ -118,10 +120,13 @@ export function AdaptiveOnboarding({
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
-  const effective = React.useMemo(() => effectiveAnswers(answers), [answers]);
-  const visible = React.useMemo(() => visibleQuestions(effective), [effective]);
-  const progress = React.useMemo(() => computeProgress(answers), [answers]);
+  // Questions for an employee the plan leaves out are not asked (the server applies the same scope).
+  const scope = React.useMemo(() => planScope(session.enabledRoles), [session.enabledRoles]);
+  const effective = React.useMemo(() => effectiveAnswers(answers, scope), [answers, scope]);
+  const visible = React.useMemo(() => visibleQuestions(effective, scope), [effective, scope]);
+  const progress = React.useMemo(() => computeProgress(answers, scope), [answers, scope]);
   const question: QuestionDef = visible.find((q) => q.id === currentId) ?? QUESTION_BY_ID[currentId] ?? visible[0];
+  const questionRequired = isRequired(question, effective);
   const isReview = question.kind.type === "review";
   const stored = answers[question.id];
   const countable = visible.filter((q) => q.kind.type !== "review");
@@ -179,7 +184,7 @@ export function AdaptiveOnboarding({
   const problem = (q: QuestionDef, a = answers[q.id]): string | null => {
     if (q.kind.type === "review") return null;
     const empty = !a || a.skipped || isEmptyValue(a.value);
-    if (empty) return q.required ? "This one is required." : null;
+    if (empty) return isRequired(q, effective) ? "This one is required." : null;
     const check = validateAnswer(q, a.value, effective);
     if (!check.ok) return check.error;
     if (a.needsConfirmation) return "Check this suggestion, then press “I’ve checked this” (or edit it first).";
@@ -216,7 +221,7 @@ export function AdaptiveOnboarding({
 
   const next = async () => {
     if (!validateCurrent()) return;
-    const target = returnToReview ? "f.review" : neighbour(answers, question.id, 1);
+    const target = returnToReview ? "f.review" : neighbour(answers, question.id, 1, scope);
     if (!target) return;
     if (returnToReview && target === "f.review") setReviewNonce((n) => n + 1);
     await travel(target, 1);
@@ -224,15 +229,15 @@ export function AdaptiveOnboarding({
   };
 
   const back = async () => {
-    const target = neighbour(answers, question.id, -1);
+    const target = neighbour(answers, question.id, -1, scope);
     if (target) await travel(target, -1);
   };
 
   const skip = async () => {
-    if (question.required || actionLock.current) return;
+    if (questionRequired || actionLock.current) return;
     setAnswers((cur) => ({ ...cur, [question.id]: { value: null, skipped: true, source: "user", needsConfirmation: false, updatedAt: new Date().toISOString() } }));
     pipeline.queue(question.id, { skipped: true });
-    const target = returnToReview ? "f.review" : neighbour(answers, question.id, 1);
+    const target = returnToReview ? "f.review" : neighbour(answers, question.id, 1, scope);
     if (target) await travel(target, 1);
   };
 
@@ -255,7 +260,7 @@ export function AdaptiveOnboarding({
   const jumpToSection = async (id: SectionId) => {
     if (id === "F") return travel("f.review", 1);
     const inSection = visible.filter((q) => q.section === id);
-    const first = inSection.find((q) => questionState(q, answers[q.id]) === "outstanding" && q.required) ?? inSection.find((q) => !answers[q.id]) ?? inSection[0];
+    const first = inSection.find((q) => questionState(q, answers[q.id], effective) === "outstanding" && isRequired(q, effective)) ?? inSection.find((q) => !answers[q.id]) ?? inSection[0];
     if (first) await travel(first.id, first.section >= question.section ? 1 : -1);
   };
 
@@ -409,7 +414,7 @@ export function AdaptiveOnboarding({
               >
                 <header className="mb-4">
                   {/* The section is named in the progress panel above; the card only says whether this question can be skipped. */}
-                  {!isReview && <p className="mb-2 text-[12px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
+                  {!isReview && <p className="mb-2 text-[12px] font-semibold uppercase tracking-[.15em] text-muted">{questionRequired ? "Required" : "Optional"}</p>}
                   <h1 id="onboarding-title" ref={headingRef} tabIndex={-1} className="text-[23px] font-semibold leading-tight tracking-[-0.025em] outline-none sm:text-[28px]">
                     {question.title}
                   </h1>
@@ -539,10 +544,10 @@ export function AdaptiveOnboarding({
               </form>
           </motion.section>
 
-          {!isReview && !question.required && <div className="mt-2 flex justify-end"><Button type="button" variant="ghost" size="sm" disabled={navigating} onClick={() => void skip()}>Skip for now</Button></div>}
+          {!isReview && !questionRequired && <div className="mt-2 flex justify-end"><Button type="button" variant="ghost" size="sm" disabled={navigating} onClick={() => void skip()}>Skip for now</Button></div>}
           <nav aria-label="Question navigation" className="onboarding-navigation mt-5 border-t border-line bg-surface">
             <div className="flex min-w-0 items-center justify-between gap-3">
-              <Button type="button" variant="secondary" onClick={() => void back()} disabled={navigating || submitting || !neighbour(answers, question.id, -1)} className="shrink-0">
+              <Button type="button" variant="secondary" onClick={() => void back()} disabled={navigating || submitting || !neighbour(answers, question.id, -1, scope)} className="shrink-0">
                 <ArrowLeft className="size-4" aria-hidden /> Back
               </Button>
               <Button type="button" variant="brand" onClick={() => void (isReview ? submit() : next())} loading={navigating || submitting} disabled={isReview && !canApprove} className="min-w-0 max-w-[70%]">

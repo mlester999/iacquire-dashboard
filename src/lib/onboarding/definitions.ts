@@ -1,6 +1,6 @@
 // The onboarding questionnaire. Version this whenever a question is added or an id changes meaning:
 // saved answers are keyed by question id, so older sessions keep their answers and simply see new
-// questions as outstanding.
+// questions as outstanding. A new question stays optional so a workspace that already submitted can submit again without answering it.
 import { BUSINESS_GOALS, LANGUAGES, LENGTH_COPY, TONE_COPY, TONES } from "@/lib/agent-settings";
 import type { Answers, ChoiceOption, QuestionDef } from "./types";
 
@@ -29,6 +29,11 @@ export const wantsAppointments = (a: Answers) => a["b.appointments"] === true;
 export const channelsOf = (a: Answers): string[] => (Array.isArray(a["c.channels"]) ? (a["c.channels"] as string[]) : []);
 /** An appointment type listed as a video appointment: only then is the question about the video tool asked. */
 export const offersVideoAppointments = (a: Answers) => Array.isArray(a["d.appt_types"]) && (a["d.appt_types"] as Array<Record<string, string>>).some((r) => r?.mode === "video");
+/** An hours answer that holds at least one open range. An empty object, or days with no ranges, is "not set". */
+export const hasHours = (v: unknown): boolean =>
+  Boolean(v) && typeof v === "object" && !Array.isArray(v) && Object.values(v as Record<string, unknown>).some((ranges) => Array.isArray(ranges) && ranges.length > 0);
+/** Opening hours are needed once replies are limited to them (an empty list would mean "always open"), or once appointments are wanted and the bookable hours were left blank (they default to the opening hours). */
+export const needsOpeningHours = (a: Answers) => a["c.response_hours"] === "business_hours" || (wantsAppointments(a) && !hasHours(a["d.appt_availability"]));
 export const wantsWebsite = (a: Answers) => a["b.website_need"] === "new" || a["b.website_need"] === "improve";
 
 const APPOINTMENT_GOALS: Record<string, ChoiceOption[]> = {
@@ -104,8 +109,8 @@ export const QUESTIONS: QuestionDef[] = [
     help: "Include the country code, for example +1 512 555 0100.", example: "+1 512 555 0100", kind: { type: "phone" }, reviewLabel: "Business phone",
   },
   {
-    id: "a.hours", section: "A", title: "When are you open?",
-    help: "Your AI team uses this for business-hours replies and for telling customers when someone is available.",
+    id: "a.hours", section: "A", requiredWhen: needsOpeningHours, title: "When are you open?",
+    help: "Your AI team uses this for business-hours replies and for telling customers when someone is available. It is needed if replies are limited to business hours, or if you take appointments and leave the bookable hours blank.",
     example: HOURS_EXAMPLE, kind: { type: "hours" }, reviewLabel: "Business hours",
   },
   {
@@ -127,7 +132,7 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "text", max: 300 }, reviewLabel: "Other goal",
   },
   {
-    id: "b.lead_target", section: "B", title: "How many new leads would you like each month?",
+    id: "b.lead_target", section: "B", roles: ["performance_analyst"], title: "How many new leads would you like each month?",
     help: "A rough target helps your Performance Analyst tell you whether you're on track. It's never shown to customers.",
     kind: { type: "choice", options: opts(["lt20", "Fewer than 20"], ["20_50", "20 to 50"], ["50_150", "50 to 150"], ["150_plus", "More than 150"], ["unsure", "I'm not sure yet"]) },
     reviewLabel: "Monthly lead target",
@@ -139,7 +144,7 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "longtext", max: 1500, rows: 4 }, reviewLabel: "Ideal customer",
   },
   {
-    id: "b.qualification", section: "B", assist: "draft", title: "What makes a lead worth a conversation with your team?",
+    id: "b.qualification", section: "B", roles: ["lead_hunter"], assist: "draft", title: "What makes a lead worth a conversation with your team?",
     help: "These are the things your AI checks before calling someone qualified.",
     example: "In our service area, owns the property, and wants work done within three months.",
     kind: { type: "longtext", max: 1500, rows: 4 }, reviewLabel: "Qualification criteria",
@@ -199,7 +204,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   // Home services
   {
-    id: "b.hs_emergency", section: "B", show: inIndustry("home_services"), title: "Do you handle emergency call-outs?",
+    id: "b.hs_emergency", section: "B", show: inIndustry("home_services"), sensitive: true, title: "Do you handle emergency call-outs?",
     help: "If so, urgent messages are flagged straight to you instead of waiting in a queue.",
     kind: { type: "choice", options: opts(["yes_24_7", "Yes, any time"], ["yes_hours", "Yes, during business hours"], ["no", "No emergency work"]) },
     reviewLabel: "Emergency call-outs",
@@ -304,6 +309,8 @@ export const QUESTIONS: QuestionDef[] = [
       { key: "name", label: "Name", type: "text", max: 80, required: true },
       { key: "email", label: "Email", type: "email", max: 320, required: true },
       { key: "role", label: "Role", type: "select", required: true, options: opts(["sales_rep", "Sales representative"], ["support", "Customer support"], ["admin", "Manager"], ["viewer", "Viewer"]) },
+      // Only asked when appointments are wanted. It names who you intend to host; it gives nobody hours and sends no invitation.
+      { key: "hosts", label: "Takes appointments?", type: "select", show: wantsAppointments, options: opts(["yes", "Takes appointments"], ["no", "Does not take appointments"]) },
     ] },
     reviewLabel: "Team",
   },
@@ -319,8 +326,20 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "d.appt_availability", section: "D", show: wantsAppointments, title: "When can people book?",
-    help: "Bookable hours can differ from opening hours. Real availability still comes from your connected calendar.",
+    help: "Bookable hours can differ from opening hours. Leave this blank to use your opening hours. Real availability still comes from your connected calendar.",
     example: HOURS_EXAMPLE, kind: { type: "hours" }, reviewLabel: "Bookable hours",
+  },
+  {
+    id: "d.appt_host", section: "D", show: wantsAppointments, title: "Who takes these appointments?",
+    help: "This only records who you mean. Nobody gets working hours from this answer, and you confirm the hours yourself in your setup checklist.",
+    kind: { type: "choice", options: opts(["owner", "I take them myself", "You are the host of this calendar"], ["team", "A team member does", "Mark them under Team above; they join as a host after they accept your invitation"]) },
+    reviewLabel: "Appointment host",
+  },
+  {
+    id: "d.appt_busy_calendar", section: "D", show: wantsAppointments, title: "Do you keep your appointments in Google Calendar or Microsoft 365 today?",
+    help: "If you do, your existing events can block times so nobody is double-booked. You connect it yourself during setup; nothing is connected for you.",
+    kind: { type: "choice", options: opts(["google", "Google Calendar"], ["microsoft", "Microsoft 365"], ["none", "Neither, I do not use one"]) },
+    reviewLabel: "Existing calendar",
   },
   {
     id: "d.appt_notice", section: "D", show: wantsAppointments, title: "How much notice do you need?",
@@ -352,6 +371,11 @@ export const QUESTIONS: QuestionDef[] = [
     reviewLabel: "Video tool",
   },
   {
+    id: "d.appt_video_link", section: "D", show: (a) => wantsAppointments(a) && a["d.appt_video"] === "own", title: "What is the link for your video appointments?",
+    help: "The meeting room link you send customers. It must start with https://. Leave it blank and you can add it later in your calendar settings.",
+    example: "https://meet.example.com/your-room", kind: { type: "url", httpsOnly: true }, reviewLabel: "Video meeting link",
+  },
+  {
     id: "d.appt_cancellation", section: "D", show: wantsAppointments, sensitive: true, title: "What is your cancellation policy?",
     help: "Your AI will quote this exactly and won't invent exceptions.", example: "Free to reschedule up to 24 hours before.",
     kind: { type: "longtext", max: 800, rows: 3 }, reviewLabel: "Cancellation policy",
@@ -368,13 +392,13 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "longtext", max: 800, rows: 3 }, sensitive: true, reviewLabel: "Insurance and payment",
   },
   {
-    id: "d.hc_emergency", section: "D", show: inIndustry("healthcare"), title: "What should happen when someone describes an emergency?",
+    id: "d.hc_emergency", section: "D", show: inIndustry("healthcare"), sensitive: true, title: "What should happen when someone describes an emergency?",
     help: "Your AI never triages or gives medical advice. It follows your instruction and flags a person straight away.",
     kind: { type: "choice", options: opts(["call_us", "Tell them to call us immediately"], ["call_emergency", "Tell them to contact emergency services"], ["escalate_only", "Notify a person right away"]) },
     reviewLabel: "Emergency handling",
   },
   {
-    id: "d.hs_quote", section: "D", show: inIndustry("home_services"), title: "How do you price jobs?",
+    id: "d.hs_quote", section: "D", show: inIndustry("home_services"), sensitive: true, title: "How do you price jobs?",
     help: "This decides whether your AI offers an on-site visit before any figure is mentioned.",
     kind: { type: "choice", options: opts(["free_quote", "Free on-site quote"], ["paid_assessment", "Paid assessment"], ["phone_quote", "Quotes over the phone"], ["fixed_menu", "Fixed prices from a menu"]) },
     reviewLabel: "Quote process",
@@ -390,7 +414,7 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "longtext", max: 2000, rows: 5 }, reviewLabel: "Sales process",
   },
   {
-    id: "d.handoff_requirements", section: "D", title: "What should be confirmed before a person calls?",
+    id: "d.handoff_requirements", section: "D", roles: ["crm_manager"], title: "What should be confirmed before a person calls?",
     help: "These details are collected so your team never has to ask twice.", example: "Name, address, what's wrong, and when they can be reached.",
     kind: { type: "longtext", max: 1000, rows: 3 }, reviewLabel: "Before a hand-off",
   },
