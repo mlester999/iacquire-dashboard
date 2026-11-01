@@ -99,3 +99,67 @@ export async function dispatchCapabilityJob(
   if (!input.deferKick) kickWorkJob(job.id);
   return { jobId: job.id, agentId: agent.id };
 }
+
+/**
+ * Starts reviewed, read-only work for an employee on iAcquire's own initiative (nobody pressed a button), such as the launch sweep re-running an employee's final check after its
+ * configuration changed. Every job still needs an accountable person: the worker refuses work with no recorded requester, and checks that person's permissions again when it runs, so
+ * `onBehalfOf` names the workspace owner and a revoked owner blocks the job exactly as it would a request they made themselves. The dispatch itself is audited as the system's, with
+ * whom it was for. It refuses anything that is not read-only (a capability that could change a record or needs a human decision can never be started this way), and an idempotency key
+ * that already exists returns the job it made (`created: false`) instead of a second one.
+ */
+export async function dispatchSystemCapabilityJob(input: {
+  orgId: string;
+  /** The accountable person: an active member of the workspace. */
+  onBehalfOf: string;
+  agentRole: AgentRoleKey;
+  capability: CapabilityKey;
+  title: string;
+  input?: Record<string, unknown>;
+  idempotencyKey: string;
+}): Promise<{ jobId: string; agentId: string; created: boolean }> {
+  const definition = capabilityDefinition(input.capability);
+  if (!definition) throw new AppError("invalid_input", "That capability is not available.");
+  if (definition.risk !== "read_only") throw new AppError("forbidden", "Only read-only work can be started without a person.");
+  const policy = authorizeEmployeeAction(input.agentRole, `capability:${input.capability}`);
+  if (!policy.allowed || !definition.allowedRoles.includes(input.agentRole)) throw new AppError("forbidden", "This employee's role does not include that capability.");
+
+  const agent = await withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; enabled: boolean; status: string; active_config_version_id: string | null }>(
+      "select id, enabled, status, active_config_version_id from agent_instances where org_id = $1 and role_key = $2",
+      [input.orgId, input.agentRole],
+    );
+    return rows[0] ?? null;
+  });
+  if (!agent) throw new AppError("not_found", "AI employee not found.");
+  if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
+  if (!canChat(agent.status as AgentStatus)) throw new AppError("agent_unavailable", "This AI employee is not available for authorized work yet.");
+  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
+
+  const job = await withSystem(async (db) => {
+    await assertJobAllowed(db, { orgId: input.orgId, agentId: agent.id });
+    const created = await createWorkJob(db, {
+      orgId: input.orgId,
+      agentId: agent.id,
+      requestedBy: input.onBehalfOf,
+      capability: input.capability,
+      title: input.title.replace(/\s+/g, " ").slice(0, 200) || definition.label,
+      idempotencyKey: input.idempotencyKey,
+      input: { ...(input.input ?? {}), startedBy: "iacquire_setup" },
+    });
+    if (created.created) {
+      await recordAudit({
+        orgId: input.orgId,
+        actorUserId: null,
+        actorKind: "system",
+        action: "workforce.capability_dispatched",
+        targetType: "ai_work_job",
+        targetId: created.id,
+        result: "success",
+        metadata: { capability: input.capability, agentRole: input.agentRole, startedBy: "system", onBehalfOf: input.onBehalfOf },
+      }, db);
+    }
+    return created;
+  });
+  if (job.created) kickWorkJob(job.id);
+  return { jobId: job.id, agentId: agent.id, created: job.created };
+}

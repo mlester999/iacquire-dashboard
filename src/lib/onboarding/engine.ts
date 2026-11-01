@@ -366,6 +366,9 @@ function labelFor_list(qid: string, fieldKey: string, value: string): string {
   return k.fields.find((f) => f.key === fieldKey)?.options?.find((o) => o.value === value)?.label.toLowerCase() ?? value;
 }
 
+/** The most a stored role answer may hold (src/lib/agent-settings.ts). */
+const ROLE_ANSWER_MAX = 1000;
+
 export function toRoleAnswers(a: Answers): Record<AgentRoleKey, Record<string, string>> {
   const goals = labelsFor("b.goals", a).join(", ");
   const hours = formatHours(a["d.appt_availability"] as BusinessHours) || formatHours(a["a.hours"] as BusinessHours);
@@ -376,14 +379,18 @@ export function toRoleAnswers(a: Answers): Record<AgentRoleKey, Record<string, s
   out.lead_hunter.targets = joinParts([s(a, "b.ideal_customer"), s(a, "b.ag_target_clients"), s(a, "a.target_customers")], " ");
   out.lead_hunter.qualification = joinParts([s(a, "b.qualification"), s(a, "a.territories") && `Service areas: ${s(a, "a.territories")}`], " ");
   out.appointment_setter.meeting_types = appointmentLines(a).join("; ") || (wantsAppointments(a) ? "" : "Appointment booking is not enabled; hand booking requests to a person.");
-  out.appointment_setter.hours = joinParts([
+  // A role answer is stored with at most 1,000 characters. The client's own cancellation wording is quoted exactly, so when the whole does not fit it is the extra policy lines that
+  // give way, last first, never the cancellation text.
+  const cancellation = s(a, "d.appt_cancellation");
+  const policy = [
     hours && `Bookable ${hours}.`,
     a["d.appt_notice"] && `Minimum notice: ${labelFor("d.appt_notice", s(a, "d.appt_notice"), a)}.`,
     a["d.appt_buffer"] && a["d.appt_buffer"] !== "none" && `Gap kept after every appointment: ${labelFor("d.appt_buffer", s(a, "d.appt_buffer"), a)}.`,
     a["d.appt_confirmation"] && `Bookings: ${labelFor("d.appt_confirmation", s(a, "d.appt_confirmation"), a).toLowerCase()}.`,
     a["d.appt_changes"] && `Customers changing a booking themselves: ${labelFor("d.appt_changes", s(a, "d.appt_changes"), a).toLowerCase()}.`,
-    s(a, "d.appt_cancellation"),
-  ], " ");
+  ];
+  while (policy.length > 2 && joinParts([...policy, cancellation], " ").length > ROLE_ANSWER_MAX) policy.pop();
+  out.appointment_setter.hours = joinParts([...policy, cancellation], " ");
   out.sales_assistant.offers = joinParts([s(a, "b.services"), s(a, "d.pricing_info")], " ");
   out.sales_assistant.approach = joinParts([s(a, "d.sales_process"), a["d.followup"] && `Follow-up style: ${labelFor("d.followup", s(a, "d.followup"), a)}.`, a["d.discount_rules"] && `Discounts: ${labelFor("d.discount_rules", s(a, "d.discount_rules"), a)}.`], " ");
   out.crm_manager.important_info = s(a, "d.handoff_requirements");

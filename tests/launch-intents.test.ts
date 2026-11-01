@@ -3,10 +3,6 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import type { LaunchReadiness } from "@/lib/launch-readiness";
-import { getWorkspace } from "@/server/crm/workspace";
-import { listPipelines } from "@/server/crm/pipelines";
-import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
@@ -14,50 +10,7 @@ import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-
 import { agentId, ctxFor } from "./support/fixtures";
 import { crmOrg } from "./support/crm";
 import { clearSetupPayment } from "./support/billing";
-import { makeRuntimeReady } from "./support/runtime-ready";
-import { insertPublishedBlueprint, smallContent } from "./support/blueprints";
-
-const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
-const WEEKDAYS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 17 * 60 }));
-
-/** A client whose setup is finished in every way but the final checks: submitted, paid, CRM and calendar in place, six employees ready for authorized work. */
-async function readyClient(opts: { name: string; timezone: string; noticeMinutes?: number }) {
-  const c = await crmOrg({ name: opts.name, timezone: opts.timezone });
-  const owner = c.people.owner;
-  await withSystem(async (db) => {
-    await db.query("update organizations set onboarding_completed_at = now(), industry = 'home_services' where id = $1", [c.org.id]);
-    await db.query("insert into company_profiles (org_id, description) values ($1, 'We repair roofs after storms.') on conflict (org_id) do update set description = excluded.description", [c.org.id]);
-    await db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'b.appointments', 'true'::jsonb), ($1, 'a.timezone', to_jsonb($2::text))", [c.org.id, opts.timezone]);
-    await db.query("insert into company_knowledge (org_id, section, content) values ($1, 'business_description', 'We repair residential roofs after storm damage.')", [c.org.id]);
-    await db.query("insert into lead_targeting_profiles (org_id, criteria) values ($1, $2)", [c.org.id, JSON.stringify({ industries: ["Homeowners"], countries: ["US"] })]);
-  });
-  await clearSetupPayment(c.org.id);
-  const actor = c.actor("owner");
-  await getWorkspace(actor);
-  await listPipelines(actor, { ensureDefault: true });
-  const bp = await insertPublishedBlueprint(smallContent());
-  await withSystem((db) => db.query(
-    `insert into crm_blueprint_applications (org_id, blueprint_id, version_id, version, blueprint_name, mode, strategy, status, plan_digest, idempotency_key)
-     values ($1, $2, $3, 1, 'Test blueprint', 'initial', 'add_missing', 'applied', $4, $5)`,
-    [c.org.id, bp.blueprintId, bp.versionId, "a".repeat(64), `launch-test-${c.org.id}`],
-  ));
-  await setHostAvailability(actor, owner.id, { timezone: opts.timezone, rules: WEEKDAYS });
-  const calendar = await createCalendar(actor, { name: "Consultations", members: [{ userId: owner.id }], isDefault: true });
-  await createAppointmentType(actor, calendar.id, { name: "Free consultation", durationMinutes: 30, minNoticeMinutes: opts.noticeMinutes ?? 60, maxDaysAhead: 30 });
-  for (const role of AGENT_ROLE_KEYS) await makeRuntimeReady(await agentId(c.org.id, role), c.org.id, owner.id);
-  return { ...c, calendarId: calendar.id, ctx: ctxFor(owner, c.org, "owner") };
-}
-
-async function settled(orgId: string, expected: number) {
-  for (let i = 0; i < 600; i += 1) {
-    const { rows } = await withSystem((db) => db.query<{ status: string }>("select status from ai_work_jobs where org_id = $1 and input ->> 'launchVerification' = 'true'", [orgId]));
-    if (rows.length >= expected && rows.every((r) => ["completed", "failed", "blocked", "cancelled"].includes(r.status))) return rows;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("the launch checks did not settle");
-}
-const checkJobs = async (orgId: string) => Number((await withSystem((db) => db.query<{ n: string }>("select count(*) as n from ai_work_jobs where org_id = $1 and input ->> 'launchVerification' = 'true'", [orgId]))).rows[0].n);
-const count = async (orgId: string, table: string) => Number((await withSystem((db) => db.query<{ n: string }>(`select count(*) as n from ${table} where org_id = $1`, [orgId]))).rows[0].n);
+import { WEEKDAYS, checkJobs, count, itemOf, readyClient, settled } from "./support/launch";
 
 describe("the final checks decide 100% Ready to Launch", () => {
   it("is not ready before the checks run, ready only after six finished checks, and never writes or sends anything", async () => {

@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
+import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
@@ -19,7 +20,7 @@ import type { Answers } from "@/lib/onboarding/types";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { verifyCalendarInTx } from "@/server/calendars/activation";
-import { listAgents, type AgentInstanceRow } from "@/server/workforce/service";
+import { listAgents, listAgentsForSystem, type AgentInstanceRow } from "@/server/workforce/service";
 import { loadWorkspaceFacts } from "@/server/workforce/readiness-facts";
 
 // The facts behind "is this client ready to launch?", read from the workspace's own records and handed to the pure judge in src/lib/launch-readiness.ts. Nothing here is inferred
@@ -139,10 +140,22 @@ function employeeFacts(agents: AgentInstanceRow[], jobs: Map<AgentRoleKey, { sta
   return out;
 }
 
-/** Everything the judge needs for one client workspace, or null for a workspace that is not a client's. */
+/** Everything the judge needs for one client workspace as the signed-in person sees it, or null for a workspace that is not a client's. */
 export async function loadLaunchFacts(ctx: OrgContext): Promise<LaunchFacts | null> {
-  const orgId = ctx.org.orgId;
-  const agents = await listAgents(ctx.user.id, orgId);
+  // Most of the facts are read as trusted code, so the person is checked here too: someone who is not an active member of this workspace is refused, whatever context was built for them.
+  if (ctx.user.platformRole === "none") {
+    const member = await withSystem((db) => db.query("select 1 from organization_memberships where org_id = $1 and user_id = $2 and status = 'active'", [ctx.org.orgId, ctx.user.id]));
+    if (!member.rows.length) throw new AppError("forbidden", "You don't have access to that workspace.");
+  }
+  return readLaunchFacts(ctx.org.orgId, await listAgents(ctx.user.id, ctx.org.orgId), ctx.can("billing.view"));
+}
+
+/** The same facts for trusted server code with no signed-in person (the launch sweep). */
+export async function loadLaunchFactsForOrg(orgId: string): Promise<LaunchFacts | null> {
+  return readLaunchFacts(orgId, await listAgentsForSystem(orgId), false);
+}
+
+async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpenBilling: boolean): Promise<LaunchFacts | null> {
   const read = await withSystem(async (db) => {
     const org = (await db.query<{ kind: string; name: string; industry: string | null; timezone: string; submitted: boolean; is_demo: boolean; description: string }>(
       `select o.kind, o.name, o.industry, o.timezone, o.onboarding_completed_at is not null as submitted, o.is_demo, coalesce(p.description, '') as description
@@ -187,7 +200,7 @@ export async function loadLaunchFacts(ctx: OrgContext): Promise<LaunchFacts | nu
   return {
     submitted: org.submitted,
     paymentCleared,
-    canOpenBilling: ctx.can("billing.view"),
+    canOpenBilling,
     profile: {
       companyName: org.name.trim() !== "",
       industry: Boolean(org.industry?.trim()) || (typeof answers["a.industry"] === "string" && (answers["a.industry"] as string) !== ""),

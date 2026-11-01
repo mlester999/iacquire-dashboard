@@ -156,6 +156,12 @@ export async function listAgents(userId: string, orgId: string): Promise<AgentIn
   return attachReadinessExtras(await attachCredentialReadiness(agents));
 }
 
+/** The same rows as listAgents, read by trusted server code when no person is signed in (the launch sweep). Every query names the workspace. */
+export async function listAgentsForSystem(orgId: string): Promise<AgentInstanceRow[]> {
+  const agents = await withSystem(async (db) => (await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 order by r.sort_order`, [orgId])).rows);
+  return attachReadinessExtras(await attachCredentialReadiness(agents));
+}
+
 export async function getAgentByRole(userId: string, orgId: string, role: AgentRoleKey): Promise<AgentInstanceRow | null> {
   const agent = await withUser(userId, async (db) => {
     const { rows } = await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 and a.role_key = $2`, [orgId, role]);
@@ -1307,6 +1313,16 @@ export async function runHealthCheck(
       db,
     );
   });
+  // An employee that just passed is the moment it may become ready for authorized work, so its final read-only check starts by itself (never failing the health check, and also from
+  // the scheduled probe, which skips the setup sync below).
+  if (result.ok) {
+    try {
+      const { sweepLaunchVerificationAfter } = await import("@/server/setup/launch-sweep");
+      await sweepLaunchVerificationAfter(orgId, "a passing health check");
+    } catch {
+      if (process.env.NODE_ENV !== "test") console.error("[iacquire] launch check sweep after health check could not start");
+    }
+  }
   // Let the client's setup checklist react to the recorded outcome (it never contacts Hermes itself).
   if (!opts.skipSetupSync) {
     try {

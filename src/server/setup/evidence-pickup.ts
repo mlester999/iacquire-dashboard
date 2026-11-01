@@ -16,4 +16,11 @@ export async function pickUpSetupEvidence(orgId: string, after: string): Promise
   } catch (err) {
     console.warn(`[iacquire] setup evidence pickup after ${after} failed; the scheduled pass will retry.`, { error: err instanceof Error ? err.name : "unknown" });
   }
+  // The same events can make an employee ready for authorized work (a calendar or a CRM becoming active), so its final read-only check starts by itself (src/server/setup/launch-sweep.ts).
+  try {
+    const { sweepLaunchVerificationAfter } = await import("@/server/setup/launch-sweep");
+    await sweepLaunchVerificationAfter(orgId, after);
+  } catch (err) {
+    console.warn(`[iacquire] launch check sweep after ${after} could not start.`, { error: err instanceof Error ? err.name : "unknown" });
+  }
 }

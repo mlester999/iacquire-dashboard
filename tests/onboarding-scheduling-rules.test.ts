@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DRAFT_CALENDAR_NAME, NOTICE_MINUTES, planSchedulingDrafts, schedulingDraftMessage, weeklyRulesFromHours } from "@/lib/onboarding/scheduling-drafts";
 import { describeAction } from "@/lib/activity";
 import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
+import { toRoleAnswers } from "@/lib/onboarding/engine";
 import type { Answers } from "@/lib/onboarding/types";
 
 /** What a drafted type carries when the client answered none of the booking-policy questions: what a hand-made type starts with. */
@@ -76,6 +77,21 @@ describe("what the plan takes from the booking answers", () => {
     expect(QUESTION_BY_ID["d.appt_video"].show!(base())).toBe(false);
     expect(QUESTION_BY_ID["d.appt_video"].show!(base({ "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }] }))).toBe(true);
     expect(QUESTION_BY_ID["d.appt_video"].show!(base({ "b.appointments": false, "d.appt_types": [{ name: "Video consult", minutes: "30", mode: "video" }] }))).toBe(false);
+  });
+
+  it("tells the Appointment Setter the booking policy, and when it does not fit the stored limit the policy lines give way, never the client's cancellation wording", () => {
+    const policy = { "d.appt_buffer": "15m", "d.appt_confirmation": "manual", "d.appt_changes": "24h" };
+    const short = toRoleAnswers(base({ ...policy, "d.appt_cancellation": "Free to reschedule up to 24 hours before." })).appointment_setter.hours;
+    expect(short).toContain("Gap kept after every appointment: 15 minutes.");
+    expect(short).toContain("a team member confirms each booking");
+    expect(short).toContain("until 24 hours before");
+    expect(short.endsWith("Free to reschedule up to 24 hours before.")).toBe(true);
+    // Nothing was answered: nothing is added, so existing configurations read exactly as before.
+    expect(toRoleAnswers(base({ "d.appt_cancellation": "No refunds." })).appointment_setter.hours).not.toMatch(/Gap kept|Bookings:|Customers changing/);
+    const cancellation = "No refunds after the visit has started. ".repeat(20).trim().slice(0, 800);
+    const long = toRoleAnswers(base({ ...policy, "d.appt_cancellation": cancellation })).appointment_setter.hours;
+    expect(long.length).toBeLessThanOrEqual(1000);
+    expect(long.endsWith(cancellation)).toBe(true);
   });
 
   it("falls back to the opening hours when no bookable hours were given, and says so", () => {
