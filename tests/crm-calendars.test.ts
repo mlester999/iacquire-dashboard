@@ -314,6 +314,34 @@ describe("Appointment Setter and staff requests on native calendars", () => {
     const taken = await requestBooking({ orgId: b.org.id, contactId: someoneElse.id, startAt: at("10:00"), actor: { kind: "staff", userId: b.people.owner.id }, now: NOW });
     expect(taken).toMatchObject({ status: "unavailable", reason: "slot_taken" });
   });
+
+  it("a request waiting for approval keeps its place: its time stops being offered once every free host is spoken for", async () => {
+    const { requestBooking } = await import("@/server/appointments/booking");
+    const { getAvailability } = await import("@/server/appointments/availability");
+    const { createContact } = await import("@/server/crm/contacts");
+    const b = await crmOrg({ timezone: "Asia/Manila" });
+    // Round robin over two hosts who both work Monday to Friday 9:00-17:00: a start has room for two waiting requests.
+    const { typeId } = await setupWorkspace(b, { hosts: ["owner", "manager"] });
+    const setter = (await withSystem((db) => db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'appointment_setter'", [b.org.id]))).rows[0].id;
+    await withSystem((db) => db.query("update agent_instances set status = 'online', last_health_ok = true, enabled = true, mode = 'autonomous' where id = $1", [setter]));
+    const [ada, ben, cy] = await Promise.all(["Ada", "Ben", "Cy"].map((firstName) => createContact(b.actor("owner"), { firstName, email: `${firstName.toLowerCase()}-held@example.test` })));
+    const nineAm = at("09:00").toISOString();
+    const offered = async () => {
+      const res = await getAvailability(b.org.id, { now: NOW, from: at("00:00"), to: at("23:59"), timeZone: "Asia/Manila" });
+      return res.ok && res.slots.some((slot) => slot.start === nineAm);
+    };
+    const ask = (contactId: string) => requestBooking({ orgId: b.org.id, contactId, startAt: at("09:00"), actor: { kind: "ai", agentId: setter }, now: NOW });
+    expect(await offered()).toBe(true);
+    expect((await ask(ada.id)).status).toBe("awaiting_approval");
+    expect(await offered()).toBe(true); // one request, two free hosts: room for another
+    expect((await ask(ben.id)).status).toBe("awaiting_approval");
+    expect(await offered()).toBe(false); // both hosts are spoken for: no one else is offered, previewed or asked for this time
+    expect(await ask(cy.id)).toMatchObject({ status: "unavailable", reason: "slot_taken" });
+    // The next start (this type is an hour long, so starts are hourly) is untouched, and the type is the one the requests were made on.
+    const next = await getAvailability(b.org.id, { now: NOW, from: at("00:00"), to: at("23:59"), timeZone: "Asia/Manila" });
+    expect(next.ok && next.slots.some((slot) => slot.start === at("10:00").toISOString())).toBe(true);
+    expect(next.ok && next.calendarId).toBe(typeId);
+  });
 });
 
 // ---------------------------------------------------------------------------

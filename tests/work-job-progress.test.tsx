@@ -152,6 +152,84 @@ describe("WorkJobPanel", () => {
     expect(screen.getByRole("link", { name: /Open appointments/i }).getAttribute("href")).toBe("/appointments");
   });
 
+  it("shows the open times day by day in the hosts' zone, and says nothing about research or leads on a calendar result", async () => {
+    stubJob(job({
+      capability: "appointment_availability",
+      status: "completed",
+      statusLabel: "Completed",
+      stage: "completed",
+      stageLabel: "Completed",
+      resultCount: 73,
+      resultSummary: "Calendar availability checked: 73 bookable slots on 5 days in the next 7 days (Asia/Manila).",
+      canCancel: false,
+      result: {
+        availability: {
+          slots: [{ start: "2026-11-02T04:30:00.000Z", end: "2026-11-02T05:00:00.000Z" }],
+          total: 73,
+          truncated: false,
+          // Monday's open times start at 12:30 PM Manila time (04:30 UTC) and run to a 4:30 PM start; Tuesday is the host's full 9:00 AM to 4:30 PM.
+          days: [
+            { date: "2026-11-02", weekday: "Mon", count: 9, firstStart: "2026-11-02T04:30:00.000Z", lastStart: "2026-11-02T08:30:00.000Z" },
+            { date: "2026-11-03", weekday: "Tue", count: 16, firstStart: "2026-11-03T01:00:00.000Z", lastStart: "2026-11-03T08:30:00.000Z" },
+          ],
+          timeZone: "UTC",
+          displayTimeZone: "Asia/Manila",
+          hostTimeZone: "Asia/Manila",
+        },
+        metrics: [],
+        findings: [],
+      },
+      events: [],
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Real bookable availability")).toBeTruthy();
+    expect(screen.getByText("Mon, Nov 2")).toBeTruthy();
+    expect(screen.getByText("9 open times")).toBeTruthy();
+    expect(screen.getByText(/first 12:30 PM, last start 4:30 PM/)).toBeTruthy();
+    expect(screen.getByText("Tue, Nov 3")).toBeTruthy();
+    expect(screen.getByText("16 open times")).toBeTruthy();
+    expect(screen.getByText(/first 9:00 AM, last start 4:30 PM/)).toBeTruthy();
+    expect(screen.getByText(/Times shown in Asia\/Manila/)).toBeTruthy();
+    // The footer of a lead-research job used to appear on every kind of work, with a "Review 73 leads" link to the lead queue.
+    expect(screen.queryByText(/Read-only research/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: /Review \d+ leads?/ })).toBeNull();
+    expect(screen.getByText(/Read-only review\. Nothing was changed, booked or sent\./)).toBeTruthy();
+  });
+
+  it("offers the lead queue only for lead work, and never counts signals as leads", async () => {
+    const reviewed = (capability: string, resultCount: number) => job({
+      capability,
+      status: "completed",
+      statusLabel: "Completed",
+      stage: "completed",
+      stageLabel: "Completed",
+      resultCount,
+      resultSummary: "Review complete.",
+      canCancel: false,
+      events: [],
+    });
+    // A lead review that found one signal across ten leads: a link to the queue, and no "Review 1 lead".
+    stubJob(reviewed("lead_generation_review", 1));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Review complete.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open the lead review queue/ }).getAttribute("href")).toBe("/leads?tab=review");
+    expect(screen.queryByRole("link", { name: /Review \d+ leads?/ })).toBeNull();
+    cleanup();
+    // An operations review with one signal: no lead link at all, and the footer says what it is.
+    stubJob(reviewed("proactive_review", 1));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Review complete.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /lead/i })).toBeNull();
+    expect(screen.getByText(/Read-only review\. Nothing was changed, booked or sent\./)).toBeTruthy();
+    cleanup();
+    // Unsent follow-up drafts say so.
+    stubJob(reviewed("pipeline_followup_drafts", 2));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Review complete.")).toBeTruthy();
+    expect(screen.getByText(/Drafts stay unsent until a person reviews them/)).toBeTruthy();
+    expect(screen.queryByText(/Read-only research/i)).toBeNull();
+  });
+
   it("shows a measured comparison period without treating every increase as good", async () => {
     stubJob(job({
       status: "completed",

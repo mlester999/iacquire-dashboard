@@ -3,6 +3,7 @@ import type { AgentRoleKey } from "@/lib/agents";
 import { hasExplicitTargeting } from "@/lib/leads-targeting";
 import { formatSlot } from "@/lib/appointments";
 import { addDays, weekdayOf, zonedDate, zonedToInstant } from "@/lib/calendars/slots";
+import { readableTimeZone, sampleSlotsPerDay, summarizeSlotsByDay } from "@/lib/calendars/availability-summary";
 import {
   evidenceText, formatEmployeeEvidence, noPermissionSection, switchedOffSection, unavailableSection, weeklyHoursText,
   type EmployeeEvidence, type EvidenceRecord, type EvidenceSection,
@@ -591,14 +592,34 @@ async function appointmentSections(b: Build): Promise<EvidenceSection[]> {
   if (calendarReady) {
     const slots = await guard(b, "open_times", "Open times", async () => {
       if (!actor.can("appointments.view")) return noPermissionSection("open_times", "Open times");
-      const result = await nativeAvailability(b.ctx.org.orgId, { from: b.now, to: new Date(b.now.getTime() + 7 * DAY_MS), limit: 8, now: b.now });
+      // All of the week's open times are counted (a short list taken from the start of the week looked like the whole week), read in the zone the calendar's hosts work in.
+      // The records are the earliest three times of each day, so the list reaches across the week; the per-day counts say how much more each day holds.
+      const result = await nativeAvailability(b.ctx.org.orgId, { from: b.now, to: new Date(b.now.getTime() + 7 * DAY_MS), now: b.now });
       if (!result.ok) return section("open_times", "Open times", "not_configured", result.detail);
+      const readIn = readableTimeZone(result.hostTimeZone ?? result.timeZone ?? b.timeZone);
+      const days = summarizeSlotsByDay(result.slots, readIn);
+      const shown = sampleSlotsPerDay(result.slots, readIn, 3, 15);
+      const dayName = (iso: string) => {
+        try {
+          return new Intl.DateTimeFormat("en-US", { timeZone: readIn, weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
+        } catch {
+          return iso;
+        }
+      };
       return section(
         "open_times",
         "Open times",
         result.slots.length ? "ready" : "empty",
-        result.slots.length ? `There are open times in the next 7 days (first ${result.slots.length} shown).` : "There are no open times in the next 7 days.",
-        { facts: { meetingMinutes: result.slotMinutes, timeZone: result.timeZone, checkedAt: result.checkedAt }, records: result.slots.map((s) => ({ opensAt: formatSlot(s.start, result.timeZone ?? b.timeZone) })) },
+        result.slots.length
+          ? `There ${result.slots.length === 1 ? "is 1 open time" : `are ${result.slots.length} open times`} in the next 7 days, on ${days.length} day${days.length === 1 ? "" : "s"}; the earliest ${shown.length} (up to three a day) are listed, in ${readIn}.`
+          : "There are no open times in the next 7 days.",
+        {
+          facts: {
+            meetingMinutes: result.slotMinutes, timeZone: readIn, workspaceTimeZone: result.timeZone, checkedAt: result.checkedAt,
+            openTimesNext7Days: result.slots.length, openTimesByDay: days.map((day) => ({ day: dayName(day.firstStart), openTimes: day.count })),
+          },
+          records: shown.map((s) => ({ opensAt: formatSlot(s.start, readIn) })),
+        },
       );
     });
     out.push(...slots);

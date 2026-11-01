@@ -1,9 +1,38 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext } from "@/server/calendars/availability";
+import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext, type BookableSlot, type BookingContext } from "@/server/calendars/availability";
 import type { AvailabilityOptions, AvailabilityResult } from "@/server/appointments/availability";
 
 type Resolved = { typeId: string } | { refused: string };
+
+/**
+ * Takes out the times that requests still waiting for a person already hold, so one time is not offered to two people. A waiting request holds its place the way `requestNativeBooking`
+ * counts it: one per free host (round robin), one in all for a collective calendar, one per seat for a group session. The time itself only becomes busy when the request is
+ * approved and booked; until then this is the only thing that keeps it from being offered (and previewed, and asked for) again.
+ */
+async function withoutHeldRequests(db: Queryable, ctx: BookingContext, slots: BookableSlot[], from: Date, to: Date): Promise<BookableSlot[]> {
+  if (!slots.length) return slots;
+  const held = await db.query<{ start_at: Date; n: string }>(
+    `select start_at, count(*)::text as n from appointment_bookings
+      where org_id = $1 and provider = 'native' and calendar_id = $2 and start_at >= $3 and start_at < $4 and status in ('awaiting_approval', 'requested', 'needs_manual')
+      group by start_at`,
+    [ctx.orgId, ctx.type.id, from, to],
+  );
+  if (!held.rows.length) return slots;
+  const waiting = new Map(held.rows.map((row) => [new Date(row.start_at).getTime(), Number(row.n)]));
+  return slots.filter((slot) => {
+    const requests = waiting.get(new Date(slot.start).getTime()) ?? 0;
+    if (!requests) return true;
+    const room = ctx.type.capacity > 1 ? slot.remaining ?? 1 : ctx.calendar.assignment === "collective" ? 1 : slot.hostIds.length;
+    return requests < room;
+  });
+}
+
+/** The one zone the calendar's accepting hosts work in, when they all share it. Null when they work in different zones, or when there is no host to read it from. */
+function sharedHostTimeZone(ctx: BookingContext): string | null {
+  const zones = new Set(ctx.hosts.filter((host) => host.accepting).map((host) => host.timezone));
+  return zones.size === 1 ? [...zones][0] : null;
+}
 
 const NO_TYPE = "No appointment type is set up yet.";
 const DRAFT_ONLY = "This workspace's calendars are still drafts, so they take no bookings yet. Verify and activate a calendar first.";
@@ -47,7 +76,7 @@ export async function nativeAvailability(orgId: string, opts: AvailabilityOption
     const ctx = await loadBookingContext(db, orgId, typeId);
     const from = opts.from ?? now;
     const to = opts.to ?? new Date(from.getTime() + 7 * 86_400_000);
-    let slots = await computeSlots(db, ctx, { from, to, now });
+    let slots = await withoutHeldRequests(db, ctx, await computeSlots(db, ctx, { from, to, now }), from, to);
     const timeZone = opts.timeZone ?? ctx.orgTimezone;
     if (opts.perDay) {
       const perDay = new Map<string, number>();
@@ -59,6 +88,6 @@ export async function nativeAvailability(orgId: string, opts: AvailabilityOption
       });
     }
     if (opts.limit) slots = slots.slice(0, opts.limit);
-    return { ok: true, slots: slots.map((s) => ({ start: s.start, end: s.end })), calendarId: typeId, timeZone, checkedAt: now.toISOString(), slotMinutes: ctx.type.durationMinutes };
+    return { ok: true, slots: slots.map((s) => ({ start: s.start, end: s.end })), calendarId: typeId, timeZone, checkedAt: now.toISOString(), slotMinutes: ctx.type.durationMinutes, hostTimeZone: sharedHostTimeZone(ctx) };
   });
 }

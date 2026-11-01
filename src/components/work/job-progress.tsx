@@ -11,6 +11,20 @@ import { formatChatTime, fullTimestamp } from "@/lib/conversation-time";
 import { createFindingTaskAction } from "@/app/actions/work";
 import { cn } from "@/lib/utils";
 
+/** A day, a clock time, or a weekday and time for one instant in a named zone (the browser's own zone when none is named); the ISO instant when the zone is not one the browser knows. */
+function availabilityLabel(iso: string, timeZone: string | undefined, kind: "day" | "time" | "weekday-time"): string {
+  const options: Intl.DateTimeFormatOptions = kind === "day"
+    ? { weekday: "short", month: "short", day: "numeric" }
+    : kind === "time"
+      ? { hour: "numeric", minute: "2-digit", hour12: true }
+      : { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true };
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, ...options }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toISOString();
+  }
+}
+
 export interface WorkJobEvent {
   id: string;
   kind: "stage" | "progress" | "notice" | "evidence" | "error" | "approval";
@@ -210,9 +224,26 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
     comparisonPeriod?: string; higherIsBetter?: boolean;
   }>).filter((item) => typeof item.label === "string") : [];
   const availability = job.result.availability && typeof job.result.availability === "object"
-    ? (job.result.availability as { slots?: Array<{ start: string; end: string }>; timeZone?: string })
+    ? (job.result.availability as {
+        slots?: Array<{ start: string; end: string }>;
+        timeZone?: string;
+        /** The zone the times are read in: the calendar hosts' zone when they share one, otherwise the workspace's. Older results have only `timeZone`. */
+        displayTimeZone?: string;
+        total?: number;
+        truncated?: boolean;
+        days?: Array<{ date: string; weekday: string; count: number; firstStart: string; lastStart: string }>;
+      })
     : null;
   const availableSlots = (availability?.slots ?? []).slice(0, 12);
+  const availabilityDays = Array.isArray(availability?.days) ? availability.days : [];
+  const availabilityZone = availability?.displayTimeZone || availability?.timeZone || zone;
+  // What this kind of work does, so the footer never promises "research" or a lead list for a calendar, pipeline or CRM review.
+  const leadResearch = job.capability === "lead_research";
+  const footerNote = leadResearch
+    ? "Read-only research. CRM imports and outreach need your approval."
+    : job.capability === "pipeline_followup_drafts"
+      ? "Drafts stay unsent until a person reviews them. Nothing was sent."
+      : "Read-only review. Nothing was changed, booked or sent.";
   const running = job.status === "running" && !job.recoveryPending;
 
   return (
@@ -312,29 +343,30 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
           </div>
         )}
 
-        {availableSlots.length > 0 && (
+        {(availabilityDays.length > 0 || availableSlots.length > 0) && (
           <div>
             <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[.08em] text-faint">Real bookable availability</p>
-            <ul className="flex flex-wrap gap-1.5">
-              {availableSlots.map((slot) => (
-                <li key={slot.start} className="rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] tabular-nums text-ink-2">
-                  {(() => {
-                    try {
-                      return new Intl.DateTimeFormat("en-US", {
-                        timeZone: availability?.timeZone || zone,
-                        weekday: "short",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                      }).format(new Date(slot.start));
-                    } catch {
-                      return new Date(slot.start).toISOString();
-                    }
-                  })()}
-                </li>
-              ))}
-            </ul>
-            {availability?.timeZone && <p className="mt-1 text-[12px] text-faint">Times shown in {availability.timeZone}. Nothing has been held or booked.</p>}
+            {availabilityDays.length > 0 ? (
+              <ul className="space-y-1">
+                {availabilityDays.map((day) => (
+                  <li key={day.date} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2">
+                    <span className="font-semibold text-ink">{availabilityLabel(day.firstStart, availabilityZone, "day")}</span>
+                    <span className="tabular-nums">{day.count} open time{day.count === 1 ? "" : "s"}</span>
+                    <span className="tabular-nums text-muted">first {availabilityLabel(day.firstStart, availabilityZone, "time")}, last start {availabilityLabel(day.lastStart, availabilityZone, "time")}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {availableSlots.map((slot) => (
+                  <li key={slot.start} className="rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] tabular-nums text-ink-2">
+                    {availabilityLabel(slot.start, availabilityZone, "weekday-time")}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {availability?.truncated && <p className="mt-1 text-[12px] text-faint">The calendar holds more open times than this list can count.</p>}
+            <p className="mt-1 text-[12px] text-faint">{availabilityZone ? `Times shown in ${availabilityZone}. ` : ""}Nothing has been held or booked.</p>
           </div>
         )}
 
@@ -424,10 +456,15 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
         {error && <p className="text-[12px] text-danger-ink" role="alert">{error}</p>}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line/70 pt-2.5 text-[12px] text-muted">
-          <span className="inline-flex items-center gap-1"><ShieldCheck className="size-3.5 text-success-ink" aria-hidden /> Read-only research. CRM imports and outreach need your approval.</span>
-          {job.status === "completed" && job.resultCount > 0 && (
+          <span className="inline-flex items-center gap-1"><ShieldCheck className="size-3.5 text-success-ink" aria-hidden /> {footerNote}</span>
+          {job.status === "completed" && leadResearch && job.resultCount > 0 && (
             <Link href="/leads?tab=review" className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
               Review {job.resultCount} lead{job.resultCount === 1 ? "" : "s"} <ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          )}
+          {job.status === "completed" && job.capability === "lead_generation_review" && (
+            <Link href="/leads?tab=review" className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
+              Open the lead review queue <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           )}
           {job.status === "failed" && <span className="inline-flex items-center gap-1"><XCircle className="size-3.5" aria-hidden />Nothing was reported as successful.</span>}

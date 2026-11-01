@@ -34,7 +34,11 @@ export async function loadPolicy(db: Queryable, orgId: string): Promise<Appointm
 }
 
 export type AvailabilityResult =
-  | { ok: true; slots: Slot[]; calendarId: string; timeZone: string; checkedAt: string; slotMinutes: number }
+  | {
+      ok: true; slots: Slot[]; calendarId: string; timeZone: string; checkedAt: string; slotMinutes: number;
+      /** The one zone the calendar's accepting hosts work in, when they share one (native calendars only). `timeZone` is the zone the caller asked for, or the workspace's. */
+      hostTimeZone?: string | null;
+    }
   | { ok: false; reason: string; detail: string };
 
 export interface AvailabilityOptions {

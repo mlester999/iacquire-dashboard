@@ -304,6 +304,24 @@ describe("the internal agency once the calendar, leads and deals exist", () => {
     expect(String(open.records[0].opensAt)).toMatch(/PST|GMT\+8/);
   });
 
+  it("Appointment Setter: counts every open time in the week and lists the earliest three of each day, in the hosts' zone", async () => {
+    const { sections } = await evidenceFor(agency.ctx, agency.org.id, "appointment_setter");
+    const open = byId(sections, "open_times")!;
+    expect(open.state).toBe("ready");
+    // Monday 19 October 08:00 in Manila plus 24 hours' notice: Tuesday to Friday only, 16 start times a day (09:00 to 16:30). Nothing on the weekend, and nothing before the next Monday's 09:00.
+    expect(open.facts).toMatchObject({ timeZone: MANILA, meetingMinutes: 30, openTimesNext7Days: 64 });
+    expect(open.facts.openTimesByDay).toEqual([
+      { day: "Tuesday, October 20", openTimes: 16 }, { day: "Wednesday, October 21", openTimes: 16 },
+      { day: "Thursday, October 22", openTimes: 16 }, { day: "Friday, October 23", openTimes: 16 },
+    ]);
+    expect(open.summary).toMatch(/64 open times in the next 7 days, on 4 days; the earliest 12 \(up to three a day\) are listed, in Asia\/Manila/);
+    // The list reaches across the week (it used to be the first eight times, all from the first day), and every entry is a real offered start.
+    expect(open.records).toHaveLength(12);
+    expect(String(open.records[0].opensAt)).toMatch(/Tuesday, October 20 at 9:00 AM/);
+    for (const day of ["Tuesday", "Wednesday", "Thursday", "Friday"]) expect(open.records.filter((record) => String(record.opensAt).startsWith(day))).toHaveLength(3);
+    expect(open.records.some((record) => /Saturday|Sunday|Monday/.test(String(record.opensAt)))).toBe(false);
+  });
+
   it("Appointment Setter: lists only the appointments that exist this week and next, with the right counts", async () => {
     const actor = memberActor(agency.ctx);
     const thisWeek = await bookNativeAppointment(actor, { typeId, startAt: new Date("2026-10-22T10:00:00+08:00"), contact: { firstName: "Ana", lastName: "Reyes", email: "ana@example.test" }, via: "staff", now: new Date("2026-10-19T00:00:00Z"), ignoreNotice: true } as never);

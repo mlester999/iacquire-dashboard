@@ -315,6 +315,42 @@ describe("reviewed workforce capabilities", () => {
     expect(after.rows[0].count).toBe(before.rows[0].count);
   });
 
+  it("counts every bookable start time (it was capped at 50 and shown as the total) and reads the week in the hosts' zone", async () => {
+    await withSystem((db) => db.query("update crm_host_settings set timezone = 'Asia/Manila' where org_id = $1 and user_id = $2", [org.id, owner.id]));
+    try {
+      const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
+        agentRole: "appointment_setter",
+        capability: "appointment_availability",
+        title: "Calendar availability check",
+        input: {},
+      });
+      const job = await waitForJob(dispatched.jobId);
+      expect(job.status).toBe("completed");
+      const availability = job.result.availability as {
+        slots: unknown[]; total: number; truncated: boolean; timeZone: string; displayTimeZone: string; hostTimeZone: string | null;
+        days: Array<{ date: string; weekday: string; count: number }>;
+      };
+      // The fixture's hours are 09:00-17:00 on all seven days at a 30-minute step: 16 start times a day, so any seven-day window holds 112 (113 only if "now" sits exactly on a start).
+      expect(job.result_count).toBeGreaterThanOrEqual(112);
+      expect(job.result_count).toBeLessThanOrEqual(113);
+      expect(job.result_count).toBeGreaterThan(50);
+      expect(availability.total).toBe(job.result_count);
+      expect(availability.truncated).toBe(false);
+      expect(availability.slots).toHaveLength(100);
+      expect((job.result.metrics as Array<{ key: string; value: number }>).find((metric) => metric.key === "available_slots")?.value).toBe(job.result_count);
+      // The workspace keeps its own zone; the times are read where the hosts work.
+      expect(availability.timeZone).toBe("UTC");
+      expect(availability.hostTimeZone).toBe("Asia/Manila");
+      expect(availability.displayTimeZone).toBe("Asia/Manila");
+      expect(availability.days.reduce((sum, day) => sum + day.count, 0)).toBe(job.result_count);
+      expect(availability.days.every((day) => day.count >= 1 && day.count <= 16)).toBe(true);
+      const summary = (await withSystem((db) => db.query<{ result_summary: string }>("select result_summary from ai_work_jobs where id = $1", [dispatched.jobId]))).rows[0].result_summary;
+      expect(summary).toBe(`Calendar availability checked: ${job.result_count} bookable slots on ${availability.days.length} days in the next 7 days (Asia/Manila).`);
+    } finally {
+      await withSystem((db) => db.query("update crm_host_settings set timezone = 'UTC' where org_id = $1 and user_id = $2", [org.id, owner.id]));
+    }
+  });
+
   it("produces measured performance KPIs and only stated anomaly findings", async () => {
     const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
       agentRole: "performance_analyst",

@@ -10,13 +10,23 @@ import {
 import { publishReviewReport } from "@/server/workforce/reports";
 import { reviewFinding, type ReviewFinding, type ReviewMetric } from "@/server/workforce/read-only-review";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
+import { readableTimeZone, summarizeSlotsByDay } from "@/lib/calendars/availability-summary";
 import type { AgentRoleKey } from "@/lib/agents";
+
+/**
+ * A week of start times at the finest step a type allows (5 minutes) is 2,016, so this cap is never what limits a real answer. It exists only so a broken calendar cannot fill a
+ * row, and a result that reached it says "at least", never a number that looks like a total.
+ */
+const MAX_SLOTS = 2_500;
+/** The first start times kept on the result for the card to show; the total and the per-day summary cover all of them. */
+const SAMPLE_SLOTS = 100;
 
 /**
  * Read real calendar availability through the existing native booking service.
  *
  * The capability never holds a slot, creates a booking, contacts a host or writes an external
  * calendar. It reports the same slots the booking flow would offer, with the reason when it cannot.
+ * The count is the real number of bookable start times (it was once capped at 50 and reported as the total), grouped by day in the zone the hosts work in.
  */
 export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   const workerId = job.lease_owner ?? "";
@@ -49,7 +59,12 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
 
   const now = new Date();
   const to = new Date(now.getTime() + 7 * 86_400_000);
-  const availability = await nativeAvailability(job.org_id, { from: now, to, limit: 50 });
+  const availability = await nativeAvailability(job.org_id, { from: now, to, limit: MAX_SLOTS + 1 });
+  const truncated = availability.ok && availability.slots.length > MAX_SLOTS;
+  const slots = availability.ok ? availability.slots.slice(0, MAX_SLOTS) : [];
+  // Read the times where the people who take the meetings work (when their calendar's hosts share one zone), not in the workspace's default zone.
+  const displayTimeZone = readableTimeZone(availability.ok ? availability.hostTimeZone ?? availability.timeZone : null);
+  const days = summarizeSlotsByDay(slots, displayTimeZone);
 
   await withSystem(async (db) => {
     await recordWorkStage(db, {
@@ -73,7 +88,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
         recommendedAction: "Verify and activate a calendar with at least one host and working hours.",
         requiresApproval: false,
       }));
-    } else if (availability.slots.length === 0) {
+    } else if (slots.length === 0) {
       findings.push(reviewFinding({
         key: "no_available_slots",
         severity: "warning",
@@ -90,7 +105,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
     const metrics: ReviewMetric[] = [{
       key: "available_slots",
       label: "Bookable slots (7 days)",
-      value: availability.ok ? availability.slots.length : 0,
+      value: slots.length,
       period: "Next 7 days",
       definition: "Distinct start times the active calendar and its hosts can accept, computed from saved working hours, buffers, notice and live bookings.",
       source: "crm_calendars, crm_availability_rules, crm_busy_blocks",
@@ -102,7 +117,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       workerId,
       stage: "analyzing",
       message: "Preparing the availability result and any scheduling risk…",
-      progress: { checksRun: 2, findings: findings.length, slots: availability.ok ? availability.slots.length : 0 },
+      progress: { checksRun: 2, findings: findings.length, slots: slots.length },
     });
 
     for (const finding of findings) {
@@ -117,8 +132,9 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       });
     }
 
+    const count = slots.length;
     const summary = availability.ok
-      ? `Calendar availability checked: ${availability.slots.length} bookable slot${availability.slots.length === 1 ? "" : "s"} in the next 7 days${availability.timeZone ? ` (${availability.timeZone})` : ""}.`
+      ? `Calendar availability checked: ${truncated ? "at least " : ""}${count} bookable slot${count === 1 ? "" : "s"}${days.length ? ` on ${days.length} day${days.length === 1 ? "" : "s"}` : ""} in the next 7 days (${displayTimeZone}).`
       : `Calendar availability could not be checked: ${availability.detail}`;
 
     await recordWorkStage(db, {
@@ -134,13 +150,18 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       workerId,
       status: "completed",
       stage: "completed",
-      resultCount: availability.ok ? availability.slots.length : 0,
+      resultCount: slots.length,
       resultSummary: summary,
       result: {
         availability: availability.ok
           ? {
-              slots: availability.slots.map((slot) => ({ start: slot.start, end: slot.end })),
+              slots: slots.slice(0, SAMPLE_SLOTS).map((slot) => ({ start: slot.start, end: slot.end })),
+              total: slots.length,
+              truncated,
+              days,
               timeZone: availability.timeZone,
+              displayTimeZone,
+              hostTimeZone: availability.hostTimeZone ?? null,
               checkedAt: availability.checkedAt,
               slotMinutes: availability.slotMinutes,
               calendarId: availability.calendarId,
@@ -154,7 +175,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
         kind: "notice",
         stage: "completed",
         message: summary,
-        data: { slots: availability.ok ? availability.slots.length : 0 },
+        data: { slots: slots.length },
       },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
