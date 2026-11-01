@@ -1,0 +1,14 @@
+# Build context for the Hermes images (services/*/Dockerfile use the repository root as their context). Allowlist: everything is left out except the two service folders the
+# Dockerfiles copy from, so a local .env, a credential file, node_modules or the whole app never reach the Docker daemon or a build cache.
+*
+!services/hermes-provisioner
+!services/hermes-inference-worker
+
+# Even inside those folders: no environment file, key, certificate, secrets folder or Python cache goes into an image.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/secrets
+**/__pycache__
+**/*.pyc

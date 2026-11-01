@@ -173,7 +173,7 @@ export async function listCalendars(actor: CrmActor): Promise<CalendarView[]> {
   return crmRead(actor, (db) => loadCalendars(db, actor.orgId));
 }
 
-async function assertHosts(db: Queryable, orgId: string, userIds: string[]) {
+export async function assertHosts(db: Queryable, orgId: string, userIds: string[]) {
   if (!userIds.length) return;
   const { rows } = await db.query<{ user_id: string }>(
     "select m.user_id from organization_memberships m join users u on u.id = m.user_id where m.org_id = $1 and m.user_id = any($2::uuid[]) and m.status = 'active' and u.status = 'active'",

@@ -5,6 +5,7 @@ import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { getLaunchReadiness } from "@/server/setup/launch-readiness";
+import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
@@ -125,6 +126,32 @@ describe("work started without a person", () => {
     const two = await dispatchSystemCapabilityJob({ ...base, agentRole: "performance_analyst", capability: "performance_snapshot" });
     expect(one.created).toBe(true);
     expect(two).toMatchObject({ created: false, jobId: one.jobId });
+  }, 180_000);
+});
+
+describe("the Appointment Setter's check waits for the booking calendar", () => {
+  it("starts no Appointment Setter check, and shows none as due, while its calendar is a draft, then starts it once the calendar is active", async () => {
+    const c = await readyClient({ name: "Sweep Calendar Later", timezone: "America/Chicago" });
+    // The client's calendar goes back to a draft (not yet verified): it takes no bookings, so there is nothing real for the setter to prove itself on.
+    await withSystem((db) => db.query("update crm_calendars set status = 'draft', public = false, is_default = false where id = $1", [c.calendarId]));
+    const first = await sweepLaunchVerification(c.org.id);
+    expect(first.queued.sort()).toEqual(AGENT_ROLE_KEYS.filter((role) => role !== "appointment_setter").sort());
+    await settled(c.org.id, 5);
+    const waiting = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(waiting, "verification.appointment_setter")).toMatchObject({ state: "in_progress", owner: "you", detail: expect.stringContaining("calendar is active") });
+    expect(itemOf(waiting, "verification.appointment_setter").action).toBeUndefined();
+    // Pressing the button for the final checks starts nothing for it either, and says why.
+    const pressed = await startLaunchVerification(c.ctx);
+    expect(pressed.started).toEqual([]);
+    expect(pressed.skipped!.some((s) => s.role === "appointment_setter")).toBe(true);
+    expect(await checkJobs(c.org.id)).toBe(5);
+
+    // Activating the calendar is what makes it start: one check, and the workspace reaches 100% without another click.
+    expect(await runLaunchIntent(c.ctx, "activate_calendar")).toMatchObject({ ok: true });
+    await sweepLaunchVerification(c.org.id);
+    await settled(c.org.id, 6);
+    expect(await checkJobs(c.org.id)).toBe(6);
+    expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
   }, 180_000);
 });
 

@@ -1,0 +1,66 @@
+# Optional overlay for compose.client.yaml: the Cloudflare Tunnel connector that carries the portal's authenticated requests to the gateway.
+#
+#   docker compose -f compose.client.yaml -f compose.tunnel.yaml --env-file <private env file> up -d cloudflared
+#
+# The connector joins hermes_private (internal: no route out) to reach http://hermes-client:8642, and a second ordinary bridge (tunnel_egress) so it can open its outbound
+# connection to Cloudflare. It publishes no port (the tunnel is outbound only), mounts one file (its token, read-only), keeps the token out of the environment, the command line
+# and the image, has a read-only root filesystem and no Linux capabilities. Hostname routing stays in the Cloudflare dashboard and the route target is
+# http://hermes-client:8642. Nothing here opens or firewalls port 8642.
+#
+# Required values (in the private compose env file; both are paths or image references, not secrets):
+#   IACQUIRE_CLOUDFLARED_IMAGE   the connector image pinned by digest (docker.io/cloudflare/cloudflared@sha256:...); a tag is refused by the preflight
+#   CLOUDFLARED_TOKEN_FILE       a file holding the tunnel token, owned by 65532:65532 (the image's nonroot user), mode 0400; ops/make-secrets.sh --tunnel-token-stdin makes it
+# `--token-file` needs a cloudflared release that supports it: confirm that with the pinned image in the sandbox before the first real use.
+
+services:
+  cloudflared:
+    image: ${IACQUIRE_CLOUDFLARED_IMAGE:?Set the cloudflared image reference, pinned by digest}
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+      - --token-file
+      - /run/secrets/tunnel_token
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    depends_on:
+      hermes-client:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${CLOUDFLARED_TOKEN_FILE:?Set the private tunnel token file}
+        target: /run/secrets/tunnel_token
+        read_only: true
+    networks:
+      - hermes_private
+      - tunnel_egress
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    stop_grace_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: 5m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  hermes_private:
+    name: ${IACQUIRE_HERMES_PRIVATE_NETWORK:-iacquire-hermes-private}
+    internal: true
+  tunnel_egress:
+    driver: bridge

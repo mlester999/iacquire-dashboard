@@ -31,3 +31,12 @@ describe("worker Compose tmpfs", () => {
     expect(workflow).toContain('assert services[proxy_name].get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=8m"]');
   });
 });
+
+describe("the client runtime's operator tests", () => {
+  it("run in CI: the preflight, the backup and restore scripts and the compose overlays are covered by a job, and a change to them starts it", () => {
+    expect(workflow).toContain("client-runtime-ops-tests:");
+    expect(workflow).toContain("-m unittest -q test_preflight test_ops_scripts test_overlays");
+    expect(workflow).toContain("- services/hermes-provisioner/**");
+    expect(workflow).toContain("- .dockerignore");
+  });
+});

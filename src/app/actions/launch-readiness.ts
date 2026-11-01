@@ -12,11 +12,15 @@ import { runLaunchIntent } from "@/server/setup/launch-intents";
 
 const intent = z.enum(["assign_host", "apply_hours", "activate_calendar", "run_checks"], { error: "That step wasn't found." });
 
-export async function runLaunchIntentAction(value: string) {
+// A server action can be called directly, so what comes with the step is checked here too: a person's id and the digest of the hours that were shown, nothing else.
+const params = z.object({ userId: z.string().uuid().optional(), hoursDigest: z.string().regex(/^[a-f0-9]{64}$/, "That approval is not valid. Review the hours and approve them again.").optional() }).strict();
+
+export async function runLaunchIntentAction(value: string, extra?: { userId?: string; hoursDigest?: string }) {
   return guard(async () => {
     const step = intent.parse(value);
+    const stepParams = params.parse(extra ?? {});
     const ctx = await requireOrgContextOrThrow("setup.view");
-    const res = await runLaunchIntent(ctx, step);
+    const res = await runLaunchIntent(ctx, step, stepParams);
     revalidatePath("/setup");
     revalidatePath("/crm", "layout");
     return res;

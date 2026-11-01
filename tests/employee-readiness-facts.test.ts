@@ -6,6 +6,7 @@ import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { blockingUnmet } from "@/lib/employee-requirements";
 import { loadWorkspaceFacts, readinessExtrasFor } from "@/server/workforce/readiness-facts";
+import { loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
 import { getAgentByRole, listAgents } from "@/server/workforce/service";
 import { createPipeline } from "@/server/crm/pipelines";
 import { createCalendar, setHostAvailability } from "@/server/calendars/setup";
@@ -134,6 +135,31 @@ describe("workspace facts", () => {
     await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = null where pipeline_id = $1", [pipeline.id]));
     await withSystem((db) => db.query("update crm_pipelines set archived_at = now() where id = $1", [pipeline.id]));
     expect((await facts(c.org.id)).pipelineReady).toBe(false);
+  });
+
+  it("asks for the same pipeline the launch panel does: two or more stages, one of them open, so the two screens agree", async () => {
+    const launchSays = async (orgId: string) => (await loadLaunchFactsForOrg(orgId))!.crm.pipelineReady;
+    // A board with one stage is a list: neither screen counts it.
+    const one = await crmOrg();
+    await createPipeline(one.actor("owner"), { name: "Only stage", stages: [{ name: "New" }] });
+    expect((await facts(one.org.id)).pipelineReady).toBe(false);
+    expect(await launchSays(one.org.id)).toBe(false);
+    // An open stage and a closing one is a board, and both screens say so.
+    const two = await crmOrg();
+    const pipeline = await createPipeline(two.actor("owner"), { name: "Sales", stages: [{ name: "New" }, { name: "Won", kind: "won" }] });
+    expect((await facts(two.org.id)).pipelineReady).toBe(true);
+    expect(await launchSays(two.org.id)).toBe(true);
+    // Archive the closing stage and one stage is left: both go back to false together.
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = now() where pipeline_id = $1 and kind = 'won'", [pipeline.id]));
+    expect((await facts(two.org.id)).pipelineReady).toBe(false);
+    expect(await launchSays(two.org.id)).toBe(false);
+    // Two stages that are both closing hold no deals, so neither counts them.
+    const closing = await crmOrg();
+    const closed = await createPipeline(closing.actor("owner"), { name: "Closed only", stages: [{ name: "New" }, { name: "Won", kind: "won" }, { name: "Lost", kind: "lost" }] });
+    expect(await launchSays(closing.org.id)).toBe(true);
+    await withSystem((db) => db.query("update crm_pipeline_stages set archived_at = now() where pipeline_id = $1 and kind = 'open'", [closed.id]));
+    expect((await facts(closing.org.id)).pipelineReady).toBe(false);
+    expect(await launchSays(closing.org.id)).toBe(false);
   });
 
   it("counts native CRM readiness independently of Blueprint applications and record counts", async () => {

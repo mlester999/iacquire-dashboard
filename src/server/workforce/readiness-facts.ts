@@ -27,6 +27,15 @@ export const NATIVE_BOOKABLE_CALENDARS_SQL = `(select count(*) from crm_calendar
                      where cm.calendar_id = c.id and cm.org_id = c.org_id and cm.active
                        and exists (select 1 from crm_availability_rules r where r.org_id = cm.org_id and r.user_id = cm.user_id)))`;
 
+/**
+ * SQL (parameter $1 is the organization id): a non-archived native pipeline with at least two non-archived stages, one of them open. The launch panel and the employee requirements both
+ * use this one rule, so the two screens cannot disagree about whether there is a usable sales pipeline (a one-stage pipeline is a list, not a board; a pipeline of only won/lost
+ * stages holds no deals).
+ */
+export const USABLE_NATIVE_PIPELINE_SQL = `exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
+                  and (select count(*) from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null) >= 2
+                  and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null and s.kind = 'open'))`;
+
 export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<WorkspaceFacts> {
   const { rows } = await db.query<{
     org_kind: "agency" | "client" | null;
@@ -51,9 +60,8 @@ export async function loadWorkspaceFacts(db: Queryable, orgId: string): Promise<
           then ${NATIVE_BOOKABLE_CALENDARS_SQL}
           else (select coalesce(sum(cardinality(calendar_ids)), 0) from ghl_location_mappings where org_id = $1 and status = 'connected')
         end) > 0 as calendar,
-       -- Archived stages do not count, and a pipeline needs at least one open stage (a pipeline of only won/lost stages holds no deals).
-       (exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
-                  and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null and s.kind = 'open'))
+       -- The launch rule (USABLE_NATIVE_PIPELINE_SQL): archived stages do not count, and a pipeline needs at least two stages, one of them open.
+       (${USABLE_NATIVE_PIPELINE_SQL}
         or exists (select 1 from crm_pipelines p where p.org_id = $1 and p.provider <> 'native' and p.archived_at is null)) as pipeline,
        (select criteria from lead_targeting_profiles where org_id = $1) as targeting,
        exists (select 1 from messaging_channels where org_id = $1 and enabled) as channel`,

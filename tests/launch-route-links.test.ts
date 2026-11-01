@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import { deriveLaunchReadiness, type CalendarCheckFact, type CalendarFacts, type ChannelFact, type EmployeeFact, type LaunchFacts } from "@/lib/launch-readiness";
+import { deriveLaunchReadiness, type CalendarCheckFact, type CalendarFacts, type ChannelFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts } from "@/lib/launch-readiness";
 
 // A button that points at a page that does not exist is a dead end the client cannot get out of (the channel buttons once pointed at /inbox/settings). Every address the launch judge can put
 // on a button has to open a real App Router page; the sign-in start addresses under /api are route handlers, not pages, and have to match a real route handler instead.
@@ -59,6 +59,7 @@ function base(): LaunchFacts {
     verification: AGENT_ROLE_KEYS.map((role) => ({ role, state: "passed" as const, configVersion: 3, detail: null })),
   };
 }
+const host = (over: Partial<HostConnectionFact> = {}): HostConnectionFact => ({ userId: "u-1", name: "Dana Reyes", viewer: false, meet: { google: false, microsoft: false }, busy: { google: false, microsoft: false }, ...over });
 const channel = (c: ChannelFact["channel"], over: Partial<ChannelFact> = {}): ChannelFact => ({ channel: c, wanted: true, enabled: false, registration: "not_started", ...over });
 
 /** Every scenario the judge can answer with a button that links somewhere. */
@@ -83,6 +84,18 @@ function scenarios(): Array<[string, LaunchFacts]> {
     ["a draft calendar's checks fail on the open time", withCalendar(calendar({ checks: checks(["slot"]) }))],
     ["a draft calendar passes its checks", withCalendar(calendar({ checks: checks() }))],
     ["an active calendar can no longer offer a time", withCalendar(calendar({ status: "active", checks: checks(["slot"]) }))],
+    ["an active calendar fails the time zone, hours and connection checks", withCalendar(calendar({ status: "active", checks: checks(["timezone", "hours", "connections"]) }))],
+    ["an active calendar has types without an open time", withCalendar(calendar({ status: "active", checks: checks(), typesWithoutTimes: ["Full-day survey"] }))],
+    ["a video appointment has no way to join", withCalendar(calendar({ status: "active", checks: checks(), typesWithoutJoinInfo: ["Video estimate"] }))],
+    ["the public page is on and a check fails", withCalendar(calendar({ status: "active", bookingPageOn: true, checks: checks(["hours"]) }))],
+    ["the host is the person looking and has not connected Google", withCalendar(calendar({
+      status: "active", checks: checks(), needsVideoConnection: true, videoProviders: ["google"], oauthAvailable: { google: true, microsoft: true }, hostConnections: [host({ viewer: true })],
+    }))],
+    ["the client's Microsoft calendar must block times", withCalendar(calendar({
+      status: "active", checks: checks(), busyProvider: "microsoft", oauthAvailable: { google: true, microsoft: true }, hostConnections: [host({ viewer: true })],
+    }))],
+    ["the client said a team member takes appointments, and nobody is marked", { ...withCalendar(calendar({ hosts: 0, hostsWithHours: 0 })), appointments: { wanted: true, calendar: calendar({ hosts: 0, hostsWithHours: 0 }), externalCalendarConnected: false, hostChoice: "team", teamHosts: [] } }],
+    ["the client said a team member takes appointments, and has not invited them", { ...withCalendar(calendar({ hosts: 0, hostsWithHours: 0 })), appointments: { wanted: true, calendar: calendar({ hosts: 0, hostsWithHours: 0 }), externalCalendarConnected: false, hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "not_invited" }] } }],
     ["a channel registration was rejected", { ...f, channels: [channel("sms", { registration: "rejected" }), channel("whatsapp", { registration: "rejected" })] }],
     ["an email address and a WhatsApp number were not given", { ...f, channels: [channel("email", { statedSender: null }), channel("whatsapp", { statedSender: null })] }],
     ["channels wait for iAcquire", { ...f, channels: [channel("sms", { registration: "pending", statedSender: "+1 512 555 0100" }), channel("email", { statedSender: "hello@example.test", credentialStored: true })] }],
@@ -112,7 +125,7 @@ describe("every address the launch judge puts on a button opens something that e
 
   it("covers the addresses the panel is known to use, so the scenarios cannot quietly stop reaching them", () => {
     const hrefs = new Set(collected.map(({ href }) => href));
-    for (const expected of ["/settings/billing", "/onboarding", "/knowledge", "/crm/calendars", "/crm/calendars/cal-1", "/crm/availability", "/crm/calendar-connections", "/settings/messaging",
+    for (const expected of ["/settings/billing", "/onboarding", "/knowledge", "/crm/calendars", "/crm/calendars/cal-1", "/crm/availability", "/crm/calendar-connections", "/settings/messaging", "/settings/team",
       "/api/crm/calendar-oauth/google/start?return=/setup", "/api/crm/calendar-oauth/microsoft/start?return=/setup"]) {
       expect(hrefs.has(expected), expected).toBe(true);
     }

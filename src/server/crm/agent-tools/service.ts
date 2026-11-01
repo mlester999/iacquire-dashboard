@@ -15,7 +15,9 @@ import {
 import { HANDLERS, type ToolContext, type ToolOutput, type WritePlan } from "@/server/crm/agent-tools/handlers";
 import { verifyAgentToolToken, type VerifiedAgentToken } from "@/server/crm/agent-tools/tokens";
 import { env } from "@/server/env";
+import { loadOrgContextForUser } from "@/server/tenancy/context";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import type { Permission } from "@/lib/permissions";
 
 /**
  * One CRM tool call from a client's own AI employee, end to end:
@@ -50,6 +52,11 @@ export interface AgentToolCall {
   ipHash?: string | null;
   /** The first-party MCP bridge may expose writes only as approval requests, regardless of employee mode. */
   forceApprovalWrites?: boolean;
+  /**
+   * Set by the client business tier: the person whose Chat turn this call belongs to. The call is then also limited to what that person's own role and
+   * overrides allow, the conversations they may see and the counts they may see, and the audit names them. Left out, every call is exactly what it was.
+   */
+  onBehalfOfUserId?: string | null;
   now?: Date;
 }
 
@@ -71,9 +78,12 @@ interface CallScope {
   agent: AgentRow;
   scopes: AgentToolScope[];
   actor: CrmActor;
+  /** The person this call is made for (client business tier only). */
+  actingUserId?: string;
 }
 
 const CALL_ID_RE = /^[A-Za-z0-9._:-]{1,100}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OUTCOME_LABELS: Record<string, string> = { done: "done", draft: "draft", pending_approval: "pending_approval", unavailable: "unavailable", refused: "refused", failed: "failed" };
 
 /** JSON with sorted keys, so the same arguments always hash the same. */
@@ -106,13 +116,15 @@ function agentToolAccessEnabled(agent: AgentRow): boolean {
   );
 }
 
-function scopeFor(auth: VerifiedAgentToken, agent: AgentRow): CallScope {
+function scopeFor(auth: VerifiedAgentToken, agent: AgentRow, actingUserId?: string): CallScope {
   const scopes = effectiveScopes(agent.role_key, auth.scopes);
   const actor = agentActor({ id: agent.org_id, name: agent.org_name, timezone: agent.org_timezone }, { id: agent.id, displayName: agent.display_name }, permissionsForScopes(scopes));
-  return { auth, agent, scopes, actor };
+  return { auth, agent, scopes, actor, ...(actingUserId ? { actingUserId } : {}) };
 }
 
 function allowsTool(scope: CallScope, def: AgentToolDef): boolean {
+  // A client-only tool is only ever allowed on a call that names the person asking, which is what the client business tier sends and nothing else does.
+  if (def.clientOnly && !scope.actingUserId) return false;
   return scope.scopes.includes(def.scope) && def.permissions.every((p) => scope.actor.can(p));
 }
 
@@ -146,7 +158,7 @@ async function logCall(
   await recordAudit({
     orgId: s.agent.org_id, actorKind: "agent", agentInstanceId: s.agent.id, action: `crm.agent_tool.${/^[a-z_]+$/.test(e.tool) ? e.tool : "unknown"}`,
     targetType: e.targetType, targetId: e.targetId?.slice(0, 120), result: e.result, approvalId: e.approvalId ?? null, ipHash: e.ipHash ?? null,
-    metadata: { tool: e.tool.slice(0, 60), outcome: OUTCOME_LABELS[e.outcome] ?? "failed", detail: e.detail?.slice(0, 200), runId: s.auth.runId, accessId: s.auth.tokenId, callRef: e.callRef, durationMs, approved: e.approved || undefined },
+    metadata: { tool: e.tool.slice(0, 60), outcome: OUTCOME_LABELS[e.outcome] ?? "failed", detail: e.detail?.slice(0, 200), runId: s.auth.runId, accessId: s.auth.tokenId, callRef: e.callRef, durationMs, approved: e.approved || undefined, actingUserId: s.actingUserId },
   }, db);
 }
 
@@ -225,7 +237,7 @@ async function requestApprovalForCall(db: Queryable, s: CallScope, tool: AgentTo
     action: { source: "agent_tool", v: 1, tool, input, inputHash: inputHash(tool, input), runId: s.auth.runId, accessId: s.auth.tokenId, callRef, scopes: s.scopes, forcedApproval },
     targetType: plan.targetType, targetId: plan.targetId.slice(0, 120), targetLabel: plan.targetLabel.slice(0, 200),
     reason: `${reason}${why}`.slice(0, 2000), expectedEffect: `${plan.expectedEffect} Nothing changes unless this is approved.`.slice(0, 2000),
-    risk: plan.highImpact ? "high" : "medium", expiresInHours: 72, idempotencyKey: key, actorKind: "agent",
+    risk: plan.highImpact ? "high" : "medium", expiresInHours: 72, idempotencyKey: key, actorKind: "agent", requestedBy: s.actingUserId ?? null,
   });
   if (!id) {
     const existing = await findCallApproval(db, s, tool, input, callRef);
@@ -292,7 +304,10 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
   if (!auth) return unauthorized(call.ipHash);
   const agent = await withSystem((db) => loadAgent(db, auth));
   if (!agent || !agentToolAccessEnabled(agent)) return unauthorized(call.ipHash);
-  const s = scopeFor(auth, agent);
+  // A value that is not a person's id is refused below rather than treated as "no person", so a caller that meant to name one can never fall back to the unrestricted path.
+  const acting = call.onBehalfOfUserId ?? null;
+  const actingUserId = acting !== null && UUID_RE.test(acting) ? acting : undefined;
+  const s = scopeFor(auth, agent, actingUserId);
   const toolName = call.tool.slice(0, 60);
   const known = isAgentToolName(toolName);
   const base = { tool: known ? toolName : "unknown", startedAt, ipHash: call.ipHash };
@@ -317,6 +332,12 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
     await safeLog(s, { ...base, outcome: "refused", result: "denied", detail: "Not allowed for this role or credential" });
     return refuse(403, "forbidden", `${agent.display_name} isn't allowed to use ${def.label.toLowerCase()} with this credential.`);
   }
+  // The person's own access, on top of the employee's: their role and per-person overrides must allow what the tool needs, or nothing is read, drafted or asked for.
+  const person = actingUserId ? await loadOrgContextForUser(actingUserId, agent.org_id) : null;
+  if (acting !== null && (!person || !def.permissions.every((p) => person.can(p)))) {
+    await safeLog(s, { ...base, outcome: "refused", result: "denied", detail: "Not allowed for the person asking" });
+    return refuse(403, "forbidden", "Your iAcquire role does not have access to this business information.");
+  }
 
   let raw: unknown;
   try {
@@ -335,7 +356,10 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
   const input = parsed.data as Record<string, unknown>;
   const explicitCallId = call.callId && CALL_ID_RE.test(call.callId) ? call.callId : null;
   const callRef = explicitCallId ?? inputHash(toolName, input).slice(0, 32);
-  const ctx: ToolContext = { actor: s.actor, agent: { id: agent.id, roleKey: agent.role_key, displayName: agent.display_name }, runId: auth.runId, approvalId: null, callKey: `${auth.runId ?? auth.tokenId}:${callRef}`, now };
+  const ctx: ToolContext = {
+    actor: s.actor, agent: { id: agent.id, roleKey: agent.role_key, displayName: agent.display_name }, runId: auth.runId, approvalId: null, callKey: `${auth.runId ?? auth.tokenId}:${callRef}`, now,
+    ...(person && actingUserId ? { onBehalfOfUserId: actingUserId, personCan: (permission: Permission) => person.can(permission) } : {}),
+  };
 
   try {
     const gate = await withSystem((db) => automationGate(db, { orgId: agent.org_id, agentId: agent.id, scope: "job" }));

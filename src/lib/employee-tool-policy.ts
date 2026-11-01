@@ -8,7 +8,7 @@
 // Nothing here reads model output. A prompt that tells the Sales Assistant to "act as the Lead Hunter" changes nothing: the role comes from the employee's database row, and the
 // table is looked up by that role. The portal tests (tests/employee-tool-policy.test.ts and the conformance suite) walk every role against every action and the real enforcement code.
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
-import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES } from "@/lib/workforce-capabilities";
+import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { AGENT_TOOL_SCOPES, ROLE_SCOPES, SCOPE_INFO } from "@/lib/agent-tool-scopes";
 
 export type PolicyActionKind = "capability" | "chat_proposal" | "crm_scope" | "runtime_tool";
@@ -27,6 +27,66 @@ export interface PolicyAction {
 const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly AgentRoleKey[]; effect: PolicyEffect }> = {
   "chat:booking_request": { label: "Prepare an appointment booking for confirmation", roles: ["appointment_setter"], effect: "proposal" },
   "chat:appointment_change": { label: "Prepare an appointment cancellation or reschedule for approval", roles: ["appointment_setter"], effect: "proposal" },
+};
+
+// ---------------------------------------------------------------------------
+// Allowed actions (abilities)
+// ---------------------------------------------------------------------------
+// The workspace owner can switch an employee's abilities off in Allowed actions (agent_config_versions.settings.disabledTools). The names are the role's default tools
+// (agent_roles.default_tools). The data below says which abilities each door needs; src/server/workforce/abilities.ts reads the switches and enforces them where work starts.
+
+/**
+ * The abilities (the employee's Allowed actions) that let a role read its areas. An area is read only when the employee still has at least one of them switched on, in addition to
+ * the signed-in person's own permission. The role's list applies to every area unless the role names a narrower one.
+ */
+export const ROLE_ABILITIES: Record<AgentRoleKey, readonly string[]> = {
+  operations_manager: ["tasks.read"],
+  lead_hunter: ["leads.stage_for_review", "research.public_web"],
+  appointment_setter: ["calendar.read_availability", "appointments.read", "appointments.request_change"],
+  sales_assistant: ["crm.read_opportunities"],
+  crm_manager: ["crm.read"],
+  performance_analyst: ["analytics.read"],
+};
+
+/**
+ * Reviewed: the abilities a capability needs. The employee must still have at least one of them switched on, or the work is refused where it starts and blocked if it was already
+ * queued. Every capability is listed (the type forces it), so a new capability cannot be added without deciding which switch governs it. The chat request list names the same
+ * abilities for the capabilities it can start (tests/employee-ability-enforcement.test.ts keeps the two in step).
+ */
+const CAPABILITY_ABILITIES: Record<CapabilityKey, readonly string[]> = {
+  lead_research: ["research.public_web"],
+  lead_generation_review: ["leads.stage_for_review", "research.public_web"],
+  proactive_review: ["tasks.read"],
+  crm_quality_review: ["crm.read"],
+  pipeline_review: ["crm.read_opportunities"],
+  pipeline_followup_drafts: ["crm.read_opportunities"],
+  appointment_review: ["appointments.read", "appointments.request_change"],
+  appointment_availability: ["calendar.read_availability"],
+  missed_call_review: ["appointments.read"],
+  lead_priority_review: ["crm.read_opportunities"],
+  social_performance_review: ["analytics.read"],
+  receivables_review: ["analytics.read"],
+  reputation_review: ["analytics.read"],
+  performance_snapshot: ["analytics.read"],
+};
+
+/**
+ * Abilities that must ALL be on, in addition to the "at least one" list above. Only the follow-up drafts need it: they read opportunities and also write unsent drafts, and a
+ * workspace that switched off "Draft messages" must not get drafts because "Read CRM opportunities" is still on.
+ */
+const CAPABILITY_REQUIRED_ABILITIES: Partial<Record<CapabilityKey, readonly string[]>> = {
+  pipeline_followup_drafts: ["drafts.create"],
+};
+
+/** The abilities of which the employee must still have at least one on to run this capability. Never empty. */
+export const abilitiesForCapability = (capability: CapabilityKey): readonly string[] => CAPABILITY_ABILITIES[capability];
+/** The abilities that must every one be on to run this capability (usually none). */
+export const requiredAbilitiesForCapability = (capability: CapabilityKey): readonly string[] => CAPABILITY_REQUIRED_ABILITIES[capability] ?? [];
+
+/** The same rule for what a person asks for in chat that becomes a preview (not a reviewed capability): keyed like the policy action ids. */
+export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
+  "chat:booking_request": ["appointments.request_change"],
+  "chat:appointment_change": ["appointments.request_change"],
 };
 
 /**

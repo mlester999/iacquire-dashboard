@@ -274,6 +274,29 @@ describe("a native CRM client in the Setup Center", () => {
     expect(await check(c.org.id, "calendar")).toMatchObject({ status: "failed", detail: expect.stringMatching(/needs signing in again/) });
   });
 
+  it("follows the client's own questionnaire answer about the outside calendar before the setup guide, the same way the launch panel and activation do", async () => {
+    // The question applies only to a client who takes appointments, so that answer comes with it.
+    const answer = (orgId: string, value: string) => withSystem((db) => db.query(
+      "insert into onboarding_answers (org_id, question_id, value) values ($1, 'b.appointments', 'true'::jsonb), ($1, 'd.appt_busy_calendar', to_jsonb($2::text)) on conflict (org_id, question_id) do update set value = excluded.value",
+      [orgId, value],
+    ));
+    // The questionnaire says Google while the guide recorded nothing: the Setup Center asks for the connection, exactly as the client's launch panel does.
+    const google = await client({ services: ["crm", "calendar"] });
+    await bookableCalendar(google);
+    await answer(google.org.id, "google");
+    await runChecks(google.org.id, { actorUserId: null, live: false, keys: ["calendar"] });
+    expect(await check(google.org.id, "calendar")).toMatchObject({ status: "unverified", detail: expect.stringMatching(/The client said they use Google Calendar.*isn't connected yet/) });
+    // "None" in the questionnaire needs nothing, whatever the guide says.
+    const none = await client({ services: ["crm", "calendar"] });
+    await saveCrmSetupGuide(none.actor("owner"), { answers: { appointments: true, calendarSource: "google" } });
+    await bookableCalendar(none);
+    await runChecks(none.org.id, { actorUserId: null, live: false, keys: ["calendar"] });
+    expect(await check(none.org.id, "calendar")).toMatchObject({ status: "unverified", detail: expect.stringMatching(/Google Calendar.*isn't connected yet/) });
+    await answer(none.org.id, "none");
+    await runChecks(none.org.id, { actorUserId: null, live: false, keys: ["calendar"] });
+    expect(await check(none.org.id, "calendar")).toMatchObject({ status: "verified", detail: expect.stringMatching(/calendar-only setup: the client said they use no outside calendar/) });
+  });
+
   describe("a connected calendar counts only after a successful read of its busy times (real connect and sync paths)", () => {
     // The feed is served by a stubbed fetch: "ok" returns a small calendar, "503" an outage. No real network.
     let feed: "ok" | "503" = "ok";

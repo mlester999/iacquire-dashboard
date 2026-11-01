@@ -70,6 +70,11 @@ const schema = z.object({
   HERMES_BUSINESS_MCP_SECRET: z.preprocess(blankToUndefined, z.string().regex(/^\S{32,512}$/, "must be 32-512 characters without whitespace").optional()),
   HERMES_BUSINESS_MCP_SECRET_PREVIOUS: z.preprocess(blankToUndefined, z.string().regex(/^\S{32,512}$/, "must be 32-512 characters without whitespace").optional()),
   HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS: z.preprocess(blankToUndefined, z.string().max(2048).optional()),
+  // The CLIENT tier of the same tools, for a client's own AI employees. Both are off by default and have no secret of their own: the credential is a stored verifier in the database
+  // (agent_business_credentials), so there is nothing here to leak or rotate. A workspace also needs its own switch (org_features client_business_tools / client_business_proposals).
+  // Proposals only ever create approval requests, so they need the tier itself; in production the tier also needs the provisioner, because an app that cannot provision cannot host it.
+  HERMES_CLIENT_BUSINESS_MCP_ENABLED: bool,
+  HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED: bool,
 
   // PayMongo: server-only secrets. Key prefixes decide test or live mode; live checkout also needs the review flag in the portal.
   PAYMONGO_SECRET_KEY: z.preprocess(blankToUndefined, z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, "must be a PayMongo secret key").optional()),
@@ -279,6 +284,9 @@ export function env(): Env {
       throw new Error("HERMES_BUSINESS_MCP_REVOKED_TOKEN_IDS must list at most 64 credential ids, each 16 lowercase hexadecimal characters, comma separated.");
     }
   }
+  if (value.HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED && !value.HERMES_CLIENT_BUSINESS_MCP_ENABLED) {
+    throw new Error("HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED requires HERMES_CLIENT_BUSINESS_MCP_ENABLED.");
+  }
   const authProvider = resolveAuthProvider(process.env);
   const driver = value.DATABASE_DRIVER ?? (authProvider === "local" ? "pglite" : "postgres");
   // A secret in a NEXT_PUBLIC_ variable is a leak in every environment, not just production.
@@ -361,6 +369,9 @@ export function env(): Env {
     }
     if (value.HERMES_BUSINESS_MCP_WRITES_ENABLED && !value.HERMES_BUSINESS_MCP_ENABLED) {
       throw new Error("HERMES_BUSINESS_MCP_WRITES_ENABLED requires HERMES_BUSINESS_MCP_ENABLED.");
+    }
+    if (value.HERMES_CLIENT_BUSINESS_MCP_ENABLED && !value.HERMES_PROVISIONER_ENABLED) {
+      throw new Error("HERMES_CLIENT_BUSINESS_MCP_ENABLED requires HERMES_PROVISIONER_ENABLED in production.");
     }
   }
   cached = { ...value, DATABASE_DRIVER: driver, AUTH_PROVIDER: authProvider };

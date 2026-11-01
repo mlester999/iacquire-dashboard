@@ -8,9 +8,7 @@ import { defaultSettings } from "@/server/workforce/compiler";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
 import { agentId, ctxFor } from "./support/fixtures";
-import { crmOrg } from "./support/crm";
-import { clearSetupPayment } from "./support/billing";
-import { WEEKDAYS, checkJobs, count, itemOf, readyClient, settled } from "./support/launch";
+import { approveHours, checkJobs, count, draftClient, itemOf, readyClient, settled } from "./support/launch";
 
 describe("the final checks decide 100% Ready to Launch", () => {
   it("is not ready before the checks run, ready only after six finished checks, and never writes or sends anything", async () => {
@@ -116,21 +114,6 @@ describe("the final checks decide 100% Ready to Launch", () => {
 });
 
 describe("the guided calendar steps", () => {
-  async function draftClient(name: string, timezone: string) {
-    const c = await crmOrg({ name, timezone });
-    await withSystem(async (db) => {
-      await db.query("update organizations set onboarding_completed_at = now() where id = $1", [c.org.id]);
-      await db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'b.appointments', 'true'::jsonb), ($1, 'a.timezone', to_jsonb($2::text))", [c.org.id, timezone]);
-    });
-    await clearSetupPayment(c.org.id);
-    const calendarId = (await withSystem((db) => db.query<{ id: string }>(
-      `insert into crm_calendars (org_id, name, slug, status, origin, timezone, hours_template) values ($1, 'Consultations', 'consultations', 'draft', 'onboarding', $2, $3::jsonb) returning id`,
-      [c.org.id, timezone, JSON.stringify(WEEKDAYS)],
-    ))).rows[0].id;
-    await withSystem((db) => db.query("insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, min_notice_minutes, location_kind) values ($1, $2, 'Free consultation', 'free-consultation', 30, 60, 'phone')", [c.org.id, calendarId]));
-    return { ...c, calendarId, ctx: ctxFor(c.people.owner, c.org, "owner") };
-  }
-
   it("takes a drafted calendar to active one click at a time: host, suggested hours, activation, and the booking page stays off", async () => {
     const c = await draftClient("Click Through Dental", "Asia/Manila");
     // Activation before there is a host or any hours says what is missing instead of failing silently.
@@ -143,8 +126,8 @@ describe("the guided calendar steps", () => {
     expect((await runLaunchIntent(c.ctx, "assign_host")).message).toContain("already has a host");
     expect((await loadLaunchFacts(c.ctx))!.appointments.calendar).toMatchObject({ hosts: 1, hostsWithHours: 0 });
 
-    expect(await runLaunchIntent(c.ctx, "apply_hours")).toMatchObject({ ok: true, message: expect.stringContaining("Weekly hours saved") });
-    expect((await runLaunchIntent(c.ctx, "apply_hours")).message).toContain("nothing was changed");
+    expect(await approveHours(c.ctx)).toMatchObject({ ok: true, message: expect.stringContaining("Weekly hours saved") });
+    expect((await approveHours(c.ctx)).message).toContain("nothing was changed");
 
     const done = await runLaunchIntent(c.ctx, "activate_calendar");
     expect(done).toMatchObject({ ok: true, message: expect.stringContaining("booking page is still off") });
@@ -158,14 +141,14 @@ describe("the guided calendar steps", () => {
     await runLaunchIntent(c.ctx, "assign_host");
     // The host already works in London and has no weekly hours: the suggested hours are written in Manila, so giving them to this host would put them hours off.
     await withSystem((db) => db.query("insert into crm_host_settings (org_id, user_id, timezone, accepting) values ($1, $2, 'Europe/London', true)", [c.org.id, c.people.owner.id]));
-    const res = await runLaunchIntent(c.ctx, "apply_hours");
+    const res = await approveHours(c.ctx);
     expect(res.ok).toBe(false);
     expect(res.message).toMatch(/different time zone/);
     expect(res.message).toMatch(/Availability/);
     expect(res.message).not.toMatch(/already has weekly hours/);
     expect(await count(c.org.id, "crm_availability_rules")).toBe(0);
     // Pressing it again says the same thing, and the calendar still cannot activate on hours that were never written.
-    expect((await runLaunchIntent(c.ctx, "apply_hours")).ok).toBe(false);
+    expect((await approveHours(c.ctx)).ok).toBe(false);
     const activation = await runLaunchIntent(c.ctx, "activate_calendar");
     expect(activation.ok).toBe(false);
     expect(activation.message).toMatch(/no weekly hours/);
@@ -176,7 +159,7 @@ describe("the guided calendar steps", () => {
     const other = await draftClient("Busy Other Dental", "Asia/Manila");
     for (const x of [c, other]) {
       await runLaunchIntent(x.ctx, "assign_host");
-      await runLaunchIntent(x.ctx, "apply_hours");
+      await approveHours(x.ctx);
     }
     await withSystem((db) => db.query("insert into crm_setup_guides (org_id, answers) values ($1, $2::jsonb)", [c.org.id, JSON.stringify({ appointments: true, calendarSource: "google" })]));
     const refused = await runLaunchIntent(c.ctx, "activate_calendar");
@@ -201,7 +184,7 @@ describe("the guided calendar steps", () => {
       const c = await draftClient(`No Busy ${answers.calendarSource} ${answers.appointments}`, "Asia/Manila");
       await withSystem((db) => db.query("insert into crm_setup_guides (org_id, answers) values ($1, $2::jsonb)", [c.org.id, JSON.stringify(answers)]));
       await runLaunchIntent(c.ctx, "assign_host");
-      await runLaunchIntent(c.ctx, "apply_hours");
+      await approveHours(c.ctx);
       expect(await runLaunchIntent(c.ctx, "activate_calendar"), JSON.stringify(answers)).toMatchObject({ ok: true });
     }
   }, 120_000);
@@ -220,7 +203,7 @@ describe("the guided calendar steps", () => {
     const a = await draftClient("Apart A", "Asia/Manila");
     const b = await draftClient("Apart B", "America/Denver");
     await runLaunchIntent(a.ctx, "assign_host");
-    await runLaunchIntent(a.ctx, "apply_hours");
+    await approveHours(a.ctx);
     await runLaunchIntent(a.ctx, "activate_calendar");
     expect((await loadLaunchFacts(a.ctx))!.appointments.calendar!.status).toBe("active");
     expect((await loadLaunchFacts(b.ctx))!.appointments.calendar).toMatchObject({ status: "draft", hosts: 0 });

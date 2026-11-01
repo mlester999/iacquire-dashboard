@@ -10,6 +10,8 @@ on:
     # Any change to the application or its tests runs the whole suite. Until 2026-10-31 only the worker files did, so a push that changed tests or source ran nothing at all.
     paths:
       - services/hermes-inference-worker/**
+      - services/hermes-provisioner/**
+      - .dockerignore
       - .github/workflows/hermes-inference-worker.yml
       - .github/scripts/**
       - package.json
@@ -126,6 +128,28 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
             --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c \
               'npm run build'
+
+  # The operator scripts and compose overlays of the client-only runtime (backup, restore, secrets, preflight, egress proxy, tunnel): pure Python tests with shimmed docker, age and gpg, so
+  # no daemon, no network and no secret. They are the only thing that notices a later edit to a script or overlay that drops one of its safeguards.
+  client-runtime-ops-tests:
+    name: Client runtime operator scripts, overlays and preflight (no Docker daemon)
+    if: contains(fromJSON('["codex/internal-iacquire-activation","integration/hermes-bridge-final"]'), github.ref_name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run the preflight, operator script and overlay tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/client-ops-venv"
+          "$RUNNER_TEMP/client-ops-venv/bin/pip" install --no-cache-dir --require-virtualenv -r services/hermes-provisioner/requirements.txt
+          cd services/hermes-provisioner
+          "$RUNNER_TEMP/client-ops-venv/bin/python" -B -m unittest -q test_preflight test_ops_scripts test_overlays
 
   worker-build-and-smoke:
     name: Build pinned Hermes worker and run synthetic checks

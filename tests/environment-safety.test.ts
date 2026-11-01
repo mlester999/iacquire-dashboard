@@ -91,3 +91,36 @@ describe("the simulated PayMongo (QA only)", () => {
     expect(() => env()).toThrow(/refused in production/);
   });
 });
+
+describe("the client business tool tier in production", () => {
+  beforeEach(() => {
+    Object.assign(process.env, {
+      NODE_ENV: "production",
+      AUTH_PROVIDER: "supabase",
+      SECRET_STORE: "vault",
+      NEXT_PUBLIC_SUPABASE_URL: "https://portalref.supabase.co",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
+      SUPABASE_SECRET_KEY: "sb_secret_placeholder",
+      DATABASE_DRIVER: "postgres",
+      DATABASE_URL: "postgresql://postgres.portalref:placeholder@aws-0-region.pooler.supabase.com:5432/postgres",
+      DATABASE_SSL_CA_FILE: "certs/supabase-root.crt",
+      APP_ENCRYPTION_KEY: "test-only-key-0123456789abcdef0123456789abcdef",
+      ALLOW_INSECURE_HERMES_URLS: "false",
+      ALLOW_LEGACY_CREDENTIAL_READS: "false",
+      HERMES_PROVISIONER_ENABLED: "false",
+      HERMES_CLIENT_BUSINESS_MCP_ENABLED: "false",
+    });
+    resetEnvCache();
+  });
+  afterEach(restore);
+
+  it("starts with the tier off, refuses it without the provisioner, and accepts it with one", () => {
+    expect(() => env()).not.toThrow();
+    process.env.HERMES_CLIENT_BUSINESS_MCP_ENABLED = "true";
+    resetEnvCache();
+    expect(() => env()).toThrow(/HERMES_CLIENT_BUSINESS_MCP_ENABLED requires HERMES_PROVISIONER_ENABLED/);
+    Object.assign(process.env, { HERMES_PROVISIONER_ENABLED: "true", HERMES_PROVISIONER_TOKEN: "t".repeat(40), HERMES_PROVISIONER_GATEWAY_ID: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" });
+    resetEnvCache();
+    expect(() => env()).not.toThrow();
+  });
+});

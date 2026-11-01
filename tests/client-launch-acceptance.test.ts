@@ -5,6 +5,7 @@
 // and nobody is booked on the way. Test database only; the Hermes runtime is simulated by the recorded state a verified employee has.
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { resetEnvCache } from "@/server/env";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { memberActor } from "@/server/crm/actor";
@@ -25,7 +26,7 @@ import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { applyRealBlueprint, checkJobs, count, itemOf, settled } from "./support/launch";
+import { applyRealBlueprint, approveHours, checkJobs, count, itemOf, settled } from "./support/launch";
 
 const OFFICE_HOURS = { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] };
 
@@ -75,6 +76,18 @@ const dental: Spec = {
   services: "Orthodontic braces", territories: "Makati; Taguig", customers: "Parents of teenagers in Metro Manila", appointments: false,
   entitled: AGENT_ROLE_KEYS.filter((role) => role !== "sales_assistant"),
 };
+
+/** iAcquire's Google app registration, as a deployment that has set it up would have it. Values are obvious test ones. */
+function setGoogleOAuth(on: boolean) {
+  if (on) {
+    process.env.GOOGLE_CALENDAR_CLIENT_ID = "google-client-id.apps.example.test";
+    process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "google-client-secret-synthetic";
+  } else {
+    delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
+    delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+  }
+  resetEnvCache();
+}
 
 const roleSet = (jobs: Array<{ role_key: string }>) => jobs.map((j) => j.role_key).sort();
 async function provisioningRoles(orgId: string) {
@@ -229,7 +242,7 @@ describe("two clients from the questionnaire to ready to launch", () => {
 
     // The roofing company walks the guided steps. Activation is the last of them, and it starts the final checks by itself.
     await runLaunchIntent(a.ctx, "assign_host");
-    await runLaunchIntent(a.ctx, "apply_hours");
+    await approveHours(a.ctx);
     const hostSettings = (await withSystem((db) => db.query<{ timezone: string }>("select timezone from crm_host_settings where org_id = $1 and user_id = $2", [a.org.id, a.owner.id]))).rows;
     expect(hostSettings).toEqual([{ timezone: "America/Chicago" }]);
     expect(await checkJobs(a.org.id)).toBe(0);
@@ -316,14 +329,25 @@ describe("a booking tool that needs a connection keeps the client honest", () =>
     const c = await onboard({ ...roofing, name: "Needs Google Roofing", booking: { ...roofing.booking, "d.appt_video": "google_meet" } });
     await clearSetupPayment(c.org.id);
     await runLaunchIntent(c.ctx, "assign_host");
-    await runLaunchIntent(c.ctx, "apply_hours");
+    await approveHours(c.ctx);
     const refused = await runLaunchIntent(c.ctx, "activate_calendar");
     expect(refused.ok).toBe(false);
-    const r = await readiness(c);
-    // The sign-in starts the provider the video appointment names and returns to Setup, not to the CRM.
-    expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "you", action: { href: "/api/crm/calendar-oauth/google/start?return=/setup" } });
-    expect(r.state).toBe("action_required");
-    expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("draft");
+    // Google sign-in is not set up in this deployment: the client is told that, and is not handed a button that would go nowhere.
+    const dead = itemOf(await readiness(c), "calendar.connection");
+    expect(dead).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(dead.action).toBeUndefined();
+    expect(dead.detail).toMatch(/Google sign-in is not switched on/);
+
+    setGoogleOAuth(true);
+    try {
+      const r = await readiness(c);
+      // The sign-in starts the provider the video appointment names and returns to Setup, not to the CRM. This host is the person looking, so it is their own account to connect.
+      expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "you", action: { href: "/api/crm/calendar-oauth/google/start?return=/setup" } });
+      expect(r.state).toBe("action_required");
+      expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.status).toBe("draft");
+    } finally {
+      setGoogleOAuth(false);
+    }
   }, 180_000);
 });
 

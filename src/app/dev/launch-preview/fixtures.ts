@@ -14,7 +14,15 @@ const employee = (role: AgentRoleKey, over: Partial<EmployeeFact> = {}): Employe
 });
 const notReady = (state: EmployeeFact["readiness"]["state"], description: string, blocking: string[] = []): EmployeeFact["readiness"] => ({ state, chatAvailable: false, workReady: false, description, blocking });
 const checks = (ok: boolean): CalendarFacts["checks"] => (["hosts", "hours", "timezone", "types", "connections", "slot"] as const).map((key) => ({ key, ok, detail: ok ? "Passed." : "Not yet." }));
-const calendar = (over: Partial<CalendarFacts> = {}): CalendarFacts => ({ id: "preview", status: "active", hosts: 1, hostsWithHours: 1, hasSuggestedHours: true, types: 2, needsVideoConnection: false, checks: checks(true), bookingPageOn: false, ...over });
+const calendar = (over: Partial<CalendarFacts> = {}): CalendarFacts => ({
+  id: "preview", status: "active", hosts: 1, hostsWithHours: 1, hasSuggestedHours: true, types: 2, needsVideoConnection: false, checks: checks(true), bookingPageOn: false,
+  canManage: true, ownerName: "Dana Brightside", hostsNeedingHours: [], suggestedHours: null, typesWithoutTimes: [], typesWithoutJoinInfo: [],
+  ...over,
+});
+/** A draft with nobody chosen yet: the host select lists the sample team, and the suggested hours wait behind the host. */
+const draftCalendar = (over: Partial<CalendarFacts> = {}): CalendarFacts => calendar({
+  status: "draft", hosts: 0, hostsWithHours: 0, checks: null, hostChoices: [{ id: "preview-owner", name: "Dana Brightside" }, { id: "preview-estimator", name: "Marcus Hale" }], ...over,
+});
 const passed = (role: AgentRoleKey): VerificationFact => ({ role, state: "passed", configVersion: 3, detail: "A read-only check on your real records completed. Nothing was changed or sent." });
 
 function base(): LaunchFacts {
@@ -51,7 +59,7 @@ export function launchPreview(view: LaunchPreviewView): LaunchReadiness {
         ...f, knowledge: { approved: 5, pending: 2 },
         crm: { ...f.crm, blueprint: "waiting_for_a_person", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 } },
         channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: true, enabled: false, registration: "pending", statedSender: "+1 512 555 0100", credentialStored: true }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],
-        appointments: { wanted: true, calendar: calendar({ status: "draft", hosts: 0, hostsWithHours: 0, checks: null }), externalCalendarConnected: false },
+        appointments: { wanted: true, calendar: draftCalendar(), externalCalendarConnected: false, hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "invited" }] },
         employees: AGENT_ROLE_KEYS.map((role) => (role === "appointment_setter"
           ? employee(role, { readiness: { state: "ready", chatAvailable: true, workReady: false, description: "Waiting for a calendar that takes bookings.", blocking: ["A calendar that takes bookings"] } })
           : role === "lead_hunter" ? employee(role, { provisioning: "failed", attempts: 3, configVersion: null, readiness: notReady("pending_setup", "Setting up its profile failed.") })

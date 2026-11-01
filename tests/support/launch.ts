@@ -5,6 +5,9 @@ import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { getWorkspace } from "@/server/crm/workspace";
 import { applyBlueprint, previewApplication } from "@/server/crm/blueprints/apply";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
+import { loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { runLaunchIntent } from "@/server/setup/launch-intents";
+import type { OrgContext } from "@/server/tenancy/context";
 import { agentId, ctxFor } from "./fixtures";
 import { agencyPeople, crmOrg } from "./crm";
 import { clearSetupPayment } from "./billing";
@@ -70,3 +73,31 @@ export async function settled(orgId: string, expected: number) {
 }
 export const checkJobs = async (orgId: string) => Number((await withSystem((db) => db.query<{ n: string }>("select count(*) as n from ai_work_jobs where org_id = $1 and input ->> 'launchVerification' = 'true'", [orgId]))).rows[0].n);
 export const count = async (orgId: string, table: string) => Number((await withSystem((db) => db.query<{ n: string }>(`select count(*) as n from ${table} where org_id = $1`, [orgId]))).rows[0].n);
+
+/**
+ * Approves exactly the hours the panel shows, the way the client's button does: the digest comes off the facts that were read for the person, and the intent runs with it. When
+ * nothing is waiting for hours there is no digest, and the intent is run without one (which changes nothing).
+ */
+export async function approveHours(ctx: OrgContext) {
+  const digest = (await loadLaunchFacts(ctx))?.appointments.calendar?.suggestedHours?.digest;
+  return runLaunchIntent(ctx, "apply_hours", digest ? { hoursDigest: digest } : {});
+}
+
+/**
+ * A client that has submitted and paid, with a DRAFT booking calendar of the kind the onboarding makes: suggested weekdays 9 to 5 in its zone, one phone appointment type, and
+ * nobody as the host. The questionnaire answers it stores are the ones the launch steps read (it books appointments, in this zone).
+ */
+export async function draftClient(name: string, timezone: string) {
+  const c = await crmOrg({ name, timezone });
+  await withSystem(async (db) => {
+    await db.query("update organizations set onboarding_completed_at = now() where id = $1", [c.org.id]);
+    await db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'b.appointments', 'true'::jsonb), ($1, 'a.timezone', to_jsonb($2::text))", [c.org.id, timezone]);
+  });
+  await clearSetupPayment(c.org.id);
+  const calendarId = (await withSystem((db) => db.query<{ id: string }>(
+    `insert into crm_calendars (org_id, name, slug, status, origin, timezone, hours_template) values ($1, 'Consultations', 'consultations', 'draft', 'onboarding', $2, $3::jsonb) returning id`,
+    [c.org.id, timezone, JSON.stringify(WEEKDAYS)],
+  ))).rows[0].id;
+  await withSystem((db) => db.query("insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, min_notice_minutes, location_kind) values ($1, $2, 'Free consultation', 'free-consultation', 30, 60, 'phone')", [c.org.id, calendarId]));
+  return { ...c, calendarId, ctx: ctxFor(c.people.owner, c.org, "owner") };
+}

@@ -1,7 +1,7 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { resolveCapabilities } from "@/server/crm/workspace";
-import { verifyCalendarInTx } from "@/server/calendars/activation";
+import { statedBusyAnswer, verifyCalendarInTx } from "@/server/calendars/activation";
 import { listChannelStatus } from "@/server/messaging/channels";
 import type { CapabilityProvider, CrmCapability, CrmMode } from "@/lib/crm/types";
 import { cleanAnswers, type CrmSetupAnswers } from "@/lib/onboarding/crm-setup";
@@ -345,10 +345,12 @@ const EXTERNAL_SOURCES: ReadonlySet<string> = new Set<CalendarConnectionFact["pr
  * Microsoft 365, CalDAV or a feed), at least one connection of that kind must be connected, have conflict checking on and be freshly
  * synced, or busy times from it would be ignored. With no connection, the setup counts as calendar-only only when the client chose the iAcquire calendar, said they don't take
  * appointments, or recorded no choice (an agency-run setup that never used the guide). `intent` is the guide's stored answers; when it is
- * left out they are read here.
+ * left out they are read here. The questionnaire's own answer about the outside calendar (statedBusyAnswer) comes first, exactly as it does for the client's launch panel and for
+ * calendar activation, so the three never disagree: Google or Microsoft there is required here too, and "none" there needs nothing, whatever the guide says.
  */
 export async function calendarEvidence(db: Queryable, orgId: string, now: Date = new Date(), intent?: CrmSetupAnswers): Promise<CalendarEvidence> {
   const stated = intent ?? (await statedCalendarIntent(db, orgId));
+  const answered = await statedBusyAnswer(db, orgId);
   const { rows: conns } = await db.query<{ provider: CalendarConnectionFact["provider"]; status: CalendarConnectionFact["status"]; last_success_at: Date | null; check_conflicts: boolean; person: string }>(
     `select c.provider, c.status, c.last_success_at, c.check_conflicts, coalesce(nullif(u.full_name, ''), u.email::text) as person
      from crm_calendar_connections c join users u on u.id = c.user_id
@@ -408,19 +410,23 @@ export async function calendarEvidence(db: Queryable, orgId: string, now: Date =
     const what = names(stale.map((c) => `${c.person}'s ${PROVIDER_LABEL[c.provider]} (${c.synced ? "last synced over a day ago" : "no successful sync yet"})`));
     return { ...facts, status: "unverified", detail: `${plural(verified, "calendar")} passed every check, but a connected calendar has no fresh successful sync: ${what}.`, summary: "Waiting for your connected calendar to sync." };
   }
-  const source = stated.calendarSource ?? null;
-  const external = stated.appointments !== false && source !== null && EXTERNAL_SOURCES.has(source) ? (source as CalendarConnectionFact["provider"]) : null;
+  const source = answered === "google" || answered === "microsoft" ? answered : answered === "none" ? null : stated.calendarSource ?? null;
+  const external = answered === "google" || answered === "microsoft"
+    ? answered
+    : answered !== "none" && stated.appointments !== false && source !== null && EXTERNAL_SOURCES.has(source) ? (source as CalendarConnectionFact["provider"]) : null;
   if (external && !readers.some((c) => c.provider === external && c.status === "connected" && c.fresh)) {
     const off = connections.some((c) => c.provider === external && c.status === "connected" && !c.readsBusy);
     return {
       ...facts, status: "unverified",
       detail: off
-        ? `${PROVIDER_LABEL[external]} is connected but conflict checking is off, so busy times from it aren't read. The client said in the CRM setup guide that they use it.`
-        : `The client said in the CRM setup guide that they use ${PROVIDER_LABEL[external]}, but it isn't connected yet; busy times from it aren't read.`,
+        ? `${PROVIDER_LABEL[external]} is connected but conflict checking is off, so busy times from it aren't read. The client said they use it.`
+        : `The client said they use ${PROVIDER_LABEL[external]}, but it isn't connected yet; busy times from it aren't read.`,
       summary: off ? "Turn on conflict checking for your calendar in Calendar Connections." : "Connect your calendar in Calendar Connections.",
     };
   }
-  const calendarOnly = stated.appointments === false
+  const calendarOnly = answered === "none"
+    ? "the client said they use no outside calendar"
+    : stated.appointments === false
     ? "the client said they don't take appointments"
     : source === "iacquire" ? "the client chose the iAcquire calendar" : "no calendar choice recorded";
   const off = connections.length - readers.length;

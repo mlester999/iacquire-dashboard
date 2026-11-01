@@ -10,6 +10,7 @@ import {
 } from "@/lib/employee-evidence";
 import type { WorkspaceFacts } from "@/lib/employee-requirements";
 import { CHAT_REQUESTS } from "@/lib/employee-chat-requests";
+import { ROLE_ABILITIES } from "@/lib/employee-tool-policy";
 import { knowledgeCompletenessText } from "@/lib/knowledge-sections";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { recordAudit } from "@/server/audit";
@@ -23,6 +24,7 @@ import { hasDbErrorCode } from "@/server/diagnostics";
 import { AppError } from "@/server/errors";
 import { getTargeting } from "@/server/leads/service";
 import type { OrgContext } from "@/server/tenancy/context";
+import { employeeAbilities } from "@/server/workforce/abilities";
 import { readOperationsSnapshot } from "@/server/workforce/internal-capability-context";
 import { readPerformanceMetrics } from "@/server/workforce/performance-snapshot";
 import { loadWorkspaceFacts } from "@/server/workforce/readiness-facts";
@@ -42,18 +44,7 @@ const TOTAL_BUDGET_MS = 12_000;
 const STATEMENT_TIMEOUT = "5s";
 const DAY_MS = 86_400_000;
 
-/**
- * The abilities (the employee's Allowed actions) that let a role read each area. An area is read only when the employee still has at least one of them switched on, in addition to
- * the signed-in person's own permission. The role's list applies to every area unless the role names a narrower one.
- */
-const ROLE_ABILITIES: Record<AgentRoleKey, readonly string[]> = {
-  operations_manager: ["tasks.read"],
-  lead_hunter: ["leads.stage_for_review", "research.public_web"],
-  appointment_setter: ["calendar.read_availability", "appointments.read", "appointments.request_change"],
-  sales_assistant: ["crm.read_opportunities"],
-  crm_manager: ["crm.read"],
-  performance_analyst: ["analytics.read"],
-};
+/** Areas whose abilities are narrower than the role's list (the role's list, ROLE_ABILITIES in src/lib/employee-tool-policy.ts, applies to every other area). */
 const SECTION_ABILITIES: Partial<Record<AgentRoleKey, Record<string, readonly string[]>>> = {
   appointment_setter: {
     calendar: ["calendar.read_availability"],
@@ -96,8 +87,9 @@ function gateSection(b: Build, id: string, title: string): EvidenceSection | nul
   if (b.abilities === null) return unavailableSection(id, title, "What this employee is allowed to read could not be confirmed just now, so nothing was read.");
   // Company knowledge is already part of every employee's own instructions and these two carry no customer records, so they follow the person's permission, not the role's abilities.
   if (id === "knowledge" || id === "chat_requests") return null;
-  const needed = SECTION_ABILITIES[b.roleKey]?.[id] ?? ROLE_ABILITIES[b.roleKey];
-  return needed.some((ability) => b.abilities?.has(ability)) ? null : switchedOffSection(id, title);
+  const narrower = SECTION_ABILITIES[b.roleKey]?.[id];
+  const allowed = narrower ? narrower.some((ability) => b.abilities?.has(ability)) : roleAbilitiesAllow(b.roleKey, b.abilities);
+  return allowed ? null : switchedOffSection(id, title);
 }
 
 /** One member's read, as that person (row-level security), with the database stopping any statement that runs long. */
@@ -979,22 +971,16 @@ export interface PreparedEmployeeEvidence {
 
 /**
  * What this employee may still do in this workspace: its role's abilities minus the ones a workspace owner switched off in Allowed actions (read from the active configuration).
- * Null when the employee cannot be found for this workspace and role, or the read fails, so that nothing is read on a guess.
+ * Null when the employee cannot be found for this workspace and role, or the read fails, so that nothing is read on a guess. Exported for the client business-tool gate; the read
+ * itself is `employeeAbilities` (src/server/workforce/abilities.ts), which the dispatcher and the work runner also use.
  */
-async function readAbilities(ctx: OrgContext, agentId: string, roleKey: AgentRoleKey): Promise<ReadonlySet<string> | null> {
-  const { rows } = await readSystem((db) => db.query<{ default_tools: unknown; disabled: unknown }>(
-    `select r.default_tools, v.settings -> 'disabledTools' as disabled
-       from agent_instances a
-       join agent_roles r on r.key = a.role_key
-       left join agent_config_versions v on v.id = a.active_config_version_id
-      where a.id = $1 and a.org_id = $2 and a.role_key = $3`,
-    [agentId, ctx.org.orgId, roleKey],
-  ));
-  const row = rows[0];
-  if (!row) return null;
-  const names = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
-  const off = new Set(names(row.disabled));
-  return new Set(names(row.default_tools).filter((tool) => !off.has(tool)));
+export function readAbilities(ctx: OrgContext, agentId: string, roleKey: AgentRoleKey): Promise<ReadonlySet<string> | null> {
+  return readSystem((db) => employeeAbilities(db, ctx.org.orgId, agentId, roleKey));
+}
+
+/** Whether a role still has at least one of its abilities switched on (the rule every area of the snapshot follows). Null abilities (unreadable) never allow. Pure. */
+export function roleAbilitiesAllow(role: AgentRoleKey, abilities: ReadonlySet<string> | null): boolean {
+  return abilities !== null && ROLE_ABILITIES[role].some((ability) => abilities.has(ability));
 }
 
 /**

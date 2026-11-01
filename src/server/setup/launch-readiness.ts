@@ -15,24 +15,32 @@ import {
   type LaunchFacts,
   type LaunchReadiness,
   type ProvisioningFact,
+  type TeamHostFact,
   type VerificationFact,
 } from "@/lib/launch-readiness";
 import { confirmedAnswers } from "@/lib/onboarding/engine";
 import type { Answers } from "@/lib/onboarding/types";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
-import { verifyCalendarInTx } from "@/server/calendars/activation";
+import { activeHostsOfCalendar, hostConnectionStates, proposeCalendarHours, statedBusyAnswer, verifyCalendarInTx } from "@/server/calendars/activation";
+import { calendarConnectionSettings } from "@/server/calendars/connections";
 import { MAX_PROVISIONING_ATTEMPTS } from "@/lib/provisioning-failure";
 import { actualDataModel, blueprintEvidence, loadBlueprintState, manifestEvidence } from "@/server/setup/native-evidence";
 import { statedSenderOf } from "@/server/onboarding/connection-facts";
 import { listAgents, listAgentsForSystem, type AgentInstanceRow } from "@/server/workforce/service";
-import { loadWorkspaceFacts } from "@/server/workforce/readiness-facts";
+import { USABLE_NATIVE_PIPELINE_SQL, loadWorkspaceFacts } from "@/server/workforce/readiness-facts";
 
 // The facts behind "is this client ready to launch?", read from the workspace's own records and handed to the pure judge in src/lib/launch-readiness.ts. Nothing here is inferred
 // from a queued job or a green badge: a calendar is a row, a host is a membership with weekly hours, an employee is its recorded readiness, a verification is a finished job.
 // Read-only. Trusted code: the caller has authorized the person for this workspace (the Setup page requires `setup.view`), and every query names the workspace.
 
 const CHANNELS = ["email", "sms", "whatsapp"] as const;
+
+/** Who the client said takes the appointments: themselves or a team member. Only a confirmed answer counts, and only while appointments are wanted (the answer is hidden otherwise). */
+function hostChoiceOf(answers: Answers): "owner" | "team" | null {
+  const choice = answers["d.appt_host"];
+  return choice === "owner" || choice === "team" ? choice : null;
+}
 
 /** What the questionnaire says. Only confirmed answers count: a guess from the website that the client has not looked at is not an answer. */
 async function answersOf(db: Queryable, orgId: string): Promise<Answers> {
@@ -41,13 +49,8 @@ async function answersOf(db: Queryable, orgId: string): Promise<Answers> {
 
 type CrmFacts = Pick<LaunchFacts["crm"], "blueprint" | "blueprintSummary" | "automaticSetup" | "pipelineReady" | "records">;
 
-/** At least two non-archived stages, one of them open, in a non-archived native pipeline. The questionnaire's employee requirements only ask for the open stage; the launch asks for a usable board. */
-const USABLE_PIPELINE_SQL = `select exists (
-  select 1 from crm_pipelines p
-   where p.org_id = $1 and p.provider = 'native' and p.archived_at is null
-     and (select count(*) from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null) >= 2
-     and exists (select 1 from crm_pipeline_stages s where s.pipeline_id = p.id and s.org_id = p.org_id and s.archived_at is null and s.kind = 'open')
-) as ok`;
+/** A usable board, by the one rule the launch panel and the employee requirements share (USABLE_NATIVE_PIPELINE_SQL): two or more non-archived stages, one of them open. */
+const USABLE_PIPELINE_SQL = `select ${USABLE_NATIVE_PIPELINE_SQL} as ok`;
 
 /**
  * The industry CRM setup of a native workspace, judged from the Blueprint evidence (the agency's own check): done only when the newest application of every live Blueprint
@@ -114,41 +117,97 @@ export async function findLaunchCalendar(db: Queryable, orgId: string): Promise<
   return row ?? null;
 }
 
-async function calendarFacts(db: Queryable, orgId: string): Promise<CalendarFacts | null> {
+/**
+ * Who is looking: their user id (for "your own account") and whether they may set up calendars. A trusted system read (the sweep) has no viewer: nothing is said about what a person
+ * may do, and no list of people is read.
+ */
+interface Viewer {
+  userId: string | null;
+  canManageCalendars: boolean | null;
+}
+
+const NO_VIEWER: Viewer = { userId: null, canManageCalendars: null };
+
+async function calendarFacts(db: Queryable, orgId: string, viewer: Viewer): Promise<CalendarFacts | null> {
   const cal = await findLaunchCalendar(db, orgId);
   if (!cal) return null;
   // The people who would take bookings: active hosts who are still active members of this workspace, as availability and activation count them.
-  const hosts = (await db.query<{ total: number; with_hours: number }>(
-    `select count(*)::int as total,
-            (count(*) filter (where exists (select 1 from crm_availability_rules r where r.org_id = cm.org_id and r.user_id = cm.user_id)))::int as with_hours
-       from crm_calendar_members cm
-       join organization_memberships m on m.org_id = cm.org_id and m.user_id = cm.user_id and m.status = 'active'
-       join users u on u.id = cm.user_id and u.status = 'active'
-      where cm.calendar_id = $1 and cm.org_id = $2 and cm.active`,
+  const hostList = await activeHostsOfCalendar(db, orgId, cal.id);
+  const total = hostList.length;
+  const withHours = hostList.filter((h) => h.hasHours).length;
+  const typeRows = (await db.query<{ name: string; location_kind: string; meeting_provider: string; location_detail: string | null }>(
+    "select name, location_kind, meeting_provider, location_detail from crm_appointment_types where calendar_id = $1 and org_id = $2 and archived_at is null order by position, lower(name)",
     [cal.id, orgId],
-  )).rows[0];
-  const types = (await db.query<{ total: number; video: boolean; google: boolean; microsoft: boolean }>(
-    `select count(*)::int as total, coalesce(bool_or(meeting_provider in ('google_meet', 'microsoft_teams')), false) as video,
-            coalesce(bool_or(meeting_provider = 'google_meet'), false) as google, coalesce(bool_or(meeting_provider = 'microsoft_teams'), false) as microsoft
-       from crm_appointment_types where calendar_id = $1 and org_id = $2 and archived_at is null`,
-    [cal.id, orgId],
-  )).rows[0];
-  const total = hosts?.total ?? 0;
-  const withHours = hosts?.with_hours ?? 0;
+  )).rows;
+  const google = typeRows.some((t) => t.meeting_provider === "google_meet");
+  const microsoft = typeRows.some((t) => t.meeting_provider === "microsoft_teams");
+  // A video appointment that tells the customer nothing about how to join (the same reading as the activation check).
+  const typesWithoutJoinInfo = typeRows.filter((t) => t.location_kind === "video" && t.meeting_provider === "none" && !(t.location_detail ?? "").trim()).map((t) => t.name);
   // The activation checks are worth reading only once there is something to check (they compute real open times), and always for a calendar already taking bookings.
   let checks: CalendarCheckFact[] | null = null;
-  if (cal.status === "active" || (total > 0 && withHours >= total && (types?.total ?? 0) > 0)) {
+  let typesWithoutTimes: string[] | undefined;
+  if (cal.status === "active" || (total > 0 && withHours >= total && typeRows.length > 0)) {
     try {
       const v = await verifyCalendarInTx(db, orgId, cal.id);
       checks = v.checks.map((c) => ({ key: c.key, ok: c.ok, detail: c.detail }));
+      typesWithoutTimes = v.typesWithoutTimes;
     } catch {
       checks = null;
     }
   }
+  const proposal = await proposeCalendarHours(db, orgId, cal.id);
+  const connections = await hostConnectionStates(db, orgId, hostList);
+  const providers = calendarConnectionSettings().providers;
+  const owner = (await db.query<{ name: string }>(
+    `select coalesce(nullif(u.full_name, ''), u.email::text) as name from organization_memberships m join users u on u.id = m.user_id
+      where m.org_id = $1 and m.role = 'owner' and m.status = 'active' and u.status = 'active' order by m.created_at, m.user_id limit 1`,
+    [orgId],
+  )).rows[0];
+  // Anyone who may set up calendars may choose the host: active members of this workspace, whatever their role (the CRM's own host list).
+  const hostChoices = viewer.canManageCalendars
+    ? (await db.query<{ id: string; name: string }>(
+        `select u.id, coalesce(nullif(u.full_name, ''), u.email::text) as name from organization_memberships m join users u on u.id = m.user_id
+          where m.org_id = $1 and m.status = 'active' and u.status = 'active' order by lower(coalesce(nullif(u.full_name, ''), u.email::text)), u.id`,
+        [orgId],
+      )).rows
+    : undefined;
   return {
-    id: cal.id, status: cal.status, hosts: total, hostsWithHours: withHours, hasSuggestedHours: cal.suggested, types: types?.total ?? 0,
-    needsVideoConnection: types?.video === true, videoProviders: [...(types?.google ? ["google" as const] : []), ...(types?.microsoft ? ["microsoft" as const] : [])], checks, bookingPageOn: cal.public,
+    id: cal.id, status: cal.status, hosts: total, hostsWithHours: withHours, hasSuggestedHours: cal.suggested, types: typeRows.length,
+    needsVideoConnection: google || microsoft, videoProviders: [...(google ? ["google" as const] : []), ...(microsoft ? ["microsoft" as const] : [])], checks, bookingPageOn: cal.public,
+    ...(viewer.canManageCalendars !== null ? { canManage: viewer.canManageCalendars } : {}),
+    ownerName: owner?.name ?? null,
+    ...(hostChoices ? { hostChoices } : {}),
+    hostsNeedingHours: hostList.filter((h) => !h.hasHours).map((h) => ({ id: h.userId, name: h.name })),
+    suggestedHours: proposal ? { zone: proposal.zone, summary: proposal.summary, digest: proposal.digest } : null,
+    ...(typesWithoutTimes ? { typesWithoutTimes } : {}),
+    typesWithoutJoinInfo,
+    hostConnections: connections.map((c) => ({ userId: c.userId, name: c.name, viewer: viewer.userId !== null && c.userId === viewer.userId, meet: c.meet, busy: c.busy })),
+    oauthAvailable: { google: providers.find((p) => p.key === "google")?.configured === true, microsoft: providers.find((p) => p.key === "microsoft")?.configured === true },
+    busyProvider: await statedBusyAnswer(db, orgId),
   };
+}
+
+/**
+ * The team members the client marked as taking appointments, and how far each one is: a member already, invited and not yet accepted, or not invited. Matched on the email the
+ * client typed. Names only go to the judge; an email never does.
+ */
+async function teamHostFacts(db: Queryable, orgId: string, answers: Answers): Promise<TeamHostFact[]> {
+  const rows = Array.isArray(answers["d.team"]) ? (answers["d.team"] as Array<Record<string, unknown>>) : [];
+  const marked = rows
+    .filter((r) => r?.hosts === "yes" && typeof r.email === "string" && r.email.trim() !== "")
+    .slice(0, 12)
+    .map((r) => ({ name: typeof r.name === "string" && r.name.trim() ? r.name.trim().slice(0, 80) : "A team member", email: (r.email as string).trim().toLowerCase() }));
+  if (!marked.length) return [];
+  const emails = marked.map((m) => m.email);
+  const members = new Set((await db.query<{ email: string }>(
+    "select lower(u.email::text) as email from organization_memberships m join users u on u.id = m.user_id where m.org_id = $1 and m.status = 'active' and u.status = 'active' and lower(u.email::text) = any($2::text[])",
+    [orgId, emails],
+  )).rows.map((r) => r.email));
+  const invited = new Set((await db.query<{ email: string }>(
+    "select lower(email::text) as email from invitations where org_id = $1 and accepted_at is null and revoked_at is null and expires_at > now() and lower(email::text) = any($2::text[])",
+    [orgId, emails],
+  )).rows.map((r) => r.email));
+  return marked.map((m): TeamHostFact => ({ name: m.name, state: members.has(m.email) ? "member" : invited.has(m.email) ? "invited" : "not_invited" }));
 }
 
 /** The latest read-only check run for each role, as the launch panel started it (input.launchVerification). */
@@ -216,15 +275,15 @@ export async function loadLaunchFacts(ctx: OrgContext): Promise<LaunchFacts | nu
     const member = await withSystem((db) => db.query("select 1 from organization_memberships where org_id = $1 and user_id = $2 and status = 'active'", [ctx.org.orgId, ctx.user.id]));
     if (!member.rows.length) throw new AppError("forbidden", "You don't have access to that workspace.");
   }
-  return readLaunchFacts(ctx.org.orgId, await listAgents(ctx.user.id, ctx.org.orgId), ctx.can("billing.view"));
+  return readLaunchFacts(ctx.org.orgId, await listAgents(ctx.user.id, ctx.org.orgId), ctx.can("billing.view"), { userId: ctx.user.id, canManageCalendars: ctx.can("calendars.manage") });
 }
 
 /** The same facts for trusted server code with no signed-in person (the launch sweep). */
 export async function loadLaunchFactsForOrg(orgId: string): Promise<LaunchFacts | null> {
-  return readLaunchFacts(orgId, await listAgentsForSystem(orgId), false);
+  return readLaunchFacts(orgId, await listAgentsForSystem(orgId), false, NO_VIEWER);
 }
 
-async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpenBilling: boolean): Promise<LaunchFacts | null> {
+async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpenBilling: boolean, viewer: Viewer): Promise<LaunchFacts | null> {
   const read = await withSystem(async (db) => {
     const org = (await db.query<{ kind: string; name: string; industry: string | null; timezone: string; submitted: boolean; is_demo: boolean; description: string }>(
       `select o.kind, o.name, o.industry, o.timezone, o.onboarding_completed_at is not null as submitted, o.is_demo, coalesce(p.description, '') as description
@@ -237,7 +296,8 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     const mode = (await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native";
     const crm = mode === "native" ? await crmFacts(db, orgId) : null;
     const providerConnected = Number((await db.query<{ n: string }>("select count(*) as n from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null", [orgId])).rows[0]?.n ?? 0) > 0;
-    const calendar = mode === "ghl" ? null : await calendarFacts(db, orgId);
+    const calendar = mode === "ghl" ? null : await calendarFacts(db, orgId, viewer);
+    const teamHosts = hostChoiceOf(answers) === "team" ? await teamHostFacts(db, orgId, answers) : [];
     const externalCalendarConnected = mode === "native"
       ? Number((await db.query<{ n: string }>("select count(*) as n from crm_calendar_connections where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0
       : Number((await db.query<{ n: string }>("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'", [orgId])).rows[0]?.n ?? 0) > 0;
@@ -260,10 +320,10 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     )).rows.map((r) => r.role));
     const paymentCleared = org.is_demo ? null : await isSetupPaymentCleared(db, orgId);
     const verification = await verificationFacts(db, orgId);
-    return { org, answers, workspace, mode, crm, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification };
+    return { org, answers, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification };
   });
   if (!read) return null;
-  const { org, answers, workspace, mode, crm, providerConnected, calendar, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification } = read;
+  const { org, answers, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification } = read;
 
   const wantedChannels = Array.isArray(answers["c.channels"]) ? (answers["c.channels"] as string[]) : [];
   // A booking calendar that is already taking bookings answers "do you book appointments?" even if the questionnaire was never asked.
@@ -283,7 +343,7 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     },
     knowledge: { approved: workspace.knowledge?.supplied ?? 0, pending: workspace.knowledge?.heldForReview ?? 0 },
     crm: crm ? { mode, ...crm, providerConnected } : { mode, blueprint: "none", pipelineReady: workspace.pipelineReady, providerConnected },
-    appointments: { wanted: wantsAppointments, calendar, externalCalendarConnected },
+    appointments: { wanted: wantsAppointments, calendar, externalCalendarConnected, hostChoice: hostChoiceOf(answers), teamHosts },
     channels: CHANNELS.map((channel): ChannelFact => {
       const row = channelRows.find((r) => r.channel === channel);
       return {

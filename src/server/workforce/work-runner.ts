@@ -26,6 +26,8 @@ import { runAppointmentReviewJob } from "@/server/workforce/appointment-review";
 import { runPerformanceSnapshotJob } from "@/server/workforce/performance-snapshot";
 import { runAppointmentAvailabilityJob } from "@/server/workforce/appointment-availability";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { jobAbilityRefusal } from "@/server/workforce/abilities";
+import { recordActionDenied } from "@/server/workforce/action-policy";
 
 /**
  * Persistent worker entry points for AI work.
@@ -164,6 +166,35 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
           },
         });
         if (finished) await BLOCKED_HOOKS[claimed.capability]?.(db, claimed, gate.detail);
+      });
+      return true;
+    }
+    // The owner may have switched the ability off after this job was queued: "Allowed actions" is checked again where the work starts, and the job blocks instead of running.
+    const abilities = await withSystem((db) => jobAbilityRefusal(db, { orgId: claimed.org_id, agentId: claimed.agent_instance_id, capability: claimed.capability }));
+    if (abilities) {
+      // Recorded before the job is finished: the audit write opens its own transaction, which cannot happen inside the one that finishes the job.
+      // The job's requester is the accountable person (the runner refuses a job with none), and the job id ties the row to the request that was blocked.
+      await recordActionDenied({
+        orgId: claimed.org_id, agentId: claimed.agent_instance_id, actionId: `capability:${claimed.capability}`, actorKind: claimed.requested_by ? "user" : "system", actorUserId: claimed.requested_by,
+        jobId: claimed.id, role: abilities.roleKey, reason: `${abilities.reason}: ${abilities.abilities.join(", ")}`,
+      });
+      await withSystem(async (db) => {
+        const finished = await finishWorkJob(db, {
+          jobId: claimed.id,
+          orgId: claimed.org_id,
+          workerId: id,
+          status: "blocked",
+          stage: "blocked",
+          failureCode: abilities.reason,
+          failureMessage: abilities.message,
+          event: {
+            kind: "notice",
+            stage: "blocked",
+            message: `${abilities.message} Nothing was executed.`,
+            data: { reason: abilities.reason, abilities: abilities.abilities },
+          },
+        });
+        if (finished) await BLOCKED_HOOKS[claimed.capability]?.(db, claimed, abilities.message);
       });
       return true;
     }

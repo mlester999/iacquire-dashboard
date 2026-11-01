@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem, type Queryable } from "@/server/db";
+import { readSystem, withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
@@ -11,12 +11,13 @@ import { createWorkJob } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { authorizeEmployeeAction } from "@/lib/employee-tool-policy";
 import { recordActionDenied } from "@/server/workforce/action-policy";
+import { assertAbility, capabilityNeed } from "@/server/workforce/abilities";
 
 /**
  * The one server-side dispatcher for reviewed business capabilities.
  *
  * It resolves the caller's own employee row, checks the role allowlist and the required caller
- * permission, refuses an unavailable employee, creates the durable job and only then wakes the
+ * permission, refuses an unavailable employee or one whose ability the owner switched off, creates the durable job and only then wakes the
  * worker. A capability that has no registered handler still creates an honest blocked job rather
  * than pretending to run.
  */
@@ -68,6 +69,8 @@ export async function dispatchCapabilityJob(
   if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
   // A paused employee, an agency pause or a suspended workspace: no new work, and the person is told why.
   await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
+  // The owner's "Allowed actions" switches: an ability switched off means the work is refused here and no job exists. (A job queued before the switch was turned off is blocked when it runs.)
+  await readSystem((db) => assertAbility(db, { orgId: ctx.org.orgId, agentId: agent.id, roleKey: input.agentRole, actionId: `capability:${input.capability}`, actorUserId: ctx.user.id, need: capabilityNeed(input.capability) }));
 
   const idempotencyKey = input.idempotencyKey ?? `${input.capability}:${input.agentRole}:${crypto.randomUUID()}`;
   const job = await withSystem(async (db) => {

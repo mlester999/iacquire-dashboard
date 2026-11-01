@@ -57,3 +57,24 @@ describe("social media environment variables", () => {
     }
   });
 });
+
+// The client tier of the business tools has two flags and, deliberately, no secret of its own. Off is the default for both, and the longer contract is in client-business-mcp-env.test.ts.
+describe("client business tool variables", () => {
+  beforeEach(() => {
+    delete process.env.HERMES_CLIENT_BUSINESS_MCP_ENABLED;
+    delete process.env.HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED;
+    resetEnvCache();
+  });
+  afterEach(restore);
+
+  it("are off unless set, and proposals alone are refused", () => {
+    expect(env().HERMES_CLIENT_BUSINESS_MCP_ENABLED).toBe(false);
+    expect(env().HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED).toBe(false);
+    process.env.HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED = "true";
+    resetEnvCache();
+    expect(() => env()).toThrow(/HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED requires HERMES_CLIENT_BUSINESS_MCP_ENABLED/);
+    process.env.HERMES_CLIENT_BUSINESS_MCP_ENABLED = "true";
+    resetEnvCache();
+    expect(env().HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED).toBe(true);
+  });
+});

@@ -21,6 +21,8 @@ interface DenialInput {
   actorUserId?: string | null;
   actorKind?: "user" | "system" | "agent";
   role?: string | null;
+  /** The work job the refusal stopped, when there is one, so the row can be tied to the request that was blocked. */
+  jobId?: string | null;
   reason: string;
 }
 
@@ -30,7 +32,7 @@ export async function recordActionDenied(input: DenialInput, db?: Queryable): Pr
     await recordAudit({
       orgId: input.orgId, actorUserId: input.actorUserId ?? null, actorKind: input.actorKind ?? "system", agentInstanceId: input.agentId ?? undefined,
       action: "agent.action_denied", targetType: "agent_instance", targetId: input.agentId ?? undefined, result: "denied",
-      metadata: { actionId: input.actionId, role: input.role ?? null, reason: input.reason.slice(0, 200) },
+      metadata: { actionId: input.actionId, role: input.role ?? null, ...(input.jobId ? { jobId: input.jobId } : {}), reason: input.reason.slice(0, 200) },
     }, db);
   } catch {
     // Deliberately swallowed: see above.

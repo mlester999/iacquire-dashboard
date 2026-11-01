@@ -34,10 +34,18 @@ export type ItemOwner = "you" | "iacquire" | "system";
 
 /** A button that does the next step inside the guided setup (an intent the page runs) or a link to the screen where it is done. */
 export type LaunchIntent = "assign_host" | "apply_hours" | "activate_calendar" | "run_checks";
+/** What an intent needs besides its name. The server checks both again: the person is the signed-in one, the host must be an active member of this workspace, and the digest must still describe what is true. */
+export interface LaunchIntentParams {
+  /** assign_host: the person to make the host. Left out, the person who pressed the button. */
+  userId?: string;
+  /** apply_hours: the digest of the hosts, hours and zone that were shown, which the server recomputes before it saves anything. */
+  hoursDigest?: string;
+}
 export interface LaunchAction {
   label: string;
   href?: string;
   intent?: LaunchIntent;
+  params?: LaunchIntentParams;
 }
 
 export interface LaunchItem {
@@ -49,6 +57,8 @@ export interface LaunchItem {
   detail: string;
   owner: ItemOwner;
   action?: LaunchAction;
+  /** The people the client may choose from for this step (the host), for a select beside the button. Names only: the server validates the id that comes back. */
+  hostChoices?: Array<{ id: string; name: string }>;
   /** What the client's own part of this step involves (for example the records they add for a domain). Guidance only: it is never a state and never counts as verified. */
   guidance?: string[];
 }
@@ -88,6 +98,18 @@ export interface CalendarCheckFact {
   detail: string;
 }
 
+/** What one host has connected, as the calendar needs it: strict and per host. */
+export interface HostConnectionFact {
+  userId: string;
+  name: string;
+  /** The person looking is this host (only a person can connect their own account). */
+  viewer: boolean;
+  /** A connected account that can add events: the only kind that can make a Google Meet or Teams link. Another person's account, an ICS feed or CalDAV never counts. */
+  meet: { google: boolean; microsoft: boolean };
+  /** A connected account of that provider that is being read for busy times, recently enough to trust. */
+  busy: { google: boolean; microsoft: boolean };
+}
+
 export interface CalendarFacts {
   id: string;
   status: "draft" | "active";
@@ -106,6 +128,32 @@ export interface CalendarFacts {
   /** The activation checks (hosts, hours, time zone, types, connections, a real open time within two weeks), read now; null when they could not be read. */
   checks: CalendarCheckFact[] | null;
   bookingPageOn: boolean;
+  /** The person looking may set up calendars (choose a host, approve hours, activate). Absent: assumed, for older facts. */
+  canManage?: boolean;
+  /** The workspace owner's name, for "Ask ..." when the person looking may not. */
+  ownerName?: string | null;
+  /** Active members who may host, for the host select. Only read for a person who may choose a host. */
+  hostChoices?: Array<{ id: string; name: string }>;
+  /** The hosts who still have no weekly hours: a host added from the questionnaire or by an invitation has none until the client approves them. */
+  hostsNeedingHours?: Array<{ id: string; name: string }>;
+  /** The suggested weekly hours the client can approve and what the digest covers; null when there are none to approve. */
+  suggestedHours?: { zone: string; summary: string; digest: string } | null;
+  /** Appointment types (of the ones checked) that no customer could be offered a time for. Read with the checks, so absent until they ran. */
+  typesWithoutTimes?: string[];
+  /** Video appointment types with no meeting tool and no words about how to join. */
+  typesWithoutJoinInfo?: string[];
+  /** Per host, what is connected. Absent in older facts, which could only say whether any connection existed. */
+  hostConnections?: HostConnectionFact[];
+  /** Whether iAcquire's Google and Microsoft sign-in is configured here. A yes or no only, never any value. */
+  oauthAvailable?: { google: boolean; microsoft: boolean };
+  /** What the client said about an outside calendar blocking times: google or microsoft (required), none (not required), or null (not said). */
+  busyProvider?: "google" | "microsoft" | "none" | null;
+}
+
+/** A person the client marked as taking appointments in the team answer, and how far they are: not invited, invited and not accepted, or a member. */
+export interface TeamHostFact {
+  name: string;
+  state: "not_invited" | "invited" | "member";
 }
 
 /** "retrying" is a failed attempt that still has attempts left and a retry time: it is tried again by itself, so it is not yet a failure anyone must look at. */
@@ -183,7 +231,15 @@ export interface LaunchFacts {
     providerConnected: boolean;
   };
   /** True: appointments are wanted. False: not wanted. Null: the questionnaire does not say. */
-  appointments: { wanted: boolean | null; calendar: CalendarFacts | null; externalCalendarConnected: boolean };
+  appointments: {
+    wanted: boolean | null;
+    calendar: CalendarFacts | null;
+    externalCalendarConnected: boolean;
+    /** Who the client said takes the appointments: themselves ("owner") or a team member ("team"). Null: not said. */
+    hostChoice?: "owner" | "team" | null;
+    /** The team members the client marked as taking appointments, for the "team" choice. */
+    teamHosts?: TeamHostFact[];
+  };
   channels: ChannelFact[];
   employees: EmployeeFact[];
   verification: VerificationFact[];
@@ -285,17 +341,140 @@ function crmStep(f: LaunchFacts): LaunchStep {
 /** Where the guided setup sends the person after a Google or Microsoft sign-in: back here (the server accepts only this path and the CRM's own pages). */
 export const OAUTH_RETURN_TO_SETUP = "/setup";
 
+const oauthStartHref = (provider: "google" | "microsoft") => `/api/crm/calendar-oauth/${provider}/start?return=${OAUTH_RETURN_TO_SETUP}`;
+const PROVIDER_NAME = { google: "Google", microsoft: "Microsoft" } as const;
+const MEETING_TOOL = { google: "Google Meet", microsoft: "Microsoft Teams" } as const;
+
 /**
- * The button for a missing meeting-tool connection. When the appointment types name exactly one provider, it starts that provider's sign-in and comes back to Setup. When they name
- * both, or the facts do not say, it opens the connections screen, which offers each provider.
+ * The button for a missing meeting-tool connection when the facts do not say who is missing it. When the appointment types name exactly one provider, it starts that provider's
+ * sign-in and comes back to Setup. When they name both, or the facts do not say, it opens the connections screen, which offers each provider.
  */
 function calendarConnectAction(cal: CalendarFacts): LaunchAction {
   const providers = cal.videoProviders ?? [];
   if (providers.length === 1) {
     const provider = providers[0];
-    return { label: `Connect ${provider === "google" ? "Google" : "Microsoft"}`, href: `/api/crm/calendar-oauth/${provider}/start?return=${OAUTH_RETURN_TO_SETUP}` };
+    return { label: `Connect ${PROVIDER_NAME[provider]}`, href: oauthStartHref(provider) };
   }
   return { label: "Connect a calendar", href: "/crm/calendar-connections" };
+}
+
+/** "Mon to Fri, 9:00 AM to 5:00 PM; Sat, 10:00 AM to 2:00 PM": the weekly hours a client approves, in words, Monday first. Days with the same hours are joined. */
+export function summarizeWeeklyHours(rules: ReadonlyArray<{ weekday: number; startMinute: number; endMinute: number }>): string {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const clock = (m: number) => {
+    if (m >= 1440) return "midnight";
+    const h = Math.floor(m / 60);
+    return `${h % 12 === 0 ? 12 : h % 12}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  };
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const groups: Array<{ first: number; last: number; text: string }> = [];
+  for (const weekday of order) {
+    const ranges = rules.filter((r) => r.weekday === weekday).sort((a, b) => a.startMinute - b.startMinute).map((r) => `${clock(r.startMinute)} to ${clock(r.endMinute)}`);
+    if (!ranges.length) continue;
+    const text = ranges.join(" and ");
+    const prev = groups[groups.length - 1];
+    if (prev && prev.text === text && order.indexOf(prev.last) === order.indexOf(weekday) - 1) prev.last = weekday;
+    else groups.push({ first: weekday, last: weekday, text });
+  }
+  return groups.map((g) => `${g.first === g.last ? days[g.first] : `${days[g.first]} to ${days[g.last]}`}, ${g.text}`).join("; ");
+}
+
+const namesOf = (people: ReadonlyArray<{ name: string }>) => {
+  const n = people.map((p) => p.name);
+  return n.length <= 3 ? n.join(", ") : `${n.slice(0, 3).join(", ")} and ${n.length - 3} more`;
+};
+
+/** What the calendar step says while the questionnaire or the setup payment is still outstanding: the buttons wait, because every one of them would be refused. */
+function calendarGate(f: LaunchFacts): string | null {
+  if (!f.submitted) return "This opens once you have submitted your company information.";
+  if (f.paymentCleared === false) return "This opens once your setup payment is confirmed.";
+  return null;
+}
+
+function hostItem(f: LaunchFacts, cal: CalendarFacts, gate: string | null, manage: boolean, ask: string): LaunchItem {
+  const a = f.appointments;
+  const base = { key: "calendar.host", label: "Host", required: true, owner: "you" } as const;
+  const invited = (a.teamHosts ?? []).filter((t) => t.state === "invited");
+  if (cal.hosts > 0) {
+    return { ...base, state: "done", detail: `${plural(cal.hosts, "person takes", "people take")} appointments on this calendar.${a.hostChoice === "team" && invited.length ? ` Still waiting for ${namesOf(invited)} to accept their invitation.` : ""}` };
+  }
+  const choices = manage && !gate && cal.hostChoices?.length ? { hostChoices: cal.hostChoices } : {};
+  const makeMe: LaunchAction = { label: "Make me the host", intent: "assign_host" };
+  if (gate) return { ...base, state: "action_required", detail: `Choose who takes your appointments. ${gate}` };
+  if (!manage) return { ...base, state: "action_required", detail: `Nobody takes your appointments yet. Only someone who sets up calendars can choose a host. ${ask}` };
+  if (a.hostChoice === "team") {
+    const team = a.teamHosts ?? [];
+    if (invited.length) {
+      return { ...base, state: "in_progress", ...choices, detail: `You said a team member takes these appointments. Waiting for ${namesOf(invited)} to accept their invitation. They join as a host with no hours, and you approve their hours next. You can also choose a host now.` };
+    }
+    return { ...base, state: "action_required", ...choices,
+      detail: team.length
+        ? `You said a team member takes these appointments. Invite ${namesOf(team)} from Team settings, and they join as a host once they accept. You can also choose a host now.`
+        : "You said a team member takes these appointments, but no one is marked as taking them yet. Mark them in your company setup and invite them, or choose a host now.",
+      action: team.length ? { label: "Open Team settings", href: "/settings/team" } : { label: "Mark who takes appointments", href: "/onboarding" } };
+  }
+  if (a.hostChoice === "owner") {
+    return { ...base, state: "action_required", ...choices, detail: "You said you take these appointments yourself, but this calendar has no host yet. Confirm it here, or choose someone else. We never pick a host for you.", action: makeMe };
+  }
+  return { ...base, state: "action_required", ...choices, detail: "Choose who takes your appointments. We never pick a host for you.", action: makeMe };
+}
+
+function hoursItem(cal: CalendarFacts, gate: string | null, manage: boolean, ask: string): LaunchItem {
+  const base = { key: "calendar.hours", label: "Host availability", required: true, owner: "you" } as const;
+  if (cal.hosts === 0) return { ...base, state: "in_progress", detail: "Set after you choose a host. We never invent working hours." };
+  if (cal.hostsWithHours >= cal.hosts) return { ...base, state: "done", detail: "Every host has weekly hours saved." };
+  const missing = cal.hosts - cal.hostsWithHours;
+  const who = cal.hostsNeedingHours?.length ? namesOf(cal.hostsNeedingHours) : plural(missing, "host", "hosts");
+  const lack = `${who} ${missing === 1 ? "has" : "have"} no weekly hours yet.`;
+  if (gate) return { ...base, state: "action_required", detail: `${lack} ${gate}` };
+  if (!manage) return { ...base, state: "action_required", detail: `${lack} Only someone who sets up calendars can approve hours. ${ask}` };
+  if (cal.hasSuggestedHours) {
+    const s = cal.suggestedHours;
+    return s
+      ? { ...base, state: "action_required", detail: `${lack} Your answers suggest: ${s.summary}. Nothing is saved until you approve exactly these hours, or you can set your own.`, action: { label: "Approve these hours", intent: "apply_hours", params: { hoursDigest: s.digest } } }
+      : { ...base, state: "action_required", detail: `${lack} Approve the hours from your company setup, or set your own.`, action: { label: "Approve suggested hours", intent: "apply_hours" } };
+  }
+  return { ...base, state: "action_required", detail: `${lack} Set them in Availability.`, action: { label: "Set hours", href: "/crm/availability" } };
+}
+
+/** The Google or Microsoft connection a video appointment needs, judged per host: only a connected account that can add events satisfies it, and only its owner can connect it. */
+function connectionItem(f: LaunchFacts, cal: CalendarFacts, manage: boolean): LaunchItem | null {
+  const a = f.appointments;
+  if (!cal.needsVideoConnection) return null;
+  const providers = cal.videoProviders ?? [];
+  const hosts = cal.hostConnections;
+  const base = { key: "calendar.connection", label: "Google or Microsoft connection", required: true, owner: "you" } as const;
+  if (!hosts || !providers.length) {
+    // Older facts say only whether any connection exists.
+    return a.externalCalendarConnected ? null : { ...base, state: "action_required", detail: "A video appointment needs a connected Google or Microsoft account to make the meeting link.", action: calendarConnectAction(cal) };
+  }
+  if (!hosts.length) return { ...base, state: "in_progress", detail: "Video links are made through each host's own connected Google or Microsoft account. Choose a host first." };
+  const missing = providers.map((provider) => ({ provider, hosts: hosts.filter((h) => !h.meet[provider]) })).filter((m) => m.hosts.length);
+  if (!missing.length) return null;
+  const detail = missing.map((m) => `${MEETING_TOOL[m.provider]} links are made through each host's own connected ${PROVIDER_NAME[m.provider]} account, which ${namesOf(m.hosts)} ${m.hosts.length === 1 ? "has" : "have"} not connected yet.`).join(" ");
+  const first = missing[0];
+  if (cal.oauthAvailable && cal.oauthAvailable[first.provider] === false) {
+    return { ...base, state: "action_required", owner: "iacquire", detail: `${detail} ${PROVIDER_NAME[first.provider]} sign-in is not switched on for your workspace yet, so iAcquire has to set that up first. Or choose "I send my own link" in the appointment type.` };
+  }
+  if (first.hosts.some((h) => h.viewer)) return { ...base, state: "action_required", detail, action: { label: `Connect ${PROVIDER_NAME[first.provider]}`, href: oauthStartHref(first.provider) } };
+  return { ...base, state: "action_required", detail: `${detail} Each person connects their own account, so ${manage ? "ask them to open Setup and connect it" : "they need to open Setup and connect it"}.` };
+}
+
+/** "Existing events in my Google or Microsoft calendar block times": required only when the client said they use one, and done only when a host's calendar is being read for busy times. */
+function busyItem(cal: CalendarFacts): LaunchItem | null {
+  const stated = cal.busyProvider;
+  const base = { key: "calendar.busy", label: "Existing calendar blocks times", owner: "you" } as const;
+  if (stated === "none") return { ...base, state: "not_applicable", required: false, detail: "You said you do not keep appointments in Google Calendar or Microsoft 365, so nothing needs connecting for busy times." };
+  if (stated !== "google" && stated !== "microsoft") return null;
+  const account = stated === "google" ? "Google Calendar" : "Microsoft 365 calendar";
+  const hosts = cal.hostConnections;
+  if (!hosts) return null;
+  if (!hosts.length) return { ...base, state: "in_progress", required: true, detail: `You said your events in ${account} must block times. Choose a host first; then their ${account} is connected.` };
+  if (hosts.some((h) => h.busy[stated])) return { ...base, state: "done", required: true, detail: `A connected ${account} is read for busy times, so your existing events block times.` };
+  const detail = `You said your events in ${account} must block times, but no host has connected one that is being read yet, so a customer could be offered a time you are already busy.`;
+  if (cal.oauthAvailable && cal.oauthAvailable[stated] === false) return { ...base, state: "action_required", required: true, owner: "iacquire", detail: `${detail} ${PROVIDER_NAME[stated]} sign-in is not switched on for your workspace yet, so iAcquire has to set that up first.` };
+  if (hosts.some((h) => h.viewer)) return { ...base, state: "action_required", required: true, detail, action: { label: `Connect ${PROVIDER_NAME[stated]}`, href: oauthStartHref(stated) } };
+  return { ...base, state: "action_required", required: true, detail: `${detail} Each person connects their own account, so a host has to open Setup and connect it.` };
 }
 
 function calendarStep(f: LaunchFacts): LaunchStep {
@@ -316,46 +495,81 @@ function calendarStep(f: LaunchFacts): LaunchStep {
   if (!cal) {
     return { key: "calendar", title, ...summarize([item({ key: "calendar.draft", label: "Booking calendar", state: "action_required", required: true, owner: "you", detail: "No booking calendar exists yet. Create one with your appointment types.", action: { label: "Open Calendars & Types", href: "/crm/calendars" } })]) };
   }
+  const gate = calendarGate(f);
+  // Setting up calendars needs the calendar permission: a person without it is told who to ask, and is given no button that would only be refused.
+  const manage = cal.canManage !== false;
+  const ask = `Ask ${cal.ownerName?.trim() || "a workspace owner"}.`;
   const failed = (key: CalendarCheckFact["key"]) => cal.checks?.find((c) => c.key === key && !c.ok) ?? null;
   const items: LaunchItem[] = [];
-  items.push(item(cal.hosts > 0
-    ? { key: "calendar.host", label: "Host", state: "done", required: true, owner: "you", detail: `${plural(cal.hosts, "person takes", "people take")} appointments on this calendar.` }
-    : { key: "calendar.host", label: "Host", state: "action_required", required: true, owner: "you", detail: "Choose who takes your appointments. We never pick a host for you.", action: { label: "Make me the host", intent: "assign_host" } }));
-  if (cal.hosts === 0) {
-    items.push(item({ key: "calendar.hours", label: "Host availability", state: "in_progress", required: true, owner: "you", detail: "Set after you choose a host. We never invent working hours." }));
-  } else if (cal.hostsWithHours >= cal.hosts) {
-    items.push(item({ key: "calendar.hours", label: "Host availability", state: "done", required: true, owner: "you", detail: "Every host has weekly hours saved." }));
-  } else {
-    const missing = cal.hosts - cal.hostsWithHours;
-    items.push(item({ key: "calendar.hours", label: "Host availability", state: "action_required", required: true, owner: "you",
-      detail: cal.hasSuggestedHours
-        ? `${plural(missing, "host has", "hosts have")} no weekly hours. Approve the hours from your company setup, or set your own.`
-        : `${plural(missing, "host has", "hosts have")} no weekly hours. Set them in Availability.`,
-      action: cal.hasSuggestedHours ? { label: "Approve suggested hours", intent: "apply_hours" } : { label: "Set hours", href: "/crm/availability" } }));
-  }
+  items.push(item(hostItem(f, cal, gate, manage, ask)));
+  items.push(item(hoursItem(cal, gate, manage, ask)));
   items.push(item(cal.types > 0
     ? { key: "calendar.types", label: "Appointment types", state: "done", required: true, owner: "you", detail: `${plural(cal.types, "appointment type is", "appointment types are")} ready to book.` }
-    : { key: "calendar.types", label: "Appointment types", state: "action_required", required: true, owner: "you", detail: "Add at least one appointment type.", action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } }));
-  if (cal.needsVideoConnection && !a.externalCalendarConnected) {
-    items.push(item({ key: "calendar.connection", label: "Google or Microsoft connection", state: "action_required", required: true, owner: "you", detail: "A video appointment needs a connected Google or Microsoft account to make the meeting link.", action: calendarConnectAction(cal) }));
+    : { key: "calendar.types", label: "Appointment types", state: "action_required", required: true, owner: "you", detail: manage ? "Add at least one appointment type." : `Add at least one appointment type. ${ask}`, ...(manage ? { action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } } : {}) }));
+  // Every type the client listed has to be bookable, not just one: the activation check passes with a single open time, so the types without one are named here.
+  const slotOk = cal.checks !== null && !failed("slot");
+  if (slotOk && cal.typesWithoutTimes?.length) {
+    items.push(item({ key: "calendar.type_times", label: "Every appointment type has an open time", state: "action_required", required: true, owner: "you",
+      detail: `No open time was found in the next two weeks for ${namesOf(cal.typesWithoutTimes.map((name) => ({ name })))}. Check the hosts' hours, and the notice and booking window of ${cal.typesWithoutTimes.length === 1 ? "that type" : "those types"}.`,
+      ...(manage ? { action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } } : {}) }));
+  }
+  const connection = connectionItem(f, cal, manage);
+  if (connection) items.push(item(connection));
+  const busy = busyItem(cal);
+  if (busy) items.push(item(busy));
+  // A video appointment that tells the customer nothing about how to join: no meeting tool and no words of the client's own.
+  if (cal.typesWithoutJoinInfo?.length) {
+    const n = cal.typesWithoutJoinInfo.length;
+    items.push(item({ key: "calendar.own_link", label: "How customers join video appointments", state: "action_required", required: true, owner: "you",
+      detail: `${namesOf(cal.typesWithoutJoinInfo.map((name) => ({ name })))} ${n === 1 ? "is a video appointment" : "are video appointments"} with no meeting tool and no link. Choose Google Meet or Microsoft Teams, or write how you send the link, in the appointment type. We never make one up.`,
+      ...(manage ? { action: { label: "Add the meeting link", href: `/crm/calendars/${cal.id}` } } : {}) }));
   }
   // The checks that need everything above: shown once there is a host, read live, never remembered.
   const slot = failed("slot");
   const others = (["timezone", "connections"] as const).map(failed).filter((c): c is CalendarCheckFact => c !== null);
   if (cal.status === "active") {
     items.push(item({ key: "calendar.verified", label: "Real open time verified", state: slot ? "failed" : "done", required: true, owner: "you", detail: slot ? slot.detail : "A real open time was found within the next two weeks." }));
+    // An active calendar is held to every check, every time it is read: a host who paused, lost their hours or disconnected is a failing line, never a quiet "Done".
+    const open = (keys: string[]) => items.some((i) => keys.includes(i.key) && i.state !== "done" && i.state !== "not_applicable");
+    const covered: Record<string, boolean> = {
+      hosts: cal.hosts === 0,
+      hours: cal.hosts === 0 || cal.hostsWithHours < cal.hosts,
+      types: cal.types === 0,
+      timezone: false,
+      connections: open(["calendar.connection", "calendar.busy", "calendar.own_link"]),
+    };
+    const fix: Record<string, LaunchAction | undefined> = {
+      hours: manage ? { label: "Review hours", href: "/crm/availability" } : undefined,
+      timezone: manage ? { label: "Set time zone", href: "/crm/availability" } : undefined,
+      types: manage ? { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } : undefined,
+      connections: manage ? { label: "Review connections", href: "/crm/calendar-connections" } : undefined,
+    };
+    const label: Record<string, string> = { hosts: "Hosts", hours: "Working hours", timezone: "Time zones", types: "Appointment types", connections: "Calendar connections" };
+    for (const key of ["hosts", "hours", "timezone", "types", "connections"] as const) {
+      const c = failed(key);
+      if (!c || covered[key]) continue;
+      const action = fix[key];
+      items.push(item({ key: `calendar.check.${key}`, label: `${label[key]} check`, state: "action_required", required: true, owner: "you", detail: manage ? c.detail : `${c.detail} ${ask}`, ...(action ? { action } : {}) }));
+    }
     items.push(item({ key: "calendar.active", label: "Calendar active", state: "done", required: true, owner: "you", detail: "The calendar is active. Its booking page stays off until you turn it on." }));
   } else if (cal.hosts > 0 && cal.hostsWithHours >= cal.hosts && cal.types > 0) {
     const problem = slot ?? others[0] ?? null;
     items.push(item({ key: "calendar.verified", label: "Real open time verified", state: problem ? "action_required" : cal.checks ? "done" : "in_progress", required: true, owner: "you",
-      detail: problem ? problem.detail : cal.checks ? "A real open time was found within the next two weeks." : "Run the checks to prove a real time would be offered.",
-      ...(problem ? { action: { label: problem.key === "connections" ? "Review connections" : "Review hours", href: problem.key === "connections" ? "/crm/calendar-connections" : "/crm/availability" } } : {}) }));
-    items.push(item({ key: "calendar.active", label: "Calendar active", state: "action_required", required: true, owner: "you", detail: "Check and activate the calendar. This does not turn on a public booking page.", action: { label: "Check and activate", intent: "activate_calendar" } }));
+      detail: problem ? (manage ? problem.detail : `${problem.detail} ${ask}`) : cal.checks ? "A real open time was found within the next two weeks." : "Run the checks to prove a real time would be offered.",
+      ...(problem && manage ? { action: { label: problem.key === "connections" ? "Review connections" : "Review hours", href: problem.key === "connections" ? "/crm/calendar-connections" : "/crm/availability" } } : {}) }));
+    items.push(item(gate || !manage
+      ? { key: "calendar.active", label: "Calendar active", state: "action_required", required: true, owner: "you", detail: gate ?? `Check and activate the calendar. Only someone who sets up calendars can do it. ${ask}` }
+      : { key: "calendar.active", label: "Calendar active", state: "action_required", required: true, owner: "you", detail: "Check and activate the calendar. This does not turn on a public booking page.", action: { label: "Check and activate", intent: "activate_calendar" } }));
   } else {
     items.push(item({ key: "calendar.verified", label: "Real open time verified", state: "in_progress", required: true, owner: "you", detail: "Runs after a host, weekly hours and an appointment type are in place." }));
     items.push(item({ key: "calendar.active", label: "Calendar active", state: "in_progress", required: true, owner: "you", detail: "Activation follows the checks. The calendar takes no bookings until then." }));
   }
-  items.push(item({ key: "calendar.public", label: "Public booking page", state: "done", required: false, owner: "you", detail: cal.bookingPageOn ? "Your public booking page is on." : "Your public booking page is off. Customers cannot book until you turn it on yourself." }));
+  // A page that is on while the calendar fails a check can offer a customer a time nobody can keep: that is a failure, and it holds up launch until the page is off or the check passes.
+  const failing = cal.checks?.find((c) => !c.ok) ?? null;
+  items.push(item(cal.bookingPageOn && failing
+    ? { key: "calendar.public", label: "Public booking page", state: "failed", required: true, owner: "you", detail: `Your public booking page is on, but the calendar does not pass its checks: ${failing.detail} Fix it, or turn the page off until it does.${manage ? "" : ` ${ask}`}`,
+        ...(manage ? { action: { label: "Open Calendars & Types", href: `/crm/calendars/${cal.id}` } } : {}) }
+    : { key: "calendar.public", label: "Public booking page", state: "done", required: false, owner: "you", detail: cal.bookingPageOn ? "Your public booking page is on." : "Your public booking page is off. Customers cannot book until you turn it on yourself." }));
   return { key: "calendar", title, ...summarize(items) };
 }
 
@@ -478,6 +692,11 @@ function verificationStep(f: LaunchFacts): LaunchStep {
     const label = AGENT_BY_KEY[role].shortName;
     if (!e || !e.entitled || (role === "appointment_setter" && f.appointments.wanted === false)) {
       items.push(item({ key, label, state: "not_applicable", required: false, owner: "system", detail: "Not part of your plan, so nothing to check." }));
+      continue;
+    }
+    // The Appointment Setter proves itself on a calendar that takes bookings: until the client's calendar is active there is nothing real to check, so the check waits instead of failing.
+    if (role === "appointment_setter" && f.crm.mode === "native" && f.appointments.calendar?.status !== "active") {
+      items.push(item({ key, label, state: "in_progress", required: true, owner: "you", detail: "The check runs once your booking calendar is active." }));
       continue;
     }
     if (!e.readiness.workReady) {

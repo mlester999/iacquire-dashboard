@@ -1,0 +1,96 @@
+# Optional overlay for compose.client.yaml: the client runtime gets NO route to the internet or the host network except through one allowlist proxy.
+#
+#   docker compose -f compose.client.yaml -f compose.egress.yaml --env-file <private env file> up -d
+#
+# What it changes:
+#   * client_egress (the only network that reached the internet) becomes internal: no gateway, no outbound route, no DNS to the outside.
+#   * egress-proxy is the only service on a second, ordinary bridge (proxy_upstream). It forwards TCP only to the names in IACQUIRE_EGRESS_ALLOWED_HOSTS (port 443, globally
+#     routable addresses only: see egress_proxy.py), so the web toolset can never reach the VPS network or a host-published port.
+#   * The gateway reaches the model provider and the search service through HTTPS_PROXY (CONNECT). The provisioner worker shares the gateway's network and ignores proxy
+#     settings on purpose, so the proxy also answers to the portal's own host name on the internal network (alias) and forwards raw TCP to it: TLS still runs end to end and the
+#     certificate is still checked against the real host name. IACQUIRE_PROVISIONER_URL must therefore name exactly IACQUIRE_EGRESS_PORTAL_HOST.
+#   * Docker's embedded DNS answers a container's own network alias with the container's own private address, so the proxy cannot find the portal through it (the global-address
+#     rule would skip that address). The proxy looks the portal name up with a direct DNS query to IACQUIRE_EGRESS_DNS_SERVERS instead (default 1.1.1.1 and 9.9.9.9; they must be
+#     reachable from the proxy_upstream bridge). The same rule applies to the gateway's own CONNECT to the portal.
+#
+# Not proven yet: nothing here has run on a Docker daemon. Before any production use, a sandbox probe must show (1) a request from the gateway to a host that is not on the list
+# fails, (2) the model provider and the portal are reachable, including the portal THROUGH THE ALIAS from the worker (a TLS handshake to IACQUIRE_PROVISIONER_URL from inside the
+# gateway's network must succeed), (3) the worker still claims a job, (4) a model call that stays silent for longer than 30 seconds, and a large upload, are not cut. Whether a web_extract of an arbitrary customer-chosen URL is wanted is a
+# product decision; with this overlay it stops working unless the search provider fetches pages itself.
+#
+# Required values (non-secret, in the private compose env file):
+#   IACQUIRE_EGRESS_ALLOWED_HOSTS  comma-separated host names, for example the portal, the model provider and the search provider
+#   IACQUIRE_EGRESS_PORTAL_HOST    the portal's host name, which must also be in the list above
+
+services:
+  egress-proxy:
+    image: ${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}
+    entrypoint: ["/opt/hermes/.venv/bin/python", "/opt/iacquire-egress/egress_proxy.py"]
+    restart: unless-stopped
+    init: true
+    user: "10000:10000"
+    read_only: true
+    environment:
+      EGRESS_ALLOWED_HOSTS: ${IACQUIRE_EGRESS_ALLOWED_HOSTS:?Set the comma-separated egress allowlist}
+      EGRESS_PORTAL_HOST: ${IACQUIRE_EGRESS_PORTAL_HOST:?Set the portal host name}
+      # The portal's name is an alias of this very container, so Docker's DNS would answer it with this container's own private address. It is looked up with a direct query to these
+      # resolvers instead (comma-separated IP addresses, reachable from proxy_upstream); every other name uses the container's normal resolver.
+      EGRESS_DNS_SERVERS: ${IACQUIRE_EGRESS_DNS_SERVERS:-1.1.1.1,9.9.9.9}
+      # How long a tunnel may stay silent before it is cut (a model call can think for minutes). 30 to 3600 seconds.
+      EGRESS_IDLE_TIMEOUT_SECONDS: ${IACQUIRE_EGRESS_IDLE_TIMEOUT_SECONDS:-600}
+      EGRESS_PROXY_PORT: "3128"
+      EGRESS_PORTAL_PORT: "443"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: bind
+        source: ./egress_proxy.py
+        target: /opt/iacquire-egress/egress_proxy.py
+        read_only: true
+    networks:
+      client_egress:
+        aliases:
+          - ${IACQUIRE_EGRESS_PORTAL_HOST:?Set the portal host name}
+      proxy_upstream: {}
+    # The passthrough listens on 443 as an unprivileged user; this namespaced setting lets it without any capability.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 128
+    stop_grace_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "2"
+    healthcheck:
+      test:
+        - CMD
+        - /opt/hermes/.venv/bin/python
+        - -c
+        - >-
+          import socket;
+          socket.create_connection(('127.0.0.1', 3128), timeout=2).close()
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  hermes-client:
+    environment:
+      HTTPS_PROXY: http://egress-proxy:3128
+      NO_PROXY: 127.0.0.1,localhost,egress-proxy
+    depends_on:
+      egress-proxy:
+        condition: service_healthy
+
+networks:
+  client_egress:
+    internal: true
+  proxy_upstream:
+    driver: bridge

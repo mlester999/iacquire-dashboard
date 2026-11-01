@@ -1,22 +1,25 @@
 import "server-only";
+import { z } from "zod";
 import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
-import { memberActor } from "@/server/crm/actor";
+import { assertCan, memberActor } from "@/server/crm/actor";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { PROVISIONING_PAYMENT_NOTE } from "@/lib/billing-clearance";
-import type { LaunchIntent } from "@/lib/launch-readiness";
+import type { LaunchIntent, LaunchIntentParams } from "@/lib/launch-readiness";
 import { LAUNCH_VERIFICATION_CAPABILITY, launchVerificationInput, launchVerificationKey } from "@/lib/launch-verification";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
-import { activateCalendar, applyCalendarHoursTemplate } from "@/server/calendars/activation";
-import { updateCalendar } from "@/server/calendars/setup";
+import { activateCalendar, applyApprovedCalendarHours, assignHostIfNone } from "@/server/calendars/activation";
+import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { findLaunchCalendar, loadLaunchFacts } from "@/server/setup/launch-readiness";
 
 // The buttons of the guided launch setup. Each one is a thing the client could already do in the CRM; here it is one click from the checklist that names it, runs the real
 // service (which re-checks the person's permission and every rule itself), and says plainly what happened. None of them turns a public booking page on, sends a message, books
-// anyone or contacts a provider. A host is only ever the person who pressed the button, and hours are only ever the ones the client's own answers suggested.
+// anyone or contacts a provider. A host is only ever a person the client chose (the one who pressed the button, or an active member picked from the list), and hours are only ever the
+// ones the client's own answers suggested AND the client approved exactly as shown (a digest the server recomputes). The three calendar steps open only after the questionnaire is
+// submitted and the setup payment is confirmed.
 
 export interface LaunchIntentResult {
   /** The step did what it names. False: it could not yet, and `message` says why in the client's words. */
@@ -32,19 +35,60 @@ async function calendarOrThrow(orgId: string) {
   return cal;
 }
 
-export async function runLaunchIntent(ctx: OrgContext, intent: LaunchIntent): Promise<LaunchIntentResult> {
+/**
+ * The calendar steps are the client's own, and they open in order: the questionnaire is submitted, then the setup payment is confirmed. Before either, the step is refused and
+ * nothing is changed. A sample workspace has no setup fee, so it is never held on one.
+ */
+async function assertCalendarStepsOpen(orgId: string) {
+  const org = await withSystem(async (db) => {
+    const row = (await db.query<{ submitted: boolean; is_demo: boolean }>("select onboarding_completed_at is not null as submitted, is_demo from organizations where id = $1", [orgId])).rows[0];
+    return row ? { ...row, cleared: row.is_demo ? null : await isSetupPaymentCleared(db, orgId) } : null;
+  });
+  if (!org?.submitted) throw new AppError("conflict", "Submit your company information first.");
+  if (org.cleared === false) throw new AppError("conflict", "The setup payment is not confirmed, so the calendar steps are not open yet.");
+}
+
+/** A person who may be made a host: an active member of this workspace with an active account. Another workspace's user, and someone who left, are "not found". */
+async function hostCandidate(orgId: string, userId: string): Promise<{ id: string; name: string }> {
+  if (!z.string().uuid().safeParse(userId).success) throw new AppError("invalid_input", "Choose a person from the list.");
+  const row = (await withSystem((db) => db.query<{ name: string; status: string }>(
+    `select coalesce(nullif(u.full_name, ''), u.email::text) as name, u.status
+       from organization_memberships m join users u on u.id = m.user_id where m.org_id = $1 and m.user_id = $2 and m.status = 'active'`,
+    [orgId, userId],
+  ))).rows[0];
+  if (!row) throw new AppError("not_found", "That person is not a member of this workspace.");
+  if (row.status !== "active") throw new AppError("invalid_input", "That person's account is not active, so they cannot take appointments.");
+  return { id: userId, name: row.name };
+}
+
+export async function runLaunchIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIntentParams = {}): Promise<LaunchIntentResult> {
   if (ctx.org.kind !== "client") throw new AppError("forbidden", "Launch setup applies to a client workspace.");
+  if (intent !== "run_checks") {
+    // Each calendar step re-checks the permission it needs again; this refuses first, before anything is read.
+    assertCan(memberActor(ctx), "calendars.manage");
+    await assertCalendarStepsOpen(ctx.org.orgId);
+  }
   switch (intent) {
     case "assign_host": {
       const cal = await calendarOrThrow(ctx.org.orgId);
-      const hosts = await withSystem(async (db) => Number((await db.query<{ n: string }>("select count(*) as n from crm_calendar_members where calendar_id = $1 and org_id = $2 and active", [cal.id, ctx.org.orgId])).rows[0]?.n ?? 0));
-      if (hosts > 0) return { ok: true, message: "This calendar already has a host. Nothing was changed." };
-      await updateCalendar(memberActor(ctx), cal.id, { members: [{ userId: ctx.user.id }] });
-      return { ok: true, message: "You are now the host of this calendar. Next, approve the suggested weekly hours or set your own." };
+      // The host is the person chosen from the workspace's own members, or the person who pressed the button: never anyone the client did not pick.
+      const host = await hostCandidate(ctx.org.orgId, params.userId ?? ctx.user.id);
+      // One transaction with the calendar locked: the "no active host yet" check and the change are never apart, so a second press (or a host added in the meantime) is told the
+      // calendar already has a host instead of replacing the first. The same host reading every other screen uses applies: a host who left or was suspended is not a host, and their
+      // stale row is replaced. The audit row is written in that same transaction.
+      const { assigned } = await assignHostIfNone(memberActor(ctx), cal.id, host.id, (db) => recordAudit({
+        orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "setup.launch_host_chosen", targetType: "crm_calendar", targetId: cal.id, result: "success",
+        metadata: { hostUserId: host.id, self: host.id === ctx.user.id, hours: "not_set" },
+      }, db));
+      if (!assigned) return { ok: true, message: "This calendar already has a host. Nothing was changed." };
+      return host.id === ctx.user.id
+        ? { ok: true, message: "You are now the host of this calendar. Next, approve the suggested weekly hours or set your own." }
+        : { ok: true, message: `${host.name} is now the host of this calendar. They have no weekly hours yet, so approve the suggested hours or set theirs next.` };
     }
     case "apply_hours": {
       const cal = await calendarOrThrow(ctx.org.orgId);
-      const res = await applyCalendarHoursTemplate(memberActor(ctx), cal.id);
+      // Hours are written only for an approval of exactly what was shown: the server recomputes the digest of the hosts, hours and zone, and refuses anything else.
+      const res = await applyApprovedCalendarHours(memberActor(ctx), cal.id, params.hoursDigest);
       // A host who already works in another time zone is given nothing (the suggested hours would be read in the wrong zone), and this button cannot choose a zone for them. Say
       // so, instead of saying every host already has hours.
       const n = res.needsZoneChoice.length;
@@ -87,6 +131,11 @@ export async function startLaunchVerification(ctx: OrgContext): Promise<LaunchIn
     const name = AGENT_BY_KEY[e.role].shortName;
     if (!e.readiness.workReady) {
       skipped.push({ role: e.role, reason: `${name} is not ready for authorized work yet.` });
+      continue;
+    }
+    // The Appointment Setter proves itself on a calendar that takes bookings, so its check waits for the client's calendar to be active.
+    if (e.role === "appointment_setter" && facts.crm.mode === "native" && facts.appointments.calendar?.status !== "active") {
+      skipped.push({ role: e.role, reason: `${name} waits until your booking calendar is active.` });
       continue;
     }
     const v = verification.get(e.role);

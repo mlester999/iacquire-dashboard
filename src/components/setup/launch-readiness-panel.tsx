@@ -4,9 +4,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronDown, CircleAlert, Clock, Hourglass, MinusCircle, XCircle } from "lucide-react";
 import { dismissCalendarNoticeAction, runLaunchIntentAction } from "@/app/actions/launch-readiness";
-import { Badge, ProgressBar } from "@/components/ui/primitives";
+import { Badge, ProgressBar, Select } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { ITEM_STATE_LABEL, type ItemOwner, type ItemState, type LaunchIntent, type LaunchItem, type LaunchReadiness, type LaunchState, type LaunchStep, type StepState } from "@/lib/launch-readiness";
+import { ITEM_STATE_LABEL, type ItemOwner, type ItemState, type LaunchIntent, type LaunchIntentParams, type LaunchItem, type LaunchReadiness, type LaunchState, type LaunchStep, type StepState } from "@/lib/launch-readiness";
 import { cn } from "@/lib/utils";
 
 const ANCHOR_BUTTON = "inline-flex h-11 select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line-strong bg-transparent px-3 text-[14px] font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8";
@@ -58,7 +58,7 @@ export function LaunchReadinessPanel({ readiness, preview = false, calendarNotic
     return () => window.clearInterval(id);
   }, [waiting, router]);
 
-  function run(intent: LaunchIntent) {
+  function run(intent: LaunchIntent, params?: LaunchIntentParams) {
     if (preview) {
       setNotice({ ok: true, text: "Design preview: nothing runs here." });
       return;
@@ -66,7 +66,7 @@ export function LaunchReadinessPanel({ readiness, preview = false, calendarNotic
     setRunning(intent);
     setNotice(null);
     startTransition(async () => {
-      const res = await runLaunchIntentAction(intent);
+      const res = await runLaunchIntentAction(intent, params);
       setNotice(res.ok ? { ok: res.data.ok, text: res.data.message } : { ok: false, text: res.error });
       setRunning(null);
       router.refresh();
@@ -102,7 +102,9 @@ export function LaunchReadinessPanel({ readiness, preview = false, calendarNotic
   );
 }
 
-function StepCard({ step, busy, running, onRun }: { step: LaunchStep; busy: boolean; running: LaunchIntent | null; onRun: (intent: LaunchIntent) => void }) {
+type RunIntent = (intent: LaunchIntent, params?: LaunchIntentParams) => void;
+
+function StepCard({ step, busy, running, onRun }: { step: LaunchStep; busy: boolean; running: LaunchIntent | null; onRun: RunIntent }) {
   const open = step.state === "action_required" || step.state === "in_progress" || step.state === "awaiting_review";
   return (
     <details open={open} data-step={step.key} data-state={step.state} className="group rounded-2xl border border-line bg-surface-2/40 p-4">
@@ -125,7 +127,25 @@ function StepCard({ step, busy, running, onRun }: { step: LaunchStep; busy: bool
   );
 }
 
-function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boolean; running: LaunchIntent | null; onRun: (intent: LaunchIntent) => void }) {
+/** The people the client may choose as the host. Nothing is selected until they choose: a host is never picked for them. The server checks the person again. */
+function HostPicker({ choices, busy, running, onRun }: { choices: Array<{ id: string; name: string }>; busy: boolean; running: LaunchIntent | null; onRun: RunIntent }) {
+  const [pick, setPick] = React.useState("");
+  const id = React.useId();
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+      <label htmlFor={id} className="sr-only">Choose who takes appointments</label>
+      <div className="min-w-0 flex-1 sm:max-w-xs">
+        <Select id={id} value={pick} onChange={(e) => setPick(e.target.value)}>
+          <option value="">Choose a person</option>
+          {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      </div>
+      <Button size="sm" variant="secondary" loading={busy && running === "assign_host"} disabled={busy || !pick} onClick={() => onRun("assign_host", { userId: pick })}>Make them the host</Button>
+    </div>
+  );
+}
+
+function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boolean; running: LaunchIntent | null; onRun: RunIntent }) {
   const action = item.action;
   return (
     <li data-item={item.key} data-state={item.state} className="flex flex-wrap items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
@@ -145,7 +165,7 @@ function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boole
         {item.state !== "done" && item.state !== "not_applicable" && !(item.state === "in_progress" && item.owner === "you") && <p className="mt-0.5 text-[12px] text-muted">Next move: {OWNER_LABEL[item.owner]}</p>}
       </div>
       {action?.intent && (
-        <Button size="sm" variant="secondary" loading={busy && running === action.intent} disabled={busy} onClick={() => onRun(action.intent as LaunchIntent)}>{action.label}</Button>
+        <Button size="sm" variant="secondary" loading={busy && running === action.intent} disabled={busy} onClick={() => onRun(action.intent as LaunchIntent, action.params)}>{action.label}</Button>
       )}
       {action?.href && !action.intent && (
         // A route handler (the provider sign-in start) is not a page: a plain link makes the browser load it, where the app's own link would try to render it.
@@ -153,6 +173,7 @@ function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boole
           ? <a href={action.href} className={ANCHOR_BUTTON}>{action.label}</a>
           : <ButtonLink href={action.href} size="sm" variant="outline">{action.label}</ButtonLink>
       )}
+      {item.hostChoices && item.hostChoices.length > 0 && <HostPicker choices={item.hostChoices} busy={busy} running={running} onRun={onRun} />}
     </li>
   );
 }

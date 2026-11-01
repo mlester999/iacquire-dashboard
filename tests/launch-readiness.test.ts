@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
-import { channelIsReady, connectionSteps, deriveLaunchReadiness, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
+import { channelIsReady, connectionSteps, deriveLaunchReadiness, summarizeWeeklyHours, type CalendarFacts, type ChannelFact, type CrmBlueprintFact, type EmployeeFact, type HostConnectionFact, type LaunchFacts, type VerificationFact } from "@/lib/launch-readiness";
 
 // "100% Ready to Launch" must mean every applicable, required setup and verification check passed, and nothing less: not a queued job, not a drafted calendar, not a green badge.
 
@@ -482,5 +482,274 @@ describe("a calendar sign-in that comes back to Setup", () => {
   it("offers the connections screen when both providers or none are named", () => {
     expect(itemOf(needing(["google", "microsoft"]), "calendar.connection").action?.href).toBe("/crm/calendar-connections");
     expect(itemOf(needing(undefined), "calendar.connection").action?.href).toBe("/crm/calendar-connections");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The calendar and host steps, and the questionnaire's host, busy-calendar and own-link answers (B3-P3b)
+// ---------------------------------------------------------------------------
+
+const draftWith = (over: Partial<CalendarFacts> = {}) => calendar({ status: "draft", hosts: 0, hostsWithHours: 0, checks: null, ...over });
+const withCalendar = (cal: CalendarFacts, extra: Partial<LaunchFacts["appointments"]> = {}, top: Partial<LaunchFacts> = {}) => deriveLaunchReadiness(ready({ appointments: { wanted: true, calendar: cal, externalCalendarConnected: false, ...extra }, ...top }));
+type CheckKey = "hosts" | "hours" | "timezone" | "types" | "connections" | "slot";
+const failing = (...keys: CheckKey[]) =>
+  (["hosts", "hours", "timezone", "types", "connections", "slot"] as const).map((key) => ({ key, ok: !keys.includes(key), detail: keys.includes(key) ? `The ${key} check failed.` : "" }));
+const person = (userId: string, name: string, over: Partial<HostConnectionFact> = {}): HostConnectionFact => ({ userId, name, viewer: false, meet: { google: false, microsoft: false }, busy: { google: false, microsoft: false }, ...over });
+const people = [{ id: "u-1", name: "Dana Reyes" }, { id: "u-2", name: "Marcus Hale" }];
+const suggestedHours = { zone: "Asia/Manila", summary: "Mon to Fri, 9:00 AM to 5:00 PM (Asia/Manila time)", digest: "b".repeat(64) };
+
+describe("choosing the host", () => {
+  it("offers a select of the people who may host beside 'Make me the host', and picks nobody", () => {
+    const r = withCalendar(draftWith({ hostChoices: people, ownerName: "Dana Reyes" }));
+    const host = itemOf(r, "calendar.host");
+    expect(host).toMatchObject({ state: "action_required", owner: "you", action: { label: "Make me the host", intent: "assign_host" }, hostChoices: people });
+    // The button the select drives carries no person: the panel adds the one the client picked, so no default host exists anywhere in the facts.
+    expect(host.action?.params).toBeUndefined();
+  });
+
+  it("gives a person who may not set up calendars no button and no list, and says who to ask", () => {
+    const r = withCalendar(draftWith({ canManage: false, ownerName: "Dana Reyes", hostChoices: people }));
+    const host = itemOf(r, "calendar.host");
+    expect(host.action).toBeUndefined();
+    expect(host.hostChoices).toBeUndefined();
+    expect(host.detail).toContain("Ask Dana Reyes");
+    const noName = itemOf(withCalendar(draftWith({ canManage: false, ownerName: null })), "calendar.host");
+    expect(noName.detail).toContain("Ask a workspace owner");
+    // Hours and activation say the same, with no intent button to be refused.
+    const hours = withCalendar(calendar({ status: "draft", hosts: 1, hostsWithHours: 0, checks: null, canManage: false, ownerName: "Dana Reyes", suggestedHours }));
+    expect(itemOf(hours, "calendar.hours").action).toBeUndefined();
+    expect(itemOf(hours, "calendar.hours").detail).toContain("Ask Dana Reyes");
+    const activate = withCalendar(calendar({ status: "draft", hosts: 1, hostsWithHours: 1, checks: [], canManage: false, ownerName: "Dana Reyes" }));
+    expect(itemOf(activate, "calendar.active").action).toBeUndefined();
+    expect(itemOf(activate, "calendar.active").detail).toContain("Ask Dana Reyes");
+  });
+
+  it("holds every calendar button until the questionnaire is submitted and the setup payment is confirmed", () => {
+    for (const top of [{ paymentCleared: false }, { submitted: false }] as Array<Partial<LaunchFacts>>) {
+      const r = withCalendar(draftWith({ hostChoices: people }), {}, top);
+      const host = itemOf(r, "calendar.host");
+      expect(host.action, JSON.stringify(top)).toBeUndefined();
+      expect(host.hostChoices).toBeUndefined();
+      expect(host.detail).toMatch(/opens once you have submitted|opens once your setup payment is confirmed/);
+      const hours = withCalendar(calendar({ status: "draft", hosts: 1, hostsWithHours: 0, checks: null, hasSuggestedHours: true }), {}, top);
+      expect(itemOf(hours, "calendar.hours").action).toBeUndefined();
+    }
+  });
+
+  it("follows the client's own answer: 'I take them myself' asks for confirmation, and never assigns anyone", () => {
+    const host = itemOf(withCalendar(draftWith({ hostChoices: people }), { hostChoice: "owner" }), "calendar.host");
+    expect(host).toMatchObject({ state: "action_required", action: { intent: "assign_host" } });
+    expect(host.detail).toContain("take these appointments yourself");
+  });
+
+  it("follows 'a team member does': invite them, then wait for their acceptance by name, and say who still needs hours", () => {
+    const notInvited = itemOf(withCalendar(draftWith({ hostChoices: people }), { hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "not_invited" }] }), "calendar.host");
+    expect(notInvited).toMatchObject({ state: "action_required", action: { href: "/settings/team" } });
+    expect(notInvited.detail).toContain("Invite Marcus Hale");
+
+    const waiting = itemOf(withCalendar(draftWith({ hostChoices: people }), { hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "invited" }, { name: "Priya Shah", state: "invited" }] }), "calendar.host");
+    expect(waiting.state).toBe("in_progress");
+    expect(waiting.detail).toContain("Waiting for Marcus Hale, Priya Shah");
+    // Waiting for an invitation does not block by itself: nothing is needed from the client until someone accepts.
+    const r = withCalendar(draftWith(), { hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "invited" }] });
+    expect(r.blocking.map((i) => i.key)).not.toContain("calendar.host");
+
+    const none = itemOf(withCalendar(draftWith(), { hostChoice: "team", teamHosts: [] }), "calendar.host");
+    expect(none.detail).toContain("no one is marked as taking them");
+
+    const done = itemOf(withCalendar(calendar({ hosts: 1 }), { hostChoice: "team", teamHosts: [{ name: "Marcus Hale", state: "invited" }] }), "calendar.host");
+    expect(done).toMatchObject({ state: "done" });
+    expect(done.detail).toContain("Still waiting for Marcus Hale");
+  });
+
+  it("names who still needs hours and carries the digest of exactly what was shown", () => {
+    const r = withCalendar(calendar({ status: "draft", hosts: 2, hostsWithHours: 0, checks: null, hostsNeedingHours: people, suggestedHours }));
+    const hours = itemOf(r, "calendar.hours");
+    expect(hours).toMatchObject({ state: "action_required", action: { label: "Approve these hours", intent: "apply_hours", params: { hoursDigest: "b".repeat(64) } } });
+    expect(hours.detail).toContain("Dana Reyes, Marcus Hale have no weekly hours yet");
+    expect(hours.detail).toContain("Mon to Fri, 9:00 AM to 5:00 PM (Asia/Manila time)");
+    expect(hours.detail).toContain("Nothing is saved until you approve");
+    // A host who has hours is not named again.
+    const one = itemOf(withCalendar(calendar({ status: "draft", hosts: 2, hostsWithHours: 1, checks: null, hostsNeedingHours: [people[1]], suggestedHours })), "calendar.hours");
+    expect(one.detail).toContain("Marcus Hale has no weekly hours yet");
+    expect(one.detail).not.toContain("Dana Reyes");
+  });
+});
+
+describe("summarizeWeeklyHours", () => {
+  it("reads the weekly hours the client approves, Monday first, joining days that share hours", () => {
+    const day = (weekday: number, startMinute: number, endMinute: number) => ({ weekday, startMinute, endMinute });
+    expect(summarizeWeeklyHours([1, 2, 3, 4, 5].map((d) => day(d, 540, 1020)))).toBe("Mon to Fri, 9:00 AM to 5:00 PM");
+    expect(summarizeWeeklyHours([day(0, 600, 840), day(6, 600, 840), day(1, 540, 720), day(1, 780, 1020)])).toBe("Mon, 9:00 AM to 12:00 PM and 1:00 PM to 5:00 PM; Sat to Sun, 10:00 AM to 2:00 PM");
+    expect(summarizeWeeklyHours([day(2, 540, 1020), day(4, 540, 1020)])).toBe("Tue, 9:00 AM to 5:00 PM; Thu, 9:00 AM to 5:00 PM");
+    expect(summarizeWeeklyHours([day(3, 720, 1440)])).toBe("Wed, 12:00 PM to midnight");
+    expect(summarizeWeeklyHours([])).toBe("");
+  });
+});
+
+describe("an active calendar is held to every check", () => {
+  it("adds one required item for each failing check, never a quiet Done", () => {
+    const r = withCalendar(calendar({ checks: failing("timezone", "connections", "hours") }));
+    expect(itemOf(r, "calendar.check.timezone")).toMatchObject({ state: "action_required", required: true, detail: "The timezone check failed.", action: { href: "/crm/availability" } });
+    expect(itemOf(r, "calendar.check.connections")).toMatchObject({ state: "action_required", required: true, action: { href: "/crm/calendar-connections" } });
+    // The counts say every host has hours, but the live check disagrees: the check wins and is named.
+    expect(itemOf(r, "calendar.check.hours")).toMatchObject({ state: "action_required", required: true });
+    expect(r.blocking.map((i) => i.key)).toEqual(expect.arrayContaining(["calendar.check.timezone", "calendar.check.connections", "calendar.check.hours"]));
+    expect(r.state).toBe("action_required");
+    expect(r.steps.find((s) => s.key === "calendar")!.state).toBe("action_required");
+    // A passing check adds nothing.
+    expect(deriveLaunchReadiness(ready()).steps.flatMap((s) => s.items).some((i) => i.key.startsWith("calendar.check."))).toBe(false);
+  });
+
+  it("does not say the same thing twice when the item for that subject already says it", () => {
+    const r = withCalendar(calendar({ hosts: 0, hostsWithHours: 0, types: 0, checks: failing("hosts", "hours", "types", "slot") }));
+    const keys = r.steps.flatMap((s) => s.items).map((i) => i.key);
+    expect(keys).toEqual(expect.arrayContaining(["calendar.host", "calendar.hours", "calendar.types"]));
+    expect(keys.filter((k) => k.startsWith("calendar.check."))).toEqual([]);
+    // A connection problem that has its own line (the meeting-tool connection) is not repeated as a generic one.
+    const connection = withCalendar(calendar({ needsVideoConnection: true, videoProviders: ["google"], hostConnections: [person("u-1", "Dana Reyes", { viewer: true })], oauthAvailable: { google: true, microsoft: true }, checks: failing("connections") }));
+    expect(itemOf(connection, "calendar.connection").state).toBe("action_required");
+    expect(connection.steps.flatMap((s) => s.items).some((i) => i.key === "calendar.check.connections")).toBe(false);
+  });
+
+  it("shows an active calendar whose only host paused new bookings as failing, not Done", () => {
+    const paused = failing("slot").map((c) => (c.key === "slot" ? { ...c, detail: "No time would be offered to a customer in the next 14 days. Every host has paused new bookings." } : c));
+    const r = withCalendar(calendar({ checks: paused }));
+    expect(itemOf(r, "calendar.verified")).toMatchObject({ state: "failed", required: true });
+    expect(itemOf(r, "calendar.verified").detail).toContain("paused new bookings");
+    expect(r.steps.find((s) => s.key === "calendar")!.state).toBe("action_required");
+    expect(r.state).toBe("action_required");
+    expect(r.state).not.toBe("ready_to_launch");
+  });
+
+  it("makes every appointment type's open time a required line once a time exists for at least one", () => {
+    const some = withCalendar(calendar({ typesWithoutTimes: ["Full-day survey", "Roof inspection"] }));
+    expect(itemOf(some, "calendar.type_times")).toMatchObject({ state: "action_required", required: true, action: { href: "/crm/calendars/cal-1" } });
+    expect(itemOf(some, "calendar.type_times").detail).toContain("Full-day survey, Roof inspection");
+    expect(some.state).toBe("action_required");
+    expect(deriveLaunchReadiness(ready()).steps.flatMap((s) => s.items).some((i) => i.key === "calendar.type_times")).toBe(false);
+    // When no time at all is found, the line that says so already covers every type.
+    const none = withCalendar(calendar({ typesWithoutTimes: ["Full-day survey"], checks: failing("slot") }));
+    expect(none.steps.flatMap((s) => s.items).some((i) => i.key === "calendar.type_times")).toBe(false);
+  });
+
+  it("fails the public page line, and holds up launch, while the page is on and the calendar fails a check", () => {
+    const on = withCalendar(calendar({ bookingPageOn: true, checks: failing("hours") }));
+    expect(itemOf(on, "calendar.public")).toMatchObject({ state: "failed", required: true });
+    expect(itemOf(on, "calendar.public").detail).toContain("The hours check failed.");
+    expect(on.blocking.map((i) => i.key)).toContain("calendar.public");
+    // The page off, or every check passing, leaves it an optional line.
+    expect(itemOf(withCalendar(calendar({ bookingPageOn: false, checks: failing("hours") })), "calendar.public")).toMatchObject({ state: "done", required: false });
+    expect(itemOf(withCalendar(calendar({ bookingPageOn: true })), "calendar.public")).toMatchObject({ state: "done", required: false });
+  });
+});
+
+describe("a person who may not set up calendars gets no button and a name to ask on every calendar failure", () => {
+  const viewer = { canManage: false, ownerName: "Dana Reyes" } as const;
+
+  it("shows the failing active-calendar checks, including the connections check, without a link and with the name to ask", () => {
+    const r = withCalendar(calendar({ ...viewer, checks: failing("timezone", "connections", "hours", "types") }));
+    for (const key of ["timezone", "connections", "hours", "types"]) {
+      const line = itemOf(r, `calendar.check.${key}`);
+      expect(line.action, key).toBeUndefined();
+      expect(line.detail, key).toContain("Ask Dana Reyes");
+    }
+    // The same failures for a manager keep their links and add no name to ask.
+    const manager = withCalendar(calendar({ checks: failing("connections") }));
+    expect(itemOf(manager, "calendar.check.connections")).toMatchObject({ action: { href: "/crm/calendar-connections" } });
+    expect(itemOf(manager, "calendar.check.connections").detail).not.toContain("Ask");
+  });
+
+  it("does the same for the draft calendar's open-time check and for a public page that is on while a check fails", () => {
+    const draft = withCalendar(calendar({ ...viewer, status: "draft", hosts: 1, hostsWithHours: 1, types: 1, checks: failing("timezone") }));
+    expect(itemOf(draft, "calendar.verified").action).toBeUndefined();
+    expect(itemOf(draft, "calendar.verified").detail).toContain("Ask Dana Reyes");
+    const connections = withCalendar(calendar({ ...viewer, status: "draft", hosts: 1, hostsWithHours: 1, types: 1, checks: failing("connections") }));
+    expect(itemOf(connections, "calendar.verified").action).toBeUndefined();
+    const on = withCalendar(calendar({ ...viewer, bookingPageOn: true, checks: failing("hours") }));
+    expect(itemOf(on, "calendar.public")).toMatchObject({ state: "failed", required: true });
+    expect(itemOf(on, "calendar.public").action).toBeUndefined();
+    expect(itemOf(on, "calendar.public").detail).toContain("Ask Dana Reyes");
+    // A manager still gets the link in all three places.
+    const manager = withCalendar(calendar({ status: "draft", hosts: 1, hostsWithHours: 1, types: 1, checks: failing("timezone") }));
+    expect(itemOf(manager, "calendar.verified").action?.href).toBe("/crm/availability");
+    expect(itemOf(withCalendar(calendar({ bookingPageOn: true, checks: failing("hours") })), "calendar.public").action?.href).toBe("/crm/calendars/cal-1");
+  });
+});
+
+describe("what each host has connected", () => {
+  const needing = (hosts: HostConnectionFact[], over: Partial<CalendarFacts> = {}) => withCalendar(calendar({ needsVideoConnection: true, videoProviders: ["google"], hostConnections: hosts, oauthAvailable: { google: true, microsoft: true }, ...over }));
+
+  it("is satisfied only by that host's own account that can add events: another person's account does not count", () => {
+    const dana = person("u-1", "Dana Reyes", { viewer: true });
+    const marcus = person("u-2", "Marcus Hale", { meet: { google: true, microsoft: false } });
+    const r = needing([dana, marcus]);
+    expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "you", action: { label: "Connect Google", href: "/api/crm/calendar-oauth/google/start?return=/setup" } });
+    expect(itemOf(r, "calendar.connection").detail).toContain("Dana Reyes has not connected");
+    expect(itemOf(r, "calendar.connection").detail).not.toContain("Marcus Hale");
+    // Everyone connected: nothing is asked.
+    expect(needing([{ ...dana, meet: { google: true, microsoft: false } }, marcus]).steps.flatMap((s) => s.items).some((i) => i.key === "calendar.connection")).toBe(false);
+  });
+
+  it("tells a person who is not the missing host to ask them, because only a person can connect their own account", () => {
+    const r = needing([person("u-1", "Dana Reyes"), person("u-2", "Marcus Hale", { viewer: true, meet: { google: true, microsoft: false } })]);
+    const i = itemOf(r, "calendar.connection");
+    expect(i.action).toBeUndefined();
+    expect(i.detail).toContain("Dana Reyes has not connected");
+    expect(i.detail).toContain("connects their own account");
+  });
+
+  it("says plainly when Google sign-in is not switched on, and gives no button that goes nowhere", () => {
+    const r = needing([person("u-1", "Dana Reyes", { viewer: true })], { oauthAvailable: { google: false, microsoft: true } });
+    expect(itemOf(r, "calendar.connection")).toMatchObject({ state: "action_required", owner: "iacquire" });
+    expect(itemOf(r, "calendar.connection").action).toBeUndefined();
+    expect(itemOf(r, "calendar.connection").detail).toContain("Google sign-in is not switched on");
+  });
+
+  it("waits for a host before asking anyone to connect, and keeps the older facts working", () => {
+    expect(itemOf(needing([]), "calendar.connection")).toMatchObject({ state: "in_progress" });
+    // Facts that cannot say per host fall back to 'is anything connected', exactly as before.
+    const legacy = withCalendar(calendar({ needsVideoConnection: true, videoProviders: ["google"] }), { externalCalendarConnected: true });
+    expect(legacy.steps.flatMap((s) => s.items).some((i) => i.key === "calendar.connection")).toBe(false);
+  });
+
+  it("requires the busy calendar only when the client said google or microsoft, and 'none' is not required", () => {
+    const hosts = [person("u-1", "Dana Reyes", { viewer: true })];
+    const oauth = { google: true, microsoft: true };
+    const google = withCalendar(calendar({ busyProvider: "google", hostConnections: hosts, oauthAvailable: oauth }));
+    expect(itemOf(google, "calendar.busy")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { label: "Connect Google", href: "/api/crm/calendar-oauth/google/start?return=/setup" } });
+    expect(itemOf(google, "calendar.busy").detail).toContain("Google Calendar");
+    const microsoft = withCalendar(calendar({ busyProvider: "microsoft", hostConnections: hosts, oauthAvailable: oauth }));
+    expect(itemOf(microsoft, "calendar.busy").action?.href).toBe("/api/crm/calendar-oauth/microsoft/start?return=/setup");
+    // A host whose calendar is being read for busy times satisfies it.
+    const read = withCalendar(calendar({ busyProvider: "google", hostConnections: [person("u-1", "Dana Reyes", { busy: { google: true, microsoft: false } })] }));
+    expect(itemOf(read, "calendar.busy")).toMatchObject({ state: "done", required: true });
+    // None: shown as not applicable, never counted. Not said: no line at all.
+    const none = withCalendar(calendar({ busyProvider: "none", hostConnections: hosts }));
+    expect(itemOf(none, "calendar.busy")).toMatchObject({ state: "not_applicable", required: false });
+    expect(none.state).toBe("ready_to_launch");
+    expect(withCalendar(calendar({ busyProvider: null, hostConnections: hosts })).steps.flatMap((s) => s.items).some((i) => i.key === "calendar.busy")).toBe(false);
+    // A provider that is not set up is iAcquire's to fix, and the busy line never offers a dead button.
+    const dead = withCalendar(calendar({ busyProvider: "google", hostConnections: hosts, oauthAvailable: { google: false, microsoft: true } }));
+    expect(itemOf(dead, "calendar.busy")).toMatchObject({ owner: "iacquire" });
+    expect(itemOf(dead, "calendar.busy").action).toBeUndefined();
+  });
+
+  it("requires a way to join when a video appointment has no meeting tool and no words, and not otherwise", () => {
+    const r = withCalendar(calendar({ typesWithoutJoinInfo: ["Video estimate"] }));
+    expect(itemOf(r, "calendar.own_link")).toMatchObject({ state: "action_required", required: true, action: { href: "/crm/calendars/cal-1" } });
+    expect(itemOf(r, "calendar.own_link").detail).toContain("Video estimate is a video appointment");
+    expect(r.state).toBe("action_required");
+    expect(withCalendar(calendar({ typesWithoutJoinInfo: [] })).steps.flatMap((s) => s.items).some((i) => i.key === "calendar.own_link")).toBe(false);
+  });
+});
+
+describe("the Appointment Setter's check waits for the calendar", () => {
+  it("is in progress, and never a button, while the booking calendar is a draft", () => {
+    const r = withCalendar(draftWith());
+    expect(itemOf(r, "verification.appointment_setter")).toMatchObject({ state: "in_progress", owner: "you", detail: expect.stringContaining("calendar is active") });
+    expect(itemOf(r, "verification.appointment_setter").action).toBeUndefined();
+    // Once the calendar is active it is judged like the others.
+    expect(itemOf(deriveLaunchReadiness(ready()), "verification.appointment_setter").state).toBe("done");
   });
 });

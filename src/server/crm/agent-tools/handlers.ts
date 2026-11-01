@@ -1,19 +1,20 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem, type Queryable } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles } from "@/server/notifications";
 import type { CrmActor } from "@/server/crm/actor";
 import { assertAssignable, normalizeContactInput, updateContact } from "@/server/crm/contacts";
 import { applyContactTags, removeContactTags } from "@/server/crm/tags";
 import { createTaskInTx } from "@/server/crm/tasks";
-import { createOpportunityInTx, moveOpportunityInTx } from "@/server/crm/opportunities";
+import { createOpportunityInTx, listOpportunities, moveOpportunityInTx } from "@/server/crm/opportunities";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { bookingIsNative, nativeAvailability } from "@/server/calendars/agent-booking";
 import { requestBooking } from "@/server/appointments/booking";
 import { createApproval } from "@/server/approvals/service";
 import { maskCustomerLinks } from "@/server/messaging/redact";
 import type { AgentToolName, ToolInput } from "@/server/crm/agent-tools/catalog";
+import type { Permission } from "@/lib/permissions";
 
 /**
  * What each CRM tool does. Every query names the organization from the agent actor (which came from the token row), so an id from
@@ -30,6 +31,13 @@ export interface ToolContext {
   /** Stable for one logical call; where a retry must never repeat a change, it is part of the idempotency key. */
   callKey: string;
   now: Date;
+  /**
+   * Set only by the client business tier: the person this call is for. Reads that the inbox rules limit per person (conversations, conversation counts) then follow that
+   * person's own access. Left out (the internal tier, the token API), nothing here changes.
+   */
+  onBehalfOfUserId?: string;
+  /** The person's own permissions (role plus per-person overrides). Present whenever `onBehalfOfUserId` is. */
+  personCan?: (permission: Permission) => boolean;
 }
 
 /** What a write would do, worked out against the workspace's current records before it runs or is sent for approval. */
@@ -102,6 +110,14 @@ async function tagsByName(db: Queryable, orgId: string, names: string[]): Promis
   return rows;
 }
 
+/**
+ * An extra section of a read is shown only when the employee's credential allows it AND, when the call is for a person, that person's own access does too (the tool's
+ * own permissions are checked for the person before the handler runs, but a section needing another permission would otherwise follow the employee alone).
+ */
+function canSee(ctx: ToolContext, permission: Permission): boolean {
+  return ctx.actor.can(permission) && (!ctx.onBehalfOfUserId || ctx.personCan?.(permission) === true);
+}
+
 const CONTACT_FIELD_LABELS: Record<string, string> = {
   firstName: "first name", lastName: "last name", leadStatus: "lead status", leadScore: "lead score", preferredLanguage: "language", preferredChannel: "preferred channel",
   timezone: "time zone", city: "city", region: "region", country: "country", postalCode: "postal code", source: "source",
@@ -138,6 +154,16 @@ async function permittedConversation(db: Queryable, ctx: ToolContext, conversati
   );
   if (!rows[0]) throw new AppError("not_found", "Conversation not found, or it isn't one this AI employee handles.");
   return rows[0];
+}
+
+/**
+ * Which of these conversations the person can open themselves. The database's row-level security decides (the inbox rule: they hold inbox.view and either inbox.view_all or are the
+ * conversation's owner or assignee), so this cannot drift from what the Inbox shows them. A conversation of another workspace is never in the answer, whoever the person is.
+ */
+async function conversationsVisibleToUser(userId: string, orgId: string, ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const { rows } = await withUser(userId, (q) => q.query<{ id: string }>("select id from conversations where org_id = $1 and id = any($2::uuid[])", [orgId, ids]));
+  return new Set(rows.map((r) => r.id));
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +210,7 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
       if (!c) throw new AppError("not_found", "Contact not found.");
       const [tags, deals, tasks, appts] = [
         await q.query<{ name: string }>("select t.name::text as name from crm_contact_tags ct join crm_tags t on t.id = ct.tag_id where ct.org_id = $1 and ct.contact_id = $2 order by t.name limit 30", [orgId, c.id]),
-        ctx.actor.can("sales.view")
+        canSee(ctx, "sales.view")
           ? await q.query<{ id: string; name: string; status: string; stage_name: string | null; value: string | null; currency: string | null }>(
             "select id, name, status, stage_name, monetary_value::text as value, currency from crm_opportunities where org_id = $1 and contact_id = $2 and provider = 'native' and archived_at is null order by updated_at desc limit 10",
             [orgId, c.id],
@@ -211,7 +237,7 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
           },
           openDeals: deals ? deals.rows.map((d) => ({ id: d.id, name: d.name, status: d.status, stage: d.stage_name, value: d.value === null ? null : Number(d.value), currency: d.currency })) : undefined,
           openTasks: tasks.rows.map((t) => ({ id: t.id, title: t.title, dueAt: iso(t.due_at), status: t.status })),
-          upcomingAppointments: ctx.actor.can("appointments.view") ? appts.rows.map((a) => ({ id: a.id, title: a.title, startAt: iso(a.start_at), status: a.status })) : undefined,
+          upcomingAppointments: canSee(ctx, "appointments.view") ? appts.rows.map((a) => ({ id: a.id, title: a.title, startAt: iso(a.start_at), status: a.status })) : undefined,
         },
       };
     },
@@ -434,36 +460,49 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
   },
 
   get_conversation_history: {
-    inTx: true,
-    async run(ctx, input, db) {
-      const q = need(db);
-      let conversationId = input.conversationId ?? null;
-      if (!conversationId) {
-        await contactLabel(q, ctx.actor.orgId, input.contactId as string);
+    // Not in one transaction: for a call made for a person, which conversations they may see is read in their own transaction (row-level security) between two system reads.
+    inTx: false,
+    async run(ctx, input) {
+      const orgId = ctx.actor.orgId;
+      const forPerson = ctx.onBehalfOfUserId ?? null;
+      // A person's call looks at a few of the contact's conversations and takes the newest one they can see; every other call takes the newest, as before.
+      const candidates = await withSystem(async (q) => {
+        if (input.conversationId) return [input.conversationId];
+        await contactLabel(q, orgId, input.contactId as string);
         const latest = await q.query<{ id: string }>(
-          "select id from conversations where org_id = $1 and contact_id = $2 and ai_agent_id = $3 order by last_message_at desc nulls last, created_at desc limit 1",
-          [ctx.actor.orgId, input.contactId, ctx.agent.id],
+          "select id from conversations where org_id = $1 and contact_id = $2 and ai_agent_id = $3 order by last_message_at desc nulls last, created_at desc limit $4",
+          [orgId, input.contactId, ctx.agent.id, forPerson ? 20 : 1],
         );
-        if (!latest.rows[0]) return { outcome: "done", summary: "No conversation found", result: { conversation: null, messages: [], detail: "This AI employee doesn't handle a conversation with that contact." } };
-        conversationId = latest.rows[0].id;
+        return latest.rows.map((r) => r.id);
+      });
+      let chosen: string | null = candidates[0] ?? null;
+      if (forPerson && candidates.length) {
+        const visible = await conversationsVisibleToUser(forPerson, orgId, candidates);
+        chosen = candidates.find((id) => visible.has(id)) ?? null;
+        // Named directly and not visible to this person: exactly what a conversation of another workspace looks like.
+        if (!chosen && input.conversationId) throw new AppError("not_found", "Conversation not found, or it isn't one this AI employee handles.");
       }
-      const conv = await permittedConversation(q, ctx, conversationId);
-      const { rows } = await q.query<{ id: string; direction: string; author_kind: string; body: string; status: string; created_at: Date }>(
-        `select id, direction, author_kind, body, status, created_at from conversation_messages
-         where org_id = $1 and conversation_id = $2 and direction in ('inbound', 'outbound') and status not in ('draft', 'blocked')
-         order by created_at desc limit $3`,
-        [ctx.actor.orgId, conv.id, input.limit ?? 20],
-      );
-      return {
-        outcome: "done", summary: `Read ${plural(rows.length, "message")}`, targetType: "conversation", targetId: conv.id, targetLabel: conv.contact_name,
-        result: {
-          conversation: { id: conv.id, contactId: conv.contact_id, channel: conv.channel, handledBy: conv.owner_kind === "ai" ? "ai" : "person" },
-          messages: rows.reverse().map((m) => ({
-            id: m.id, at: iso(m.created_at), from: m.direction === "inbound" ? "customer" : m.author_kind === "ai" ? "ai" : "team", status: m.direction === "outbound" ? m.status : undefined,
-            text: maskCustomerLinks(m.body).slice(0, 1000),
-          })),
-        },
-      };
+      if (!chosen) return { outcome: "done", summary: "No conversation found", result: { conversation: null, messages: [], detail: "This AI employee doesn't handle a conversation with that contact." } };
+      const conversationId = chosen;
+      return withSystem(async (q) => {
+        const conv = await permittedConversation(q, ctx, conversationId);
+        const { rows } = await q.query<{ id: string; direction: string; author_kind: string; body: string; status: string; created_at: Date }>(
+          `select id, direction, author_kind, body, status, created_at from conversation_messages
+           where org_id = $1 and conversation_id = $2 and direction in ('inbound', 'outbound') and status not in ('draft', 'blocked')
+           order by created_at desc limit $3`,
+          [orgId, conv.id, input.limit ?? 20],
+        );
+        return {
+          outcome: "done" as const, summary: `Read ${plural(rows.length, "message")}`, targetType: "conversation", targetId: conv.id, targetLabel: conv.contact_name,
+          result: {
+            conversation: { id: conv.id, contactId: conv.contact_id, channel: conv.channel, handledBy: conv.owner_kind === "ai" ? "ai" : "person" },
+            messages: rows.reverse().map((m) => ({
+              id: m.id, at: iso(m.created_at), from: m.direction === "inbound" ? "customer" : m.author_kind === "ai" ? "ai" : "team", status: m.direction === "outbound" ? m.status : undefined,
+              text: maskCustomerLinks(m.body).slice(0, 1000),
+            })),
+          },
+        };
+      });
     },
   },
 
@@ -546,6 +585,8 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
       );
       const r = rows[0];
       const n = (k: string) => Number(r[k] ?? 0);
+      // The conversation count covers every conversation of the workspace, so a person who may not see every conversation is not given it (the same rule the CRM reports follow).
+      const showConversations = !ctx.onBehalfOfUserId || ctx.personCan?.("inbox.view_all") === true;
       return {
         outcome: "done", summary: `Read CRM counts (last ${days} days)`,
         result: {
@@ -554,7 +595,27 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
           deals: { open: n("open_deals"), wonInPeriod: n("won_deals"), lostInPeriod: n("lost_deals") },
           tasks: { open: n("open_tasks"), overdue: n("overdue_tasks") },
           appointments: { next7Days: n("upcoming_appointments") },
-          conversations: { open: n("open_conversations") },
+          conversations: showConversations ? { open: n("open_conversations") } : null,
+          ...(showConversations ? {} : { conversationsNote: "Conversation counts are not shown: your role does not include seeing every conversation." }),
+        },
+      };
+    },
+  },
+
+  list_opportunities: {
+    inTx: false,
+    async run(ctx, input) {
+      // listOpportunities names the organization from the actor and checks sales.view itself; only this workspace's deals can come back.
+      const res = await listOpportunities(ctx.actor, { status: input.status ?? "open", pipelineId: input.pipelineId ?? null, pageSize: input.limit ?? 10, sort: { by: "updated_at", dir: "desc" } });
+      return {
+        outcome: "done", summary: `Listed deals (${plural(res.rows.length, "deal")} of ${res.total})`,
+        result: {
+          status: input.status ?? "open",
+          total: res.total,
+          deals: res.rows.map((d) => ({
+            id: d.id, name: d.name, status: d.status, pipeline: d.pipelineName, stage: d.stageName, pipelineId: d.pipelineId, stageId: d.stageId, value: d.value, currency: d.currency,
+            contact: d.contact, expectedCloseDate: d.expectedCloseDate, daysInStage: d.daysInStage, openTasks: d.openTasks, updatedAt: d.updatedAt, lostReason: d.lostReason,
+          })),
         },
       };
     },

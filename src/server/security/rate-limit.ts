@@ -141,6 +141,10 @@ export const RATE_LIMITS = {
   agentToolCallsByEmployee: { name: "agent-tools:employee", limit: 60, windowSeconds: 60 },
   // Requests to /api/agent-tools with a missing, unknown, expired or revoked credential, per hashed client address. Valid calls never count.
   agentToolAuthFailureByIp: { name: "agent-tools:auth-fail:ip", limit: 30, windowSeconds: 600 },
+  // The client tier of the business tools (src/server/workforce/hermes-client-business-mcp-policy.ts): every call of one workspace's six employees together, and every call made for
+  // one chat user, whichever employee it came through. They sit beside the per-employee rule above, never in place of it, so one busy workspace or person cannot use up another's.
+  clientBusinessMcpByOrg: { name: "client-business-mcp:org", limit: 240, windowSeconds: 60 },
+  clientBusinessMcpByUser: { name: "client-business-mcp:user", limit: 30, windowSeconds: 60 },
   // Voice provider webhooks (/api/webhooks/vapi and /retell) that name a connected assistant but fail authentication, per connection and
   // hashed client address. Past the limit, that address's requests for that connection are refused before the vault is read. Requests that
   // authenticate never count, so a provider's own traffic (from its own addresses) isn't held back by someone else's forged requests.

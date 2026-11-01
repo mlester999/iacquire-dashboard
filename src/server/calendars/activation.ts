@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -7,9 +8,12 @@ import { assertNativeOwner } from "@/server/crm/workspace";
 import { isValidTimeZone } from "@/lib/calendars/slots";
 import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
 import { pollMinutesFor } from "@/server/calendars/connections";
-import { applyHoursTemplateInTx, type CalendarStatus, type LocationKind, type MeetingProvider } from "@/server/calendars/setup";
+import { applyHoursTemplateInTx, assertHosts, parseHoursTemplate, type CalendarStatus, type LocationKind, type MeetingProvider } from "@/server/calendars/setup";
 import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
 import { cleanAnswers } from "@/lib/onboarding/crm-setup";
+import { confirmedAnswers } from "@/lib/onboarding/engine";
+import { summarizeWeeklyHours } from "@/lib/launch-readiness";
+import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 
 // Draft calendars and how they go live. A calendar created from a Blueprint (or imported) starts as a draft: no booking page, never the
 // default, and refused by every booking path (src/server/calendars/availability.ts loadBookingContext). It becomes bookable only when someone
@@ -49,27 +53,40 @@ export interface CalendarVerification {
   typesWithoutTimes: string[];
 }
 
-/** The calendar account whose busy times the client said must block bookings (the calendar they told the CRM setup guide they use). */
+/** The calendar account whose busy times the client said must block bookings (their questionnaire answer first, else what they told the CRM setup guide). */
 export type BusyCalendarProvider = "google" | "microsoft";
 
 export interface VerifyOptions {
   /**
-   * When set, activation cannot pass while no host has this provider connected and being read for busy times. Left out, it is read from what the client told the CRM setup
-   * guide (statedBusyProvider), so every caller judges the same way; `null` says "none" explicitly (the Setup Center's own calendar check applies the stated answer itself).
+   * When set, activation cannot pass while no host has this provider connected and being read for busy times. Left out, it is read from the client's own answer (statedBusyProvider:
+   * the questionnaire first, else the CRM setup guide), so every caller judges the same way; `null` says "none" explicitly (the Setup Center's calendar check applies the same
+   * stated answer itself, with its own freshness window).
    */
   requiredBusyProvider?: BusyCalendarProvider | null;
 }
 
 /**
- * The outside calendar whose busy times must block bookings, from the client's own stored answers to the CRM setup guide: they take appointments and use Google Calendar or a
- * Microsoft 365 calendar. Null when they said they do not take appointments, use the iAcquire calendar only, use a kind that is only read as a feed or over CalDAV (the Setup
- * Center's calendar check covers those), or have not said. An answer that no longer validates is dropped, never trusted. Trusted code: every query names the workspace.
+ * What the client said about the outside calendar whose busy times must block bookings: "google" or "microsoft" (it must), "none" (it need not), or null (they have not said).
+ * The questionnaire's own answer ("Do you keep your appointments in Google Calendar or Microsoft 365 today?") comes first, and only a confirmed answer counts. Without it, what they told
+ * the CRM setup guide is used: they take appointments and use Google Calendar or a Microsoft 365 calendar. Null also when they said they do not take appointments, use the iAcquire
+ * calendar only, or use a kind that is only read as a feed or over CalDAV (the Setup Center's calendar check covers those). An answer that no longer validates is dropped, never
+ * trusted. Trusted code: every query names the workspace.
  */
-export async function statedBusyProvider(db: Queryable, orgId: string): Promise<BusyCalendarProvider | null> {
+export async function statedBusyAnswer(db: Queryable, orgId: string): Promise<BusyCalendarProvider | "none" | null> {
+  const answers = confirmedAnswers(toStored(await loadAnswerRows(db, orgId)));
+  if (answers["b.appointments"] === false) return null;
+  const answered = answers["d.appt_busy_calendar"];
+  if (answered === "google" || answered === "microsoft" || answered === "none") return answered;
   const { rows } = await db.query<{ answers: unknown }>("select answers from crm_setup_guides where org_id = $1", [orgId]);
   const stated = cleanAnswers(rows[0]?.answers);
   if (stated.appointments === false) return null;
   return stated.calendarSource === "google" || stated.calendarSource === "microsoft" ? stated.calendarSource : null;
+}
+
+/** The same answer as a requirement: the provider whose busy times must be read, or null when none must be (the client said "none", or has not said). */
+export async function statedBusyProvider(db: Queryable, orgId: string): Promise<BusyCalendarProvider | null> {
+  const answer = await statedBusyAnswer(db, orgId);
+  return answer === "none" ? null : answer;
 }
 
 export interface ActivationResult {
@@ -375,5 +392,136 @@ export async function applyCalendarHoursTemplate(actor: CrmActor, calendarId: st
       await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_hours_applied", targetType: "crm_calendar", targetId: calendarId, result: "success", metadata: { hosts: res.applied.length } }, db);
     }
     return res;
+  });
+}
+
+/**
+ * Makes `hostUserId` the host of a calendar that has no active host, in ONE transaction with the calendar row locked: the "nobody takes bookings yet" decision and the change are
+ * never separated, so two people pressing at once (or a host added in between) can never have the second replace the first. A calendar that already has an active host is left
+ * exactly as it is (`assigned: false`). Rows of people who are no longer active are replaced. `inTx` runs in the same transaction after the change, for the audit row.
+ */
+export async function assignHostIfNone(
+  actor: CrmActor,
+  calendarId: string,
+  hostUserId: string,
+  inTx?: (db: Queryable) => Promise<void>,
+): Promise<{ assigned: boolean }> {
+  assertCan(actor, "calendars.manage");
+  return crmWrite(actor, async (db) => {
+    await assertNativeOwner(db, actor.orgId, "calendars");
+    const cal = await db.query("select 1 from crm_calendars where id = $1 and org_id = $2 and archived_at is null for update", [calendarId, actor.orgId]);
+    if (!cal.rows[0]) throw new AppError("not_found", "Calendar not found.");
+    if ((await activeHostsOfCalendar(db, actor.orgId, calendarId)).length > 0) return { assigned: false };
+    await assertHosts(db, actor.orgId, [hostUserId]);
+    await db.query("delete from crm_calendar_members where calendar_id = $1 and org_id = $2 and user_id <> $3", [calendarId, actor.orgId, hostUserId]);
+    await db.query(
+      `insert into crm_calendar_members (org_id, calendar_id, user_id, priority) values ($1, $2, $3, 50) on conflict (calendar_id, user_id) do update set priority = excluded.priority, active = true`,
+      [actor.orgId, calendarId, hostUserId],
+    );
+    if (inTx) await inTx(db);
+    return { assigned: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The hours a client approves, and what each host has connected
+// ---------------------------------------------------------------------------
+
+export interface HoursProposal {
+  calendarId: string;
+  /** The zone the suggested hours are written in (the draft's own, else the workspace's), never a guess about a host. */
+  zone: string;
+  rules: ReturnType<typeof parseHoursTemplate>;
+  /** The active hosts who have no weekly hours yet: the people these hours would be given to. */
+  hosts: Array<{ userId: string; name: string }>;
+  /** What the client reads before approving, in words. */
+  summary: string;
+  /** Covers exactly the hosts, the hours and the zone shown, so an approval of one thing can never apply another. */
+  digest: string;
+}
+
+/**
+ * The weekly hours the calendar suggests (from the client's own answers) and who would receive them: null when the calendar has no suggested hours or when every host already has
+ * hours. The digest is recomputed by the server whenever hours are applied, so the client approves exactly what was shown and a host who was added, removed or given hours in the
+ * meantime makes the old approval stale. Trusted code: the caller authorized the reader for `orgId`. Reads only.
+ */
+export async function proposeCalendarHours(db: Queryable, orgId: string, calendarId: string): Promise<HoursProposal | null> {
+  const cal = await db.query<{ timezone: string | null; hours_template: unknown; org_timezone: string }>(
+    `select c.timezone, c.hours_template, o.timezone as org_timezone from crm_calendars c join organizations o on o.id = c.org_id
+      where c.id = $1 and c.org_id = $2 and c.archived_at is null`,
+    [calendarId, orgId],
+  );
+  const row = cal.rows[0];
+  if (!row) return null;
+  const rules = parseHoursTemplate(row.hours_template);
+  if (!rules.length) return null;
+  const hosts = (await activeHostsOfCalendar(db, orgId, calendarId)).filter((h) => !h.hasHours).map((h) => ({ userId: h.userId, name: h.name }));
+  if (!hosts.length) return null;
+  // The same zone applyHoursTemplateInTx writes the hours in when no zone was chosen.
+  const zone = row.timezone && isValidTimeZone(row.timezone) ? row.timezone : isValidTimeZone(row.org_timezone) ? row.org_timezone : "UTC";
+  const digest = createHash("sha256").update(JSON.stringify({ calendarId, hosts: hosts.map((h) => h.userId).sort(), rules, zone })).digest("hex");
+  return { calendarId, zone, rules, hosts, summary: `${summarizeWeeklyHours(rules)} (${zone} time)`, digest };
+}
+
+/**
+ * Gives the suggested weekly hours to the hosts who have none, and only the hours the client approved: `approvedDigest` must be the digest of what is true right now (the same
+ * hosts, hours and zone the client was shown). A missing, wrong or stale digest is refused and changes nothing. This is the one place the launch setup writes working hours: a host
+ * added from the questionnaire or by an invitation has none until the client approves them here. The audit row carries the zone and the hours. Needs calendar management.
+ */
+export async function applyApprovedCalendarHours(actor: CrmActor, calendarId: string, approvedDigest: string | undefined): Promise<{ applied: string[]; kept: string[]; needsZoneChoice: string[] }> {
+  assertCan(actor, "calendars.manage");
+  return crmWrite(actor, async (db) => {
+    await assertNativeOwner(db, actor.orgId, "calendars");
+    const lock = await db.query<{ n: number }>("select jsonb_array_length(hours_template) as n from crm_calendars where id = $1 and org_id = $2 and archived_at is null for update", [calendarId, actor.orgId]);
+    if (!lock.rows[0]) throw new AppError("not_found", "Calendar not found.");
+    if (!lock.rows[0].n) throw new AppError("conflict", "This calendar has no suggested hours to use.");
+    const proposal = await proposeCalendarHours(db, actor.orgId, calendarId);
+    if (!proposal) {
+      const hosts = await activeHostsOfCalendar(db, actor.orgId, calendarId);
+      if (!hosts.length) throw new AppError("conflict", "Assign hosts first, then use the suggested hours for them.");
+      // Everyone already has hours: there is nothing to approve and nothing to change.
+      return { applied: [], kept: hosts.map((h) => h.userId), needsZoneChoice: [] };
+    }
+    if (!approvedDigest || approvedDigest !== proposal.digest) {
+      throw new AppError("conflict", "The hosts or hours changed since you looked at them. Review the hours shown and approve them again. Nothing was saved.");
+    }
+    const res = await applyHoursTemplateInTx(db, actor.orgId, calendarId, proposal.hosts.map((h) => h.userId));
+    if (res.applied.length) {
+      await recordAudit({
+        orgId: actor.orgId, ...auditActor(actor), action: "crm.calendar_hours_applied", targetType: "crm_calendar", targetId: calendarId, result: "success",
+        metadata: { hosts: res.applied.length, approved: true, zone: proposal.zone, hours: proposal.summary, digest: proposal.digest },
+      }, db);
+    }
+    return res;
+  });
+}
+
+/** What one host has connected, as the calendar needs it: strict, per host, and never the account itself. */
+export interface HostConnectionState {
+  userId: string;
+  name: string;
+  /** A connected account that can add events (the only kind that can make a Google Meet or Teams link). Another person's account, an ICS feed or CalDAV never counts. */
+  meet: { google: boolean; microsoft: boolean };
+  /** A connected account of the provider that is being read for busy times, recently enough to trust. */
+  busy: { google: boolean; microsoft: boolean };
+}
+
+/**
+ * For each host: whether they have connected what a meeting link needs and whether their calendar is being read for busy times. The same rules as the activation checks above
+ * (verifyCalendarInTx), per person instead of for the whole calendar. Trusted code: every query names the workspace. Reads only.
+ */
+export async function hostConnectionStates(db: Queryable, orgId: string, hosts: ReadonlyArray<{ userId: string; name: string }>, now: Date = new Date()): Promise<HostConnectionState[]> {
+  if (!hosts.length) return [];
+  const { rows } = await db.query<{ user_id: string; provider: "google" | "microsoft"; write_ready: boolean; check_conflicts: boolean; read_at: Date }>(
+    `select user_id, provider, (write_events and external_calendar_id is not null) as write_ready, check_conflicts, coalesce(last_success_at, created_at) as read_at
+       from crm_calendar_connections
+      where org_id = $1 and user_id = any($2::uuid[]) and status = 'connected' and provider in ('google', 'microsoft')`,
+    [orgId, hosts.map((h) => h.userId)],
+  );
+  return hosts.map((h) => {
+    const mine = rows.filter((r) => r.user_id === h.userId);
+    const meet = (p: "google" | "microsoft") => mine.some((r) => r.provider === p && r.write_ready);
+    const busy = (p: "google" | "microsoft") => mine.some((r) => r.provider === p && r.check_conflicts && new Date(r.read_at).getTime() >= now.getTime() - 3 * pollMinutesFor(p) * 60_000);
+    return { userId: h.userId, name: h.name, meet: { google: meet("google"), microsoft: meet("microsoft") }, busy: { google: busy("google"), microsoft: busy("microsoft") } };
   });
 }

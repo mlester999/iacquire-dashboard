@@ -133,6 +133,11 @@ export const TOOL_INPUTS = {
   crm_summary_report: z.strictObject({
     periodDays: z.number().int().min(1).max(90).optional(),
   }),
+  list_opportunities: z.strictObject({
+    status: z.enum(["open", "won", "lost"]).optional().describe("Which deals to list. Leave out for open deals only; closed deals are listed only when asked for."),
+    limit: z.number().int().min(1).max(25).optional(),
+    pipelineId: id.optional().describe("A pipeline id. Leave out for every pipeline."),
+  }),
 } as const;
 
 export type AgentToolName = keyof typeof TOOL_INPUTS;
@@ -150,6 +155,11 @@ export interface AgentToolDef {
   alwaysApproval?: boolean;
   /** When a single call becomes high-impact (and so always needs approval), in the client's words. */
   highImpactWhen?: string;
+  /**
+   * Offered only through the client business tier, where the call names the person asking. The internal agency tier, the token HTTP API and the tool
+   * lists below never include it, so adding a tool of this kind cannot change what an existing tier offers.
+   */
+  clientOnly?: true;
 }
 
 export const AGENT_TOOLS: Record<AgentToolName, AgentToolDef> = {
@@ -213,16 +223,26 @@ export const AGENT_TOOLS: Record<AgentToolName, AgentToolDef> = {
     name: "crm_summary_report", label: "CRM summary counts", kind: "read", scope: "reports:read", permissions: ["analytics.view"],
     description: "Counts only: contacts, new contacts, open and closed deals, open and overdue tasks, upcoming appointments and open conversations.",
   },
+  list_opportunities: {
+    name: "list_opportunities", label: "List deals", kind: "read", scope: "opportunities:read", permissions: ["crm.view", "sales.view"], clientOnly: true,
+    description: "List this workspace's deals: name, stage, pipeline, value and contact. Open deals unless you ask for won or lost ones. Up to 25.",
+  },
 };
 
-export const AGENT_TOOL_NAMES = Object.keys(AGENT_TOOLS) as AgentToolName[];
+/** Every tool the catalog defines, including the ones only the client business tier offers. */
+export const ALL_AGENT_TOOL_NAMES = Object.keys(AGENT_TOOLS) as AgentToolName[];
+/** The tools the internal agency tier, the token HTTP API and the AI tools screen know. A client-only tool is not in this list. */
+export const AGENT_TOOL_NAMES = ALL_AGENT_TOOL_NAMES.filter((n) => AGENT_TOOLS[n].clientOnly !== true);
 export const isAgentToolName = (value: unknown): value is AgentToolName => typeof value === "string" && Object.prototype.hasOwnProperty.call(AGENT_TOOLS, value);
 
-/** The tools a role can ever use (before a token narrows them). */
-export function toolsForRole(roleKey: string): AgentToolName[] {
+/**
+ * The tools a role can ever use (before a token narrows them). Client-only tools are left out unless the caller is the client business tier and says so,
+ * so the lists the internal tier and the token API derive from this stay exactly what they were.
+ */
+export function toolsForRole(roleKey: string, opts: { includeClientOnly?: boolean } = {}): AgentToolName[] {
   if (!isAgentRole(roleKey)) return [];
   const scopes = new Set<AgentToolScope>(ROLE_SCOPES[roleKey]);
-  return AGENT_TOOL_NAMES.filter((n) => scopes.has(AGENT_TOOLS[n].scope));
+  return (opts.includeClientOnly ? ALL_AGENT_TOOL_NAMES : AGENT_TOOL_NAMES).filter((n) => scopes.has(AGENT_TOOLS[n].scope));
 }
 
 /** Tool definitions in the shape an agent runtime lists them (name, description, JSON Schema of the arguments). */
