@@ -66,7 +66,7 @@ describe("the overall state", () => {
   it("says who has to move: a failure iAcquire must look at is counted apart from a step the client must do", () => {
     const r = deriveLaunchReadiness(replaceEmployee(ready({ knowledge: { approved: 0, pending: 0 } }), "lead_hunter", { provisioning: "failed", readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "", blocking: [] } }));
     expect(r.state).toBe("action_required");
-    expect(r.detail).toContain("1 step needs you");
+    expect(r.detail).toContain("1 thing needs you");
     expect(r.detail).toContain("1 needs iAcquire's attention");
     expect(r.blocking.map((i) => [i.key, i.owner])).toEqual([["knowledge.approved", "you"], ["employees.lead_hunter", "iacquire"]]);
   });

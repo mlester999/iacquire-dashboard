@@ -388,7 +388,7 @@ export function deriveLaunchReadiness(f: LaunchFacts): LaunchReadiness {
   const youBlocking = blocking.filter((i) => i.owner === "you").length;
   const iacquireBlocking = blocking.filter((i) => i.owner !== "you").length;
   if (blocking.length) {
-    const parts = [youBlocking ? `${plural(youBlocking, "step needs", "steps need")} you` : null, iacquireBlocking ? `${plural(iacquireBlocking, "needs", "need")} iAcquire's attention` : null].filter(Boolean).join(" and ");
+    const parts = [youBlocking ? `${plural(youBlocking, "thing needs", "things need")} you` : null, iacquireBlocking ? `${plural(iacquireBlocking, "needs", "need")} iAcquire's attention` : null].filter(Boolean).join(" and ");
     return { ...base, state: "action_required", label: LAUNCH_STATE_LABEL.action_required, headline: "Action required", detail: `${parts}. Everything else keeps running.`, percent: percentOf(passed, total) };
   }
   const running = required.filter((i) => i.state === "in_progress").length;

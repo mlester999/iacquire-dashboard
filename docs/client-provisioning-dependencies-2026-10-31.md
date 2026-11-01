@@ -4,6 +4,25 @@
 
 **Status (2026-10-31): read-only review of the repository and its recorded evidence. Nothing was deployed, applied or probed, and no client was provisioned.** The goal this serves: every new paying client automatically receives six isolated, properly configured AI Employees after onboarding and payment clearance. This is the dependency and gap list, with honest labels.
 
+## 0. Application side, 2026-11-01: one onboarding, one honest launch state
+
+**Built and verified locally on synthetic clients (test database; nothing released, no migration, no Hermes write, no production change).** The portal now answers "is this client ready to launch?" from the workspace's own records, and the steps to get there run from one checklist.
+
+| Piece | What it does | Evidence |
+| --- | --- | --- |
+| Launch readiness (`src/lib/launch-readiness.ts`, `src/server/setup/launch-readiness.ts`, the panel on `/setup`) | One state: Not started, Questionnaire submitted, Provisioning, Action required, Ready for review, **100% Ready to Launch**. 100% means every applicable, required setup and verification check passed. A queued job, a drafted calendar or a created profile is never "done"; optional or unpurchased items never block; things that do not apply (no appointments, a role outside the plan) are "not applicable"; an employee with no record is something iAcquire must look at. Each unfinished item says who moves next. | 23 pure tests, 6 database tests |
+| Guided calendar (`src/server/setup/launch-intents.ts`) | Make me the host (only the person pressing it), use the hours the client's own answers suggested, check and activate (the public booking page stays off). Hours are never invented; a role without calendar management is refused. | 8 tests |
+| Final checks (`src/lib/launch-verification.ts`) | Each employee runs one reviewed read-only capability on the client's real records. One job per employee and configuration version; stale when the configuration changes; the Appointment Setter passes only if a real bookable time exists in the next seven days. | same suites |
+| Automatic start (`src/server/setup/launch-sweep.ts`, `dispatchSystemCapabilityJob`) | After a passing health check, and after a calendar, Blueprint or channel event, the checks start by themselves for ready employees. They name the workspace owner as the accountable requester (the worker refuses work with none and re-checks that person's permission), are audited as the system's, only ever start read-only capabilities, and never retry a failed check. | 7 tests |
+| Booking policy and targeting | The questionnaire (version 3) also asks gap between appointments, whether a person confirms each booking, whether customers may reschedule or cancel and until when, and the video tool; the drafted appointment types carry the answers. The Lead Hunter's empty targeting is filled once from the client's own words (areas, services, qualification, ideal customer), never over existing rules. | 10 tests |
+| Two-client acceptance (`tests/client-launch-acceptance.test.ts`) | A Chicago roofing company (six employees, appointments) and a Manila dental practice (no appointments, no Sales Assistant in the plan): nothing before payment; the payment event, replayed, opens the plan's profiles once; unique identities; no cross-client knowledge or instructions; a half-failed provisioning shown honestly and recovered; guided calendar in the host's time zone; checks start by themselves; both reach 100%; nothing sent, nobody booked, no public page; cross-workspace refusals; a video type that needs Google stays at "action required". | 10 tests |
+
+**What this does not change.** The client-only Hermes runtime and the restricted provisioner are still not running anywhere (section 1, **NOT RUN**), so a real client's employees stay "Pending setup" until that is installed and the pilot passes. The final checks verify the portal path (dispatch, worker, tenant-scoped reads, result), not the Hermes profile itself, which the health check verifies separately.
+
+**Client business tools: still not built, and it is not a small step.** Client employees are answered from reviewed capability jobs and a read-only evidence packet, both tenant-scoped and now exercised by the final checks. The signed MCP credential is minted around the internal role-to-profile table (`AGENCY_HERMES_PROFILE_IDS`) and the endpoint requires that employee's own active chat turn; a client tier needs a credential whose profile claim comes from the agent's recorded profile, a read-only tool list per plan with writes only as approval proposals, new off-by-default flags, a worker image that mounts the MCP server for client profiles, and a security review. The last two touch the production runtime and need their own approval. The next step that is within reach without touching production is the credential and policy layer behind a flag, with two-tenant tests.
+
+See `docs/client-pilot-package-2026-11-01.md` for the supervised pilot, prepared for a separate approval.
+
 ## 1. Where it stands
 
 | Piece | What exists | Label |

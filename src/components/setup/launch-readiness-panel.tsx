@@ -33,14 +33,15 @@ function ItemIcon({ state }: { state: ItemState }) {
 /** How often the page re-reads the workspace while setup is running by itself. The state is always the stored one; this only asks for it again. */
 const REFRESH_MS = 10_000;
 
-export function LaunchReadinessPanel({ readiness }: { readiness: LaunchReadiness }) {
+/** `preview` is for the design preview page only: the buttons say so and run nothing. */
+export function LaunchReadinessPanel({ readiness, preview = false }: { readiness: LaunchReadiness; preview?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [running, setRunning] = React.useState<LaunchIntent | null>(null);
   const [notice, setNotice] = React.useState<{ ok: boolean; text: string } | null>(null);
 
   // While setup is working by itself, ask for the stored state again. Nothing is estimated from elapsed time.
-  const waiting = readiness.state === "provisioning";
+  const waiting = readiness.state === "provisioning" && !preview;
   React.useEffect(() => {
     if (!waiting) return;
     const id = window.setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, REFRESH_MS);
@@ -48,6 +49,10 @@ export function LaunchReadinessPanel({ readiness }: { readiness: LaunchReadiness
   }, [waiting, router]);
 
   function run(intent: LaunchIntent) {
+    if (preview) {
+      setNotice({ ok: true, text: "Design preview: nothing runs here." });
+      return;
+    }
     setRunning(intent);
     setNotice(null);
     startTransition(async () => {
@@ -119,7 +124,7 @@ function ItemRow({ item, busy, running, onRun }: { item: LaunchItem; busy: boole
           {!item.required && item.state !== "not_applicable" && <Badge tone="outline">Optional</Badge>}
         </div>
         <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{item.detail}</p>
-        {item.state !== "done" && item.state !== "not_applicable" && <p className="mt-0.5 text-[12px] text-muted">Next move: {OWNER_LABEL[item.owner]}</p>}
+        {item.state !== "done" && item.state !== "not_applicable" && !(item.state === "in_progress" && item.owner === "you") && <p className="mt-0.5 text-[12px] text-muted">Next move: {OWNER_LABEL[item.owner]}</p>}
       </div>
       {action?.intent && (
         <Button size="sm" variant="secondary" loading={busy && running === action.intent} disabled={busy} onClick={() => onRun(action.intent as LaunchIntent)}>{action.label}</Button>
