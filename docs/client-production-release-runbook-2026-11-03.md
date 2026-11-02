@@ -1,6 +1,6 @@
 # Client onboarding and provisioning: production release runbook (2026-11-02)
 
-Prepared, not executed. **Nothing in this file has been applied to production, merged to master, deployed, restarted or changed on the VPS.** The one thing done against production is the read-only restore point of section 3. Every step names the approval it needs. Keep every new switch OFF at release. (The file name carries 2026-11-03 by mistake and is kept because other documents link to it; the work is dated 2026-11-02.)
+Prepared, and executed only for the database part. **Done against production, each with the founder's explicit approval for exactly that: the read-only restore point and then the four migrations 0115 to 0118 (section 3, evidence of 2026-11-02). Nothing else has been done: nothing is merged to master, deployed, restarted or changed on the VPS, and every switch is off.** Every remaining step names the approval it needs. Keep every new switch OFF at release. (The file name carries 2026-11-03 by mistake and is kept because other documents link to it; the work is dated 2026-11-02.)
 
 ## 1. What was verified on 2026-11-02
 
@@ -26,7 +26,7 @@ All are additive or a narrow function replacement. **They are backward compatibl
 | `0117_company_knowledge_revisions` | Two nullable columns on `company_knowledge`, one on `knowledge_documents`, new table `company_knowledge_revisions` with row-level security. The application role may SELECT and INSERT its own workspace's revisions under policies (declared in the rehearsal as the one intentional insert); it can never update or delete one | drops the table and columns | the history holds rows |
 | `0118_audit_logs_purge_detach` | Replaces the function `app.audit_logs_append_only()`: the audit trail stays append-only except that, while a purge has declared itself, a row may lose its `agent_instance_id` and nothing else. Fixes a defect (no provisioned client could ever have been purged) | restores the previous function | never |
 
-Apply with the runner's own `--only <name>`, one at a time, in this order, each after its dry run; a failed post-check stops the sequence. `docs/demo-external-registration.md` and `docs/roadmap/phases-3-to-7/release-record-2026-10-26.md` have the connection details the earlier release used.
+**Applied to production on 2026-11-02 (evidence in section 3).** The method, kept for any other environment: apply with the runner's own `--only <name>`, one at a time, in this order, each after its dry run; a failed post-check stops the sequence. `docs/demo-external-registration.md` and `docs/roadmap/phases-3-to-7/release-record-2026-10-26.md` have the connection details the earlier release used.
 
 ## 3. Restore point plan (the hosted project is on the Supabase Free plan: no managed backups)
 
@@ -38,7 +38,7 @@ A real, **independently verified** restore point comes first and is its own appr
 4. **Only then** apply to production, in the same order, with the same post-checks (read-only), and keep the dump until the release has been verified and the founder says it can go. Delete the throwaway cluster.
 5. **The way back.** The rollbacks come first (they are tested above and keep data); restoring the dump is the last resort because anything written after it is lost.
 
-**Status: steps 1 to 3 were done on 2026-11-02 (evidence below), with the founder's approval for exactly this. Step 4 (apply to production) is not approved and not done.**
+**Status: steps 1 to 3 were done on 2026-11-02 and step 4 (apply to production) right after, each on the founder's explicit approval for exactly that step (evidence below, the restore point first and the production run second).**
 
 ### Evidence: the restore point of 2026-11-02
 
@@ -55,6 +55,23 @@ A real, **independently verified** restore point comes first and is its own appr
 | Cleanup | The throwaway server was stopped and its directory deleted (it held a copy of client data). The dump stays until the release has been verified and the founder says it can go |
 
 What this restore point does not cover: Supabase's own schemas (`auth`, `storage`) and platform roles; anything written to production after 12:24:32 UTC (which is why the rollbacks come before a restore); a restore into a PostgreSQL 17 cluster (the proof used 18, as the 2026-10-26 one did). The dump is also the only restore point there is: the project has no managed backups.
+
+### Evidence: the four migrations applied to production, 2026-11-02 (12:53 to 12:59 UTC)
+
+| Item | Result |
+| --- | --- |
+| Approval | The founder's explicit approval for exactly this action, after the restore point and the rehearsal on a copy. Nothing else was approved: no push to master, no deploy, no restart, no switch |
+| Before | Read at 12:48 and again before each step: ledger 108 rows ending 0113; none of the objects of the four migrations; 381 of 381 public tables with row-level security; no lock request waiting; no open transaction holding a lock on a table the migrations change. Since the restore point: 8 rows in `audit_logs` and 2 in `rate_limit_buckets` (log and counter tables), so the restore point stayed adequate |
+| How | The repository's own runner (`scripts/migrate.ts --only <name>`), one migration at a time; before each, a fresh read-only snapshot and a gate that refuses to start if an open transaction holds a lock on a table the migration changes; around each, a watchdog that would have cancelled only the runner's own statement after 20 seconds on a lock (the pooler ignores a lock timeout, so this stands in for one); after each, read-only post-checks. The runner's target was confirmed to be the production pooler. Each run exited 0 in 2.7 to 3.0 seconds |
+| 0115 | Applied; 16 of 16 checks: ledger 109; the table with 14 columns and 5 indexes, row-level security on and no policy, the guard trigger and its function, no privilege for `anon`, `authenticated`, `iaq_app_user` or `iaq_site_runtime`, empty. 54 schema items added (the copy's 63 less the 9 NOT NULL rows PostgreSQL 18 counts as constraints), none removed |
+| 0116 | Applied; 10 of 10: ledger 110; `chat_messages.evidence` is a nullable jsonb column; the shape check exists and is validated; no row carries evidence. 3 items added |
+| 0117 | Applied; 19 of 19: ledger 111; the three new columns as designed (types, nullability, the empty-array default); both new shape checks validated; the revision table has row-level security on and exactly the two policies (select and insert, for `iaq_app_user`); the application role holds SELECT and INSERT and nothing more; `anon` and `authenticated` hold what they hold on the sibling table; empty. 56 items added (the copy's 66 less 10 NOT NULL rows) |
+| 0118 | Applied; 8 of 8: ledger 112; exactly one schema item changed, the function `app.audit_logs_append_only()`, whose text has the same md5 as on the rehearsed copy (`de3b8f6a...`); its trigger on `audit_logs` still calls it |
+| As a whole | The real runner's dry run: "Nothing pending in this scope." Ledger 112 rows ending `0118_audit_logs_purge_detach`; 383 of 383 public tables with row-level security. Against the restore point's own read: 1 schema item removed (the old function text) and 114 added (54 + 3 + 56 + the new function text), **exactly the rehearsal's result** (133 on PostgreSQL 18 less its 19 NOT NULL rows). Row counts changed only in `schema_migrations` (+4), the two new tables (0 rows) and the same `audit_logs` (+8) and `rate_limit_buckets` (+2) already seen before the first step |
+| The live site | The production site's health route answered `{"status":"ok","database":"ok","scheduler":"never_ran"}` before the first step and after each of the four. The live code is unchanged (master `7598ab73`) and runs on the new schema |
+| The way back | Unchanged and tested on the copy: the four rollbacks, newest first, then the restore point as the last resort. Nothing has been rolled back |
+
+**Found while checking, not changed:** something runs one job (`setup_evidence_reconcile`) against the production database about every 15 minutes, with transactions that stay open for minutes. The main checkout's environment file is the production one and sets the application URL to a local development address where a local server answers, so it is most likely a development server on the operator's machine connected to production (the pooler hides client addresses, so this is not proven). It is the likely source of the rows written since the restore point. It held read locks on three unrelated tables only, so it did not touch these migrations. It is a decision for the founder whether a development server should ever point at the production database.
 
 ## 4. No existing client is started, switched on or told anything
 
@@ -175,7 +192,7 @@ Rollback of the release itself, in order: switch the switches off (no data chang
 ## 12. Order of approvals
 
 1. **Restore point: done on 2026-11-02** (taken, restore-tested and rehearsed on a copy; section 3, evidence). It goes stale with every write to production; before applying the migrations, count the rows again and take a fresh one if anything meaningful was written.
-2. Apply migrations 0115 to 0118, one at a time, then release to master and production with every switch off (a fast-forward of `integration/hermes-bridge-final`).
+2. **Migrations 0115 to 0118: done on 2026-11-02** (section 3, evidence). Next, as its own approval: the release to master and production with every switch off (a fast-forward of `integration/hermes-bridge-final`). The migrations are already in and additive, so the release needs nothing from the database.
 3. Runtime side: capacity and placement, backups of client profile data, then the worker image on one canary profile.
 4. The switches in this order, each reversible: `CLIENT_CUSTOMER_FACING_GATE_ENABLED`; `LAUNCH_AUTOMATION_SINCE` (the release time) and `LAUNCH_NOTIFICATIONS_ENABLED` for the pilot workspace; `HERMES_PROVISIONER_ENABLED` with the gateway pin and `HERMES_PROVISIONER_MAX_PROFILES`; the business-tool tier (with the supervised restart); `CLIENT_CRM_AUTO_SETUP_ENABLED`; containment; the scheduler.
 5. The supervised pilot: payment cleared, onboarding completed, native CRM and calendar configured, six roles configured, entitled profiles provisioned, real tools verified, role-specific acceptance, a genuine 100% Ready to Launch. Controlled test data first; no real customer message or booking without separate approval. Stop rules are in `docs/client-pilot-package-2026-11-01.md`.
