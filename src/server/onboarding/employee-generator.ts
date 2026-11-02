@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, defaultEmployeeName, type AgentRoleKey } from "@/lib/agents";
 import { agentSettingsSchema, BUSINESS_GOALS, type AgentSettings, type OnboardingData } from "@/lib/agent-settings";
 import { recommendedSettings } from "@/lib/role-playbooks";
 import { scanInstructionText } from "@/lib/instruction-risk";
@@ -107,7 +107,7 @@ export function buildEmployeeSettings(role: AgentRoleKey, data: OnboardingData, 
   return agentSettingsSchema.parse({
     ...recommended,
     ...(suggestion ?? {}),
-    displayName: AGENT_BY_KEY[role].shortName,
+    displayName: defaultEmployeeName(role),
     language: data.communication.language,
     replyLength: data.communication.replyLength,
     // The role-specific tone keeps six employees distinct when the client has no preference.

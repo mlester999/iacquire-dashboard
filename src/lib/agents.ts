@@ -229,6 +229,16 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
 export const AGENT_BY_KEY = Object.fromEntries(AGENT_ROLES.map((r) => [r.key, r])) as Record<AgentRoleKey, AgentRoleMeta>;
 export const AGENT_BY_SLUG = Object.fromEntries(AGENT_ROLES.map((r) => [r.slug, r])) as Record<string, AgentRoleMeta>;
 
+/**
+ * The name a new employee starts with. The Operations Manager is Zeng, the product's own persona for that role, in every client workspace as well as in iAcquire's own: a client's Zeng is
+ * a separate employee from iAcquire's (its own runtime profile, its own keys and business-tool credential, its own memory and knowledge), never the same one under the same name. The
+ * other five roles start with their role name. A client can rename any employee, and an employee that already has a name keeps it.
+ */
+export const OPERATIONS_MANAGER_PERSONA = "Zeng";
+export function defaultEmployeeName(role: AgentRoleKey): string {
+  return role === "operations_manager" ? OPERATIONS_MANAGER_PERSONA : AGENT_BY_KEY[role].shortName;
+}
+
 /** Keeps a custom employee name tied to its fixed specialist role in identity labels. */
 export function agentIdentityLabel(displayName: string, role: AgentRoleMeta) {
   const name = displayName.trim() || role.shortName;

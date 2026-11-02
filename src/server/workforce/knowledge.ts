@@ -82,6 +82,8 @@ export async function employeeKnowledgeContext(db: Queryable, orgId: string, age
   entryIds: string[];
   documentIds: string[];
   truncated: boolean;
+  /** The sources the block was built from, in order, so a caller that needs a smaller block can rebuild it without reading again. */
+  sections: KnowledgeSection[];
 }> {
   // One transaction, one pooled connection. node-postgres queues statements on a single client, so
   // Promise.all over these three reads never overlapped any work — it only made the statements
@@ -116,6 +118,7 @@ export async function employeeKnowledgeContext(db: Queryable, orgId: string, age
     entryIds: entries.map((e) => e.id).filter((id) => compiled.included.includes(`entry:${id}`)),
     documentIds: docs.map((d) => d.id).filter((id) => compiled.included.includes(`document:${id}`)),
     truncated: compiled.truncated,
+    sections,
   };
 }
 
@@ -143,16 +146,19 @@ export async function listEmployeeKnowledge(ctx: OrgContext, agentId: string): P
     // Use the exact same composition as buildRunInstructions, including the organization knowledge block and the
     // shared character budget, so the retrieval check cannot claim more than the provider will receive.
     const context = await employeeKnowledgeContext(db, ctx.org.orgId, agentId);
-    return {
-      entries,
-      documents,
-      retrieval: {
-        includedEntryIds: context.entryIds,
-        includedDocumentIds: context.documentIds,
-        truncated: context.truncated,
-        characters: context.block.length,
-      },
-    };
+    let retrieval = { includedEntryIds: context.entryIds, includedDocumentIds: context.documentIds, truncated: context.truncated, characters: context.block.length };
+    if (ctx.org.kind === "client") {
+      // A client employee's instructions are also fitted to the restricted path's budgets (src/server/workforce/client-prompt.ts), which can leave out the least important knowledge
+      // of a very full configuration. Show what the run instructions really carry. (A chat message that also carries a large workspace snapshot can shorten it further.)
+      try {
+        const { buildRunInstructions } = await import("@/server/workforce/service");
+        const run = await buildRunInstructions(db, ctx.org.orgId, agentId);
+        if (run.clientParts) retrieval = { includedEntryIds: run.knowledgeEntryIds, includedDocumentIds: run.knowledgeDocumentIds, truncated: run.knowledgeTruncated, characters: run.knowledgeCharacters };
+      } catch {
+        // An employee with no applied configuration has no run instructions yet: the default view above is all there is to show.
+      }
+    }
+    return { entries, documents, retrieval };
   });
 }
 

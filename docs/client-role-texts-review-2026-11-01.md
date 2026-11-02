@@ -86,7 +86,7 @@ Never offered to any client employee, in any phase, because each could reach a c
 
 The runtime toolsets of a client profile are memory, session search, to-do lists and vision for every role, plus web research for `lead_hunter` alone.
 
-## 5. Findings: the prompt budget (open, needs a decision)
+## 5. Findings: the prompt budget (fixed 2026-11-03 by priority fitting; the measurements below are what it was before)
 
 The restricted inference path accepts instructions of at most 20,000 characters and an effective message (instructions plus the person's input plus the history) of at most 24,576 bytes. `tests/client-prompt-budget.test.ts` reads both limits from the worker and the app and measures what each client role is actually sent, for three differently shaped synthetic clients, with every free-text questionnaire answer at the longest length the questionnaire accepts, the company knowledge stored at its database limit (the prompt keeps 6,000 characters of it), and the live booking and pipeline facts at their own cap. That is the most a client can produce through the questionnaire. The budget was not raised and nothing was shortened.
 
@@ -107,7 +107,9 @@ What this means:
 
 Typical answers are far shorter than the maximum, so a typical client is well inside the budget. The test records the breaches as breaches (so they cannot hide and cannot be masked by a setup error) and turns red the day one is fixed, so it is then held to the budget like the others.
 
-Options, none taken:
+**Resolution (2026-11-03).** Option A was taken: `src/lib/client-prompt-fit.ts`, `src/lib/client-head-fit.ts` and `src/server/workforce/client-prompt.ts` fit what a client employee is sent to both budgets by construction, and nothing is shortened when the parts already fit. Never shortened: the protected policy, the role and operating standard, the client's business description, services, rules, "never promise" and escalation, the live facts, the snapshot's framing and the state of every area, and the person's message. Shortened, in this order and only as far as needed: the snapshot's record samples; the approved knowledge, most important first, with a line naming what was left out; and last the client's own longer free-text answers (each keeps its opening sentences and ends "[...]", with one note). History goes first of all. With every answer at its longest, for three differently shaped clients, every role's run instructions are at most 19,955 characters and every role's chat at most 19,993 (`tests/client-prompt-budget.test.ts`). The one remaining corner (every answer at its longest plus a 2,000-character message in a script of three bytes a character) cannot be fitted by construction and is reported as `fits: false`; its remedy is a larger byte budget, not more shortening.
+
+Options that were on the table (A was taken):
 
 - **A. Fit by priority on the restricted path:** protected policy first, then the role and the client's answers, then knowledge, live facts and the snapshot in whatever room is left. Guarantees the cap by construction. Recommended, but it changes what is sent and so needs the founder's agreement.
 - **B. Lower the questionnaire's longest answers** for the Lead Hunter's questions (or the company-wide caps), so the maximum itself fits.

@@ -25,6 +25,7 @@ import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { prepareEmployeeEvidence } from "@/server/workforce/employee-evidence";
 import { insertEvidenceBlock } from "@/lib/employee-evidence";
+import { fitClientChatInstructions, fitRecord, type ClientPromptFitRecord } from "@/server/workforce/client-prompt";
 import { findUnbackedActionClaims, withActionClaimCorrection } from "@/lib/action-claims";
 import { classifyBookingResult, classifyModelTurn, parseEvidenceMarker, serverMarker, systemNoticeMarker, type EvidenceMarker, type ServerEvidenceMarker } from "@/lib/evidence-class";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
@@ -2008,6 +2009,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         versionId: string | null;
         knowledgeEntryIds: string[];
         knowledgeDocumentIds: string[];
+        promptFit: ClientPromptFitRecord | null;
       };
 
   // Read the facts this role needs as the signed-in person, outside the setup transaction (these are separate, row-level-security reads). The employee has no way to call
@@ -2024,7 +2026,21 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       ]);
     }
     const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id);
-    let instructions = insertEvidenceBlock(runInstructions.instructions, workspaceEvidence.block);
+    let instructions: string;
+    let knowledgeEntryIds = runInstructions.knowledgeEntryIds;
+    let knowledgeDocumentIds = runInstructions.knowledgeDocumentIds;
+    let promptFit: ClientPromptFitRecord | null = null;
+    if (runInstructions.clientParts) {
+      // A client employee's message is held to the restricted path's budgets by priority: the snapshot's record samples are shortened first, then the knowledge, and the policy, the
+      // employee's configuration and the person's own message never are. Nothing changes when it already fits.
+      const fitted = fitClientChatInstructions(runInstructions.clientParts, workspaceEvidence, prepared.userContent);
+      instructions = fitted.instructions;
+      knowledgeEntryIds = fitted.knowledgeEntryIds;
+      knowledgeDocumentIds = fitted.knowledgeDocumentIds;
+      promptFit = fitRecord(fitted.fit);
+    } else {
+      instructions = insertEvidenceBlock(runInstructions.instructions, workspaceEvidence.block);
+    }
     if (ctx.org.kind === "agency" && input.agentRole === "operations_manager") {
       const capabilityContext = await prepareInternalEmployeeContext(db, {
         orgId: ctx.org.orgId,
@@ -2061,8 +2077,9 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conn,
       idempotencyKey,
       versionId: runInstructions.versionId,
-      knowledgeEntryIds: runInstructions.knowledgeEntryIds,
-      knowledgeDocumentIds: runInstructions.knowledgeDocumentIds,
+      knowledgeEntryIds,
+      knowledgeDocumentIds,
+      promptFit,
     };
   });
   if (setup.blockedReason) {
@@ -2073,6 +2090,26 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         ? "Your agency role doesn't have access to all internal tasks, approvals, and workforce activity needed for this chat."
         : "The internal Operations Manager's approved configuration could not be verified. No run was started.",
     );
+  }
+
+  // When a client's message had to be shortened to fit the restricted path's budgets, say so in the audit trail: which parts and by how much (sizes only, never text), so a reply that
+  // lacks a detail can be explained. A message that fit leaves no row.
+  if (setup.promptFit && (setup.promptFit.shortened.length > 0 || !setup.promptFit.fits)) {
+    try {
+      await recordAudit({
+        orgId: ctx.org.orgId,
+        actorUserId: ctx.user.id,
+        actorKind: "system",
+        agentInstanceId: agent.id,
+        action: "workforce.client_prompt_fitted",
+        targetType: "agent_run",
+        targetId: setup.runId,
+        result: setup.promptFit.fits ? "success" : "failure",
+        metadata: { role: input.agentRole, fits: setup.promptFit.fits, chars: setup.promptFit.chars, bytes: setup.promptFit.bytes, shortened: setup.promptFit.shortened },
+      });
+    } catch {
+      // The audit row explains a reply; losing it must not stop the person's chat.
+    }
   }
 
   // The read happened before this run existed, so its own audit row (workforce.employee_evidence_read) names only the workspace. This second row ties that read to the run, the reply

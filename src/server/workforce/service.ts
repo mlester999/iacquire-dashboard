@@ -10,7 +10,7 @@ import { announceHealthObservation, recordHealthObservation, type HealthObservat
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, defaultEmployeeName, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, defaultSettings, sanitizeClientText, type CompanyContext } from "@/server/workforce/compiler";
 import { immutablePolicy, policyVersionFor, type WorkforceOrganizationKind } from "@/server/workforce/policy";
@@ -36,6 +36,7 @@ import {
 } from "@/server/integrations/hermes/inventory";
 import { notifyAgency, notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
+import { fitClientRunInstructions, fitRecord, type ClientPromptFitRecord, type ClientPromptParts } from "@/server/workforce/client-prompt";
 import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/reviews";
 import { clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { liveFactsBlock } from "@/server/workforce/live-facts";
@@ -100,7 +101,7 @@ export async function ensureAgentInstances(orgId: string, db: Queryable) {
     await db.query(
       `insert into agent_instances (org_id, role_key, display_name) values ($1, $2, $3)
        on conflict (org_id, role_key) do nothing`,
-      [orgId, key, AGENT_BY_KEY[key].shortName],
+      [orgId, key, defaultEmployeeName(key)],
     );
   }
 }
@@ -846,8 +847,14 @@ export interface RunInstructions {
   knowledgeEntryIds: string[];
   knowledgeDocumentIds: string[];
   knowledgeTruncated: boolean;
+  /** Length of the knowledge block the instructions carry (after any fit to the restricted path's budgets). */
+  knowledgeCharacters: number;
   /** Some of the live booking rules or pipeline stages did not fit their size cap and were left out of the block (src/server/workforce/live-facts.ts). */
   liveFactsTruncated: boolean;
+  /** A client employee's pieces, so a chat message can fit them again with its snapshot and the person's message (src/server/workforce/client-prompt.ts). Absent for the agency tier. */
+  clientParts?: ClientPromptParts;
+  /** What fitting the instructions to the restricted path's budgets did: sizes only. Absent for the agency tier. */
+  promptFit?: ClientPromptFitRecord;
 }
 
 /**
@@ -883,14 +890,22 @@ export async function composeRunInstructions(
     "## Agency policy (always applies and overrides everything above)",
     ...immutablePolicy(companyName, organization.kind).map((rule, index) => `${index + 1}. ${rule}`),
   ].join("\n");
+  // A client employee's instructions are held to the restricted path's budgets by priority (src/lib/client-prompt-fit.ts): the policy, the configuration and the live facts are never
+  // shortened, and the knowledge is shortened (most important first, saying what was left out) only when the parts do not fit. Typical clients are unchanged, byte for byte.
+  const clientParts: ClientPromptParts | null = organization.kind === "client"
+    ? { head, policy, live: live.block, knowledge: { block: knowledge.block, entryIds: knowledge.entryIds, documentIds: knowledge.documentIds, sections: knowledge.sections } }
+    : null;
+  const fitted = clientParts ? fitClientRunInstructions(clientParts) : null;
   return {
-    instructions: [head, knowledge.block, live.block, policy].filter(Boolean).join("\n\n"),
+    instructions: fitted ? fitted.instructions : [head, knowledge.block, live.block, policy].filter(Boolean).join("\n\n"),
     versionId,
     policyVersion,
-    knowledgeEntryIds: knowledge.entryIds,
-    knowledgeDocumentIds: knowledge.documentIds,
-    knowledgeTruncated: knowledge.truncated,
+    knowledgeEntryIds: fitted ? fitted.knowledgeEntryIds : knowledge.entryIds,
+    knowledgeDocumentIds: fitted ? fitted.knowledgeDocumentIds : knowledge.documentIds,
+    knowledgeTruncated: knowledge.truncated || Boolean(fitted?.knowledgeShortened),
+    knowledgeCharacters: fitted ? fitted.knowledgeBlock.length : knowledge.block.length,
     liveFactsTruncated: live.truncated,
+    ...(clientParts && fitted ? { clientParts, promptFit: fitRecord(fitted.fit) } : {}),
   };
 }
 

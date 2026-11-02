@@ -179,8 +179,8 @@ export function fitEvidence(evidence: EmployeeEvidence, budget = EVIDENCE_CHARAC
  * The block placed in an employee's run instructions, ahead of the protected policy. It has two jobs: give the verified facts, and say how to talk about them. Both apply on every
  * run, including when every area is unavailable, so an employee never falls back on guessing.
  */
-export function formatEmployeeEvidence(input: EmployeeEvidence): string {
-  const evidence = fitEvidence(boundEvidence(input));
+export function formatEmployeeEvidence(input: EmployeeEvidence, options: { budget?: number } = {}): string {
+  const evidence = fitEvidence(boundEvidence(input), options.budget);
   const when = new Intl.DateTimeFormat("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: safeZone(evidence.timeZone), timeZoneName: "short",
   }).format(new Date(evidence.generatedAt));
@@ -204,6 +204,31 @@ export function formatEmployeeEvidence(input: EmployeeEvidence): string {
     serializeEvidence(evidence),
     "</verified_workspace_evidence>",
   ].join("\n");
+}
+
+/**
+ * The block in at most `maxChars` characters. The framing (how to answer, what each state means) and the state of every area always stay: only the record samples and the largest
+ * groups of facts are shortened, and the serialised evidence says how many records exist and that detail was left out. When even that least form is longer than `maxChars` the least
+ * form is returned anyway and the caller sees it did not fit.
+ */
+export function evidenceBlockWithin(input: EmployeeEvidence, maxChars: number): string {
+  const full = formatEmployeeEvidence(input);
+  if (full.length <= maxChars) return full;
+  let best = formatEmployeeEvidence(input, { budget: 0 });
+  if (best.length > maxChars) return best;
+  let low = 0;
+  let high = EVIDENCE_CHARACTER_BUDGET;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const text = formatEmployeeEvidence(input, { budget: middle });
+    if (text.length <= maxChars) {
+      best = text;
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return best;
 }
 
 function safeZone(timeZone: string): string {
@@ -271,9 +296,14 @@ export function replaceLegacyToolsSection(instructions: string, label: (tool: st
   return `${instructions.slice(0, start)}${capabilitySection(allowed)}\n${tail ? `\n${tail}` : ""}`;
 }
 
+/** The capability section's wording for a run that carries a snapshot (the stored text says there is none). */
+export function snapshotWording(instructions: string): string {
+  return instructions.replace(NO_SNAPSHOT_BULLET, SNAPSHOT_BULLET);
+}
+
 /** Places the evidence block ahead of the protected policy so later text can never overshadow the policy. */
 export function insertEvidenceBlock(instructions: string, block: string): string {
-  const text = instructions.replace(NO_SNAPSHOT_BULLET, SNAPSHOT_BULLET);
+  const text = snapshotWording(instructions);
   const policyStart = text.indexOf("## Agency policy");
   if (policyStart < 0) return [text.trimEnd(), block].filter(Boolean).join("\n\n");
   return [text.slice(0, policyStart).trimEnd(), block, text.slice(policyStart)].filter(Boolean).join("\n\n");
