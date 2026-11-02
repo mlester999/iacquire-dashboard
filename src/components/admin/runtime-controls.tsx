@@ -30,6 +30,8 @@ export interface RuntimeControlsData {
 
 /** The words shown beside a control whose deployment switch is off. */
 export const SWITCHED_OFF_REASON = "Turned off in this deployment";
+/** What changing a business-tool tier costs on the pinned runtime: a running gateway keeps the tool entry it started with (observed in tests/hermes-business-mcp-hot-reload.test.ts), so the synchronization cannot pass its check until the gateway has been restarted. */
+const RESTART_NOTE = " On the current runtime a running gateway only picks this change up when it is restarted, so until the client gateway has been restarted in an approved window each synchronization ends in a failed check and the employee stays not online.";
 const MIN_REASON = 5;
 
 type Outcome = { ok: true; message: string } | { ok: false; message: string };
@@ -117,9 +119,9 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     label,
     buttonLabel: on ? "Turn off" : "Turn on",
     title: `Turn ${label.toLowerCase()} ${on ? "off" : "on"} for this workspace?`,
-    confirm: on
+    confirm: (on
       ? `The workspace's employees stop being able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.`
-      : `The workspace's employees will be able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.`,
+      : `The workspace's employees will be able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.`) + RESTART_NOTE,
     tone: on ? "danger" : "brand",
     disabled: toolsOff,
     run: (reason) => setClientBusinessToolsAction({ orgId, [name]: !on, reason }),
