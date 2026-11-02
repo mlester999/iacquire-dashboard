@@ -23,7 +23,7 @@
 //      again and compared with C.
 //   E. The reserved 0084 (restricted Hermes provisioner, from codex/client-ai-onboarding) before, between and after: the final schema is identical, and 0084 also
 //      applies cleanly on top of the populated head.
-//   G. The same hosted procedure from the production ledger as it really is today (105 rows; only 0110 to 0112 pending, applied around the already-applied 0113).
+//   G. The same hosted procedure from the production ledger as it is now (108 rows; 0115 to 0118 pending).
 //   F. The hosted procedure of the release docs, as far as embedded Postgres can: a database whose ledger ends at 0086 (80 rows), a backup that is restored and
 //      checked, a dry run that lists the pending versions, then each pending migration applied alone (the runner's prerequisite and ledger rules mirrored) with a
 //      full check after each.
@@ -370,6 +370,11 @@ const insertTargets = (file) => {
 // --------------------------------------------------------------------------------------------------------------------------------------------
 // New tables: row-level security, grants, emptiness
 // --------------------------------------------------------------------------------------------------------------------------------------------
+// Tables whose application role INTENTIONALLY holds INSERT, and nothing more. company_knowledge_revisions records the history of company_knowledge, which a person edits under row-level
+// security in their own transaction, so the one writer (src/server/knowledge/write.ts) adds the revision in that same transaction; the insert policy ties the row to the person's workspace,
+// their own user id and the 'approved' or 'held' statuses only, and the decision columns can only be written by the server. Any other privilege on such a table still fails the check.
+const APP_INSERT_BY_DESIGN = new Set(["company_knowledge_revisions"]);
+
 async function checkNewObjects(db, key, version, before, after) {
   const fresh = [...after.tables].filter((t) => !before.tables.has(t)).sort();
   const problems = [];
@@ -385,7 +390,7 @@ async function checkNewObjects(db, key, version, before, after) {
       from pg_attribute a join pg_class c on c.oid = a.attrelid, aclexplode(a.attacl) x where c.relnamespace = 'public'::regnamespace and c.relname = $1 and a.attacl is not null and a.attnum > 0 and not a.attisdropped`, [t]);
     for (const g of grants) {
       if (["anon", "authenticated", "PUBLIC", "iaq_site_runtime"].includes(g.grantee)) problems.push(`${t}: ${g.grantee} holds ${g.priv}`);
-      if (g.grantee === "iaq_app_user" && g.priv !== "SELECT") problems.push(`${t}: iaq_app_user holds ${g.priv} (select only expected)`);
+      if (g.grantee === "iaq_app_user" && g.priv !== "SELECT" && !(g.priv === "INSERT" && APP_INSERT_BY_DESIGN.has(t))) problems.push(`${t}: iaq_app_user holds ${g.priv} (select only expected)`);
     }
     for (const g of cols) {
       if (["anon", "authenticated", "PUBLIC", "iaq_site_runtime"].includes(g.grantee)) problems.push(`${t}.${g.col}: ${g.grantee} holds column ${g.priv}`);
@@ -2171,15 +2176,16 @@ async function runF() {
   });
 }
 
-// G: production as it was read from the hosted ledger on 2026-10-26: 105 rows, everything applied except 0110, 0111 and 0112 (0084, 0087 to 0109 and 0113 are in). This is the release that
-// is actually pending, applied out of order around 0113 exactly as the runner will do it, with the same backup, dry run and per-step checks as F.
+// G: production as it is now. The hosted ledger read on 2026-10-26 had 105 rows with 0110 to 0112 pending; once those were applied it had 108 (0084, 0087 to 0113 are in; docs/roadmap/phases-3-to-7/
+// release-record-2026-10-26.md). What is pending now is the client onboarding and provisioning milestone's four migrations, 0115 to 0118 (0114 is reserved for an unmerged branch), applied one at a time
+// after a backup exactly as the runner will do it, with the same dry run and per-step checks as F.
 async function runG() {
   return runHosted("G", {
-    title: "The hosted procedure from the 2026-10-26 production ledger (105 rows, 0110 to 0112 pending): backup, dry run, one at a time, verify",
+    title: "The hosted procedure from the production ledger as it is now (108 rows, 0115 to 0118 pending): backup, dry run, one at a time, verify",
     prodHead: "0113_demo_registration_requests",
-    lacks: (v) => ["0110_maintenance_agreements", "0111_customer_credit_notes", "0112_client_content_policy"].includes(v),
-    rows: (n) => n - 3,
-    recorded: "the hosted ledger read on 2026-10-26 had 105 rows",
+    lacks: () => false,
+    rows: () => 108,
+    recorded: "the hosted ledger had 108 rows after 0110 to 0112 were applied on 2026-10-26",
     resetFresh: false,
     legacyChecks: false,
   });

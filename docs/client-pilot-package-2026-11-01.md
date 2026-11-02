@@ -1,6 +1,6 @@
 # Supervised pilot: one real client, six employees (prepared 2026-11-01, not started)
 
-**Status: prepared for a separate approval. Nothing here has been run on production, and nothing in this file starts it.** It turns section 2 of `client-provisioning-dependencies-2026-10-31.md` (item 7) into a checklist that can be approved, stopped and audited. The application side it relies on is described in section 0 of that file and is verified locally on synthetic clients; the client-only Hermes runtime it needs is **NOT RUN** anywhere.
+**Status: prepared for a separate approval. Nothing here has been run on production, and nothing in this file starts it.** It turns section 2 of `client-provisioning-dependencies-2026-10-31.md` (item 7) into a checklist that can be approved, stopped and audited. The application side it relies on is described in section 0 of that file and is verified locally on synthetic clients; the client-only Hermes runtime it needs is **NOT RUN** anywhere. The release runbook with the restore-point plan, the switch order, the supervised gateway-restart procedure and the approvals in order is `docs/client-production-release-runbook-2026-11-03.md`.
 
 ## Preconditions (each is a decision for the founder, not for the build)
 
