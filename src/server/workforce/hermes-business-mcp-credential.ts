@@ -25,6 +25,11 @@ import { env } from "@/server/env";
 export const BUSINESS_MCP_CREDENTIAL_VERSION = "iamcp1";
 /** The variable name the Hermes profile's own .env uses for the credential. The portal never holds the value. */
 export const BUSINESS_MCP_CREDENTIAL_ENV_VAR = "IACQUIRE_BUSINESS_MCP_TOKEN";
+/**
+ * The name of the environment variable that holds the signing secret. Only this module and the environment schema spell it (a guard test keeps the secret's readers to those two), so a
+ * read-only tool that merely CLASSIFIES an env file by this name (for example whether it is long enough) refers to the name through this constant and never reads the value.
+ */
+export const BUSINESS_MCP_SECRET_ENV_NAME = "HERMES_BUSINESS_MCP_SECRET";
 export const DEFAULT_CREDENTIAL_DAYS = 90;
 export const MAX_CREDENTIAL_DAYS = 400;
 const MIN_CREDENTIAL_SECONDS = 60;

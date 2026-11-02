@@ -239,8 +239,14 @@ describe("asking for a demo", () => {
     expect(await count("demo_events", "prospect_id = $1 and kind = 'registered'", [id])).toBe(1);
     expect(await count("demo_verifications", "prospect_id = $1 and consumed_at is null", [id])).toBe(1);
     expect(await count("email_outbox", "template = 'demo_link' and to_email = $1", [email])).toBe(3);
-    const newest = (await linkTokenFor(email)) as string;
-    expect(await confirmVerification(newest, { ip: ipFor(), now: hours(1) })).toMatchObject({ ok: true });
+    // Three registrations ran at once, so which email was queued last depends on how the database scheduled them, and the link that survives is the one whose registration committed last. Rather
+    // than guess the order, ask each emailed link: exactly one works and the two it replaced do not.
+    const emailed = await rows<{ body_text: string }>("select body_text from email_outbox where template = 'demo_link' and to_email = $1", [email]);
+    const links = emailed.map((row) => /\/demo\/verify\?token=([A-Za-z0-9_-]{43})/.exec(row.body_text)?.[1]).filter((token): token is string => Boolean(token));
+    expect(links).toHaveLength(3);
+    const outcomes = [];
+    for (const link of links) outcomes.push(await confirmVerification(link, { ip: ipFor(), now: hours(1) }));
+    expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
   });
 
   it("holds each address to six requests an hour and each mailbox to three, with a retry time", async () => {

@@ -3,6 +3,7 @@ import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, isAgentRoleKey } from "@/li
 import { RUNTIME_ONLINE_STATUSES } from "@/lib/employee-runtime";
 import { MIGRATION_PREREQUISITES, type Queryable } from "@/server/db";
 import { inReadOnlyTransaction } from "@/server/workforce/hermes-a4a-evidence";
+import { BUSINESS_MCP_SECRET_ENV_NAME } from "@/server/workforce/hermes-business-mcp-credential";
 import { PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
 
@@ -150,7 +151,7 @@ const SWITCHES = [
   "HERMES_PROVISIONER_ENABLED", "HERMES_BUSINESS_MCP_ENABLED", "HERMES_BUSINESS_MCP_WRITES_ENABLED", "HERMES_CLIENT_BUSINESS_MCP_ENABLED",
   "HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED", "SCHEDULER_ENABLED",
 ] as const;
-const SECRET_MINIMUMS: Record<string, number> = { HERMES_PROVISIONER_TOKEN: 32, HERMES_BUSINESS_MCP_SECRET: 32, CRON_SECRET: 24 };
+const SECRET_MINIMUMS: Record<string, number> = { HERMES_PROVISIONER_TOKEN: 32, [BUSINESS_MCP_SECRET_ENV_NAME]: 32, CRON_SECRET: 24 };
 const SET_ONLY = ["APP_ENCRYPTION_KEY", "DATABASE_URL", "PAYMONGO_WEBHOOK_SECRET", "PAYPAL_WEBHOOK_ID"] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -805,7 +806,7 @@ export function evaluateProvisioningPreflight(facts: ProvisioningFacts, options:
     const inconsistent = [
       entry("HERMES_BUSINESS_MCP_WRITES_ENABLED").on && !entry("HERMES_BUSINESS_MCP_ENABLED").on ? "business writes are on without the business tools" : null,
       entry("HERMES_CLIENT_BUSINESS_MCP_PROPOSALS_ENABLED").on && !entry("HERMES_CLIENT_BUSINESS_MCP_ENABLED").on ? "client proposals are on without the client business tools" : null,
-      entry("HERMES_BUSINESS_MCP_ENABLED").on && !entry("HERMES_BUSINESS_MCP_SECRET").lengthOk ? "the business tools are on without a signing secret of the minimum length" : null,
+      entry("HERMES_BUSINESS_MCP_ENABLED").on && !entry(BUSINESS_MCP_SECRET_ENV_NAME).lengthOk ? "the business tools are on without a signing secret of the minimum length" : null,
       dormant && entry("SCHEDULER_ENABLED").on && stagedJobs === 0 ?"the scheduler is on with no named job list (every job would run)" : null,
       dormant && entry("HERMES_CLIENT_BUSINESS_MCP_ENABLED").on ? "the client business tools are on while the expected state is dormant" : null,
     ].filter((problem): problem is string => problem !== null);
