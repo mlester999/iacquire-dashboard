@@ -22,14 +22,16 @@ Switching a workspace's business tools on (runtime controls, Super Admin) opens 
 
 Proven by tests (synthetic): the manifest's keys equal the worker's (the test reads the worker's own key sets), the allocated id is the same on a re-claim, a first provision never carries the tier, the credential is generated and written once, a retry keeps it and a new id replaces it, switching off removes it, every refusal writes nothing, the secret appears nowhere but the profile's environment file, an extra or a missing tool is refused, the completion registers from the hash alone, refuses a stale id, and accepts a replay only with the same hash. Python: `BusinessToolDeliveryTests` in `services/hermes-provisioner/test_worker.py` (6) and the whole provisioner suite (151 tests); portal: `tests/hermes-client-business-mcp-delivery.test.ts` (10).
 
+**Observed, for the agency tier, on the pinned runtime:** a running Hermes 0.21.5 gateway does **not** pick up an `mcp_servers` entry, toolset and credential written into a live profile; it needs a restart (`tests/hermes-business-mcp-hot-reload.test.ts`, section 3 item 5 of `hermes-a4a-acceptance-plan-2026-10-31.md`; the test runs only in the pinned-runtime CI job). The client tier writes the same kind of entry into the same kind of profile on the same image, so **assume the same**: a synchronization that installs the tier ends `runtime_tool_policy_unverified` after its three attempts until the client gateway is restarted, then **Synchronize** completes it. The credential the worker already wrote is kept (a retry with the same id never rotates it), and the portal accepts no call from it until the completion registers its hash. The restart interrupts every tenant's chat on that gateway, so it is its own approval.
+
 **NOT proven, and each is a rollout gate:**
-1. Whether the real gateway (pinned Hermes 0.21.5) picks up a profile's new `mcp_servers` entry and environment file **without a restart**. If not, the rollout needs a restart window.
+1. That the client tier behaves like the agency tier on restart (it has no test of its own), and whether a profile's **replaced key and tools-off policy** (containment) are applied without a restart: the worker waits for them, reports `revoke_not_applied` if they are not applied in time, and the portal changes nothing until the worker proves it.
 2. That the tool names the real gateway reports on `/v1/tools` and `/v1/toolsets` are the runtime names the portal computes (the tests use the portal's own names on a fake gateway).
 3. That two client profiles multiplexed in one gateway each send only their own credential, and that tenant A can never read B's records through it. The pinned-runtime test for this (two tenants, two roles, modelled on `tests/hermes-business-mcp-pinned-runtime.test.ts`, required in CI with `IACQUIRE_REQUIRE_C6_RUNTIME=1`) is **not written**: it needs the real Hermes source and can only be iterated in the pinned-runtime workflow.
 
 ## 5. Rollout order (each its own approval)
 
 1. Build a worker image that contains this code and roll it out with the tier switch off (nothing changes).
-2. Write and pass the pinned-runtime test above; record the answer to the restart question here.
+2. Write and pass the pinned-runtime test above (client route, two tenants, and a restart so the entry loads); record here whether containment's key replacement also needs one.
 3. Turn on `HERMES_CLIENT_BUSINESS_MCP_ENABLED` for the deployment (and, only later, the proposals phase).
-4. Switch one synthetic workspace into the tier (runtime controls), watch its synchronization and its health check, then the supervised pilot client.
+4. Switch one synthetic workspace into the tier (runtime controls), watch its synchronization fail closed as expected, restart the client gateway in an approved window, press **Synchronize**, watch it complete and its health check pass, then the supervised pilot client.
