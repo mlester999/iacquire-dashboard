@@ -204,6 +204,20 @@ describe("HERMES_PROVISIONER_MAX_PROFILES", () => {
     expect(await mapped()).toBe(7);
   });
 
+  it("counts only the employees a client is entitled to: one switched off or left out of the plan has no job, no profile and no place in the count", async () => {
+    setMax(4);
+    const c = await client("Four Of Six", 4);
+    const all = (await withSystem((db) => db.query<{ id: string; enabled: boolean }>("select id, enabled from agent_instances where org_id=$1", [c.org.id]))).rows;
+    expect(all.filter((a) => a.enabled)).toHaveLength(4);
+    for (const off of all.filter((a) => !a.enabled)) expect(await jobFor(off.id)).toBeUndefined();
+    // Four profiles fit a limit of four: the two locked employees did not take a place in it.
+    for (let i = 0; i < 4; i += 1) expect((await claimAndFinish())?.orgId).toBe(c.org.id);
+    await expect(claimHermesProvisionerJob(gatewayId)).resolves.toBeNull();
+    expect(await mapped()).toBe(4);
+    const locked = (await withSystem((db) => db.query("select 1 from agent_instances where org_id=$1 and not enabled and (hermes_profile is not null or hermes_gateway_id is not null)", [c.org.id]))).rows;
+    expect(locked).toHaveLength(0);
+  });
+
   it("holds a client whose whole team is larger than the limit, however low the limit is set", async () => {
     setMax(5);
     const six = await client("Six Roles", 6);
