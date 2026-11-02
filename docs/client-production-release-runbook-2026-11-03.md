@@ -6,8 +6,9 @@ Prepared, not executed. **Nothing in this file has been applied to production, m
 
 | Check | Result |
 | --- | --- |
-| Live master | `7598ab73` (read from GitHub); an ancestor of the integration branch, so the release is a **fast-forward** of 28 commits (395 files, +56,541 / -1,256), four migrations and four rollbacks, no other schema change |
+| Live master | `7598ab73` (read from GitHub); an ancestor of the integration branch, so the release is a **fast-forward**: as of `c8887175` (the tip pushed for CI on 2026-11-03) 36 commits, 416 files (+58,764 / -1,308), four migrations and four rollbacks, no other schema change. Re-count against the live master before the approval: `git rev-list --count master..integration/hermes-bridge-final` |
 | Whole migration history (`scripts/rehearse-combined-migrations.mjs`, embedded Postgres) | Sections A to G pass: every file applies in order; each migration applied one at a time on a populated database leaves every earlier row unchanged; schema equals the fresh chain; every rollback runs newest first and forward again; the reserved 0084 slots in; the hosted procedure from **the production ledger as it is now (108 rows, 0115 to 0118 pending)**: backup, dry run lists exactly 0115, 0116, 0117, 0118, each applied with per-step checks, restoring the backup returns ledger 108 |
+| Linux CI on `c8887175` | Both workflows passed: the full suite, typecheck, lint and the production build (60 minutes), the pinned Hermes worker checks, the operator scripts, and the two-client real-gateway proof (`hermes-business-mcp-compat`). Runs 41434614732 and 41434614653 |
 | Prompt budget | Fixed by priority fitting (section 6): all six roles fit at their ceiling for three differently shaped clients |
 | Real pinned gateway, two clients (`tests/hermes-client-business-mcp-pinned-runtime.test.ts`) | 22 tests pass against Hermes 0.21.5 with this repository's overlay: eight profiles (six for one client, the two the other bought), separate keys, credentials, tools and records |
 | Reload behaviour of a running gateway | Observed, section 7 |
