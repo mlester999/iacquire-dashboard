@@ -6,6 +6,7 @@ import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { actionError } from "@/server/errors";
 import { addFinanceEntry, saveFinanceSettings, voidFinanceEntry } from "@/server/billing/finance";
 import { addProviderFee, adjustOrgCredits, confirmLivePaymentsReview, publishUnitRate, setExchangeRate } from "@/server/billing/service";
+import { checkPaymentProvider } from "@/server/billing/provider-health";
 
 const uuid = z.string().uuid();
 
@@ -27,6 +28,8 @@ export const voidFinanceEntryAction = async (id: string, reason: string) => run(
 export const saveFinanceSettingsAction = async (input: Parameters<typeof saveFinanceSettings>[1]) => run((u) => saveFinanceSettings(u, input));
 export const setExchangeRateAction = async (usdPhpRate: number, source: string) => run((u) => setExchangeRate(u, { usdPhpRate, source }));
 export const confirmLiveReviewAction = async (confirmed: boolean) => run((u) => confirmLivePaymentsReview(u, confirmed));
+/** "Check connection": a read-only call to the provider with iAcquire's own credentials. It creates and charges nothing, and the answer holds no key. */
+export const checkPaymentProviderAction = async (provider: string) => run((u) => checkPaymentProvider(u, z.enum(["paymongo", "paypal"]).parse(provider)));
 /** The price is typed in dollars per unit for readability and stored exactly in micro-dollars. */
 export const publishUnitRateAction = async (provider: string, unitType: string, wholesaleUsdPerUnit: number, note?: string) =>
   run((u) => publishUnitRate(u, { provider, unitType, wholesaleMicrosPerUnit: Math.round(wholesaleUsdPerUnit * 1_000_000), note }));

@@ -115,7 +115,7 @@ export function InboxView() {
         plan="core"
         title="Want one inbox and calendar for your own business?"
         body="The unified inbox, booking and the Appointment Setter are part of your core implementation, connected to the channels and calendar you choose, where supported."
-        consultLabel="Book a free consultation"
+        consult
         secondary={{ view: "automation", label: "See Automation Studio" }}
       />
     </div>

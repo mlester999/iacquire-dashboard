@@ -4,17 +4,20 @@ import { AlertTriangle, ArrowLeft, Clock3, CreditCard, Mail, MapPin, ReceiptText
 import { requireAgency } from "@/server/tenancy/context";
 import { AppError } from "@/server/errors";
 import { withSystem } from "@/server/db";
-import { getPurchaseIntent, listPurchaseIntentEvents } from "@/server/purchase-intents/service";
+import { getPurchaseIntent, listPurchaseIntentDeliveries, listPurchaseIntentEvents } from "@/server/purchase-intents/service";
+import { emailReadiness } from "@/server/email";
+import { getInvitationOrigin } from "@/server/purchase-intents/origin";
 import { listIntentCheckouts } from "@/server/purchase-intents/checkout";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { PurchaseIntentActions } from "@/components/purchase-intents/actions";
-import { CHECKOUT_STATUS_TEXT, formatUsdCents, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
-import { cn } from "@/lib/utils";
+import { DeliveryActions, DeliveryStatusBlock } from "@/components/purchase-intents/delivery-panel";
+import { InvitationFacts } from "@/components/purchase-intents/invitation-summary";
+import { StatusPill } from "@/components/ui/status";
+import { CHECKOUT_STATUS_TEXT, formatUsdCents, invitationEmailEventText, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
+import { cn, formatDateTime } from "@/lib/utils";
 
 export const metadata = { title: "Purchase intent" };
 export const dynamic = "force-dynamic";
-
-const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 export default async function PurchaseIntentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +30,10 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
     if (error instanceof AppError && error.code === "forbidden") notFound();
     throw error;
   }
-  const [events, checkouts] = await Promise.all([listPurchaseIntentEvents(user, id).catch(() => []), withSystem((db) => listIntentCheckouts(db, intent.id)).catch(() => [])]);
+  const origin = await getInvitationOrigin(user, id).catch(() => null);
+  const [events, checkouts, deliveries] = await Promise.all([listPurchaseIntentEvents(user, id).catch(() => []), withSystem((db) => listIntentCheckouts(db, intent.id)).catch(() => []), listPurchaseIntentDeliveries(user, id).catch(() => [])]);
+  const when = (iso: string | null): string => formatDateTime(iso, user.timezone);
+  const email = emailReadiness();
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -40,7 +46,14 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
         <div className="min-w-0">
           <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">Purchase intent · {intent.reference}</p>
           <h1 className="mt-1 flex items-center gap-2 text-[26px] font-semibold tracking-[-0.04em] text-ink"><ShoppingBag className="size-6 text-primary" aria-hidden /> {intent.company}</h1>
-          <p className="mt-1 text-[14px] text-muted">Created {when(intent.createdAt)}. The link expires {when(intent.expiresAt)}.</p>
+          <p className="mt-1 text-[14px] text-muted">Created {when(intent.createdAt)}. The link {intent.status === "expired" ? "expired" : "expires"} {when(intent.expiresAt)}.</p>
+          {origin && (
+            <p className="mt-1 text-[14px] text-muted">
+              Made from the demo request of{" "}
+              <Link href={`/admin/prospects/${origin.prospectId}`} className="font-medium text-primary hover:underline">{origin.name ?? origin.business ?? "a demo prospect"}</Link>
+              . The demo itself never creates a payment or a workspace.
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-line bg-surface px-4 py-3 text-right shadow-soft">
           <p className="text-[18px] font-semibold tabular-nums text-ink">{formatUsdCents(intent.setupFeeCents)}</p>
@@ -65,6 +78,33 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
       {/* grid-cols-1 is minmax(0, 1fr): without it the single column grows to its longest unbroken string (an email, a provider reference) and the cards run off a phone's edge. */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-5">
+          <Card role="region" aria-labelledby="invitation-heading">
+            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-[15px]"><Mail className="size-4 text-primary" aria-hidden /><span id="invitation-heading">Invitation and delivery</span></CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <InvitationFacts intent={intent} timeZone={user.timezone} />
+              <div className="rounded-xl border border-line bg-surface-2 p-3.5">
+                <DeliveryStatusBlock delivery={intent.delivery} timeZone={user.timezone} />
+              </div>
+              {!email.ready && <p className="text-[12px] leading-relaxed text-muted">Email is not set up in this environment: {email.problems.join(" ")}</p>}
+              <DeliveryActions intent={intent} emailReady={email.ready} />
+              {deliveries.length > 1 && (
+                <details className="rounded-xl border border-line">
+                  <summary className="flex min-h-11 cursor-pointer items-center px-3.5 text-[13px] font-medium text-ink">Delivery history ({deliveries.length})</summary>
+                  <ol className="space-y-2 px-3.5 pb-3">
+                    {deliveries.map((d) => (
+                      <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-2">
+                        <StatusPill tone={d.tone} size="sm">{d.statusText}</StatusPill>
+                        <span>{d.kindText}</span>
+                        <span className="text-muted">{when(d.createdAt)}</span>
+                        {d.error && <span className="basis-full text-[12px] text-muted">{d.error}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-[15px]">Buyer and product</CardTitle></CardHeader>
             <CardContent className="grid gap-3 text-[14px] sm:grid-cols-2">
@@ -129,7 +169,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                   <li key={event.id} className="flex gap-3">
                     <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", i === events.length - 1 ? "bg-primary" : "bg-line-strong")} aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-[14px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
+                      <p className="text-[14px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : event.kind === "invitation_email" ? invitationEmailEventText(event.detail) : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
                       <p className="text-[12px] text-muted">{when(event.createdAt)} · {event.actorKind}</p>
                     </div>
                   </li>

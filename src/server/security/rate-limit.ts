@@ -204,4 +204,11 @@ export const RATE_LIMITS = {
   purchaseReturnByIp: { name: "purchase:return:ip", limit: 120, windowSeconds: 900 },
   // PayPal webhook deliveries: each one that reaches the check costs iAcquire two calls to PayPal, whoever sent it, so the per-address rule is checked before PayPal is asked.
   paypalWebhookByIp: { name: "paypal:webhook:ip", limit: 300, windowSeconds: 60 },
+  // Every purchase invitation or new link a Super Admin makes can send an email to someone outside iAcquire: a day's real work is far below this, a loop is stopped by it (the sender's
+  // reputation is what a loop would spend). Each purchase also has its own pause between links and daily limit (src/lib/purchase-intents/delivery.ts).
+  purchaseInviteByUser: { name: "purchase:invite:user", limit: 30, windowSeconds: 3600 },
+  // "Check connection" calls the payment provider with iAcquire's own credentials.
+  paymentProviderCheckByUser: { name: "payment:check:user", limit: 12, windowSeconds: 3600 },
+  // "Check email setup" reads the email provider with iAcquire's own key; it sends nothing.
+  emailSetupCheckByUser: { name: "email:setup-check:user", limit: 12, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

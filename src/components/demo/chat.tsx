@@ -9,6 +9,7 @@ import { DemoNotice } from "@/components/demo/shell";
 import { Markdown } from "@/components/markdown";
 import type { Notice } from "@/lib/demo/outcomes";
 import { newClientMessageId, type RoomChatState, type RoomLine } from "@/lib/demo/room-types";
+import { SHORT_QUERY, useMediaQuery } from "@/components/demo/showroom/use-media";
 
 // The demo room's chat. Without scripts it is a plain form (a post to the demo API, then the page again); with scripts it sends the message as JSON and shows the conversation the
 // server returns, so what is on screen (the lines, the messages left, whether another can be sent) comes from the record and never from a guess.
@@ -162,9 +163,10 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
   }
 
   const low = state.canSend && state.messagesLeft > 0 && state.messagesLeft <= 2;
+  const short = useMediaQuery(SHORT_QUERY);
 
   return (
-    <div className={cn("flex min-h-0 flex-col gap-3", className)}>
+    <div className={cn("flex min-h-0 flex-col gap-3 [@media(max-height:500px)]:gap-2", className)}>
       <div
         ref={logRef}
         role="log"
@@ -172,11 +174,21 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         aria-label="AQi conversation"
         aria-live="polite"
         aria-relevant="additions"
-        className="sx-scroll min-h-40 flex-1 space-y-4 overflow-y-auto rounded-2xl border border-line bg-surface-2/60 p-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="sx-scroll min-h-24 [@media(max-height:500px)]:min-h-16 flex-1 space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface-2/60 p-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:min-h-40"
       >
         {state.transcript.length === 0 && (
           <div className="space-y-3 py-1">
             <p className="text-[14px] leading-relaxed text-ink-2">Nothing here yet. Ask AQi what the AI team does or what it costs.</p>
+            {/* The starter questions live in the scrolling part, not above the question box: on a short phone the box (and the Send button) must never be pushed out of reach by them. */}
+            {state.canSend && suggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" aria-label="Suggested questions" role="group">
+                {suggestions.map((q) => (
+                  <button key={q} type="button" onClick={() => { setText(q); boxRef.current?.focus(); }} className="sx-btn-quiet min-h-11 rounded-full px-3.5 py-2 text-left text-[13px] font-medium leading-snug sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-[12.5px]">
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {state.transcript.map((l) => (
@@ -223,17 +235,8 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
       <DemoNotice notice={notice} />
 
       {state.canSend ? (
-        <form ref={formRef} method="post" action="/api/public/demo/message" onSubmit={send} className="space-y-2.5">
+        <form ref={formRef} method="post" action="/api/public/demo/message" onSubmit={send} className="shrink-0 space-y-2.5 [@media(max-height:500px)]:space-y-1.5">
           <input type="hidden" name="clientMessageId" value={fallbackMessageId} />
-          {suggestions.length > 0 && state.transcript.length === 0 && (
-            <div className="flex flex-wrap gap-1.5" aria-label="Suggested questions" role="group">
-              {suggestions.map((q) => (
-                <button key={q} type="button" onClick={() => { setText(q); boxRef.current?.focus(); }} className="sx-btn-quiet rounded-full px-3 py-1.5 text-left text-[12.5px] font-medium leading-snug">
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
           <div className="flex items-center gap-2">
             <label htmlFor="demo-employee" className="shrink-0 text-[13px] font-medium text-muted">
               Ask
@@ -243,7 +246,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
               name="employeeRole"
               value={employee}
               onChange={(e) => setEmployee(e.target.value)}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface-2 px-2.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="h-11 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface-2 px-2.5 text-[16px] text-ink focus-visible:outline-2 sm:h-9 sm:text-[13px] [@media(max-height:500px)]:h-10 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <option value="">Any AI Employee</option>
               {roles.map((r) => (
@@ -274,8 +277,8 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
                     formRef.current?.requestSubmit();
                   }
                 }}
-                placeholder="For example: what does the Appointment Setter do?"
-                className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none focus-visible:ring-0"
+                placeholder={short ? "Ask about the AI team or pricing" : "For example: what does the Appointment Setter do?"}
+                className="max-h-32 min-h-11 [@media(max-height:500px)]:h-11 [@media(max-height:500px)]:max-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-[16px] leading-relaxed text-ink outline-none sm:text-[14px] placeholder:text-faint focus-visible:outline-none focus-visible:ring-0"
               />
               <button type="submit" disabled={sending} aria-label={sending ? "Sending" : "Send"} className="sx-btn-primary grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-60">
                 <Send className="size-[18px]" aria-hidden />

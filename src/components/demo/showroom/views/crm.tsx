@@ -77,7 +77,7 @@ export function CrmView() {
         plan="core"
         title="Ready to manage your actual leads with iAcquireOS?"
         body="The native CRM, its pipeline and the AI Employees working inside it are part of your core implementation. We set up your stages, fields and forms to match how you sell."
-        consultLabel="Book a free consultation"
+        consult
         secondary={{ view: "inbox", label: "See the inbox" }}
       />
       <StepNav />

@@ -128,10 +128,24 @@ describe("the room", () => {
   });
 
   it("never claims a checkout, a charge or a created workspace for the Buy button", () => {
-    expect(CTA_COPY.buy).toMatch(/not open yet/i);
-    expect(CTA_COPY.buy).toMatch(/nothing was charged/i);
+    // The Buy button is a request for a purchase link: what it says is that the team will email one, and that nothing has been charged.
+    expect(CTA_COPY.buy).toMatch(/secure purchase link/i);
+    expect(CTA_COPY.buy).toMatch(/nothing has been charged/i);
+    expect(CTA_COPY.buy).not.toMatch(/checkout (is|was) (open|created)|workspace (is|was) created|payment received|order confirmed/i);
+    expect(ROOM_COPY.buyButton).toBe("Request my purchase link");
     expect(ROOM_COPY.buyNote).toMatch(/nothing is charged/i);
     expect(ROOM_COPY.buyNote).toMatch(/no workspace is created/i);
+    expect(ROOM_COPY.buyNote).toMatch(/payment provider's own page/i);
+  });
+
+  it("calls the consultation button \"Book\" only where a scheduling page exists, and says in both cases that nothing is booked until a time is chosen", () => {
+    expect(ROOM_COPY.consultationButton).toBe("Book a free consultation");
+    expect(ROOM_COPY.consultationRequestButton).toBe("Request a consultation");
+    expect(ROOM_COPY.consultationRequestButton).not.toMatch(/book/i);
+    expect(ROOM_COPY.consultationNote).toMatch(/no time is booked/i);
+    expect(ROOM_COPY.consultationNote).toMatch(/not set up yet/i);
+    expect(ROOM_COPY.consultationNoteWithLink).toMatch(/no time is booked until you choose one/i);
+    for (const t of [ROOM_COPY.consultationNote, ROOM_COPY.consultationNoteWithLink]) expect(t).toMatch(/nothing is charged/i);
   });
 });
 

@@ -1,6 +1,6 @@
 // Rehearses the ACTUAL combined migration history (everything from 0077, the AI workforce, up to the current head, with the reserved 0084 slotted in) on
 // EMBEDDED Postgres only (PGlite, in memory). It never reads an environment file, never opens a network connection and cannot reach any hosted database:
-//   node scripts/rehearse-combined-migrations.mjs [--report .data/combined-migration-rehearsal.json] [--scale 1] [--sections A,B,C,D,E,F]
+//   node scripts/rehearse-combined-migrations.mjs [--report .data/combined-migration-rehearsal.json] [--scale 1] [--sections A,B,C,D,E,F,G,H]
 //   (--scale sizes the dataset, 1 = about 7,200 rows before 0077; --sections runs part of it, B / C / D always run together; --migrations-dir and --rollbacks-dir
 //    point at a scratch copy with a deliberately broken file, to show that the checks can fail. Run it under the lock: node scripts/run-locked.mjs heavy -- node scripts/rehearse-combined-migrations.mjs)
 //
@@ -23,7 +23,8 @@
 //      again and compared with C.
 //   E. The reserved 0084 (restricted Hermes provisioner, from codex/client-ai-onboarding) before, between and after: the final schema is identical, and 0084 also
 //      applies cleanly on top of the populated head.
-//   G. The same hosted procedure from the production ledger as it is now (108 rows; 0115 to 0118 pending).
+//   G. The same hosted procedure from the production ledger as it stood before the client onboarding milestone (108 rows; 0115 to 0119 pending).
+//   H. The same hosted procedure from the production ledger as it is now (112 rows, 0115 to 0118 applied on 2026-11-02; 0119, the purchase invitation delivery records, pending).
 //   F. The hosted procedure of the release docs, as far as embedded Postgres can: a database whose ledger ends at 0086 (80 rows), a backup that is restored and
 //      checked, a dry run that lists the pending versions, then each pending migration applied alone (the runner's prerequisite and ledger rules mirrored) with a
 //      full check after each.
@@ -1249,6 +1250,32 @@ CLEAN["0103_purchase_checkouts"] = {
   },
 };
 
+// Purchase invitation delivery. A THIRD intent (so 0101's and 0103's rows stay untouched by this clean-up), invited, with one email delivery the provider accepted, the timeline row of the new
+// kind, and one payment provider connection check. The rollback refuses while any of the three exists. The checks are append-only, so the clean-up (what an operator exports first) switches that
+// guard off for the length of the removal; the delivery and the timeline go with the intent.
+SEEDS["0119_purchase_invitation_delivery"] = async (db, ctx) => {
+  const made = ctx.staffMessages;
+  if (!made) throw new Error("0119's seed needs the agency workspace and the agency people that 0096's seed makes");
+  const [manager] = made.people;
+  const intent = (await one(db, `insert into purchase_intents (agency_org_id, token_hash, reference, buyer_name, buyer_email, company, product_version, status, expires_at, setup_fee_cents, maintenance_monthly_cents, created_by)
+    values ($1, repeat('c', 64), 'PUR-SEED0119', 'Seed Invited Buyer', 'seed.invited@example.test', 'Seed Invited Co', 'launch-seed', 'invited', now() + interval '10 days', 149900, 29900, $2) returning id`, [made.agency, manager])).id;
+  await db.query(`insert into purchase_intent_deliveries (intent_id, agency_org_id, kind, status, recipient, provider, provider_message_id, link_expires_at, attempts, completed_at, requested_by)
+    values ($1, $2, 'invitation', 'sent', 'seed.invited@example.test', 'resend', 'em_seed0119', now() + interval '10 days', 1, now(), $3)`, [intent, made.agency, manager]);
+  await db.query("insert into purchase_intent_events (intent_id, agency_org_id, kind, actor_kind) values ($1, $2, 'invitation_email', 'user')", [intent, made.agency]);
+  await db.query("insert into payment_provider_checks (provider, livemode, outcome, ok, fingerprint, checked_by) values ('paymongo', false, 'verified', true, '0123456789abcdef', $1)", [manager]);
+};
+CLEAN["0119_purchase_invitation_delivery"] = {
+  guard: async (db) => {
+    await db.query("alter table payment_provider_checks disable trigger payment_provider_checks_immutable");
+    try {
+      await db.query("delete from payment_provider_checks");
+    } finally {
+      await db.query("alter table payment_provider_checks enable trigger payment_provider_checks_immutable");
+    }
+    await purgePurchaseIntents(db, "reference = 'PUR-SEED0119'");
+  },
+};
+
 // Customer reply usage. One recorded customer reply per workspace (the rollback refuses while any exists). The optional monthly cap lives on a row that already exists, so it is not
 // seeded here (changing that row would move an earlier row); the rollback's refusal for a cap is covered by tests/customer-reply-usage.test.ts.
 SEEDS["0104_customer_reply_usage"] = async (db, ctx) => {
@@ -2181,11 +2208,25 @@ async function runF() {
 // after a backup exactly as the runner will do it, with the same dry run and per-step checks as F.
 async function runG() {
   return runHosted("G", {
-    title: "The hosted procedure from the production ledger as it is now (108 rows, 0115 to 0118 pending): backup, dry run, one at a time, verify",
+    title: "The hosted procedure from the production ledger before the client onboarding milestone (108 rows, 0115 to 0119 pending): backup, dry run, one at a time, verify",
     prodHead: "0113_demo_registration_requests",
     lacks: () => false,
     rows: () => 108,
     recorded: "the hosted ledger had 108 rows after 0110 to 0112 were applied on 2026-10-26",
+    resetFresh: false,
+    legacyChecks: false,
+  });
+}
+
+// H: production as it is now. 0115 to 0118 were applied on 2026-11-02 (ledger 112 rows, docs/client-production-release-runbook-2026-11-03.md); what is pending is 0119, the purchase invitation delivery
+// records and the payment provider checks, applied after a backup exactly as the runner will do it, with the same dry run and per-step checks as F and G.
+async function runH() {
+  return runHosted("H", {
+    title: "The hosted procedure from the production ledger as it is now (112 rows, 0119 pending): backup, dry run, one at a time, verify",
+    prodHead: "0118_audit_logs_purge_detach",
+    lacks: () => false,
+    rows: () => 112,
+    recorded: "the hosted ledger had 112 rows after 0115 to 0118 were applied on 2026-11-02",
     resetFresh: false,
     legacyChecks: false,
   });
@@ -2202,6 +2243,7 @@ if (wants("E")) await runE();
 if (state.popDb) await state.popDb.close();
 if (wants("F")) await runF();
 if (wants("G")) await runG();
+if (wants("H")) await runH();
 
 for (const [key, s] of Object.entries(result.sections)) {
   console.log(`\n${key}. ${s.title}: ${s.failures.length ? "FAIL" : "ok"}${s.ms ? ` (${(s.ms / 1000).toFixed(1)} s)` : ""}`);

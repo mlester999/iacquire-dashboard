@@ -21,7 +21,7 @@ export default function WhyPage() {
         Skip to content
       </a>
       <header className="relative z-10 mx-auto flex w-full max-w-[1120px] items-center justify-between gap-4 px-4 pt-5 sm:px-8 sm:pt-8">
-        <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
+        <Link href="/demo" aria-label="iAcquireOS demo home" className="inline-flex min-h-11 items-center">
           <Logo />
         </Link>
         <div className="flex items-center gap-2">

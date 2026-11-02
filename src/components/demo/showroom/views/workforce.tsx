@@ -183,7 +183,7 @@ export function WorkforceView() {
         plan="core"
         title="Want your own AI team configured for your business?"
         body="The six AI Employees are part of the core implementation. We configure them to your business, test them with you and switch them on, with your approval in charge."
-        consultLabel="Get this AI team for my business"
+        consultLabel="Ask about this AI team for my business"
         secondary={{ view: "pricing", label: "See what it costs" }}
       />
 

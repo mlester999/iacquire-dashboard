@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { CREDIT_PRESETS_USD, MICROS_PER_USD, OPERATING_RESERVE_PER_SETUP_USD, SETUP_FEE_USD, applyMarkup, isUnitType, rateUnitLabel, usdToMicros } from "@/lib/billing";
 import { createPaymentCheckout, type CheckoutInput } from "@/server/billing/payments";
 import { paymongoStatus, type FetchLike } from "@/server/billing/paymongo";
+import { verifiedForCurrentConfig } from "@/server/billing/provider-checks";
 import { adjustCredits, currentRate } from "@/server/billing/ledger";
 import { env } from "@/server/env";
 import { AUTO_PAST_DUE_MIN_DAYS_OVER } from "@/lib/billing-renewal";
@@ -81,13 +82,16 @@ export async function getBillingOverview(ctx: OrgContext): Promise<BillingOvervi
   const status = paymongoStatus();
   const limits = await withSystem((db) => db.query<{ topup_min_usd: number; topup_max_usd: number; usd_php_rate: string | null; live_payments_review_at: Date | null }>("select topup_min_usd, topup_max_usd, usd_php_rate, live_payments_review_at from agency_billing_settings"));
   const agency = limits.rows[0];
+  const liveChecked = status.livemode ? await withSystem((db) => verifiedForCurrentConfig(db, "paymongo")) : true;
   const blockedReason = !status.configured
     ? "Payments are not connected yet. iAcquire is finishing the PayMongo setup."
     : !agency?.usd_php_rate
       ? "Checkout is waiting on an exchange rate from iAcquire."
       : status.livemode && !agency.live_payments_review_at
         ? "Live payments are switched off until iAcquire completes the payment and tax review."
-        : null;
+        : !liveChecked
+          ? "Live payments are waiting on a final connection check from iAcquire."
+          : null;
   return {
     balanceMicros: balance,
     reservedMicros: reserved,

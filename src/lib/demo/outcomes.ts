@@ -123,7 +123,7 @@ export type CtaWord = (typeof CTA_WORDS)[number];
 
 export const CTA_COPY: Record<CtaWord, string> = {
   consultation: "Thank you. We have told the team you would like to talk to a person.",
-  buy: "Thank you. We have told the team you are interested. Online checkout is not open yet, so nothing was charged.",
+  buy: "Thank you. We have told the team you are ready. They will review your request and email you a secure purchase link. Nothing has been charged.",
 };
 
 /** The notice for a call to action: only when the record shows the prospect really did ask. */
@@ -152,12 +152,15 @@ export const ROOM_COPY = {
   planLabel: "Optional monthly plan",
   planNote: "The monthly plan is optional. It is never needed to use your system.",
   consultationHeading: "Talk to a person",
+  // The button says "Book" only where a real scheduling page can be offered. Everywhere else it says what it does: it asks.
   consultationButton: "Book a free consultation",
-  consultationNote: "Pressing this tells the iAcquire team you would like to talk. It does not book a time or charge anything.",
+  consultationRequestButton: "Request a consultation",
+  consultationNote: "Pressing this tells the iAcquire team you would like to talk. No time is booked and nothing is charged: a scheduling page is not set up yet, so a member of the team follows up with you.",
+  consultationNoteWithLink: "Pressing this tells the iAcquire team you would like to talk, then offers you a link to choose a meeting time. No time is booked until you choose one, and nothing is charged.",
   consultationLink: "Open the scheduling page",
   consultationNoLink: "The team will see your request. A scheduling page is not set up yet.",
-  buyButton: "I'm ready to get started",
-  buyNote: "Online checkout is not open yet. Pressing this tells the team you are interested; nothing is charged and no workspace is created.",
+  buyButton: "Request my purchase link",
+  buyNote: "Pressing this tells the team you are ready. They review your request and email you a secure purchase link; nothing is charged and no workspace is created until you confirm and pay on the payment provider's own page.",
   leaveButton: "Leave the demo on this device",
   erasure: `To have your details erased sooner, email ${PRIVACY_EMAIL}.`,
 } as const;

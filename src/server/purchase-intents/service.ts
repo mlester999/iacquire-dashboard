@@ -10,7 +10,10 @@ import { createClientTenant } from "@/server/admin/tenants";
 import { rolesForPlan } from "@/lib/plan-employees";
 import { recordManualPayment } from "@/server/billing/manual";
 import { recordProviderSetupPayment, type AdoptedCheckout } from "@/server/billing/provider-setup-payment";
-import { availableCheckoutProviders, checkoutAvailability, CHECKOUT_PROVIDERS, PROVIDER_LABEL, type CheckoutProvider } from "@/server/purchase-intents/availability";
+import { availableCheckoutProviders, type CheckoutProvider } from "@/server/purchase-intents/availability";
+import { getPaymentHealth, type CheckoutState } from "@/server/billing/provider-health";
+import type { ReadinessState, ReadinessTone } from "@/lib/payment-providers/readiness";
+import { canSendAgain, toDeliveryView, type DeliveryKind, type DeliveryReason, type DeliveryStatus, type DeliveryView } from "@/lib/purchase-intents/delivery";
 import type { SessionUser } from "@/server/auth/service";
 import {
   canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, HELD_BUYER_TEXT, provisionHoldText, PURCHASE_LINK_DAYS, PURCHASE_STATUS_TEXT, PURCHASE_STATUS_TONE,
@@ -36,6 +39,8 @@ export const createPurchaseIntentSchema = z.object({
   maintenanceSelected: z.boolean().optional().default(false),
   // The Super Admin who invites the buyer may allow the workspace to be created the moment the payment provider confirms the payment. Off unless chosen.
   autoProvision: z.boolean().optional().default(false),
+  // The demo prospect this invitation was made for, when a Super Admin followed "Create purchase invitation" from that prospect. It only records where the invitation came from.
+  prospectId: z.string().uuid().optional(),
 });
 export type CreatePurchaseIntentInput = z.input<typeof createPurchaseIntentSchema>;
 
@@ -125,6 +130,8 @@ export interface PurchaseIntentView {
   provisionAttempts: number;
   lastProvisionError: string | null;
   createdAt: string;
+  /** The latest attempt to put the link in the buyer's hands (null for a purchase made before delivery records existed). The creation form, the list and the detail page all read this. */
+  delivery: DeliveryView | null;
   can: { start: boolean; verify: boolean; provision: boolean; cancel: boolean; rotate: boolean; release: boolean };
 }
 
@@ -141,13 +148,15 @@ export interface PublicPurchaseView {
   status: PurchaseStatus;
   statusText: string;
   expiresAt: string;
+  /** The buyer's own time zone, as the invitation recorded it: the page and the email show the expiry in it. */
+  timezone: string;
   canConfirm: boolean;
   problem: string | null;
   /** Online checkout: whether a Pay button is offered, and what the last attempt came to (never a link: the link is only handed out by starting a checkout). */
   checkout: { offered: boolean; status: CheckoutStatus | null; reference: string | null; providers: Array<{ id: CheckoutProvider; label: string }> };
 }
 
-interface Actor {
+export interface Actor {
   id: string;
   platformRole: string;
   view: boolean;
@@ -157,7 +166,7 @@ interface Actor {
   agencyOrgId: string | null;
 }
 
-async function actorFor(db: Queryable, user: SessionUser): Promise<Actor> {
+export async function actorFor(db: Queryable, user: SessionUser): Promise<Actor> {
   const { rows } = await db.query<{ active: boolean; role: string; view: boolean; manage: boolean; billing: boolean; clients: boolean; agency_org: string | null }>(
     `select u.status = 'active' as active, u.platform_role as role,
             coalesce(app.user_has_agency_permission(u.id, 'agency.prospects.view'), false) as view,
@@ -173,18 +182,18 @@ async function actorFor(db: Queryable, user: SessionUser): Promise<Actor> {
   return { id: user.id, platformRole: row.role, view: row.view, manage: row.manage, billingManage: row.billing, clientsCreate: row.clients, agencyOrgId: row.agency_org };
 }
 
-function requireView(actor: Actor): string {
+export function requireView(actor: Actor): string {
   if (!actor.view || !actor.agencyOrgId) throw new AppError("forbidden", "Your agency role does not allow purchase intents.");
   return actor.agencyOrgId;
 }
 
-function requireManage(actor: Actor): string {
+export function requireManage(actor: Actor): string {
   const agency = requireView(actor);
   if (!actor.manage) throw new AppError("forbidden", "Only a Super Admin can manage purchase intents.");
   return agency;
 }
 
-function requireProvision(actor: Actor): string {
+export function requireProvision(actor: Actor): string {
   const agency = requireManage(actor);
   if (!actor.billingManage || !actor.clientsCreate) throw new AppError("forbidden", "Creating a workspace from a purchase needs the billing and client-creation permissions.");
   return agency;
@@ -193,7 +202,7 @@ function requireProvision(actor: Actor): string {
 const iso = (value: Date | string | null): string | null => (value === null ? null : new Date(value).toISOString());
 export const statusOf = (row: IntentRow, now: Date): PurchaseStatus => effectiveStatus({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now);
 
-function toView(row: IntentRow, now: Date): PurchaseIntentView {
+export function toView(row: IntentRow, now: Date, delivery: DeliveryView | null = null): PurchaseIntentView {
   const state = { status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() };
   const status = statusOf(row, now);
   return {
@@ -234,6 +243,7 @@ function toView(row: IntentRow, now: Date): PurchaseIntentView {
     provisionAttempts: row.provision_attempts,
     lastProvisionError: row.last_provision_error,
     createdAt: new Date(row.created_at).toISOString(),
+    delivery,
     can: {
       start: canBuyerStart(state, now).ok,
       verify: canVerifyPayment(state, now).ok,
@@ -269,6 +279,7 @@ function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["check
     status,
     statusText: PURCHASE_STATUS_TEXT[status],
     expiresAt: new Date(row.expires_at).toISOString(),
+    timezone: row.timezone,
     canConfirm: status === "invited",
     problem: publicProblem(status, checkout.offered, row.payment_hold !== null),
     checkout,
@@ -298,29 +309,126 @@ async function expireDue(db: Queryable, now: Date): Promise<number> {
   return rows.length;
 }
 
-export interface CreatedPurchaseIntent {
-  id: string;
-  reference: string;
-  /** The only copy of the raw link token; it is never stored and cannot be recovered after this answer. */
-  token: string;
-  expiresAt: string;
+// ---------------------------------------------------------------------------
+// Delivery records (migration 0119): what happened when the link was put in the buyer's hands
+// ---------------------------------------------------------------------------
+
+let deliveriesKnown = false;
+/**
+ * Whether the delivery table exists. A release that reaches a database before its migration must not take the purchase pages down: they read without delivery records until
+ * it is applied, and the writes that need it say so plainly instead of failing inside the database.
+ */
+export async function deliveriesAvailable(db: Queryable): Promise<boolean> {
+  if (deliveriesKnown) return true;
+  const ok = (await db.query<{ ok: boolean }>("select to_regclass('public.purchase_intent_deliveries') is not null as ok")).rows[0]?.ok === true;
+  if (ok) deliveriesKnown = true;
+  return ok;
 }
 
-/** Creates one invitation and freezes the approved price. A buyer with an open intent cannot be invited twice; cancel or reuse the first link. */
-export async function createPurchaseIntent(user: SessionUser, input: CreatePurchaseIntentInput, opts: { now?: Date } = {}): Promise<CreatedPurchaseIntent> {
+export interface DeliveryRow {
+  id: string;
+  intent_id: string;
+  kind: DeliveryKind;
+  status: DeliveryStatus;
+  reason: DeliveryReason | null;
+  recipient: string;
+  provider: "resend" | "capture" | "none";
+  error: string | null;
+  link_expires_at: Date;
+  created_at: Date;
+  completed_at: Date | null;
+}
+
+export const DELIVERY_COLUMNS = "id, intent_id, kind, status, reason, recipient, provider, error, link_expires_at, created_at, completed_at";
+
+export const deliveryViewOf = (row: DeliveryRow, now: Date): DeliveryView =>
+  toDeliveryView({ id: row.id, kind: row.kind, status: row.status, reason: row.reason, recipient: row.recipient, provider: row.provider, error: row.error, linkExpiresAt: row.link_expires_at, createdAt: row.created_at, completedAt: row.completed_at }, now);
+
+/** The newest delivery of each given purchase, in one query. */
+async function latestDeliveries(db: Queryable, intentIds: string[], now: Date): Promise<Map<string, DeliveryView>> {
+  const out = new Map<string, DeliveryView>();
+  if (!intentIds.length || !(await deliveriesAvailable(db))) return out;
+  const { rows } = await db.query<DeliveryRow>(
+    `select distinct on (intent_id) ${DELIVERY_COLUMNS} from purchase_intent_deliveries where intent_id = any($1::uuid[]) order by intent_id, created_at desc, id desc`,
+    [intentIds],
+  );
+  for (const row of rows) out.set(row.intent_id, deliveryViewOf(row, now));
+  return out;
+}
+
+/** What the caller decided about email for a new link, and what the email setup allows right now. The delivery row records the honest result of both. */
+export interface DeliveryRequest {
+  /** The Super Admin asked for the link to be emailed. */
+  email: boolean;
+  readiness: { ready: boolean; reason: DeliveryReason | null; provider: "resend" | "capture" };
+  /** Makes a double press or a retried request one invitation and one email. */
+  idempotencyKey: string | null;
+}
+
+/** The row to write for a new link: pending when an email will be attempted, manual (with the reason) when none will. */
+function plannedDelivery(request: DeliveryRequest): { status: "pending" | "manual"; reason: DeliveryReason | null; provider: "resend" | "capture" | "none" } {
+  if (request.email && request.readiness.ready) return { status: "pending", reason: null, provider: "resend" };
+  if (!request.email) return { status: "manual", reason: "chosen", provider: "none" };
+  return { status: "manual", reason: request.readiness.reason ?? "email_off", provider: request.readiness.provider === "capture" ? "capture" : "none" };
+}
+
+async function insertDelivery(db: Queryable, input: { intentId: string; agencyOrgId: string; kind: DeliveryKind; request: DeliveryRequest; recipient: string; linkExpiresAt: Date; userId: string; now: Date }): Promise<string> {
+  const plan = plannedDelivery(input.request);
+  const { rows } = await db.query<{ id: string }>(
+    `insert into purchase_intent_deliveries (intent_id, agency_org_id, kind, status, reason, recipient, provider, idempotency_key, link_expires_at, requested_by, created_at, completed_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, case when $4 = 'pending' then null else $11::timestamptz end) returning id`,
+    [input.intentId, input.agencyOrgId, input.kind, plan.status, plan.reason, input.recipient, plan.provider, input.request.idempotencyKey, input.linkExpiresAt.toISOString(), input.userId, input.now.toISOString()],
+  );
+  return rows[0].id;
+}
+
+export interface InvitationCreated {
+  /** True when this answer is the one an earlier request with the same key already made: nothing new was created and nothing more is sent. */
+  replayed: boolean;
+  id: string;
+  reference: string;
+  expiresAt: string;
+  /** The only copy of the raw link token. Null on a replay: the link was shown and emailed once and cannot be recovered. */
+  token: string | null;
+  deliveryId: string | null;
+}
+
+/**
+ * Creates one invitation and freezes the approved price. A buyer with an open intent cannot be invited twice; cancel or reuse the first link. With a delivery request, the row
+ * that says how the link will reach the buyer is written in the same transaction, so an invitation never exists without a record of what was done about it; and a repeated
+ * idempotency key returns the invitation it already made instead of making a second.
+ */
+export async function createPurchaseIntentWithDelivery(user: SessionUser, input: CreatePurchaseIntentInput, opts: { now?: Date; delivery?: DeliveryRequest } = {}): Promise<InvitationCreated> {
   const data = createPurchaseIntentSchema.parse(input);
   if (!isValidTimeZone(data.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
   const now = opts.now ?? new Date();
+  const request = opts.delivery;
   return withSystem(async (db) => {
     const actor = await actorFor(db, user);
     // Letting a payment create a workspace by itself is a decision about billing and client creation as well as about the buyer: the person who allows it must hold both.
     const agency = data.autoProvision ? requireProvision(actor) : requireManage(actor);
     await expireDue(db, now);
+    const withDeliveries = await deliveriesAvailable(db);
+    if (request?.idempotencyKey && withDeliveries) {
+      const prior = (await db.query<{ delivery_id: string; id: string; reference: string; expires_at: Date; buyer_email: string }>(
+        `select d.id as delivery_id, i.id, i.reference, i.expires_at, i.buyer_email from purchase_intent_deliveries d join purchase_intents i on i.id = d.intent_id
+          where d.agency_org_id = $1 and d.idempotency_key = $2`,
+        [agency, request.idempotencyKey],
+      )).rows[0];
+      if (prior) {
+        if (prior.buyer_email !== data.buyerEmail) throw new AppError("conflict", "That request was already used for a different invitation. Reload the form and try again.");
+        return { replayed: true, id: prior.id, reference: prior.reference, expiresAt: new Date(prior.expires_at).toISOString(), token: null, deliveryId: prior.delivery_id };
+      }
+    }
     const existing = await db.query<{ id: string; reference: string }>(
       "select id, reference from purchase_intents where agency_org_id = $1 and buyer_email = $2 and status in ('invited', 'started', 'payment_verified') limit 1",
       [agency, data.buyerEmail],
     );
     if (existing.rows[0]) throw new AppError("conflict", `That buyer already has an open purchase (${existing.rows[0].reference}). Use its existing link or cancel it first.`);
+    // The prospect is named only if it exists and has not been erased; anything else is dropped, never an error: the invitation does not depend on it.
+    const prospectId = data.prospectId
+      ? ((await db.query<{ id: string }>("select id from demo_prospects where id = $1 and erased_at is null", [data.prospectId])).rows[0]?.id ?? null)
+      : null;
     const snapshot: PriceSnapshot = priceSnapshot(data.maintenanceSelected);
     const token = newPurchaseToken();
     const reference = newPurchaseReference();
@@ -333,11 +441,33 @@ export async function createPurchaseIntent(user: SessionUser, input: CreatePurch
         snapshot.setupFeeCents, snapshot.maintenanceMonthlyCents, snapshot.currency, snapshot.productVersion, expiresAt.toISOString(), user.id, data.autoProvision],
     );
     const id = rows[0].id;
-    await addEvent(db, id, agency, "created", { reference, setupFeeCents: snapshot.setupFeeCents, maintenanceSelected: data.maintenanceSelected, autoProvision: data.autoProvision, expiresAt: expiresAt.toISOString() }, user.id, "user");
+    await addEvent(db, id, agency, "created", { reference, setupFeeCents: snapshot.setupFeeCents, maintenanceSelected: data.maintenanceSelected, autoProvision: data.autoProvision, expiresAt: expiresAt.toISOString(), ...(prospectId ? { prospectId } : {}) }, user.id, "user");
     await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.created", targetType: "purchase_intent", targetId: id, result: "success",
-      metadata: { reference, setupFeeCents: snapshot.setupFeeCents, maintenanceSelected: data.maintenanceSelected, autoProvision: data.autoProvision, expiresAt: expiresAt.toISOString() } }, db);
-    return { id, reference, token, expiresAt: expiresAt.toISOString() };
+      metadata: { reference, setupFeeCents: snapshot.setupFeeCents, maintenanceSelected: data.maintenanceSelected, autoProvision: data.autoProvision, expiresAt: expiresAt.toISOString(), ...(prospectId ? { prospectId } : {}) } }, db);
+    let deliveryId: string | null = null;
+    if (request && withDeliveries) {
+      deliveryId = await insertDelivery(db, { intentId: id, agencyOrgId: agency, kind: "invitation", request, recipient: data.buyerEmail, linkExpiresAt: expiresAt, userId: user.id, now });
+      // An invitation nobody will email is settled now; one that will be emailed settles when the provider answers (src/server/purchase-intents/invitations.ts).
+      if (plannedDelivery(request).status === "manual") {
+        await addEvent(db, id, agency, "invitation_email", { deliveryId, kind: "invitation", status: "manual", reason: plannedDelivery(request).reason }, user.id, "user");
+      }
+    }
+    return { replayed: false, id, reference, token, expiresAt: expiresAt.toISOString(), deliveryId };
   });
+}
+
+export interface CreatedPurchaseIntent {
+  id: string;
+  reference: string;
+  /** The only copy of the raw link token; it is never stored and cannot be recovered after this answer. */
+  token: string;
+  expiresAt: string;
+}
+
+/** Creates one invitation and freezes the approved price, with no email (the caller shows the link). The invitation form uses createPurchaseIntentWithDelivery through invitations.ts. */
+export async function createPurchaseIntent(user: SessionUser, input: CreatePurchaseIntentInput, opts: { now?: Date } = {}): Promise<CreatedPurchaseIntent> {
+  const created = await createPurchaseIntentWithDelivery(user, input, opts);
+  return { id: created.id, reference: created.reference, token: created.token as string, expiresAt: created.expiresAt };
 }
 
 export async function listPurchaseIntents(user: SessionUser, opts: { now?: Date } = {}): Promise<PurchaseIntentView[]> {
@@ -347,7 +477,8 @@ export async function listPurchaseIntents(user: SessionUser, opts: { now?: Date 
     const agency = requireView(actor);
     await expireDue(db, now);
     const { rows } = await db.query<IntentRow>(`${SELECT} where agency_org_id = $1 order by created_at desc, id desc limit 200`, [agency]);
-    return rows.map((row) => toView(row, now));
+    const deliveries = await latestDeliveries(db, rows.map((r) => r.id), now);
+    return rows.map((row) => toView(row, now, deliveries.get(row.id) ?? null));
   });
 }
 
@@ -360,7 +491,24 @@ export async function getPurchaseIntent(user: SessionUser, id: unknown, opts: { 
     await expireDue(db, now);
     const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2`, [id, agency])).rows[0];
     if (!row) throw new AppError("not_found", "That purchase was not found.");
-    return toView(row, now);
+    const delivery = (await latestDeliveries(db, [row.id], now)).get(row.id) ?? null;
+    return toView(row, now, delivery);
+  });
+}
+
+/** Every delivery of one purchase, newest first: who was emailed (or handed a link by hand) and with what result. */
+export async function listPurchaseIntentDeliveries(user: SessionUser, id: unknown, opts: { now?: Date } = {}): Promise<DeliveryView[]> {
+  if (!isId(id)) throw new AppError("not_found", "That purchase was not found.");
+  const now = opts.now ?? new Date();
+  return withSystem(async (db) => {
+    const actor = await actorFor(db, user);
+    const agency = requireView(actor);
+    if (!(await deliveriesAvailable(db))) return [];
+    const { rows } = await db.query<DeliveryRow>(
+      `select ${DELIVERY_COLUMNS} from purchase_intent_deliveries where intent_id = $1 and agency_org_id = $2 order by created_at desc, id desc limit 20`,
+      [id, agency],
+    );
+    return rows.map((row) => deliveryViewOf(row, now));
   });
 }
 
@@ -553,13 +701,17 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
 export interface CheckoutSwitchView {
   /** The Super Admin's own switch. */
   enabled: boolean;
-  /** Whether a buyer could be sent to a checkout right now: the switch plus the provider connection, the rate and the live review. */
+  /** Whether a buyer could be sent to a checkout right now: the switch AND at least one provider that is ready. "On" alone never means this. */
   available: boolean;
   /** Why not, in words for the team. */
   reason: string | null;
   livemode: boolean | null;
-  /** Each payment provider on its own: ready to take and confirm a payment, and if not, why (words for the team). */
-  providers: Array<{ id: CheckoutProvider; label: string; available: boolean; reason: string | null; livemode: boolean | null }>;
+  /** off, blocked (on, but no provider can take a payment), open_test or open_live. */
+  state: CheckoutState;
+  /** One honest sentence about the state. */
+  headline: string;
+  /** Each payment provider on its own, whatever the switch says: where its setup stands, and whether it could take and confirm a payment now. */
+  providers: Array<{ id: CheckoutProvider; label: string; available: boolean; reason: string | null; livemode: boolean | null; mode: "test" | "live" | null; readiness: { state: ReadinessState; label: string; tone: ReadinessTone; next: string } }>;
 }
 
 /** Whether online checkout is open for buyers, and why not when it is not. Readable by anyone who may see purchases. */
@@ -570,11 +722,17 @@ export async function getCheckoutSwitch(user: SessionUser): Promise<CheckoutSwit
   });
 }
 
-/** The Super Admin opens or closes online checkout for purchases. Closing it never touches a checkout that is already open (a payment on it is still recorded). Audited with who. */
+/**
+ * The Super Admin opens or closes online checkout for purchases. Closing it never touches a checkout that is already open (a payment on it is still recorded). Opening it is refused
+ * while no payment provider is ready: a switch that says "on" over a checkout nobody can use would suggest payments work when they do not. Audited with who.
+ */
 export async function setPurchaseCheckoutEnabled(user: SessionUser, enabled: boolean): Promise<CheckoutSwitchView> {
   return withSystem(async (db) => {
     const actor = await actorFor(db, user);
     const agency = requireProvision(actor);
+    if (enabled && !(await getPaymentHealth(db)).providers.some((p) => p.available)) {
+      throw new AppError("conflict", "Online checkout cannot be switched on yet: no payment provider is ready. Finish a provider's setup under Billing, Payment providers, then switch it on.");
+    }
     const changed = await db.query("update agency_billing_settings set purchase_checkout_enabled = $1 where purchase_checkout_enabled is distinct from $1", [enabled]);
     if (changed.rowCount) {
       await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: enabled ? "purchase_checkout.enabled" : "purchase_checkout.disabled", targetType: "agency_billing_settings", result: "success", metadata: { enabled } }, db);
@@ -584,17 +742,19 @@ export async function setPurchaseCheckoutEnabled(user: SessionUser, enabled: boo
 }
 
 async function checkoutSwitchOf(db: Queryable): Promise<CheckoutSwitchView> {
-  const each = await Promise.all(CHECKOUT_PROVIDERS.map(async (provider) => ({ provider, a: await checkoutAvailability(db, provider) })));
-  const settings = each[0].a.settings;
-  const open = each.filter((e) => e.a.available);
-  // The overall answer is "open" when any provider is; when none is, the reason given is the first provider's (PayMongo's), then the others'.
-  const first = each[0].a;
+  const health = await getPaymentHealth(db);
+  const open = health.providers.filter((p) => p.available);
+  const first = health.providers[0];
+  const modeOf = (m: "test" | "live" | null) => (m === null ? null : m === "live");
   return {
-    enabled: settings.enabled,
-    available: open.length > 0,
-    reason: open.length > 0 ? null : first.reason,
-    livemode: open.length > 0 ? open[0].a.livemode : first.livemode,
-    providers: each.map((e) => ({ id: e.provider, label: PROVIDER_LABEL[e.provider], available: e.a.available, reason: e.a.available ? null : e.a.reason, livemode: e.a.livemode })),
+    enabled: health.checkout.switchOn,
+    available: health.checkout.switchOn && open.length > 0,
+    // The overall reason is the switch's own when it is off, then the first provider's (PayMongo's) when none is ready.
+    reason: !health.checkout.switchOn ? "Online checkout for purchases is switched off in the billing settings." : open.length > 0 ? null : first.blockedReason,
+    livemode: modeOf((open[0] ?? first).mode),
+    state: health.checkout.state,
+    headline: health.checkout.headline,
+    providers: health.providers.map((p) => ({ id: p.provider, label: p.label, available: p.available, reason: p.available ? null : p.blockedReason, livemode: modeOf(p.mode), mode: p.mode, readiness: p.readiness })),
   };
 }
 
@@ -664,27 +824,74 @@ export async function releasePurchaseHold(user: SessionUser, id: unknown, note: 
   return toView(after.rows[0], now);
 }
 
-/** Issues a fresh link (the old one stops working) while the purchase is still open. Returns the raw token once. */
-export async function rotatePurchaseLink(user: SessionUser, id: unknown, opts: { now?: Date } = {}): Promise<{ token: string; expiresAt: string }> {
+export interface LinkReissued {
+  /** True when an earlier request with the same key already made this link: no second link was made, so the one already emailed still works. */
+  replayed: boolean;
+  /** The only copy of the new raw token. Null on a replay. */
+  token: string | null;
+  expiresAt: string;
+  deliveryId: string | null;
+  reference: string;
+}
+
+/**
+ * Issues a fresh link while the purchase is still open. The old link stops working at once, so everything that decides whether to do it is checked under one lock on the
+ * purchase: the status, a repeated idempotency key (which returns the link it already made), the one-minute pause between links and the daily limit. The delivery row that says what
+ * will be done with the new link is written in the same transaction. Sending the email, if any, happens afterwards (invitations.ts).
+ */
+export async function reissuePurchaseLink(user: SessionUser, id: unknown, opts: { now?: Date; delivery: DeliveryRequest & { kind: "resend" | "rotation" } }): Promise<LinkReissued> {
   if (!isId(id)) throw new AppError("not_found", "That purchase was not found.");
   const now = opts.now ?? new Date();
+  const request = opts.delivery;
   return withSystem(async (db) => {
     const actor = await actorFor(db, user);
     const agency = requireManage(actor);
     const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2 for update`, [id, agency])).rows[0];
     if (!row) throw new AppError("not_found", "That purchase was not found.");
+    const withDeliveries = await deliveriesAvailable(db);
+    if (withDeliveries && request.idempotencyKey) {
+      const prior = (await db.query<{ id: string; intent_id: string; link_expires_at: Date }>(
+        "select id, intent_id, link_expires_at from purchase_intent_deliveries where agency_org_id = $1 and idempotency_key = $2", [agency, request.idempotencyKey],
+      )).rows[0];
+      if (prior) {
+        if (prior.intent_id !== row.id) throw new AppError("conflict", "That request was already used for a different purchase. Reload the page and try again.");
+        return { replayed: true, token: null, expiresAt: new Date(prior.link_expires_at).toISOString(), deliveryId: prior.id, reference: row.reference };
+      }
+    }
     const allowed = canRotateLink({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now);
     if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "A new link cannot be issued.");
+    if (withDeliveries) {
+      const recent = (await db.query<{ last_at: Date | null; n: number }>(
+        `select max(created_at) as last_at, (count(*) filter (where created_at > $2::timestamptz - interval '1 day'))::int as n
+           from purchase_intent_deliveries where intent_id = $1 and kind in ('resend', 'rotation')`,
+        [row.id, now.toISOString()],
+      )).rows[0];
+      const gate = canSendAgain({ lastAt: recent?.last_at ? new Date(recent.last_at) : null, sendsInLastDay: recent?.n ?? 0 }, now);
+      if (!gate.ok) throw new AppError("rate_limited", gate.reason ?? "Wait a moment before making another link.", gate.retryAfterSeconds ? { retryAfterSeconds: gate.retryAfterSeconds } : undefined);
+    }
     const token = newPurchaseToken();
     const expiresAt = new Date(now.getTime() + PURCHASE_LINK_DAYS * 86_400_000);
     await db.query(
       "update purchase_intents set token_hash = $2, expires_at = $3, status = case when status = 'expired' then 'invited' else status end, expired_at = null where id = $1",
       [id, hashPurchaseToken(token), expiresAt.toISOString()],
     );
-    await addEvent(db, row.id, agency, "link_rotated", { expiresAt: expiresAt.toISOString() }, user.id, "user");
-    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.link_rotated", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, expiresAt: expiresAt.toISOString() } }, db);
-    return { token, expiresAt: expiresAt.toISOString() };
+    await addEvent(db, row.id, agency, "link_rotated", { expiresAt: expiresAt.toISOString(), via: request.kind }, user.id, "user");
+    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.link_rotated", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, expiresAt: expiresAt.toISOString(), via: request.kind } }, db);
+    let deliveryId: string | null = null;
+    if (withDeliveries) {
+      deliveryId = await insertDelivery(db, { intentId: row.id, agencyOrgId: agency, kind: request.kind, request, recipient: row.buyer_email, linkExpiresAt: expiresAt, userId: user.id, now });
+      if (plannedDelivery(request).status === "manual") {
+        await addEvent(db, row.id, agency, "invitation_email", { deliveryId, kind: request.kind, status: "manual", reason: plannedDelivery(request).reason }, user.id, "user");
+      }
+    }
+    return { replayed: false, token, expiresAt: expiresAt.toISOString(), deliveryId, reference: row.reference };
   });
+}
+
+/** Issues a fresh link (the old one stops working) while the purchase is still open, to be shared by hand. Returns the raw token once. */
+export async function rotatePurchaseLink(user: SessionUser, id: unknown, opts: { now?: Date } = {}): Promise<{ token: string; expiresAt: string }> {
+  const made = await reissuePurchaseLink(user, id, { now: opts.now, delivery: { kind: "rotation", email: false, readiness: { ready: false, reason: null, provider: "capture" }, idempotencyKey: null } });
+  return { token: made.token as string, expiresAt: made.expiresAt };
 }
 
 export interface PurchaseIntentEvent {

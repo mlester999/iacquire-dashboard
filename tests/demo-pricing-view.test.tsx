@@ -93,8 +93,8 @@ describe("the two plans", () => {
   it("put every button under the price, as wide as the card and centred, before the list of what is included", () => {
     pricing();
     const buttons = [
-      within(core()).getByRole("link", { name: /Book a free consultation/ }),
-      within(core()).getByRole("link", { name: /I'm ready to get started/ }),
+      within(core()).getByRole("link", { name: /Request a consultation/ }),
+      within(core()).getByRole("link", { name: /Request my purchase link/ }),
       within(plus()).getByRole("link", { name: /Ask about Managed Maintenance/ }),
     ];
     for (const b of buttons) {
@@ -133,14 +133,14 @@ describe("the two plans", () => {
 
   it("keep the two requests to what they were: a confirmation first, nothing recorded or sent by pressing the button", () => {
     pricing();
-    fireEvent.click(within(core()).getByRole("link", { name: /Book a free consultation/ }));
+    fireEvent.click(within(core()).getByRole("link", { name: /Request a consultation/ }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("say so, centred in the card, once a request has been made", () => {
     pricing({ consultationRequested: true, purchaseStarted: true });
-    expect(within(core()).queryByRole("link", { name: /Book a free consultation/ })).toBeNull();
+    expect(within(core()).queryByRole("link", { name: /Request a consultation/ })).toBeNull();
     const statuses = within(core()).getAllByRole("status");
     expect(statuses.map((s) => s.textContent)).toEqual(expect.arrayContaining([expect.stringContaining("Request received"), expect.stringContaining("The team knows you are ready")]));
     for (const s of statuses) expect(s.classList.contains("justify-center")).toBe(true);
@@ -213,7 +213,7 @@ describe("the closing panel", () => {
   it("has two buttons that fill their panels, and leaves no empty gap under them until a request is made", () => {
     pricing();
     const panel = document.getElementById("actions")!;
-    for (const name of [/Book a free consultation/, /I'm ready to get started/]) {
+    for (const name of [/Request a consultation/, /Request my purchase link/]) {
       const b = within(panel).getByRole("link", { name });
       expect(b.classList.contains("w-full"), String(name)).toBe(true);
       expect(b.classList.contains("justify-center"), String(name)).toBe(true);

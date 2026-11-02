@@ -18,18 +18,21 @@ import { rateFieldHint, rateFieldLabel, ratePlaceholder, rateSanityNote, rateUni
 import { CATEGORIES, ENTRY_KINDS, KIND_HELP, KIND_LABEL, PERIOD_LABEL, signedUsd, type EntryKind, type PeriodKey } from "@/lib/finance";
 import { formatDate, formatDateTime, sentenceCase } from "@/lib/utils";
 import { PaymentsWorkspace } from "@/components/admin/payments-workspace";
+import { PaymentProvidersPanel } from "@/components/admin/payment-providers-panel";
+import type { PaymentHealth } from "@/server/billing/provider-health";
 import type { AgencyPaymentView, PaymentClientOption } from "@/server/billing/payments-view";
 import type { FinancialReport } from "@/server/billing/finance";
 import type { AgencyBillingOverview } from "@/server/billing/service";
 import type { UnitRateRow } from "@/server/billing/rates";
 import { localDayIso } from "@/lib/local-day";
 
-type Tab = "statement" | "entries" | "payments" | "rates" | "clients";
+type Tab = "statement" | "entries" | "payments" | "rates" | "providers" | "clients";
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "statement", label: "Statement" },
   { value: "entries", label: "Entries" },
   { value: "payments", label: "Payments" },
   { value: "rates", label: "Rates & payments" },
+  { value: "providers", label: "Payment providers" },
   { value: "clients", label: "Clients" },
 ];
 
@@ -256,7 +259,7 @@ function rateHint(unit: string, typed: string) {
   return <>{hint}{warning && <span role="status" className="mt-1 block font-medium text-warning-ink">{warning}</span>}</>;
 }
 
-function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverview; rates: UnitRateRow[]; r: FinancialReport; canManage: boolean }) {
+function Rates({ overview, rates, r, canManage, health }: { overview: AgencyBillingOverview; rates: UnitRateRow[]; r: FinancialReport; canManage: boolean; health: PaymentHealth["providers"][number] | null }) {
   const router = useRouter();
   const [fx, setFx] = React.useState(overview.fx.usdPhpRate ? String(overview.fx.usdPhpRate) : "");
   const [fxSource, setFxSource] = React.useState("");
@@ -282,8 +285,8 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
           <div className="flex items-start gap-3">
             <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${pm.configured && pm.webhookConfigured ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink"}`}><Landmark className="size-4" aria-hidden /></span>
             <div>
-              <CardTitle className="flex flex-wrap items-center gap-2">PayMongo <StatusPill tone={pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "success" : "primary") : "warning") : "neutral"}>{pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "Live keys" : "Test keys") : "Webhook missing") : "Not connected"}</StatusPill></CardTitle>
-              <CardDescription>Checkout, refunds and webhooks. Live checkout stays off until the provider and the legal and tax treatment of prepaid credits have been reviewed.</CardDescription>
+              <CardTitle className="flex flex-wrap items-center gap-2">PayMongo <StatusPill tone={health ? health.readiness.tone : pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "success" : "primary") : "warning") : "neutral"}>{health ? health.readiness.label : pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "Live keys" : "Test keys") : "Webhook missing") : "Not connected"}</StatusPill></CardTitle>
+              <CardDescription>Checkout, refunds and webhooks. Live checkout stays off until the provider and the legal and tax treatment of prepaid credits have been reviewed. <Link href="/admin/billing?tab=providers" className="font-medium text-primary hover:underline">Set up and check the connection</Link>.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -424,7 +427,7 @@ function Clients({ r, overview }: { r: FinancialReport; overview: AgencyBillingO
   );
 }
 
-export function FinanceWorkspace({ report, overview, rates, canManage, tab, period, payments = [], paymentClients = [], timeZone = "UTC" }: { report: FinancialReport; overview: AgencyBillingOverview; rates: UnitRateRow[]; canManage: boolean; tab: Tab; period: PeriodKey; payments?: AgencyPaymentView[]; paymentClients?: PaymentClientOption[]; timeZone?: string }) {
+export function FinanceWorkspace({ report, overview, rates, canManage, tab, period, payments = [], paymentClients = [], timeZone = "UTC", paymentHealth = null }: { report: FinancialReport; overview: AgencyBillingOverview; rates: UnitRateRow[]; canManage: boolean; tab: Tab; period: PeriodKey; payments?: AgencyPaymentView[]; paymentClients?: PaymentClientOption[]; timeZone?: string; paymentHealth?: PaymentHealth | null }) {
   const router = useRouter();
   const r = report;
   const go = (t: Tab, p: PeriodKey) => router.push(`/admin/billing?tab=${t}&period=${p}`);
@@ -445,7 +448,8 @@ export function FinanceWorkspace({ report, overview, rates, canManage, tab, peri
       {tab === "statement" && <Statement r={r} />}
       {tab === "entries" && <Entries r={r} canManage={canManage} />}
       {tab === "payments" && <PaymentsWorkspace payments={payments} clients={paymentClients} canManage={canManage} timeZone={timeZone} />}
-      {tab === "rates" && <Rates overview={overview} rates={rates} r={r} canManage={canManage} />}
+      {tab === "rates" && <Rates overview={overview} rates={rates} r={r} canManage={canManage} health={paymentHealth?.providers.find((p) => p.provider === "paymongo") ?? null} />}
+      {tab === "providers" && paymentHealth && <PaymentProvidersPanel health={paymentHealth} canManage={canManage} />}
       {tab === "clients" && <Clients r={r} overview={overview} />}
     </div>
   );

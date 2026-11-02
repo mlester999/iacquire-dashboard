@@ -416,9 +416,9 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(markup).toMatch(/<label[^>]*for="demo-employee"/);
     expect(markup).toContain('role="log"');
     expect(markup).toMatch(/aria-label="AQi conversation"/);
-    // The two requests say what they do before they are pressed.
+    // The two requests say what they do before they are pressed. A scheduling page is set in this room, so the consultation button may say "Book"; without one it says "Request" (below).
     expect(t).toContain(ROOM_COPY.consultationButton);
-    expect(t).toContain(ROOM_COPY.consultationNote);
+    expect(t).toContain(ROOM_COPY.consultationNoteWithLink);
     expect(t).toContain(ROOM_COPY.buyButton);
     expect(t).toContain(ROOM_COPY.buyNote);
     expect(t).toContain(ROOM_COPY.erasure);
@@ -640,12 +640,34 @@ describe("/demo/room, the prospect's own demo", () => {
     }
   });
 
+  it("calls the consultation button \"Request a consultation\", and never \"Book\", while no scheduling page is set", async () => {
+    state.model = { ready: true };
+    await openDemo(people.superAdmin, { consultationUrl: null });
+    try {
+      const s = await startDemo();
+      state.cookie = s.sessionToken;
+      const t = text(await roomPage());
+      expect(t).toContain(ROOM_COPY.consultationRequestButton);
+      expect(t).toContain(ROOM_COPY.consultationNote);
+      expect(t).not.toContain(ROOM_COPY.consultationButton);
+      expect(t).not.toContain(ROOM_COPY.consultationNoteWithLink);
+      // The Buy button is a request for a purchase link, in the room's own words.
+      expect(t).toContain(ROOM_COPY.buyButton);
+      expect(t).not.toMatch(/I'm ready to get started/);
+    } finally {
+      await openDemo(people.superAdmin, { consultationUrl: CONSULT });
+    }
+  });
+
   it("says plainly that nothing is charged and no checkout exists after Buy now was pressed", async () => {
     const s = await startDemo();
     state.cookie = s.sessionToken;
     await recordCta("buy", { sessionToken: s.sessionToken, ip: ipFor() });
     const t = text(await roomPage({ c: "buy" }));
-    expect(t).toContain("Online checkout is not open yet, so nothing was charged.");
+    // It was only a request: the team will review it and email a secure purchase link, and nothing has been charged or opened.
+    expect(t).toContain(CTA_COPY.buy);
+    expect(t).toContain("email you a secure purchase link");
+    expect(t).toContain("Nothing has been charged.");
     expect(t).not.toMatch(/order confirmed|payment received|thank you for your purchase|your workspace is ready/i);
   });
 

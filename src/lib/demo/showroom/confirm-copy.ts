@@ -35,7 +35,7 @@ export const CONSULT_CONFIRM = {
 
 export const BUY_CONFIRM = {
   title: "Start your implementation",
-  description: "Tell the iAcquire team you are ready. This only informs the team: it is not a purchase.",
+  description: "Tell the iAcquire team you are ready. This only informs the team: it is a request, not a purchase, and no checkout opens.",
   summaryHeading: "What this would involve",
   implementationLabel: "One-time implementation",
   implementationNote: "Starting price, paid once. The exact scope and price are confirmed in writing before any work starts.",
@@ -47,13 +47,13 @@ export const BUY_CONFIRM = {
   nextHeading: "What happens after you confirm",
   next: [
     "We record that you are ready and tell the iAcquire team.",
-    "The team contacts you to agree the scope and price in writing.",
-    "Nothing is charged, no subscription starts and no workspace is created by confirming. Online checkout is not open yet.",
+    "The team reviews your request and the offer, agrees the scope and price with you in writing, and emails you a secure purchase link.",
+    "Nothing is charged, no subscription starts and no workspace is created by confirming. You pay only on the payment provider's own page, after opening that link, and your workspace is created only once that payment is verified.",
   ],
   cancel: "Not yet",
   confirm: "Confirm my interest",
   sending: "Sending your interest",
   successTitle: "The team knows you are ready",
-  success: "The iAcquire team has your interest and will contact you. Nothing was charged, no subscription started and no workspace was created.",
+  success: "The iAcquire team has your request and will review it, then email you a secure purchase link. Nothing was charged, no subscription started and no workspace was created.",
   close: "Close",
 } as const;

@@ -9,6 +9,7 @@ import { ingestInbound } from "@/server/messaging/ingest";
 import { applyDeliveryEvent, applyDeliveryEventForMessage, type DeliveryEventInput, type DeliveryResult } from "@/server/messaging/send";
 import { normalizeEmail } from "@/lib/messaging";
 import type { CapabilityTest, ChannelTransport, TransportResult, TransportSendRequest } from "@/server/messaging/transports/types";
+import { applyInvitationEmailNotice } from "@/server/purchase-intents/delivery-events";
 
 // Email through Resend (https://resend.com), one of the native transports next to GoHighLevel.
 //
@@ -870,7 +871,12 @@ async function applyResendDelivery(db: Queryable, e: Extract<ResendEvent, { kind
   if (e.messageId) applied = await applyDeliveryEventForMessage(db, { ...input, messageId: e.messageId });
   // No tag (an email sent before tags were set) or a tag that matches nothing of ours: fall back to Resend's email id.
   if (applied.result === "unknown_message") applied = await applyDeliveryEvent(db, input);
-  if (applied.result === "unknown_message") return { ...applied, orgId: null };
+  if (applied.result === "unknown_message") {
+    // Not a message of any workspace's inbox. It may be a purchase invitation iAcquire emailed a buyer: only the provider's own notice can move that delivery to delivered or bounced.
+    const invitation = await applyInvitationEmailNotice(db, { emailId: e.emailId, type: e.type, bounceType: e.bounceType, suppressedReason: e.suppressedReason, failedReason: e.failedReason });
+    if (invitation) return { result: invitation.result, orgId: invitation.agencyOrgId };
+    return { ...applied, orgId: null };
+  }
   const org = await db.query<{ org_id: string }>("select org_id from conversation_messages where provider = 'resend' and provider_message_id = $1", [e.emailId]);
   return { ...applied, orgId: org.rows[0]?.org_id ?? null };
 }

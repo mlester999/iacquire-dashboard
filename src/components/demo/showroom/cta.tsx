@@ -23,6 +23,14 @@ const useLink = () => {
   return consultationUrl && isConsultationUrl(consultationUrl) ? consultationUrl : null;
 };
 
+/**
+ * What the consultation button is called. "Book a free consultation" only where a real https scheduling page is set and will be offered after the request; everywhere else the button
+ * says what it does, which is ask: "Request a consultation". No label claims a meeting is booked when only a request is recorded.
+ */
+export function useConsultLabel(): string {
+  return useLink() ? ROOM_COPY.consultationButton : ROOM_COPY.consultationRequestButton;
+}
+
 const sizeClass = { md: "h-11 px-5 text-[14px]", lg: "h-12 px-6 text-[15px]" } as const;
 
 /**
@@ -48,10 +56,27 @@ function RequestTrigger({ kind, children, className, quiet = false, icon }: { ki
   );
 }
 
-/** "Book a free consultation": a button until it is pressed and confirmed, then the confirmation and, only when a real https scheduling page is set, the way to it. */
-export function ConsultCta({ size = "md", className, quiet = false, label }: { size?: keyof typeof sizeClass; className?: string; quiet?: boolean; label?: string }) {
+/**
+ * The consultation button: a button until it is pressed and confirmed, then the confirmation and, only when a real https scheduling page is set, the way to it. `variant="bar"` is the
+ * one-line form for the bottom bar on a phone, where it shares the row with AQi's button and must never wrap onto a second line.
+ */
+export function ConsultCta({ size = "md", className, quiet = false, label, variant = "default" }: { size?: keyof typeof sizeClass; className?: string; quiet?: boolean; label?: string; variant?: "default" | "bar" }) {
   const { consultationRequested } = useShowroom();
   const link = useLink();
+  const defaultLabel = useConsultLabel();
+  if (consultationRequested && variant === "bar") {
+    return link ? (
+      <a href={link} target="_blank" rel="noopener noreferrer" className={cn("sx-btn-primary inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-[14px] font-semibold", className)}>
+        <ExternalLink className="size-4 shrink-0" aria-hidden />
+        {CONSULT_CONFIRM.schedule}
+      </a>
+    ) : (
+      <p role="status" className={cn("flex h-11 items-center justify-center gap-2 rounded-xl bg-success-soft px-3 text-[14px] font-medium text-success-ink", className)}>
+        <CircleCheck className="size-4 shrink-0" aria-hidden />
+        Request received
+      </p>
+    );
+  }
   if (consultationRequested) {
     return (
       <div role="status" className={cn("flex flex-wrap items-center gap-3", className)}>
@@ -69,8 +94,8 @@ export function ConsultCta({ size = "md", className, quiet = false, label }: { s
     );
   }
   return (
-    <RequestTrigger kind="consultation" quiet={quiet} className={cn(sizeClass[size], className)} icon={<CalendarCheck className="size-4" aria-hidden />}>
-      {label ?? ROOM_COPY.consultationButton}
+    <RequestTrigger kind="consultation" quiet={quiet} className={cn(sizeClass[size], variant === "bar" && "min-w-0 whitespace-nowrap px-3", className)} icon={<CalendarCheck className="size-4 shrink-0" aria-hidden />}>
+      {label ?? defaultLabel}
     </RequestTrigger>
   );
 }
@@ -118,6 +143,7 @@ export function ContextCta({
   body,
   plan,
   locked = false,
+  consult = false,
   consultLabel,
   secondary,
 }: {
@@ -125,6 +151,9 @@ export function ContextCta({
   body: string;
   plan: "core" | "maintenance";
   locked?: boolean;
+  /** Offer the consultation button with its usual label ("Book a free consultation" or "Request a consultation", whichever is true here). */
+  consult?: boolean;
+  /** A label of its own for the consultation button (it still only asks). */
   consultLabel?: string;
   secondary?: { view: ViewId; label: string };
 }) {
@@ -145,7 +174,7 @@ export function ContextCta({
         <p className="text-[14px] leading-relaxed text-ink-2">{body}</p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
-        {consultLabel && <ConsultCta label={consultLabel} />}
+        {(consult || consultLabel) && <ConsultCta label={consultLabel} />}
         {secondary && (
           <button type="button" onClick={() => go(secondary.view)} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium text-primary-ink hover:text-ink">
             {secondary.label}
@@ -160,6 +189,7 @@ export function ContextCta({
 /** The conversion panel: the two requests together, with what pressing each does. Its address (#actions) is where the old forms without scripts came back to. */
 export function ConversionPanel({ title = "Ready to talk about your business?", lead }: { title?: string; lead?: string }) {
   const { consultationRequested, purchaseStarted, ctaNotice: notice } = useShowroom();
+  const hasLink = useLink() !== null;
   // The confirmation after a button says what the status line below already says: show refusals, not the repeat.
   const shown = notice && notice.tone === "ok" && (notice.text === CTA_COPY.consultation || notice.text === CTA_COPY.buy) ? null : notice;
   return (
@@ -175,7 +205,7 @@ export function ConversionPanel({ title = "Ready to talk about your business?", 
         <div className="sx-panel-flat space-y-3 p-4">
           <p className="text-[15px] font-semibold text-ink">Talk to a person</p>
           <ConsultCta size="lg" className="w-full justify-center" />
-          {!consultationRequested && <p className="text-[13px] leading-relaxed text-muted">{ROOM_COPY.consultationNote}</p>}
+          {!consultationRequested && <p className="text-[13px] leading-relaxed text-muted">{hasLink ? ROOM_COPY.consultationNoteWithLink : ROOM_COPY.consultationNote}</p>}
         </div>
         <div className="sx-panel-flat space-y-3 p-4">
           <p className="text-[15px] font-semibold text-ink">Start your implementation</p>
@@ -384,6 +414,7 @@ export function ConfirmStatic({ kind }: { kind: ConfirmKind }) {
 export function ConsultRail() {
   const { consultationRequested } = useShowroom();
   const link = useLink();
+  const label = useConsultLabel();
   if (consultationRequested) {
     return (
       <div className="space-y-1.5">
@@ -406,7 +437,7 @@ export function ConsultRail() {
   }
   return (
     <RequestTrigger kind="consultation" className="h-11 w-full justify-start gap-0 overflow-hidden" icon={<span className="grid size-11 shrink-0 place-items-center"><CalendarCheck className="size-[18px]" aria-hidden /></span>}>
-      <span className="sx-rail-label whitespace-nowrap pr-3 text-[14px]">{ROOM_COPY.consultationButton}</span>
+      <span className="sx-rail-label whitespace-nowrap pr-3 text-[14px]">{label}</span>
     </RequestTrigger>
   );
 }

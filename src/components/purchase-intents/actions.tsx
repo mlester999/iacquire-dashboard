@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, KeyRound, Link2, Loader2, RefreshCcw, ShieldCheck, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/primitives";
 import { CopyTextButton } from "@/components/ui/copy-button";
-import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, releasePurchaseHoldAction, rotatePurchaseLinkAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
+import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, releasePurchaseHoldAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
 import { MANUAL_METHOD_LABEL, MANUAL_PAYMENT_METHODS, centsToDollarText, type ManualPaymentMethod } from "@/lib/billing-clearance";
 import type { PurchaseIntentView } from "@/server/purchase-intents/service";
 import { localDayIso } from "@/lib/local-day";
@@ -19,7 +19,6 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [rotated, setRotated] = React.useState<string | null>(null);
   const [provisioned, setProvisioned] = React.useState<{ orgId: string; inviteLink: string | null } | null>(null);
   const [showPayment, setShowPayment] = React.useState(false);
   const [showCancel, setShowCancel] = React.useState(false);
@@ -44,20 +43,6 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
       return false;
     }
     return true;
-  };
-
-  const rotate = async () => {
-    setBusy("rotate");
-    setError(null);
-    const result = await rotatePurchaseLinkAction(intent.id);
-    setBusy(null);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setRotated(`${window.location.origin}${result.data.path}`);
-    toast.success("A new link was issued. The old link no longer works.");
-    router.refresh();
   };
 
   const verify = async (event: React.FormEvent) => {
@@ -102,15 +87,6 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   return (
     <div className="space-y-3">
       {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
-      {rotated && (
-        <div className="rounded-xl border border-primary/30 bg-primary-soft p-3">
-          <p className="text-[13px] font-medium text-primary-ink">New public link (shown once):</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-surface px-2.5 py-1.5">
-            <code className="min-w-0 flex-1 break-all text-[12px] text-ink">{rotated}</code>
-            <CopyTextButton text={rotated} label="Copy" />
-          </div>
-        </div>
-      )}
       {provisioned && (
         <div className="rounded-xl border border-success/30 bg-success-soft p-3">
           <p className="flex items-center gap-2 text-[13px] font-medium text-success-ink">
@@ -134,11 +110,6 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
         {intent.can.provision && (
           <Button type="button" size="sm" variant="brand" onClick={() => void provision()} loading={busy === "provision"} disabled={busy !== null}>
             <UserPlus className="size-3.5" aria-hidden /> Create client workspace
-          </Button>
-        )}
-        {intent.can.rotate && (
-          <Button type="button" size="sm" variant="secondary" onClick={() => void rotate()} loading={busy === "rotate"} disabled={busy !== null}>
-            <RefreshCcw className="size-3.5" aria-hidden /> Issue a new link
           </Button>
         )}
         {intent.can.release && (
@@ -214,7 +185,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
           <Button type="submit" size="sm" variant="danger" loading={busy === "cancel"} disabled={busy !== null}>{closesPaid ? "Close the purchase" : "Cancel the purchase"}</Button>
         </form>
       )}
-      {busy && busy !== "verify" && busy !== "cancel" && busy !== "rotate" && busy !== "provision" && busy !== "release" && (
+      {busy && busy !== "verify" && busy !== "cancel" && busy !== "provision" && busy !== "release" && (
         <p className="flex items-center gap-2 text-[12px] text-muted" role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Working…</p>
       )}
     </div>

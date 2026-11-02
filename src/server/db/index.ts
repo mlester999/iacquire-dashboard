@@ -460,6 +460,9 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0117_company_knowledge_revisions": ["0002_workforce", "0045_ai_workforce_experience", "0046_knowledge_document_extraction", "0060_rls_initplan"],
   // 0118 replaces the append-only function that 0004 created (the trigger already exists), so 0004 must be there first.
   "0118_audit_logs_purge_detach": ["0004_support_ops"],
+  // 0119 hangs delivery records off purchase_intents (0101), re-states the timeline kinds 0103 extended, and reads the helpers 0101 created (app.purchase_intent_agency_org,
+  // app.purchase_intents_allowed). It also points at email_outbox (0001).
+  "0119_purchase_invitation_delivery": ["0001_foundation", "0101_purchase_intents", "0103_purchase_checkouts"],
 };
 
 /**

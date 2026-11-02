@@ -46,8 +46,11 @@ export function ThemeSwitch({ className, tone = "surface" }: { className?: strin
 
 const NEXT: Record<ThemePreference, ThemePreference> = { light: "dark", dark: "system", system: "light" };
 
-/** The same choice as one button, for the folded navigation rail: it shows the current theme and moves to the next (light, dark, system) when pressed. */
-export function ThemeCycle({ className }: { className?: string }) {
+/**
+ * The same choice as one button: it shows the current theme and moves to the next (light, dark, system) when pressed. It is the folded navigation rail's control (`nav`) and, on the
+ * narrowest phones where the three-button switch would not fit beside the logo, the header's (`surface`).
+ */
+export function ThemeCycle({ className, tone = "nav" }: { className?: string; tone?: "surface" | "nav" }) {
   const { theme, setTheme } = useTheme();
   const live = React.useSyncExternalStore(noSubscribe, () => true, () => false);
   const current = OPTIONS.find((o) => o.v === (live ? theme : "light")) ?? OPTIONS[0];
@@ -58,7 +61,11 @@ export function ThemeCycle({ className }: { className?: string }) {
       onClick={() => setTheme(NEXT[current.v])}
       aria-label={`Colour theme: ${current.label}. Press to change it.`}
       title={`Theme: ${current.label}. Press to change it.`}
-      className={cn("grid size-11 place-items-center rounded-xl text-[#b6c1d4] transition-colors hover:bg-white/10 hover:text-white", className)}
+      className={cn(
+        "grid size-11 place-items-center rounded-xl transition-colors",
+        tone === "nav" ? "text-[#b6c1d4] hover:bg-white/10 hover:text-white" : "border border-line bg-surface-2 text-ink-2 hover:text-ink",
+        className,
+      )}
     >
       <Icon className="size-[18px]" aria-hidden />
     </button>

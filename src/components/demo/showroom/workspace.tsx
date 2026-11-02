@@ -15,7 +15,8 @@ import { ConfirmHost, ConfirmStatic, ConsultCta } from "@/components/demo/showro
 import { JourneyBar, JourneyProvider } from "@/components/demo/showroom/journey";
 import { NavRail, RAIL_FOLDED, RAIL_WIDE } from "@/components/demo/showroom/rail";
 import { useRailCollapsed } from "@/components/demo/showroom/rail-preference";
-import { ThemeSwitch } from "@/components/demo/showroom/theme-switch";
+import { ThemeCycle, ThemeSwitch } from "@/components/demo/showroom/theme-switch";
+import { SHEET_QUERY, useMediaQuery } from "@/components/demo/showroom/use-media";
 import { Chip, ViewIcon } from "@/components/demo/showroom/ui";
 import { AutomationView } from "@/components/demo/showroom/views/automation";
 import { CrmView } from "@/components/demo/showroom/views/crm";
@@ -78,6 +79,18 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
   const [ready, setReady] = React.useState(false);
   const mainRef = React.useRef<HTMLElement>(null);
   const moved = React.useRef(false);
+  // On a phone AQi opens as a modal sheet: the page behind it is inert (no focus, no taps) and does not scroll while it is open.
+  const isSheet = useMediaQuery(SHEET_QUERY);
+  const sheetOpen = chatOpen && isSheet;
+  React.useEffect(() => {
+    if (!sheetOpen) return;
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = before;
+    };
+  }, [sheetOpen]);
 
   // Nothing animates until the page is live and has painted once, so a remembered folded rail does not play its fold on every load.
   React.useEffect(() => {
@@ -142,52 +155,49 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               className="showroom-layout relative z-10"
               data-nav-collapsed={collapsed}
               data-ready={ready ? "true" : undefined}
+              inert={sheetOpen}
               style={{ "--sidebar-w": `${collapsed ? RAIL_FOLDED : RAIL_WIDE}px` } as React.CSSProperties}
             >
               {/* Navigation rail (large screens): the portal's navy sidebar, which folds to icons */}
               <NavRail view={view} go={go} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
 
               <div className="sx-shift min-w-0">
-                {/* Header and section pills (smaller screens) */}
-                <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur-xl lg:hidden">
-                  <div className="flex items-center justify-between gap-3 px-4 pt-2.5">
-                    <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center gap-2.5">
-                      <Logo />
-                      <Chip tone="info">Demo</Chip>
-                    </Link>
-                    <ThemeSwitch />
-                  </div>
-                  <nav aria-label="Sections" className="sx-noscrollbar relative overflow-x-auto px-3 py-2.5">
-                    <ul className="flex gap-1.5">
-                      {VIEWS.map((v) => (
-                        <li key={v.id} className="shrink-0">
-                          <a
-                            href={v.id === "overview" ? "/demo/room" : `/demo/room?view=${v.id}`}
-                            aria-current={view === v.id ? "page" : undefined}
-                            onClick={(e) => {
-                              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                              e.preventDefault();
-                              go(v.id);
-                            }}
-                            className="sx-nav-item inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2"
-                          >
-                            <ViewIcon name={v.icon} className="size-4" />
-                            {v.short}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </nav>
+                {/* Smaller screens: the mark and the colour choice scroll away with the page; only the slim row of section pills stays at the top. */}
+                <header className="flex items-center justify-between gap-2 px-4 pt-[max(0.625rem,env(safe-area-inset-top))] lg:hidden">
+                  <Link href="/demo" aria-label="iAcquireOS demo home" className="inline-flex min-h-11 min-w-0 items-center gap-2.5">
+                    <Logo />
+                    <Chip tone="info">Demo</Chip>
+                  </Link>
+                  <ThemeSwitch className="hidden min-[375px]:inline-flex" />
+                  <ThemeCycle tone="surface" className="min-[375px]:hidden" />
                 </header>
+                <nav aria-label="Sections" className="sticky top-0 z-30 mt-1 border-b border-line bg-surface/90 backdrop-blur-xl lg:hidden [@media(max-height:500px)]:static">
+                  <ul className="sx-noscrollbar flex gap-1.5 overflow-x-auto px-3 py-2">
+                    {VIEWS.map((v) => (
+                      <li key={v.id} className="shrink-0">
+                        <a
+                          href={v.id === "overview" ? "/demo/room" : `/demo/room?view=${v.id}`}
+                          aria-current={view === v.id ? "page" : undefined}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                            e.preventDefault();
+                            go(v.id);
+                          }}
+                          className="sx-nav-item inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2"
+                        >
+                          <ViewIcon name={v.icon} className="size-4" />
+                          {v.short}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
 
-                <div className="px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-16 lg:pt-0">
-                  {/* Tour strip, and the consultation action where the rail is not on screen */}
+                <div className="px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 lg:px-8 lg:pb-24 lg:pt-0">
+                  {/* The guided tour strip. (Below lg the consultation action is in the bottom bar, beside AQi.) */}
                   <div className="z-20 -mx-4 mb-6 bg-gradient-to-b from-[var(--bg)] via-[var(--bg)]/90 to-transparent px-4 pb-3 pt-0 sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:-mx-8 lg:px-8 lg:pt-5">
                     <div className="flex flex-wrap items-stretch gap-3">
                       <JourneyBar className="min-w-0 basis-full lg:flex-1 lg:basis-0" />
-                      <div className="hidden w-full items-center gap-2 md:flex lg:hidden">
-                        <ConsultCta size="md" className="flex-1" />
-                      </div>
                     </div>
                   </div>
 
@@ -228,15 +238,8 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
               </div>
             </div>
 
-            {/* AQi: a floating button in the corner that opens the guide over the page, and tucks it away again */}
-            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} roles={ROLES} draft={draft} suggestions={SUGGESTIONS[view]} />
-
-            {/* Bottom bar on phones: the consultation action stays one tap away (AQi's button floats just above it) */}
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-3 py-2.5 backdrop-blur-xl md:hidden">
-              <div className="mx-auto flex max-w-xl items-center gap-2">
-                <ConsultCta size="md" className="min-w-0 flex-1" />
-              </div>
-            </div>
+            {/* AQi and the consultation action. Below lg they share one bottom bar, so nothing floats over the page; from lg AQi is the button in the corner (the rail has the consultation action). */}
+            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} roles={ROLES} draft={draft} suggestions={SUGGESTIONS[view]} bar={<ConsultCta size="md" variant="bar" className="w-full" />} />
 
             <ConfirmHost />
 

@@ -19,7 +19,7 @@ export function DemoShell({ children, wide = false }: { children: React.ReactNod
       </a>
       <header className={`mx-auto w-full ${measure} px-4 pt-5 sm:px-6 sm:pt-7`}>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <Link href="/demo" aria-label="iAcquire demo home" className="inline-flex min-h-11 items-center">
+          <Link href="/demo" aria-label="iAcquireOS demo home" className="inline-flex min-h-11 items-center">
             <Logo />
           </Link>
           <div className="flex items-center gap-2">

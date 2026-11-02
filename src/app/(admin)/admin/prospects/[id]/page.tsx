@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { prospectsCapabilities } from "@/server/demo/access";
 import { assignableOwners, getProspect } from "@/server/demo/admin";
 import { ProspectDetailView } from "@/components/demo/admin/prospect-detail";
+import { listProspectInvitations } from "@/server/purchase-intents/origin";
 
 export const metadata = { title: "Prospect" };
 export const dynamic = "force-dynamic";
@@ -19,5 +20,7 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
     throw err;
   });
   if (!detail) notFound();
-  return <ProspectDetailView detail={detail} owners={await assignableOwners(user)} caps={caps} timeZone={user.timezone} now={now.toISOString()} />;
+  // The purchase invitations made from this prospect (read-only here). A role that may view prospects but not purchases simply sees none.
+  const invitations = await listProspectInvitations(user, id, { now }).catch(() => []);
+  return <ProspectDetailView detail={detail} owners={await assignableOwners(user)} caps={caps} timeZone={user.timezone} now={now.toISOString()} invitations={invitations} />;
 }

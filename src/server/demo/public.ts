@@ -578,7 +578,7 @@ export async function recordCta(kind: CtaKind, ctx: DemoContext): Promise<{ ok: 
       notices.push(
         kind === "consultation"
           ? { kind: "demo_consultation_requested", severity: "info", title: "A prospect asked for a consultation", body: "A prospect asked to talk to a person after their demo.", link: prospectLink(p.id), dedupeKey: `demo-consultation:${p.id}` }
-          : { kind: "demo_purchase_started", severity: "info", title: "A prospect pressed Buy now", body: "A prospect pressed Buy now in the demo. Nothing was charged and no workspace was created.", link: prospectLink(p.id), dedupeKey: `demo-buy:${p.id}` },
+          : { kind: "demo_purchase_started", severity: "info", title: "A prospect asked for a purchase link", body: "A prospect asked for a purchase link in the demo. Nothing was charged, no checkout was opened and no workspace was created. Review them, then create a purchase invitation from their page: it is emailed to them automatically.", link: prospectLink(p.id), dedupeKey: `demo-buy:${p.id}` },
       );
     } else if (canTransition(p.status, target) && p.status !== target) {
       // The latest thing they asked for is the status.

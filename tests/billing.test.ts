@@ -26,6 +26,7 @@ import {
 import { createPaymentCheckout, handlePaymongoWebhook, recordRefund } from "@/server/billing/payments";
 import { parseSignatureHeader, verifyWebhookSignature } from "@/server/billing/paymongo";
 import { addProviderFee, adjustOrgCredits, confirmLivePaymentsReview, getAgencyBillingOverview, getBillingOverview, setExchangeRate, startTopUp, updateBillingSettings } from "@/server/billing/service";
+import { recordCheck } from "@/server/billing/provider-checks";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
 type Org = Awaited<ReturnType<typeof createOrg>>;
@@ -516,6 +517,12 @@ describe("checkout and payment confirmation", () => {
       expect(calls).toHaveLength(0);
       await expect(confirmLivePaymentsReview({ id: owner.id, platformRole: "none" }, true)).rejects.toThrow(/super admin/);
       await confirmLivePaymentsReview({ id: admin.id, platformRole: "agency_super_admin" }, true);
+      // The review alone is not enough for real money: the credentials in use must also have passed a read-only connection check (Billing, Payment providers), and Billing says so.
+      await expect(startTopUp(ctxFor(owner, org, "owner"), 25, { fetch: impl })).rejects.toThrow(/connection check/);
+      expect(calls).toHaveLength(0);
+      expect((await getBillingOverview(ctxFor(owner, org, "owner"))).payments.blockedReason).toMatch(/connection check/);
+      await withSystem((db) => recordCheck(db, { provider: "paymongo", livemode: true, outcome: "verified", facts: {}, checkedBy: admin.id, at: new Date() }));
+      expect((await getBillingOverview(ctxFor(owner, org, "owner"))).payments.blockedReason).toBeNull();
       const out = await startTopUp(ctxFor(owner, org, "owner"), 25, { fetch: impl });
       expect((await payment(out.paymentId)).livemode).toBe(true);
       await confirmLivePaymentsReview({ id: admin.id, platformRole: "agency_super_admin" }, false);

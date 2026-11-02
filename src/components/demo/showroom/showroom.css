@@ -9,6 +9,9 @@
   position: relative;
   min-height: 100dvh;
   color: var(--ink);
+  /* A phone held sideways has a notch beside the page: keep the content out of it (the fixed bars and the sheet add the same insets themselves). */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 .demo-stage :focus-visible {
   outline: 2px solid var(--primary);

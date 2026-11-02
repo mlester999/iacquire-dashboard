@@ -9,7 +9,7 @@ export const STATUS_LABEL: Record<ProspectStatus, string> = {
   active: "Demo open",
   expired: "Demo ended",
   consultation_requested: "Asked for a consultation",
-  purchase_started: "Pressed Buy now",
+  purchase_started: "Asked for a purchase link",
   converted: "Client",
   declined: "Not a fit",
   blocked: "Blocked",
@@ -102,7 +102,7 @@ export function listHref(query: Partial<ListQuery>): string {
 }
 
 /**
- * Where a Super Admin creates a purchase invitation for a prospect who pressed Buy now. It is the existing purchase-intent screen with the form pre-filled from the
+ * Where a Super Admin creates a purchase invitation for a prospect who asked for a purchase link. It is the existing purchase-intent screen with the form pre-filled from the
  * demo; the demo never creates an intent, a checkout or a workspace itself.
  */
 export const purchaseInviteHref = (prospectId: string): string => `/admin/purchase-intents?prospect=${encodeURIComponent(prospectId)}`;

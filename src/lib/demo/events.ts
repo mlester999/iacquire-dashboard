@@ -19,7 +19,7 @@ export const DEMO_EVENT_LABELS: Record<DemoEventKind, string> = {
   extended: "The demo was extended",
   expired: "The demo window ended",
   cta_consultation: "Asked for a consultation",
-  cta_buy: "Pressed Buy now",
+  cta_buy: "Asked for a purchase link",
   consultation_done: "The consultation was held",
   note: "A note was added",
   assigned: "Was assigned to a team member",

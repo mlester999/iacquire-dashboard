@@ -23,7 +23,7 @@ const base: PurchaseIntentView = {
   statusText: "Payment verified", statusTone: "warning", expiresAt: "2026-11-08T12:00:00.000Z", startedAt: "2026-10-25T12:00:00.000Z", paymentAt: "2026-10-25T12:05:00.000Z", provisionedAt: null,
   cancelledAt: null, expiredAt: null, paymentMethod: "paymongo", paymentReference: "pay_test", paymentPaidOn: "2026-10-25", paymentNote: "Confirmed by the provider.", paymentAmountCents: 149900,
   clientOrgId: null, autoProvision: false, paymentSource: "provider", paymentHold: "refunded", holdText: "The payment provider reported a refund for this payment.", provisionAttempts: 0,
-  lastProvisionError: null, createdAt: "2026-10-25T12:00:00.000Z",
+  lastProvisionError: null, createdAt: "2026-10-25T12:00:00.000Z", delivery: null,
   can: { start: false, verify: false, provision: false, cancel: true, rotate: false, release: true },
 };
 

@@ -163,7 +163,7 @@ describe("the navigation rail", () => {
 });
 
 describe("AQi", () => {
-  it("is a floating button; the panel is out of the way until it opens, and closing it never loses a question", async () => {
+  it("is a button in the dock; the panel is out of the way until it opens, and closing it never loses a question", async () => {
     room();
     const button = launcher();
     // Its name begins with the words drawn on it ("AQi", "9 left"), so a visitor who speaks to their device can press it by what they see.
@@ -288,8 +288,10 @@ describe("AQi", () => {
 describe("without scripts", () => {
   it("draws the panel on the page and keeps it usable: it is not hidden from assistive technology, and a rule shows it in place of the button", () => {
     const html = renderToStaticMarkup(<Workspace initialView="crm" state={state} chat={chat} />);
-    const aside = html.match(/<aside[^>]*id="showroom-chat"[^>]*>/)![0];
-    expect(aside).not.toMatch(/aria-hidden|inert/);
+    const panel = html.match(/<div[^>]*id="showroom-chat"[^>]*>/)![0];
+    expect(panel).not.toMatch(/aria-hidden|inert/);
+    expect(panel).toMatch(/role="complementary"/);
+    expect(panel).not.toMatch(/aria-modal/);
     expect(html).toMatch(/<noscript><style>[^<]*#aqi-launcher\{display:none/);
     expect(html).toMatch(/<noscript><style>[^<]*#showroom-chat\{position:static/);
     // The server always draws the rail open: the remembered fold is applied once the page is live.

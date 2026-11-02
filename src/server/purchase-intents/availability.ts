@@ -2,6 +2,10 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import { paymongoStatus } from "@/server/billing/paymongo";
 import { paypalStatus } from "@/server/billing/providers/paypal";
+import { verifiedForCurrentConfig } from "@/server/billing/provider-checks";
+
+/** Real money needs more than a review: the credentials in use must also have passed a read-only connection check, made with exactly this configuration. */
+const LIVE_CHECK_NEEDED = "Live payments need a successful connection check on these exact credentials. Open Billing, Payment providers, and run \"Check connection\".";
 
 export type CheckoutProvider = "paymongo" | "paypal";
 export const CHECKOUT_PROVIDERS: readonly CheckoutProvider[] = ["paymongo", "paypal"];
@@ -58,6 +62,7 @@ export async function providerReadiness(db: Queryable, provider: CheckoutProvide
     if (!paypal.configured) return noPaypal("PayPal is not connected yet (client ID or secret missing).");
     if (!paypal.webhookConfigured) return noPaypal("The PayPal webhook id is not set, so a payment could not be confirmed.");
     if (livePaypal === true && !settings.liveReviewedAt) return noPaypal("Live payments are switched off until iAcquire confirms the payment and tax review.");
+    if (livePaypal === true && !(await verifiedForCurrentConfig(db, "paypal"))) return noPaypal(LIVE_CHECK_NEEDED);
     return { available: true, reason: null, livemode: livePaypal, settings };
   }
   const status = paymongoStatus();
@@ -67,6 +72,7 @@ export async function providerReadiness(db: Queryable, provider: CheckoutProvide
   if (!status.webhookConfigured) return no("The PayMongo webhook secret is not set, so a payment could not be confirmed.");
   if (!settings.usdPhpRate || !(settings.usdPhpRate > 0)) return no("No exchange rate is set, so the price cannot be converted for PayMongo.");
   if (livemode === true && !settings.liveReviewedAt) return no("Live payments are switched off until iAcquire confirms the payment and tax review.");
+  if (livemode === true && !(await verifiedForCurrentConfig(db, "paymongo"))) return no(LIVE_CHECK_NEEDED);
   return { available: true, reason: null, livemode, settings };
 }
 

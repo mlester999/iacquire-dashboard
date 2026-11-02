@@ -59,6 +59,8 @@ const META: Record<EmailTemplate, { tag: string; cta: string; headline: string }
   proposal_code: { tag: "Your code", cta: "Open in iAcquire", headline: "Your code" },
   // Sent to a prospect who asked for the demo, not to an iAcquire user: one link that works once. Opening it only shows a button; pressing the button starts the demo.
   demo_link: { tag: "Demo access", cta: "Open your demo", headline: "See the AI team in action" },
+  // Sent to a buyer iAcquire invited, not to an iAcquire user: the offer, its price and one private link. The link is the only credential in it; the outbox keeps a copy without it.
+  purchase_invitation: { tag: "Purchase invitation", cta: "Review your purchase", headline: "Your iAcquireOS offer is ready" },
 };
 
 const SETTINGS_LINK_TEMPLATES = new Set<EmailTemplate>(["notification", "escalation_alert", "setup_update", "support_reply"]);
@@ -353,6 +355,7 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
       password_reset: `You received this email because a password reset was requested for ${email.to}.`,
       proposal_code: `You received this email because a code was asked for to answer a proposal sent to ${email.to}.`,
       demo_link: `You received this email because ${email.to} was used to ask for an iAcquire demo.`,
+      purchase_invitation: `You received this email because iAcquire prepared a purchase invitation for ${email.to}.`,
     }[email.template as string] ?? `You received this email because of activity on the iAcquire account for ${email.to}.`;
   const footerLinks =
     `<a class="em-muted" href="${esc(base)}" target="_blank" rel="noopener noreferrer" style="color:${C.muted};text-decoration:underline;">iAcquire</a>` +
@@ -423,6 +426,28 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
         ...(url ? ([[button(meta.cta, url), 18]] as Array<[string, number]>) : []),
         [fine(expiry ? `The link expires in ${esc(expiry)} and works once.` : "The link works once and expires soon."), 22],
         [callout(`<strong class="em-ink" style="color:${C.ink};">Didn't ask for this?</strong> You can ignore this email. Your password stays the same.`, C.warning), 22],
+        ...(url ? ([[fallbackLink(url), 0]] as Array<[string, number]>) : []),
+      ],
+    });
+  } else if (email.template === "purchase_invitation") {
+    // The offer: who it is for, what it costs, when the link stops working, one button. Everything comes from the plain text, which is also what a text-only client shows.
+    const company = clipName(detail(parsed, "Company"), 80) ?? "your business";
+    const reference = clipName(detail(parsed, "Reference"), 40);
+    const rows = parsed.details.filter(([k]) => !/^(company|reference)$/i.test(k));
+    const last = parsed.paragraphs.length - 1;
+    html = layout({
+      ...common,
+      preheader: `Your iAcquireOS offer for ${company} is ready to review. Nothing is charged until you pay.`,
+      tag: meta.tag,
+      tone: "brand",
+      headlineHtml: `Your iAcquireOS ${accent("offer")} is ready`,
+      headlineText: meta.headline,
+      sections: [
+        ...parsed.paragraphs.map((para, idx): [string, number] => [p(rich(para, base), idx === 0 ? 16 : 15), idx === last ? 22 : 12]),
+        [workspaceCard(company, reference ? `Reference ${reference}` : ""), 18],
+        ...(rows.length ? ([[detailRows(rows, base), 24]] as Array<[string, number]>) : []),
+        ...(url ? ([[button(meta.cta, url), 18]] as Array<[string, number]>) : []),
+        ...parsed.small.map((s): [string, number] => [fine(rich(s, base)), 12]),
         ...(url ? ([[fallbackLink(url), 0]] as Array<[string, number]>) : []),
       ],
     });

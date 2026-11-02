@@ -7,7 +7,8 @@ export const PURCHASE_STATUSES = ["invited", "started", "payment_verified", "pro
 export type PurchaseStatus = (typeof PURCHASE_STATUSES)[number];
 
 export const PURCHASE_STATUS_TEXT: Record<PurchaseStatus, string> = {
-  invited: "Invitation sent",
+  // "Created", not "sent": whether and how the link reached the buyer is the delivery's own status (src/lib/purchase-intents/delivery.ts), shown beside this one.
+  invited: "Invitation created",
   started: "Buyer confirmed",
   payment_verified: "Payment verified",
   provisioned: "Workspace created",
@@ -42,7 +43,22 @@ export const PURCHASE_EVENT_TEXT: Record<string, string> = {
   provision_failed: "Creating the workspace did not finish",
   provision_retried: "Creating the workspace was tried again",
   hold_released: "A person checked with the provider and released the hold",
+  invitation_email: "The purchase link was put in the buyer's hands",
 };
+
+/** The timeline's words for an invitation email entry, from what it recorded: never "delivered" for a message the provider only accepted. */
+export function invitationEmailEventText(detail: Record<string, unknown>): string {
+  const status = typeof detail.status === "string" ? detail.status : "";
+  const first = detail.kind === "resend" ? "New link emailed" : detail.kind === "rotation" ? "New link made for hand sharing" : "Invitation email";
+  switch (status) {
+    case "sent": return `${first}: handed to the email provider (not yet confirmed as delivered)`;
+    case "delivered": return `${first}: the email provider reported it delivered`;
+    case "bounced": return `${first}: the buyer's mail server did not accept it`;
+    case "failed": return `${first}: could not be sent`;
+    case "manual": return `${first}: no email was sent, the link is shared by hand`;
+    default: return PURCHASE_EVENT_TEXT.invitation_email;
+  }
+}
 
 /** An online checkout, as the buyer's page and the Super Admin's page tell it. "paid" is only ever set by the provider's signed notice, never by the buyer's return to the site. */
 export const CHECKOUT_STATUSES = ["creating", "pending", "paid", "failed", "cancelled", "expired", "mismatch", "refunded", "disputed"] as const;

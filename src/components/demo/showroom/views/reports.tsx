@@ -172,7 +172,7 @@ export function ReportsView() {
         plan="core"
         title="See how your own pipeline performs."
         body="Reports and the Performance Analyst are part of your core implementation. They read your own CRM, so the numbers describe your business, with the source and definition beside each one."
-        consultLabel="Book a free consultation"
+        consult
         secondary={{ view: "pricing", label: "See what it costs" }}
       />
     </div>

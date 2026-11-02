@@ -145,6 +145,76 @@ export interface CheckoutSession {
   checkoutUrl: string;
 }
 
+export interface PaymongoConnectionFindings {
+  outcome: "verified" | "webhook_not_registered" | "credentials_rejected" | "unreachable" | "unexpected_response";
+  /** Whether PayMongo lists an enabled webhook for this site's address. Null when PayMongo's answer did not say. */
+  webhook: "registered" | "not_registered" | "unknown";
+  /** Required events the registered webhook does not subscribe to (only when it was found and listed its events). */
+  eventsMissing: string[];
+  /** Which read-only call proved the key. */
+  proof: "payments" | "webhooks" | null;
+}
+
+/**
+ * "Check connection" for PayMongo: a read-only, authorized call that proves PayMongo accepts the secret key, then (best effort) a read of its webhook list to see whether one is registered
+ * for this site's address. Nothing is created or charged and nothing from a response is kept except the facts above: the response bodies, which can hold customer details, are read only
+ * for their shape. The key goes in a header, never in an address. Contract source: PayMongo's API reference (List all payments; webhooks), read 2026-11-02; the call has NOT been run
+ * against a PayMongo account from this code yet, so a first real run is the acceptance test: an answer it cannot read is reported as unexpected, never as a success.
+ */
+export async function checkPaymongoConnection(opts: { webhookUrl: string; requiredEvents: readonly string[] }, deps: { fetch?: FetchLike } = {}): Promise<PaymongoConnectionFindings> {
+  const key = env().PAYMONGO_SECRET_KEY;
+  if (!key) return { outcome: "unexpected_response", webhook: "unknown", eventsMissing: [], proof: null };
+  const doFetch = deps.fetch ?? fetch;
+  const call = async (path: string): Promise<{ status: number; json: unknown } | null> => {
+    try {
+      const res = await doFetch(`${apiBase()}${path}`, { method: "GET", headers: { Accept: "application/json", Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` }, redirect: "error", signal: AbortSignal.timeout(15000) });
+      let json: unknown = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
+      }
+      return { status: res.status, json };
+    } catch {
+      return null;
+    }
+  };
+  const rejected = (s: number) => s === 401 || s === 403;
+  const none: Pick<PaymongoConnectionFindings, "webhook" | "eventsMissing"> = { webhook: "unknown", eventsMissing: [] };
+
+  const payments = await call("/v1/payments?limit=1");
+  if (payments === null) return { outcome: "unreachable", ...none, proof: null };
+  if (rejected(payments.status)) return { outcome: "credentials_rejected", ...none, proof: null };
+  if (payments.status === 429 || payments.status >= 500) return { outcome: "unreachable", ...none, proof: null };
+  const hooks = await call("/v1/webhooks");
+  if (hooks !== null && rejected(hooks.status)) return { outcome: "credentials_rejected", ...none, proof: null };
+  let proof: PaymongoConnectionFindings["proof"] = null;
+  if (payments.status >= 200 && payments.status < 300 && isRecord(payments.json) && Array.isArray(payments.json.data)) proof = "payments";
+  else if (hooks !== null && hooks.status >= 200 && hooks.status < 300 && isRecord(hooks.json) && Array.isArray(hooks.json.data)) proof = "webhooks";
+  if (!proof) return { outcome: "unexpected_response", ...none, proof: null };
+
+  let webhook: PaymongoConnectionFindings["webhook"] = "unknown";
+  let eventsMissing: string[] = [];
+  if (hooks !== null && hooks.status >= 200 && hooks.status < 300 && isRecord(hooks.json) && Array.isArray(hooks.json.data)) {
+    const same = (a: unknown) => {
+      try {
+        return typeof a === "string" && new URL(a).href.replace(/\/+$/, "") === new URL(opts.webhookUrl).href.replace(/\/+$/, "");
+      } catch {
+        return false;
+      }
+    };
+    const mine = hooks.json.data.filter((w): w is Record<string, unknown> => isRecord(w) && isRecord(w.attributes) && same(w.attributes.url) && w.attributes.status !== "disabled");
+    if (mine.length === 0) webhook = "not_registered";
+    else {
+      webhook = "registered";
+      const subscribed = new Set(mine.flatMap((w) => (Array.isArray((w.attributes as Record<string, unknown>).events) ? ((w.attributes as Record<string, unknown>).events as unknown[]).filter((e): e is string => typeof e === "string") : [])));
+      eventsMissing = subscribed.size ? opts.requiredEvents.filter((e) => !subscribed.has(e)) : [];
+    }
+  }
+  const outcome = webhook === "not_registered" || eventsMissing.length ? "webhook_not_registered" : "verified";
+  return { outcome, webhook, eventsMissing, proof };
+}
+
 /** Creates a hosted checkout session. Only the checkout id and URL are trusted from the response. */
 export async function createCheckoutSession(req: CheckoutRequest, deps: { fetch?: FetchLike } = {}): Promise<CheckoutSession> {
   const status = paymongoStatus();

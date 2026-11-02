@@ -6,6 +6,7 @@ import { ProspectActions } from "@/components/demo/admin/prospect-actions";
 import { availableActions, describeEvent, purchaseInviteHref, STATUS_LABEL, STATUS_TONE, windowWords } from "@/lib/demo/admin-view";
 import { formatDateTime } from "@/lib/utils";
 import type { ProspectDetail } from "@/server/demo/admin";
+import type { ProspectInvitation } from "@/server/purchase-intents/origin";
 
 // One prospect: who they are, where their demo stands, what the team has done, and the buttons. Their conversation is not here: reading it is a button that records the read.
 // Everything a prospect typed (name, address, business) is plain text in this page, never markup.
@@ -20,6 +21,8 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const when = (iso: string | null, tz: string) => (iso ? formatDateTime(iso, tz) : "Not yet");
+/** Another invitation only makes sense once the earlier ones are over (cancelled or expired): an open one is used or cancelled first. */
+const i_canInviteAgain = (list: ProspectInvitation[]) => list.every((i) => i.status === "cancelled" || i.status === "expired");
 
 export function ProspectDetailView({
   detail,
@@ -27,12 +30,14 @@ export function ProspectDetailView({
   caps,
   timeZone,
   now,
+  invitations = [],
 }: {
   detail: ProspectDetail;
   owners: Array<{ id: string; name: string }>;
   caps: { view: boolean; manage: boolean };
   timeZone: string;
   now: string;
+  invitations?: ProspectInvitation[];
 }) {
   const p = detail.prospect;
   const clock = new Date(now);
@@ -96,21 +101,34 @@ export function ProspectDetailView({
           </Fact>
           <Fact label="Extended">{p.extendedCount === 0 ? "Never" : `${p.extendedCount} time${p.extendedCount === 1 ? "" : "s"}, ${p.extendedHours} hours in all`}</Fact>
           <Fact label="Asked for a consultation">{p.consultationRequestedAt ? `${formatDateTime(p.consultationRequestedAt, timeZone)}${p.consultationDoneAt ? `, held ${formatDateTime(p.consultationDoneAt, timeZone)}` : ", not held yet"}` : "No"}</Fact>
-          <Fact label="Pressed Buy now">
+          <Fact label="Asked for a purchase link">
             {p.purchaseStartedAt ? (
               <>
                 {formatDateTime(p.purchaseStartedAt, timeZone)}
-                {caps.manage && !p.erased && (
-                  <>
-                    {" · "}
-                    <Link href={purchaseInviteHref(p.id)} className="text-primary hover:underline">
-                      Create purchase invitation
-                    </Link>
-                  </>
+                <span className="block text-[13px] text-muted">Only a request: nothing was charged and no checkout or workspace exists until a purchase invitation is sent and paid.</span>
+                {invitations.length === 0 && caps.manage && !p.erased && (
+                  <Link href={purchaseInviteHref(p.id)} className="mt-1 inline-block text-primary hover:underline">
+                    Create purchase invitation
+                  </Link>
                 )}
               </>
             ) : "No"}
           </Fact>
+          {invitations.length > 0 && (
+            <Fact label="Purchase invitation">
+              <ul className="space-y-1">
+                {invitations.map((i) => (
+                  <li key={i.id}>
+                    <Link href={`/admin/purchase-intents/${i.id}`} className="font-medium text-primary hover:underline">{i.reference}</Link>
+                    <span className="text-muted"> · {i.statusText} · made {formatDateTime(i.createdAt, timeZone)}</span>
+                  </li>
+                ))}
+              </ul>
+              {caps.manage && !p.erased && i_canInviteAgain(invitations) && (
+                <Link href={purchaseInviteHref(p.id)} className="mt-1 inline-block text-[13px] text-primary hover:underline">Create another purchase invitation</Link>
+              )}
+            </Fact>
+          )}
           <Fact label="Followed by">{p.ownerName ?? "Nobody yet"}</Fact>
           <Fact label="Agreed to the notice">
             {p.consentAt ? `${formatDateTime(p.consentAt, timeZone)} (version ${p.consentVersion ?? "unknown"})` : "No record"}

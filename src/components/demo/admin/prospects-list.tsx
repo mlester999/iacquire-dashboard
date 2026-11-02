@@ -76,7 +76,7 @@ export function ProspectsList({
           <Stat label="All prospects" value={summary.total} />
           <Stat label="Demo open now" value={open} />
           <Stat label="Asked for a consultation" value={summary.byStatus.consultation_requested ?? 0} />
-          <Stat label="Pressed Buy now" value={summary.byStatus.purchase_started ?? 0} />
+          <Stat label="Asked for a purchase link" value={summary.byStatus.purchase_started ?? 0} />
           <Stat label="Demos started today" value={summary.today.starts} detail={`of ${summary.caps.dailyStartCap} a day (UTC)`} />
           <Stat label="AI messages today" value={summary.today.messages} detail={`of ${summary.caps.dailyMessageCap} a day${summary.today.blocked ? `, ${summary.today.blocked} refused` : ""}`} />
         </dl>

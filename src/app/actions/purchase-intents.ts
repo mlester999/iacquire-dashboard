@@ -8,10 +8,12 @@ import { AppError } from "@/server/errors";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import {
-  cancelPurchaseIntent, createPurchaseIntent, provisionPurchaseIntent, releasePurchaseHold, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
-  createPurchaseIntentSchema, purchasePaymentSchema,
+  cancelPurchaseIntent, provisionPurchaseIntent, releasePurchaseHold, rotatePurchaseLink, setPurchaseCheckoutEnabled, startPurchase, verifyPurchasePayment,
+  purchasePaymentSchema,
 } from "@/server/purchase-intents/service";
+import { inviteBuyer, inviteBuyerSchema, resendInvitation, resendSchema } from "@/server/purchase-intents/invitations";
 import { completePaypalPurchaseReturn, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
+import { checkEmailSetup } from "@/server/purchase-intents/email-check";
 
 // Server actions for purchase intents. The admin ones start from a signed-in agency account and the service re-reads the permission from the database. The public one is
 // the buyer confirming a link: it takes only the token, is rate-limited by address, and creates no account and no payment. A token never appears in a log or an audit row.
@@ -32,12 +34,35 @@ async function clientIp(): Promise<string | null> {
 
 const publicPath = (raw: string) => `/purchase/${raw}`;
 
-export async function createPurchaseIntentAction(input: z.input<typeof createPurchaseIntentSchema>) {
+/**
+ * The invitation form's action: creates the invitation, emails the buyer when asked and ready, and answers with the whole invitation (the list adds it at once) and what
+ * happened to the email. The link's path is in the answer so a Super Admin can share it by hand when no email went out; it is shown, never stored. The same idempotency key
+ * answers the same invitation again with no new link and no second email (`path` is then null).
+ */
+export async function createPurchaseIntentAction(input: z.input<typeof inviteBuyerSchema>) {
   return act(async (session) => {
-    const created = await createPurchaseIntent(session, createPurchaseIntentSchema.parse(input));
-    // Do not revalidate this route here: the one visible copy of the public link lives in the form's answer, and a server-action refresh would replace that panel.
-    // The list is fetched again on the next navigation or reload.
-    return { id: created.id, reference: created.reference, path: publicPath(created.token), expiresAt: created.expiresAt };
+    const result = await inviteBuyer(session, inviteBuyerSchema.parse(input));
+    revalidatePath("/admin/purchase-intents");
+    return { replayed: result.replayed, intent: result.intent, path: result.token ? publicPath(result.token) : null, delivery: result.delivery };
+  });
+}
+
+/** "Check email setup": read-only questions to the email provider about the sender's domain and its delivery notices. A Super Admin only; nothing is sent and no key is returned. */
+export async function checkEmailSetupAction() {
+  return act(async (session) => checkEmailSetup(session));
+}
+
+/**
+ * Makes a NEW link for an open purchase and emails it (email: true), or makes one to share by hand (email: false). The earlier link stops working at once. A repeated key answers
+ * the link already made; the one-minute pause and the daily limit are the service's.
+ */
+export async function resendPurchaseInvitationAction(input: { id: string; email?: boolean; idempotencyKey?: string }) {
+  return act(async (session) => {
+    const id = uuid.parse(input.id);
+    const result = await resendInvitation(session, id, resendSchema.parse({ email: input.email, idempotencyKey: input.idempotencyKey }));
+    revalidatePath("/admin/purchase-intents");
+    revalidatePath(`/admin/purchase-intents/${id}`);
+    return { replayed: result.replayed, intent: result.intent, path: result.token ? publicPath(result.token) : null, delivery: result.delivery };
   });
 }
 

@@ -12,6 +12,7 @@ import { createCheckoutSession, paymongoStatus, type FetchLike } from "@/server/
 import { markSetupFeePaid } from "@/server/billing/clearance";
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { paymongoAdapter } from "@/server/billing/providers/paymongo";
+import { verifiedForCurrentConfig } from "@/server/billing/provider-checks";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import { nextPaidThrough, STALE_CHECKOUT_HOURS } from "@/lib/billing-renewal";
 import { todayIn } from "@/lib/invoices/state";
@@ -78,6 +79,8 @@ export async function createPaymentCheckout(input: CheckoutInput, deps: { fetch?
     const s = settingsRows[0];
     if (!s?.usd_php_rate) throw new AppError("integration_unavailable", "Checkout needs an exchange rate. iAcquire has not set one yet.");
     if (livemode && !s.live_payments_review_at) throw new AppError("integration_unavailable", "Live payments are switched off until iAcquire confirms the payment and tax review.");
+    // The same rule the purchase checkout has: real money also needs a connection check that passed with exactly these credentials (Billing, Payment providers).
+    if (livemode && !(await verifiedForCurrentConfig(db, "paymongo"))) throw new AppError("integration_unavailable", "Live payments need a successful connection check on these exact credentials. iAcquire has not completed it yet.");
     if (input.kind === "credit_topup") {
       const usd = input.usdMicros / MICROS_PER_USD;
       if (!Number.isInteger(usd) || usd < s.topup_min_usd || usd > s.topup_max_usd) throw new AppError("invalid_input", `Choose a whole-dollar amount from $${s.topup_min_usd} to $${s.topup_max_usd}.`);

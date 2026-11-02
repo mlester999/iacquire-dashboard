@@ -9,7 +9,7 @@ import { Tooltip } from "@/components/ui/overlays";
 import { VIEWS, type ViewId } from "@/lib/demo/showroom/content";
 import { MessageMeter, MiniStats, WindowClock } from "@/components/demo/showroom/clock";
 import { useShowroom } from "@/components/demo/showroom/context";
-import { ConsultRail } from "@/components/demo/showroom/cta";
+import { ConsultRail, useConsultLabel } from "@/components/demo/showroom/cta";
 import { ThemeCycle, ThemeSwitch } from "@/components/demo/showroom/theme-switch";
 import { ViewIcon } from "@/components/demo/showroom/ui";
 
@@ -58,6 +58,7 @@ function NavItem({ id, view, go, collapsed }: { id: ViewId; view: ViewId; go: (v
 
 export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (v: ViewId) => void; collapsed: boolean; onToggle: () => void }) {
   const { business, firstName, industryLabel } = useShowroom();
+  const consultLabel = useConsultLabel();
   const name = business?.trim() || `${firstName}'s business`;
   const initial = (name.match(/[A-Za-z0-9]/)?.[0] ?? "A").toUpperCase();
   return (
@@ -68,12 +69,11 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
       className="workspace-nav sx-on-nav sx-rail sx-scroll hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden"
     >
       {/* The mark, the "Demo" label and the fold button. One set of elements in both states, so focus stays on the button when the rail folds. */}
-      <div className={cn("flex shrink-0", collapsed ? "flex-col items-start gap-1 px-4 pb-2 pt-3" : "h-[68px] items-center gap-2 px-3")}>
-        <Link href="/demo" aria-label="iAcquire demo home" className="workspace-nav-brand inline-flex shrink-0 items-center p-1.5">
+      <div className={cn("flex shrink-0", collapsed ? "flex-col items-start gap-1 px-4 pb-2 pt-3" : "h-[68px] items-center gap-1.5 px-3")}>
+        <Link href="/demo" aria-label="iAcquireOS demo home" className="workspace-nav-brand inline-flex shrink-0 items-center p-1">
           <Logo tone="inverse" compact={collapsed} />
         </Link>
-        {!collapsed && <span className="flex-1" />}
-        <span className={cn("sx-rail-label rounded-full border border-white/15 bg-white/[.07] px-2.5 py-0.5 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#cdd8ee]", collapsed && "hidden")}>Demo</span>
+        <span className={cn("sx-rail-label ml-auto rounded-full border border-white/15 bg-white/[.07] px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#cdd8ee]", collapsed && "hidden")}>Demo</span>
         <Tooltip content={collapsed ? "Expand navigation" : "Collapse navigation"} side="right" sideOffset={TIP_GAP}>
           <button
             type="button"
@@ -104,7 +104,7 @@ export function NavRail({ view, go, collapsed, onToggle }: { view: ViewId; go: (
       </div>
 
       <div className={cn("mb-4 shrink-0", collapsed ? "mx-4" : "mx-3")}>
-        <Tooltip content="Book a free consultation" side="right" sideOffset={TIP_GAP} disabled={!collapsed}>
+        <Tooltip content={consultLabel} side="right" sideOffset={TIP_GAP} disabled={!collapsed}>
           <div>
             <ConsultRail />
           </div>
