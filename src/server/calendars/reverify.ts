@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
+import { launchNotificationsOn } from "@/server/setup/launch-notifications";
 import { verifyCalendarInTx, type CalendarCheckKey } from "@/server/calendars/activation";
 
 // A calendar that passed verification can stop being valid without anyone touching the calendar itself: a host's hours are removed, a host pauses or
@@ -80,6 +81,9 @@ export async function reverifyCalendarsAfterChange(db: Queryable, orgId: string,
   if (org.rows[0].is_demo) return { ...result, skipped: "demo" };
   if (org.rows[0].kind === "agency") return { ...result, skipped: "agency" };
 
+  // The owners' and admins' notices below are sent only where launch notices were switched on (src/server/setup/launch-notifications.ts): the first pass over a client that was already
+  // using the product must not tell it about a calendar it has lived with. The drift is recorded and audited either way.
+  const notices = await launchNotificationsOn(orgId, db);
   const cals = await db.query<{ id: string; name: string; verification: Record<string, unknown> | null }>(
     `select id, name, verification from crm_calendars
       where org_id = $1 and status = 'active' and verified_at is not null and archived_at is null order by created_at, id for update`,
@@ -106,14 +110,16 @@ export async function reverifyCalendarsAfterChange(db: Queryable, orgId: string,
         metadata: { reason: drift.reason, failing, previous, digest },
       }, db);
       const lead = failingChecks.slice(0, 2).map((x) => x.detail).join(" ");
-      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-        kind: "crm_calendar_sync",
-        severity: "warning",
-        title: `${c.name} no longer passes its checks`,
-        body: `${lead} Bookings you already have are untouched; fix this so the calendar keeps working as it was set up.`,
-        link: "/crm/calendars",
-        dedupeKey: `calendar-drift:${c.id}:${digest}:${seq}`,
-      });
+      if (notices) {
+        await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+          kind: "crm_calendar_sync",
+          severity: "warning",
+          title: `${c.name} no longer passes its checks`,
+          body: `${lead} Bookings you already have are untouched; fix this so the calendar keeps working as it was set up.`,
+          link: "/crm/calendars",
+          dedupeKey: `calendar-drift:${c.id}:${digest}:${seq}`,
+        });
+      }
       result.drifted.push({ calendarId: c.id, calendarName: c.name, failing });
     } else {
       await db.query("update crm_calendars set verification = (verification - 'drift') || jsonb_build_object('driftSeq', $3::int) where id = $1 and org_id = $2", [c.id, orgId, seq]);
@@ -121,14 +127,16 @@ export async function reverifyCalendarsAfterChange(db: Queryable, orgId: string,
         orgId, actorKind: "system", action: "crm.calendar_verification_recovered", targetType: "crm_calendar", targetId: c.id, result: "success",
         metadata: { reason: reason.slice(0, 60), previous, digest },
       }, db);
-      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-        kind: "crm_calendar_sync",
-        severity: "success",
-        title: `${c.name} passes its checks again`,
-        body: "Every check that failed after the last change passes now.",
-        link: "/crm/calendars",
-        dedupeKey: `calendar-recovered:${c.id}:${storedDigestOf(stored)}:${seq}`,
-      });
+      if (notices) {
+        await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+          kind: "crm_calendar_sync",
+          severity: "success",
+          title: `${c.name} passes its checks again`,
+          body: "Every check that failed after the last change passes now.",
+          link: "/crm/calendars",
+          dedupeKey: `calendar-recovered:${c.id}:${storedDigestOf(stored)}:${seq}`,
+        });
+      }
       result.recovered.push(c.id);
     }
   }

@@ -3,6 +3,7 @@ import { withSystem } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { queueOutbound } from "@/server/messaging/send";
+import { launchNotificationsOn } from "@/server/setup/launch-notifications";
 import { formatSlot } from "@/lib/appointments";
 
 // What a customer is told about an appointment, and who is reminded when one is waiting for a person.
@@ -72,7 +73,7 @@ export const STALE_CONFIRMATION_HOURS = 24;
 /**
  * Reminds people about native bookings that are still waiting for a person's yes: ones that have waited a day, or that start within a day. The owners and admins and the booking's own
  * hosts are told, once per appointment per day (the notification's dedupe key), so a booking nobody looks at is not lost quietly and nobody is nagged by the minute. Suspended and archived
- * workspaces are skipped. Writes only notifications; it confirms and cancels nothing.
+ * workspaces are skipped, and so is any workspace where launch notices are off (the default). Writes only notifications; it confirms and cancels nothing.
  */
 export async function runStaleConfirmationWatch(opts: { now?: Date; limit?: number } = {}): Promise<{ checked: number; notified: number }> {
   const now = opts.now ?? new Date();
@@ -87,7 +88,12 @@ export async function runStaleConfirmationWatch(opts: { now?: Date; limit?: numb
       [now.toISOString(), Math.min(500, opts.limit ?? 200), STALE_CONFIRMATION_HOURS],
     );
     let notified = 0;
+    // The reminders are new, so a workspace gets them only where launch notices are on (src/server/setup/launch-notifications.ts): switching the scheduler on must not start telling a
+    // client that was already using the product about bookings it has lived with. Read once per workspace.
+    const allowed = new Map<string, boolean>();
     for (const a of rows) {
+      if (!allowed.has(a.org_id)) allowed.set(a.org_id, await launchNotificationsOn(a.org_id, db));
+      if (!allowed.get(a.org_id)) continue;
       const dedupeKey = `booking-confirm-stale:${a.id}:${day}`;
       const done = await db.query("select 1 from notifications where org_id = $1 and dedupe_key = $2 limit 1", [a.org_id, dedupeKey]);
       if (done.rows[0]) continue;

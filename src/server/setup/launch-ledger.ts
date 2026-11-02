@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { deriveLaunchReadiness, fingerprintOf, type LaunchReadiness, type LaunchState } from "@/lib/launch-readiness";
 import { launchStallAlertKey, launchStallMinutes, loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
+import { launchNotificationsOn } from "@/server/setup/launch-notifications";
 
 // The launch ledger: what remembers that a client's launch state moved. The panel derives its answer from the workspace's own rows on every read, which is honest but forgetful: it
 // cannot say "blocked since Tuesday" or "reached 100% on the 3rd", and nobody is told when it changes. This writes ONE audit row (action setup.launch_state_changed) when, and only
@@ -172,9 +173,11 @@ export async function recordLaunchSnapshot(orgId: string, actor: LaunchActor, op
       await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`launch-ledger:${orgId}`]);
       const { id, prior, count } = await latestRow(db, orgId);
       if (id !== seen) return "raced";
+      // The notices below are new, so they are sent only where somebody switched them on (src/server/setup/launch-notifications.ts). The record in the audit trail is written either way.
+      const notices = await launchNotificationsOn(orgId, db);
       // A long wait is told to the agency once per wait, whether or not the row below is needed: the notice's key names the item and when its wait began.
       for (const i of readiness.steps.flatMap((s) => s.items)) {
-        if (!i.stalled || !i.stalledSince) continue;
+        if (!notices || !i.stalled || !i.stalledSince) continue;
         await notifyAgency(db, orgId, {
           kind: "setup_issue", severity: "warning", title: `${org.name}: ${i.label} is taking longer than expected`,
           body: "It has been waiting longer than it should. Open the client's page to review it. Nothing was changed.",
@@ -189,7 +192,7 @@ export async function recordLaunchSnapshot(orgId: string, actor: LaunchActor, op
         orgId, actorUserId: actor.kind === "user" ? actor.userId : null, actorKind: actor.kind, action: LAUNCH_LEDGER_ACTION, targetType: "organization", targetId: orgId, result: "success",
         metadata: { ...row },
       }, db);
-      if (!(opts.baseline && !prior)) await notifyOwners(db, orgId, row, count);
+      if (notices && !(opts.baseline && !prior)) await notifyOwners(db, orgId, row, count);
       return { ...result, recorded: true };
     });
     if (written !== "raced") return written;

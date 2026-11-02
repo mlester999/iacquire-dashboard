@@ -122,6 +122,13 @@ const schema = z.object({
   HERMES_PROVISIONER_DEPROVISION_ENABLED: bool,
   // A client may switch customer-facing activity on only after setup payment and (for calendar-dependent activity) a verified calendar. Off until the founder approves it.
   CLIENT_CUSTOMER_FACING_GATE_ENABLED: bool,
+  // Notices about a client's launch setup (ready, something needs another look, a stalled step, a calendar that stopped verifying) are sent only when this is on for the deployment or the
+  // workspace has the launch_notifications feature switched on. Off by default, so no existing client is told anything unexpectedly (src/server/setup/launch-notifications.ts).
+  LAUNCH_NOTIFICATIONS_ENABLED: bool,
+  // The automatic final checks (the launch sweep: one read-only check per ready employee, started by itself after a passing health check or by the launch watch) run only for a workspace whose
+  // onboarding finished on or after this moment. Unset, which is the default, they run for no workspace, so releasing the code starts nothing for a client that was already using the product;
+  // set it to the release time to include every client who onboards from then on. The panel's own "run the checks" button is unaffected.
+  LAUNCH_AUTOMATION_SINCE: z.preprocess(blankToUndefined, z.string().refine((v) => !Number.isNaN(Date.parse(v)), "must be a date and time").optional()),
   // Restricted, no-tool DeepSeek worker. Its endpoint and HMAC secret are server-only; disabled unless explicitly enabled.
   HERMES_INFERENCE_WORKER_ENABLED: bool,
   // Temporary, no-provider prompt-size diagnostic. Separate from inference and disabled unless explicitly enabled.

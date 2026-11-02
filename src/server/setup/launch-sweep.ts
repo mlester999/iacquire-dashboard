@@ -6,6 +6,7 @@ import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { employeeInputsDigest, loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
 import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
+import { env } from "@/server/env";
 
 // The automatic half of the final checks. When an employee becomes ready for authorized work, or its configuration changes and it is ready again, nobody should have to press a button for
 // it to prove itself: this starts the one read-only check for each such employee. It starts a check only where none exists yet for the employee's current configuration version, so it
@@ -83,7 +84,19 @@ async function accountableOwner(orgId: string): Promise<string | null> {
   return rows[0]?.user_id ?? null;
 }
 
+/**
+ * Whether the automatic checks may start for this workspace: only when LAUNCH_AUTOMATION_SINCE is set and the workspace's onboarding finished on or after it. A client that was already
+ * using the product before the checks existed is never started on by itself; it can still press the panel's own button.
+ */
+export async function inAutomationScope(orgId: string): Promise<boolean> {
+  const since = env().LAUNCH_AUTOMATION_SINCE;
+  if (!since) return false;
+  const row = (await withSystem((db) => db.query<{ ok: boolean | null }>("select onboarding_completed_at >= $2::timestamptz as ok from organizations where id = $1", [orgId, new Date(since).toISOString()]))).rows[0];
+  return row?.ok === true;
+}
+
 export async function sweepLaunchVerification(orgId: string): Promise<LaunchSweepResult> {
+  if (!(await inAutomationScope(orgId))) return { queued: [] };
   const due = await dueRoles(orgId);
   if (!due.length) return { queued: [] };
   const facts = await loadLaunchFactsForOrg(orgId);

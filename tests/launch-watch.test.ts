@@ -2,7 +2,8 @@
 // calendar that broke on the provider's side without anybody editing anything; it must start the one read-only check an employee is due, skip every workspace that is not a paying,
 // active client, and send nothing to a customer. Test database only; nothing is sent, booked or contacted.
 import crypto from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { launchNoticesOn } from "./support/launch-notifications";
 import { withSystem } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
@@ -33,6 +34,9 @@ const stallNotices = async (orgId: string) => (await withSystem((db) => db.query
   "select user_id, dedupe_key, org_id from notifications where org_id = $1 and dedupe_key like 'launch-stalled:%' order by id", [orgId],
 ))).rows;
 const ownerNotices = async (orgId: string, kind: string) => (await withSystem((db) => db.query<{ user_id: string }>("select user_id from notifications where org_id = $1 and kind = $2", [orgId, kind]))).rows;
+
+// These tests are about the notices the watch sends (and the one it deliberately does not), so the deployment switch for launch notices is on (it is off by default; see tests/launch-notifications.test.ts).
+beforeAll(launchNoticesOn);
 
 describe("a wait that went on too long is told to iAcquire once", () => {
   it("sends one agency notice per stalled item, none on the next pass, and never to or about another client", async () => {

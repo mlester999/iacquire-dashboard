@@ -4,7 +4,8 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { launchNoticesOn } from "./support/launch-notifications";
 import { withSystem } from "@/server/db";
 import {
   archiveAppointmentType, archiveCalendar, createAppointmentType, createCalendar, setHostAvailability, updateCalendar, type AppointmentTypeInput,
@@ -48,6 +49,9 @@ const connect = (c: CrmOrg, who: CrmWho, provider: "google" | "microsoft") =>
     "insert into crm_calendar_connections (org_id, user_id, provider, account_label, status, write_events, external_calendar_id) values ($1, $2, $3, $4, 'connected', true, 'primary') returning id",
     [c.org.id, c.people[who].id, provider, `${who}-${provider}-${crypto.randomBytes(3).toString("hex")}@example.test`],
   )).rows[0].id);
+
+// These tests are about the owners' and admins' notices, so the deployment switch for launch notices is on (it is off by default; see tests/launch-notifications.test.ts).
+beforeAll(launchNoticesOn);
 
 describe("a verified calendar that stops being valid", () => {
   it("records each drift once (hours removed, host paused, Meet host disconnected, invalid zone), tells owners and admins once, and records recovery", async () => {

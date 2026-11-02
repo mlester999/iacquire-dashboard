@@ -1,6 +1,7 @@
 // The launch ledger: one audit row for each real change of a client's launch state and none for a repeat, owners told once per moment that is theirs, a long wait told to the agency (and
 // only then worded as "alerted"), and every one of it kept inside the client it belongs to. Test database only; nothing is sent, booked or contacted.
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { launchNoticesOn } from "./support/launch-notifications";
 import { withSystem } from "@/server/db";
 import { notifyAgency } from "@/server/notifications";
 import { recordAudit } from "@/server/audit";
@@ -34,6 +35,9 @@ const notices = async (orgId: string, kinds: string[]) => (await withSystem((db)
 ))).rows;
 const OWNER_KINDS = ["setup_action_required", "setup_ready", "setup_issue"];
 const noticesTo = (orgId: string, userId: string, kind: string) => notices(orgId, [kind]).then((rows) => rows.filter((n) => n.user_id === userId));
+
+// These tests are about the notices the ledger sends, so the deployment switch for launch notices is on (it is off by default; see tests/launch-notifications.test.ts).
+beforeAll(launchNoticesOn);
 
 describe("the ledger writes one row per real change", () => {
   it("records the first state in the shape other code reads, adds nothing for an unchanged re-read, and records the next real change with what changed", async () => {

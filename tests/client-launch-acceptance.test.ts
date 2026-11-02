@@ -3,7 +3,8 @@
 // for the plan, every employee has its own identity and instructions from its own business, nothing crosses from one client to the other, the calendar is built from the client's own
 // answers and goes live only through the checks, the final checks start by themselves and change nothing, a half-failed provisioning shows honestly and recovers, and no message is sent
 // and nobody is booked on the way. Test database only; the Hermes runtime is simulated by the recorded state a verified employee has.
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { launchNoticesOn } from "./support/launch-notifications";
 import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
@@ -107,6 +108,9 @@ async function simulateVerifiedProfiles(c: Client) {
     await withSystem((db) => db.query("update agent_provisioning_jobs set status = 'succeeded' where org_id = $1 and agent_instance_id = $2 and status <> 'succeeded'", [c.org.id, id]));
   }
 }
+
+// The acceptance run includes the owner's "ready to launch" notice, so the deployment switch for launch notices is on (it is off by default; see tests/launch-notifications.test.ts).
+beforeAll(launchNoticesOn);
 
 describe("two clients from the questionnaire to ready to launch", () => {
   let a: Client;

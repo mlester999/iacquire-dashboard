@@ -1,7 +1,8 @@
 // What a customer and the team are told about a booking, by whether a person still has to confirm it. When an appointment type says "a person confirms each booking", an AI booking
 // lands on the calendar as `new`: the time is held, but nobody has said yes. Until a person does, nothing may call it booked or confirmed. These tests run the real flow (the responder,
 // the booking service, the native calendar, the message rule chain, the approval) against synthetic workspaces; no provider is contacted and no model is called.
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { launchNoticesOn } from "./support/launch-notifications";
 import { withSystem } from "@/server/db";
 import { memberActor } from "@/server/crm/actor";
 import { decideApproval } from "@/server/approvals/service";
@@ -57,6 +58,9 @@ const messagesFor = (orgId: string, like: string) => one<{ body: string; status:
   "select body, status, blocked_reason, approval_id, dedupe_key from conversation_messages where org_id = $1 and direction = 'outbound' and dedupe_key like $2 order by created_at", [orgId, like]);
 const reminders = async (apptId: string) => Number((await one<{ n: number }>("select count(*)::int as n from appointment_reminders where appointment_id = $1 and status in ('scheduled', 'queued', 'sent')", [apptId]))[0].n);
 const metric = async (orgId: string, key: string) => (await withSystem((db) => readPerformanceMetrics(db, orgId))).metrics.find((x) => x.key === key)?.value;
+
+// The reminder about a booking that still waits for a person is a launch notice, off by default (see tests/launch-notifications.test.ts); these tests are about its words and its timing.
+beforeAll(launchNoticesOn);
 
 describe("a type that needs a person to confirm each booking", () => {
   it("tells the customer the time is reserved and the team will confirm it, never that it is booked or confirmed", async () => {
@@ -312,6 +316,22 @@ describe("a booking nobody confirms", () => {
     await setNativeAppointmentStatus(actor, appt, "confirmed");
     await runStaleConfirmationWatch({ now: new Date(today.getTime() + 48 * HOUR) });
     expect(await staleCount(m.org.id)).toBe(4);
+  });
+
+  it("says nothing to a workspace that has launch notices off, and starts once they are switched on for it", async () => {
+    const { m } = await bookingOrg("Stale Off Co", { requiresConfirmation: true });
+    await askToBook(m);
+    const appt = (await bookingOf(m.org.id)).appointment_id as string;
+    await withSystem((db) => db.query("update appointment_refs set created_at = now() - interval '3 days' where id = $1", [appt]));
+    // The deployment switch is on in this file; the workspace's own setting wins, so a workspace that was never told anything is not told now.
+    await withSystem((db) => db.query("insert into org_features (org_id, feature, enabled) values ($1, 'launch_notifications', false) on conflict (org_id, feature) do update set enabled = false", [m.org.id]));
+    const today = new Date();
+    today.setUTCHours(10, 0, 0, 0);
+    await runStaleConfirmationWatch({ now: today });
+    expect(await staleCount(m.org.id)).toBe(0);
+    await withSystem((db) => db.query("update org_features set enabled = true where org_id = $1 and feature = 'launch_notifications'", [m.org.id]));
+    expect((await runStaleConfirmationWatch({ now: today })).notified).toBeGreaterThanOrEqual(1);
+    expect(await staleCount(m.org.id)).toBeGreaterThanOrEqual(2);
   });
 
   it("also speaks up when the time is close, skips a suspended workspace, and never tells another workspace's people", async () => {
