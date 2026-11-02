@@ -17,6 +17,7 @@ import { disconnectWorkspaceCalendars } from "@/server/calendars/connections";
 import { revokeWorkspaceAutomationConnections } from "@/server/automation-studio/connections";
 import { revokeWorkspaceApiKeys } from "@/server/crm/api-keys";
 import { revokeClientBusinessCredentialsForOrg } from "@/server/workforce/hermes-client-business-credential";
+import { requestDeprovision } from "@/server/workforce/provisioning";
 import { pauseWorkspaceWebhooks } from "@/server/crm/webhooks";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
@@ -320,6 +321,21 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     );
   }
 
+  // 2f. The client runtime. When this deployment has switched containment on, every employee that still has a runtime profile is asked to have it contained (its key replaced, its tools
+  // switched off, both proven through the gateway; nothing is deleted). With it off nothing is asked here, and the deletion step refuses to run while a profile is still set up unless the
+  // agency writes down why it is being left. A failure is shown as failed, never hidden: a profile that keeps its key and its tools would keep running after "Workspace is closing".
+  if (env().HERMES_PROVISIONER_DEPROVISION_ENABLED) {
+    const runtime = await requestWorkspaceContainment(orgId, user.id, requestId);
+    if (runtime.requested > 0 || runtime.alreadyOpen > 0 || runtime.failed.length > 0) {
+      await record(
+        "runtime_profiles", runtime.failed.length === 0,
+        runtime.failed.length
+          ? `Could not ask for containment of: ${runtime.failed.join(", ")}. Contain these profiles by hand (replace the key, switch the tools off) before the data is deleted.`
+          : `Asked the client runtime to contain ${runtime.requested} AI employee profile${runtime.requested === 1 ? "" : "s"}${runtime.alreadyOpen ? ` (${runtime.alreadyOpen} already in progress)` : ""}: each key is replaced and each profile's tools are switched off. Nothing is deleted.`,
+      );
+    }
+  }
+
   // 3. Access: staff lose it, the owner keeps it to download their data.
   const revoked = await withSystem(async (db) => {
     const res = await db.query("update organization_memberships set status = 'revoked' where org_id = $1 and status = 'active' and role <> 'owner'", [orgId]);
@@ -354,6 +370,25 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     return toView(db, res.rows[0]);
   });
   return result;
+}
+
+/**
+ * Asks for the runtime profile of each employee of a closing workspace to be contained. One request per employee that still has a profile, each in its own transaction so one that cannot be
+ * asked for (it is listed by its role, never by anything private) does not stop the rest. Safe to repeat: an employee with a request already open is counted, not asked twice.
+ */
+async function requestWorkspaceContainment(orgId: string, userId: string, requestId: string): Promise<{ requested: number; alreadyOpen: number; failed: string[] }> {
+  const employees = (await withSystem((db) => db.query<{ id: string; role_key: string }>("select id, role_key from agent_instances where org_id = $1 and hermes_profile is not null order by created_at, id", [orgId]))).rows;
+  const out = { requested: 0, alreadyOpen: 0, failed: [] as string[] };
+  for (const employee of employees) {
+    try {
+      const result = await withSystem((db) => requestDeprovision(db, { orgId, agentId: employee.id, actorUserId: userId, reason: `The workspace is closing (offboarding request ${requestId}).` }));
+      if (result.alreadyOpen) out.alreadyOpen += 1;
+      else out.requested += 1;
+    } catch {
+      out.failed.push(employee.role_key);
+    }
+  }
+  return out;
 }
 
 /** The agency confirms the final billing is settled: remaining credit refunded or waived, and nothing left to invoice. A precondition for deletion. */
@@ -413,7 +448,7 @@ export async function planDeletion(user: Pick<SessionUser, "id" | "platformRole"
  * It runs in one transaction, so it either removes everything listed or nothing. Payments, the credit ledger, usage, fees and the audit trail
  * are kept. It cannot be undone, which is why a plan is always shown first.
  */
-export async function executeDeletion(user: Pick<SessionUser, "id" | "platformRole">, requestId: string, input: { confirmName: string; waiveExportReason?: string }): Promise<{ purgedRows: number; files: number; orphanedFiles: number }> {
+export async function executeDeletion(user: Pick<SessionUser, "id" | "platformRole">, requestId: string, input: { confirmName: string; waiveExportReason?: string; acknowledgeRuntimeProfiles?: string }): Promise<{ purgedRows: number; files: number; orphanedFiles: number }> {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can delete a workspace's data.");
   if (!env().OFFBOARDING_PURGE_ENABLED) throw new AppError("forbidden", "Permanent deletion is switched off in this environment. It is enabled deliberately, per environment, after a backup has been taken and restored once.");
   const r = (await withSystem((db) => db.query<RequestRow & { org_name: string }>("select r.*, o.name as org_name from offboarding_requests r join organizations o on o.id = r.org_id where r.id = $1", [requestId]))).rows[0];
@@ -423,6 +458,20 @@ export async function executeDeletion(user: Pick<SessionUser, "id" | "platformRo
   if (!r.billing_closed_at) throw new AppError("conflict", "Close billing first, so nothing owed is lost.");
   if (!r.export_downloaded_at && !(input.waiveExportReason && input.waiveExportReason.trim().length >= 10)) throw new AppError("conflict", "The client hasn't downloaded their data. Make sure they can, or record why this isn't needed.");
   if (input.confirmName.trim() !== r.org_name.trim()) throw new AppError("invalid_input", "Type the workspace name exactly to confirm.");
+
+  // A client employee's runtime profile (its key and its tools on the client runtime) is not a row in this database, so the purge can never reach it. Deletion waits until every profile is
+  // contained, or until the agency writes down why one is being left; that statement goes into the audit trail the purge keeps, before anything is removed.
+  const stillSetUp = (await withSystem((db) => db.query<{ profile: string; gateway_id: string | null }>("select hermes_profile as profile, hermes_gateway_id::text as gateway_id from agent_instances where org_id = $1 and hermes_profile is not null order by hermes_profile", [r.org_id]))).rows;
+  if (stillSetUp.length > 0) {
+    const leftBecause = (input.acknowledgeRuntimeProfiles ?? "").trim();
+    if (leftBecause.length < 10) {
+      throw new AppError("conflict", `${stillSetUp.length} AI employee runtime profile${stillSetUp.length === 1 ? " is" : "s are"} still set up on the client runtime. Have ${stillSetUp.length === 1 ? "it" : "them"} contained first (the key is replaced and the tools are switched off), or write down why ${stillSetUp.length === 1 ? "it is" : "they are"} being left (at least 10 characters).`);
+    }
+    await withSystem((db) => recordAudit({
+      orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "offboarding.runtime_profiles_left", targetType: "offboarding_request", targetId: requestId, result: "success",
+      metadata: { count: stillSetUp.length, profiles: stillSetUp.map((p) => p.profile), gatewayIds: [...new Set(stillSetUp.map((p) => p.gateway_id).filter((id): id is string => Boolean(id)))], acknowledgement: leftBecause.slice(0, 500) },
+    }, db));
+  }
 
   // Remember which stored files belong to this client, but remove them only AFTER the database purge has committed: if the purge fails, nothing may
   // already be gone. (A file that then can't be removed is reported, not hidden.)

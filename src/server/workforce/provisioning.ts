@@ -551,3 +551,142 @@ export async function setClientBusinessTools(user: SessionUser, input: { orgId: 
     clearFeatureCache(input.orgId);
   }
 }
+
+function reasonOf(reason: unknown, purpose: string): string {
+  const why = typeof reason === "string" ? reason.trim() : "";
+  if (why.length < 5) throw new AppError("invalid_input", `Say why ${purpose} (at least 5 characters).`);
+  if (why.length > 500) throw new AppError("invalid_input", "Keep the reason under 500 characters.");
+  return why;
+}
+
+export interface DeprovisionRequestResult {
+  jobId: string;
+  /** A containment request was already open for this employee, so nothing new was written. */
+  alreadyOpen: boolean;
+  /** Setup or synchronization requests that were still open and were replaced by this one. */
+  replaced: number;
+}
+
+/**
+ * Asks for ONE client employee's runtime profile to be contained: the restricted worker replaces the profile's key with one nobody is given, switches its tools off, proves both through the
+ * gateway, and only then does the portal revoke the employee's credential and mark it not set up (see completeDeprovisionJob). The profile is contained, not deleted.
+ *
+ * It needs an accountable agency person with workforce management access, a reason (5 to 500 characters, kept in the audit log only), and a profile that the restricted worker made on the
+ * gateway it is pinned to. It refuses an agency's or a demo's employee and an employee mapped from the internal tier, and then writes nothing. A request that is still open is returned as
+ * it is (never a second one); an open setup or synchronization request is replaced, because containment must not be left waiting behind work that would keep the profile running. The job is
+ * only handed to the worker while HERMES_PROVISIONER_DEPROVISION_ENABLED is on.
+ */
+export async function requestDeprovision(db: Queryable, input: { orgId: string; agentId: string; actorUserId: string; reason: string }): Promise<DeprovisionRequestResult> {
+  const { orgId, agentId, actorUserId } = input;
+  if (!UUID_TEXT.test(orgId) || !UUID_TEXT.test(agentId) || !UUID_TEXT.test(actorUserId)) throw new AppError("invalid_input", "The workspace, the employee and the person asking must each be an id.");
+  const why = reasonOf(input.reason, "this employee's runtime profile is being contained");
+  const { rows: permission } = await db.query<{ allowed: boolean }>(
+    "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
+    [actorUserId, orgId],
+  );
+  if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
+  const { rows: agents } = await db.query<{ hermes_profile: string | null; hermes_gateway_id: string | null; org_kind: string; is_demo: boolean }>(
+    "select a.hermes_profile,a.hermes_gateway_id,o.kind as org_kind,o.is_demo from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2 for update of a",
+    [agentId, orgId],
+  );
+  const agent = agents[0];
+  if (!agent) throw new AppError("not_found", "AI employee not found in this workspace.");
+  if (agent.org_kind !== "client" || agent.is_demo) throw new AppError("conflict", "Only a real client workspace's employee can have its runtime profile contained, never an agency's or a demo's.");
+  if (!agent.hermes_profile?.startsWith("c-") || isReservedProfile(agent.hermes_profile)) {
+    throw new AppError("conflict", "This employee has no client runtime profile made by the restricted provisioner, so there is nothing to contain.");
+  }
+  const pinned = env().HERMES_PROVISIONER_GATEWAY_ID;
+  if (!pinned || agent.hermes_gateway_id !== pinned) throw new AppError("conflict", "This employee's profile is not on the client runtime the restricted provisioner is pinned to.");
+
+  const { rows: open } = await db.query<{ id: string; kind: string }>(
+    "select id,kind from agent_provisioning_jobs where agent_instance_id=$1 and org_id=$2 and status in ('requested','in_progress','awaiting_health_check') for update",
+    [agentId, orgId],
+  );
+  const existing = open.find((job) => job.kind === "deprovision");
+  if (existing) return { jobId: existing.id, alreadyOpen: true, replaced: 0 };
+  const { rows: replaced } = await db.query<{ id: string }>(
+    "update agent_provisioning_jobs set status='cancelled',lease_token=null,lease_expires_at=null,next_retry_at=null," +
+    "detail='A request to contain this employee replaces this one.' " +
+    "where agent_instance_id=$1 and org_id=$2 and kind in ('provision','sync','reconnect') and status in ('requested','in_progress','awaiting_health_check') returning id",
+    [agentId, orgId],
+  );
+  const { rows: inserted } = await db.query<{ id: string }>(
+    "insert into agent_provisioning_jobs (org_id,agent_instance_id,kind,requested_by) values ($1,$2,'deprovision',$3) on conflict do nothing returning id",
+    [orgId, agentId, actorUserId],
+  );
+  const jobId = inserted[0]?.id;
+  if (!jobId) throw new AppError("conflict", "A request is already open for this employee.");
+  await recordAudit({
+    orgId, actorUserId, actorKind: "agency", agentInstanceId: agentId, action: "agent.profile_deprovision_requested", targetType: "agent_provisioning_job", targetId: jobId, result: "success",
+    metadata: { jobId, reason: why, profile: agent.hermes_profile, gatewayId: agent.hermes_gateway_id, replaced: replaced.length },
+  }, db);
+  return { jobId, alreadyOpen: false, replaced: replaced.length };
+}
+
+/** The most employees one fleet synchronization asks for; a larger fleet is covered by asking again (`truncated` says there is more). */
+export const FLEET_SYNC_MAX_EMPLOYEES = 200;
+
+export interface FleetSyncResult {
+  queued: Array<{ orgId: string; agentId: string; jobId: string }>;
+  /** Employees that already had a setup or synchronization request open, so nothing new was written for them. */
+  alreadyOpen: number;
+  /** Employees with nothing to synchronize (the gateway is not verified, or the profile was not made by the restricted worker). */
+  skipped: number;
+  /** More employees qualified than one call takes. Ask again to cover the rest. */
+  truncated: boolean;
+}
+
+/**
+ * Asks the restricted worker to bring every provisioned client employee's profile in line with its applied configuration again, for example after the worker or the runtime was updated.
+ * One synchronization job per enabled employee whose profile the restricted worker made on this gateway, at most FLEET_SYNC_MAX_EMPLOYEES a call, safe to repeat (an employee that already
+ * has a request open is left alone), and audited: one row per employee in its own workspace and one summary row on the agency. Never touches an agency's or a demo's employee or one
+ * mapped from the internal tier. `requestedBy` is the accountable agency person; the reason (5 to 500 characters) goes to the audit log.
+ */
+export async function requestFleetSync(db: Queryable, gatewayId: string, requestedBy: string, reason: string, opts: { limit?: number } = {}): Promise<FleetSyncResult> {
+  // The bound is the constant; a caller may only ask for fewer (a test of the bound, or a careful first batch), never more.
+  const limit = Math.min(Math.max(Math.floor(opts.limit ?? FLEET_SYNC_MAX_EMPLOYEES), 1), FLEET_SYNC_MAX_EMPLOYEES);
+  if (!UUID_TEXT.test(gatewayId) || !UUID_TEXT.test(requestedBy)) throw new AppError("invalid_input", "The runtime and the person asking must each be an id.");
+  const why = reasonOf(reason, "the client runtime is being synchronized");
+  if (!env().HERMES_PROVISIONER_GATEWAY_ID || env().HERMES_PROVISIONER_GATEWAY_ID !== gatewayId) throw new AppError("forbidden", "That is not the client runtime the restricted provisioner is pinned to.");
+  const { rows: permission } = await db.query<{ allowed: boolean }>("select app.user_has_agency_permission($1,'agency.workforce.manage') as allowed", [requestedBy]);
+  if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
+
+  // Who qualifies: enabled, with an applied configuration, on this gateway, in an active real client workspace. Employees that already have a request open are counted but never selected, so
+  // when a call is cut short the next call starts where this one stopped instead of meeting the same first employees again.
+  const qualifies =
+    "from agent_instances a join organizations o on o.id=a.org_id " +
+    "where a.hermes_gateway_id=$1 and a.hermes_profile like 'c-%' and a.enabled and a.active_config_version_id is not null and o.kind='client' and not o.is_demo and o.status='active' ";
+  const openJobExists = "exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id=a.id and j.org_id=a.org_id and j.status in ('requested','in_progress','awaiting_health_check'))";
+  const { rows: openRows } = await db.query<{ n: number }>("select count(*)::int as n " + qualifies + "and " + openJobExists, [gatewayId]);
+  const { rows } = await db.query<{ id: string; org_id: string; active_config_version_id: string; hermes_profile: string }>(
+    "select a.id,a.org_id,a.active_config_version_id,a.hermes_profile " + qualifies + "and not " + openJobExists + " order by o.created_at,a.created_at,a.id limit $2 for update of a",
+    [gatewayId, limit + 1],
+  );
+  const result: FleetSyncResult = { queued: [], alreadyOpen: openRows[0]?.n ?? 0, skipped: 0, truncated: rows.length > limit };
+  for (const row of rows.slice(0, limit)) {
+    if (isReservedProfile(row.hermes_profile)) {
+      result.skipped += 1;
+      continue;
+    }
+    const jobId = await queueSyncJob(db, row.org_id, row.id, row.active_config_version_id, requestedBy);
+    if (!jobId) {
+      // A request opened between the two reads above counts as already open; anything else (an unverified gateway, a profile the restricted worker did not make) is skipped.
+      if (await hasOpenJob(db, row.id, row.org_id)) result.alreadyOpen += 1;
+      else result.skipped += 1;
+      continue;
+    }
+    result.queued.push({ orgId: row.org_id, agentId: row.id, jobId });
+    await recordAudit({
+      orgId: row.org_id, actorUserId: requestedBy, actorKind: "agency", agentInstanceId: row.id, action: "agent.fleet_sync_requested", targetType: "agent_provisioning_job", targetId: jobId, result: "success",
+      metadata: { jobId, gatewayId, reason: why },
+    }, db);
+  }
+  const { rows: agency } = await db.query<{ id: string }>("select id from organizations where kind='agency' limit 1");
+  if (agency[0]) {
+    await recordAudit({
+      orgId: agency[0].id, actorUserId: requestedBy, actorKind: "agency", action: "agent.fleet_sync_summary", targetType: "hermes_gateway", targetId: gatewayId, result: "success",
+      metadata: { gatewayId, reason: why, queued: result.queued.length, alreadyOpen: result.alreadyOpen, skipped: result.skipped, truncated: result.truncated },
+    }, db);
+  }
+  return result;
+}

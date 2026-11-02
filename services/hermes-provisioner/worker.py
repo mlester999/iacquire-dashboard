@@ -187,6 +187,20 @@ class Manifest:
     expires_at: str
 
 
+@dataclass(frozen=True)
+class RevokeManifest:
+    """A containment request. It names one profile and who owns it and carries nothing else: no SOUL, no configuration and no key."""
+
+    job_id: str
+    lease_token: str
+    gateway_id: str
+    kind: str
+    org_id: str
+    agent_id: str
+    profile: str
+    expires_at: str
+
+
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -314,7 +328,45 @@ def _is_uuid(value: Any) -> bool:
     return isinstance(value, str) and UUID_RE.fullmatch(value) is not None
 
 
-def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest:
+REVOKE_MANIFEST_KEYS = {"jobId", "leaseToken", "gatewayId", "kind", "orgId", "agentId", "profile", "expiresAt"}
+
+
+def parse_revoke_manifest(raw: Any, expected_gateway_id: str) -> RevokeManifest:
+    """Exactly the eight keys of a containment request. Anything more (a SOUL, a configuration, a key) is not this contract and is refused."""
+    if not isinstance(raw, dict) or set(raw) != REVOKE_MANIFEST_KEYS or raw["kind"] != "deprovision":
+        raise ProvisioningError("invalid_manifest")
+    for name in ("jobId", "leaseToken", "gatewayId", "orgId", "agentId"):
+        if not _is_uuid(raw[name]):
+            raise ProvisioningError("invalid_manifest")
+    if raw["gatewayId"] != expected_gateway_id:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["profile"], str) or not PROFILE_RE.fullmatch(raw["profile"]):
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["expiresAt"], str):
+        raise ProvisioningError("invalid_manifest")
+    try:
+        expiry = datetime.fromisoformat(raw["expiresAt"].replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        raise ProvisioningError("invalid_manifest") from None
+    if expiry <= datetime.now(timezone.utc):
+        raise ProvisioningError("lease_expired")
+    return RevokeManifest(
+        job_id=raw["jobId"],
+        lease_token=raw["leaseToken"],
+        gateway_id=raw["gatewayId"],
+        kind=raw["kind"],
+        org_id=raw["orgId"],
+        agent_id=raw["agentId"],
+        profile=raw["profile"],
+        expires_at=raw["expiresAt"],
+    )
+
+
+def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest | RevokeManifest:
+    if isinstance(raw, dict) and raw.get("kind") == "deprovision":
+        return parse_revoke_manifest(raw, expected_gateway_id)
     required = {
         "jobId", "leaseToken", "gatewayId", "kind", "orgId", "agentId", "profile",
         "role", "configVersionId", "configVersion", "sourceProvisionJobId",
@@ -793,6 +845,25 @@ def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_p
     return stable_digest
 
 
+def _enabled_toolset_names(payload: Any) -> set[str] | None:
+    """The toolsets a gateway reports as enabled with at least one tool, or None when its answer is malformed (which is never read as "nothing is enabled")."""
+    entries = payload if isinstance(payload, list) else payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(entries, list):
+        return None
+    enabled: set[str] = set()
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        name, on, tools = entry.get("name"), entry.get("enabled"), entry.get("tools")
+        if not isinstance(name, str) or name in seen or not isinstance(on, bool) or not isinstance(tools, list) or any(not isinstance(tool, str) for tool in tools):
+            return None
+        seen.add(name)
+        if on and tools:
+            enabled.add(name)
+    return enabled
+
+
 def _marker_is_valid(marker: dict[str, Any] | None, profile: str, gateway_id: str | None) -> bool:
     """An ownership marker names this profile, this gateway (when known) and three real ids."""
     return bool(
@@ -949,6 +1020,8 @@ class RestrictedProvisioner:
                 "code": error.code,
             })
             raise
+        if isinstance(manifest, RevokeManifest):
+            return self._process_revoke(manifest)
         try:
             with _profile_lock(self.state_root / (manifest.profile + ".lock")):
                 result = self._process_manifest(manifest)
@@ -1006,6 +1079,181 @@ class RestrictedProvisioner:
         if manifest.kind == "provision":
             result["apiKey"] = key
         return result
+
+    def _process_revoke(self, manifest: RevokeManifest) -> dict[str, Any]:
+        try:
+            with _profile_lock(self.state_root / (manifest.profile + ".lock")):
+                result = self._revoke_manifest(manifest)
+        except ProvisioningError as error:
+            self._append_audit(self._revoke_audit_record(manifest, "failed", error.code))
+            raise
+        except Exception:
+            self._append_audit(self._revoke_audit_record(manifest, "failed", "worker_internal_error"))
+            raise ProvisioningError("worker_internal_error") from None
+        self._append_audit(self._revoke_audit_record(manifest, "succeeded"))
+        return result
+
+    def _revoke_manifest(self, manifest: RevokeManifest) -> dict[str, Any]:
+        """Contains one client profile without deleting it: its key is replaced with a random one nobody is given, its tools are switched off, and the worker proves both through the gateway.
+
+        The profile directory, its SOUL.md and its ownership marker stay (removing a profile is a separate, deliberate step), and a profile that is already retired reports the same
+        success again without rotating anything. The key being retired is kept in a private file of the worker's own state until the gateway has been seen to refuse it, so an attempt
+        that is interrupted after the key was replaced can still prove the old key is dead when it is retried.
+        """
+        profile_dir = self._profile_dir(manifest.profile)
+        if not profile_dir.exists():
+            raise ProvisioningError("profile_ownership_missing")
+        marker_path = profile_dir / ".iacquire-provisioner.json"
+        marker = self._read_json_file(marker_path)
+        if marker is None:
+            raise ProvisioningError("profile_ownership_missing")
+        # All five fields of the ownership marker: this profile, this gateway, this client, this employee, and the provisioning job that made it.
+        if (
+            marker.get("schemaVersion") != 1
+            or marker.get("profile") != manifest.profile
+            or marker.get("gatewayId") != manifest.gateway_id
+            or marker.get("orgId") != manifest.org_id
+            or marker.get("agentId") != manifest.agent_id
+            or not _is_uuid(marker.get("sourceProvisionJobId"))
+        ):
+            raise ProvisioningError("profile_ownership_conflict")
+        env_path = profile_dir / ".env"
+        config_path = profile_dir / "config.yaml"
+        state_path = self.state_root / (manifest.profile + ".revoke.json")
+
+        retired_at = marker.get("retiredAt")
+        if type(retired_at) is int and marker.get("oldKeyRejected") is True:
+            key = self._read_api_key(env_path)
+            if key is None:
+                raise ProvisioningError("profile_key_missing")
+            self._wait_for_no_toolsets(manifest.profile, key)
+            self._discard_revoke_state(state_path)
+            return self._revoke_result(manifest, retired_at)
+
+        current = self._read_api_key(env_path)
+        state = self._read_json_file(state_path)
+        if state is not None:
+            old_key = state.get("oldKey")
+            if state.get("schemaVersion") != 1 or state.get("profile") != manifest.profile or not isinstance(old_key, str) or not API_KEY_RE.fullmatch(old_key):
+                raise ProvisioningError("profile_conflict")
+        else:
+            if current is None:
+                raise ProvisioningError("profile_key_missing")
+            old_key = current
+            _atomic_write(
+                state_path,
+                json.dumps({"schemaVersion": 1, "profile": manifest.profile, "jobId": manifest.job_id, "oldKey": old_key, "startedAt": int(time.time())}, separators=(",", ":"), sort_keys=True).encode("utf-8"),
+            )
+        if current is None or current == old_key:
+            new_key = secrets.token_hex(32)
+            # Only the API key stays in a contained profile's environment: no provider key is kept in a profile that is no longer in use.
+            _atomic_write(env_path, ("API_SERVER_KEY=" + new_key + "\n").encode("ascii"))
+        else:
+            new_key = current
+        _atomic_write(config_path, render_config(config_path, {}, canary=True, model_config=self.profile_model_config))
+
+        self._wait_for_revocation(manifest.profile, old_key, new_key)
+
+        retired_at = int(time.time())
+        marker = dict(marker)
+        marker.update({"lastJobId": manifest.job_id, "retiredAt": retired_at, "oldKeyRejected": True, "updatedAt": retired_at})
+        _atomic_write(marker_path, json.dumps(marker, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        self._discard_revoke_state(state_path)
+        return self._revoke_result(manifest, retired_at)
+
+    def _revoke_result(self, manifest: RevokeManifest, retired_at: int) -> dict[str, Any]:
+        # Facts only: the job, who owns the profile, what was proven, and when. Never a key, old or new.
+        return {
+            "ok": True,
+            "jobId": manifest.job_id,
+            "leaseToken": manifest.lease_token,
+            "gatewayId": manifest.gateway_id,
+            "kind": "deprovision",
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+            "revoked": True,
+            "oldKeyRejected": True,
+            "toolsetsEmpty": True,
+            "retiredAt": retired_at,
+            "hermesVersion": self.hermes_version,
+        }
+
+    def _discard_revoke_state(self, path: Path) -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            raise ProvisioningError("profile_conflict") from None
+
+    def _probe(self, profile: str, key: str, path: str) -> tuple[int | None, Any]:
+        """One read through the gateway. A gateway that cannot be reached is a status of None, which the callers treat as "not yet"."""
+        try:
+            return self.api.json_request(profile, key, path)
+        except ProvisioningError as error:
+            if error.code != "http_unavailable":
+                raise
+            return None, None
+
+    def _wait_for_no_toolsets(self, profile: str, key: str) -> None:
+        deadline = time.monotonic() + PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS
+        while True:
+            status, payload = self._probe(profile, key, "/v1/toolsets")
+            if status == 200:
+                enabled = _enabled_toolset_names(payload)
+                if enabled is None:
+                    raise ProvisioningError("revoke_tool_isolation_failed")
+                if not enabled:
+                    return
+            elif status not in {None, 401, 404, 502, 503, 504}:
+                raise ProvisioningError("revoke_tool_isolation_failed")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProvisioningError("revoke_not_applied")
+            time.sleep(min(PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS, remaining))
+
+    def _wait_for_revocation(self, profile: str, old_key: str, new_key: str) -> None:
+        """Waits until the gateway has applied both halves of the containment, and fails if it never does.
+
+        The gateway re-reads a profile on its own schedule, so for a while the new key may be refused and the old one still accepted. Containment is proven only when the NEW key is
+        accepted and shows no enabled toolset, and the OLD key is refused with a 401. A gateway that keeps accepting the old key never gets a success from this worker.
+        """
+        deadline = time.monotonic() + PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS
+        while True:
+            status, payload = self._probe(profile, new_key, "/v1/toolsets")
+            if status == 200:
+                enabled = _enabled_toolset_names(payload)
+                if enabled is None:
+                    raise ProvisioningError("revoke_tool_isolation_failed")
+                if not enabled:
+                    old_status, _ = self._probe(profile, old_key, "/v1/capabilities")
+                    if old_status == 401:
+                        return
+                    if old_status not in {200, None, 404, 502, 503, 504}:
+                        raise ProvisioningError("revoke_not_applied")
+            elif status not in {None, 401, 404, 502, 503, 504}:
+                raise ProvisioningError("revoke_not_applied")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProvisioningError("revoke_not_applied")
+            time.sleep(min(PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS, remaining))
+
+    def _revoke_audit_record(self, manifest: RevokeManifest, outcome: str, code: str | None = None) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "gatewayId": manifest.gateway_id,
+            "jobId": manifest.job_id,
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+            "kind": "deprovision",
+            "hermesVersion": self.hermes_version,
+            "outcome": outcome,
+        }
+        if code:
+            record["code"] = code
+        return record
 
     def _audit_record(
         self,
@@ -1994,7 +2242,7 @@ class WorkerLoop:
     def _run_job(self, manifest: Any) -> int:
         raw = manifest if isinstance(manifest, dict) else {}
         job_id = _log_id(raw.get("jobId"))
-        kind = raw.get("kind") if raw.get("kind") in {"provision", "sync"} else "-"
+        kind = raw.get("kind") if raw.get("kind") in {"provision", "sync", "deprovision"} else "-"
         self.heartbeat.update("processing")
         with self.heartbeat.keep_alive():
             code: str | None = None

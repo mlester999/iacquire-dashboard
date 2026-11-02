@@ -1220,6 +1220,250 @@ class RestrictedProvisionerTests(unittest.TestCase):
 
 
 
+class KeyAwareHermesApi(FakeHermesApi):
+    """A gateway that authenticates each profile the way the real one does: it holds the key it last read from the profile's .env and answers any other key with a 401.
+
+    `reread_after` is how many requests pass, after the file changed, before the gateway reads it again: 0 reads at once, None never reads it again (a gateway that never picks up a
+    rotated key, so the old one stays valid for ever).
+    """
+
+    def __init__(self, home: Path, reread_after: int | None = 0):
+        super().__init__(home)
+        self.reread_after = reread_after
+        self.held: dict[str, str] = {}
+        self.stale_requests: dict[str, int] = {}
+
+    def _file_key(self, profile: str) -> str:
+        env = self.home / "profiles" / profile / ".env"
+        if not env.exists():
+            return ""
+        for line in env.read_text(encoding="utf-8").splitlines():
+            if line.startswith("API_SERVER_KEY="):
+                return line.partition("=")[2]
+        return ""
+
+    def json_request(self, profile, key, path, method="GET", body=None, extra_headers=None):
+        if profile != "default":
+            on_disk = self._file_key(profile)
+            if profile not in self.held:
+                self.held[profile] = on_disk
+            elif on_disk != self.held[profile] and self.reread_after is not None:
+                stale = self.stale_requests.get(profile, 0)
+                if stale >= self.reread_after:
+                    self.held[profile] = on_disk
+                    self.stale_requests[profile] = 0
+                else:
+                    self.stale_requests[profile] = stale + 1
+            if key != self.held[profile]:
+                self.paths.append(path)
+                return 401, {"error": "unauthorized"}
+        return super().json_request(profile, key, path, method, body, extra_headers)
+
+
+class RevokeTests(unittest.TestCase):
+    """Containment of a client profile: the key is replaced and the tools are switched off, and the worker proves both through the gateway. Nothing is deleted."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name) / "home"
+        (self.home / "profiles").mkdir(parents=True)
+        self.gateway_id = uid()
+        self.manifest = new_manifest(gatewayId=self.gateway_id)
+        self.api = KeyAwareHermesApi(self.home)
+        self.api.expected_challenge = self.manifest["soulChallenge"]
+
+        def run_command(args, **kwargs):
+            profile = self.home / "profiles" / args[3]
+            profile.mkdir(mode=0o700)
+            (profile / "config.yaml").write_text("model:\n  provider: deepseek\n  name: approved-model\n", encoding="utf-8")
+            (profile / ".env").write_text("API_SERVER_KEY=shared-placeholder\n", encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        self.provisioner = RestrictedProvisioner(
+            home=self.home,
+            hermes_cli=Path("/opt/hermes/bin/hermes"),
+            api=self.api,
+            gateway_id=self.gateway_id,
+            hermes_version="hermes v0.21.5-test",
+            run_command=run_command,
+        )
+        self.profile_dir = self.home / "profiles" / self.manifest["profile"]
+        self.state_dir = self.home / "iacquire-provisioner-state"
+        self.state_file = self.state_dir / (self.manifest["profile"] + ".revoke.json")
+        self.old_key = self.provisioner.process(self.manifest)["apiKey"]
+
+    def revoke_manifest(self, **updates: Any) -> dict[str, Any]:
+        manifest = {
+            "jobId": uid(),
+            "leaseToken": uid(),
+            "gatewayId": self.gateway_id,
+            "kind": "deprovision",
+            "orgId": self.manifest["orgId"],
+            "agentId": self.manifest["agentId"],
+            "profile": self.manifest["profile"],
+            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        }
+        manifest.update(updates)
+        return manifest
+
+    def env_key(self) -> str:
+        return (self.profile_dir / ".env").read_text(encoding="utf-8").split("API_SERVER_KEY=", 1)[1].strip()
+
+    def marker(self) -> dict[str, Any]:
+        return json.loads((self.profile_dir / ".iacquire-provisioner.json").read_text(encoding="utf-8"))
+
+    def audit_text(self) -> str:
+        return (self.state_dir / "audit.jsonl").read_text(encoding="utf-8")
+
+    def quick_waits(self, timeout: float = 90):
+        """No real sleeping: the retry interval is zero, and a test of a gateway that never applies the change shortens the whole wait to a blink."""
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.object(worker_module, "PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS", 0))
+        stack.enter_context(patch.object(worker_module, "PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS", timeout))
+        self.addCleanup(stack.close)
+
+    def test_a_containment_request_replaces_the_key_switches_the_tools_off_and_proves_both(self):
+        self.quick_waits()
+        request = self.revoke_manifest()
+        result = self.provisioner.process(request)
+        new_key = self.env_key()
+
+        self.assertEqual(set(result), {"ok", "jobId", "leaseToken", "gatewayId", "kind", "orgId", "agentId", "profile", "revoked", "oldKeyRejected", "toolsetsEmpty", "retiredAt", "hermesVersion"})
+        self.assertEqual((result["ok"], result["kind"], result["revoked"], result["oldKeyRejected"], result["toolsetsEmpty"]), (True, "deprovision", True, True, True))
+        self.assertEqual((result["jobId"], result["orgId"], result["agentId"], result["profile"]), (request["jobId"], request["orgId"], request["agentId"], request["profile"]))
+        # The old key is gone from the profile, the new one is random and well formed, and neither is ever returned or logged.
+        self.assertNotEqual(new_key, self.old_key)
+        self.assertRegex(new_key, r"^[0-9a-f]{64}$")
+        self.assertEqual((self.profile_dir / ".env").read_text(encoding="utf-8"), "API_SERVER_KEY=" + new_key + "\n")
+        for secret in (self.old_key, new_key):
+            self.assertNotIn(secret, json.dumps(result))
+            self.assertNotIn(secret, self.audit_text())
+            self.assertNotIn(secret, json.dumps(self.marker()))
+        # The gateway now refuses the old key and shows no tool.
+        self.assertEqual(self.api.json_request(self.manifest["profile"], self.old_key, "/v1/capabilities")[0], 401)
+        status, toolsets = self.api.json_request(self.manifest["profile"], new_key, "/v1/toolsets")
+        self.assertEqual((status, [row for row in toolsets if row["enabled"] and row["tools"]]), (200, []))
+        self.assertEqual(yaml.safe_load((self.profile_dir / "config.yaml").read_text(encoding="utf-8"))["platform_toolsets"]["api_server"], ["no_mcp"])
+        # Containment, not deletion: the profile, its SOUL and its ownership marker stay, and the retired key's private copy is removed.
+        self.assertTrue((self.profile_dir / "SOUL.md").is_file())
+        marker = self.marker()
+        self.assertEqual((marker["orgId"], marker["agentId"], marker["profile"], marker["gatewayId"]), (self.manifest["orgId"], self.manifest["agentId"], self.manifest["profile"], self.gateway_id))
+        self.assertEqual((type(marker["retiredAt"]), marker["oldKeyRejected"], marker["lastJobId"]), (int, True, request["jobId"]))
+        self.assertFalse(self.state_file.exists())
+        record = json.loads(self.audit_text().splitlines()[-1])
+        self.assertEqual((record["kind"], record["outcome"], record["jobId"], record["profile"]), ("deprovision", "succeeded", request["jobId"], request["profile"]))
+        self.assertNotIn("soul", json.dumps(record))
+        self.assertTrue(verify_home(self.home, self.gateway_id)["ok"])
+
+    def test_containing_a_contained_profile_reports_the_same_success_without_rotating_again(self):
+        self.quick_waits()
+        first = self.provisioner.process(self.revoke_manifest())
+        key_after_first = self.env_key()
+        second = self.provisioner.process(self.revoke_manifest())
+        self.assertEqual(self.env_key(), key_after_first)
+        self.assertEqual(second["retiredAt"], first["retiredAt"])
+        self.assertEqual((second["revoked"], second["oldKeyRejected"], second["toolsetsEmpty"]), (True, True, True))
+        self.assertFalse(self.state_file.exists())
+
+    def test_a_slow_gateway_is_waited_for(self):
+        self.quick_waits()
+        self.api.reread_after = 4
+        result = self.provisioner.process(self.revoke_manifest())
+        self.assertTrue(result["oldKeyRejected"])
+        self.assertEqual(self.api.json_request(self.manifest["profile"], self.old_key, "/v1/capabilities")[0], 401)
+
+    def test_a_gateway_that_never_picks_up_the_new_key_never_gets_a_success_and_a_retry_finishes_the_job(self):
+        self.quick_waits(timeout=0.05)
+        self.api.reread_after = None
+        request = self.revoke_manifest()
+        with self.assertRaises(ProvisioningError) as caught:
+            self.provisioner.process(request)
+        self.assertEqual(caught.exception.code, "revoke_not_applied")
+        # The old key still works at the gateway, so nothing was retired: no marker flag, and the old key's private copy is kept so the retry can prove it is dead.
+        self.assertNotIn("retiredAt", self.marker())
+        self.assertEqual(json.loads(self.state_file.read_text(encoding="utf-8"))["oldKey"], self.old_key)
+        self.assertEqual(json.loads(self.audit_text().splitlines()[-1])["code"], "revoke_not_applied")
+        self.assertNotIn(self.old_key, self.audit_text())
+        rotated = self.env_key()
+        self.assertNotEqual(rotated, self.old_key)
+        # The gateway recovers; the same job is retried and completes using the kept key, without rotating a second time.
+        self.api.reread_after = 0
+        self.api.stale_requests.clear()
+        with patch.object(worker_module, "PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS", 90):
+            result = self.provisioner.process(request)
+        self.assertTrue(result["oldKeyRejected"])
+        self.assertEqual(self.env_key(), rotated)
+        self.assertFalse(self.state_file.exists())
+        self.assertEqual(self.marker()["oldKeyRejected"], True)
+
+    def test_tools_that_stay_enabled_are_never_reported_as_contained(self):
+        self.quick_waits(timeout=0.05)
+        # The gateway keeps serving the previous, full policy however long it is asked: the tools are never seen to be off.
+        self.api.canary_policy_pending_reads = 10**9
+        with self.assertRaises(ProvisioningError) as caught:
+            self.provisioner.process(self.revoke_manifest())
+        self.assertEqual(caught.exception.code, "revoke_not_applied")
+        self.assertNotIn("retiredAt", self.marker())
+
+    def test_a_profile_the_worker_does_not_own_is_refused_and_nothing_is_written(self):
+        self.quick_waits()
+        marker_path = self.profile_dir / ".iacquire-provisioner.json"
+        original = marker_path.read_text(encoding="utf-8")
+        before = self.env_key()
+
+        def refused(request: dict[str, Any], code: str) -> None:
+            with self.assertRaises(ProvisioningError) as caught:
+                self.provisioner.process(request)
+            self.assertEqual(caught.exception.code, code)
+            self.assertEqual(self.env_key(), before)
+            self.assertFalse(self.state_file.exists())
+
+        # Another client's employee, another employee of the same client, another gateway in the marker.
+        refused(self.revoke_manifest(orgId=uid()), "profile_ownership_conflict")
+        refused(self.revoke_manifest(agentId=uid()), "profile_ownership_conflict")
+        changed = json.loads(original)
+        changed["gatewayId"] = uid()
+        marker_path.write_text(json.dumps(changed), encoding="utf-8")
+        refused(self.revoke_manifest(), "profile_ownership_conflict")
+        changed = json.loads(original)
+        changed["sourceProvisionJobId"] = "not-a-uuid"
+        marker_path.write_text(json.dumps(changed), encoding="utf-8")
+        refused(self.revoke_manifest(), "profile_ownership_conflict")
+        # No marker at all, and a profile that does not exist.
+        marker_path.unlink()
+        refused(self.revoke_manifest(), "profile_ownership_missing")
+        marker_path.write_text(original, encoding="utf-8")
+        refused(self.revoke_manifest(profile="c-other-tenant-0123456789ab-crm-manager"), "profile_ownership_missing")
+
+    def test_a_containment_request_is_exactly_the_eight_keys(self):
+        for bad in (
+            self.revoke_manifest(soul="a SOUL has no place in a containment request"),
+            self.revoke_manifest(configYaml="platform_toolsets: {}"),
+            {key: value for key, value in self.revoke_manifest().items() if key != "orgId"},
+            self.revoke_manifest(gatewayId=uid()),
+            self.revoke_manifest(profile="iacquire-lead-hunter"),
+            self.revoke_manifest(jobId="not-a-uuid"),
+            new_manifest(kind="deprovision", gatewayId=self.gateway_id),
+        ):
+            with self.assertRaises(ProvisioningError) as caught:
+                self.provisioner.process(bad)
+            self.assertEqual(caught.exception.code, "invalid_manifest")
+        with self.assertRaises(ProvisioningError) as caught:
+            self.provisioner.process(self.revoke_manifest(expiresAt=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()))
+        self.assertEqual(caught.exception.code, "lease_expired")
+        self.assertEqual(self.env_key(), self.old_key)
+        self.assertIsInstance(parse_manifest(self.revoke_manifest(), self.gateway_id), worker_module.RevokeManifest)
+
+    def test_a_profile_with_no_usable_key_cannot_be_proven_contained(self):
+        self.quick_waits()
+        (self.profile_dir / ".env").write_text("API_SERVER_KEY=not-a-real-key\n", encoding="utf-8")
+        with self.assertRaises(ProvisioningError) as caught:
+            self.provisioner.process(self.revoke_manifest())
+        self.assertEqual(caught.exception.code, "profile_key_missing")
+        self.assertFalse(self.state_file.exists())
+
+
 class FakeClock:
     """Epoch seconds that only move when the loop sleeps, so retry timing is exact and no test waits."""
 
@@ -1390,6 +1634,19 @@ class WorkerLoopTests(unittest.TestCase):
         self.assertEqual(self.provisioner.processed, [manifest])
         self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=provision outcome=succeeded code=- delivery=delivered attempts=1"])
         self.assertEqual(self.beat()["lastJobAt"], int(start))
+
+    def test_a_containment_job_is_delivered_like_any_other_and_logged_by_kind_only(self):
+        manifest = {
+            "jobId": uid(), "leaseToken": uid(), "gatewayId": GATEWAY, "kind": "deprovision", "orgId": uid(), "agentId": uid(),
+            "profile": "c-secret-tenant-name-0123456789ab", "expiresAt": datetime.fromtimestamp(self.clock.now + 600, timezone.utc).isoformat(),
+        }
+        result = {"ok": True, "jobId": manifest["jobId"], "leaseToken": manifest["leaseToken"], "kind": "deprovision", "revoked": True}
+        self.stop_after_sleeps(1)
+        self.loop(FakePortal([(200, {"job": manifest}), (200, {"job": None})], [(200, {"ok": True})]), FakeProvisioner([result])).run()
+        self.assertEqual(self.portal.paths(), ["/claim", "/complete", "/claim"])
+        self.assertEqual(self.portal.calls[1][1], result)
+        self.assertEqual(self.lines, [f"job={manifest['jobId']} kind=deprovision outcome=succeeded code=- delivery=delivered attempts=1"])
+        self.assertNotIn("secret-tenant-name", "".join(self.lines))
 
     def test_two_503_completions_then_200_deliver_one_result_in_three_attempts(self):
         manifest = job_manifest(self.clock)

@@ -360,6 +360,9 @@ describe("core modules are never gated by payment or a lapse", () => {
       "src/server/onboarding/crm-provisioning.ts",
       "src/server/purchase-intents/service.ts",
       "src/server/setup/agency.ts",
+      // A client may switch customer-facing activity on (auto-reply, the chat widget, reminders, AI booking, the public booking page) only once the one gate says the fee is cleared. It
+      // holds back a switch-ON, never the core module that carries the switch, and it is off by default (CLIENT_CUSTOMER_FACING_GATE_ENABLED).
+      "src/server/setup/customer-facing-gate.ts",
       // The launch panel reports where the fee stands (the state before payment reads "Questionnaire submitted") and the final checks wait for it. Neither spends anything.
       "src/server/setup/launch-intents.ts",
       "src/server/setup/launch-readiness.ts",

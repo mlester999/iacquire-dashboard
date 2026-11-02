@@ -12,6 +12,7 @@ import { buildConfigYaml, buildProvisionerSoul, PROVISIONING_PAYMENT_CLEARED_SQL
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS } from "@/server/workforce/tool-policies";
 import { clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { revokeClientBusinessCredentialsForAgent } from "@/server/workforce/hermes-client-business-credential";
 import { normalizeProvisioningFailureCode, provisioningRetryPlan } from "@/lib/provisioning-failure";
 import { env } from "@/server/env";
 
@@ -53,7 +54,25 @@ const successSchema = z.object({
   apiKey: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).strict();
 
-const completionSchema = z.discriminatedUnion("ok", [failureSchema, successSchema]);
+// A verified containment: facts only (who, which profile, what was proven, when). The worker proved the old key is refused and no tool is enabled before it says so; the portal records it.
+const revokeSuccessSchema = z.object({
+  ok: z.literal(true),
+  jobId: uuid,
+  leaseToken: uuid,
+  gatewayId: uuid,
+  kind: z.literal("deprovision"),
+  orgId: uuid,
+  agentId: uuid,
+  profile: z.string().regex(/^c-[a-z0-9][a-z0-9_-]{0,60}$/),
+  revoked: z.literal(true),
+  oldKeyRejected: z.literal(true),
+  toolsetsEmpty: z.literal(true),
+  retiredAt: z.number().int().positive(),
+  hermesVersion: z.string().min(1).max(80),
+}).strict();
+
+const completionSchema = z.union([failureSchema, successSchema, revokeSuccessSchema]);
+type RevokeCompletion = z.infer<typeof revokeSuccessSchema>;
 
 type ManifestRow = {
   id: string;
@@ -95,6 +114,84 @@ function resultReference(input: {
 export async function claimHermesProvisionerJob(gatewayId: string) {
   if (env().HERMES_PROVISIONER_GATEWAY_ID !== gatewayId) throw new AppError("forbidden", "The worker is not assigned to this Hermes gateway.");
   return withSystem(async (db) => claimInTransaction(db, gatewayId));
+}
+
+/**
+ * What the worker is handed next: a containment job first, then a setup or synchronization job. A containment job is claimable only while HERMES_PROVISIONER_DEPROVISION_ENABLED is on (it
+ * is off by default, and with it off this behaves exactly as claimHermesProvisionerJob does). A revoked key is worth more than a new profile, so containment goes first.
+ */
+export async function claimHermesProvisionerWork(gatewayId: string) {
+  if (env().HERMES_PROVISIONER_GATEWAY_ID !== gatewayId) throw new AppError("forbidden", "The worker is not assigned to this Hermes gateway.");
+  return withSystem(async (db) => {
+    if (env().HERMES_PROVISIONER_DEPROVISION_ENABLED) {
+      const contained = await claimDeprovisionInTransaction(db, gatewayId);
+      if (contained) return contained;
+    }
+    return claimInTransaction(db, gatewayId);
+  });
+}
+
+// What makes a containment job claimable. Deliberately lighter than a setup job's: a workspace that was suspended or is closing, an employee that was switched off, a setup payment that
+// was refunded and an emergency pause are reasons to contain a profile sooner, never reasons to wait. It still needs the pinned, verified, client-only gateway that really holds the
+// profile, so a request can never reach anything else.
+const ELIGIBLE_DEPROVISION_JOBS =
+  "from agent_provisioning_jobs j " +
+  "join agent_instances a on a.id=j.agent_instance_id and a.org_id=j.org_id " +
+  "join organizations o on o.id=j.org_id " +
+  "join hermes_gateways g on g.id=$1 " +
+  "where j.kind='deprovision' and j.attempt_count < 3 " +
+  "and ((j.status in ('requested','failed') and (j.next_retry_at is null or j.next_retry_at<=now())) " +
+  "or (j.status='in_progress' and j.lease_expires_at<=now())) " +
+  "and o.kind='client' and not o.is_demo " +
+  "and a.hermes_profile like 'c-%' and a.hermes_gateway_id=g.id " +
+  "and g.status='connected' and g.gateway_type='multiplexed_profiles' and g.profile_creation_status='restricted_service_verified' " +
+  "and g.provisioner_isolation_verified_at is not null " +
+  "and not exists (select 1 from agent_instances ai join organizations oi on oi.id=ai.org_id where ai.hermes_gateway_id=g.id and oi.kind='agency') ";
+
+async function claimDeprovisionInTransaction(db: Queryable, gatewayId: string) {
+  const { rows: candidates } = await db.query<{ id: string }>("select j.id " + ELIGIBLE_DEPROVISION_JOBS + "order by j.created_at,j.id for update of j skip locked limit 1", [gatewayId]);
+  const candidate = candidates[0];
+  if (!candidate) return null;
+  const { rows } = await db.query<{ id: string; org_id: string; agent_instance_id: string; role_key: string; slug: string; hermes_profile: string | null; hermes_gateway_id: string | null }>(
+    "select j.id,j.org_id,j.agent_instance_id,a.role_key,o.slug,a.hermes_profile,a.hermes_gateway_id " +
+    "from agent_provisioning_jobs j join agent_instances a on a.id=j.agent_instance_id and a.org_id=j.org_id join organizations o on o.id=j.org_id " +
+    "where j.id=$1 and o.kind='client' for update of j,a",
+    [candidate.id],
+  );
+  const row = rows[0];
+  if (!row || !isAgentRoleKey(row.role_key)) return null;
+  const expectedProfile = suggestedProfileName(row.slug, row.role_key);
+  if (!row.hermes_profile || row.hermes_profile !== expectedProfile || !row.hermes_profile.startsWith("c-") || row.hermes_gateway_id !== gatewayId) {
+    throw new AppError("conflict", "The client profile mapping does not match its tenant and role identity.");
+  }
+  const { rows: leaseRows } = await db.query<{ lease_token: string; lease_expires_at: Date | string; attempt_count: number }>(
+    "update agent_provisioning_jobs set status='in_progress',attempt_count=attempt_count+1,lease_token=gen_random_uuid()," +
+    "lease_expires_at=now()+interval '10 minutes',next_retry_at=null,detail=null where id=$1 returning lease_token::text,lease_expires_at,attempt_count",
+    [row.id],
+  );
+  const lease = leaseRows[0];
+  if (!lease) throw new AppError("conflict", "The containment lease could not be created.");
+  await recordAudit({
+    orgId: row.org_id,
+    actorKind: "system",
+    agentInstanceId: row.agent_instance_id,
+    action: "agent.profile_provisioning_started",
+    targetType: "agent_provisioning_job",
+    targetId: row.id,
+    result: "success",
+    metadata: { jobId: row.id, kind: "deprovision", attempt: Number(lease.attempt_count), gatewayId },
+  }, db);
+  // Exactly these eight facts and nothing else: no SOUL, no configuration, no key. The worker refuses a request that carries more.
+  return {
+    jobId: row.id,
+    leaseToken: lease.lease_token,
+    gatewayId,
+    kind: "deprovision" as const,
+    orgId: row.org_id,
+    agentId: row.agent_instance_id,
+    profile: row.hermes_profile,
+    expiresAt: lease.lease_expires_at instanceof Date ? lease.lease_expires_at.toISOString() : new Date(lease.lease_expires_at).toISOString(),
+  };
 }
 
 // Room for a new client's team on the pinned gateway, asked per candidate job. It only applies to a `provision` job (a synchronization adds no profile) and only when
@@ -258,8 +355,11 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
   if (env().HERMES_PROVISIONER_GATEWAY_ID !== gatewayId) throw new AppError("forbidden", "The worker is not assigned to this Hermes gateway.");
   const parsed = completionSchema.safeParse(raw);
   if (!parsed.success) throw new AppError("invalid_input", "The provisioner result did not match the supported contract.");
-  const input = parsed.data;
-  if (input.gatewayId !== gatewayId) throw new AppError("forbidden", "The worker result belongs to a different Hermes gateway.");
+  const parsedInput = parsed.data;
+  if (parsedInput.gatewayId !== gatewayId) throw new AppError("forbidden", "The worker result belongs to a different Hermes gateway.");
+  // A verified containment is its own shape and its own effects. (A failure of a containment job, like any failure, is handled below.)
+  if (parsedInput.ok && parsedInput.kind === "deprovision") return completeDeprovisionJob(parsedInput, gatewayId);
+  const input = parsedInput as Exclude<typeof parsedInput, RevokeCompletion>;
 
   return withSystem(async (db) => {
     const { rows } = await db.query<{
@@ -419,6 +519,85 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
       },
     }, db);
     return { accepted: true, duplicate: false, awaitingHealthCheck: true };
+  });
+}
+
+const deprovisionReference = (jobId: string, retiredAt: number) => ["deprovisioned:v1", jobId, String(retiredAt)].join(":");
+
+/**
+ * Records a containment the worker proved: the profile's key was replaced and the old one is refused, and no tool is enabled. Then, in one transaction, the employee's own Hermes credential
+ * is revoked, its business-tool credentials are ended, the employee stops pointing at the profile and reads as not set up (never as running), and one audit row says what happened. The
+ * profile itself is not deleted: removing it is a separate, deliberate step. A second delivery of the same result is accepted as a duplicate; a different one is refused.
+ */
+async function completeDeprovisionJob(input: RevokeCompletion, gatewayId: string) {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{
+      status: string; kind: string; org_id: string; agent_instance_id: string; attempt_count: number; result_reference: string | null;
+      lease_token: string | null; lease_expires_at: Date | string | null; org_kind: string; is_demo: boolean; org_slug: string; role_key: string;
+      hermes_profile: string | null; hermes_gateway_id: string | null; credential_id: string | null; job_age_seconds: number;
+    }>(
+      "select j.status,j.kind,j.org_id,j.agent_instance_id,j.attempt_count,j.result_reference,j.lease_token::text,j.lease_expires_at," +
+      "extract(epoch from (now()-j.created_at))::float8 as job_age_seconds,o.kind as org_kind,o.is_demo,o.slug as org_slug,a.role_key,a.hermes_profile,a.hermes_gateway_id,a.credential_id " +
+      "from agent_provisioning_jobs j join organizations o on o.id=j.org_id join agent_instances a on a.id=j.agent_instance_id and a.org_id=j.org_id where j.id=$1 for update of j,a",
+      [input.jobId],
+    );
+    const job = rows[0];
+    if (!job) throw new AppError("not_found", "Provisioning job not found.");
+    const reference = deprovisionReference(input.jobId, input.retiredAt);
+    if (job.kind === "deprovision" && job.status === "succeeded") {
+      if (job.result_reference === reference && job.org_id === input.orgId && job.agent_instance_id === input.agentId) return { accepted: true as const, duplicate: true, contained: true as const, awaitingHealthCheck: false as const };
+      throw new AppError("conflict", "A different provisioner result already completed this job.");
+    }
+    if (job.kind !== "deprovision" || job.status !== "in_progress" || !job.lease_token || job.lease_token !== input.leaseToken ||
+        !job.lease_expires_at || new Date(job.lease_expires_at).getTime() <= Date.now()) {
+      throw new AppError("conflict", "The provisioning lease is no longer current.");
+    }
+    const sameIdentity = input.orgId === job.org_id && input.agentId === job.agent_instance_id && job.org_kind === "client" && !job.is_demo && isAgentRoleKey(job.role_key) &&
+      job.hermes_profile === input.profile && job.hermes_gateway_id === gatewayId && input.profile === suggestedProfileName(job.org_slug, job.role_key);
+    if (!sameIdentity) {
+      await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "identity_mismatch", Number(job.job_age_seconds));
+      return { accepted: true as const, failed: true as const };
+    }
+
+    // The employee's own Hermes credential. (Portal revocation blocks resolution at once; the key at the host was already replaced by the worker.)
+    let credentialRevoked = false;
+    if (job.credential_id) {
+      const { rows: credential } = await db.query<{ credential_reference_id: string | null }>(
+        "update integration_credentials set revoked_at=coalesce(revoked_at,now()) where id=$1 and org_id=$2 and provider='hermes' returning credential_reference_id",
+        [job.credential_id, job.org_id],
+      );
+      if (credential[0]?.credential_reference_id) await db.query("update credential_references set revoked_at=coalesce(revoked_at,now()) where id=$1", [credential[0].credential_reference_id]);
+      credentialRevoked = Boolean(credential[0]);
+      if (credentialRevoked) {
+        await recordAudit({ orgId: job.org_id, actorKind: "system", agentInstanceId: job.agent_instance_id, action: "credential.revoked", targetType: "integration", targetId: job.credential_id, result: "success", metadata: { provider: "hermes", reason: "profile_contained" } }, db);
+      }
+    }
+    // The same employee's business-tool credentials too: the profile no longer carries one, and a token that could still be presented would be a door left open.
+    const businessCredentials = await revokeClientBusinessCredentialsForAgent(db, job.org_id, job.agent_instance_id, "profile_contained");
+    await db.query(
+      "update agent_instances set hermes_base_url=null,hermes_profile=null,hermes_gateway_id=null,credential_id=null,hermes_profile_config_version_id=null," +
+      "status=case when enabled then 'setup_required' else 'disabled' end,last_health_check_at=null,last_health_ok=null," +
+      "last_health_detail='The runtime profile was contained: its key was replaced and its tools were switched off.',tool_inventory_contract=null," +
+      "tool_inventory_digest=null,tool_inventory_verified_at=null,tool_inventory_expires_at=null,tool_inventory_tool_count=null," +
+      "tool_inventory_snapshot='{}'::jsonb,tool_inventory_detail=null where id=$1 and org_id=$2",
+      [job.agent_instance_id, job.org_id],
+    );
+    await db.query(
+      "update agent_provisioning_jobs set status='succeeded',lease_token=null,lease_expires_at=null,next_retry_at=null," +
+      "detail='The runtime profile was contained: its key was replaced and its tools were switched off.',result_reference=$2 where id=$1",
+      [input.jobId, reference],
+    );
+    await recordAudit({
+      orgId: job.org_id,
+      actorKind: "system",
+      agentInstanceId: job.agent_instance_id,
+      action: "agent.profile_deprovisioned",
+      targetType: "agent_provisioning_job",
+      targetId: input.jobId,
+      result: "success",
+      metadata: { profile: input.profile, gatewayId, retiredAt: input.retiredAt, hermesVersion: input.hermesVersion, oldKeyRejected: true, toolsetsEmpty: true, hermesAccessRevoked: credentialRevoked, businessToolAccessEnded: businessCredentials.length },
+    }, db);
+    return { accepted: true as const, duplicate: false, contained: true as const, awaitingHealthCheck: false as const };
   });
 }
 

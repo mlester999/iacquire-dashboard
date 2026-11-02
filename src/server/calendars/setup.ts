@@ -6,6 +6,7 @@ import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/serve
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { isValidTimeZone, type WeeklyRule } from "@/lib/calendars/slots";
 import { checkBookingsAfterChange, type BookingNeedingAttention } from "@/server/calendars/impact";
+import { assertCustomerFacingAllowed } from "@/server/setup/customer-facing-gate";
 
 export type Assignment = "single" | "round_robin" | "collective";
 export type LocationKind = "phone" | "video" | "in_person" | "custom" | "none";
@@ -373,6 +374,8 @@ export async function updateCalendar(actor: CrmActor, id: string, input: Partial
     if (input.public === true && !cur.rows[0].public) {
       const blocker = await publishBlocker(db, actor.orgId, id);
       if (blocker) throw new AppError("conflict", blocker);
+      // A client's public page also waits for finished setup when the deployment asks for it (src/server/setup/customer-facing-gate.ts); a deployment that does not ask reads nothing here.
+      await assertCustomerFacingAllowed(db, actor.orgId, "public_booking_page", { calendarId: id });
     }
     if (input.isDefault) await db.query("update crm_calendars set is_default = false where org_id = $1 and is_default and id <> $2", [actor.orgId, id]);
     await db.query(
@@ -414,6 +417,7 @@ export async function setCalendarPublic(actor: CrmActor, id: string, isPublic: b
     if (isPublic) {
       const blocker = await publishBlocker(db, actor.orgId, id);
       if (blocker) throw new AppError("conflict", blocker);
+      await assertCustomerFacingAllowed(db, actor.orgId, "public_booking_page", { calendarId: id });
     }
     await db.query("update crm_calendars set public = $3 where id = $1 and org_id = $2", [id, actor.orgId, isPublic]);
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: isPublic ? "crm.calendar_published" : "crm.calendar_unpublished", targetType: "crm_calendar", targetId: id, result: "success" }, db);

@@ -458,6 +458,8 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0113_demo_registration_requests": ["0100_demo_funnel"],
   // 0117 adds the revision history and a waiting-edit column to the knowledge table (0002, 0045, 0046) and its policies call app.permitted_orgs (0060).
   "0117_company_knowledge_revisions": ["0002_workforce", "0045_ai_workforce_experience", "0046_knowledge_document_extraction", "0060_rls_initplan"],
+  // 0118 replaces the append-only function that 0004 created (the trigger already exists), so 0004 must be there first.
+  "0118_audit_logs_purge_detach": ["0004_support_ops"],
 };
 
 /**

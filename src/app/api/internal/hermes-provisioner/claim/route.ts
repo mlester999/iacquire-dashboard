@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/server/env";
-import { claimHermesProvisionerJob, constantTimeProvisionerTokenMatches } from "@/server/workforce/hermes-provisioner";
+import { claimHermesProvisionerWork, constantTimeProvisionerTokenMatches } from "@/server/workforce/hermes-provisioner";
 import { recordProvisionerClaimSeen } from "@/server/workforce/provisioning-watchdog";
 import { provisionerAuthorized, provisionerErrorResponse, readProvisionerJson } from "@/server/workforce/provisioner-http";
 
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
     // The worker is alive whether or not there is a job for it: the liveness row (at most one write a minute, best effort) is what lets the platform notice a silent worker.
     await recordProvisionerClaimSeen();
-    const job = await claimHermesProvisionerJob(body.data.gatewayId);
+    const job = await claimHermesProvisionerWork(body.data.gatewayId);
     return NextResponse.json({ job }, { headers: NO_STORE });
   } catch (error) {
     const result = provisionerErrorResponse(error);

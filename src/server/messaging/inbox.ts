@@ -17,6 +17,7 @@ import { hoursKey } from "@/lib/onboarding/business-profile";
 import { describeConversationEvent, isConversationOutcome, type ConversationOutcome } from "@/lib/inbox";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
+import { assertCustomerFacingAllowed, customerFacingGateOn } from "@/server/setup/customer-facing-gate";
 
 export type { ConversationFilters, ConversationListItem } from "@/server/messaging/inbox-list";
 
@@ -655,6 +656,11 @@ export async function updateMessagingSettings(ctx: OrgContext, input: MessagingS
     if (v !== undefined && (!Number.isInteger(v) || v < lo || v > hi)) throw new AppError("invalid_input", `The ${label} owner window must be between ${lo} and ${hi} seconds.`);
   }
   await withSystem(async (db) => {
+    // Switching automatic replies ON waits for finished setup when the deployment asks for it (src/server/setup/customer-facing-gate.ts); switching OFF and saving anything else never does.
+    if (input.autoReplyEnabled === true && customerFacingGateOn()) {
+      const was = (await db.query<{ auto_reply_enabled: boolean }>("select auto_reply_enabled from messaging_settings where org_id = $1", [ctx.org.orgId])).rows[0]?.auto_reply_enabled ?? false;
+      if (!was) await assertCustomerFacingAllowed(db, ctx.org.orgId, "auto_reply");
+    }
     // The questionnaire's row first, as a submission takes it: the answers the hours and the reply and follow-up choices come from follow this edit in the same transaction, so
     // a later re-submission does not write the old ones back and the questionnaire shows what the workspace says (src/server/onboarding/profile-sync.ts).
     if (hours !== undefined || input.replyBusinessHoursOnly !== undefined || input.followUpPreset !== undefined) {

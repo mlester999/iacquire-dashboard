@@ -7,6 +7,7 @@ import { createStandingAuthorization } from "@/server/approvals/service";
 import { loadPolicy, type AppointmentPolicy } from "@/server/appointments/availability";
 import { resyncAllReminders } from "@/server/appointments/reminders";
 import type { OrgContext } from "@/server/tenancy/context";
+import { assertCustomerFacingAllowed, customerFacingGateOn } from "@/server/setup/customer-facing-gate";
 
 export const policySchema = z.object({
   defaultCalendarId: z.string().trim().max(80).nullable().optional(),
@@ -59,6 +60,12 @@ export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySc
 
   const resync = await withSystem(async (db) => {
     const current = await loadPolicy(db, ctx.org.orgId);
+    // Letting the AI book, and reminders to customers, wait for finished setup and a verified calendar when the deployment asks for it (src/server/setup/customer-facing-gate.ts). Only
+    // a real OFF to ON change is judged; switching off and saving anything else is never held.
+    if (customerFacingGateOn()) {
+      if (p.aiBookingEnabled === true && !current.aiBookingEnabled) await assertCustomerFacingAllowed(db, ctx.org.orgId, "ai_booking");
+      if (p.remindersEnabled === true && !current.remindersEnabled) await assertCustomerFacingAllowed(db, ctx.org.orgId, "appointment_reminders");
+    }
     const map = await db.query<{ calendar_ids: string[] }>("select calendar_ids from ghl_location_mappings where org_id = $1 and status <> 'disabled'", [ctx.org.orgId]);
     const calendars = map.rows[0]?.calendar_ids ?? [];
     if (p.defaultCalendarId && !calendars.includes(p.defaultCalendarId)) throw new AppError("invalid_input", "Choose one of the calendars connected to your workspace.");

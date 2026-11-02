@@ -29,6 +29,8 @@ export const PROVISIONING_FAILURE_CODES = [
   "capacity_exceeded",
   // Raised by the portal itself when a returned key already belongs to another live profile.
   "profile_key_reused",
+  // Containment of a profile: the gateway did not apply the replaced key and the tools-off policy within the wait (it may only need longer), or it showed a tool still enabled.
+  "revoke_not_applied", "revoke_tool_isolation_failed",
 ] as const;
 
 /** Stored for any code the portal does not know. The raw string is never echoed: a misbehaving worker could put anything in it. */
@@ -66,6 +68,8 @@ const TRANSIENT_CODES: ReadonlySet<string> = new Set([
   "canary_failed_model_provider_error",
   "canary_failed_model_unavailable",
   "capacity_exceeded",
+  // The gateway re-reads a profile on its own schedule, so a containment that was not seen to apply in time is tried again later, like a slow discovery.
+  "revoke_not_applied",
 ]);
 
 /** The class of a failure code, ignoring job age (see `provisioningRetryPlan` for the bound). Unknown codes are permanent: a person should look. */

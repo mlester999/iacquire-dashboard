@@ -5,6 +5,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
+import { assertCustomerFacingAllowed, customerFacingGateOn } from "@/server/setup/customer-facing-gate";
 import {
   KNOWLEDGE_SECTION_KEYS, LEAD_FORM_MODES, OFFLINE_BEHAVIORS, WIDGET_AI_ROLES, WIDGET_POSITIONS,
   installState, normalizeAllowedHosts, validateQualificationQuestions,
@@ -218,6 +219,14 @@ export async function saveWidgetSettings(ctx: OrgContext, rawPatch: WidgetPatch,
       const hostCount = p.allowedOrigins !== undefined ? (normalizeAllowedHosts(p.allowedOrigins) as { hosts: string[] }).hosts.length : current.allowedOrigins.length;
       const sites = (p.autoInstallSites ?? current.autoInstallSites) ? (await siteHostsFor(db, ctx.org.orgId)).length : 0;
       if (hostCount === 0 && sites === 0) throw new AppError("invalid_input", "Add the website the chat will run on before switching it on.");
+    }
+    // Going live for visitors waits for finished setup when the deployment asks for it (src/server/setup/customer-facing-gate.ts). Only a real OFF to ON change is judged: the chat
+    // itself, and, while it is live, the AI answering visitors and visitors booking through it. Switching anything off, and saving anything else, is never held.
+    if (customerFacingGateOn()) {
+      const live = p.enabled ?? current.enabled;
+      if (switchingOn) await assertCustomerFacingAllowed(db, ctx.org.orgId, "webchat_widget");
+      if (live && p.aiEnabled === true && !current.aiEnabled) await assertCustomerFacingAllowed(db, ctx.org.orgId, "auto_reply");
+      if (live && p.allowBooking === true && !current.allowBooking) await assertCustomerFacingAllowed(db, ctx.org.orgId, "ai_booking");
     }
     params.push(ctx.user.id, expectedVersion);
     const { rows } = await db.query<Row>(
