@@ -71,6 +71,8 @@ Customer-facing activity stays off until setup is finished: the gate (off by def
 16. **The deprovision purge stage** (irreversible deletion of a profile): set a retention period first; containment covers the interim.
 17. **Release the milestone to master and production** as its own gated step (the rollback target stays the deployment recorded in the completion checklist).
 
+**An order that respects the dependencies** (each step its own approval; stop at the first failed gate): (a) the decisions that change what ships: items 11 to 13, the strings and wording questions in section 6, and the prompt-budget choice (section 4, item 2); (b) a restore point, then migrations 0115 to 0118 (item 1), then the release to master and production with every switch still off (item 17); (c) the runtime side, separate from the release: capacity and placement (item 8), backup (item 9), privileged scripts (item 10), then the new worker image on one canary profile in a restart window (item 3); (d) the pinned-runtime proof for the client tier, a test that is still to be written and can only be iterated in the pinned-runtime CI job; (e) the switches, one at a time and each reversible: the business-tool tier (item 2), containment after a synthetic revoke has been proven (item 4), the automatic CRM (item 5), the scheduler (item 7), the customer-facing gate (item 6); (f) the supervised pilot (item 15), and the purge stage only after it (item 16).
+
 ## 6. Decisions found while building (each has a safe default in code; none blocks the work)
 
 1. The consultation calendar spec (video, no meeting tool, no join text) now fails the connections check: add join text or connect a meeting tool.
