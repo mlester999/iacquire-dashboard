@@ -25,7 +25,7 @@ Also changed because the three problems met there: the buyer's page (`/purchase/
 
 | | |
 | --- | --- |
-| Branch | `integration/hermes-bridge-final` (the review branch). Base `d1162e3d`, which is also the tip it started from: a fast-forward |
+| Branch | `integration/hermes-bridge-final` (the review branch). Base `d1162e3d`, the tip it started from: a fast-forward. Two commits: `2cc81c4c` (the change: 85 files, +6,413 / -509) and `de3dec84` (one blank line removed from a test file, because CI's entry check refuses it). **The commit CI tested and passed is `de3dec84`**; anything after it is documentation only |
 | Live master | `bb1193b4` (production deployment `iacquire-dashboard-o7slvm1qi`, read from the 2026-11-02 release record). The release candidate is a descendant of it, so releasing is a **fast-forward** of `master` |
 | Schema change | **One migration, 0119**, additive, with a rollback and a rehearsal (section 4). Nothing else |
 | New settings | None are required to deploy. Email and the providers need the settings in section 5 to do anything |
@@ -76,7 +76,7 @@ Each step is a separate approval of the founder's, as on 2026-11-02 (`docs/clien
 
 **Static checks** (on the final tree). `tsc --noEmit` on the whole project including its tests, and on the scripts: no errors. ESLint on all 79 changed or new source files: no problems.
 
-**Automated tests** (embedded Postgres and jsdom; stand-in providers; nothing leaves the machine). **139 new tests in 10 new files**: `purchase-invitation-delivery` (17: creation, the single email, every status, the link absent from every table, idempotency, resend and rotation limits, permissions), `purchase-invitation-notices` (14: the provider's signed delivered / bounced / failed notices, replay, tampering, out of order), `purchase-invitation-origin` (5: a demo request creates nothing, the prospect link both ways, who may read it), `purchase-invitation-email` (11), `purchase-invitation-delivery-migration` (7), `purchase-email-setup` (13), `payment-provider-health` (19), `purchase-invitation-ui` (20), `payment-providers-panel` (19) and `demo-mobile-layout` (14); and updated tests where the behaviour is meant to differ (the live gate in `billing`, the rollback chain, the demo's wording). On the final tree the focused sets (the demo, its guards, purchase, payment-provider, billing and Resend suites) pass: **45 files, 822 tests**. An earlier broader run also passed: 67 files, 873 tests (purchase, billing, maintenance, the payment gate, the purchase-to-client journey, migration numbering, tenant isolation, email, messaging, customer payments). The **full suite** runs in CI on the pushed commit; its result is recorded in section 11.
+**Automated tests** (embedded Postgres and jsdom; stand-in providers; nothing leaves the machine). **139 new tests in 10 new files**: `purchase-invitation-delivery` (17: creation, the single email, every status, the link absent from every table, idempotency, resend and rotation limits, permissions), `purchase-invitation-notices` (14: the provider's signed delivered / bounced / failed notices, replay, tampering, out of order), `purchase-invitation-origin` (5: a demo request creates nothing, the prospect link both ways, who may read it), `purchase-invitation-email` (11), `purchase-invitation-delivery-migration` (7), `purchase-email-setup` (13), `payment-provider-health` (19), `purchase-invitation-ui` (20), `payment-providers-panel` (19) and `demo-mobile-layout` (14); and updated tests where the behaviour is meant to differ (the live gate in `billing`, the rollback chain, the demo's wording). On the final tree the focused sets (the demo, its guards, purchase, payment-provider, billing and Resend suites) pass: **45 files, 822 tests**. An earlier broader run also passed: 67 files, 873 tests (purchase, billing, maintenance, the payment gate, the purchase-to-client journey, migration numbering, tenant isolation, email, messaging, customer payments). The **full suite** ran in CI on the pushed commit and passed (section 11). A full run on this machine (855 files, 13,591 tests passed) had one failure: a chat test that stops a running reply after a fixed wait (`tests/chat.test.ts`, "stops a running response") lost its race while seven test workers shared the machine; it passed alone three times, passed in CI, and nothing in this change touches chat.
 
 **Browser measurement** (headless Chromium through `scripts/demo-responsive-qa.mjs`, against the development server's sample-data pages; light and dark; widths 320, 360, 375, 390, 414, 430, 768, 820, 1024, 1280 and 1440, and landscape phones and tablets). Every family was run at every width; a family touched by a later fix was run again after it. **No scenario had a failure** in its last run (the first six rows ran before the last edits to the open chat panel, which do not change the closed pages they measure, and the final pass below re-ran every demo view at 390 and 1280 px):
 
@@ -116,4 +116,15 @@ The checks fail a scenario on: sideways scroll or anything past the viewport, te
 
 ## 11. CI result of the release candidate
 
-Recorded after the run on the pushed commit (the repository's Linux workflow: the full test suite, type check, lint, build and the pinned-runtime proofs).
+The repository's Linux workflow, "Synthetic worker isolation and app checks", on `de3dec84`: **success**, three jobs, all green ([run 41508107794](https://github.com/mlester999/iacquire-dashboard/actions/runs/41508107794)).
+
+| Job | Result | Time |
+| --- | --- | --- |
+| Full tests, TypeScript, lint (offline) and production build: the entry check that the candidate contains the approved changes and has no whitespace error since the approved master, then the whole test suite, the type check and lint with the network disabled, then the production build | success | 47.1 min |
+| Build pinned Hermes worker and run synthetic checks | success | 1.9 min |
+| Client runtime operator scripts, overlays and preflight | success | 1.4 min |
+
+* Vercel's preview build (`next build`) of both pushed commits succeeded.
+* The first run, on `2cc81c4c` ([run 41507512323](https://github.com/mlester999/iacquire-dashboard/actions/runs/41507512323)), failed in its first job at the entry check, in 11 seconds and before any test ran: that check applies git's default whitespace rules to everything added since the approved master, and one test file ended with a blank line. `de3dec84` removes it. The other two jobs passed on that run too.
+* The exact test counts on Linux are in the job log, which needs a GitHub sign-in to read; the repository's own comparison (`.github/scripts/known-failures.mjs`, whose list of known failures is empty) is what the job passed.
+* Nothing was merged, deployed or applied by this: `master` is still `bb1193b4`, production still runs it, and migration 0119 exists only in the repository.
