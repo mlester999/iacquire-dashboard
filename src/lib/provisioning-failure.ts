@@ -31,6 +31,8 @@ export const PROVISIONING_FAILURE_CODES = [
   "profile_key_reused",
   // Containment of a profile: the gateway did not apply the replaced key and the tools-off policy within the wait (it may only need longer), or it showed a tool still enabled.
   "revoke_not_applied", "revoke_tool_isolation_failed",
+  // A worker that has no pinned business tool URL was handed a manifest that carries the client business tier: its own configuration is wrong, and a person must fix it.
+  "business_tools_not_enabled",
 ] as const;
 
 /** Stored for any code the portal does not know. The raw string is never echoed: a misbehaving worker could put anything in it. */

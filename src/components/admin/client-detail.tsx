@@ -12,6 +12,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field
 import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
 import { ConfigReviewCard } from "@/components/admin/config-review-card";
+import { RuntimeControls, type RuntimeControlsData } from "@/components/admin/runtime-controls";
 import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
 import {
   assignStaffAction,
@@ -64,7 +65,7 @@ function useAction() {
   return { pending, run };
 }
 
-export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string }) {
+export function ClientDetail({ data, superAdmin, initialTab, timeZone, runtime = null }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string; runtime?: RuntimeControlsData | null }) {
   const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
   const held = data.heldVersions.length + data.heldKnowledge.length + data.heldNotes.length + data.heldDocuments.length;
   // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
@@ -95,7 +96,13 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
       >
       <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
       {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
-      {tab === "workforce" && <WorkforceTab data={data} superAdmin={superAdmin} />}
+      {tab === "workforce" && (
+        <div className="space-y-6">
+          <WorkforceTab data={data} superAdmin={superAdmin} />
+          {/* Only ever given something for a Super Admin looking at a real client workspace (the page decides on the server); it renders nothing otherwise. */}
+          <RuntimeControls data={runtime} />
+        </div>
+      )}
       {tab === "reviews" && <ReviewsTab data={data} timeZone={timeZone} canDecide={data.access.workforceManage} />}
       {tab === "integrations" && <IntegrationsTab data={data} superAdmin={superAdmin} />}
       {tab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}

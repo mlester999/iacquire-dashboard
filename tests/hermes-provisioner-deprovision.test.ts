@@ -66,7 +66,8 @@ beforeAll(async () => {
   gateway = await sharedGateway();
   superAdmin = (await agencyPeople()).superAdmin;
 });
-beforeEach(() => stub(false));
+// A request is only taken while containment is switched on, so the tests start with it on; the ones about the worker's side switch it off where they mean to.
+beforeEach(() => stub(true));
 afterEach(async () => {
   vi.unstubAllEnvs();
   resetEnvCache();
@@ -97,6 +98,14 @@ describe("asking for containment", () => {
     expect(await auditOf(t.org.id, "agent.profile_deprovision_requested")).toHaveLength(1);
     // The employee itself is untouched until the worker proves the containment.
     expect(await one<{ hermes_profile: string | null }>("select hermes_profile from agent_instances where id = $1", [t.agents.lead_hunter])).toMatchObject({ hermes_profile: expect.stringMatching(/^c-/) });
+  });
+
+  it("refuses to take a request while containment is turned off, and writes nothing", async () => {
+    const t = await tenant();
+    stub(false);
+    await expect(ask(t, "lead_hunter")).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/turned off in this deployment/i) });
+    expect(await jobsOf(t, "lead_hunter")).toHaveLength(0);
+    expect(await auditOf(t.org.id, "agent.profile_deprovision_requested")).toHaveLength(0);
   });
 
   it("replaces a setup or synchronization request that is still open", async () => {
@@ -151,6 +160,7 @@ describe("handing the job to the worker", () => {
   it("is never done while the deployment switch is off, and a setup claim is not disturbed", async () => {
     const t = await tenant();
     await ask(t, "lead_hunter");
+    stub(false);
     expect(await claimHermesProvisionerWork(gateway.id)).toBeNull();
     expect(await claimHermesProvisionerJob(gateway.id)).toBeNull();
     expect((await jobsOf(t, "lead_hunter"))[0]).toMatchObject({ status: "requested", attempt_count: 0 });

@@ -8,6 +8,9 @@ import { withSystem } from "@/server/db";
 import Link from "next/link";
 import { Contact } from "lucide-react";
 import { ClientBlueprintCard } from "@/components/crm/blueprints/client-blueprint-card";
+import type { RuntimeControlsData } from "@/components/admin/runtime-controls";
+import { AGENT_BY_KEY } from "@/lib/agents";
+import { env } from "@/server/env";
 
 export const metadata = { title: "Client" };
 
@@ -26,6 +29,20 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const data = JSON.parse(JSON.stringify(detail)) as typeof detail;
   const pause = await withSystem((db) => db.query("select 1 from automation_pauses where org_id = $1 and scope = 'agency' and active", [id]));
   const superAdmin = user.platformRole === "agency_super_admin";
+  // The runtime controls are for a Super Admin looking at a real client workspace, and for nobody else: for anyone else, an agency's own workspace or a demo, the page gives the component
+  // nothing and it renders nothing. The deployment's switches are read here on the server; the browser never decides them (each action checks them again where the work is done).
+  let runtime: RuntimeControlsData | null = null;
+  if (superAdmin && data.org.kind === "client" && !data.org.is_demo) {
+    const config = env();
+    const tiers = await withSystem((db) => db.query<{ feature: string; enabled: boolean }>("select feature, enabled from org_features where org_id = $1 and feature in ('client_business_tools', 'client_business_proposals')", [id]));
+    const on = (feature: string) => tiers.rows.some((row) => row.feature === feature && row.enabled);
+    runtime = {
+      orgId: id,
+      flags: { provisioner: config.HERMES_PROVISIONER_ENABLED, deprovision: config.HERMES_PROVISIONER_DEPROVISION_ENABLED, clientTools: config.HERMES_CLIENT_BUSINESS_MCP_ENABLED },
+      tiers: { tools: on("client_business_tools"), proposals: on("client_business_proposals") },
+      employees: data.agents.map((agent) => ({ id: agent.id, name: AGENT_BY_KEY[agent.role_key].shortName, enabled: agent.enabled, hasProfile: Boolean(agent.hermes_profile) })),
+    };
+  }
   return (
     <div className="space-y-6">
       <AgencyPauseCard orgId={id} clientName={data.org.name} paused={pause.rows.length > 0} canLift={superAdmin} />
@@ -34,7 +51,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
         <span className="font-medium text-primary">Open CRM</span>
       </Link>
       <ClientBlueprintCard user={user} orgId={id} timeZone={user.timezone} />
-      <ClientDetail data={data} superAdmin={superAdmin} initialTab={tab ?? "overview"} timeZone={user.timezone} />
+      <ClientDetail data={data} superAdmin={superAdmin} initialTab={tab ?? "overview"} timeZone={user.timezone} runtime={runtime} />
     </div>
   );
 }

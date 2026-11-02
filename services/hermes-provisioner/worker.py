@@ -70,6 +70,17 @@ PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS = 90
 PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
+# The client business tool tier (optional, and only ever on a synchronization): one reviewed MCP server, named here and nowhere else. Its URL is pinned by the worker from the portal origin
+# it already trusts and is never read from a manifest; its credential reaches the profile only as a value this worker generates and never prints.
+BUSINESS_SERVER = "iacquire_business"
+BUSINESS_TOOLSET = "mcp-iacquire_business"
+BUSINESS_TOKEN_ENV = "IACQUIRE_BUSINESS_MCP_TOKEN"
+BUSINESS_MCP_PATH = "/api/internal/hermes-business/client/mcp"
+BUSINESS_AUTH_HEADER = "Bearer ${" + BUSINESS_TOKEN_ENV + "}"
+BUSINESS_TOOL_TIMEOUT = 12
+BUSINESS_TOKEN_RE = re.compile(r"^iamcpc1\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_-]{43})$")
+BUSINESS_TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+OPTIONAL_MANIFEST_KEYS = {"businessCredentialId", "businessTools"}
 RUN_SUBMISSION_ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
 SAFE_CANARY_ERROR_CODE_SUFFIXES = {
     "model_authentication_failed", "model_configuration_missing", "model_credentials_missing",
@@ -185,6 +196,10 @@ class Manifest:
     config_yaml: str
     policy_config_sha256: str
     expires_at: str
+    # Only on a synchronization for a workspace in the client business tool tier: the id the portal allocated for the credential this worker writes (it holds no secret), and the tool names
+    # the role is offered. The profile must carry exactly those and no others.
+    business_credential_id: str | None = None
+    business_tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -205,7 +220,7 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, toolsets: "set[str] | None" = None) -> str:
+def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, toolsets: "set[str] | None" = None, business_tools: "set[str] | None" = None) -> str:
     """Validate the same complete tool-catalog contract used by iAcquireOS and return its stable digest."""
     expected_toolsets = set(SAFE_INVENTORY_TOOLSETS if toolsets is None else toolsets)
     if not isinstance(catalog, dict):
@@ -231,6 +246,7 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, 
 
     tools: list[dict[str, Any]] = []
     seen: set[str] = set()
+    mcp_seen: set[str] = set()
     allowed_sources = {"configurable", "recently_shipped", "default_injected", "mcp", "unresolved"}
     for row in catalog["data"]:
         if not isinstance(row, dict):
@@ -263,8 +279,22 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, 
             or not (available is None or isinstance(available, bool))
         ):
             raise ProvisioningError("runtime_tool_inventory_incomplete")
+        if source == "mcp":
+            # The one reviewed business server, and only the tool names the portal said this role is offered.
+            if (
+                not business_tools
+                or source_server != BUSINESS_SERVER
+                or toolset != BUSINESS_TOOLSET
+                or toolset not in expected_toolsets
+                or toolset not in requested
+                or injected
+                or available is False
+                or name not in business_tools
+            ):
+                raise ProvisioningError("runtime_tool_inventory_incomplete")
+            mcp_seen.add(name)
         # Client profiles permit only explicitly configured, reviewed tools from their expected toolset.
-        if (
+        elif (
             source != "configurable"
             or source_server is not None
             or injected
@@ -285,7 +315,11 @@ def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str, 
         })
 
     required_tools, optional_tools = inventory_policy(expected_toolsets)
-    if not required_tools.issubset(seen) or seen - required_tools - optional_tools:
+    configurable_seen = seen - mcp_seen
+    if not required_tools.issubset(configurable_seen) or configurable_seen - required_tools - optional_tools:
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+    # The business tools are exactly the role's reviewed names: none missing, none extra, and none at all when the profile is not meant to carry the server.
+    if mcp_seen != set(business_tools or ()) or (BUSINESS_TOOLSET in expected_toolsets) != bool(mcp_seen):
         raise ProvisioningError("runtime_tool_inventory_incomplete")
 
     tools.sort(key=lambda item: item["name"])
@@ -373,7 +407,7 @@ def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest | RevokeManif
         "soul", "soulSha256", "soulChallenge", "configYaml", "policyConfigSha256",
         "expiresAt",
     }
-    if not isinstance(raw, dict) or set(raw) != required:
+    if not isinstance(raw, dict) or not (required <= set(raw) <= required | OPTIONAL_MANIFEST_KEYS):
         raise ProvisioningError("invalid_manifest")
     for name in ("jobId", "leaseToken", "gatewayId", "orgId", "agentId", "configVersionId"):
         if not _is_uuid(raw[name]):
@@ -392,6 +426,20 @@ def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest | RevokeManif
         raise ProvisioningError("invalid_manifest")
     if raw["kind"] == "provision" and raw["sourceProvisionJobId"] is not None:
         raise ProvisioningError("invalid_manifest")
+    # The two business keys travel together, only on a synchronization, and the tool names are shaped like the runtime's own.
+    has_business_id = "businessCredentialId" in raw
+    if has_business_id != ("businessTools" in raw) or (has_business_id and raw["kind"] != "sync"):
+        raise ProvisioningError("invalid_manifest")
+    if has_business_id:
+        names = raw["businessTools"]
+        if (
+            not _is_uuid(raw["businessCredentialId"])
+            or not isinstance(names, list)
+            or not 1 <= len(names) <= 40
+            or len(set(map(str, names))) != len(names)
+            or any(not isinstance(name, str) or not BUSINESS_TOOL_NAME_RE.fullmatch(name) for name in names)
+        ):
+            raise ProvisioningError("invalid_manifest")
     if not isinstance(raw["soul"], str) or not raw["soul"].strip() or len(raw["soul"].encode("utf-8")) > MAX_SOUL_BYTES:
         raise ProvisioningError("invalid_manifest")
     if not isinstance(raw["configYaml"], str) or not raw["configYaml"].strip() or len(raw["configYaml"].encode("utf-8")) > MAX_CONFIG_BYTES:
@@ -435,6 +483,8 @@ def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest | RevokeManif
         config_yaml=raw["configYaml"],
         policy_config_sha256=raw["policyConfigSha256"],
         expires_at=raw["expiresAt"],
+        business_credential_id=raw["businessCredentialId"] if has_business_id else None,
+        business_tools=tuple(raw["businessTools"]) if has_business_id else (),
     )
 
 
@@ -453,27 +503,37 @@ def _reject_secret_fields(value: Any, depth: int = 0) -> None:
         raise ProvisioningError("unsafe_model_config")
 
 
-def policy_toolsets(source: str) -> set[str]:
-    """The reviewed toolsets a policy config enables for the API server (without the no_mcp marker)."""
-    return set(parse_policy_config(source)["platform_toolsets"]["api_server"]) - {"no_mcp"}
+def policy_toolsets(source: str, business_url: str | None = None) -> set[str]:
+    """The reviewed toolsets a policy config enables for the API server (without the no_mcp marker; the business toolset is among them when the policy carries it)."""
+    return set(parse_policy_config(source, business_url)["platform_toolsets"]["api_server"]) - {"no_mcp"}
 
 
-def parse_policy_config(source: str) -> dict[str, Any]:
+def parse_policy_config(source: str, business_url: str | None = None) -> dict[str, Any]:
     try:
         parsed = yaml.safe_load(source)
     except Exception:
         raise ProvisioningError("invalid_policy_config") from None
-    if not isinstance(parsed, dict) or set(parsed) != {"platform_toolsets", "agent", "terminal"}:
+    base_keys = {"platform_toolsets", "agent", "terminal"}
+    if not isinstance(parsed, dict) or set(parsed) not in (base_keys, base_keys | {"mcp_servers"}):
         raise ProvisioningError("invalid_policy_config")
+    business = "mcp_servers" in parsed
+    if business:
+        # The client business tool tier: EXACTLY one reviewed server, at the URL this worker pinned itself, with the one literal header. A worker started without a pinned URL refuses it.
+        if business_url is None:
+            raise ProvisioningError("business_tools_not_enabled")
+        expected_servers = {BUSINESS_SERVER: {"url": business_url, "headers": {"Authorization": BUSINESS_AUTH_HEADER}, "tool_timeout": BUSINESS_TOOL_TIMEOUT}}
+        if parsed["mcp_servers"] != expected_servers:
+            raise ProvisioningError("invalid_policy_config")
     platform = parsed["platform_toolsets"]
     agent = parsed["agent"]
     terminal = parsed["terminal"]
     if not isinstance(platform, dict) or set(platform) != {"api_server"} or not isinstance(platform["api_server"], list):
         raise ProvisioningError("invalid_policy_config")
     tools = platform["api_server"]
-    if any(not isinstance(tool, str) or tool not in SAFE_TOOLSETS | {"no_mcp"} for tool in tools):
+    marker = BUSINESS_TOOLSET if business else "no_mcp"
+    if any(not isinstance(tool, str) or tool not in SAFE_TOOLSETS | {marker} for tool in tools):
         raise ProvisioningError("invalid_policy_config")
-    if len(set(tools)) != len(tools) or "no_mcp" not in tools:
+    if len(set(tools)) != len(tools) or marker not in tools:
         raise ProvisioningError("invalid_policy_config")
     if not isinstance(agent, dict) or set(agent) != {"disabled_toolsets"} or not isinstance(agent["disabled_toolsets"], list):
         raise ProvisioningError("invalid_policy_config")
@@ -532,6 +592,9 @@ def render_config(
         "agent": {"disabled_toolsets": sorted(BLOCKABLE_TOOLSETS)},
         "terminal": {"backend": "docker", "docker_forward_env": [], "container_persistent": False},
     }
+    # The canary run never has a tool, so the business server is added only to the final configuration.
+    if not canary and "mcp_servers" in policy:
+        payload["mcp_servers"] = policy["mcp_servers"]
     return yaml.safe_dump(payload, allow_unicode=True, sort_keys=True).encode("utf-8")
 
 
@@ -786,7 +849,7 @@ def _safe_canary_error_code(event: Any) -> str | None:
     return None
 
 
-def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False, toolsets: "set[str] | None" = None) -> str:
+def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False, toolsets: "set[str] | None" = None, business_tools: "set[str] | None" = None) -> str:
     """Prove this gateway supports a complete authenticated catalog before the worker can claim jobs."""
     if default_profile:
         capability_status, capabilities = api.json_request_default(key, "/v1/capabilities")
@@ -836,7 +899,7 @@ def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_p
             )
         if status != 200:
             raise ProvisioningError("runtime_tool_inventory_incomplete")
-        current_digest = _catalog_snapshot(catalog, profile, challenge, key, toolsets)
+        current_digest = _catalog_snapshot(catalog, profile, challenge, key, toolsets, business_tools)
         if stable_digest is not None and not hmac.compare_digest(stable_digest, current_digest):
             raise ProvisioningError("runtime_tool_inventory_incomplete")
         stable_digest = current_digest
@@ -966,7 +1029,11 @@ class RestrictedProvisioner:
         profile_model_config: dict[str, Any] | None = None,
         run_command: Callable[..., subprocess.CompletedProcess] = subprocess.run,
         max_profiles: int | None = None,
+        business_mcp_url: str | None = None,
     ):
+        # The only URL a business tool entry may have. Pinned by the caller from the portal origin the worker already trusts; None (the default) means a manifest that carries the business
+        # tier is refused.
+        self.business_mcp_url = business_mcp_url
         self.home = home.resolve()
         self.profile_root = self.home / "profiles"
         self.state_root = self.home / "iacquire-provisioner-state"
@@ -1036,7 +1103,10 @@ class RestrictedProvisioner:
 
     def _process_manifest(self, manifest: Manifest) -> dict[str, Any]:
         profile_dir = self._profile_dir(manifest.profile)
-        policy = parse_policy_config(manifest.config_yaml)
+        policy = parse_policy_config(manifest.config_yaml, self.business_mcp_url)
+        # The policy and the manifest must agree: a business tier policy needs the credential id to write, and a manifest that names one needs the policy that uses it.
+        if ("mcp_servers" in policy) != bool(manifest.business_credential_id):
+            raise ProvisioningError("invalid_manifest")
         key = self._prepare_profile(manifest, profile_dir)
         self._write_soul(profile_dir, manifest.soul)
         config_path = profile_dir / "config.yaml"
@@ -1078,6 +1148,12 @@ class RestrictedProvisioner:
         }
         if manifest.kind == "provision":
             result["apiKey"] = key
+        if manifest.business_credential_id:
+            # Only the hash of the secret leaves this host, so the portal can complete the credential it allocated. The token itself stays in the profile's own environment file.
+            written = self._read_business_token(profile_dir / ".env")
+            if written is None or written[0] != manifest.business_credential_id:
+                raise ProvisioningError("profile_key_invalid")
+            result["businessCredentialSha256"] = digest(written[1].encode("ascii"))
         return result
 
     def _process_revoke(self, manifest: RevokeManifest) -> dict[str, Any]:
@@ -1280,6 +1356,8 @@ class RestrictedProvisioner:
             "hermesVersion": self.hermes_version,
             "outcome": outcome,
         }
+        if manifest.business_credential_id:
+            record["businessCredentialId"] = manifest.business_credential_id
         if self._inventory_digest:
             record["toolInventoryDigest"] = self._inventory_digest
         if code:
@@ -1384,8 +1462,11 @@ class RestrictedProvisioner:
             key = self._read_api_key(env_path)
             if key is None:
                 raise ProvisioningError("profile_key_missing")
-            if self.profile_model_env:
-                _atomic_write(env_path, self._profile_env_text(key))
+            # The environment file is rewritten only when it would change: the model keys, and the business credential (kept as it is when the id is the same, made new when it is
+            # not, and removed when the profile no longer carries the business tier).
+            desired = self._profile_env_text(key, self._business_token_for(env_path, manifest))
+            if env_path.read_bytes() != desired:
+                _atomic_write(env_path, desired)
             return key
 
         if marker is not None:
@@ -1463,13 +1544,40 @@ class RestrictedProvisioner:
         os.chmod(profile_dir, 0o700)
         return key
 
-    def _profile_env_text(self, api_key: str) -> bytes:
+    def _read_business_token(self, path: Path) -> tuple[str, str] | None:
+        """The (credential id, secret) of the token in a profile's environment file, or None when there is no single well-formed one."""
+        if path.is_symlink():
+            raise ProvisioningError("unsafe_profile_path")
+        if not path.exists():
+            return None
+        _require_regular_file(path)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            raise ProvisioningError("profile_key_invalid") from None
+        values = [line.partition("=")[2] for line in lines if line.startswith(BUSINESS_TOKEN_ENV + "=")]
+        match = BUSINESS_TOKEN_RE.fullmatch(values[0]) if len(values) == 1 else None
+        return (match.group(1), match.group(2)) if match else None
+
+    def _business_token_for(self, env_path: Path, manifest: Manifest) -> str | None:
+        """The business credential this profile should carry after this job: none, the one it already has (same id), or a new one this worker generates."""
+        if not manifest.business_credential_id:
+            return None
+        existing = self._read_business_token(env_path)
+        if existing is not None and existing[0] == manifest.business_credential_id:
+            return "iamcpc1." + existing[0] + "." + existing[1]
+        secret = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+        return "iamcpc1." + manifest.business_credential_id + "." + secret
+
+    def _profile_env_text(self, api_key: str, business_token: str | None = None) -> bytes:
         # The default gateway owns the only API listener; named-profile keys only scope /p/<profile> routes.
         rows = ["API_SERVER_KEY=" + api_key]
         for name, value in sorted(self.profile_model_env.items()):
             if name not in MODEL_API_KEY_ENV_NAMES or not value or any(ord(char) <= 0x20 or ord(char) >= 0x7f or char in "#'\"$\\" for char in value):
                 raise ProvisioningError("profile_key_invalid")
             rows.append(name + "=" + value)
+        if business_token:
+            rows.append(BUSINESS_TOKEN_ENV + "=" + business_token)
         return ("\n".join(rows) + "\n").encode("ascii")
 
     def _read_api_key(self, path: Path) -> str | None:
@@ -1666,12 +1774,16 @@ class RestrictedProvisioner:
                         raise ProvisioningError(failure_code)
                     seen_names.add(name)
                     if enabled and tools:
-                        if name not in SAFE_TOOLSETS or any(tool not in REVIEWED_TOOLSET_FOR_TOOL for tool in tools):
+                        if name == BUSINESS_TOOLSET and manifest.business_tools:
+                            # The business toolset carries exactly the role's reviewed tool names.
+                            if set(tools) != set(manifest.business_tools):
+                                raise ProvisioningError(failure_code)
+                        elif name not in SAFE_TOOLSETS or any(tool not in REVIEWED_TOOLSET_FOR_TOOL for tool in tools):
                             raise ProvisioningError(failure_code)
                         enabled_names.add(name)
                 if enabled_names == expected:
                     return
-                if enabled_names.issubset(SAFE_TOOLSETS):
+                if enabled_names.issubset(SAFE_TOOLSETS | ({BUSINESS_TOOLSET} if manifest.business_tools else set())):
                     pending = True
                 else:
                     raise ProvisioningError(failure_code)
@@ -1687,14 +1799,16 @@ class RestrictedProvisioner:
 
     def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
         # The toolsets this profile must expose are the ones its policy config names (the full reviewed set, or one role's narrower set).
-        toolsets = policy_toolsets(manifest.config_yaml)
+        toolsets = policy_toolsets(manifest.config_yaml, self.business_mcp_url)
         self._wait_for_effective_toolsets(
             manifest,
             key,
             expected=toolsets,
             failure_code="runtime_tool_policy_unverified",
         )
-        self._inventory_digest = verify_complete_catalog(self.api, manifest.profile, key, toolsets=toolsets)
+        self._inventory_digest = verify_complete_catalog(
+            self.api, manifest.profile, key, toolsets=toolsets, business_tools=set(manifest.business_tools) if manifest.business_tools else None,
+        )
 
 
 def _load_service_token() -> str:
@@ -2469,6 +2583,8 @@ def run_worker() -> None:
         profile_model_env=profile_model_env,
         profile_model_config=profile_model_config,
         max_profiles=max_profiles,
+        # Derived from the portal origin the worker already validated, never from a manifest.
+        business_mcp_url=portal_url + BUSINESS_MCP_PATH,
     )
     loop = WorkerLoop(
         JsonHttp(timeout=30),

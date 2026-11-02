@@ -16,7 +16,7 @@ const ids = {
 };
 
 const revokeInput = z.object({ ...ids, reason: z.string().min(5, "Say why this access is being ended (at least 5 characters).").max(500) }).strict();
-const switchInput = z.object({ orgId: z.string().uuid(), tools: z.boolean().optional(), proposals: z.boolean().optional() }).strict();
+const switchInput = z.object({ orgId: z.string().uuid(), tools: z.boolean().optional(), proposals: z.boolean().optional(), reason: z.string().trim().min(5, "Say why this is being switched (at least 5 characters).").max(500).optional() }).strict();
 
 const refresh = (orgId: string) => revalidatePath(`/admin/clients/${orgId}`);
 

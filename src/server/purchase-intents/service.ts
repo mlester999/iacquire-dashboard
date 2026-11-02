@@ -7,6 +7,7 @@ import { isValidTimeZone } from "@/lib/calendars/slots";
 import { todayIn } from "@/lib/invoices/state";
 import { checkManualPayment, MAX_MANUAL_PAYMENT_CENTS } from "@/lib/billing-clearance";
 import { createClientTenant } from "@/server/admin/tenants";
+import { rolesForPlan } from "@/lib/plan-employees";
 import { recordManualPayment } from "@/server/billing/manual";
 import { recordProviderSetupPayment, type AdoptedCheckout } from "@/server/billing/provider-setup-payment";
 import { availableCheckoutProviders, checkoutAvailability, CHECKOUT_PROVIDERS, PROVIDER_LABEL, type CheckoutProvider } from "@/server/purchase-intents/availability";
@@ -483,6 +484,14 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
   let inviteLink: string | null = null;
   let emailDelivery: unknown = null;
   if (!clientOrgId) {
+    // Which employees the purchase includes comes from one reviewed table (src/lib/plan-employees.ts). A product it does not list gets the full team, and the audit trail records which key.
+    const plan = rolesForPlan(current.product_version);
+    if (plan.defaulted) {
+      await withSystem((db) => recordAudit({
+        orgId: current.agency_org_id, actorUserId: user.id, actorKind: "agency", action: "purchase.plan_roles_defaulted", targetType: "purchase_intent", targetId: id, result: "success",
+        metadata: { planKey: current.product_version },
+      }, db));
+    }
     const created = await createClientTenant(user, {
       name: current.company,
       ownerEmail: current.buyer_email,
@@ -491,6 +500,7 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
       timezone: current.timezone,
       crmMode: "native",
       blueprint: null,
+      enabledRoles: plan.roles,
     });
     clientOrgId = created.orgId;
     inviteLink = created.inviteLink;

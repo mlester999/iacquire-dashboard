@@ -532,7 +532,7 @@ export async function requestBusinessToolSync(db: Queryable, orgId: string, agen
  * tools switch changed, or when the proposals switch changed while the tools are really on (with the tools off the proposals switch changes nothing in any profile, so nobody is taken
  * offline for it). Never for an agency or a demo workspace, and then nothing is written.
  */
-export async function setClientBusinessTools(user: SessionUser, input: { orgId: string; tools?: boolean; proposals?: boolean }): Promise<{ changed: boolean; sync: BusinessToolSyncResult | null }> {
+export async function setClientBusinessTools(user: SessionUser, input: { orgId: string; tools?: boolean; proposals?: boolean; reason?: string }): Promise<{ changed: boolean; sync: BusinessToolSyncResult | null }> {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can switch a workspace's business tools.");
   if (input.tools === undefined && input.proposals === undefined) throw new AppError("invalid_input", "Say which business tool switch to change.");
   if (!UUID_TEXT.test(input.orgId)) throw new AppError("invalid_input", "The workspace must be an id.");
@@ -541,8 +541,8 @@ export async function setClientBusinessTools(user: SessionUser, input: { orgId: 
       const { rows } = await db.query<{ kind: string; is_demo: boolean }>("select kind,is_demo from organizations where id=$1", [input.orgId]);
       if (!rows[0]) throw new AppError("not_found", "Workspace not found.");
       if (rows[0].kind !== "client" || rows[0].is_demo) throw new AppError("conflict", "Business tools are switched on only for a real client workspace, never an agency's or a demo.");
-      const toolsChanged = input.tools !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_TOOLS_FEATURE, enabled: input.tools })).changed;
-      const proposalsChanged = input.proposals !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_PROPOSALS_FEATURE, enabled: input.proposals })).changed;
+      const toolsChanged = input.tools !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_TOOLS_FEATURE, enabled: input.tools, reason: input.reason })).changed;
+      const proposalsChanged = input.proposals !== undefined && (await setOrgFeatureIn(db, user, { orgId: input.orgId, feature: CLIENT_BUSINESS_PROPOSALS_FEATURE, enabled: input.proposals, reason: input.reason })).changed;
       const needsSync = toolsChanged || (proposalsChanged && (await clientBusinessToolsOn(input.orgId, db)));
       const sync = needsSync ? await requestBusinessToolSync(db, input.orgId, undefined, user.id) : null;
       return { changed: toolsChanged || proposalsChanged, sync };
@@ -580,6 +580,8 @@ export async function requestDeprovision(db: Queryable, input: { orgId: string; 
   const { orgId, agentId, actorUserId } = input;
   if (!UUID_TEXT.test(orgId) || !UUID_TEXT.test(agentId) || !UUID_TEXT.test(actorUserId)) throw new AppError("invalid_input", "The workspace, the employee and the person asking must each be an id.");
   const why = reasonOf(input.reason, "this employee's runtime profile is being contained");
+  // With the switch off the worker is never handed a containment job, so a request would sit in the queue and look like something was happening. Refuse it, and write nothing.
+  if (!env().HERMES_PROVISIONER_DEPROVISION_ENABLED) throw new AppError("conflict", "Containment is turned off in this deployment, so nothing was requested.");
   const { rows: permission } = await db.query<{ allowed: boolean }>(
     "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
     [actorUserId, orgId],

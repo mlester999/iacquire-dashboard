@@ -55,7 +55,7 @@ export async function requestDeprovisionAction(orgId: string, agentId: string, r
     const result = await withSystem((db) => requestDeprovision(db, { orgId, agentId, actorUserId: user.id, reason }));
     revalidatePath(`/admin/clients/${orgId}`);
     revalidatePath(`/admin/clients/${orgId}/provisioning`);
-    return { ok: true as const, ...result };
+    return { ok: true as const, data: result };
   } catch (err) { return actionError(err); }
 }
 
@@ -65,9 +65,10 @@ export async function requestFleetSyncAction(reason: string) {
     const user = await requireFreshUserOrThrow();
     if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can synchronize the client runtime.");
     const gatewayId = env().HERMES_PROVISIONER_GATEWAY_ID;
-    if (!gatewayId) throw new AppError("conflict", "The client runtime is not set up in this deployment.");
+    // With the provisioner off no worker would ever pick the jobs up, so nothing is requested.
+    if (!env().HERMES_PROVISIONER_ENABLED || !gatewayId) throw new AppError("conflict", "The restricted provisioner is not enabled in this deployment, so nothing was requested.");
     const result = await withSystem((db) => requestFleetSync(db, gatewayId, user.id, reason));
     revalidatePath("/admin/health");
-    return { ok: true as const, ...result };
+    return { ok: true as const, data: result };
   } catch (err) { return actionError(err); }
 }

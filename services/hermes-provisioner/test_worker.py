@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import io
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -1462,6 +1463,223 @@ class RevokeTests(unittest.TestCase):
             self.provisioner.process(self.revoke_manifest())
         self.assertEqual(caught.exception.code, "profile_key_missing")
         self.assertFalse(self.state_file.exists())
+
+
+BUSINESS_URL = "https://portal.example.test/api/internal/hermes-business/client/mcp"
+BUSINESS_TOOLSET = "mcp-iacquire_business"
+BUSINESS_TOOLS = ["mcp_iacquire_business_find_contacts", "mcp_iacquire_business_get_contact", "mcp_iacquire_business_get_role_workspace_context"]
+
+
+def business_policy(url: str = BUSINESS_URL, toolsets: list[str] | None = None) -> str:
+    """The configuration the portal sends for a workspace in the client business tool tier: the role's toolsets and the business toolset instead of no_mcp, and the one reviewed server."""
+    listed = "\n".join(f"    - {name}" for name in [*(toolsets if toolsets is not None else ALL_TOOLSETS), BUSINESS_TOOLSET])
+    shared = "\n".join(f"    - {name}" for name in [*ALL_TOOLSETS, "no_mcp"])
+    base = POLICY.replace(shared, listed)
+    return base + f"mcp_servers:\n  iacquire_business:\n    url: {url}\n    headers:\n      Authorization: \"Bearer ${{IACQUIRE_BUSINESS_MCP_TOKEN}}\"\n    tool_timeout: 12\n"
+
+
+class McpHermesApi(KeyAwareHermesApi):
+    """A gateway that also serves the business MCP server, for a profile whose configuration names the business toolset. Its catalog is rebuilt the way the worker verifies it (the same
+    canonical form, signed with the profile's key), with the business tools as `mcp` provenance rows."""
+
+    def __init__(self, home: Path, tools: list[str] | None = None):
+        super().__init__(home)
+        self.served = list(BUSINESS_TOOLS if tools is None else tools)
+
+    def configured(self, profile: str) -> list[str]:
+        config = self.home / "profiles" / profile / "config.yaml"
+        value = yaml.safe_load(config.read_text(encoding="utf-8")) if config.exists() else {}
+        return [name for name in (value or {}).get("platform_toolsets", {}).get("api_server", []) if name != "no_mcp"]
+
+    def json_request(self, profile, key, path, method="GET", body=None, extra_headers=None):
+        names = self.configured(profile) if profile != "default" else []
+        if BUSINESS_TOOLSET not in names or not (path == "/v1/toolsets" or path.startswith("/v1/tools?platform=api_server")):
+            return super().json_request(profile, key, path, method, body, extra_headers)
+        status, _ = super().json_request(profile, key, "/v1/capabilities")
+        if status != 200:
+            return status, {"error": "unavailable"}
+        standard = [name for name in ALL_TOOLSETS if name in names]
+        if path == "/v1/toolsets":
+            rows = [{"name": name, "enabled": True, "tools": sorted(tool for tool, _ in TOOLS_IN[name])} for name in standard]
+            return 200, [*rows, {"name": BUSINESS_TOOLSET, "enabled": True, "tools": list(self.served)}]
+        challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
+        entries = [(tool, toolset, "configurable", None) for toolset in standard for tool, _ in TOOLS_IN[toolset]]
+        entries += [(tool, BUSINESS_TOOLSET, "mcp", "iacquire_business") for tool in self.served]
+        enabled = sorted([*standard, BUSINESS_TOOLSET])
+        canonical = {
+            "contract": "hermes.api_server.tool_catalog.v1", "profile": profile, "platform": "api_server", "explicitConfigPresent": True, "enabledToolsets": enabled,
+            "tools": sorted(
+                [{"name": n, "source": src, "toolset": ts, "sourceServer": server, "addedBelowExplicitConfig": False, "available": True} for n, ts, src, server in entries],
+                key=lambda row: row["name"],
+            ),
+        }
+        catalog_digest = digest(json.dumps(canonical, separators=(",", ":"), ensure_ascii=False).encode())
+        signed = json.dumps({"contract": "hermes.api_server.tool_catalog.v1", "profile": profile, "challenge": challenge, "digest": catalog_digest}, separators=(",", ":")).encode()
+        signature = base64.urlsafe_b64encode(hmac.new(key.encode(), signed, hashlib.sha256).digest()).decode().rstrip("=")
+        return 200, {
+            "object": "list", "platform": "api_server", "explicit_config_present": True, "enabled_toolsets": enabled,
+            "data": [
+                {"name": n, "parameters": {}, "available": True, "provenance": {"source": src, "toolset": ts, "requested_toolsets": [ts], "source_server": server, "added_below_explicit_config": False}}
+                for n, ts, src, server in entries
+            ],
+            "contract": "hermes.api_server.tool_catalog.v1", "complete": True, "challenge": challenge, "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            "attestation": {"algorithm": "hmac-sha256", "signature": signature, "key_id": "profile-key"},
+        }
+
+
+class BusinessToolDeliveryTests(unittest.TestCase):
+    """The client business tool tier on the worker: the credential is made on this host, written once into the profile's own environment file, never printed or returned, and only its
+    hash goes back to the portal. Only a synchronization may carry the tier, only at the URL the worker pinned itself, and the profile must show exactly the reviewed tools."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name) / "home"
+        (self.home / "profiles").mkdir(parents=True)
+        self.gateway_id = uid()
+        self.manifest = new_manifest(gatewayId=self.gateway_id)
+        self.api = McpHermesApi(self.home)
+        self.api.expected_challenge = self.manifest["soulChallenge"]
+
+        def run_command(args, **kwargs):
+            profile = self.home / "profiles" / args[3]
+            profile.mkdir(mode=0o700)
+            (profile / "config.yaml").write_text("model:\n  provider: deepseek\n  name: approved-model\n", encoding="utf-8")
+            (profile / ".env").write_text("API_SERVER_KEY=shared-placeholder\n", encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        self.run_command = run_command
+        self.provisioner = self.make_provisioner(BUSINESS_URL)
+        self.profile_dir = self.home / "profiles" / self.manifest["profile"]
+        self.state_dir = self.home / "iacquire-provisioner-state"
+        self.api_key = self.provisioner.process(self.manifest)["apiKey"]
+
+    def make_provisioner(self, url: str | None) -> RestrictedProvisioner:
+        return RestrictedProvisioner(
+            home=self.home, hermes_cli=Path("/opt/hermes/bin/hermes"), api=self.api, gateway_id=self.gateway_id, hermes_version="hermes v0.21.5-test",
+            run_command=self.run_command, business_mcp_url=url,
+        )
+
+    def sync(self, **updates: Any) -> dict[str, Any]:
+        config = updates.pop("configYaml", business_policy())
+        manifest = new_manifest(
+            gatewayId=self.gateway_id, kind="sync", orgId=self.manifest["orgId"], agentId=self.manifest["agentId"], profile=self.manifest["profile"],
+            sourceProvisionJobId=self.manifest["jobId"], soulChallenge=self.manifest["soulChallenge"], soul=self.manifest["soul"], soulSha256=self.manifest["soulSha256"],
+            configYaml=config, policyConfigSha256=digest(config.encode()),
+            businessCredentialId=uid(), businessTools=list(BUSINESS_TOOLS),
+        )
+        manifest.update(updates)
+        return manifest
+
+    def token(self) -> tuple[str, str] | None:
+        lines = (self.profile_dir / ".env").read_text(encoding="utf-8").splitlines()
+        values = [line.partition("=")[2] for line in lines if line.startswith("IACQUIRE_BUSINESS_MCP_TOKEN=")]
+        if not values:
+            return None
+        match = re.fullmatch(r"iamcpc1\.([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})", values[0])
+        self.assertIsNotNone(match, "the token must have the credential's shape")
+        return match.group(1), match.group(2)
+
+    def audit(self) -> str:
+        return (self.state_dir / "audit.jsonl").read_text(encoding="utf-8")
+
+    def test_a_synchronization_writes_the_credential_once_and_returns_only_its_hash(self):
+        request = self.sync()
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+            result = self.provisioner.process(request)
+        written = self.token()
+        self.assertEqual(written[0], request["businessCredentialId"])
+        self.assertEqual(result["businessCredentialSha256"], hashlib.sha256(written[1].encode()).hexdigest())
+        self.assertNotIn("apiKey", result)
+        # The secret exists on this host only: in the profile's own environment file, not in the result, the audit log, the ownership marker or anything printed.
+        for place, text in (("result", json.dumps(result)), ("audit", self.audit()), ("marker", (self.profile_dir / ".iacquire-provisioner.json").read_text(encoding="utf-8")), ("output", captured.getvalue())):
+            self.assertNotIn(written[1], text, place)
+        self.assertIn(request["businessCredentialId"], self.audit())
+        env_lines = (self.profile_dir / ".env").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(env_lines[0], "API_SERVER_KEY=" + self.api_key)
+        config = yaml.safe_load((self.profile_dir / "config.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(config["mcp_servers"], {"iacquire_business": {"url": BUSINESS_URL, "headers": {"Authorization": "Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}"}, "tool_timeout": 12}})
+        self.assertIn(BUSINESS_TOOLSET, config["platform_toolsets"]["api_server"])
+        self.assertNotIn("no_mcp", config["platform_toolsets"]["api_server"])
+        if os.name != "nt":
+            self.assertEqual((self.profile_dir / ".env").stat().st_mode & 0o777, 0o600)
+
+    def test_a_retry_with_the_same_credential_id_keeps_the_same_secret_and_a_new_id_makes_a_new_one(self):
+        request = self.sync()
+        first = self.provisioner.process(request)
+        before = self.token()
+        again = self.provisioner.process(self.sync(businessCredentialId=request["businessCredentialId"]))
+        self.assertEqual(self.token(), before)
+        self.assertEqual(again["businessCredentialSha256"], first["businessCredentialSha256"])
+        rotated_request = self.sync()
+        rotated = self.provisioner.process(rotated_request)
+        after = self.token()
+        self.assertEqual(after[0], rotated_request["businessCredentialId"])
+        self.assertNotEqual(after[1], before[1])
+        self.assertNotEqual(rotated["businessCredentialSha256"], first["businessCredentialSha256"])
+        self.assertNotIn(before[1], (self.profile_dir / ".env").read_text(encoding="utf-8"))
+        self.assertNotIn(before[1], self.audit())
+
+    def test_a_synchronization_that_switches_the_tier_off_removes_the_credential_and_the_server(self):
+        self.provisioner.process(self.sync())
+        self.assertIsNotNone(self.token())
+        plain = self.sync(configYaml=POLICY)
+        for key in ("businessCredentialId", "businessTools"):
+            plain.pop(key)
+        result = self.provisioner.process(plain)
+        self.assertIsNone(self.token())
+        self.assertNotIn("businessCredentialSha256", result)
+        self.assertNotIn("mcp_servers", yaml.safe_load((self.profile_dir / "config.yaml").read_text(encoding="utf-8")))
+
+    def test_what_the_worker_refuses_it_refuses_before_writing_anything(self):
+        env_before = (self.profile_dir / ".env").read_text(encoding="utf-8")
+        config_before = (self.profile_dir / "config.yaml").read_text(encoding="utf-8")
+
+        def refused(request: dict[str, Any], code: str, provisioner: RestrictedProvisioner | None = None) -> None:
+            with self.assertRaises(ProvisioningError) as caught:
+                (provisioner or self.provisioner).process(request)
+            self.assertEqual(caught.exception.code, code)
+            self.assertEqual((self.profile_dir / ".env").read_text(encoding="utf-8"), env_before)
+            self.assertEqual((self.profile_dir / "config.yaml").read_text(encoding="utf-8"), config_before)
+
+        refused(self.sync(configYaml=business_policy(url="https://elsewhere.example.test/mcp")), "invalid_policy_config")
+        refused(self.sync(configYaml=business_policy().replace("tool_timeout: 12", "tool_timeout: 12\n  second_server:\n    url: https://other.example.test/mcp")), "invalid_policy_config")
+        refused(self.sync(configYaml=business_policy().replace('Bearer ${IACQUIRE_BUSINESS_MCP_TOKEN}', "Bearer literal-token-value")), "invalid_policy_config")
+        refused(self.sync(configYaml=business_policy(toolsets=["memory", "browser"])), "invalid_policy_config")
+        # The worker's own pinned URL decides, so a worker that has none refuses the tier altogether.
+        refused(self.sync(), "business_tools_not_enabled", self.make_provisioner(None))
+        # The policy and the manifest must agree, the keys travel together, only on a synchronization, and the names are shaped like the runtime's.
+        mismatched = self.sync()
+        mismatched.pop("businessCredentialId")
+        mismatched.pop("businessTools")
+        refused(mismatched, "invalid_manifest")
+        refused(self.sync(configYaml=POLICY), "invalid_manifest")
+        lone = self.sync()
+        lone.pop("businessTools")
+        refused(lone, "invalid_manifest")
+        refused(self.sync(kind="provision", sourceProvisionJobId=None), "invalid_manifest")
+        refused(self.sync(businessTools=["Not A Tool"]), "invalid_manifest")
+        refused(self.sync(businessTools=[]), "invalid_manifest")
+        refused(self.sync(businessCredentialId="not-a-uuid"), "invalid_manifest")
+
+    def test_the_profile_must_show_exactly_the_reviewed_business_tools(self):
+        for served, why in (
+            (BUSINESS_TOOLS + ["mcp_iacquire_business_delete_everything"], "an extra tool"),
+            (BUSINESS_TOOLS[:-1], "a missing tool"),
+        ):
+            self.api.served = served
+            with self.assertRaises(ProvisioningError, msg=why) as caught:
+                self.provisioner.process(self.sync())
+            self.assertIn(caught.exception.code, {"runtime_tool_inventory_incomplete", "runtime_tool_policy_unverified"}, why)
+
+    def test_a_manifest_without_the_business_tier_is_exactly_what_it_always_was(self):
+        plain = self.sync(configYaml=POLICY)
+        for key in ("businessCredentialId", "businessTools"):
+            plain.pop(key)
+        result = self.provisioner.process(plain)
+        self.assertNotIn("businessCredentialSha256", result)
+        self.assertIsNone(self.token())
 
 
 class FakeClock:

@@ -11,8 +11,8 @@ import { notifyAgency } from "@/server/notifications";
 import { buildConfigYaml, buildProvisionerSoul, PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { DEFAULT_BLOCKED_TOOLSETS } from "@/server/workforce/tool-policies";
-import { clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
-import { revokeClientBusinessCredentialsForAgent } from "@/server/workforce/hermes-client-business-credential";
+import { clientBusinessMcpRuntimeNamesForRole, clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { allocateClientCredentialId, registerClientBusinessCredential, revokeClientBusinessCredentialsForAgent } from "@/server/workforce/hermes-client-business-credential";
 import { normalizeProvisioningFailureCode, provisioningRetryPlan } from "@/lib/provisioning-failure";
 import { env } from "@/server/env";
 
@@ -52,6 +52,8 @@ const successSchema = z.object({
   toolInventoryDigest: hex64,
   hermesVersion: z.string().min(1).max(80),
   apiKey: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  // The sha256 of the business credential the worker wrote into the profile's own environment file (a synchronization in the client business tool tier only). Never the credential.
+  businessCredentialSha256: hex64.optional(),
 }).strict();
 
 // A verified containment: facts only (who, which profile, what was proven, when). The worker proved the old key is refused and no tool is enabled before it says so; the portal records it.
@@ -277,8 +279,16 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
   const challenge = randomBytes(16).toString("hex");
   const soul = buildProvisionerSoul(row.role_key, row.org_name, row.compiled_instructions, challenge);
   // The profile carries the business tools only while the workspace is in the client tier. The switch is read here, in the claim's own transaction, so a request that waited picks up the
-  // setting as it is now; with the tier off (the default) the manifest is exactly the one that has always been issued.
-  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key, { businessMcp: await clientBusinessToolsOn(row.org_id, db) });
+  // setting as it is now; with the tier off (the default) the manifest is exactly the one that has always been issued. Only a SYNCHRONIZATION delivers the tier: its credential belongs to
+  // an employee's existing profile (an id cannot be allocated before the profile exists), so a first provision never carries it and a later synchronization adds it.
+  const businessMcp = row.kind === "sync" && await clientBusinessToolsOn(row.org_id, db);
+  const business = businessMcp
+    ? {
+      businessCredentialId: await allocateClientCredentialId(db, { orgId: row.org_id, agentId: row.agent_instance_id }),
+      businessTools: clientBusinessMcpRuntimeNamesForRole(row.role_key, { proposals: await clientBusinessProposalsOn(row.org_id, db) }),
+    }
+    : null;
+  const configYaml = buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key, { businessMcp });
   const soulSha256 = digest(soul);
   const policyConfigSha256 = digest(configYaml);
   const challengeSha256 = digest(challenge);
@@ -322,6 +332,8 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
     expiresAt: lease.lease_expires_at instanceof Date
       ? lease.lease_expires_at.toISOString()
       : new Date(lease.lease_expires_at).toISOString(),
+    // Present only for a synchronization in the client business tool tier: the id the worker embeds in the credential it writes (no secret), and the tool names the profile must show.
+    ...(business ?? {}),
   };
 }
 
@@ -403,9 +415,14 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
         inventoryDigest: input.toolInventoryDigest,
       });
       const sameProfile = job.hermes_profile === input.profile && job.hermes_gateway_id === gatewayId;
+      // A replay that names a business credential hash must name the one that was registered for this profile.
+      const knownBusinessHash = !input.businessCredentialSha256 || (await db.query(
+        "select 1 from agent_business_credentials where org_id=$1 and agent_instance_id=$2 and profile=$3 and secret_sha256=$4 and status in ('active','rotating_out') limit 1",
+        [job.org_id, job.agent_instance_id, input.profile, input.businessCredentialSha256],
+      )).rows.length > 0;
       const sameCredential = input.kind === "sync"
-        ? !input.apiKey
-        : Boolean(input.apiKey && job.credential_fingerprint === secretFingerprint(input.apiKey));
+        ? !input.apiKey && knownBusinessHash
+        : Boolean(input.apiKey && !input.businessCredentialSha256 && job.credential_fingerprint === secretFingerprint(input.apiKey));
       if (sameProfile && sameCredential && job.config_version_id === input.configVersionId && job.active_config_version_id === input.configVersionId &&
           job.hermes_profile === input.profile && input.soulSha256 === job.manifest_soul_sha256 &&
           input.policyConfigSha256 === job.manifest_policy_config_sha256 &&
@@ -456,6 +473,24 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
     )) {
       await fail("profile_ownership_conflict");
       return { accepted: true, failed: true };
+    }
+
+    // The business credential the worker wrote into the profile: complete the id the claim allocated, from the hash alone (the portal never learns the secret). A first provision never
+    // carries one, and a synchronization that reports one needs the id it was given still to be waiting.
+    if (job.kind === "provision" && input.businessCredentialSha256) {
+      await fail("profile_ownership_conflict");
+      return { accepted: true, failed: true };
+    }
+    if (job.kind === "sync" && input.businessCredentialSha256) {
+      const waiting = await db.query<{ id: string }>(
+        "select id from agent_business_credentials where org_id=$1 and agent_instance_id=$2 and profile=$3 and status='pending' and expires_at>now() order by issued_at desc limit 1 for update",
+        [job.org_id, job.agent_instance_id, input.profile],
+      );
+      if (!waiting.rows[0]) {
+        await fail("stale_configuration");
+        return { accepted: true, failed: true };
+      }
+      await registerClientBusinessCredential(db, { orgId: job.org_id, agentId: job.agent_instance_id, profile: input.profile, secretSha256: input.businessCredentialSha256, credentialId: waiting.rows[0].id });
     }
 
     let credentialId = job.credential_id;
