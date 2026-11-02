@@ -16,7 +16,7 @@ A client employee's profile gets one reviewed MCP server (`iacquire_business`) a
 
 ## 3. How the tools reach a workspace
 
-Switching a workspace's business tools on (runtime controls, Super Admin) opens one synchronization per provisioned employee; each employee reads as not online until its profile has been synchronized and checked. A workspace that was already in the tier when its employees were first provisioned has none until a synchronization runs: press **Synchronize** in the runtime controls.
+Switching a workspace's business tools on (runtime controls, Super Admin) opens one synchronization per provisioned employee; each employee reads as not online until its profile has been synchronized and checked. On the pinned runtime that check cannot pass until the client gateway has been restarted (section 4), in either direction, and the runtime controls say so before the switch is confirmed. A workspace that was already in the tier when its employees were first provisioned has none until a synchronization runs: press **Synchronize** in the runtime controls.
 
 ## 4. Proven, and not proven
 

@@ -54,7 +54,7 @@ Customer-facing activity stays off until setup is finished: the gate (off by def
 ## 5. Approvals still needed (each is yours; nothing here has been done)
 
 1. **Apply migrations 0115, 0116, 0117 and 0118 to production,** each before the code that reads it is released. The hosted project is on the Supabase Free plan with no backups, so a restore point comes first. Rollbacks exist and are tested. 0118 must be applied before any provisioned client is deleted.
-2. **Turn on the client business-tool tier:** `HERMES_CLIENT_BUSINESS_MCP_ENABLED`, later the proposals phase, then per workspace (runtime controls). Only after the pinned-runtime proof.
+2. **Turn on the client business-tool tier:** `HERMES_CLIENT_BUSINESS_MCP_ENABLED`, later the proposals phase, then per workspace (runtime controls). Only after the pinned-runtime proof. Switching a workspace marks its employees not online until the client gateway has been restarted and the synchronization has passed its check (section 3), so each switch is planned with a restart window, in either direction.
 3. **Roll out the new client-only worker image** (reliability, containment, business-tool delivery): a canary profile first, a gateway **restart** window (the tier's tools load only after one, and it interrupts every tenant's chat on that gateway), VPS egress to the portal verified, then the pinned-runtime proof.
 4. **Turn on containment** (`HERMES_PROVISIONER_DEPROVISION_ENABLED`) only after the worker image that contains `revoke` is out and proven on a synthetic profile.
 5. **Enable the automatic industry CRM** (`CLIENT_CRM_AUTO_SETUP_ENABLED`): a standing automation under a named Super Admin's authority.
