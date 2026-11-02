@@ -214,18 +214,22 @@ describe("the other controls", () => {
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("It was already that way, so nothing changed."));
   });
 
-  it("says before the person confirms that a tier change needs the client gateway restarted, in either direction, and that the employees stay not online until then", async () => {
-    // A running gateway keeps the tool entry it started with (tests/hermes-business-mcp-hot-reload.test.ts), so the synchronization cannot pass its check before a restart.
+  it("says before the person confirms that switching a tier ON needs the client gateway restarted, and that switching it OFF does not", async () => {
+    // Observed against Hermes 0.21.5 (tests/hermes-client-business-mcp-pinned-runtime.test.ts): tools are connected when the gateway starts; removed tools leave at its next rescan.
     render(<RuntimeControls data={data({ tiers: { tools: true, proposals: false } })} />);
-    for (const name of ["Turn off: Business tools (reads)", "Turn on: Change proposals"]) {
-      fireEvent.click(screen.getByRole("button", { name }));
-      const dialog = await screen.findByRole("dialog");
-      expect(dialog.textContent).toMatch(/only picks this change up when it is restarted/);
-      expect(dialog.textContent).toMatch(/restarted in an approved window/);
-      expect(dialog.textContent).toMatch(/stays not online/);
-      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    }
+    fireEvent.click(screen.getByRole("button", { name: "Turn on: Change proposals" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toMatch(/only when it starts/);
+    expect(dialog.textContent).toMatch(/restarted in an approved window/);
+    expect(dialog.textContent).toMatch(/stays not online/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Turn off: Business tools (reads)" }));
+    dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toMatch(/no restart is needed/);
+    expect(dialog.textContent).not.toMatch(/restarted in an approved window/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(mocks.tiers).not.toHaveBeenCalled();
   });
 });

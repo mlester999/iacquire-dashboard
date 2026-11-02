@@ -30,8 +30,13 @@ export interface RuntimeControlsData {
 
 /** The words shown beside a control whose deployment switch is off. */
 export const SWITCHED_OFF_REASON = "Turned off in this deployment";
-/** What changing a business-tool tier costs on the pinned runtime: a running gateway keeps the tool entry it started with (observed in tests/hermes-business-mcp-hot-reload.test.ts), so the synchronization cannot pass its check until the gateway has been restarted. */
-const RESTART_NOTE = " On the current runtime a running gateway only picks this change up when it is restarted, so until the client gateway has been restarted in an approved window each synchronization ends in a failed check and the employee stays not online.";
+/**
+ * What changing a business-tool tier costs on the pinned runtime, as observed against Hermes 0.21.5 (tests/hermes-client-business-mcp-pinned-runtime.test.ts): a gateway connects a profile's
+ * MCP servers when IT starts, so a tool entry added to a profile (a new one too) is not loaded until the gateway restarts; one removed from a profile is dropped at the gateway's next
+ * rescan of it (about thirty seconds), with no restart.
+ */
+const RESTART_NOTE_ON = " On the current runtime the gateway connects a profile's tools only when it starts, so until the client gateway has been restarted in an approved window each synchronization ends in a failed check and the employee stays not online.";
+const NO_RESTART_NOTE_OFF = " The running gateway drops the tools when it next rescans each profile, about a minute at most, so no restart is needed.";
 const MIN_REASON = 5;
 
 type Outcome = { ok: true; message: string } | { ok: false; message: string };
@@ -119,9 +124,9 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     label,
     buttonLabel: on ? "Turn off" : "Turn on",
     title: `Turn ${label.toLowerCase()} ${on ? "off" : "on"} for this workspace?`,
-    confirm: (on
-      ? `The workspace's employees stop being able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.`
-      : `The workspace's employees will be able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.`) + RESTART_NOTE,
+    confirm: on
+      ? `The workspace's employees stop being able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.${NO_RESTART_NOTE_OFF}`
+      : `The workspace's employees will be able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.${RESTART_NOTE_ON}`,
     tone: on ? "danger" : "brand",
     disabled: toolsOff,
     run: (reason) => setClientBusinessToolsAction({ orgId, [name]: !on, reason }),
@@ -183,8 +188,10 @@ export function RuntimeControls({ data }: { data: RuntimeControlsData | null }) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">Runtime controls <Badge tone="neutral">Super Admin</Badge></CardTitle>
-        <CardDescription>Each press asks the server and shows what it said. Nothing is done by this page itself, and each action is recorded.</CardDescription>
+        <div>
+          <CardTitle className="flex flex-wrap items-center gap-2">Runtime controls <Badge tone="neutral">Super Admin</Badge></CardTitle>
+          <CardDescription>Each press asks the server and shows what it said. Nothing is done by this page itself, and each action is recorded.</CardDescription>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {group("Setup", "Retry an employee's setup after it failed or was cancelled.", controls.setup, "No employee of this workspace is in its plan.")}
