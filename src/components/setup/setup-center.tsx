@@ -57,7 +57,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
         <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div aria-hidden className="pointer-events-none absolute -bottom-28 left-1/3 size-72 rounded-full bg-violet/10 blur-3xl" />
         <div className="relative flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:gap-8 sm:text-left">
-          <ProgressRing percent={p.percent} caption={p.percent === null ? "Not started" : "Setup tasks"} />
+          <ProgressRing percent={p.percent} caption={p.percent === null ? "Not started" : "iAcquire's preparation"} />
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold uppercase tracking-wider text-primary">Setup center<span className="text-muted"> · </span><span className="break-words normal-case tracking-normal text-ink-2">{data.orgName}</span></p>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[30px]">
@@ -71,7 +71,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
                   ? "Your checklist will appear here as soon as the iAcquire team sets it up."
                   : "We're preparing your AI employees, CRM, automations, and business integrations. Track your progress and complete the few steps that need your attention."}
             </p>
-            <p className="mt-2 text-[13px] text-muted">{p.total > 0 && `${p.completed} of ${p.total} required setup steps complete. `}Technical steps are completed after verification. Final activation needs a separate agency review.</p>
+            <p className="mt-2 text-[13px] text-muted">{p.total > 0 && `${p.completed} of ${p.total} of iAcquire's preparation steps are complete. `}This percentage is iAcquire&apos;s own preparation checklist, not your launch readiness, which is shown in the launch checklist above. Technical steps are completed after verification. Final activation needs a separate agency review.</p>
 
             <dl className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               <Chip label="Completed" value={p.counts.completed} tone="success" />

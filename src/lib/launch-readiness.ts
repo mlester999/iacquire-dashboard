@@ -3,6 +3,7 @@ import { isValidTimeZone } from "@/lib/calendars/slots";
 import type { ReadinessState } from "@/lib/workforce-readiness";
 import { countWord } from "@/lib/onboarding/engine";
 import { ROLE_LABELS, type OrgRole } from "@/lib/permissions";
+import { checkCoversInputs, verificationInputs, VERIFICATION_INPUT_LABEL } from "@/lib/launch-verification";
 
 // One honest answer to "is this client ready to launch?", built only from facts that were read from the workspace's own records. Pure: no I/O. Nothing here is inferred from a
 // queued job, a drafted calendar or a green badge: a step is done only when the thing it names is true, and "100% Ready to Launch" means every applicable, required setup and
@@ -36,9 +37,10 @@ export type ItemOwner = "you" | "iacquire" | "system";
 /**
  * Every step a button in the guided setup can run. The server action takes its list of valid names from here, so a step that is not in it is refused before anything is read.
  * None of them turns a customer-facing thing on: the three that write to the workspace (the team invitations, the region defaults, the pipeline stages) are the client's own
- * decision, pressed by a person, and the last one only asks the automatic CRM setup to run again.
+ * decision, pressed by a person, and the last one only asks the automatic CRM setup to run again. "sync_employees" brings the AI team up to what the client already approved: it
+ * writes new versions of the employees that fell behind (each one through the same review a questionnaire submission goes through) and never turns anything on.
  */
-export const LAUNCH_INTENTS = ["assign_host", "apply_hours", "activate_calendar", "run_checks", "send_team_invitations", "confirm_region_defaults", "apply_pipeline_stages", "retry_crm_setup"] as const;
+export const LAUNCH_INTENTS = ["assign_host", "apply_hours", "activate_calendar", "run_checks", "send_team_invitations", "confirm_region_defaults", "apply_pipeline_stages", "retry_crm_setup", "sync_employees"] as const;
 /** A button that does the next step inside the guided setup (an intent the page runs) or a link to the screen where it is done. */
 export type LaunchIntent = (typeof LAUNCH_INTENTS)[number];
 /** What an intent needs besides its name. The server checks both again: the person is the signed-in one, the host must be an active member of this workspace, and the digest must still describe what is true. */
@@ -197,6 +199,11 @@ export interface CalendarFacts {
   oauthAvailable?: { google: boolean; microsoft: boolean };
   /** What the client said about an outside calendar blocking times: google or microsoft (required), none (not required), or null (not said). */
   busyProvider?: "google" | "microsoft" | "none" | null;
+  /**
+   * What the re-check recorded when an active calendar that had passed activation stopped passing (src/server/calendars/reverify.ts): the checks that failed, with their client-safe
+   * words. Absent: nothing is recorded. The judge speaks from it only when the checks could not be read live (`checks` is null); a live read always outranks a stored record.
+   */
+  drift?: { checks: Array<{ key: string; detail: string }> };
 }
 
 /** A person the client marked as taking appointments in the team answer, and how far they are: not invited, invited and not accepted, or a member. */
@@ -242,6 +249,11 @@ export interface EmployeeFact {
   capacityHeld?: boolean;
   /** The employee's own readiness steps, as stored, for the stages. Absent: the stages fall back to what `readiness` says. */
   readinessSteps?: Array<{ key: string; state: "done" | "current" | "upcoming" | "blocked" | "not_applicable" }>;
+  /**
+   * A digest of the setup this employee's final check reads (src/lib/launch-verification.ts `verificationInputs`) as it is now. Null or absent: the check reads nothing but the
+   * configuration. A check recorded against a different digest is stale.
+   */
+  inputsDigest?: string | null;
 }
 
 export type VerificationFact =
@@ -266,6 +278,8 @@ export type VerificationFact =
       detail: string | null;
       /** A passed check that read nothing because the records it reads do not exist yet (an empty CRM). Still a pass: a new client is legitimately empty. */
       nothingToCheck?: boolean;
+      /** The digest of the setup the check read. Absent or null: recorded without one, so it stays valid for its configuration version. */
+      inputsDigest?: string | null;
     };
 
 export interface ChannelFact {
@@ -345,6 +359,13 @@ export interface LaunchFacts {
    * only the people that viewer may invite. Absent or with nobody listed: the workspace listed no one, so no line is shown.
    */
   team?: { listed: number; members: number; pending: number; toInviteNames: string[]; invitable?: Array<{ name: string; email: string; role: OrgRole }>; canManage?: boolean };
+  /**
+   * The employees that do not run what the client approved: the answers or the business information moved on and no version of theirs picked it up (a change that was rejected or
+   * replaced, or never made). Never a version that is waiting for review: that is `heldForReview`. Absent or empty: every employee is in step.
+   */
+  employeesBehind?: Array<{ role: AgentRoleKey; reason: string }>;
+  /** The person looking may bring the employees up to date (they manage the workspace profile). Absent: assumed. */
+  canSyncEmployees?: boolean;
   /** Whether a person is set up to take over a customer conversation: read from the staff profiles, never from free text. Absent: not read. */
   handoff?: { ownerHasNotifyChannel: boolean; eligibleStaff: number };
   /** The workspace's booking rules that decide what happens after a booking, as saved (or the defaults when nothing was saved). Absent: not read. */
@@ -789,6 +810,8 @@ function calendarStep(f: LaunchFacts): LaunchStep {
       const action = fix[key];
       items.push(item({ key: `calendar.check.${key}`, label: `${label[key]} check`, state: "action_required", required: true, owner: "you", detail: manage ? c.detail : `${c.detail} ${ask}`, ...(action ? { action } : {}) }));
     }
+    // The checks could not be read right now, but the re-check recorded that this calendar stopped passing after it was activated: say so, one line per failing check, instead of a quiet "Done".
+    if (cal.checks === null && cal.drift?.checks.length) items.push(...driftItems(cal, manage, ask).map(item));
     items.push(item({ key: "calendar.active", label: "Calendar active", state: "done", required: true, owner: "you", detail: "The calendar is active. Its booking page stays off until you turn it on." }));
   } else if (cal.hosts > 0 && cal.hostsWithHours >= cal.hosts && cal.types > 0) {
     const problem = slot ?? others[0] ?? null;
@@ -811,6 +834,28 @@ function calendarStep(f: LaunchFacts): LaunchStep {
   const rules = bookingRulesItem(f.bookingSettings);
   if (rules) items.push(item(rules));
   return { key: "calendar", title, ...summarize(items) };
+}
+
+const DRIFT_LABEL: Record<string, string> = { hosts: "Hosts", hours: "Working hours", timezone: "Time zones", types: "Appointment types", connections: "Calendar connections", slot: "Open times" };
+
+/**
+ * What the calendar's re-check recorded after activation (CalendarFacts.drift): one required line per failing check, in the check's own client-safe words. The owner is the client
+ * unless the fix is iAcquire's (a connection whose sign-in is not switched on here). A key this judge does not know is still a line, never dropped.
+ */
+function driftItems(cal: CalendarFacts, manage: boolean, ask: string): LaunchItem[] {
+  const drift = cal.drift?.checks ?? [];
+  return drift.slice(0, 6).map((c): LaunchItem => {
+    const label = DRIFT_LABEL[c.key] ?? "Calendar check";
+    const iacquire = c.key === "connections" && cal.oauthAvailable !== undefined && !cal.oauthAvailable.google && !cal.oauthAvailable.microsoft;
+    const hours = c.key === "hours" || c.key === "timezone" || c.key === "slot";
+    const href = c.key === "connections" ? "/crm/calendar-connections" : hours ? "/crm/availability" : `/crm/calendars/${cal.id}`;
+    const words = `This calendar passed its checks when it was activated, and no longer does: ${c.detail.trim()}`;
+    return {
+      key: `calendar.drift.${c.key}`, label: `${label} changed after activation`, state: "action_required", required: true, owner: iacquire ? "iacquire" : "you",
+      detail: iacquire ? `${words} iAcquire has to switch on the sign-in this needs.` : manage ? words : `${words} ${ask}`,
+      ...(!iacquire && manage ? { action: { label: c.key === "connections" ? "Review connections" : hours ? "Review hours" : "Open Calendars & Types", href } } : {}),
+    };
+  });
 }
 
 /** What happens after someone books, in the client's own settings, in words. Informational: a summary of saved rules, never a check, never required. */
@@ -982,11 +1027,34 @@ function employeeItemNow(f: LaunchFacts, e: EmployeeFact): LaunchItem {
   return { key, label, state: "action_required", required: true, owner: "iacquire", detail: e.readiness.description };
 }
 
+/**
+ * Required, and present only while an employee is behind: an AI team that runs on older answers than the ones the client approved is not ready, whatever its checks say. It names the
+ * employees. The button brings them up to date through the same review as a submission (a change that needs review still waits for it, and the line says so afterwards), and it
+ * waits behind the client's own unapproved edits, which are not yet what the workspace runs on.
+ */
+function employeesInSyncItem(f: LaunchFacts): LaunchItem | null {
+  const behind = (f.employeesBehind ?? []).filter((b) => f.employees.find((e) => e.role === b.role)?.entitled !== false);
+  if (!behind.length) return null;
+  const names = namesOf(behind.map((b) => ({ name: AGENT_BY_KEY[b.role].shortName })));
+  const base = { key: "employees.in_sync", label: "AI employees match your setup", required: true, owner: "you" } as const;
+  const lead = `${names} ${behind.length === 1 ? "has" : "have"} not been updated to what you approved, so ${behind.length === 1 ? "it still works" : "they still work"} from older information.`;
+  if (f.pendingAnswerChanges) {
+    return { ...base, state: "action_required", detail: `${lead} Approve your changes in company setup first; your AI team is updated from what you approve.`, action: { label: "Review and approve your changes", href: "/onboarding" } };
+  }
+  // The same opening as the calendar steps: nothing is changed in the workspace before the questionnaire is submitted and the setup payment is confirmed.
+  const gate = calendarGate(f);
+  if (gate) return { ...base, state: "action_required", detail: `${lead} ${gate}` };
+  if (f.canSyncEmployees === false) return { ...base, state: "action_required", detail: `${lead} Only an owner or admin can update them.` };
+  return { ...base, state: "action_required", detail: `${lead} Updating changes nothing you wrote yourself, and a change that needs iAcquire's review waits for it.`, action: { label: "Update my employees", intent: "sync_employees" } };
+}
+
 function employeesStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const byRole = new Map(f.employees.map((e) => [e.role, e]));
   // A role with no record at all is an employee that was never created: that is something iAcquire must look at, never a quiet "not applicable".
   const missing = (role: AgentRoleKey): EmployeeFact => ({ role, entitled: true, provisioning: "succeeded", provisioningDetail: null, attempts: 0, maxAttempts: 3, nextRetryAt: null, healthFailed: false, healthDetail: null, readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "This employee has not been created. iAcquire needs to review the workspace.", blocking: [] }, heldForReview: false, configVersion: null });
   const items = AGENT_ROLE_KEYS.map((role) => employeeItem(f, byRole.get(role) ?? missing(role), clock));
+  const inSync = employeesInSyncItem(f);
+  if (inSync) items.push(inSync);
   // The title counts what the plan includes, the way the review does, so the two screens agree.
   const included = AGENT_ROLE_KEYS.filter((role) => byRole.get(role)?.entitled ?? true).length;
   const title = included === AGENT_ROLE_KEYS.length ? `Your ${countWord(included)} AI employees` : included === 0 ? "Your AI employees" : `Your ${countWord(included)} AI employee${included === 1 ? "" : "s"}`;
@@ -1028,6 +1096,9 @@ function verificationStep(f: LaunchFacts, clock: Clock): LaunchStep {
     else if (v.state === "none") items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Not checked yet. The check reads your real records and changes nothing.", action: { label: "Run final checks", intent: "run_checks" } }));
     // A result for an older configuration says nothing about this one, whether it passed or failed: the check runs again (the sweep starts it by itself).
     else if (v.configVersion !== e.configVersion) items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: "Its configuration changed since the last check, so the check needs to run again.", action: { label: "Run final checks", intent: "run_checks" } }));
+    // The same for what the check reads: a check run against other appointment types, host hours, targeting or pipeline stages says nothing about the ones the client has now. A check
+    // recorded without a digest (an old job, or a role that reads nothing) stays valid for its configuration version.
+    else if (!checkCoversInputs(v.inputsDigest, e.inputsDigest)) items.push(item({ key, label, state: "action_required", required: true, owner: "you", detail: `Your ${verificationInputs(role).map((i) => VERIFICATION_INPUT_LABEL[i]).join(" or ")} changed since the last check, so the check needs to run again.`, action: { label: "Run final checks", intent: "run_checks" } }));
     // A check that had no records to read is still a pass (a new client is legitimately empty), and it says so first, then keeps the check's own account of what it counted.
     else if (v.state === "passed" && v.nothingToCheck) items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ? `Nothing to check yet. ${v.detail}` : "Nothing to check yet: there are no records for this check to read, so it passed without examining anything." }));
     else if (v.state === "passed") items.push(item({ key, label, state: "done", required: true, owner: "system", detail: v.detail ?? "A read-only check on your real records completed. Nothing was changed or sent." }));

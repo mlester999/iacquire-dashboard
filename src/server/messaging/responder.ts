@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
+import { recordAudit } from "@/server/audit";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { automationGate } from "@/server/automation/gate";
 import { getBalance } from "@/server/billing/ledger";
@@ -10,11 +11,16 @@ import { HermesError, startAgentRun, streamRunEvents } from "@/server/integratio
 import { createEscalation } from "@/server/messaging/handoff";
 import { getAvailability } from "@/server/appointments/availability";
 import { requestBooking, type BookingResult } from "@/server/appointments/booking";
+import { bookingMessageKey } from "@/server/appointments/confirmation-watch";
+import { ungroundedAmounts } from "@/server/webchat/amounts";
+import { unsupportedReplyClaims } from "@/server/webchat/reply-check";
 import type { AppointmentProvider } from "@/server/appointments/provider";
 import { detectBookingIntent, formatSlot } from "@/lib/appointments";
 import { queueOutbound } from "@/server/messaging/send";
 import { isEscalationCategory, type EscalationCategory } from "@/lib/escalation";
 import { withDisclosure, type ConversationChannel } from "@/lib/messaging";
+import { KNOWLEDGE_SECTION_KEYS } from "@/lib/webchat/rules";
+import { detectRestrictedTopics, restrictedTopicsOf, restrictedTopicSummary, TOPIC_ESCALATION, type RestrictedTopic } from "@/lib/customer-topic-guard";
 
 export interface ReplyContext {
   orgId: string;
@@ -41,7 +47,8 @@ export type ReplyAvailability =
 export type ReplyOutcome =
   | { kind: "reply"; text: string; usage?: { inputTokens: number | null; outputTokens: number | null } | null }
   | { kind: "book"; startIso: string; summary: string; usage?: { inputTokens: number | null; outputTokens: number | null } | null }
-  | { kind: "escalate"; category: EscalationCategory; summary: string }
+  /** `usage` is set only when a reply was held after the model ran (see replyClaimProblems), so the run is still recorded. */
+  | { kind: "escalate"; category: EscalationCategory; summary: string; usage?: { inputTokens: number | null; outputTokens: number | null } | null }
   | { kind: "unavailable"; reason: string };
 
 export type ReplyGenerator = (ctx: ReplyContext) => Promise<ReplyOutcome>;
@@ -206,6 +213,44 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
 }
 
 /**
+ * The topics this workspace's client said a person must handle, from their own confirmed answers ("Which topics need a person?" and "May your AI share prices?"). Names the workspace in
+ * the query, so another workspace's answers never apply. An answer still waiting for the client's confirmation, or skipped, is not a decision and restricts nothing.
+ */
+export async function restrictedTopicsFor(db: Queryable, orgId: string): Promise<RestrictedTopic[]> {
+  const { rows } = await db.query<{ question_id: string; value: unknown }>(
+    "select question_id, value from onboarding_answers where org_id = $1 and question_id in ('c.sensitive_topics', 'd.pricing_policy') and not skipped and not needs_confirmation",
+    [orgId],
+  );
+  const answer = (id: string) => rows.find((r) => r.question_id === id)?.value;
+  return restrictedTopicsOf({ sensitiveTopics: answer("c.sensitive_topics"), pricingPolicy: answer("d.pricing_policy") });
+}
+
+/**
+ * What a model-written reply states that the workspace's approved knowledge does not back: an amount, or an offer, discount, guarantee, award, deadline or contact detail the business
+ * never gave (the net the website chat already applies). Empty when the reply stays inside what was approved. When the knowledge cannot be read at all the reply is NOT trusted: a
+ * reply nobody could check is held like one that failed the check.
+ */
+export async function replyClaimProblems(orgId: string, reply: string, visitorSaid: string): Promise<string[]> {
+  // Loaded on demand for the same reason as the website generator: that module imports this one.
+  const { widgetKnowledge } = await import("@/server/webchat/generator");
+  let knowledge: string;
+  try {
+    knowledge = (await widgetKnowledge(orgId, KNOWLEDGE_SECTION_KEYS)).text;
+  } catch {
+    return ["a statement that could not be checked against the approved knowledge"];
+  }
+  const stated = ungroundedAmounts(reply, knowledge);
+  // The shared claim net reports an unbacked amount too; one problem is named once.
+  const claims = unsupportedReplyClaims(reply, knowledge, visitorSaid).filter((claim) => !stated.some((amount) => amount.toLowerCase() === claim.trim().toLowerCase()));
+  return [...stated.map((amount) => `an amount (${amount})`), ...claims.map((claim) => `a claim ("${claim.slice(0, 60)}")`)];
+}
+
+/** The staff-only summary of a reply the claims net held. It quotes the AI's own words, never the customer's. */
+function heldReplySummary(problems: string[]): string {
+  return `The AI employee's draft was held, not sent: it made ${problems.slice(0, 2).join(" and ")} that the approved knowledge does not back. Please reply yourself.`.slice(0, 600);
+}
+
+/**
  * Prepares the AI employee's answer to the latest customer message. It never spends on generation when automation is stopped
  * or credits are exhausted, answers each customer message at most once, and sends nothing itself: the reply goes through the
  * same rule chain as every other outbound message (drafts when approval is required, blocked when anything stops it).
@@ -227,6 +272,9 @@ export async function respondToConversation(orgId: string, conversationId: strin
     if (bal.availableMicros <= 0) return { skip: "credits" as const };
     // The optional monthly cap on AI replies to customers (none is set unless the agency sets one): over it, no model call is made and a person is asked to reply instead.
     if (customerReplyCapReached(await usageSummary(db, orgId))) return { skip: "usage_limit" as const, agentId: ctx.agentId, inboundMessageId: ctx.inboundMessageId };
+    // The client's own "a person handles these" answers decide before any model is asked: no cost, and nothing the model could say.
+    const restricted = detectRestrictedTopics(ctx.customerMessage, await restrictedTopicsFor(db, orgId))[0];
+    if (restricted) return { restricted, ctx };
     return { ctx };
   });
   if ("skip" in pre) {
@@ -246,11 +294,38 @@ export async function respondToConversation(orgId: string, conversationId: strin
   }
   const { ctx } = pre;
 
+  const topic = pre.restricted;
+  if (topic) {
+    const topicEmails: OutgoingEmail[] = [];
+    const held = await withSystem(async (db): Promise<RespondResult> => {
+      // The same fence as a generated reply: a takeover, pause or new message since the check means a person already has this.
+      const fresh = await loadContext(db, orgId, conversationId);
+      if (!fresh || fresh.ownerKind !== "ai" || fresh.ownershipVersion !== ctx.ownershipVersion || fresh.aiPaused || fresh.inboundMessageId !== ctx.inboundMessageId) return { status: "skipped", reason: "conversation_changed" };
+      const esc = await createEscalation(db, { orgId, conversationId, category: TOPIC_ESCALATION[topic], summary: restrictedTopicSummary(topic), sourceMessageId: ctx.inboundMessageId, agentId: ctx.agentId, now: deps.now });
+      topicEmails.push(...esc.emails);
+      await recordAudit({ orgId, actorKind: "agent", agentInstanceId: ctx.agentId, action: "messaging.reply_held", targetType: "conversation", targetId: conversationId, result: "success", metadata: { reason: "restricted_topic", topic, channel: ctx.channel } }, db);
+      return { status: "escalated", escalationId: esc.escalationId };
+    });
+    await Promise.all(topicEmails.map((e) => sendEmail(e)));
+    return held;
+  }
+
   // Only when the customer is talking about booking: read the real calendar so the employee can offer nothing else.
   if (ctx.allowBooking !== false && detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
 
   const generate = deps.generate ?? (await defaultGenerator(ctx.channel));
   let outcome = await generate(ctx);
+  // Email, text and WhatsApp replies get the net the website chat already has (its own generator checks before it returns). A reply that states an amount, offer or promise the approved
+  // knowledge does not back becomes an escalation: nothing is queued, and in any mode a person sees it first.
+  let heldClaims = false;
+  if (outcome.kind === "reply" && ctx.channel !== "web_chat") {
+    const visitorSaid = [...ctx.history.filter((h) => h.role === "user").map((h) => h.content), ctx.customerMessage].join("\n");
+    const problems = await replyClaimProblems(orgId, outcome.text, visitorSaid);
+    if (problems.length) {
+      heldClaims = true;
+      outcome = { kind: "escalate", category: "unsafe_or_uncertain", summary: heldReplySummary(problems), usage: outcome.usage ?? null };
+    }
+  }
   let bookingNote: BookingResult | null = null;
   if (outcome.kind === "book") {
     const chosen = outcome.startIso;
@@ -290,11 +365,13 @@ export async function respondToConversation(orgId: string, conversationId: strin
     if (outcome.kind === "escalate") {
       const esc = await createEscalation(db, { orgId, conversationId, category: outcome.category, summary: outcome.summary, sourceMessageId: ctx.inboundMessageId, agentId: ctx.agentId, now: deps.now });
       emails.push(...esc.emails);
+      if (heldClaims) await recordAudit({ orgId, actorKind: "agent", agentInstanceId: ctx.agentId, action: "messaging.reply_held", targetType: "conversation", targetId: conversationId, result: "success", metadata: { reason: "unbacked_claim", channel: ctx.channel } }, db);
       return { status: "escalated", escalationId: esc.escalationId };
     }
     if (bookingNote?.status === "booked") {
       // The booking already queued its own confirmation through the same gate; a second message would only repeat it.
-      const confirm = await db.query<{ id: string; status: string }>("select id, status from conversation_messages where org_id = $1 and dedupe_key = $2", [orgId, `booking-confirm:${bookingNote.bookingId}`]);
+      // The one message the booking queued: "reserved" while a person has yet to confirm it, "booked" when it was confirmed at once.
+      const confirm = await db.query<{ id: string; status: string }>("select id, status from conversation_messages where org_id = $1 and dedupe_key = $2", [orgId, bookingMessageKey(bookingNote.bookingId, bookingNote.appointmentStatus === "new" ? "new" : "confirmed")]);
       if (outcome.kind === "reply" && outcome.usage && confirm.rows[0]) await chargeModelUsage(db, orgId, confirm.rows[0].id, outcome.usage);
       return confirm.rows[0]
         ? { status: confirm.rows[0].status === "blocked" ? "blocked" : "queued", messageId: confirm.rows[0].id }
@@ -348,7 +425,8 @@ async function readAvailability(ctx: ReplyContext, deps: { now?: Date; provider?
 export function bookingReplyText(r: BookingResult, label: string): string {
   switch (r.status) {
     case "booked":
-      return `You're booked for ${label}.`;
+      // A booking that waits for a person is on the calendar, not confirmed: the customer is told it is reserved and the team will confirm it.
+      return r.appointmentStatus === "new" ? `We've reserved ${label} for you. The team will confirm it shortly.` : `You're booked for ${label}.`;
     case "awaiting_approval":
       return `Thanks! I've asked the team to confirm ${label}. You'll hear back shortly.`;
     case "needs_manual":

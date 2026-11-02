@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { env } from "@/server/env";
 import { JOBS, runScheduledJobs, type ScheduledJob } from "@/server/ops/tick";
 import { JOB_ABANDONED_AFTER_MINUTES, JOB_RETRY_MINUTES, listJobRuns, runJob } from "@/server/ops/jobs";
 
@@ -218,6 +219,8 @@ describe("the registered jobs", () => {
     aiHealthProbe: 5,
     provisioningWatchdog: 5,
     clientBusinessCredentialExpiry: 1440,
+    launchWatch: 10,
+    bookingConfirmationWatch: 60,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
     projectReviewOverdue: 15,
@@ -253,6 +256,20 @@ describe("the registered jobs", () => {
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {
     expect(JOBS.find((job) => job.name === "setupEvidence")?.everyMinutes).toBeUndefined();
+  });
+
+  it("registers the launch watch every ten minutes and the booking confirmation watch hourly, each once, after the credential expiry job", () => {
+    const names = JOBS.map((job) => job.name);
+    for (const [name, minutes] of [["launchWatch", 10], ["bookingConfirmationWatch", 60]] as const) {
+      expect(names.filter((n) => n === name), name).toHaveLength(1);
+      expect(JOBS.find((job) => job.name === name)?.everyMinutes, name).toBe(minutes);
+      expect(names.indexOf(name), name).toBeGreaterThan(names.indexOf("clientBusinessCredentialExpiry"));
+    }
+  });
+
+  it("leaves the scheduler off unless it is switched on: registering the two watches starts nothing by itself", () => {
+    expect(env().SCHEDULER_ENABLED).toBe(false);
+    expect(JOBS.some((job) => job.name === "launchWatch")).toBe(true);
   });
 
   it("keeps every job's name unique and only the intended jobs on a slow rhythm", () => {

@@ -9,8 +9,6 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { deriveLaunchReadiness } from "@/lib/launch-readiness";
 import type { AgentRoleKey } from "@/lib/agents";
-import { defaultSettings } from "@/server/workforce/compiler";
-import { createConfigVersion } from "@/server/workforce/service";
 import { claimHermesProvisionerJob, completeHermesProvisionerJob } from "@/server/workforce/hermes-provisioner";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { getLaunchReadiness, loadLaunchFacts, loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
@@ -20,7 +18,7 @@ import { updateWorkspaceSettings } from "@/server/crm/workspace";
 import { addMember, agencyUser, createOrg, createUser, ctxFor, uid } from "./support/fixtures";
 import { crmOrg, type CrmOrg, type CrmWho, CRM_ROLES } from "./support/crm";
 import { clearSetupPayment } from "./support/billing";
-import { itemOf, markSubmitted } from "./support/launch";
+import { configureFromAnswers, itemOf, markSubmitted } from "./support/launch";
 
 const STEPS = "1. Enquiry. 2. Qualify. 3. Free inspection. 4. Quote. 5. Book the job.";
 // A workspace nobody has changed: the database defaults.
@@ -345,9 +343,10 @@ describe("waiting for capacity", () => {
     await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [org.id]));
     const agents = (await withSystem((db) => db.query<{ id: string; role_key: AgentRoleKey }>("select id, role_key from agent_instances where org_id = $1 order by role_key", [org.id]))).rows;
     await withSystem(async (db) => {
-      for (const agent of agents.slice(0, roles)) await createConfigVersion(db, { orgId: org.id, agentId: agent.id, settings: defaultSettings(agent.role_key), source: "onboarding", userId: owner.id, apply: true });
       for (const agent of agents.slice(roles)) await db.query("update agent_instances set enabled = false where id = $1", [agent.id]);
     });
+    // Configured the way a submission configures them, from the (empty) answers, so no employee is "behind" what the client approved.
+    await configureFromAnswers(org.id, owner.id, agents.slice(0, roles).map((a) => a.role_key));
     await withSystem((db) => requestProvisioning(db, org.id, owner.id));
     return { org, owner };
   }

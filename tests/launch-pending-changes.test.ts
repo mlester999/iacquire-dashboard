@@ -6,6 +6,7 @@ import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { approvedAnswersOf, channelsWithApprovedSender, pendingChangesOf, readPendingAnswerChanges } from "@/server/onboarding/pending-changes";
 import { getOnboardingSession, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { runLaunchIntent } from "@/server/setup/launch-intents";
 import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { submitRealOnboarding } from "./support/billing";
 import { itemOf, markSubmitted, readyClient, settled } from "./support/launch";
@@ -100,6 +101,9 @@ describe("an unapproved edit does not turn a requirement off", () => {
 
     // Approved (the submission stamps the row again): now it is what the client said, everywhere at once.
     await markSubmitted(c.org.id);
+    // A real submission also brings the employees up to what was approved; stamping the row only records the approval, so the guided step does the rest (the Appointment Setter's
+    // role answers followed "no appointments", and until they are updated that employee is behind what the client approved).
+    await runLaunchIntent(c.ctx, "sync_employees");
     const approved = (await getLaunchReadiness(c.ctx))!;
     expect(approved.steps.find((s) => s.key === "calendar")!.state).toBe("not_applicable");
     expect(itemOf(approved, "employees.appointment_setter").state).toBe("not_applicable");

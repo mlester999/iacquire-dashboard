@@ -146,16 +146,20 @@ const unvaluedPipeline: ReviewCheck = async (db, job) => {
   });
 };
 
+// A booking iAcquire recorded whose appointment still waits for the host to confirm it (the appointment type says a person confirms each booking). It is on the calendar, so it is a
+// booking, but nobody has confirmed it: the KPIs count it separately instead of calling it booked or confirmed.
+const HOST_UNCONFIRMED = "exists (select 1 from appointment_refs r where r.id = b.appointment_id and r.org_id = b.org_id and r.provider = 'native' and r.status = 'new')";
+
 const noConfirmedAppointments = (period: PerformancePeriod): ReviewCheck => async (db) => {
   const confirmed = await scalar(
     db,
-    "select count(*)::int as count from appointment_bookings where org_id = $1 and status = 'booked' and booked_at >= $2 and booked_at < $3",
+    `select count(*)::int as count from appointment_bookings b where b.org_id = $1 and b.status = 'booked' and b.booked_at >= $2 and b.booked_at < $3 and not ${HOST_UNCONFIRMED}`,
     [period.orgId, period.currentStart, period.currentEnd],
   );
   if (confirmed > 0) return null;
   const pending = await scalar(
     db,
-    "select count(*)::int as count from appointment_bookings where org_id = $1 and status in ('awaiting_approval', 'requested', 'needs_manual')",
+    `select count(*)::int as count from appointment_bookings b where b.org_id = $1 and (b.status in ('awaiting_approval', 'requested', 'needs_manual') or (b.status = 'booked' and ${HOST_UNCONFIRMED}))`,
     [period.orgId],
   );
   if (pending === 0) return null;
@@ -213,12 +217,13 @@ async function metrics(db: Queryable, period: PerformancePeriod): Promise<Review
      from contacts where org_id = $1 and deleted_at is null`,
     range,
   );
-  const appointmentRows = await db.query<{ booked: number; booked_previous: number; upcoming: number }>(
+  const appointmentRows = await db.query<{ booked: number; booked_previous: number; upcoming: number; awaiting: number }>(
     `select
-       count(*) filter (where status = 'booked' and booked_at >= $2 and booked_at < $3)::int as booked,
-       count(*) filter (where status = 'booked' and booked_at >= $4 and booked_at < $5)::int as booked_previous,
-       count(*) filter (where status = 'booked' and start_at between now() and now() + interval '7 days')::int as upcoming
-     from appointment_bookings where org_id = $1`,
+       count(*) filter (where b.status = 'booked' and b.booked_at >= $2 and b.booked_at < $3 and not ${HOST_UNCONFIRMED})::int as booked,
+       count(*) filter (where b.status = 'booked' and b.booked_at >= $4 and b.booked_at < $5 and not ${HOST_UNCONFIRMED})::int as booked_previous,
+       count(*) filter (where b.status = 'booked' and b.start_at between now() and now() + interval '7 days' and not ${HOST_UNCONFIRMED})::int as upcoming,
+       count(*) filter (where b.status = 'booked' and b.start_at > now() and ${HOST_UNCONFIRMED})::int as awaiting
+     from appointment_bookings b where b.org_id = $1`,
     range,
   );
   const dealRows = await db.query<{ open: number; won: number; won_previous: number; lost: number; lost_previous: number }>(
@@ -252,8 +257,9 @@ async function metrics(db: Queryable, period: PerformancePeriod): Promise<Review
     { key: "leads_pending", label: "Leads awaiting review", value: n(lead?.pending), period: "Current", definition: "Lead rows still pending human review.", source: "leads" },
     { key: "leads_rejected", label: "Leads rejected", value: n(lead?.rejected), period: period.label, definition: "Lead rows rejected by a person in the period.", source: "leads", ...compare(n(lead?.rejected), n(lead?.rejected_previous), false) },
     { key: "contacts_created", label: "Contacts created", value: n(contact?.count), period: period.label, definition: "Active contact rows created in the period.", source: "contacts", ...compare(n(contact?.count), n(contact?.previous), true) },
-    { key: "appointments_booked", label: "Appointments confirmed", value: n(appointment?.booked), period: period.label, definition: "Bookings whose provider confirmation was recorded in the period.", source: "appointment_bookings", ...compare(n(appointment?.booked), n(appointment?.booked_previous), true) },
-    { key: "appointments_upcoming", label: "Upcoming appointments", value: n(appointment?.upcoming), period: "Next 7 days", definition: "Confirmed bookings starting in the next seven days.", source: "appointment_bookings" },
+    { key: "appointments_booked", label: "Appointments booked", value: n(appointment?.booked), period: period.label, definition: "Bookings whose calendar confirmation was recorded in the period. A booking still waiting for the host to confirm it is not counted here.", source: "appointment_bookings", ...compare(n(appointment?.booked), n(appointment?.booked_previous), true) },
+    { key: "appointments_awaiting_host", label: "Awaiting host confirmation", value: n(appointment?.awaiting), period: "Current", definition: "Upcoming bookings that are on the calendar but that the host has not confirmed yet.", source: "appointment_bookings" },
+    { key: "appointments_upcoming", label: "Upcoming appointments", value: n(appointment?.upcoming), period: "Next 7 days", definition: "Booked appointments starting in the next seven days, other than those still waiting for the host to confirm them.", source: "appointment_bookings" },
     { key: "open_deals", label: "Open deals", value: n(deal?.open), period: "Current", definition: "Opportunities currently open and not archived.", source: "crm_opportunities" },
     { key: "deals_won", label: "Deals won", value: n(deal?.won), period: period.label, definition: "Opportunities marked won with a close time in the period.", source: "crm_opportunities", ...compare(n(deal?.won), n(deal?.won_previous), true) },
     { key: "deals_lost", label: "Deals lost", value: n(deal?.lost), period: period.label, definition: "Opportunities marked lost with a close time in the period.", source: "crm_opportunities", ...compare(n(deal?.lost), n(deal?.lost_previous), false) },

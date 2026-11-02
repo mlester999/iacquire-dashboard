@@ -5,12 +5,12 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
 import { assertCan, memberActor } from "@/server/crm/actor";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import { PROVISIONING_PAYMENT_NOTE } from "@/lib/billing-clearance";
 import { grantableRoles } from "@/lib/permissions";
-import { confirmedAnswers } from "@/lib/onboarding/engine";
+import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
 import type { LaunchIntent, LaunchIntentParams } from "@/lib/launch-readiness";
-import { LAUNCH_VERIFICATION_CAPABILITY, launchVerificationInput, launchVerificationKey } from "@/lib/launch-verification";
+import { LAUNCH_VERIFICATION_CAPABILITY, checkCoversInputs, launchVerificationInput, launchVerificationKey } from "@/lib/launch-verification";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { activateCalendar, applyApprovedCalendarHours, assignHostIfNone } from "@/server/calendars/activation";
 import { isSetupPaymentCleared } from "@/server/billing/clearance";
@@ -18,10 +18,14 @@ import { createInvitation, deliverInvitation, recordInvitationDelivery } from "@
 import type { OutgoingEmail } from "@/server/email";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { approvedAnswersOf, readPendingAnswerChanges } from "@/server/onboarding/pending-changes";
+import { employeeSyncState, syncEmployeesFromAnswers, type GeneratedEmployee } from "@/server/onboarding/employee-sync";
+import { lockOnboardingRow } from "@/server/onboarding/profile-sync";
+import { requestProvisioning } from "@/server/workforce/provisioning";
 import { applyPipelineStagesFromAnswers, confirmRegionDefaults } from "@/server/onboarding/workspace-drafts";
 import { provisionClientCrm } from "@/server/onboarding/crm-provisioning";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { findLaunchCalendar, listedTeamOf, loadLaunchFacts, teamInviteState } from "@/server/setup/launch-readiness";
+import { finishedCheckRound } from "@/server/setup/launch-sweep";
 import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 
 // The buttons of the guided launch setup. Each one is a thing the client could already do in the CRM; here it is one click from the checklist that names it, runs the real
@@ -29,6 +33,10 @@ import { recordLaunchSnapshotAfter } from "@/server/setup/launch-ledger";
 // anyone or contacts a provider. A host is only ever a person the client chose (the one who pressed the button, or an active member picked from the list), and hours are only ever the
 // ones the client's own answers suggested AND the client approved exactly as shown (a digest the server recomputes). The three calendar steps open only after the questionnaire is
 // submitted and the setup payment is confirmed.
+//
+// One more step brings the AI team up to what the client already approved ("sync_employees"): it writes new attributed versions of the employees that fell behind through the same
+// per-employee build a questionnaire submission uses, so a change that needs review still waits for it, nothing the client wrote in an employee's settings is overwritten, and nothing
+// customer-facing is switched on.
 //
 // Four more steps are the client's own decisions about their workspace, and each one is a button a person presses, never something that runs by itself: inviting the team they listed
 // (an email to each new person, only to an address they typed, never to someone who is already a member or already invited), confirming the currency and phone country that go with
@@ -103,6 +111,8 @@ async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIn
     await assertCalendarStepsOpen(ctx.org.orgId);
   }
   switch (intent) {
+    case "sync_employees":
+      return syncEmployees(ctx);
     case "send_team_invitations":
       return sendTeamInvitations(ctx);
     case "confirm_region_defaults":
@@ -153,6 +163,55 @@ async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIn
     case "run_checks":
       return startLaunchVerification(ctx);
   }
+}
+
+/**
+ * Brings the employees that are behind the client's approved answers up to date: for each one, a new version built from the approved answers by the shared per-employee build
+ * (employee-sync.ts), attributed to the person who pressed the button. Under the questionnaire's own lock, with the sync state read again inside it, so two presses make one version
+ * per employee and a submission cannot interleave. A version that needs a person's review is created and held, and the message says so: it is never reported as applied. It refuses
+ * while the client has edits nobody approved (those answers are not what the workspace runs on), for a sample workspace and before the questionnaire and the setup payment.
+ */
+async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
+  const orgId = ctx.org.orgId;
+  if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only an owner or admin can update the AI employees from your approved setup.");
+  assertRealWorkspace(ctx);
+  await assertStepsOpen(orgId, "setup");
+  await assertNothingWaitingApproval(orgId);
+  const who = { orgId, userId: ctx.user.id, actorKind: ctx.user.platformRole !== "none" ? "agency" as const : "user" as const };
+  const result = await withSystem(async (db) => {
+    await lockOnboardingRow(db, orgId);
+    const rows = await loadAnswerRows(db, orgId);
+    // Read again under the lock: an approval that was withdrawn, or an employee another press already updated, is respected.
+    if ((await readPendingAnswerChanges(db, orgId, rows)).pending) throw new AppError("conflict", "You changed your company setup and have not approved it yet. Approve your changes first, then try this again.");
+    const behind = (await employeeSyncState(db, orgId)).filter((r) => r.state === "behind").map((r) => r.role);
+    if (!behind.length) return { behind, generated: [] as GeneratedEmployee[] };
+    const roles = (await db.query<{ role_key: string }>(
+      "select a.role_key from agent_instances a join agent_roles r on r.key = a.role_key where a.org_id = $1 and a.enabled order by r.sort_order", [orgId],
+    )).rows.map((r) => r.role_key).filter(isAgentRoleKey);
+    const data = toLegacyData(confirmedAnswers(toStored(rows), planScope(roles)), roles);
+    const hadNoConfig = new Set((await db.query<{ role_key: string }>(
+      "select role_key from agent_instances where org_id = $1 and enabled and active_config_version_id is null", [orgId],
+    )).rows.map((r) => r.role_key));
+    const generated = await syncEmployeesFromAnswers(db, who, { data, selected: behind, basis: { firstSubmission: false, generated: null } });
+    // An employee that just got its first configuration is queued for its profile like the submission queues one (idempotent, and still waits for the setup payment).
+    if (generated.some((g) => hadNoConfig.has(g.role) && g.configStatus === "applied") && !ctx.org.isDemo && ctx.user.emailVerified) await requestProvisioning(db, orgId, ctx.user.id);
+    const group = (status: (s: string) => boolean) => generated.filter((g) => status(g.configStatus)).map((g) => g.role);
+    await recordAudit({
+      orgId, actorUserId: ctx.user.id, actorKind: "user", action: "setup.launch_employees_synced", targetType: "organization", targetId: orgId, result: "success",
+      metadata: { updated: group((s) => s === "applied"), held: group((s) => s === "pending_agency_review"), unchanged: group((s) => s === "unchanged") },
+    }, db);
+    return { behind, generated };
+  });
+  if (!result.behind.length) return { ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." };
+  const names = (roles: AgentRoleKey[]) => roles.map((r) => AGENT_BY_KEY[r].shortName).join(", ");
+  const updated = result.generated.filter((g) => g.configStatus === "applied").map((g) => g.role);
+  const held = result.generated.filter((g) => g.configStatus === "pending_agency_review").map((g) => g.role);
+  const parts = [
+    updated.length ? `Updated ${names(updated)} to your approved setup. Anything you wrote in their settings yourself was kept.` : null,
+    held.length ? `${names(held)} ${held.length === 1 ? "has" : "have"} a change that needs iAcquire's review, so ${held.length === 1 ? "it was" : "they were"} saved and ${held.length === 1 ? "waits" : "wait"} for it. Nothing runs on it until it is approved.` : null,
+    !updated.length && !held.length ? "Nothing needed changing after all." : null,
+  ].filter((p): p is string => p !== null);
+  return { ok: updated.length > 0 || (!held.length), message: parts.join(" ") };
 }
 
 const peopleWord = (n: number) => (n === 1 ? "1 person" : `${n} people`);
@@ -317,25 +376,18 @@ export async function startLaunchVerification(ctx: OrgContext): Promise<LaunchIn
       skipped.push({ role: e.role, reason: `${name}'s check is waiting for iAcquire's review.` });
       continue;
     }
-    if (v?.state === "passed" && v.configVersion === e.configVersion) continue;
-    const round = await withSystem(async (db) => {
-      const agent = (await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = $2", [ctx.org.orgId, e.role])).rows[0];
-      if (!agent) return 0;
-      return Number((await db.query<{ n: string }>(
-        `select count(*) as n from ai_work_jobs
-          where org_id = $1 and agent_instance_id = $2 and input ->> 'launchVerification' = 'true'
-            and coalesce(input ->> 'configVersion', '') = $3 and status in ('completed', 'failed', 'blocked', 'cancelled')`,
-        [ctx.org.orgId, agent.id, e.configVersion === null ? "" : String(e.configVersion)],
-      )).rows[0]?.n ?? 0);
-    });
+    // A passing check is left alone only while it still covers the employee's configuration AND the setup it reads (a changed calendar, targeting or pipeline asks for a new one).
+    if (v?.state === "passed" && v.configVersion === e.configVersion && checkCoversInputs(v.inputsDigest, e.inputsDigest)) continue;
+    const inputsDigest = e.inputsDigest ?? null;
+    const round = await finishedCheckRound(ctx.org.orgId, e.role, e.configVersion, inputsDigest);
     const capability = LAUNCH_VERIFICATION_CAPABILITY[e.role];
     try {
       await dispatchCapabilityJob(ctx, {
         agentRole: e.role,
         capability,
         title: `Launch check: ${capabilityDefinition(capability)?.label ?? capability}`,
-        input: launchVerificationInput(e.configVersion),
-        idempotencyKey: launchVerificationKey({ orgId: ctx.org.orgId, role: e.role, configVersion: e.configVersion, round }),
+        input: launchVerificationInput(e.configVersion, inputsDigest),
+        idempotencyKey: launchVerificationKey({ orgId: ctx.org.orgId, role: e.role, configVersion: e.configVersion, inputsDigest, round }),
       });
       started.push(e.role);
     } catch (err) {

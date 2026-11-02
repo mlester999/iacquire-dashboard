@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { memberActor } from "@/server/crm/actor";
 import { getWorkspace } from "@/server/crm/workspace";
@@ -14,7 +14,7 @@ import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/servic
 import { afterSetupCleared } from "@/server/billing/after-clearing";
 import { getProvisioningBundle } from "@/server/workforce/provisioning";
 import { agentSettingsSchema } from "@/lib/agent-settings";
-import { createConfigVersion, isReservedProfile } from "@/server/workforce/service";
+import { createConfigVersion, decideHeldVersion, isReservedProfile } from "@/server/workforce/service";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent } from "@/server/setup/launch-intents";
@@ -27,7 +27,7 @@ import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { applyRealBlueprint, approveHours, checkJobs, count, itemOf, settled } from "./support/launch";
+import { applyRealBlueprint, approveHeldFirstConfigurations, approveHours, checkJobs, count, itemOf, settled } from "./support/launch";
 
 const OFFICE_HOURS = { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] };
 
@@ -99,6 +99,8 @@ const readiness = async (c: Client) => (await getLaunchReadiness(c.ctx)) as Laun
 
 /** The recorded state a verified employee has once the restricted worker has built its profile (the worker is not live; this is what it would leave). */
 async function simulateVerifiedProfiles(c: Client) {
+  // The agency's reviewer has approved the first configuration the submission held (the CRM Manager's), so the employee runs what the client's answers say.
+  await approveHeldFirstConfigurations(c.org.id);
   for (const role of c.spec.entitled) {
     const id = await agentId(c.org.id, role);
     await makeRuntimeReady(id, c.org.id, c.owner.id);
@@ -420,12 +422,12 @@ describe("a change the client makes later", () => {
     expect(await readiness(c)).toMatchObject({ state: "ready_to_launch", percent: 100 });
 
     // The client rewrites one employee's personality themselves.
-    const crm = await agentId(c.org.id, "crm_manager");
+    const analyst = await agentId(c.org.id, "performance_analyst");
     const own = "Our own wording, written by the practice.";
     const active = (await withSystem((db) => db.query<{ settings: Record<string, unknown> }>(
-      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [crm]))).rows[0].settings;
-    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: crm, settings: agentSettingsSchema.parse({ ...active, personality: own }), source: "client_edit", userId: c.owner.id, apply: true }));
-    expect((await sweepLaunchVerification(c.org.id)).queued).toEqual(["crm_manager"]);
+      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [analyst]))).rows[0].settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: agentSettingsSchema.parse({ ...active, personality: own }), source: "client_edit", userId: c.owner.id, apply: true }));
+    expect((await sweepLaunchVerification(c.org.id)).queued).toEqual(["performance_analyst"]);
     await settled(c.org.id, roles.length + 1);
 
     const versions = async () => new Map((await withSystem((db) => db.query<{ role_key: string; version: number }>(
@@ -449,7 +451,7 @@ describe("a change the client makes later", () => {
     expect(changed.length).toBeGreaterThan(0);
     // Their own edit survived the synchronisation.
     const kept = (await withSystem((db) => db.query<{ settings: { personality?: string } }>(
-      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [crm]))).rows[0].settings;
+      "select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [analyst]))).rows[0].settings;
     expect(kept.personality).toBe(own);
     // Each change is a recorded, attributed version, never a silent overwrite.
     const sources = await withSystem((db) => db.query<{ source: string }>("select distinct v.source from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.org_id = $1 and a.role_key = any($2::text[])", [c.org.id, changed]));
@@ -466,4 +468,59 @@ describe("a change the client makes later", () => {
     await settled(c.org.id, roles.length + 1 + checked.length);
     expect(await readiness(c)).toMatchObject({ state: "ready_to_launch", percent: 100 });
   }, 240_000);
+});
+
+describe("an employee that fell behind what the client approved", () => {
+  it("names the employees whose update the reviewer rejected, never reaches 100% while they are behind, and the update makes one attributed version each", async () => {
+    const c = await onboard({ ...dental, name: "Behind Answers Dental", entitled: AGENT_ROLE_KEYS });
+    await clearSetupPayment(c.org.id);
+    await getWorkspace(memberActor(c.ctx));
+    await applyRealBlueprint(c.org.id);
+    await simulateVerifiedProfiles(c);
+    await pickUpSetupEvidence(c.org.id, "a Blueprint apply");
+    const roles = AGENT_ROLE_KEYS.filter((role) => role !== "appointment_setter"); // this client books no appointments
+    await settled(c.org.id, roles.length);
+    expect(await readiness(c)).toMatchObject({ state: "ready_to_launch", percent: 100 });
+
+    // The client rewrites their company rules and approves the change. Rewriting a guardrail is held for the agency's reviewer, who rejects it.
+    expect((await saveOnboardingStep(c.ctx, { answers: { "c.company_rules": { value: "Always greet customers by name and offer a call-back." } }, currentQuestionId: "f.review" })).rejected).toEqual({});
+    expect((await saveOnboardingStep(c.ctx, { answers: { "f.review": { value: true } }, currentQuestionId: "f.review" })).rejected).toEqual({});
+    const submitted = await submitOnboarding(c.ctx);
+    const held = submitted.employees.filter((e) => e.configStatus === "pending_agency_review").map((e) => e.role).sort();
+    expect(held.length).toBeGreaterThan(0);
+    const reviewer = await createUser({ platformRole: "agency_super_admin" });
+    for (const role of held) {
+      const pending = (await withSystem((db) => db.query<{ id: string }>(
+        "select v.id from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id where a.org_id = $1 and a.role_key = $2 and v.status = 'pending_agency_review'", [c.org.id, role]))).rows[0];
+      await withSystem((db) => decideHeldVersion(db, { orgId: c.org.id, versionId: pending.id, approve: false, agencyUserId: reviewer.id }));
+    }
+
+    // The answers say one thing and these employees run another: the panel says so, by name, and the state cannot be 100%.
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.employeesBehind!.map((b) => b.role).sort()).toEqual(held);
+    const behind = await readiness(c);
+    expect(behind.state).not.toBe("ready_to_launch");
+    expect(behind.percent).toBeLessThan(100);
+    expect(itemOf(behind, "employees.in_sync")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { label: "Update my employees", intent: "sync_employees" } });
+    // The line names the first three and counts the rest.
+    const named = facts.employeesBehind!.slice(0, 3).map((b) => AGENT_BY_KEY[b.role].shortName);
+    for (const name of named) expect(itemOf(behind, "employees.in_sync").detail).toContain(name);
+    if (held.length > 3) expect(itemOf(behind, "employees.in_sync").detail).toContain(`and ${held.length - 3} more`);
+
+    // The step makes exactly one new version for each of them, attributed to the client's owner, and touches nobody else.
+    const versions = async () => Object.fromEntries((await withSystem((db) => db.query<{ role_key: string; n: number }>(
+      "select a.role_key, count(v.id)::int as n from agent_instances a left join agent_config_versions v on v.agent_instance_id = a.id where a.org_id = $1 group by a.role_key", [c.org.id]))).rows.map((r) => [r.role_key, r.n]));
+    const before = await versions();
+    const res = await runLaunchIntent(c.ctx, "sync_employees");
+    const after = await versions();
+    for (const role of AGENT_ROLE_KEYS) expect(after[role] - before[role], role).toBe(held.includes(role) ? 1 : 0);
+    const authors = await withSystem((db) => db.query<{ role_key: string; created_by: string; source: string }>(
+      `select distinct on (a.role_key) a.role_key, v.created_by, v.source from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id
+        where a.org_id = $1 and a.role_key = any($2::text[]) order by a.role_key, v.version desc`, [c.org.id, held]));
+    expect(authors.rows.every((r) => r.created_by === c.owner.id && r.source === "onboarding")).toBe(true);
+    // Each is now either running the new version or has it waiting for the reviewer, and the message says which instead of calling an employee updated that is not.
+    expect(res.message).toMatch(/needs iAcquire's review|Updated/);
+    expect((await loadLaunchFacts(c.ctx))!.employeesBehind).toBeUndefined();
+    expect((await readiness(c)).steps.flatMap((s) => s.items).map((i) => i.key)).not.toContain("employees.in_sync");
+  }, 300_000);
 });

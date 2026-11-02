@@ -13,6 +13,7 @@ import { nativeAvailability } from "@/server/calendars/native-availability";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
+import { readPerformanceMetrics } from "@/server/workforce/performance-snapshot";
 import { agentId, createUser, ctxFor } from "./support/fixtures";
 import { crmOrg, type CrmOrg } from "./support/crm";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -235,8 +236,14 @@ describe("Appointment Setter acceptance (production configuration)", () => {
     expect(new Date(appointment.end_at).getTime() - chosen).toBe(30 * 60_000);
     // The type says "you confirm": the appointment waits as new until the host confirms it, which is a person's act, never the employee's.
     expect(appointment.status).toBe("new");
+    // The performance figures say the same thing: it is on the calendar and awaiting the host, and it is not counted as an appointment booked until the host says yes.
+    const metric = async (key: string) => (await withSystem((db) => readPerformanceMetrics(db, a.org.id))).metrics.find((m) => m.key === key);
+    expect(await metric("appointments_booked")).toMatchObject({ label: "Appointments booked", value: 0 });
+    expect(await metric("appointments_awaiting_host")).toMatchObject({ label: "Awaiting host confirmation", value: 1 });
     await setNativeAppointmentStatus(a.actor("owner"), appointment.id, "confirmed");
     expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1", [appointment.id]))).rows[0].status).toBe("confirmed");
+    expect((await metric("appointments_booked"))?.value).toBe(1);
+    expect((await metric("appointments_awaiting_host"))?.value).toBe(0);
 
     // No double booking, and the buffer is honoured: the booked start and the half hour on either side (whose 15-minute buffer would touch it) are gone; an hour away is still open.
     expect(await offers(chosen - 3_600_000)).toBe(true);

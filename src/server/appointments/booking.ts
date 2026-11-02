@@ -7,6 +7,7 @@ import { automationGate } from "@/server/automation/gate";
 import { createApproval } from "@/server/approvals/service";
 import { queueOutbound } from "@/server/messaging/send";
 import { applyAppointmentEvent } from "@/server/appointments/ledger";
+import { bookedText, bookingMessageKey, type BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import { isSlotAvailable, loadPolicy } from "@/server/appointments/availability";
 import { ghlAppointmentProvider, type AppointmentProvider } from "@/server/appointments/provider";
 import { formatSlot, overlaps } from "@/lib/appointments";
@@ -35,7 +36,11 @@ export interface BookingRequest {
 }
 
 export type BookingResult =
-  | { status: "booked"; bookingId: string; appointmentId: string }
+  /**
+   * `appointmentStatus` is the appointment's own state: `new` while a person still has to confirm it (the type says so), `confirmed` once it is. Absent only when it cannot be read (an
+   * appointment cancelled or removed since). Anything that tells a person "booked" or "confirmed" must read it: a booking that waits for a person is on the calendar, not confirmed.
+   */
+  | { status: "booked"; bookingId: string; appointmentId: string; appointmentStatus?: BookedAppointmentStatus }
   | { status: "awaiting_approval"; bookingId: string; approvalId: string | null }
   | { status: "needs_manual"; bookingId: string; reason: string }
   | { status: "unavailable"; reason: "slot_taken" | "not_connected" | "no_calendar" | "too_soon" | "contact_unusable" | "provider_error" | "blocked"; detail: string; bookingId?: string }
@@ -178,7 +183,8 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
 }
 
 function resultFor(b: BookingRow): BookingResult {
-  if (b.status === "booked") return { status: "booked", bookingId: b.id, appointmentId: "" };
+  // A GoHighLevel booking is recorded as confirmed by the provider's own answer (see executeBooking).
+  if (b.status === "booked") return { status: "booked", bookingId: b.id, appointmentId: "", appointmentStatus: "confirmed" };
   if (b.status === "awaiting_approval") return { status: "awaiting_approval", bookingId: b.id, approvalId: b.approval_id };
   if (b.status === "needs_manual") return { status: "needs_manual", bookingId: b.id, reason: "A person needs to add this to the calendar." };
   return { status: "unavailable", reason: "slot_taken", detail: "This time is already being booked.", bookingId: b.id };
@@ -278,12 +284,12 @@ export async function executeBooking(orgId: string, bookingId: string, opts: { p
     await withSystem((db) =>
       queueOutbound(db, {
         orgId, conversationId: b.conversation_id as string, scope: "reply", actor: { kind: "ai", agentId: b.agent_id, approvalId: opts.approvalId ?? b.approval_id }, now,
-        body: `You're booked for ${formatSlot(new Date(b.start_at).toISOString(), b.timezone)}. We look forward to seeing you. Reply here if you need to change it.`,
-        dedupeKey: `booking-confirm:${bookingId}`,
+        body: bookedText(formatSlot(new Date(b.start_at).toISOString(), b.timezone)),
+        dedupeKey: bookingMessageKey(bookingId, "confirmed"),
       }),
     ).catch(() => undefined);
   }
-  return { status: "booked", bookingId, appointmentId: appointmentId ?? "" };
+  return { status: "booked", bookingId, appointmentId: appointmentId ?? "", appointmentStatus: "confirmed" };
 }
 
 async function markNeedsManual(orgId: string, b: BookingRow, contactName: string, reason: string) {

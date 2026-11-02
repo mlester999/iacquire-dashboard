@@ -426,7 +426,8 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
     await safeLog(s, { ...base, outcome: out.outcome, result: "success", detail: out.summary, targetType: out.targetType, targetId: out.targetId, approvalId: out.approvalId ?? null, callRef });
     return {
       ok: true, httpStatus: out.outcome === "pending_approval" ? 202 : 200, status: out.outcome, tool: toolName, result: out.result, approvalId: out.approvalId ?? undefined,
-      detail: out.outcome === "pending_approval" ? "A person must approve this before it happens." : undefined,
+      // A pending outcome with no approval is a time held for the host's own confirmation: its handler says so, and nothing is asked of an approver.
+      detail: out.outcome === "pending_approval" ? (out.approvalId ? "A person must approve this before it happens." : out.summary) : undefined,
     };
   } catch (err) {
     const e = toPublicError(err);

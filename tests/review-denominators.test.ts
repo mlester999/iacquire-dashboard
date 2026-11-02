@@ -231,7 +231,7 @@ describe("the snapshot withholds AI run figures from a person who may not view a
     const asMember = await run(org, member, "member", "performance_analyst", "performance_snapshot", "Snapshot for a member");
     expect(asMember.status).toBe("completed");
     const memberKeys = asMember.result.metrics.map((m) => m.key);
-    expect(memberKeys).toHaveLength(10);
+    expect(memberKeys).toHaveLength(11);
     expect(memberKeys.some((key) => key.startsWith("ai_runs_"))).toBe(false);
     expect(memberKeys).toContain("leads_created");
     expect(asMember.result.findings.map((f) => f.key)).not.toContain("ai_run_failure_rate");
@@ -244,7 +244,7 @@ describe("the snapshot withholds AI run figures from a person who may not view a
       const full = await run(org, user, role, "performance_analyst", "performance_snapshot", `Snapshot for ${role}`);
       expect(full.status, role).toBe("completed");
       const keys = full.result.metrics.map((m) => m.key);
-      expect(keys, role).toHaveLength(12);
+      expect(keys, role).toHaveLength(13);
       expect(keys, role).toEqual(expect.arrayContaining(["ai_runs_completed", "ai_runs_failed"]));
       expect(full.result.findings.map((f) => f.key), role).toContain("ai_run_failure_rate");
       expect(full.result.examined?.find((e) => e.label === "AI runs")?.count, role).toBe(5);

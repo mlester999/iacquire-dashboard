@@ -8,8 +8,7 @@ import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
 import { getLaunchReadiness } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
-import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
-import { defaultSettings } from "@/server/workforce/compiler";
+import { connectHermesProfile, createConfigVersion, currentSettings, runHealthCheck } from "@/server/workforce/service";
 import { agentId, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 import { checkJobs, itemOf, readyClient, settled } from "./support/launch";
@@ -41,11 +40,29 @@ describe("the launch sweep", () => {
     await sweepLaunchVerification(c.org.id);
     await settled(c.org.id, 6);
     const analyst = await agentId(c.org.id, "performance_analyst");
-    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...defaultSettings("performance_analyst"), personality: "Plain and exact." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
+    const current = (await withSystem((db) => currentSettings(db, analyst, c.org.id))).settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...current, personality: "Plain and exact." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("action_required");
     expect((await sweepLaunchVerification(c.org.id)).queued).toEqual(["performance_analyst"]);
     await settled(c.org.id, 7);
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
+  }, 180_000);
+
+  it("starts one new check for the role whose input changed, however many sweeps run at once, and none for the rest", async () => {
+    const c = await readyClient({ name: "Sweep Inputs Roofing", timezone: "America/Chicago" });
+    await sweepLaunchVerification(c.org.id);
+    await settled(c.org.id, 6);
+    await withSystem((db) => db.query("update lead_targeting_profiles set criteria = $2::jsonb where org_id = $1", [c.org.id, JSON.stringify({ industries: ["Plumbers"], countries: ["US"] })]));
+    const [a, b] = await Promise.all([sweepLaunchVerification(c.org.id), sweepLaunchVerification(c.org.id)]);
+    expect(a.queued.concat(b.queued)).toEqual(["lead_hunter"]);
+    expect(await checkJobs(c.org.id)).toBe(7);
+    await settled(c.org.id, 7);
+    // The new job records the digest it read, so the same sweep again starts nothing.
+    expect((await sweepLaunchVerification(c.org.id)).queued).toEqual([]);
+    const digests = await withSystem((db) => db.query<{ d: string | null }>("select input ->> 'inputsDigest' as d from ai_work_jobs j join agent_instances a on a.id = j.agent_instance_id where j.org_id = $1 and a.role_key = 'lead_hunter' order by j.created_at", [c.org.id]));
+    expect(digests.rows).toHaveLength(2);
+    expect(digests.rows[0].d).not.toBe(digests.rows[1].d);
+    expect(await getLaunchReadiness(c.ctx)).toMatchObject({ state: "ready_to_launch", percent: 100 });
   }, 180_000);
 
   it("never retries a check that ran and failed: the client fixes what it names and runs it again", async () => {
@@ -199,10 +216,10 @@ describe("started by a passing health check", () => {
 
 describe("the sweep only ever runs checks", () => {
   it("never applies the refinements the client confirms, never invites the listed team and never asks the CRM setup to run", async () => {
-    const c = await readyClient({ name: "Sweep Offers Roofing", timezone: "Asia/Manila" });
-    await withSystem((db) => db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, 'd.sales_process', to_jsonb($2::text)), ($1, 'd.team', $3::jsonb)", [
-      c.org.id, "1. Enquiry. 2. Qualify. 3. Quote. 4. Book the job.", JSON.stringify([{ name: "Ana Cruz", email: "ana-sweep@client.example", role: "sales_rep" }]),
-    ]));
+    const c = await readyClient({
+      name: "Sweep Offers Roofing", timezone: "Asia/Manila",
+      extraAnswers: { "d.sales_process": "1. Enquiry. 2. Qualify. 3. Quote. 4. Book the job.", "d.team": [{ name: "Ana Cruz", email: "ana-sweep@client.example", role: "sales_rep" }] },
+    });
     const offered = (await getLaunchReadiness(c.ctx))!;
     expect(itemOf(offered, "crm.region").action).toMatchObject({ intent: "confirm_region_defaults" });
     expect(itemOf(offered, "crm.stages").action).toMatchObject({ intent: "apply_pipeline_stages" });

@@ -20,6 +20,17 @@ const gate = (orgId: string, agent: string | null, scope: Parameters<typeof auto
 async function makeReady(orgId: string, agent: string) {
   await withSystem((db) => db.query("update agent_instances set status = 'online', last_health_ok = true, enabled = true where id = $1 and org_id = $2", [agent, orgId]));
 }
+/** The employee's final check passed for the configuration it runs now: a client's employee is not let loose without one (src/server/automation/controls.ts). */
+async function passFinalCheck(orgId: string, agent: string) {
+  await withSystem(async (db) => {
+    const version = (await db.query<{ version: number | null }>("select v.version from agent_instances a left join agent_config_versions v on v.id = a.active_config_version_id where a.id = $1", [agent])).rows[0].version;
+    await db.query(
+      `insert into ai_work_jobs (org_id, agent_instance_id, capability, title, status, input, idempotency_key, result_count)
+       values ($1, $2, 'lead_generation_review', 'Launch check', 'completed', $3::jsonb, $4, 1)`,
+      [orgId, agent, JSON.stringify({ launchVerification: true, configVersion: version }), `controls-test-check-${agent}`],
+    );
+  });
+}
 async function activate(orgId: string) {
   await withSystem(async (db) => {
     await db.query(
@@ -88,6 +99,9 @@ describe("employee operating modes", () => {
     await makeReady(org.id, agent);
     await expect(setAgentMode(ownerCtx, { agentId: agent, mode: "autonomous", confirmAutonomous: true })).rejects.toThrow(/activates your workspace/);
     await activate(org.id);
+    // A client's employee also needs its final check to have passed for its current configuration.
+    await expect(setAgentMode(ownerCtx, { agentId: agent, mode: "autonomous", confirmAutonomous: true })).rejects.toThrow(/final check has not passed/);
+    await passFinalCheck(org.id, agent);
     expect(await setAgentMode(ownerCtx, { agentId: agent, mode: "autonomous", confirmAutonomous: true })).toEqual({ mode: "autonomous", changed: true });
     expect((await gate(org.id, agent, "followup")).decision).toBe("allow");
     // Same mode again is a no-op, not a second audit entry.

@@ -6,8 +6,20 @@ import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, newCardId, num, plural } from "@/server/aqi/ops/tools/helpers";
 import type { OpsHealthState, OpsTableCard, OpsWorkspaceCard, OpsScopePickerCard } from "@/lib/aqi/ops/types";
 import { isRuntimeOnline } from "@/lib/employee-runtime";
+import { LAUNCH_STATE_LABEL } from "@/lib/launch-readiness";
+import { readLaunchCurrent, type LaunchCurrent } from "@/server/setup/launch-ledger";
 
 const SUPER = ["agency_super_admin"] as const;
+
+/** The launch ledger's newest state of a client as plain fields for a tool's data: null when nothing was recorded yet. Owner names are "you" in the ledger; here they say who. */
+function launchFields(l: LaunchCurrent | undefined) {
+  if (!l) return null;
+  return {
+    state: l.state, label: LAUNCH_STATE_LABEL[l.state], percent: l.percent, checksPassed: l.passed, checksTotal: l.total,
+    waitingOnClient: l.needsYou, waitingOnIacquire: l.needsIacquire, since: iso(new Date(l.since)),
+    topBlocker: l.topBlocker ? { label: clean(l.topBlocker.label, 120), waitingOn: l.topBlocker.owner === "you" ? "the client" : l.topBlocker.owner === "iacquire" ? "iAcquire" : "automatic work" } : null,
+  };
+}
 
 interface DirectoryRow {
   id: string; name: string; status: string; created_at: Date; setup_state: string | null; blocked: number; waiting_client: number;
@@ -47,6 +59,8 @@ export const workspaceDirectory = defineReadTool({
       [ctx.user.id, args.onlyAttention, args.limit],
     ));
     const total = rows[0] ? Number(rows[0].total) : 0;
+    // The ids come from the query above, which already limited them to the clients this person may see.
+    const launch = await readLaunchCurrent(rows.map((r) => r.id));
     const blockedClients = rows.filter((r) => r.blocked > 0);
     const waiting = rows.filter((r) => r.waiting_client > 0);
     const table: OpsTableCard = {
@@ -55,17 +69,22 @@ export const workspaceDirectory = defineReadTool({
       columns: [
         { key: "client", label: "Client" }, { key: "status", label: "Status" }, { key: "setup", label: "Setup" },
         { key: "blocked", label: "Blocked", align: "right" }, { key: "waiting", label: "Waiting on client", align: "right" }, { key: "open", label: "Open required", align: "right" },
+        { key: "launch", label: "Launch" },
       ],
-      rows: rows.map((r) => ({
-        client: clean(r.name, 60), status: r.status, setup: r.setup_state ?? "not started", blocked: r.blocked, waiting: r.waiting_client,
-        open: r.required_total ? `${r.open_required} of ${r.required_total}` : "—", _href: `/admin/clients/${r.id}/setup`,
-      })),
+      rows: rows.map((r) => {
+        const l = launch.get(r.id);
+        return {
+          client: clean(r.name, 60), status: r.status, setup: r.setup_state ?? "not started", blocked: r.blocked, waiting: r.waiting_client,
+          open: r.required_total ? `${r.open_required} of ${r.required_total}` : "—",
+          launch: l ? `${LAUNCH_STATE_LABEL[l.state]} (${l.percent}%)` : "—", _href: `/admin/clients/${r.id}/setup`,
+        };
+      }),
     };
     return {
       summary: rows.length
         ? `${total} client workspaces; ${blockedClients.length} with blocked setup tasks and ${waiting.length} waiting on the client in the first ${rows.length}. ${blockedClients.slice(0, 4).map((r) => `${clean(r.name, 50)} has ${plural(r.blocked, "blocked task")}`).join("; ")}.`
         : "No client workspaces matched.",
-      data: { total, clients: rows.map((r) => ({ id: r.id, name: r.name, status: r.status, setupState: r.setup_state, blocked: r.blocked, waitingOnClient: r.waiting_client, openRequired: r.open_required, requiredTotal: r.required_total, lastSetupActivity: iso(r.last_activity), createdAt: iso(r.created_at) })) },
+      data: { total, clients: rows.map((r) => ({ id: r.id, name: r.name, status: r.status, setupState: r.setup_state, blocked: r.blocked, waitingOnClient: r.waiting_client, openRequired: r.open_required, requiredTotal: r.required_total, lastSetupActivity: iso(r.last_activity), createdAt: iso(r.created_at), launch: launchFields(launch.get(r.id)) })) },
       cards: [table],
       evidence: { label: "Client onboarding overview", source: "Setup Center records (client_setup_instances, client_setup_tasks)", href: "/admin/clients" },
     };
@@ -165,6 +184,8 @@ export const workspaceSummary = defineReadTool({
       [orgId],
     ));
     const f = facts.rows[0];
+    // The ledger's newest launch state (one row per client, written by events and the launch watch): read for this client only, after the authorization above.
+    const launch = (await readLaunchCurrent([orgId])).get(orgId);
     const tasks: SetupTask[] = f.tasks ?? [];
     const connections: ConnectionRow[] = f.connections ?? [];
     const agents: AgentRow[] = f.agents ?? [];
@@ -177,6 +198,7 @@ export const workspaceSummary = defineReadTool({
     for (const t of waiting.slice(0, 3)) blockers.push({ title: `Waiting on the client: ${clean(t.title, 90)}`, detail: `Last updated ${ageHours(t.updated_at, ctx.now)} hours ago.`, href: `${base}/setup` });
     for (const c of connections.filter((x) => ["error", "needs_attention", "disconnected"].includes(x.status))) blockers.push({ title: `${c.provider} connection is ${c.status.replace("_", " ")}`, detail: clean(c.last_error, 200) || "The last check did not succeed.", href: `${base}/integrations` });
     for (const a of agents.filter((x) => x.enabled && ["error", "offline", "setup_required"].includes(x.status))) blockers.push({ title: `${clean(a.display_name, 40)} (${a.role_key.replace(/_/g, " ")}) is ${a.status.replace("_", " ")}`, detail: a.last_health_check_at ? `Last health check ${ageHours(a.last_health_check_at, ctx.now)} hours ago.` : "No health check has been recorded.", href: `${base}/provisioning` });
+    if (launch && launch.state !== "ready_to_launch" && launch.needsIacquire > 0) blockers.push({ title: `Launch is waiting on iAcquire: ${clean(launch.topBlocker?.label, 90) || "an item"}`, detail: `${plural(launch.needsIacquire, "required item")} wait on iAcquire (${LAUNCH_STATE_LABEL[launch.state]}, ${launch.percent}%), in this state since ${iso(new Date(launch.since))}.`, href: `${base}/setup` });
     if (f.agency_pause) blockers.push({ title: "Agency emergency pause is active", detail: "Customer-facing automation is held for this workspace until a Super Admin resumes it.", href: base });
     if (f.calendars_attention) blockers.push({ title: `${plural(f.calendars_attention, "calendar connection")} need attention`, detail: "Calendar sync failed or needs the client to reconnect.", href: `${base}/integrations` });
     if (org.status === "suspended") blockers.unshift({ title: "Workspace is suspended", detail: "A suspended workspace cannot be used by its team.", href: base });
@@ -184,6 +206,7 @@ export const workspaceSummary = defineReadTool({
     const required = tasks.length;
     const metrics: OpsWorkspaceCard["metrics"] = [
       metric("Workspace status", org.status, `Created ${ageHours(org.created_at, ctx.now)} hours ago`),
+      metric("Launch readiness", launch ? `${launch.percent}% · ${LAUNCH_STATE_LABEL[launch.state]}` : "Nothing recorded yet", launch ? `${launch.passed} of ${launch.total} checks passed` : "Recorded once the client has submitted and something changes", launch ? undefined : "unknown"),
       metric("Setup state", f.setup_state ? f.setup_state.replace(/_/g, " ") : "Not started", f.setup_state ? `${required} open required task${required === 1 ? "" : "s"} shown` : "No Setup Center record", f.setup_state ? undefined : "unknown"),
       metric("Integrations", `${connections.filter((c) => ["connected", "permission_limited"].includes(c.status)).length} of ${connections.length} healthy`, connections.length ? undefined : "No connections recorded", connections.length ? undefined : "not_configured"),
       metric("AI Employees", `${agents.filter((a) => isRuntimeOnline(a.status)).length} of ${agents.filter((a) => a.enabled).length} online`, "From their last health check"),
@@ -207,6 +230,7 @@ export const workspaceSummary = defineReadTool({
       summary: `${clean(org.name, 60)} is ${org.status}${org.onboarding_completed_at ? " and completed onboarding" : " and has not completed onboarding"}. ${blockers.length ? `${plural(blockers.length, "blocker")}: ${blockers.slice(0, 4).map((b) => `${b.title} (${b.detail})`).join("; ")}.` : "No blockers are recorded."} Channels: ${channelText}.`,
       data: {
         workspace: { name: org.name, status: org.status, onboardingCompletedAt: iso(org.onboarding_completed_at), isDemo: org.is_demo, timezone: org.timezone },
+        launch: launchFields(launch),
         setup: { state: f.setup_state, responsible: f.responsible, openRequiredTasks: tasks.map((t) => ({ title: t.title, status: t.status, section: t.section, service: t.service, blockedReason: t.blocked_reason, updatedHoursAgo: ageHours(t.updated_at, ctx.now) })) },
         integrations: connections.map((c) => ({ provider: c.provider, status: c.status, lastError: c.last_error, lastSuccessAt: iso(c.last_success_at), lastFailureAt: iso(c.last_failure_at) })),
         aiEmployees: agents.map((a) => ({ name: a.display_name, role: a.role_key, status: a.status, mode: a.mode, enabled: a.enabled, lastHealthOk: a.last_health_ok, lastHealthCheckAt: iso(a.last_health_check_at) })),

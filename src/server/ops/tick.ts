@@ -64,6 +64,8 @@ import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/wor
 import { runHealthProbe } from "@/server/workforce/health-probe";
 import { runProvisioningWatchdog } from "@/server/workforce/provisioning-watchdog";
 import { runClientBusinessCredentialExpiry } from "@/server/workforce/hermes-client-business-credential";
+import { runLaunchWatch, LAUNCH_WATCH_BUDGET_MS } from "@/server/setup/launch-watch";
+import { runStaleConfirmationWatch } from "@/server/appointments/confirmation-watch";
 import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
 import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
@@ -82,6 +84,9 @@ export interface ScheduledJob {
    */
   everyMinutes?: number;
 }
+
+/** What a job that reports in its own shape counts as processed: a number as it is, or the sum of the counts in an object. */
+const processedBy = (result: unknown): number => (typeof result === "number" ? result : result && typeof result === "object" ? Object.values(result as Record<string, unknown>).reduce<number>((n, v) => n + (typeof v === "number" ? v : 0), 0) : 0);
 
 /**
  * Every scheduled job, in the order they run. Each is idempotent and safe to run twice, so overlapping ticks cannot double-act,
@@ -284,6 +289,16 @@ export const JOBS: ScheduledJob[] = [
   // before it lapses (in-app notices only). It rotates nothing, changes no employee and contacts no customer, and does nothing while no client credential exists (the tier is off by default).
   // Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
   { name: "clientBusinessCredentialExpiry", everyMinutes: 1440, run: async () => { const r = await runClientBusinessCredentialExpiry(); return r.closed + r.announced; } },
+  // The launch watch for client workspaces. Every ten minutes, for each client that submitted its questionnaire, paid and is active (a sample, the agency's own, a suspended and an unpaid workspace are
+  // never looked at; clients already at 100% come last, so a step back from ready is still noticed): the calendar checks run again (read-only), any employee that is ready and has no final check for its
+  // current configuration gets the one read-only check, and the launch ledger records the state if it changed. iAcquire is told once about each wait that went on too long, and the client's owners about
+  // the moments that are theirs. It sends nothing to a customer, changes no configuration and never retries a failed check. It spends at most LAUNCH_WATCH_BUDGET_MS of the tick (cut off at 120 seconds
+  // and the jobs after it wait). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "launchWatch", everyMinutes: 10, run: async () => (await runLaunchWatch({ budgetMs: LAUNCH_WATCH_BUDGET_MS })).examined },
+  // Bookings that are on the calendar but still waiting for a person to confirm them (src/server/appointments/confirmation-watch.ts). Hourly: one that has waited too long is noticed, never decided: the
+  // clock confirms, cancels and moves nothing, and a booking is never described as confirmed because time passed. Like every job here it runs only when the scheduler does, and in a staged start only
+  // when named in SCHEDULER_JOBS_ONLY.
+  { name: "bookingConfirmationWatch", everyMinutes: 60, run: async () => processedBy(await runStaleConfirmationWatch()) },
   // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
   // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
   // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. It spends at most RECONCILE_BUDGET_MS waiting on providers (the tick is cut off at

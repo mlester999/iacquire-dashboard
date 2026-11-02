@@ -69,6 +69,17 @@ describe("every approval kind is classified", () => {
     expect(classifyApproval({ kind, status: "approved", execution_status: "blocked" })).toEqual({ class: "proposed_change", completed: false });
   });
 
+  it("calls a succeeded booking an approved write, not completed, while its appointment still waits for the host to confirm it", () => {
+    const booking = { kind: "appointment_booking", status: "approved", execution_status: "succeeded" } as const;
+    expect(classifyApproval({ ...booking, appointmentStatus: "new" })).toEqual({ class: "approved_write", completed: false });
+    expect(classifyApproval({ ...booking, appointmentStatus: "confirmed" })).toEqual({ class: "completed_action", completed: true });
+    expect(classifyApproval({ ...booking, appointmentStatus: null })).toEqual({ class: "completed_action", completed: true });
+    // A change request is not a booking: the appointment's state does not demote it.
+    expect(classifyApproval({ kind: "appointment_change", status: "approved", execution_status: "succeeded", appointmentStatus: "new" })).toEqual({ class: "completed_action", completed: true });
+    // And a booking that has not succeeded is still only a proposal whatever the appointment says.
+    expect(classifyApproval({ ...booking, execution_status: "blocked", appointmentStatus: "confirmed" })).toEqual({ class: "proposed_change", completed: false });
+  });
+
   it("never calls a queued follow-up message completed, however the downstream status is missing or phrased", () => {
     const queued = { kind: "follow_up_message", status: "approved", execution_status: "succeeded" } as const;
     for (const downstream of [undefined, null, "", "draft", "queued", "sending", "received", "note", "unknown"]) {
@@ -112,6 +123,29 @@ describe("a booking result", () => {
     expect(classifyBookingResult("needs_manual")).toBe("proposed_change");
     expect(classifyBookingResult("unavailable")).toBe("system_notice");
     expect(classifyBookingResult("failed")).toBe("system_notice");
+  });
+
+  it("is only an approved write while the host's confirmation is pending, and a completed action once the appointment is confirmed", () => {
+    // On the calendar (iAcquire saved it) but nobody has said yes: not "done".
+    expect(classifyBookingResult("booked", "new")).toBe("approved_write");
+    expect(classifyBookingResult("booked", "confirmed")).toBe("completed_action");
+    // The appointment state means nothing for a result that is not a landed booking.
+    for (const status of ["awaiting_approval", "needs_manual"] as const) {
+      expect(classifyBookingResult(status, "new")).toBe("proposed_change");
+      expect(classifyBookingResult(status, "confirmed")).toBe("proposed_change");
+    }
+    for (const status of ["unavailable", "failed"] as const) {
+      expect(classifyBookingResult(status, "new")).toBe("system_notice");
+      expect(classifyBookingResult(status, "confirmed")).toBe("system_notice");
+    }
+  });
+
+  it("never reads 'Done, confirmed' for a booking that waits for the host", () => {
+    const waiting = evidenceChip({ class: classifyBookingResult("booked", "new") });
+    expect(waiting.label).not.toBe("Done, confirmed");
+    expect(waiting.label).toBe("Approved and applied");
+    expect(waiting.hint).toMatch(/does not prove that anything outside iAcquire changed/);
+    expect(evidenceChip({ class: classifyBookingResult("booked", "confirmed") }).label).toBe("Done, confirmed");
   });
 });
 

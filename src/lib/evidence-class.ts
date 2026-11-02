@@ -102,7 +102,8 @@ const SENT_MESSAGE_STATES: ReadonlySet<string> = new Set(["sent", "delivered", "
 /**
  * The class of an approval, from its own row. Nothing is ever `completed_action` because a person said yes: a queued draft is only `approved_write` until the message itself is
  * sent or delivered (`downstream`, the message's current status), and an approval nobody decided, or one that was refused, expired, blocked or failed, is still a proposal.
- * Only a booking or an appointment change, whose executor writes to the calendar before it reports success, is `completed_action` when it succeeded.
+ * Only a booking or an appointment change, whose executor writes to the calendar before it reports success, is `completed_action` when it succeeded, and a booking whose appointment
+ * still waits for the host to confirm it (`appointmentStatus` "new") is an approved write until they do.
  */
 export function classifyApproval(row: {
   kind: ApprovalKindName;
@@ -110,11 +111,16 @@ export function classifyApproval(row: {
   execution_status: ApprovalExecutionName;
   /** follow_up_message only: the current status of the drafted message, when it is known. */
   downstream?: string | null;
+  /** appointment_booking only: the booked appointment's own state, when it is known. `new` means a person still has to confirm it. */
+  appointmentStatus?: "new" | "confirmed" | null;
 }): { class: EvidenceClass; completed: boolean } {
   const proposal = { class: "proposed_change" as const, completed: false };
   if (row.status !== "approved" || row.execution_status !== "succeeded") return proposal;
   switch (row.kind) {
     case "appointment_booking":
+      // On the calendar, but the appointment type says a person confirms each booking and nobody has yet.
+      if (row.appointmentStatus === "new") return { class: "approved_write", completed: false };
+      return { class: "completed_action", completed: true };
     case "appointment_change":
       return { class: "completed_action", completed: true };
     case "follow_up_message":
@@ -127,9 +133,13 @@ export function classifyApproval(row: {
   }
 }
 
-/** The class of a chat-confirmed booking by what the calendar service returned. Only a booking that landed is confirmed; a request waiting on a person is still a proposal. */
-export function classifyBookingResult(status: "booked" | "awaiting_approval" | "needs_manual" | "unavailable" | "failed"): ServerEvidenceClass {
-  if (status === "booked") return "completed_action";
+/**
+ * The class of a chat-confirmed booking by what the calendar service returned. A booking that landed is a completed action only once nobody still has to say yes: when the appointment
+ * type needs a person's confirmation the appointment is on the calendar (`approved_write`: iAcquire saved it) but not confirmed (`appointmentStatus` "new"), and it is `completed_action`
+ * once the appointment is confirmed. A request waiting on a person is still a proposal.
+ */
+export function classifyBookingResult(status: "booked" | "awaiting_approval" | "needs_manual" | "unavailable" | "failed", appointmentStatus?: "new" | "confirmed"): ServerEvidenceClass {
+  if (status === "booked") return appointmentStatus === "new" ? "approved_write" : "completed_action";
   if (status === "awaiting_approval" || status === "needs_manual") return "proposed_change";
   return "system_notice";
 }

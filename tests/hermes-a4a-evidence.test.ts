@@ -258,6 +258,28 @@ describe("A4a evidence: the queries, on a seeded database", () => {
     expect((await readWriteDeltas(agency.id, future, await readRowCounts(agency.id))).filter((entry) => entry.created || entry.updated || entry.rowDelta)).toEqual([]);
   });
 
+  it("takes the tables whose changes are not writes from the caller, and keeps the A4a bookkeeping list when it is not given one", async () => {
+    const since = await windowStart();
+    const baseline = await readRowCounts(agency.id);
+    await run("insert into tasks (org_id, title) values ($1, 'T written for the allow-list check')", [agency.id]);
+    await run("insert into audit_logs (org_id, actor_kind, action, result, metadata) values ($1, 'system', 'test.allow_list', 'success', '{}'::jsonb)", [agency.id]);
+    const flag = (deltas: TableDelta[], table: string) => deltas.find((entry) => entry.table === table);
+    // The default is the A4a list: the audit trail is bookkeeping, a task is a write.
+    const byDefault = await readWriteDeltas(agency.id, since, baseline);
+    expect(flag(byDefault, "audit_logs")).toMatchObject({ expected: true, created: 1 });
+    expect(flag(byDefault, "tasks")).toMatchObject({ expected: false, created: 1 });
+    expect(await readWriteDeltas(agency.id, since, baseline, EXPECTED_BOOKKEEPING_TABLES)).toEqual(byDefault);
+    // A caller's own list replaces it: here a pilot-like window where tasks are expected and the audit trail is not.
+    const own = await readWriteDeltas(agency.id, since, baseline, ["tasks"]);
+    expect(flag(own, "tasks")).toMatchObject({ expected: true, created: 1, rowDelta: 1 });
+    expect(flag(own, "audit_logs")).toMatchObject({ expected: false, created: 1 });
+    expect(own.filter((entry) => entry.expected).map((entry) => entry.table)).toEqual(["tasks"]);
+    expect(evaluateA4aEvidence(input({ deltas: own })).checks.find((check) => check.id === "zero_business_writes")).toMatchObject({ ok: false });
+    // An empty list expects nothing at all.
+    expect((await readWriteDeltas(agency.id, since, baseline, [])).some((entry) => entry.expected)).toBe(false);
+    await run("delete from tasks where org_id = $1 and title = 'T written for the allow-list check'", [agency.id]);
+  });
+
   it("reads one run's tool records and audit entries, as names, results and ids only", async () => {
     const employee = await agentId(agency.id, "operations_manager");
     const since = await windowStart();

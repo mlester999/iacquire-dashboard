@@ -8,6 +8,7 @@ import { llmComplete, resolveLlmConfig, type LlmUsage } from "@/server/llm/clien
 import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { assertConversationVisible } from "@/server/messaging/access";
+import { replyClaimProblems } from "@/server/messaging/responder";
 import { cleanText } from "@/lib/support/content";
 import { draftWarnings, redactForAi } from "@/lib/support/suggest";
 import type { ConversationChannel } from "@/lib/messaging";
@@ -223,6 +224,10 @@ export async function suggestReply(ctx: OrgContext, conversationId: string, deps
   if (text.length < 2) return { ok: false, reason: UNAVAILABLE };
   const warnings = draftWarnings(text);
   if (/https?:\/\/|www\./i.test(text)) warnings.push("Contains a link. Check where it goes before sending.");
+  // The draft is annotated, never blocked: the person reads it and decides. It is held against the workspace's approved knowledge, the net the AI employees' own replies pass through,
+  // so an amount, offer or promise the business never approved is named before anyone presses Send. What the customer wrote is allowed to be repeated, nothing else.
+  const visitorSaid = lines.filter((l) => l.who === "CUSTOMER").map((l) => l.text).join("\n");
+  for (const problem of await replyClaimProblems(ctx.org.orgId, text, visitorSaid)) warnings.push(`States ${problem} that your approved company knowledge does not back. Check it before sending.`);
   await finish(ctx, conversationId, "reply_draft");
   return { ok: true, data: { text, warnings, basedOnMessageId: lastInboundId, generatedAt: new Date().toISOString() } };
 }

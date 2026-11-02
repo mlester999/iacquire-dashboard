@@ -372,7 +372,7 @@ describe("reviewed workforce capabilities", () => {
     expect(job.status).toBe("completed");
     const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; trend?: string; higherIsBetter?: boolean; period?: string }>) ?? [];
     const metric = (key: string) => metrics.find((item) => item.key === key);
-    expect(metrics).toHaveLength(12);
+    expect(metrics).toHaveLength(13);
     expect(metric("leads_created")?.value).toBe(4);
     expect(metric("leads_created")?.previous).toBe(1);
     expect(metric("leads_created")?.period).toBe("Last 30 days");
@@ -408,7 +408,7 @@ describe("reviewed workforce capabilities", () => {
     const job = await waitForJob(dispatched.jobId);
     expect(job.status).toBe("completed");
     const keys = ((job.result.metrics as Array<{ key: string }>) ?? []).map((item) => item.key);
-    expect(keys).toHaveLength(10);
+    expect(keys).toHaveLength(11);
     expect(keys.filter((key) => key.startsWith("ai_runs_"))).toEqual([]);
     expect(keysOf(job.result)).not.toContain("ai_run_failure_rate");
     expect(keysOf(job.result)).toContain("unvalued_open_pipeline");

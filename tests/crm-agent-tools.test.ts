@@ -598,6 +598,33 @@ describe("conversations, drafts and appointments", () => {
   });
 });
 
+describe("request_appointment for a type that needs the host's confirmation", () => {
+  it("holds the time, says so honestly, and asks nobody to approve when an autonomous employee books it", async () => {
+    const s = await crmOrg({ timezone: "Asia/Manila" });
+    const agent = await ready(s, "appointment_setter", "autonomous");
+    const t = await tokenFor(s, agent);
+    const owner = s.actor("owner");
+    await setHostAvailability(owner, s.people.owner.id, { timezone: "Asia/Manila", rules: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startMinute: 0, endMinute: 24 * 60 })) });
+    const cal = await createCalendar(owner, { name: "Visits", assignment: "single", members: [{ userId: s.people.owner.id }] });
+    const type = await createAppointmentType(owner, cal.id, { name: "Site visit", durationMinutes: 60, minNoticeMinutes: 60, maxDaysAhead: 30, requiresConfirmation: true });
+    await withSystem((db) => db.query("insert into appointment_settings (org_id, ai_booking_enabled) values ($1, true) on conflict (org_id) do update set ai_booking_enabled = true", [s.org.id]));
+    const avail = await call(t.token, "check_availability", { appointmentTypeId: type.id, days: 3, limit: 5 });
+    const slots = avail.ok ? (avail.result.slots as Array<{ start: string }>) : [];
+    expect(slots.length).toBeGreaterThan(0);
+
+    const c = await createContact(owner, { firstName: "Hold", lastName: "Me" });
+    const req = await call(t.token, "request_appointment", { contactId: c.id, appointmentTypeId: type.id, startAt: slots[0].start });
+    expect(req).toMatchObject({ ok: true, status: "pending_approval", httpStatus: 202, result: { status: "awaiting_host_confirmation" } });
+    // No approval exists, and the words say the time is held for the host, not that a person must approve it.
+    expect(req.ok && req.approvalId).toBeFalsy();
+    expect(req.ok && req.detail).toMatch(/waits for the host to confirm/);
+    expect(req.ok && req.detail).not.toMatch(/must approve/i);
+    expect(await count("select 1 from approval_requests where org_id = $1 and kind = 'appointment_booking'", [s.org.id])).toBe(0);
+    // The calendar holds the time as waiting for a person: held, not confirmed.
+    expect(await one("select r.status from appointment_bookings b join appointment_refs r on r.id = b.appointment_id where b.org_id = $1 and b.contact_id = $2", [s.org.id, c.id])).toEqual({ status: "new" });
+  });
+});
+
 describe("requestAgentTask (workflow AI step)", () => {
   it("says honestly when nothing will happen, and queues once when the employee can really run", async () => {
     const w = await crmOrg();

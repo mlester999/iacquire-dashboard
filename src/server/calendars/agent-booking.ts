@@ -12,6 +12,7 @@ import { computeSlots, loadBookingContext } from "@/server/calendars/availabilit
 import { resolveNativeAppointmentType as resolveType } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { formatSlot } from "@/lib/appointments";
+import { bookingCustomerText, bookingMessageKey, type BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import type { BookingRequest, BookingResult } from "@/server/appointments/booking";
 
 export { nativeAvailability } from "@/server/calendars/native-availability";
@@ -32,6 +33,26 @@ export async function bookingIsNative(db: Queryable, orgId: string): Promise<boo
 }
 
 const HOLDING = ["awaiting_approval", "requested", "booked", "needs_manual"];
+
+/**
+ * The appointment's own state for a booking that is already booked: waiting for a person (`new`) or confirmed. A booking whose appointment was cancelled or removed since has neither, so
+ * the answer is undefined and no caller may call it confirmed.
+ */
+export async function bookedAppointmentStatus(orgId: string, bookingId: string): Promise<BookedAppointmentStatus | undefined> {
+  const { rows } = await withSystem((db) => db.query<{ status: string }>(
+    "select r.status from appointment_bookings b join appointment_refs r on r.id = b.appointment_id and r.org_id = b.org_id where b.id = $1 and b.org_id = $2",
+    [bookingId, orgId],
+  ));
+  const status = rows[0]?.status;
+  if (status === "new") return "new";
+  return status === "confirmed" || status === "showed" || status === "noshow" ? "confirmed" : undefined;
+}
+
+/** A booked result that carries the appointment's state when it is known. */
+async function bookedResult(orgId: string, bookingId: string, appointmentId: string): Promise<BookingResult> {
+  const appointmentStatus = await bookedAppointmentStatus(orgId, bookingId);
+  return { status: "booked", bookingId, appointmentId, ...(appointmentStatus ? { appointmentStatus } : {}) };
+}
 
 /** The native version of requestBooking: same hold → check → approval → book order, same results. */
 export async function requestNativeBooking(req: BookingRequest): Promise<BookingResult> {
@@ -64,13 +85,13 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
       [req.orgId, req.contactId, req.conversationId ?? null, typeId, req.startAt, end, c.rows[0].timezone ?? ctx.orgTimezone, (req.title ?? `${ctx.type.name} with ${c.rows[0].display_name || "a customer"}`).slice(0, 200),
         req.actor.kind, req.actor.kind === "staff" ? req.actor.userId : req.requestedByUserId ?? null, req.actor.kind === "ai" ? req.actor.agentId : null, key],
     );
-    return { kind: "held" as const, bookingId: ins.rows[0].id, contactName: c.rows[0].display_name, typeName: ctx.type.name, timezone: c.rows[0].timezone ?? ctx.orgTimezone, aiBooking: policy.rows[0]?.ai_booking_enabled ?? false };
+    return { kind: "held" as const, bookingId: ins.rows[0].id, contactName: c.rows[0].display_name, typeName: ctx.type.name, timezone: c.rows[0].timezone ?? ctx.orgTimezone, aiBooking: policy.rows[0]?.ai_booking_enabled ?? false, needsHostConfirmation: ctx.type.requiresConfirmation && req.actor.kind !== "staff" };
   });
   if (held.kind === "refused") return { status: "unavailable", reason: held.reason, detail: held.detail };
   if (held.kind === "existing") {
     const b = held.booking;
     if (b.status === "awaiting_approval") return { status: "awaiting_approval", bookingId: b.id, approvalId: b.approval_id };
-    if (b.status === "booked") return { status: "booked", bookingId: b.id, appointmentId: "" };
+    if (b.status === "booked") return bookedResult(req.orgId, b.id, "");
     return { status: "unavailable", reason: "slot_taken", detail: "This time is already being booked.", bookingId: b.id };
   }
 
@@ -92,7 +113,9 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
         : `Your Appointment Setter found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
       expectedEffect: req.requestSource === "staff_chat"
         ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
-        : "The appointment is added to your calendar and the customer is told it is confirmed.",
+        : held.needsHostConfirmation
+          ? "The appointment is added to your calendar as waiting for the host's confirmation, and the customer is told the time is reserved and the team will confirm it."
+          : "The appointment is added to your calendar and the customer is told it is confirmed.",
       risk: "medium", expiresInHours: 48, idempotencyKey: `booking:${held.bookingId}`, actorKind: "agent",
     });
     await db.query("update appointment_bookings set status = 'awaiting_approval', approval_id = $2 where id = $1", [held.bookingId, approvalId]);
@@ -129,7 +152,7 @@ export async function executeNativeBooking(orgId: string, bookingId: string, opt
     return { b, skip: false as const, gated: null, org: org.rows[0] };
   });
   const { b } = loaded;
-  if (loaded.skip) return b.status === "booked" ? { status: "booked", bookingId, appointmentId: "" } : { status: "unavailable", reason: "slot_taken", detail: "This booking is no longer pending.", bookingId };
+  if (loaded.skip) return b.status === "booked" ? bookedResult(orgId, bookingId, "") : { status: "unavailable", reason: "slot_taken", detail: "This booking is no longer pending.", bookingId };
   if (loaded.gated) return { status: "unavailable", reason: "blocked", detail: loaded.gated, bookingId };
 
   const base = systemActor(loaded.org!, b.requested_by_kind === "ai" ? "Appointment Setter" : "Team");
@@ -143,16 +166,18 @@ export async function executeNativeBooking(orgId: string, bookingId: string, opt
       await db.query("update appointment_bookings set status = 'booked', appointment_id = $2, booked_at = now() where id = $1", [bookingId, res.appointmentId]);
       await recordAudit({ orgId, actorUserId: b.requested_by_user, actorKind: b.requested_by_kind === "ai" ? "agent" : "user", agentInstanceId: b.agent_id, action: "appointment.booked", targetType: "appointment_booking", targetId: bookingId, result: "success", metadata: { provider: "native", start: new Date(b.start_at).toISOString() } }, db);
     });
+    // When the type says a person confirms each booking, the appointment waits as `new`: the customer is told the time is reserved and the team will confirm, never that it is booked.
+    // The host's own confirmation sends the real confirmation later (queueHostConfirmationMessage).
     if (b.requested_by_kind === "ai" && b.conversation_id && b.agent_id) {
       await withSystem((db) =>
         queueOutbound(db, {
           orgId, conversationId: b.conversation_id as string, scope: "reply", actor: { kind: "ai", agentId: b.agent_id as string, approvalId: opts.approvalId ?? b.approval_id }, now,
-          body: `You're booked for ${formatSlot(new Date(b.start_at).toISOString(), b.timezone)}. We look forward to seeing you. Reply here if you need to change it.`,
-          dedupeKey: `booking-confirm:${bookingId}`,
+          body: bookingCustomerText(res.status, formatSlot(new Date(b.start_at).toISOString(), b.timezone)),
+          dedupeKey: bookingMessageKey(bookingId, res.status),
         }),
       ).catch(() => undefined);
     }
-    return { status: "booked", bookingId, appointmentId: res.appointmentId };
+    return { status: "booked", bookingId, appointmentId: res.appointmentId, appointmentStatus: res.status };
   } catch (err) {
     const reason = err instanceof AppError ? err.message : "The booking could not be completed.";
     await withSystem((db) => db.query("update appointment_bookings set status = 'failed', failure_reason = $2 where id = $1 and status in ('requested', 'awaiting_approval')", [bookingId, reason.slice(0, 300)]));

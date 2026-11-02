@@ -3,8 +3,9 @@ import { withSystem } from "@/server/db";
 import { setAgentMode, setClientPause } from "@/server/automation/controls";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { parseReply, respondToConversation, respondToPending, withDisclosure, type ReplyGenerator } from "@/server/messaging/responder";
+import { bookingReplyText, parseReply, replyClaimProblems, respondToConversation, respondToPending, restrictedTopicsFor, withDisclosure, type ReplyGenerator } from "@/server/messaging/responder";
 import { takeOverConversation } from "@/server/messaging/handoff";
+import { suggestReply } from "@/server/messaging/inbox-ai";
 import { inbound, messagingOrg, type MessagingOrg } from "./support/messaging";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -193,3 +194,238 @@ describe("through the employee's own Hermes profile", () => {
     await withSystem((db) => db.query("update agent_instances set mode = 'autonomous' where id = $1", [m.salesAgentId]));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Customer-facing honesty: the claims net, and the client's own "a person handles these" topics
+// ---------------------------------------------------------------------------
+
+const approve = (orgId: string, rows: Array<[string, string]>) =>
+  withSystem(async (db) => {
+    for (const [section, content] of rows) await db.query("insert into company_knowledge (org_id, section, content, review_status) values ($1, $2, $3, 'approved')", [orgId, section, content]);
+  });
+const answer = (orgId: string, questionId: string, value: unknown, over: { skipped?: boolean; needsConfirmation?: boolean } = {}) =>
+  withSystem((db) =>
+    db.query("insert into onboarding_answers (org_id, question_id, value, skipped, source, needs_confirmation) values ($1, $2, $3::jsonb, $4, 'user', $5)", [orgId, questionId, JSON.stringify(value), over.skipped ?? false, over.needsConfirmation ?? false]),
+  );
+const escalations = async (conversationId: string) =>
+  (await withSystem((db) => db.query<{ category: string; status: string; summary: string }>("select category, status, summary from human_escalations where conversation_id = $1", [conversationId]))).rows;
+const heldAudits = async (orgId: string) =>
+  (await withSystem((db) => db.query<{ metadata: { reason: string; topic?: string; channel: string } }>("select metadata from audit_logs where org_id = $1 and action = 'messaging.reply_held' order by created_at", [orgId]))).rows.map((r) => r.metadata);
+const approvalCount = async (orgId: string) => Number((await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from approval_requests where org_id = $1", [orgId]))).rows[0].n);
+const channelInbound = (orgId: string, channel: "sms" | "whatsapp" | "email", body: string) =>
+  inbound(orgId, channel === "email" ? { channel, address: `buyer-${Math.random().toString(36).slice(2, 10)}@example.test`, body } : { channel, body });
+
+describe("a reply stating something the approved knowledge does not back", () => {
+  it.each(["sms", "whatsapp", "email"] as const)("is held as an escalation on %s: nothing is queued, and a person is asked", async (channel) => {
+    const o = await messagingOrg({ name: `Claims Net ${channel} Co` });
+    const c = await channelInbound(o.org.id, channel, "What would a gutter clean run me this week?");
+    const g = stub({ kind: "reply", text: "A gutter clean is $99 this week." });
+    const out = await respondToConversation(o.org.id, c.conversationId, { generate: g.generate });
+    expect(out.status).toBe("escalated");
+    expect(g.calls).toHaveLength(1);
+    expect(await messages(c.conversationId)).toHaveLength(0);
+    const [e] = await escalations(c.conversationId);
+    expect(e).toMatchObject({ category: "unsafe_or_uncertain", status: "awaiting_owner" });
+    // The summary is for staff: it names the AI's own amount, never the customer's words.
+    expect(e.summary).toContain("$99");
+    expect(e.summary).toContain("approved knowledge");
+    expect(e.summary).not.toContain("gutter clean run me");
+    expect(await heldAudits(o.org.id)).toEqual([{ reason: "unbacked_claim", channel }]);
+  });
+
+  it("holds an offer the business never approved ('10% off') and lets an approved one through", async () => {
+    const held = await messagingOrg({ name: "Claims Net Offer Co" });
+    const a = await inbound(held.org.id, { body: "Any deals right now?" });
+    const out = await respondToConversation(held.org.id, a.conversationId, { generate: stub({ kind: "reply", text: "Yes, we can do 10% off this week." }).generate });
+    expect(out.status).toBe("escalated");
+    expect(await messages(a.conversationId)).toHaveLength(0);
+
+    const backed = await messagingOrg({ name: "Claims Net Offer Backed Co" });
+    await approve(backed.org.id, [["policies", "Spring offer: 10% off gutter cleaning until the end of May."]]);
+    const b = await inbound(backed.org.id, { body: "Any deals right now?" });
+    const ok = await respondToConversation(backed.org.id, b.conversationId, { generate: stub({ kind: "reply", text: "Yes, our spring offer is 10% off gutter cleaning." }).generate });
+    expect(ok.status).toBe("queued");
+    expect((await messages(b.conversationId))[0]).toMatchObject({ status: "queued", body: expect.stringContaining("10% off gutter cleaning") });
+    expect(await heldAudits(backed.org.id)).toEqual([]);
+  });
+
+  it("lets a price through when the approved knowledge states it, and holds a different one", async () => {
+    const o = await messagingOrg({ name: "Claims Net Price Co" });
+    await approve(o.org.id, [["approved_pricing", "Gutter cleaning: $99. Roof inspection: free."]]);
+    const same = await inbound(o.org.id, { body: "How much is a gutter clean?" });
+    expect((await respondToConversation(o.org.id, same.conversationId, { generate: stub({ kind: "reply", text: "A gutter clean is $99." }).generate })).status).toBe("queued");
+    const other = await inbound(o.org.id, { body: "And a roof repair?" });
+    expect((await respondToConversation(o.org.id, other.conversationId, { generate: stub({ kind: "reply", text: "A roof repair is $450." }).generate })).status).toBe("escalated");
+    expect(await messages(other.conversationId)).toHaveLength(0);
+  });
+
+  it("never uses another workspace's knowledge to back a claim", async () => {
+    const mine = await messagingOrg({ name: "Claims Net Mine Co" });
+    const theirs = await messagingOrg({ name: "Claims Net Theirs Co" });
+    await approve(theirs.org.id, [["approved_pricing", "Gutter cleaning: $99."]]);
+    const c = await inbound(mine.org.id, { body: "How much is a gutter clean?" });
+    expect((await respondToConversation(mine.org.id, c.conversationId, { generate: stub({ kind: "reply", text: "A gutter clean is $99." }).generate })).status).toBe("escalated");
+    expect(await replyClaimProblems(mine.org.id, "A gutter clean is $99.", "")).toHaveLength(1);
+    expect(await replyClaimProblems(theirs.org.id, "A gutter clean is $99.", "")).toEqual([]);
+  });
+
+  it("stays inside the approval policy: an employee that needs approval leaves no draft and no approval request for a held reply", async () => {
+    const o = await messagingOrg({ name: "Claims Net Approval Co", autonomous: false });
+    const c = await inbound(o.org.id, { body: "How much?" });
+    const before = await approvalCount(o.org.id);
+    expect((await respondToConversation(o.org.id, c.conversationId, { generate: stub({ kind: "reply", text: "It is $75 today only." }).generate })).status).toBe("escalated");
+    expect(await messages(c.conversationId)).toHaveLength(0);
+    expect(await approvalCount(o.org.id)).toBe(before);
+    // The same employee, with a reply that stays inside the knowledge, still only drafts.
+    const fine = await inbound(o.org.id, { body: "Are you open Saturday?" });
+    expect(await respondToConversation(o.org.id, fine.conversationId, { generate: stub({ kind: "reply", text: "Let me check with the team." }).generate })).toMatchObject({ status: "draft" });
+  });
+
+  it("leaves a reply with nothing to check alone", async () => {
+    const o = await messagingOrg({ name: "Claims Net Untouched Co" });
+    const c = await inbound(o.org.id, { body: "Hello?" });
+    expect((await respondToConversation(o.org.id, c.conversationId, { generate: stub({ kind: "reply", text: "Hello! How can I help?" }).generate })).status).toBe("queued");
+    expect(await heldAudits(o.org.id)).toEqual([]);
+  });
+});
+
+describe("the client's own 'a person handles these' answers", () => {
+  it("send a customer asking about a picked topic to a person BEFORE the model is called", async () => {
+    const o = await messagingOrg({ name: "Topic Refunds Co" });
+    await answer(o.org.id, "c.sensitive_topics", ["refunds", "legal"]);
+    const c = await inbound(o.org.id, { body: "You charged twice for my SECRETWORD visit" });
+    expect(c.escalationId).toBeNull(); // the blunt ingest net does not catch this phrasing; the client's answer does
+    const g = stub({ kind: "reply", text: "should never be written" });
+    const out = await respondToConversation(o.org.id, c.conversationId, { generate: g.generate });
+    expect(out.status).toBe("escalated");
+    expect(g.calls).toHaveLength(0); // no model call, no cost
+    expect(await messages(c.conversationId)).toHaveLength(0);
+    const [e] = await escalations(c.conversationId);
+    expect(e).toMatchObject({ category: "refund_concern", status: "awaiting_owner" });
+    expect(e.summary).toContain("refunds and billing disputes");
+    expect(e.summary).not.toContain("SECRETWORD");
+    expect(await heldAudits(o.org.id)).toEqual([{ reason: "restricted_topic", topic: "refunds", channel: "sms" }]);
+    // Asked again (a webhook retry): the open escalation holds it, still no model call.
+    expect(await respondToConversation(o.org.id, c.conversationId, { generate: g.generate })).toEqual({ status: "skipped", reason: "escalation_pending" });
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it("make 'May your AI share prices? No' a real rule: pricing goes to a person, and a client who allows prices is answered", async () => {
+    const never = await messagingOrg({ name: "Topic Pricing Never Co" });
+    await answer(never.org.id, "d.pricing_policy", "never");
+    const a = await inbound(never.org.id, { body: "What is the price for a full roof?" });
+    const g = stub({ kind: "reply", text: "unused" });
+    expect((await respondToConversation(never.org.id, a.conversationId, { generate: g.generate })).status).toBe("escalated");
+    expect(g.calls).toHaveLength(0);
+    expect((await escalations(a.conversationId))[0].category).toBe("sensitive_negotiation");
+
+    const exact = await messagingOrg({ name: "Topic Pricing Exact Co" });
+    await answer(exact.org.id, "d.pricing_policy", "exact");
+    await approve(exact.org.id, [["approved_pricing", "Full roof: $9000."]]);
+    const b = await inbound(exact.org.id, { body: "What is the price for a full roof?" });
+    const g2 = stub({ kind: "reply", text: "A full roof is $9000." });
+    expect((await respondToConversation(exact.org.id, b.conversationId, { generate: g2.generate })).status).toBe("queued");
+    expect(g2.calls).toHaveLength(1);
+  });
+
+  it("apply only to the topics that were picked", async () => {
+    const o = await messagingOrg({ name: "Topic Unpicked Co" });
+    await answer(o.org.id, "c.sensitive_topics", ["legal"]);
+    const c = await inbound(o.org.id, { body: "How much is a gutter clean?" });
+    const g = stub({ kind: "reply", text: "Let me check with the team." });
+    expect((await respondToConversation(o.org.id, c.conversationId, { generate: g.generate })).status).toBe("queued");
+    expect(g.calls).toHaveLength(1);
+  });
+
+  it("are the client's decision only once confirmed: a skipped answer, or one still waiting for confirmation, restricts nothing", async () => {
+    const o = await messagingOrg({ name: "Topic Unconfirmed Co" });
+    await answer(o.org.id, "c.sensitive_topics", ["pricing"], { needsConfirmation: true });
+    await answer(o.org.id, "d.pricing_policy", "never", { skipped: true });
+    expect(await withSystem((db) => restrictedTopicsFor(db, o.org.id))).toEqual([]);
+    const c = await inbound(o.org.id, { body: "How much is a gutter clean?" });
+    const g = stub({ kind: "reply", text: "Let me check with the team." });
+    expect((await respondToConversation(o.org.id, c.conversationId, { generate: g.generate })).status).toBe("queued");
+    expect(g.calls).toHaveLength(1);
+  });
+
+  it("never cross workspaces: one client's topics do not apply to another, whose own answers are read for it", async () => {
+    const strict = await messagingOrg({ name: "Topic Strict Co" });
+    const relaxed = await messagingOrg({ name: "Topic Relaxed Co" });
+    await answer(strict.org.id, "c.sensitive_topics", ["pricing", "warranty"]);
+    await answer(relaxed.org.id, "c.sensitive_topics", ["medical"]);
+    expect(await withSystem((db) => restrictedTopicsFor(db, strict.org.id))).toEqual(["pricing", "warranty"]);
+    expect(await withSystem((db) => restrictedTopicsFor(db, relaxed.org.id))).toEqual(["medical"]);
+    const c = await inbound(relaxed.org.id, { body: "How much is a gutter clean? Is it under warranty?" });
+    const g = stub({ kind: "reply", text: "Let me check with the team." });
+    expect((await respondToConversation(relaxed.org.id, c.conversationId, { generate: g.generate })).status).toBe("queued");
+    expect(g.calls).toHaveLength(1);
+    const s = await inbound(strict.org.id, { body: "How much is a gutter clean? Is it under warranty?" });
+    expect((await respondToConversation(strict.org.id, s.conversationId, { generate: g.generate })).status).toBe("escalated");
+    expect(g.calls).toHaveLength(1); // the strict client's message never reached the model
+  });
+
+  it("stay inside the approval policy: an employee that needs approval leaves no draft and no approval request", async () => {
+    const o = await messagingOrg({ name: "Topic Approval Co", autonomous: false });
+    await answer(o.org.id, "c.sensitive_topics", ["warranty"]);
+    const c = await inbound(o.org.id, { body: "Is the roof work under warranty?" });
+    const before = await approvalCount(o.org.id);
+    const g = stub({ kind: "reply", text: "unused" });
+    expect((await respondToConversation(o.org.id, c.conversationId, { generate: g.generate })).status).toBe("escalated");
+    expect(await messages(c.conversationId)).toHaveLength(0);
+    expect(await approvalCount(o.org.id)).toBe(before);
+    expect(g.calls).toHaveLength(0);
+  });
+});
+
+describe("what a customer is told after the employee asks to book", () => {
+  it("never says 'booked' for a booking that still waits for a person to confirm it", () => {
+    const waiting = bookingReplyText({ status: "booked", bookingId: "b", appointmentId: "a", appointmentStatus: "new" }, "Tue 10:00");
+    expect(waiting).toContain("We've reserved Tue 10:00 for you. The team will confirm it shortly");
+    expect(waiting).not.toMatch(/booked|confirmed/i);
+    expect(bookingReplyText({ status: "booked", bookingId: "b", appointmentId: "a", appointmentStatus: "confirmed" }, "Tue 10:00")).toBe("You're booked for Tue 10:00.");
+    expect(bookingReplyText({ status: "booked", bookingId: "b", appointmentId: "a" }, "Tue 10:00")).toBe("You're booked for Tue 10:00.");
+  });
+});
+
+describe("a draft the AI suggests inside the inbox", () => {
+  const fake = (text: string) => ({ complete: async () => ({ ok: true as const, text }) });
+
+  it("is annotated, not blocked, when it states an amount or offer the approved knowledge does not back", async () => {
+    const o = await messagingOrg({ name: "Inbox Draft Claims Co" });
+    const c = await inbound(o.org.id, { name: "Carla Reyes", body: "What does the heat pump install cost?" });
+    const out = await suggestReply(o.ctx("manager"), c.conversationId, fake("Hi Carla, the install is $2,400 and we are running 15% off this week."));
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    // Still a draft the person can edit and send: the text is untouched.
+    expect(out.data.text).toContain("$2,400");
+    expect(out.data.warnings.join(" ")).toMatch(/amount \(\$2,400\)/);
+    expect(out.data.warnings.join(" ")).toMatch(/15%/);
+    expect(out.data.warnings.every((w) => w.length > 10)).toBe(true);
+  });
+
+  it("carries no such warning when the approved knowledge states the amount, and never uses another workspace's knowledge", async () => {
+    const backed = await messagingOrg({ name: "Inbox Draft Backed Co" });
+    await approve(backed.org.id, [["approved_pricing", "Heat pump install: $2,400."]]);
+    const a = await inbound(backed.org.id, { body: "What does the heat pump install cost?" });
+    const ok = await suggestReply(backed.ctx("manager"), a.conversationId, fake("Hi, the heat pump install is $2,400."));
+    expect(ok.ok && ok.data.warnings.filter((w) => /approved company knowledge/.test(w))).toEqual([]);
+
+    const other = await messagingOrg({ name: "Inbox Draft Other Co" });
+    const b = await inbound(other.org.id, { body: "What does the heat pump install cost?" });
+    const held = await suggestReply(other.ctx("manager"), b.conversationId, fake("Hi, the heat pump install is $2,400."));
+    expect(held.ok && held.data.warnings.join(" ")).toMatch(/amount \(\$2,400\)/);
+  });
+
+  it("repeats the customer's own contact detail without a warning, and sends nothing", async () => {
+    const o = await messagingOrg({ name: "Inbox Draft Own Detail Co" });
+    const c = await inbound(o.org.id, { body: "Please email me at carla.reyes@example.test about the quote" });
+    const before = (await messages2(o.org.id));
+    const out = await suggestReply(o.ctx("manager"), c.conversationId, fake("Thanks, we will email you at carla.reyes@example.test."));
+    expect(out.ok && out.data.warnings.filter((w) => /approved company knowledge/.test(w))).toEqual([]);
+    expect(await messages2(o.org.id)).toBe(before);
+  });
+});
+
+async function messages2(orgId: string) {
+  return Number((await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from conversation_messages where org_id = $1 and direction <> 'inbound'", [orgId]))).rows[0].n);
+}

@@ -77,7 +77,7 @@ interface PriorRow {
 async function latestRow(db: Queryable, orgId: string): Promise<{ id: string | null; prior: PriorRow | null; count: number }> {
   const { rows } = await db.query<{ id: string; metadata: Record<string, unknown>; n: string }>(
     `select id::text as id, metadata, (select count(*) from audit_logs where org_id = $1 and action = $2) as n
-       from audit_logs where org_id = $1 and action = $2 order by id desc limit 1`,
+       from audit_logs where org_id = $1 and action = $2 order by audit_logs.id desc limit 1`,
     [orgId, LAUNCH_LEDGER_ACTION],
   );
   const id = rows[0]?.id ?? null;
@@ -149,9 +149,10 @@ async function notifyOwners(db: Queryable, orgId: string, row: LaunchLedgerRow, 
 
 /**
  * Records the workspace's launch state if it changed, and tells iAcquire about a wait that has gone on too long. Returns null for a workspace that is not a client's, a sample
- * workspace, and a workspace that does not exist: nothing is written for those. `opts.now` is for tests and for a caller that already read the clock.
+ * workspace, and a workspace that does not exist: nothing is written for those. `opts.now` is for tests and for a caller that already read the clock. `opts.baseline` is for the
+ * clock-driven watch: when the workspace has no row yet, the first row is written without telling the owners (it is where the ledger starts, not something that just happened).
  */
-export async function recordLaunchSnapshot(orgId: string, actor: LaunchActor, opts: { now?: Date } = {}): Promise<LaunchLedgerResult | null> {
+export async function recordLaunchSnapshot(orgId: string, actor: LaunchActor, opts: { now?: Date; baseline?: boolean } = {}): Promise<LaunchLedgerResult | null> {
   const org = (await withSystem((db) => db.query<{ kind: string; is_demo: boolean; name: string }>("select kind, is_demo, name from organizations where id = $1", [orgId]))).rows[0];
   if (!org || org.kind !== "client" || org.is_demo) return null;
 
@@ -188,7 +189,7 @@ export async function recordLaunchSnapshot(orgId: string, actor: LaunchActor, op
         orgId, actorUserId: actor.kind === "user" ? actor.userId : null, actorKind: actor.kind, action: LAUNCH_LEDGER_ACTION, targetType: "organization", targetId: orgId, result: "success",
         metadata: { ...row },
       }, db);
-      await notifyOwners(db, orgId, row, count);
+      if (!(opts.baseline && !prior)) await notifyOwners(db, orgId, row, count);
       return { ...result, recorded: true };
     });
     if (written !== "raced") return written;

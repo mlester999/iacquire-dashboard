@@ -71,7 +71,7 @@ const MESSAGE_KINDS: ReadonlySet<ApprovalKind> = new Set<ApprovalKind>(["follow_
  * change, whose executor writes to the calendar before it reports success; "Sent" only once the message itself is sent or delivered; a queued draft is "waiting to send" and a
  * blocked or failed one is "not sent". Everything else a person approved is "applied" in iAcquire's own records, or says exactly what was handed on (a resumed run, a released step).
  */
-export function approvalOutcome(row: Pick<ApprovalRow, "kind" | "status" | "execution_status" | "execution_detail" | "downstream_status" | "downstream_detail">): ApprovalOutcome | null {
+export function approvalOutcome(row: Pick<ApprovalRow, "kind" | "status" | "execution_status" | "execution_detail" | "downstream_status" | "downstream_detail"> & { appointment_status?: "new" | "confirmed" | null }): ApprovalOutcome | null {
   if (row.status !== "approved") return null;
   const detail = row.execution_detail;
   const messaging = MESSAGE_KINDS.has(row.kind);
@@ -90,6 +90,9 @@ export function approvalOutcome(row: Pick<ApprovalRow, "kind" | "status" | "exec
   }
   switch (row.kind) {
     case "appointment_booking":
+      // The time is on the calendar, but the appointment type says a person confirms it and nobody has yet.
+      if (row.appointment_status === "new") return { label: "Approved and applied", tone: "neutral", detail: detail ?? "On the calendar, waiting for the host to confirm." };
+      return { label: "Completed", tone: "success", detail };
     case "appointment_change":
       return { label: "Completed", tone: "success", detail };
     case "follow_up_message": {
@@ -170,7 +173,8 @@ const LIST_SQL = `
   select a.id, a.kind, a.title, a.target_type, a.target_label, a.reason, a.expected_effect, a.risk, a.status,
          a.execution_status, a.execution_detail, a.expires_at, a.decided_at, a.decision_note, a.created_at,
          ai.role_key as agent_role, ru.full_name as requested_by_name, du.full_name as decided_by_name,
-         case when a.kind = 'follow_up_message' then a.action ->> 'messageId' end as message_id
+         case when a.kind = 'follow_up_message' then a.action ->> 'messageId' end as message_id,
+         case when a.kind = 'appointment_booking' then a.action ->> 'bookingId' end as booking_id
   from approval_requests a
   left join agent_instances ai on ai.id = a.agent_instance_id
   left join users ru on ru.id = a.requested_by
@@ -181,7 +185,7 @@ export async function listApprovals(ctx: OrgContext, filter: "pending" | "histor
   const listed = await withUser(ctx.user.id, async (db) => {
     const where =
       filter === "pending" ? "a.status = 'pending'" : filter === "history" ? "a.status <> 'pending'" : "true";
-    const { rows } = await db.query<Omit<ApprovalRow, "downstream_status" | "downstream_detail" | "evidence" | "outcome"> & { message_id: string | null }>(
+    const { rows } = await db.query<Omit<ApprovalRow, "downstream_status" | "downstream_detail" | "evidence" | "outcome"> & { message_id: string | null; booking_id: string | null }>(
       `${LIST_SQL} where a.org_id = $1 and ${where} order by a.created_at desc limit 200`,
       [ctx.org.orgId],
     );
@@ -202,12 +206,26 @@ export async function listApprovals(ctx: OrgContext, filter: "pending" | "histor
     for (const row of rows) downstream.set(row.id, { status: row.status, detail: (row.status_detail ?? row.blocked_reason)?.slice(0, 300) ?? null });
   }
 
-  return listed.map(({ message_id, ...row }) => {
+  // A booking's own state (the appointment waits for the host, or is confirmed), read only for bookings of this workspace.
+  const bookingIds = [...new Set(listed.map((row) => row.booking_id).filter((id): id is string => typeof id === "string" && UUID.test(id)))];
+  const appointmentStatuses = new Map<string, "new" | "confirmed">();
+  if (bookingIds.length) {
+    const { rows } = await withSystem((db) =>
+      db.query<{ id: string; status: string }>(
+        "select b.id, r.status from appointment_bookings b join appointment_refs r on r.id = b.appointment_id and r.org_id = b.org_id where b.org_id = $1 and b.id = any($2::uuid[])",
+        [ctx.org.orgId, bookingIds],
+      ),
+    );
+    for (const row of rows) appointmentStatuses.set(row.id, row.status === "new" ? "new" : "confirmed");
+  }
+
+  return listed.map(({ message_id, booking_id, ...row }) => {
     const message = message_id ? downstream.get(message_id) : undefined;
+    const appointment_status = booking_id ? appointmentStatuses.get(booking_id) ?? null : null;
     const base = { ...row, downstream_status: message?.status ?? null, downstream_detail: message?.detail ?? null };
-    const kind = classifyApproval({ kind: row.kind, status: row.status, execution_status: row.execution_status, downstream: base.downstream_status });
+    const kind = classifyApproval({ kind: row.kind, status: row.status, execution_status: row.execution_status, downstream: base.downstream_status, appointmentStatus: appointment_status });
     const evidence: EvidenceMarker = { v: 1, class: kind.class, ledger: { kind: "approval", id: row.id } };
-    return { ...base, evidence, outcome: approvalOutcome(base) };
+    return { ...base, evidence, outcome: approvalOutcome({ ...base, appointment_status }) };
   });
 }
 

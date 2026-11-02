@@ -363,6 +363,8 @@ describe("core modules are never gated by payment or a lapse", () => {
       // The launch panel reports where the fee stands (the state before payment reads "Questionnaire submitted") and the final checks wait for it. Neither spends anything.
       "src/server/setup/launch-intents.ts",
       "src/server/setup/launch-readiness.ts",
+      // The launch watch looks only at clients the one gate says have paid (a refunded client is not examined).
+      "src/server/setup/launch-watch.ts",
       "src/server/setup/snapshots.ts",
       "src/server/workforce/provisioning.ts",
     ].sort());

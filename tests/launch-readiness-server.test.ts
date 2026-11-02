@@ -701,3 +701,76 @@ describe("the polling action", () => {
     await expect(getLaunchReadinessAction()).rejects.toThrow(/client workspace/i);
   }, 60_000);
 });
+
+describe("the employees that do not run what the client approved, read from the workspace", () => {
+  it("lists nobody for a client whose employees were built from its answers, and every employee once the business information moved on", async () => {
+    const c = await readyClient({ name: "Behind Facts Roofing", timezone: "America/Chicago" });
+    const clean = (await loadLaunchFacts(c.ctx))!;
+    expect(clean.employeesBehind).toBeUndefined();
+    expect((await getLaunchReadiness(c.ctx))!.steps.flatMap((s) => s.items).map((i) => i.key)).not.toContain("employees.in_sync");
+
+    await withSystem((db) => db.query("update company_profiles set services = 'Metal roofing and gutters' where org_id = $1", [c.org.id]));
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.employeesBehind!.map((b) => b.role).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
+    expect(facts.employeesBehind!.every((b) => /business information/i.test(b.reason))).toBe(true);
+    expect(facts.canSyncEmployees).toBe(true);
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(itemOf(r, "employees.in_sync")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { intent: "sync_employees" } });
+    expect(r.state).toBe("action_required");
+    expect(r.percent).toBeLessThan(100);
+  }, 180_000);
+
+  it("tells a person who may not manage the profile that only an owner or admin can update them, and gives them no step", async () => {
+    const c = await readyClient({ name: "Behind Viewer Roofing", timezone: "America/Chicago" });
+    await withSystem((db) => db.query("update company_profiles set services = 'Metal roofing and gutters' where org_id = $1", [c.org.id]));
+    const viewer = ctxFor(c.people.viewer, c.org, "viewer");
+    expect((await loadLaunchFacts(viewer))!.canSyncEmployees).toBe(false);
+    const item = itemOf((await getLaunchReadiness(viewer))!, "employees.in_sync");
+    expect(item.action).toBeUndefined();
+    expect(item.detail).toContain("Only an owner or admin can update them.");
+  }, 180_000);
+
+  it("does not call an employee with no configuration at all behind (the employee's own line says that), and keeps two clients apart", async () => {
+    const a = await readyClient({ name: "Behind Apart A", timezone: "America/Chicago" });
+    const b = await readyClient({ name: "Behind Apart B", timezone: "Asia/Manila" });
+    await withSystem(async (db) => {
+      await db.query("update company_profiles set services = 'Metal roofing and gutters' where org_id = $1", [a.org.id]);
+      await db.query("update agent_instances set active_config_version_id = null where org_id = $1 and role_key = 'lead_hunter'", [a.org.id]);
+    });
+    const facts = (await loadLaunchFacts(a.ctx))!;
+    expect(facts.employeesBehind!.map((x) => x.role)).not.toContain("lead_hunter");
+    expect(facts.employeesBehind!.length).toBe(AGENT_ROLE_KEYS.length - 1);
+    expect((await loadLaunchFacts(b.ctx))!.employeesBehind).toBeUndefined();
+  }, 240_000);
+
+  it("says nothing before the questionnaire is submitted", async () => {
+    const early = await crmOrg({ name: "Behind Early Roofing", timezone: "UTC" });
+    expect((await loadLaunchFacts(ctxFor(early.people.owner, early.org, "owner")))!.employeesBehind).toBeUndefined();
+  }, 120_000);
+});
+
+describe("what the calendar's re-check recorded, read into the facts", () => {
+  const drift = { at: "2026-10-26T06:00:00.000Z", failing: ["hours"], digest: "d", seq: 1, reason: "host_hours_changed", checks: [{ key: "hours", detail: "Dana has no weekly hours." }, { key: "connections", detail: "Dana's Google account needs a new sign-in." }] };
+
+  it("reads the recorded failing checks of an active calendar, and the judge leaves the live read in charge", async () => {
+    const c = await readyClient({ name: "Drift Facts Roofing", timezone: "America/Chicago" });
+    expect((await loadLaunchFacts(c.ctx))!.appointments.calendar!.drift).toBeUndefined();
+    await withSystem((db) => db.query("update crm_calendars set verification = verification || jsonb_build_object('drift', $2::jsonb) where id = $1", [c.calendarId, JSON.stringify(drift)]));
+    const facts = (await loadLaunchFacts(c.ctx))!;
+    expect(facts.appointments.calendar!.drift).toEqual({ checks: drift.checks });
+    // The checks were read live and pass, so a stored record from earlier adds no line and does not hold the client back.
+    const r = (await getLaunchReadiness(c.ctx))!;
+    expect(r.steps.flatMap((s) => s.items).map((i) => i.key).filter((k) => k.startsWith("calendar.drift"))).toEqual([]);
+    expect(itemOf(r, "calendar.verified").state).toBe("done");
+  }, 180_000);
+
+  it("ignores a stored value that is not the shape the re-check writes, and another client's record", async () => {
+    const a = await readyClient({ name: "Drift Shape A", timezone: "America/Chicago" });
+    const b = await readyClient({ name: "Drift Shape B", timezone: "America/Chicago" });
+    await withSystem((db) => db.query("update crm_calendars set verification = verification || jsonb_build_object('drift', $2::jsonb) where id = $1", [a.calendarId, JSON.stringify({ checks: "nope" })]));
+    expect((await loadLaunchFacts(a.ctx))!.appointments.calendar!.drift).toBeUndefined();
+    await withSystem((db) => db.query("update crm_calendars set verification = verification || jsonb_build_object('drift', $2::jsonb) where id = $1", [a.calendarId, JSON.stringify({ checks: [{ key: 5 }, { key: "hours" }, { key: "types", detail: "Nothing to book." }] })]));
+    expect((await loadLaunchFacts(a.ctx))!.appointments.calendar!.drift).toEqual({ checks: [{ key: "types", detail: "Nothing to book." }] });
+    expect((await loadLaunchFacts(b.ctx))!.appointments.calendar!.drift).toBeUndefined();
+  }, 240_000);
+});

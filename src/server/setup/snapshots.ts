@@ -42,6 +42,9 @@ import {
   type TaskStatus,
 } from "@/lib/setup";
 import { runtimeReadySql } from "@/lib/employee-runtime";
+import { deriveLaunchReadiness, LAUNCH_STATE_LABEL, type LaunchAction, type LaunchItem, type LaunchReadiness, type LaunchState } from "@/lib/launch-readiness";
+import { readLaunchCurrent, type LaunchCurrent } from "@/server/setup/launch-ledger";
+import { launchStallMinutes, loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
 
 // ---------------------------------------------------------------------------
 // Client portal
@@ -408,6 +411,28 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
 
 export type HealthLevel = "healthy" | "issue" | "partial" | "not_connected";
 
+/**
+ * Where a client's launch stands, as the ledger last recorded it (one row per client, never recomputed for a list). Absent until the client has something to remember: a client that has
+ * not started has no row. `needsClient` and `needsIacquire` count the required items that are waiting on each side.
+ */
+export interface ClientLaunchSummary {
+  state: LaunchState;
+  label: string;
+  percent: number;
+  passed: number;
+  total: number;
+  needsClient: number;
+  needsIacquire: number;
+  /** When the client entered this state (ISO). */
+  since: string;
+  topBlocker: { key: string; label: string; owner: string } | null;
+}
+
+export function launchSummaryOf(c: LaunchCurrent | undefined): ClientLaunchSummary | null {
+  if (!c) return null;
+  return { state: c.state, label: LAUNCH_STATE_LABEL[c.state], percent: c.percent, passed: c.passed, total: c.total, needsClient: c.needsYou, needsIacquire: c.needsIacquire, since: c.since, topBlocker: c.topBlocker };
+}
+
 export interface ClientSetupRow {
   id: string;
   name: string;
@@ -433,6 +458,8 @@ export interface ClientSetupRow {
   health: { level: HealthLevel; agentsOnline: number; agentsEnabled: number; ghl: string | null; calendar: string | null; n8n: string | null; failedChecks: number; failingAgents: number };
   openTickets: number;
   lastActivityAt: string | null;
+  /** The launch ledger's newest state for this client: null when nothing has been recorded yet. Optional so a row built by hand (a test, a preview) needs no launch data. */
+  launch?: ClientLaunchSummary | null;
 }
 
 export async function listClientSetupOverview(user: SessionUser): Promise<ClientSetupRow[]> {
@@ -517,6 +544,9 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
       [user.id],
     );
   });
+  // The launch state of exactly the clients the query above let this person see: one read of the ledger, not a fact load per client.
+  const launch = new Map<string, LaunchCurrent>();
+  for (let i = 0; i < rows.length; i += 500) for (const [id, current] of await readLaunchCurrent(rows.slice(i, i + 500).map((r) => r.id))) launch.set(id, current);
   return rows.map((r) => {
     const level = fleetHealth({
       agentsOnline: r.agents_online,
@@ -566,6 +596,50 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
       },
       openTickets: r.open_tickets,
       lastActivityAt: last.length ? new Date(Math.max(...last)).toISOString() : null,
+      launch: launchSummaryOf(launch.get(r.id)),
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// One client's launch checklist, for the agency
+// ---------------------------------------------------------------------------
+
+/**
+ * The screen in iAcquire's own admin where an item is dealt with, or nothing when it is the client's own to do (their questionnaire, their calendar, their settings): staff are not sent
+ * into a client's screens. Every one of these paths is an agency page that exists.
+ */
+function agencyLinkFor(key: string, orgId: string): LaunchAction | undefined {
+  const base = `/admin/clients/${orgId}`;
+  if (/^(employees|verification)\./.test(key)) return { label: "Open provisioning", href: `${base}/provisioning` };
+  if (/^integrations\.(email|sms|whatsapp)$/.test(key)) return { label: "Open communications", href: `${base}/communications` };
+  if (key === "calendar.connection" || key === "calendar.busy" || key === "calendar.external") return { label: "Open integrations", href: `${base}/integrations` };
+  if (key === "crm.blueprint") return { label: "Open CRM setup", href: `${base}/crm` };
+  return undefined;
+}
+
+/**
+ * The same readiness for staff to read. The client's buttons (they run a step as the client) and the client's links (their own screens) are taken out and replaced by iAcquire's own
+ * screens where there is one; the host picker is the client's alone. Nothing else changes: the state, the percentage, who each item waits on and the words are the client's own.
+ */
+export function agencyLaunchView(r: LaunchReadiness, orgId: string): LaunchReadiness {
+  const view = (i: LaunchItem): LaunchItem => {
+    const copy: LaunchItem = { ...i };
+    delete copy.action;
+    delete copy.hostChoices;
+    const link = agencyLinkFor(i.key, orgId);
+    return link ? { ...copy, action: link } : copy;
+  };
+  return { ...r, steps: r.steps.map((s) => ({ ...s, items: s.items.map(view) })), blocking: r.blocking.map(view) };
+}
+
+/**
+ * What the client's launch checklist says right now, for an agency person who may open this client's setup. Read-only: the facts are read from the client's own records and nothing is
+ * written (the ledger is written by events and the launch watch, never by a page). A workspace that is not a client's has no checklist (null).
+ */
+export async function getAgencyLaunchChecklist(admin: SessionUser, orgId: string): Promise<LaunchReadiness | null> {
+  await assertAgencyAccess(admin, orgId);
+  const facts = await loadLaunchFactsForOrg(orgId);
+  if (!facts) return null;
+  return agencyLaunchView(deriveLaunchReadiness(facts, new Date(), launchStallMinutes()), orgId);
 }

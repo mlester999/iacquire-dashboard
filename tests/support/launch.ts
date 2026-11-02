@@ -1,11 +1,15 @@
 // Fixtures for the launch-readiness tests: a client whose setup is finished in every way but the final checks, and the small readers the tests share. Nothing here talks to a provider.
 import { withSystem } from "@/server/db";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import type { LaunchReadiness } from "@/lib/launch-readiness";
 import { getWorkspace } from "@/server/crm/workspace";
 import { applyBlueprint, previewApplication } from "@/server/crm/blueprints/apply";
 import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { loadLaunchFacts } from "@/server/setup/launch-readiness";
+import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
+import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
+import { syncEmployeesFromAnswers } from "@/server/onboarding/employee-sync";
+import { decideHeldVersion } from "@/server/workforce/service";
 import { runLaunchIntent } from "@/server/setup/launch-intents";
 import type { OrgContext } from "@/server/tenancy/context";
 import { agentId, ctxFor } from "./fixtures";
@@ -42,7 +46,7 @@ export async function markBlueprintApplied(orgId: string) {
 }
 
 /** A client whose setup is finished in every way but the final checks: submitted, paid, CRM and calendar in place, six employees ready for authorized work. */
-export async function readyClient(opts: { name: string; timezone: string; noticeMinutes?: number }) {
+export async function readyClient(opts: { name: string; timezone: string; noticeMinutes?: number; /** More answers the client gave, saved BEFORE the employees are configured so they are part of what the employees were built from. */ extraAnswers?: Record<string, unknown> }) {
   const c = await crmOrg({ name: opts.name, timezone: opts.timezone });
   const owner = c.people.owner;
   await withSystem(async (db) => {
@@ -52,6 +56,9 @@ export async function readyClient(opts: { name: string; timezone: string; notice
     await db.query("insert into company_knowledge (org_id, section, content) values ($1, 'business_description', 'We repair residential roofs after storm damage.')", [c.org.id]);
     await db.query("insert into lead_targeting_profiles (org_id, criteria) values ($1, $2)", [c.org.id, JSON.stringify({ industries: ["Homeowners"], countries: ["US"] })]);
   });
+  for (const [question, value] of Object.entries(opts.extraAnswers ?? {})) {
+    await withSystem((db) => db.query("insert into onboarding_answers (org_id, question_id, value) values ($1, $2, $3::jsonb)", [c.org.id, question, JSON.stringify(value)]));
+  }
   await clearSetupPayment(c.org.id);
   const actor = c.actor("owner");
   await getWorkspace(actor);
@@ -59,8 +66,33 @@ export async function readyClient(opts: { name: string; timezone: string; notice
   await setHostAvailability(actor, owner.id, { timezone: opts.timezone, rules: WEEKDAYS });
   const calendar = await createCalendar(actor, { name: "Consultations", members: [{ userId: owner.id }], isDefault: true });
   await createAppointmentType(actor, calendar.id, { name: "Free consultation", durationMinutes: 30, minNoticeMinutes: opts.noticeMinutes ?? 60, maxDaysAhead: 30 });
+  await configureFromAnswers(c.org.id, owner.id);
   for (const role of AGENT_ROLE_KEYS) await makeRuntimeReady(await agentId(c.org.id, role), c.org.id, owner.id);
   return { ...c, calendarId: calendar.id, ctx: ctxFor(owner, c.org, "owner") };
+}
+
+/**
+ * Gives every employee the configuration a questionnaire submission gives it: built from the workspace's own answers by the shared per-employee build, as the product does it. A
+ * fixture that made them from bare defaults would leave every employee "behind" the answers (src/server/onboarding/employee-sync.ts), which is a different thing from a client that is
+ * ready. Employees that already have a configuration are left as they are.
+ */
+export async function configureFromAnswers(orgId: string, userId: string, roles: AgentRoleKey[] = AGENT_ROLE_KEYS.slice()) {
+  await withSystem(async (db) => {
+    const data = toLegacyData(confirmedAnswers(toStored(await loadAnswerRows(db, orgId)), planScope(roles)), roles);
+    await syncEmployeesFromAnswers(db, { orgId, userId, actorKind: "user" }, { data, selected: roles, basis: { firstSubmission: true, generated: null } });
+  });
+  await approveHeldFirstConfigurations(orgId);
+}
+
+/** A first configuration that needs a person's review (the CRM Manager's role template does) is approved the way the agency's reviewer approves it, so the employee runs what the answers say. */
+export async function approveHeldFirstConfigurations(orgId: string) {
+  const { superAdmin } = await agencyPeople();
+  await withSystem(async (db) => {
+    const held = await db.query<{ id: string }>(
+      "select v.id from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id where a.org_id = $1 and v.status = 'pending_agency_review' and a.active_config_version_id is null", [orgId],
+    );
+    for (const v of held.rows) await decideHeldVersion(db, { orgId, versionId: v.id, approve: true, agencyUserId: superAdmin.id });
+  });
 }
 
 export async function settled(orgId: string, expected: number) {

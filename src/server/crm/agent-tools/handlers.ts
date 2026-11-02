@@ -446,6 +446,8 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
       const base = { targetType: "appointment_booking", targetId: "bookingId" in res && res.bookingId ? res.bookingId : input.contactId };
       switch (res.status) {
         case "booked":
+          // On the calendar but the host has not confirmed it yet: the time is held, which is not the same as booked.
+          if (res.appointmentStatus === "new") return { ...base, outcome: "pending_approval", approvalId: null, summary: "The time is reserved on the calendar and waits for the host to confirm it. It is not booked yet, and there is no approval to wait for", result: { status: "awaiting_host_confirmation", bookingId: res.bookingId, appointmentId: res.appointmentId || null } };
           return { ...base, outcome: "done", summary: "Booked the appointment", result: { status: "booked", bookingId: res.bookingId, appointmentId: res.appointmentId || null } };
         case "awaiting_approval":
           return { ...base, outcome: "pending_approval", approvalId: res.approvalId, summary: "Asked a person to confirm the appointment", result: { status: "awaiting_approval", bookingId: res.bookingId, approvalId: res.approvalId } };

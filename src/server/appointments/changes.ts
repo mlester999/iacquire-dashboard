@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { getAvailability } from "@/server/appointments/availability";
 import { ghlAppointmentProvider } from "@/server/appointments/provider";
@@ -220,6 +220,30 @@ export async function executeApprovedAppointmentChange(
     status: "succeeded",
     detail: action.operation === "cancel" ? "The appointment was cancelled on its connected calendar." : "The appointment was moved to the approved available time.",
   };
+}
+
+/** What an appointment type lets a customer do to their own booking, in a sentence the approver of a change request reads. Pure. */
+export function customerChangePolicyText(rules: { typeName: string; allowCustomerChanges: boolean; changeCutoffMinutes: number }): string {
+  const name = rules.typeName.trim() || "this appointment type";
+  if (!rules.allowCustomerChanges) return `Customer change policy for "${name}": customers cannot move or cancel it themselves online; changes go through your team.`;
+  const m = rules.changeCutoffMinutes;
+  const until = m <= 0 ? "until it starts" : m % 60 === 0 ? `until ${m / 60} hour${m === 60 ? "" : "s"} before it starts` : `until ${m} minutes before it starts`;
+  return `Customer change policy for "${name}": customers may move or cancel it themselves online ${until}.`;
+}
+
+/**
+ * The type's customer-change policy for one appointment, for the card an owner or admin approves. An appointment on a calendar that records no such policy (a GoHighLevel one, or a type
+ * that no longer exists) says so rather than implying a rule. Names the workspace, so another workspace's appointment reads as having no policy.
+ */
+export async function customerChangePolicyNote(db: Queryable, orgId: string, appointmentId: string): Promise<string> {
+  const { rows } = await db.query<{ name: string; allow_customer_changes: boolean; change_cutoff_minutes: number }>(
+    `select t.name, t.allow_customer_changes, t.change_cutoff_minutes from appointment_refs a
+       join crm_appointment_types t on t.id = a.appointment_type_id and t.org_id = a.org_id where a.id = $1 and a.org_id = $2`,
+    [appointmentId, orgId],
+  );
+  const t = rows[0];
+  if (!t) return "This appointment's calendar does not record a customer change policy.";
+  return customerChangePolicyText({ typeName: t.name, allowCustomerChanges: t.allow_customer_changes, changeCutoffMinutes: t.change_cutoff_minutes });
 }
 
 /** Snapshot shape used by chat when persisting its short-lived proposal. */

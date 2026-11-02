@@ -245,12 +245,20 @@ export async function readRowCounts(orgId: string): Promise<Record<string, numbe
  * For every workspace table: rows created and rows changed (but not created) for this workspace since `sinceIso`, and the change in its row count against the baseline. The
  * timestamp columns see an insert or an update in a table that has them; the row count sees an insert or a delete in any table. A table that could not be read is reported, never
  * skipped. An update in a table with no updated_at is the one thing neither can see (the operator procedure says so).
+ *
+ * `expectedTables` names the tables whose changes are not writes for this run. It defaults to the A4a bookkeeping tables; the client pilot passes its own list
+ * (src/server/workforce/client-pilot-evidence.ts), because a pilot's window legitimately writes provisioning, health and setup rows that an A4a read does not.
  */
-export async function readWriteDeltas(orgId: string, sinceIso: string, baselineCounts: Record<string, number | null> = {}): Promise<TableDelta[]> {
+export async function readWriteDeltas(
+  orgId: string,
+  sinceIso: string,
+  baselineCounts: Record<string, number | null> = {},
+  expectedTables: readonly string[] = EXPECTED_BOOKKEEPING_TABLES,
+): Promise<TableDelta[]> {
   return inReadOnlyTransaction(async (db) => {
     const deltas: TableDelta[] = [];
     for (const { table, hasCreated, hasUpdated } of await listTables(db)) {
-      const expected = EXPECTED_BOOKKEEPING_TABLES.includes(table);
+      const expected = expectedTables.includes(table);
       const hasBaseline = Object.prototype.hasOwnProperty.call(baselineCounts, table);
       const before = hasBaseline ? baselineCounts[table] : undefined;
       const stats = await readTableStats(db, table, hasCreated, hasUpdated, orgId, sinceIso);

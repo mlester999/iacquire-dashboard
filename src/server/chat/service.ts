@@ -50,13 +50,17 @@ import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workfo
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { getAvailability } from "@/server/appointments/availability";
 import { requestBooking, type BookingResult } from "@/server/appointments/booking";
-import { appointmentChangeExpected } from "@/server/appointments/changes";
+import { appointmentChangeExpected, customerChangePolicyNote } from "@/server/appointments/changes";
+import { bookedAppointmentStatus } from "@/server/calendars/agent-booking";
+import type { BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
-import { enforceAgentAction } from "@/server/workforce/action-policy";
+import { enforceAgentAction, recordActionDenied } from "@/server/workforce/action-policy";
+import { abilityRefusal, capabilityNeed, type AbilityNeed } from "@/server/workforce/abilities";
+import { CHAT_ACTION_ABILITIES } from "@/lib/employee-tool-policy";
 import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
 import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
 
@@ -347,9 +351,12 @@ function serverEvidenceJson(marker?: ServerEvidenceMarker): string {
   return JSON.stringify(!marker || cls === "model_response" ? systemNoticeMarker() : marker);
 }
 
-/** The class of a booking reply from what the calendar service returned, naming the row that backs it. */
-function bookingResultEvidence(status: BookingResult["status"], ids: { bookingId?: string | null; approvalId?: string | null }): ServerEvidenceMarker {
-  const cls = classifyBookingResult(status);
+/**
+ * The class of a booking reply from what the calendar service returned, naming the row that backs it. A booking that waits for the host's confirmation is an approved write (it is on
+ * the calendar), not a completed action, until a person confirms it.
+ */
+function bookingResultEvidence(status: BookingResult["status"], ids: { bookingId?: string | null; approvalId?: string | null }, appointmentStatus?: BookedAppointmentStatus): ServerEvidenceMarker {
+  const cls = classifyBookingResult(status, appointmentStatus);
   if (cls === "system_notice") return serverMarker(cls);
   if (status === "awaiting_approval" && ids.approvalId) return serverMarker(cls, { kind: "approval", id: ids.approvalId });
   return ids.bookingId ? serverMarker(cls, { kind: "appointment_booking", id: ids.bookingId }) : serverMarker(cls);
@@ -411,6 +418,8 @@ async function handleChatScheduleAction(
       if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, input.action.capability)) {
         return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
       }
+      const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${input.action.capability}`, need: capabilityNeed(input.action.capability) }, db);
+      if (switchedOff) return reply(switchedOff);
 
       const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
       const timezone = orgRows[0]?.timezone;
@@ -527,6 +536,9 @@ async function handleChatScheduleAction(
       ]);
       return reply("This schedule preview has expired. No schedule was saved; request a fresh preview.");
     }
+    // A switch-off after the preview blocks the confirmation: the preview stays and nothing is saved.
+    const switchedOffNow = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${pending.capability}`, need: capabilityNeed(pending.capability) }, db);
+    if (switchedOffNow) return reply(switchedOffNow);
     if (!validateWorkforceScheduleRule(pending.recurrenceRule) && pending.cadence !== "hourly") {
       return reply("I couldn't verify the recurrence in this preview. No schedule was saved; request a fresh preview.");
     }
@@ -644,12 +656,20 @@ function chatSafeText(value: string): string {
   return value.replace(/[\\`*_{}\[\]()#+\-.!|>]/g, "\\$&");
 }
 
+/**
+ * What a staff member is told about a booking that landed, by the appointment's own state. "Confirmed" is said only when the appointment is confirmed; one that waits for the host is
+ * on the calendar but not confirmed, and an unreadable state is never described as either.
+ */
+function bookedReplyText(contactName: string, slot: string, appointmentStatus: BookedAppointmentStatus | undefined): string {
+  if (appointmentStatus === "new") return `${slot} for ${contactName} is on the calendar but the host has not confirmed it yet. The host can confirm it in [Appointments](/appointments).`;
+  if (appointmentStatus === "confirmed") return `The calendar confirmed ${contactName} for ${slot}. [View Appointments](/appointments).`;
+  return `${contactName}'s booking for ${slot} was recorded, but I couldn't read its current state. Check [Appointments](/appointments) before telling the customer anything.`;
+}
+
 function bookingResultReply(result: BookingResult, pending: PendingChatBooking): string {
   const slot = formatSlot(pending.startAt, pending.timeZone);
   const contactName = chatSafeText(pending.contactName);
-  if (result.status === "booked") {
-    return `The calendar confirmed ${contactName} for ${slot}. [View Appointments](/appointments).`;
-  }
+  if (result.status === "booked") return bookedReplyText(contactName, slot, result.appointmentStatus);
   if (result.status === "awaiting_approval") {
     return `I submitted ${contactName}'s appointment request for ${slot}. It is not booked yet; an owner or admin must approve it. [Review approvals](/approvals).`;
   }
@@ -661,6 +681,25 @@ function bookingResultReply(result: BookingResult, pending: PendingChatBooking):
   }
   return `The calendar could not complete that booking: ${chatSafeText(result.reason.slice(0, 500))}. No appointment was confirmed.`;
 }
+
+/**
+ * The refusal text when the employee's "Allowed actions" no longer cover what this chat action needs, or null when it may go ahead. It is asked where the work starts (the preview) and
+ * again where it is applied (the confirmation), so a switch-off after the preview blocks the confirmation. The denial is recorded on the connection the caller gives (inside the
+ * caller's transaction, where the refusal reply is also written) or on its own. An unreadable setting refuses: work the owner may have switched off is never started on a guess.
+ */
+async function chatAbilityRefusal(ctx: OrgContext, input: { agentId: string; agentRole: AgentRoleKey; actionId: string; need: AbilityNeed }, db?: Queryable): Promise<string | null> {
+  const run = async (q: Queryable) => {
+    const refusal = await abilityRefusal(q, { orgId: ctx.org.orgId, agentId: input.agentId, roleKey: input.agentRole, need: input.need });
+    if (!refusal) return null;
+    await recordActionDenied({
+      orgId: ctx.org.orgId, agentId: input.agentId, actionId: input.actionId, actorUserId: ctx.user.id, actorKind: "user", role: input.agentRole, reason: `${refusal.reason}: ${refusal.abilities.join(", ")}`,
+    }, q);
+    return refusal.message;
+  };
+  return db ? run(db) : withSystem(run);
+}
+
+const chatActionNeed = (actionId: string): AbilityNeed => ({ anyOf: CHAT_ACTION_ABILITIES[actionId] ?? [] });
 
 /** Whether the employee's role (read from its row) may take this chat action. A refusal is recorded by the policy; nothing is thrown into the conversation. */
 async function chatActionAllowed(ctx: OrgContext, agentId: string, actionId: string): Promise<boolean> {
@@ -698,6 +737,8 @@ async function handleChatBookingIntent(
 
   if (input.intent.kind === "proposal") {
     const proposalIntent = input.intent;
+    const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: "chat:booking_request", need: chatActionNeed("chat:booking_request") });
+    if (switchedOff) return reply(switchedOff);
     const matches = await withUser(ctx.user.id, async (db) => {
       const { rows } = await db.query<{ id: string; name: string; timezone: string | null }>(
         `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name, timezone
@@ -817,8 +858,15 @@ async function handleChatBookingIntent(
   }
 
   if (pending.status === "accepted" && pending.bookingId && pending.bookingStatus) {
-    const earlier = bookingResultEvidence(pending.bookingStatus, { bookingId: pending.bookingId });
-    if (pending.bookingStatus === "booked") return reply(`This appointment was already submitted and the calendar confirmed it for ${formatSlot(pending.startAt, pending.timeZone)}. [View Appointments](/appointments).`, earlier);
+    // The state is read now: the host may have confirmed it since, and an appointment waiting for the host is never repeated as confirmed.
+    const appointmentStatus = pending.bookingStatus === "booked" ? await bookedAppointmentStatus(ctx.org.orgId, pending.bookingId) : undefined;
+    const earlier = bookingResultEvidence(pending.bookingStatus, { bookingId: pending.bookingId }, appointmentStatus);
+    if (pending.bookingStatus === "booked") {
+      const when = formatSlot(pending.startAt, pending.timeZone);
+      if (appointmentStatus === "new") return reply(`This appointment was already submitted. ${when} for ${chatSafeText(pending.contactName)} is on the calendar but the host has not confirmed it yet. [View Appointments](/appointments).`, earlier);
+      if (appointmentStatus === "confirmed") return reply(`This appointment was already submitted and the calendar confirmed it for ${when}. [View Appointments](/appointments).`, earlier);
+      return reply("This appointment was already submitted, but I couldn't read its current state. Check Appointments before telling the customer anything.", earlier);
+    }
     if (pending.bookingStatus === "awaiting_approval") return reply(`This appointment request is already waiting for an owner or admin's approval; it is not booked yet. [Review approvals](/approvals).`, earlier);
     if (pending.bookingStatus === "needs_manual") return reply("This appointment request was already submitted and still needs a person to add it to the calendar. [Open Appointments](/appointments).", earlier);
     return reply("This appointment preview was already used. Check Appointments before requesting a new time.");
@@ -842,6 +890,10 @@ async function handleChatBookingIntent(
     }
     return reply("The booking request is still being processed. Check Appointments before sending another request.");
   }
+
+  // A switch-off after the preview blocks the confirmation: the preview stays, nothing is booked and no approval is created.
+  const switchedOffNow = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: "chat:booking_request", need: chatActionNeed("chat:booking_request") });
+  if (switchedOffNow) return reply(switchedOffNow);
 
   const currentContact = await withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{ name: string; timezone: string | null }>(
@@ -919,7 +971,7 @@ async function handleChatBookingIntent(
   return reply(bookingResultReply(result, claimed), bookingResultEvidence(result.status, {
     bookingId: "bookingId" in result ? result.bookingId : null,
     approvalId: result.status === "awaiting_approval" ? result.approvalId : null,
-  }));
+  }, result.status === "booked" ? result.appointmentStatus : undefined));
 }
 
 function appointmentChangePermissionsAllowed(ctx: OrgContext): boolean {
@@ -968,6 +1020,8 @@ async function handleChatAppointmentChangeIntent(
 
   if (input.intent.kind === "proposal") {
     const intent = input.intent;
+    const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: "chat:appointment_change", need: chatActionNeed("chat:appointment_change") });
+    if (switchedOff) return reply(switchedOff);
     const matches = await withUser(ctx.user.id, async (db) => {
       const { rows } = await db.query<{
         id: string; contact_id: string; contact_name: string; status: "new" | "confirmed"; start_at: Date; end_at: Date; timezone: string;
@@ -1101,6 +1155,10 @@ async function handleChatAppointmentChangeIntent(
   }
   if (pending.status === "processing") return reply("This appointment change request is already being submitted. Check Approvals before retrying.");
 
+  // A switch-off after the preview blocks the confirmation: no approval request is created.
+  const switchedOffNow = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: "chat:appointment_change", need: chatActionNeed("chat:appointment_change") });
+  if (switchedOffNow) return reply(switchedOffNow);
+
   if (pending.operation === "reschedule") {
     const row = await withUser(ctx.user.id, async (db) => {
       const { rows } = await db.query<{ id: string; status: string; start_at: Date; end_at: Date; provider: string; version: number; last_event_at: Date | null; timezone: string; appointment_type_id: string | null; ghl_calendar_id: string | null }>(
@@ -1162,7 +1220,9 @@ async function handleChatAppointmentChangeIntent(
     const title = current.operation === "cancel"
       ? `Cancel ${current.contactName}'s appointment for ${formatSlot(current.expected.startAt, current.timeZone)}`
       : `Reschedule ${current.contactName}'s appointment to ${formatSlot(current.newStartAt as string, current.timeZone)}`;
-    const reason = "A team member explicitly confirmed this appointment change proposal in AI Employee Chat. The appointment is not changed until an owner or admin approves it.";
+    // What the appointment type lets customers do themselves, so the approver sees the policy the request is being made against.
+    const policy = await customerChangePolicyNote(db, ctx.org.orgId, current.appointmentId);
+    const reason = `A team member explicitly confirmed this appointment change proposal in AI Employee Chat. The appointment is not changed until an owner or admin approves it. ${policy}`;
     const expectedEffect = current.operation === "cancel"
       ? `Cancel the appointment scheduled for ${formatSlot(current.expected.startAt, current.timeZone)} on its connected calendar. No customer message will be sent by iAcquire.`
       : `Move the appointment from ${formatSlot(current.expected.startAt, current.timeZone)} to ${formatSlot(current.newStartAt as string, current.timeZone)} on its connected calendar. The replacement time is checked again when approved. No customer message will be sent by iAcquire.`;

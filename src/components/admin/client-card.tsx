@@ -7,7 +7,7 @@ import { Tooltip } from "@/components/ui/overlays";
 import { SETUP_SERVICES } from "@/lib/setup";
 import type { ClientSetupRow } from "@/server/setup/snapshots";
 import { cn, formatDate } from "@/lib/utils";
-import { HEALTH, plural, STATE, stateOf, type Tone } from "@/components/admin/client-state";
+import { HEALTH, LAUNCH_TONE, plural, STATE, stateOf, waitingOnIacquire, type Tone } from "@/components/admin/client-state";
 import { AvatarTile, RelativeTime, StatusPill, toneDotClass } from "@/components/ui/status";
 
 export { AvatarTile, StatusPill };
@@ -214,6 +214,18 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
               )}
             </div>
           </div>
+
+          {r.launch && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <StatusPill tone={LAUNCH_TONE[r.launch.state]}>{r.launch.label}</StatusPill>
+              <span className="text-[13px] font-semibold tabular-nums text-ink-2">{r.launch.percent}% launch ready</span>
+              {waitingOnIacquire(r) && (
+                <StatusPill tone="warning" icon={<Clock className="size-3" aria-hidden />}>
+                  Waiting on iAcquire
+                </StatusPill>
+              )}
+            </div>
+          )}
 
           {(r.setup.clientActions > 0 || r.setup.blocked > 0 || r.openTickets > 0) && (
             <div className="flex flex-wrap gap-1.5">

@@ -18,7 +18,7 @@ import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { addMember, agencyUser, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
-import { applyRealBlueprint, itemOf, settled } from "./support/launch";
+import { applyRealBlueprint, approveHeldFirstConfigurations, itemOf, settled } from "./support/launch";
 
 interface Spec {
   name: string;
@@ -68,6 +68,8 @@ const versionsByRole = async (orgId: string) => (await rows<{ role_key: string; 
 
 /** The recorded state a verified employee has once the restricted worker has built its profile (the worker is not live; this is what it would leave). */
 async function simulateVerified(c: Client, roles: readonly AgentRoleKey[]) {
+  // The agency's reviewer has approved the first configuration the submission held (the CRM Manager's), so the employee runs what the client's answers say.
+  await approveHeldFirstConfigurations(c.org.id);
   for (const role of roles) {
     const id = await agentId(c.org.id, role);
     await makeRuntimeReady(id, c.org.id, c.owner.id);

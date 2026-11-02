@@ -5,6 +5,17 @@ import { isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agent
 import type { Permission } from "@/lib/permissions";
 import type { PlanStatus } from "@/lib/automation-studio/plan";
 import { studioEntitlementOf } from "@/lib/entitlements";
+import { LAUNCH_STATE_LABEL, type LaunchState } from "@/lib/launch-readiness";
+import { readLaunchCurrent } from "@/server/setup/launch-ledger";
+
+/** Where the client's launch stands, as the launch ledger last recorded it. This is the headline number: the percent and label the sidebar and the overview nudge show. */
+export interface ShellLaunch {
+  percent: number;
+  state: LaunchState;
+  label: string;
+  /** Required items that wait on the client. */
+  needsYou: number;
+}
 
 export interface ShellAgent {
   role: AgentRoleKey;
@@ -21,8 +32,11 @@ export interface ShellData {
   agents: ShellAgent[];
   unreadNotifications: number;
   pendingApprovals: number;
-  /** Setup Center summary for the sidebar. Hidden once the system is activated. */
-  setup: { visible: boolean; percent: number | null; needsAttention: number };
+  /**
+   * Setup Center summary for the sidebar. Hidden once the system is activated. `percent` and `needsAttention` come from the old checklist (iAcquire's preparation tasks): they are NOT
+   * the headline. `launch` is the launch ledger's newest state, which the sidebar and the overview nudge show; it is absent until the client has submitted and something has been recorded.
+   */
+  setup: { visible: boolean; percent: number | null; needsAttention: number; launch?: ShellLaunch };
   /** Custom projects needing the client's attention: a quote to decide, a deliverable to approve, or a question to answer. */
   projectsAttention: number;
   /** Conversations with unread customer messages, plus escalations waiting for this person. */
@@ -140,7 +154,12 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const agents = data?.agents ?? [];
   const unread = data?.unread ?? 0;
   const approvals = data?.approvals ?? 0;
-  const setup = data?.setup ?? { visible: false, percent: null, needsAttention: 0 };
+  const setup: ShellData["setup"] = data?.setup ?? { visible: false, percent: null, needsAttention: 0 };
+  // The ledger is read as trusted code for this one workspace (the person was checked for it above, and `setup.view` is what lets them see this summary at all).
+  if (includeSetup && setup.visible) {
+    const current = (await readLaunchCurrent([ctx.org.orgId])).get(ctx.org.orgId);
+    if (current) setup.launch = { percent: current.percent, state: current.state, label: LAUNCH_STATE_LABEL[current.state], needsYou: current.needsYou };
+  }
   const projectsAttention = data?.projects_attention ?? 0;
   const inboxAttention = data?.inbox_attention ?? 0;
   const requestsAttention = data?.requests_attention ?? 0;

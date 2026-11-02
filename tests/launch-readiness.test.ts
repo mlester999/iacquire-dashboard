@@ -922,7 +922,7 @@ const STEP = (connection: string, inventory: string, requirements = "upcoming", 
 
 describe("the intents a button can run", () => {
   it("lists every step, and every intent an item can offer is one of them", () => {
-    expect([...LAUNCH_INTENTS].sort()).toEqual(["activate_calendar", "apply_hours", "apply_pipeline_stages", "assign_host", "confirm_region_defaults", "retry_crm_setup", "run_checks", "send_team_invitations"]);
+    expect([...LAUNCH_INTENTS].sort()).toEqual(["activate_calendar", "apply_hours", "apply_pipeline_stages", "assign_host", "confirm_region_defaults", "retry_crm_setup", "run_checks", "send_team_invitations", "sync_employees"]);
     const offering = ready({
       team: { listed: 2, members: 0, pending: 0, toInviteNames: ["Ana", "Ben"], canManage: true },
       crm: { ...ready().crm, region: { state: "offer", currency: "PHP", callingCode: "63", country: "the Philippines" }, pipelineDraft: { state: "offer", stages: ["Enquiry", "Quote"], makesDefault: true } },
@@ -1279,5 +1279,136 @@ describe("the fingerprint and the new data", () => {
     expect(held).not.toBe(base);
     expect(fingerprintOf(deriveLaunchReadiness(heldJob({ readinessSteps: STEP("done", "done"), startedAt: "2026-10-26T09:00:00.000Z", provisioningDetail: "another sentence" })))).toBe(held);
     expect(fingerprintOf(deriveLaunchReadiness(ready({ knowledge: { approved: 0, pending: 0 } })))).not.toBe(base);
+  });
+});
+
+describe("employees that do not run what the client approved", () => {
+  const behind = (roles: AgentRoleKey[], over: Partial<LaunchFacts> = {}) => ready({ employeesBehind: roles.map((role) => ({ role, reason: "Your approved answers have changed and this employee has not been updated." })), ...over });
+
+  it("adds a required line that names the employees, blocks 100%, and offers the update as a step", () => {
+    const r = deriveLaunchReadiness(behind(["lead_hunter", "crm_manager"]));
+    expect(itemOf(r, "employees.in_sync")).toMatchObject({
+      state: "action_required", required: true, owner: "you", label: "AI employees match your setup",
+      action: { label: "Update my employees", intent: "sync_employees" },
+    });
+    expect(itemOf(r, "employees.in_sync").detail).toContain("Lead Hunter, CRM Manager have not been updated to what you approved");
+    expect(r.state).toBe("action_required");
+    expect(r.percent).toBeLessThan(100);
+    expect(r.blocking.map((i) => i.key)).toEqual(["employees.in_sync"]);
+    expect(r.steps.find((s) => s.key === "employees")!.state).toBe("action_required");
+    // One employee is said in the singular.
+    expect(itemOf(deriveLaunchReadiness(behind(["lead_hunter"])), "employees.in_sync").detail).toContain("Lead Hunter has not been updated");
+  });
+
+  it("is absent while every employee is in step, so a ready client's total does not move", () => {
+    const base = deriveLaunchReadiness(ready());
+    expect(base.steps.flatMap((s) => s.items).map((i) => i.key)).not.toContain("employees.in_sync");
+    expect(deriveLaunchReadiness(ready({ employeesBehind: [] })).total).toBe(base.total);
+    const r = deriveLaunchReadiness(behind(["lead_hunter"]));
+    expect(r.total).toBe(base.total + 1);
+  });
+
+  it("waits behind the client's own unapproved edits, the setup payment and the person's permission, and offers no step for them", () => {
+    const pending = itemOf(deriveLaunchReadiness(behind(["lead_hunter"], { pendingAnswerChanges: true })), "employees.in_sync");
+    expect(pending.action).toEqual({ label: "Review and approve your changes", href: "/onboarding" });
+    expect(pending.detail).toContain("Approve your changes in company setup first");
+    const unpaid = itemOf(deriveLaunchReadiness(behind(["lead_hunter"], { paymentCleared: false })), "employees.in_sync");
+    expect(unpaid.action).toBeUndefined();
+    expect(unpaid.detail).toContain("setup payment");
+    const viewer = itemOf(deriveLaunchReadiness(behind(["lead_hunter"], { canSyncEmployees: false })), "employees.in_sync");
+    expect(viewer.action).toBeUndefined();
+    expect(viewer.detail).toContain("Only an owner or admin can update them.");
+  });
+
+  it("says nothing about an employee that is not in the plan, and moves the fingerprint only with the employees that are behind", () => {
+    const noSales = ready({ employees: AGENT_ROLE_KEYS.map((role) => employee(role, role === "sales_assistant" ? { entitled: false } : {})), employeesBehind: [{ role: "sales_assistant", reason: "x" }] });
+    expect(deriveLaunchReadiness(noSales).steps.flatMap((s) => s.items).map((i) => i.key)).not.toContain("employees.in_sync");
+    const a = fingerprintOf(deriveLaunchReadiness(ready()));
+    const b = fingerprintOf(deriveLaunchReadiness(behind(["lead_hunter"])));
+    expect(b).not.toBe(a);
+    // The reason's wording is for the person; it never moves the fingerprint.
+    expect(fingerprintOf(deriveLaunchReadiness(ready({ employeesBehind: [{ role: "lead_hunter", reason: "another sentence" }] })))).toBe(b);
+  });
+
+  it("lists the update as a step the server action accepts", () => {
+    expect(LAUNCH_INTENTS).toContain("sync_employees");
+    expect(actionKind({ intent: "sync_employees" })).toBe("internal");
+  });
+});
+
+describe("a check that read other setup than the client has now", () => {
+  const D1 = "a".repeat(64);
+  const D2 = "b".repeat(64);
+  const withDigests = (check: string | null | undefined, now: string | null | undefined, role: AgentRoleKey = "appointment_setter") => ready({
+    employees: AGENT_ROLE_KEYS.map((r) => employee(r, r === role ? { inputsDigest: now } : {})),
+    verification: AGENT_ROLE_KEYS.map((r): VerificationFact => (r === role ? { ...passed(r), inputsDigest: check } as VerificationFact : passed(r))),
+  });
+
+  it("is stale even though the configuration version is the same, and asks for the check again", () => {
+    const r = deriveLaunchReadiness(withDigests(D1, D2));
+    expect(itemOf(r, "verification.appointment_setter")).toMatchObject({ state: "action_required", owner: "you", action: { intent: "run_checks" } });
+    expect(itemOf(r, "verification.appointment_setter").detail).toContain("appointment types or host hours changed");
+    expect(r.state).toBe("action_required");
+    expect(r.blocking.map((i) => i.key)).toEqual(["verification.appointment_setter"]);
+    // The same applies to a check that failed: a result for other setup says nothing about this one.
+    const failed = ready({
+      employees: AGENT_ROLE_KEYS.map((role) => employee(role, role === "lead_hunter" ? { inputsDigest: D2 } : {})),
+      verification: AGENT_ROLE_KEYS.map((role): VerificationFact => (role === "lead_hunter" ? { role, state: "failed", configVersion: 3, detail: "No leads.", inputsDigest: D1 } : passed(role))),
+    });
+    expect(itemOf(deriveLaunchReadiness(failed), "verification.lead_hunter")).toMatchObject({ state: "action_required", detail: expect.stringContaining("lead targeting changed") });
+  });
+
+  it("is current when the digests match, and when a check was recorded without a digest (an old job) or the role reads nothing", () => {
+    expect(deriveLaunchReadiness(withDigests(D1, D1))).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(deriveLaunchReadiness(withDigests(null, D2))).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(deriveLaunchReadiness(withDigests(undefined, D2))).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    expect(deriveLaunchReadiness(withDigests(D1, null, "operations_manager"))).toMatchObject({ state: "ready_to_launch", percent: 100 });
+  });
+
+  it("names every input of the role, and leaves a running check as it was", () => {
+    const sales = deriveLaunchReadiness(withDigests(D1, D2, "sales_assistant"));
+    expect(itemOf(sales, "verification.sales_assistant").detail).toContain("pipeline stages changed");
+    const running = ready({
+      employees: AGENT_ROLE_KEYS.map((role) => employee(role, { inputsDigest: D2 })),
+      verification: AGENT_ROLE_KEYS.map((role): VerificationFact => (role === "appointment_setter" ? { role, state: "running" } : passed(role))),
+    });
+    expect(itemOf(deriveLaunchReadiness(running), "verification.appointment_setter").state).toBe("in_progress");
+  });
+});
+
+describe("a calendar that stopped being valid after it was activated", () => {
+  const drift = (checks: Array<{ key: string; detail: string }>, over: Partial<CalendarFacts> = {}) => ready({ appointments: { wanted: true, calendar: calendar({ checks: null, drift: { checks }, ...over }), externalCalendarConnected: false } });
+
+  it("shows one required line per failing check when the live checks could not be read, in the check's own words, and holds up 100%", () => {
+    const r = deriveLaunchReadiness(drift([{ key: "hours", detail: "Dana has no weekly hours." }, { key: "connections", detail: "Dana's Google account needs a new sign-in." }]));
+    expect(itemOf(r, "calendar.drift.hours")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { href: "/crm/availability" } });
+    expect(itemOf(r, "calendar.drift.hours").detail).toContain("passed its checks when it was activated, and no longer does: Dana has no weekly hours.");
+    expect(itemOf(r, "calendar.drift.connections")).toMatchObject({ state: "action_required", required: true, action: { href: "/crm/calendar-connections" } });
+    expect(r.state).toBe("action_required");
+    expect(r.blocking.map((i) => i.key)).toEqual(["calendar.drift.hours", "calendar.drift.connections"]);
+  });
+
+  it("is iAcquire's when the sign-in a connection needs is not switched on here, and asks a person without the calendar permission to ask the owner", () => {
+    const r = deriveLaunchReadiness(drift([{ key: "connections", detail: "Dana's Google account needs a new sign-in." }], { oauthAvailable: { google: false, microsoft: false } }));
+    expect(itemOf(r, "calendar.drift.connections")).toMatchObject({ owner: "iacquire", state: "action_required" });
+    expect(itemOf(r, "calendar.drift.connections").action).toBeUndefined();
+    const viewer = deriveLaunchReadiness(drift([{ key: "types", detail: "There is nothing to book yet." }], { canManage: false, ownerName: "Dana Brightside" }));
+    expect(itemOf(viewer, "calendar.drift.types").action).toBeUndefined();
+    expect(itemOf(viewer, "calendar.drift.types").detail).toContain("Ask Dana Brightside.");
+  });
+
+  it("never speaks over a live read: with the checks read, a stored record adds no line, and a calendar that is not active is judged by its own steps", () => {
+    const live = ready({ appointments: { wanted: true, calendar: calendar({ drift: { checks: [{ key: "hours", detail: "Old news." }] } }), externalCalendarConnected: false } });
+    expect(deriveLaunchReadiness(live).steps.flatMap((s) => s.items).map((i) => i.key).filter((k) => k.startsWith("calendar.drift"))).toEqual([]);
+    expect(deriveLaunchReadiness(live)).toMatchObject({ state: "ready_to_launch", percent: 100 });
+    const draft = ready({ appointments: { wanted: true, calendar: calendar({ status: "draft", checks: null, drift: { checks: [{ key: "hours", detail: "Old." }] } }), externalCalendarConnected: false } });
+    expect(deriveLaunchReadiness(draft).steps.flatMap((s) => s.items).map((i) => i.key).filter((k) => k.startsWith("calendar.drift"))).toEqual([]);
+  });
+
+  it("keeps a check this judge does not know as a line, and caps the lines", () => {
+    const r = deriveLaunchReadiness(drift(Array.from({ length: 9 }, (_, i) => ({ key: i === 0 ? "something_new" : `k${i}`, detail: "A thing changed." }))));
+    const lines = r.steps.flatMap((s) => s.items).filter((i) => i.key.startsWith("calendar.drift."));
+    expect(lines).toHaveLength(6);
+    expect(lines[0]).toMatchObject({ key: "calendar.drift.something_new", label: "Calendar check changed after activation" });
   });
 });

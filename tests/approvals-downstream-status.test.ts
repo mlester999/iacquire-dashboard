@@ -4,7 +4,7 @@
 import crypto from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
-import { createApproval, decideApproval, listApprovals, type ApprovalKind, type ApprovalRow } from "@/server/approvals/service";
+import { approvalOutcome, createApproval, decideApproval, listApprovals, type ApprovalKind, type ApprovalRow } from "@/server/approvals/service";
 import { createWorkJob, getWorkJobView } from "@/server/workforce/jobs";
 import { listWorkBoardJobs } from "@/server/workforce/work-board";
 import { getWorkforceCalendarData } from "@/server/workforce/calendar";
@@ -178,6 +178,16 @@ describe("what other approvals say after a decision", () => {
       expect(parseEvidenceMarker(a.evidence), a.id).not.toBeNull();
       expect(a.evidence.ledger).toEqual({ kind: "approval", id: a.id });
     }
+  });
+});
+
+describe("an approved booking whose appointment still waits for the host", () => {
+  const base = { kind: "appointment_booking" as const, status: "approved" as const, execution_status: "succeeded" as const, execution_detail: null, downstream_status: null, downstream_detail: null };
+
+  it("reads 'Approved and applied', not 'Completed', until the appointment is confirmed", () => {
+    expect(approvalOutcome({ ...base, appointment_status: "new" })?.label).toBe("Approved and applied");
+    expect(approvalOutcome({ ...base, appointment_status: "confirmed" })?.label).toBe("Completed");
+    expect(approvalOutcome({ ...base })?.label).toBe("Completed");
   });
 });
 

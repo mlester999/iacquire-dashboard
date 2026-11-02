@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, ClipboardCheck, Clock, LayoutGrid, LifeBuoy, List, Search, UserRound, Workflow, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, ClipboardCheck, Clock, Hourglass, LayoutGrid, LifeBuoy, List, Search, Timer, UserRound, Workflow, X } from "lucide-react";
 import { Card, EmptyState, Input, ProgressBar, Select } from "@/components/ui/primitives";
 import { Tooltip } from "@/components/ui/overlays";
 import { MetricCard } from "@/components/ui/workspace";
@@ -11,7 +11,7 @@ import type { ClientSetupRow } from "@/server/setup/snapshots";
 import { cn, formatDate } from "@/lib/utils";
 import { ClientCard, ConnectionChips, PendingOwner } from "@/components/admin/client-card";
 import { AvatarTile, RelativeTime, StatusPill } from "@/components/ui/status";
-import { countStates, HEALTH, plural, STATE, STATE_ORDER, stateOf, type StateKey } from "@/components/admin/client-state";
+import { countStates, HEALTH, LAUNCH_STUCK_HOURS, LAUNCH_TONE, plural, STATE, STATE_ORDER, stateOf, stuckOverDay, waitingOnIacquire, type StateKey } from "@/components/admin/client-state";
 
 type Sort = "attention" | "newest" | "name" | "progress_asc" | "progress_desc" | "activity" | "blocked";
 
@@ -20,7 +20,9 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
   const [q, setQ] = React.useState("");
   const [state, setState] = React.useState<"all" | StateKey>("all");
   const [owner, setOwner] = React.useState("all");
-  const [needs, setNeeds] = React.useState({ action: false, blocked: false, issue: false });
+  const [needs, setNeeds] = React.useState({ action: false, blocked: false, issue: false, iacquire: false, stuck: false });
+  // One reading of the clock for the whole list, so every row is judged against the same moment.
+  const [now] = React.useState(() => Date.now());
   const [sort, setSort] = React.useState<Sort>("attention");
 
   const owners = React.useMemo(() => {
@@ -35,13 +37,15 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
       action: rows.filter((r) => r.setup.clientActions > 0).length,
       blocked: rows.filter((r) => r.setup.blocked > 0).length,
       issue: rows.filter((r) => r.health.level === "issue").length,
+      iacquire: rows.filter(waitingOnIacquire).length,
+      stuck: rows.filter((r) => stuckOverDay(r, now)).length,
     }),
-    [rows],
+    [rows, now],
   );
 
   const list = React.useMemo(() => {
     const term = q.trim().toLowerCase();
-    const attention = (r: ClientSetupRow) => (r.health.level === "issue" ? 4 : 0) + (r.setup.blocked ? 3 : 0) + (r.setup.clientActions ? 1 : 0);
+    const attention = (r: ClientSetupRow) => (r.health.level === "issue" ? 4 : 0) + (r.setup.blocked ? 3 : 0) + (waitingOnIacquire(r) ? 2 : 0) + (r.setup.clientActions ? 1 : 0);
     const filtered = rows.filter((r) => {
       if (term && !`${r.name} ${r.slug} ${r.contact?.name ?? ""} ${r.contact?.email ?? ""}`.toLowerCase().includes(term)) return false;
       if (state !== "all" && stateOf(r) !== state) return false;
@@ -49,6 +53,8 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
       if (needs.action && !r.setup.clientActions) return false;
       if (needs.blocked && !r.setup.blocked) return false;
       if (needs.issue && r.health.level !== "issue") return false;
+      if (needs.iacquire && !waitingOnIacquire(r)) return false;
+      if (needs.stuck && !stuckOverDay(r, now)) return false;
       return true;
     });
     const t = (d: string | null) => (d ? new Date(d).getTime() : 0);
@@ -70,14 +76,14 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           return attention(b) - attention(a) || t(b.createdAt) - t(a.createdAt);
       }
     });
-  }, [rows, q, state, owner, needs, sort]);
+  }, [rows, q, state, owner, needs, sort, now]);
 
-  const filtering = q || state !== "all" || owner !== "all" || needs.action || needs.blocked || needs.issue;
+  const filtering = q || state !== "all" || owner !== "all" || needs.action || needs.blocked || needs.issue || needs.iacquire || needs.stuck;
   const reset = () => {
     setQ("");
     setState("all");
     setOwner("all");
-    setNeeds({ action: false, blocked: false, issue: false });
+    setNeeds({ action: false, blocked: false, issue: false, iacquire: false, stuck: false });
   };
 
   const needAttention = rows.filter((r) => r.health.level === "issue" || r.setup.blocked > 0).length;
@@ -158,6 +164,8 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                 ["action", "Waiting on client", Clock],
                 ["blocked", "Has blocked steps", Ban],
                 ["issue", "Integration issues", AlertTriangle],
+                ["iacquire", "Waiting on iAcquire", Hourglass],
+                ["stuck", `Stuck over ${LAUNCH_STUCK_HOURS} h`, Timer],
               ] as const
             ).map(([k, label, Icon]) => (
               <button
@@ -205,12 +213,13 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           {/* Desktop table */}
           <Card className={cn("overflow-hidden", view === "table" ? "hidden md:block" : "hidden")}>
             <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
-              <table className="workspace-table w-full min-w-[960px] text-left text-[14px]">
+              <table className="workspace-table w-full min-w-[1080px] text-left text-[14px]">
                 <thead className="border-b border-line bg-surface-2/60">
                   <tr>
                     <th scope="col" className="px-4 py-3.5 font-semibold">Company</th>
                     <th scope="col" className="px-2 py-3.5 font-semibold">Setup</th>
                     <th scope="col" className="px-2 py-3.5 font-semibold">State</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">Launch</th>
                     <th scope="col" className="px-2 py-3.5 font-semibold">Open work</th>
                     <th scope="col" className="px-2 py-3.5 font-semibold">Responsible</th>
                     <th scope="col" className="px-2 py-3.5 font-semibold">Connections</th>
@@ -242,6 +251,9 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                             {r.isDemo && <StatusPill tone="violet" size="sm" dot={false}>Demo</StatusPill>}
                           </div>
                           <p className="mt-1.5 whitespace-nowrap text-[12px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Not onboarded yet"}</p>
+                        </td>
+                        <td className="px-2 py-4">
+                          <LaunchCell r={r} now={now} />
                         </td>
                         <td className="whitespace-nowrap px-2 py-4">
                           <span className="font-semibold tabular-nums text-ink">{r.setup.outstanding} <span className="font-normal text-muted">open</span></span>
@@ -303,6 +315,35 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where the client's launch stands, from the ledger: the state, the percentage and who the blocking items wait on, and since when. The percentage here is the launch readiness (every
+ * applicable, required check), not the checklist of iAcquire's preparation tasks in the Setup column.
+ */
+function LaunchCell({ r, now }: { r: ClientSetupRow; now: number }) {
+  const l = r.launch;
+  if (!l) return <span className="text-[13px] text-faint">Nothing recorded yet</span>;
+  const stuck = stuckOverDay(r, now);
+  return (
+    <div className="min-w-[150px] space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusPill tone={LAUNCH_TONE[l.state]}>{l.label}</StatusPill>
+        <span className="text-[13px] font-semibold tabular-nums text-ink-2">{l.percent}%</span>
+      </div>
+      {l.state !== "ready_to_launch" && (l.needsIacquire > 0 || l.needsClient > 0) && (
+        <p className="text-[12px] text-muted">
+          {[l.needsIacquire > 0 ? `${l.needsIacquire} waiting on iAcquire` : null, l.needsClient > 0 ? `${l.needsClient} waiting on the client` : null].filter(Boolean).join(" · ")}
+        </p>
+      )}
+      {l.topBlocker && l.state !== "ready_to_launch" && <p className="line-clamp-2 max-w-[200px] text-[12px] text-muted" title={l.topBlocker.label}>{l.topBlocker.label}</p>}
+      <p className={cn("flex items-center gap-1 whitespace-nowrap text-[12px]", stuck ? "font-medium text-warning-ink" : "text-faint")}>
+        {stuck && <Timer className="size-3" aria-hidden />}
+        {stuck ? "Stuck, in this state since " : "Since "}
+        <RelativeTime value={l.since} />
+      </p>
     </div>
   );
 }

@@ -141,6 +141,7 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
     }
     if (!conn) warnings.push("This employee isn't connected to a provider, so a test message can't run yet.");
     if (run.knowledgeTruncated) warnings.push("Some company knowledge was left out by the knowledge size budget.");
+    if (run.liveFactsTruncated) warnings.push("Some live booking rules or pipeline stages were left out by their size limit, so the employee is told they are not all listed.");
     if (parsed.data.disabledTools.length) {
       warnings.push("Switched-off tools are removed from the instructions. The provider profile's tool exposure is enforced separately by the connection health check.");
     }

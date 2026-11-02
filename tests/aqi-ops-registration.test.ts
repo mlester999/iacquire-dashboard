@@ -139,6 +139,8 @@ describe("scheduled jobs", () => {
       "aiHealthProbe",
       "provisioningWatchdog",
       "clientBusinessCredentialExpiry",
+      "launchWatch",
+      "bookingConfirmationWatch",
       "customerPaymentReconcile",
       "invoiceOverdueSweep",
       "invoiceReminders",

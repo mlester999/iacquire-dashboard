@@ -38,7 +38,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const [controls, versions, settings, companyContext, knowledgeView, instructionOverview, extra, internalVerification, proactiveReports, proactiveMonitoring] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
-      const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
+      const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name, id: agent.id });
       const pause = await db.query("select 1 from automation_pauses where org_id = $1 and scope = 'agency' and active", [ctx.org.orgId]);
       return { autonomousBlockedReason: blocker, agencyPaused: pause.rows.length > 0 };
     }),

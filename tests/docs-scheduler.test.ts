@@ -4,6 +4,7 @@ import { JOBS } from "@/server/ops/tick";
 import { WORK_BUDGET_MS } from "@/server/esign/worker";
 import { RECONCILE_BUDGET_MS } from "@/server/customer-payments/reconcile";
 import { REVIEW_SYNC_BUDGET_MS } from "@/server/reputation/sync";
+import { LAUNCH_WATCH_BUDGET_MS } from "@/server/setup/launch-watch";
 
 // The operator documents say how many jobs a tick starts, name every job, and tell the founder which switches to check before the first tick. They went stale once (53 jobs
 // documented, 63 registered, none of the invoice or payment jobs named), so this keeps them tied to the registry and to the environment schema.
@@ -267,7 +268,7 @@ describe("the time a tick has", () => {
 
   const seconds = (source: string, pattern: RegExp): number => Number((pattern.exec(source)?.[1] ?? "").replace(/_/g, "")) / 1000;
 
-  it("is spent by six budgets whose sum is stated in both documents, from the constants in the code", () => {
+  it("is spent by seven budgets whose sum is stated in both documents, from the constants in the code", () => {
     const limit = Number(/export const maxDuration = (\d+)/.exec(route)?.[1]);
     const budgets = {
       publisher: seconds(publisher, /PUBLISH_BUDGET_MS = ([\d_]+)/),
@@ -276,6 +277,7 @@ describe("the time a tick has", () => {
       esign: WORK_BUDGET_MS / 1000,
       reviewSync: REVIEW_SYNC_BUDGET_MS / 1000,
       reconcile: RECONCILE_BUDGET_MS / 1000,
+      launchWatch: LAUNCH_WATCH_BUDGET_MS / 1000,
     };
     const all = Object.values(budgets);
     expect(all.every((n) => Number.isFinite(n) && n > 0) && Number.isFinite(limit)).toBe(true);
@@ -291,10 +293,13 @@ describe("the time a tick has", () => {
     expect(impact).toContain(`${sum} seconds`);
   });
 
-  it("says five of the six come before the dispatcher, and they do", () => {
+  it("says five of the seven come before the dispatcher, and they do", () => {
     const at = (n: string) => names.indexOf(n);
     for (const n of ["reviewSync", "socialPublisher", "socialAccountHealth", "socialMetrics", "esignSync"]) expect(at(n), n).toBeLessThan(at("messagesDispatched"));
     expect(at("customerPaymentReconcile")).toBeGreaterThan(at("messagesDispatched"));
+    // The launch watch comes after the dispatcher and before the three jobs that the documents say wait behind it.
+    expect(at("launchWatch")).toBeGreaterThan(at("messagesDispatched"));
+    for (const n of ["customerPaymentReconcile", "invoiceOverdueSweep", "invoiceReminders"]) expect(at("launchWatch"), n).toBeLessThan(at(n));
     // 60 + 20 + 20 + 40 + 25: the budgets of the five that come first.
     const before = (REVIEW_SYNC_BUDGET_MS + WORK_BUDGET_MS) / 1000 + seconds(publisher, /PUBLISH_BUDGET_MS = ([\d_]+)/) + seconds(accounts, /HEALTH_SWEEP_BUDGET_MS = ([\d_]+)/) + seconds(tickSource, /syncPostMetrics\(\{ budgetMs: ([\d_]+) \}/);
     expect(scheduler).toContain(`${before} seconds`);

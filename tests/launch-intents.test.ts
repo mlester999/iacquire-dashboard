@@ -3,14 +3,14 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
-import { createConfigVersion } from "@/server/workforce/service";
-import { defaultSettings } from "@/server/workforce/compiler";
+import { createConfigVersion, currentSettings } from "@/server/workforce/service";
 import { getLaunchReadiness, loadLaunchFacts } from "@/server/setup/launch-readiness";
 import { runLaunchIntent, startLaunchVerification } from "@/server/setup/launch-intents";
 import { LAUNCH_INTENTS } from "@/lib/launch-readiness";
 import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
+import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { agentId, ctxFor } from "./support/fixtures";
-import { approveHours, checkJobs, count, draftClient, itemOf, readyClient, settled } from "./support/launch";
+import { approveHours, checkJobs, count, draftClient, itemOf, markSubmitted, readyClient, settled } from "./support/launch";
 
 describe("the final checks decide 100% Ready to Launch", () => {
   it("is not ready before the checks run, ready only after six finished checks, and never writes or sends anything", async () => {
@@ -51,16 +51,17 @@ describe("the final checks decide 100% Ready to Launch", () => {
     await settled(c.org.id, 6);
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
 
-    const crm = await agentId(c.org.id, "crm_manager");
-    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: crm, settings: { ...defaultSettings("crm_manager"), personality: "Careful and brief." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
+    const analyst = await agentId(c.org.id, "performance_analyst");
+    const current = (await withSystem((db) => currentSettings(db, analyst, c.org.id))).settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...current, personality: "Plain and exact." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
     // makeRuntimeReady's recorded health belongs to the old version; the new version is applied and the employee is still ready for work.
     const stale = (await getLaunchReadiness(c.ctx))!;
     expect(stale.state).toBe("action_required");
-    expect(itemOf(stale, "verification.crm_manager")).toMatchObject({ state: "action_required", detail: expect.stringContaining("configuration changed"), action: { intent: "run_checks" } });
-    expect(stale.blocking.map((i) => i.key)).toEqual(["verification.crm_manager"]);
+    expect(itemOf(stale, "verification.performance_analyst")).toMatchObject({ state: "action_required", detail: expect.stringContaining("configuration changed"), action: { intent: "run_checks" } });
+    expect(stale.blocking.map((i) => i.key)).toEqual(["verification.performance_analyst"]);
 
     const rerun = await startLaunchVerification(c.ctx);
-    expect(rerun.started).toEqual(["crm_manager"]);
+    expect(rerun.started).toEqual(["performance_analyst"]);
     await settled(c.org.id, 7);
     expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
   }, 180_000);
@@ -279,4 +280,124 @@ describe("every step the panel can offer is handled by the server, and refused f
     for (const intent of LAUNCH_INTENTS) await expect(runLaunchIntent(asAgency, intent), intent).rejects.toMatchObject({ code: "forbidden" });
     expect(await n("select count(*) as n from invitations where org_id = $1")).toBe(0);
   }, 180_000);
+});
+
+describe("sync_employees: bringing the AI team up to what the client approved", () => {
+  const q = async <T extends Record<string, unknown>>(sql: string, params: unknown[]) => (await withSystem((db) => db.query<T>(sql, params))).rows;
+  const versions = async (orgId: string) => Object.fromEntries((await q<{ role_key: string; n: number }>(
+    "select a.role_key, count(v.id)::int as n from agent_instances a left join agent_config_versions v on v.agent_instance_id = a.id where a.org_id = $1 group by a.role_key", [orgId])).map((r) => [r.role_key, r.n]));
+  const behindRoles = async (c: Awaited<ReturnType<typeof readyClient>>) => ((await loadLaunchFacts(c.ctx))!.employeesBehind ?? []).map((b) => b.role).sort();
+  const staleBusiness = (orgId: string) => withSystem((db) => db.query("update company_profiles set services = 'Metal roofing and gutters' where org_id = $1", [orgId]));
+
+  it("writes one new attributed version for each employee that is behind, reports what each one became, and a second press changes nothing", async () => {
+    const c = await readyClient({ name: "Sync Employees Roofing", timezone: "America/Chicago" });
+    await staleBusiness(c.org.id);
+    expect(await behindRoles(c)).toEqual([...AGENT_ROLE_KEYS].sort());
+    const before = await versions(c.org.id);
+
+    const res = await runLaunchIntent(c.ctx, "sync_employees");
+    const after = await versions(c.org.id);
+    for (const role of AGENT_ROLE_KEYS) expect(after[role], role).toBe(before[role] + 1);
+    // Each new version names the person who pressed, and says it came from the approved answers.
+    const made = await q<{ role_key: string; source: string; status: string; created_by: string; version: number }>(
+      `select distinct on (a.role_key) a.role_key, v.source, v.status, v.created_by, v.version from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id
+        where a.org_id = $1 order by a.role_key, v.version desc`, [c.org.id]);
+    for (const m of made) expect(m.version, m.role_key).toBe(before[m.role_key] + 1);
+    expect(made).toHaveLength(6);
+    expect(made.every((m) => m.source === "onboarding" && m.created_by === c.people.owner.id)).toBe(true);
+    expect(made.every((m) => m.status === "applied" || m.status === "pending_agency_review")).toBe(true);
+    const applied = made.filter((m) => m.status === "applied").map((m) => m.role_key).sort();
+    const held = made.filter((m) => m.status === "pending_agency_review").map((m) => m.role_key).sort();
+    // A change that needs the reviewer waits for the reviewer and is said to: it is never reported as applied.
+    expect(applied.length + held.length).toBe(6);
+    expect(res.message).toContain("Updated");
+    if (held.length) expect(res.message).toContain("needs iAcquire's review");
+    expect(res.ok).toBe(applied.length > 0);
+    // Nothing is behind any more: an employee is either running the new version or waiting for its review.
+    expect(await behindRoles(c)).toEqual([]);
+    const audit = await q<{ metadata: { updated: string[]; held: string[] } }>("select metadata from audit_logs where org_id = $1 and action = 'setup.launch_employees_synced'", [c.org.id]);
+    expect(audit).toHaveLength(1);
+    expect([...audit[0].metadata.updated].sort()).toEqual(applied);
+    expect([...audit[0].metadata.held].sort()).toEqual(held);
+
+    // Pressing it again finds nothing to do and writes nothing.
+    expect(await runLaunchIntent(c.ctx, "sync_employees")).toEqual({ ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." });
+    expect(await versions(c.org.id)).toEqual(after);
+    expect(await q("select 1 from audit_logs where org_id = $1 and action = 'setup.launch_employees_synced'", [c.org.id])).toHaveLength(1);
+  }, 180_000);
+
+  it("leaves what the client wrote in an employee's settings alone", async () => {
+    const c = await readyClient({ name: "Sync Keeps Edits Roofing", timezone: "America/Chicago" });
+    const analyst = await agentId(c.org.id, "performance_analyst");
+    const own = "The client's own wording.";
+    const current = (await withSystem((db) => currentSettings(db, analyst, c.org.id))).settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...current, personality: own }, source: "client_edit", userId: c.people.owner.id, apply: true }));
+    await staleBusiness(c.org.id);
+    await runLaunchIntent(c.ctx, "sync_employees");
+    const kept = (await q<{ settings: { personality?: string } }>("select v.settings from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.id = $1", [analyst]))[0].settings;
+    expect(kept.personality).toBe(own);
+  }, 180_000);
+
+  it("is refused before the questionnaire, before the payment, for a sample workspace, for unapproved edits and for people who may not manage the profile, and writes nothing", async () => {
+    const early = await readyClient({ name: "Sync Early Roofing", timezone: "UTC" });
+    await staleBusiness(early.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = null where id = $1", [early.org.id]));
+    await expect(runLaunchIntent(early.ctx, "sync_employees")).rejects.toThrow(/Submit your company information/i);
+
+    const unpaid = await readyClient({ name: "Sync Unpaid Roofing", timezone: "UTC" });
+    await staleBusiness(unpaid.org.id);
+    await withSystem((db) => db.query("update billing_accounts set setup_payment_status = 'invoiced', waiver_reason = null, waived_at = null where org_id = $1", [unpaid.org.id]));
+    await expect(runLaunchIntent(unpaid.ctx, "sync_employees")).rejects.toThrow(/setup payment is not confirmed/i);
+
+    const demo = await readyClient({ name: "Sync Sample Roofing", timezone: "UTC" });
+    await staleBusiness(demo.org.id);
+    demo.ctx.org.isDemo = true;
+    await expect(runLaunchIntent(demo.ctx, "sync_employees")).rejects.toThrow(/sample workspace/i);
+
+    const waiting = await readyClient({ name: "Sync Unapproved Roofing", timezone: "UTC" });
+    await staleBusiness(waiting.org.id);
+    await markSubmitted(waiting.org.id);
+    await withSystem((db) => db.query("update onboarding_answers set updated_at = now() + interval '1 minute' where org_id = $1 and question_id = 'a.timezone'", [waiting.org.id]));
+    await expect(runLaunchIntent(waiting.ctx, "sync_employees")).rejects.toThrow(/not approved/i);
+
+    const people = await readyClient({ name: "Sync People Roofing", timezone: "UTC" });
+    await staleBusiness(people.org.id);
+    const roles = [["sales", "sales_rep"], ["support", "support"], ["viewer", "viewer"], ["setter", "appointment_setter"]] as const;
+    for (const [who, role] of roles) await expect(runLaunchIntent(ctxFor(people.people[who], people.org, role), "sync_employees"), who).rejects.toThrow(/owner or admin/i);
+
+    for (const c of [early, unpaid, demo, waiting, people]) {
+      expect(await q("select 1 from audit_logs where org_id = $1 and action = 'setup.launch_employees_synced'", [c.org.id]), c.org.name).toHaveLength(0);
+      expect(Object.values(await versions(c.org.id)).every((n) => n === 1), c.org.name).toBe(true);
+    }
+    // An admin may.
+    expect((await runLaunchIntent(ctxFor(people.people.manager, people.org, "admin"), "sync_employees")).message).toContain("Updated");
+  }, 300_000);
+
+  it("keeps two clients apart: updating one writes nothing in the other, which stays behind until its own owner does it", async () => {
+    const a = await readyClient({ name: "Sync Apart A", timezone: "Asia/Manila" });
+    const b = await readyClient({ name: "Sync Apart B", timezone: "America/Denver" });
+    await staleBusiness(a.org.id);
+    await staleBusiness(b.org.id);
+    const bBefore = await versions(b.org.id);
+    await runLaunchIntent(a.ctx, "sync_employees");
+    expect(await versions(b.org.id)).toEqual(bBefore);
+    expect(await behindRoles(a)).toEqual([]);
+    expect(await behindRoles(b)).toEqual([...AGENT_ROLE_KEYS].sort());
+  }, 300_000);
+
+  it("makes the changed employees' checks stale, so the way back to 100% is the update, then the checks", async () => {
+    const c = await readyClient({ name: "Sync Back To Ready Roofing", timezone: "America/Chicago" });
+    await sweepLaunchVerification(c.org.id);
+    await settled(c.org.id, 6);
+    expect((await getLaunchReadiness(c.ctx))!.state).toBe("ready_to_launch");
+    await staleBusiness(c.org.id);
+    const behind = (await getLaunchReadiness(c.ctx))!;
+    expect(behind.state).toBe("action_required");
+    expect(behind.blocking.map((i) => i.key)).toEqual(["employees.in_sync"]);
+    await runLaunchIntent(c.ctx, "sync_employees");
+    // The updated employees run a new configuration, so their checks are stale; an employee waiting for review is the reviewer's.
+    const after = (await getLaunchReadiness(c.ctx))!;
+    expect(after.percent).toBeLessThan(100);
+    expect(after.blocking.map((i) => i.key)).not.toContain("employees.in_sync");
+  }, 240_000);
 });

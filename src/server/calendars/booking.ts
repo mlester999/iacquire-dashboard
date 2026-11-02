@@ -9,6 +9,7 @@ import { assertNativeOwner } from "@/server/crm/workspace";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { createContactInTx, type ContactInput } from "@/server/crm/contacts";
 import { syncRemindersFor } from "@/server/appointments/reminders";
+import { queueHostConfirmationMessage } from "@/server/appointments/confirmation-watch";
 import { computeSlots, loadBookingContext, orderHosts, type BookingContext } from "@/server/calendars/availability";
 import { formatSlot, isLateCancellation } from "@/lib/appointments";
 import { isValidTimeZone } from "@/lib/calendars/slots";
@@ -420,21 +421,31 @@ export async function cancelNativeAppointment(actor: CrmActor, id: string, input
   });
 }
 
-/** Confirms a booking that was waiting for a person, or records how a finished appointment went. */
+/**
+ * Confirms a booking that was waiting for a person, or records how a finished appointment went. Confirming a booking an AI employee made from a conversation also tells the
+ * customer, once, through the same rule chain as any AI message (an employee that needs approval leaves a draft; nothing is sent in that mode until a person approves it).
+ */
 export async function setNativeAppointmentStatus(actor: CrmActor, id: string, status: "confirmed" | "showed" | "noshow"): Promise<void> {
   assertCan(actor, "appointments.manage");
-  await crmWrite(actor, async (db) => {
+  const changed = await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "appointments");
     const a = await lockNative(db, actor.orgId, id);
     if (status === "confirmed" && a.status !== "new") throw new AppError("conflict", "Only a booking waiting for confirmation can be confirmed.");
     if ((status === "showed" || status === "noshow") && !["new", "confirmed", "showed", "noshow"].includes(a.status)) throw new AppError("conflict", "A cancelled appointment has no outcome.");
     if ((status === "showed" || status === "noshow") && new Date(a.start_at).getTime() > Date.now()) throw new AppError("conflict", "Record the outcome once the appointment has started.");
-    if (a.status === status) return;
+    if (a.status === status) return false;
     await db.query("update appointment_refs set status = $3, version = version + 1, last_event_at = now() where id = $1 and org_id = $2", [id, actor.orgId, status]);
     await emitEvent(db, actor, { type: `appointment.${status === "noshow" ? "no_show" : status}`, entityType: "appointment", entityId: id, contactId: a.contact_id, dedupeKey: `appointment.${status}:${id}` });
     await recordActivity(db, actor, { kind: `appointment.${status === "noshow" ? "no_show" : status}`, summary: status === "confirmed" ? "Appointment confirmed" : status === "showed" ? "Showed up to the appointment" : "Didn't show up to the appointment", contactId: a.contact_id, refType: "appointment", refId: id });
     await syncRemindersFor(db, actor.orgId, id);
+    return true;
   });
+  // After the confirmation is committed, so a message that cannot be queued never undoes it. The message's own dedupe key makes a repeat harmless.
+  if (changed && status === "confirmed") {
+    await queueHostConfirmationMessage(actor.orgId, id).catch(async () => {
+      await recordAudit({ orgId: actor.orgId, actorKind: "system", action: "appointment.host_confirmation_message", targetType: "appointment", targetId: id, result: "failure" });
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,9 @@ import { computeProgress, estimateCompletion, evaluateReadiness, type RuleTask }
 import { PROVISIONERS } from "@/server/setup/provisioning-contract";
 import { CONNECTORS, GHL_CONNECTORS } from "@/server/setup/connectors";
 import { CHECK_KEYS } from "@/lib/setup";
+import { recordLaunchSnapshot } from "@/server/setup/launch-ledger";
 import { addMember, agencyUser, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { draftClient } from "./support/launch";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const KEY = "s".repeat(40);
@@ -637,10 +639,45 @@ describe("agency client list", () => {
     expect(row).toMatchObject({ name: "Overview Co", responsible: { id: staff.id }, setup: { started: true, state: "in_setup", percent: 8, clientActions: 1, blocked: 1 } });
     expect(row.health.level).toBe("not_connected");
     expect(row.lastActivityAt).toBeTruthy();
+    // Nothing is recorded in the launch ledger yet: the row says so (null), and does not borrow the checklist's numbers.
+    expect(row.launch).toBeNull();
+    // Once the ledger has the client's state, the same row carries it, for the staff member assigned to this client and nobody else's.
+    expect(await recordLaunchSnapshot(org.id, { kind: "system" })).toMatchObject({ recorded: true, state: "questionnaire_submitted" });
+    const other = await fresh("Unassigned Launch Co");
+    await finishOnboarding(other.org.id);
+    await recordLaunchSnapshot(other.org.id, { kind: "system" });
+    const withLaunch = (await listClientSetupOverview(a)).find((r) => r.id === org.id)!;
+    expect(withLaunch.launch).toMatchObject({ state: "questionnaire_submitted", label: "Questionnaire submitted", needsClient: expect.any(Number), needsIacquire: expect.any(Number), since: expect.any(String) });
     const mine = await listClientSetupOverview(staff);
     expect(mine.map((r) => r.id)).toEqual([org.id]);
+    expect(mine[0].launch?.state).toBe("questionnaire_submitted");
+    expect(JSON.stringify(mine)).not.toContain(other.org.id);
     await expect(listClientSetupOverview({ ...staff, platformRole: "none" })).rejects.toThrow(/Agency access/);
   });
+});
+
+describe("the activation review keeps the launch state it was decided against", () => {
+  it("stores the client's launch snapshot with the decision, and the refusal still comes from the checklist alone", async () => {
+    const c = await draftClient("Activation Launch Co", "America/Chicago");
+    await ensureInstanceStandalone(c.org.id);
+    const a = await admin();
+    // The decision is refused for the reason it always was (the setup is not in final review); the launch state is not a new reason.
+    await expect(activateSetup(a, c.org.id, {})).rejects.toThrow("Mark the setup ready for final review before activating.");
+    const reviews = await withSystem((db) => db.query<{ decision: string; readiness_snapshot: { externalActivation: boolean; launch?: { state: string; label: string; percent: number; passed: number; total: number; fingerprint: string; waitingOnClient: number; blocking: Array<{ key: string; owner: string }> } } }>(
+      "select decision, readiness_snapshot from activation_reviews where org_id = $1", [c.org.id],
+    ));
+    expect(reviews.rows).toHaveLength(1);
+    expect(reviews.rows[0].decision).toBe("blocked");
+    const launch = reviews.rows[0].readiness_snapshot.launch;
+    expect(launch).toMatchObject({ state: "action_required", label: "Action required", percent: expect.any(Number), passed: expect.any(Number), total: expect.any(Number) });
+    expect(launch?.fingerprint).toMatch(/^[0-9a-f]{14}$/);
+    expect(launch?.waitingOnClient).toBeGreaterThan(0);
+    expect(launch?.blocking.map((i) => i.key)).toContain("calendar.host");
+    expect(reviews.rows[0].readiness_snapshot.externalActivation).toBe(false);
+    // Taking the snapshot wrote nothing else: no ledger row appeared because the agency looked.
+    const ledger = await withSystem((db) => db.query("select 1 from audit_logs where org_id = $1 and action = 'setup.launch_state_changed'", [c.org.id]));
+    expect(ledger.rows).toHaveLength(0);
+  }, 120_000);
 });
 
 describe("live synchronization", () => {

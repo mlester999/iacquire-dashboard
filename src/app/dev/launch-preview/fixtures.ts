@@ -68,6 +68,7 @@ export function launchPreview(view: LaunchPreviewView): LaunchReadiness {
     case "action":
       return deriveLaunchReadiness({
         ...f, knowledge: { approved: 5, pending: 2 },
+        employeesBehind: [{ role: "operations_manager", reason: "Your approved answers have changed and this employee has not been updated." }], canSyncEmployees: true,
         team: { listed: 2, members: 0, pending: 0, toInviteNames: ["Marcus Hale", "Priya Nair"], canManage: true },
         crm: { ...f.crm, blueprint: "waiting_for_a_person", pipelineReady: false, records: { state: "pending", tags: 0, contactFields: 0, forms: 0 }, region: { state: "offer", currency: "USD", callingCode: "1", country: "United States", canConfirm: true }, pipelineDraft: { state: "offer", stages: ["Enquiry", "Site visit", "Quote sent", "Won", "Lost"], makesDefault: true, canApply: true } },
         channels: [{ channel: "email", wanted: true, enabled: true, registration: "not_required", statedSender: "hello@brighthomes.example", credentialStored: true }, { channel: "sms", wanted: true, enabled: false, registration: "pending", statedSender: "+1 512 555 0100", credentialStored: true }, { channel: "whatsapp", wanted: false, enabled: false, registration: "not_started" }],

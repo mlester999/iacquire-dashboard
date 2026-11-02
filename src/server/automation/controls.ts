@@ -7,6 +7,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import type { AgentMode } from "@/server/automation/gate";
 import { isRuntimeOnline } from "@/lib/employee-runtime";
+import { currentLaunchCheckPassed, launchCheckApplies } from "@/server/setup/launch-readiness";
 
 export const AGENT_MODES: readonly AgentMode[] = ["autonomous", "approval_required", "paused"];
 export const isAgentMode = (value: unknown): value is AgentMode => typeof value === "string" && (AGENT_MODES as readonly string[]).includes(value);
@@ -89,11 +90,16 @@ export async function setAgentMode(ctx: OrgContext, input: { agentId: string; mo
   });
 }
 
-/** Why this employee cannot work autonomously yet, in words a client can act on. Null when it can. */
+/**
+ * Why this employee cannot work autonomously yet, in words a client can act on. Null when it can. For a client's own, real workspace the employee's final check must also have
+ * passed for the configuration version it runs now and the setup that check reads, so an employee is never let loose on a check that ran for older settings (`agent.id` names the
+ * employee; without it only the earlier conditions can be judged). The internal agency tier and sample workspaces have no launch checks and are not held to this one, and neither is an
+ * Appointment Setter whose client does not book appointments: no check is ever started for it, so there is nothing to pass.
+ */
 export async function autonomousBlocker(
   db: Queryable,
   orgId: string,
-  agent: { enabled: boolean; status: string; last_health_ok: boolean | null; display_name: string },
+  agent: { enabled: boolean; status: string; last_health_ok: boolean | null; display_name: string; id?: string },
 ): Promise<string | null> {
   if (!agent.enabled) return `${agent.display_name} is not included in your workspace.`;
   if (!isRuntimeOnline(agent.status) || agent.last_health_ok !== true) {
@@ -105,13 +111,20 @@ export async function autonomousBlocker(
     "select 1 from automation_pauses p join organizations o on o.id = p.org_id where p.active and p.scope = 'agency' and (p.org_id = $1 or o.kind = 'agency')",
     [orgId],
   );
-  return pause.length ? "iAcquire has paused automation for this workspace, so autonomous mode is unavailable right now." : null;
+  if (pause.length) return "iAcquire has paused automation for this workspace, so autonomous mode is unavailable right now.";
+  if (agent.id) {
+    const org = (await db.query<{ kind: string; is_demo: boolean }>("select kind, is_demo from organizations where id = $1", [orgId])).rows[0];
+    if (org?.kind === "client" && !org.is_demo && (await launchCheckApplies(db, orgId, agent.id)) && !(await currentLaunchCheckPassed(db, orgId, agent.id))) {
+      return `${agent.display_name}'s final check has not passed for its current settings. Run the final checks in Setup; autonomous work unlocks once it passes.`;
+    }
+  }
+  return null;
 }
 
 async function assertCanGoAutonomous(
   db: Queryable,
   orgId: string,
-  agent: { enabled: boolean; status: string; last_health_ok: boolean | null; display_name: string },
+  agent: { enabled: boolean; status: string; last_health_ok: boolean | null; display_name: string; id?: string },
   confirmed: boolean,
 ) {
   if (!confirmed) throw new AppError("invalid_input", "Confirm that this employee may work without asking for each action.");

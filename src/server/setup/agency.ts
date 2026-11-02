@@ -24,6 +24,8 @@ import { applyTransition } from "@/server/setup/transition";
 import { setupDate, setupHttpsUrl } from "@/server/setup/validation";
 import { removePrivateFile } from "@/server/storage/private";
 import { evaluateReadiness, isApplicable, SETUP_SERVICE_KEYS, TASK_STATUSES, unmetDependencies, type Section } from "@/lib/setup";
+import { deriveLaunchReadiness, fingerprintOf } from "@/lib/launch-readiness";
+import { launchStallMinutes, loadLaunchFactsForOrg } from "@/server/setup/launch-readiness";
 
 const text = (max: number) => z.string().trim().max(max);
 const httpsUrl = setupHttpsUrl;
@@ -475,6 +477,28 @@ export const activationSchema = z.object({
 });
 
 /**
+ * Where the client's launch stands right now, as a small record for the activation review's snapshot: what the reviewer could see on the client's launch checklist at the moment of the
+ * decision. It is a record, never a gate (whether to approve a client that is not 100% ready stays the founder's decision), it writes nothing, and a read that fails leaves a plain
+ * "unavailable" in the snapshot instead of failing the approval. A workspace that is not a client's has none.
+ */
+async function launchSnapshotOf(orgId: string) {
+  try {
+    const facts = await loadLaunchFactsForOrg(orgId);
+    if (!facts) return null;
+    const r = deriveLaunchReadiness(facts, new Date(), launchStallMinutes());
+    return {
+      state: r.state, label: r.label, percent: r.percent, passed: r.passed, total: r.total, fingerprint: fingerprintOf(r),
+      waitingOnClient: r.blocking.filter((i) => i.owner === "you").length,
+      waitingOnIacquire: r.blocking.filter((i) => i.owner !== "you").length,
+      blocking: r.blocking.slice(0, 10).map((i) => ({ key: i.key, label: i.label, state: i.state, owner: i.owner })),
+    };
+  } catch (err) {
+    console.warn("[iacquire] the launch state could not be read for the activation snapshot.", { error: err instanceof Error ? err.name : "unknown" });
+    return { unavailable: true as const };
+  }
+}
+
+/**
  * Approves the system for activation. It re-runs every live check first, then requires the final
  * review state, every required step complete, no blocked steps and passing provider checks.
  * Attestations cannot replace technical verification. This records an immutable decision;
@@ -484,6 +508,8 @@ export async function activateSetup(admin: SessionUser, orgId: string, input: z.
   await assertAgencyAccess(admin, orgId, "super_admin");
   const data = activationSchema.parse(input);
   await runChecks(orgId, { actorUserId: admin.id, agency: admin, live: true, force: true });
+  // Read before the transaction opens (reading it takes transactions of its own), and kept with the decision whatever the decision is.
+  const launch = await launchSnapshotOf(orgId);
   const outcome = await agencyMutation(admin, orgId, async (db, inst, h) => {
     if (inst.state === "activated") throw new AppError("invalid_input", "This client is already activated.");
     const r = await readinessOf(db, inst);
@@ -492,7 +518,7 @@ export async function activateSetup(admin: SessionUser, orgId: string, input: z.
     await db.query(
       `insert into activation_reviews (org_id, setup_instance_id, reviewed_by, decision, setup_revision, readiness_snapshot, note)
        values ($1, $2, $3, $4, $5, $6, $7)`,
-      [orgId, inst.id, admin.id, allowed ? "approved" : "blocked", inst.revision, JSON.stringify({ ...r, unresolvedJobs: jobs.rows[0].n, externalActivation: false }), data.note],
+      [orgId, inst.id, admin.id, allowed ? "approved" : "blocked", inst.revision, JSON.stringify({ ...r, unresolvedJobs: jobs.rows[0].n, externalActivation: false, launch }), data.note],
     );
     if (!allowed) {
       await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: "setup.activation_blocked", targetType: "setup", targetId: inst.id, result: "denied", metadata: { blockers: r.blockers.length, unresolvedJobs: jobs.rows[0].n } }, db);

@@ -11,19 +11,26 @@ import { absoluteUrl, manageUrl } from "@/lib/calendars/urls";
 const LIVE = ["new", "confirmed"];
 
 /**
+ * An iAcquire appointment whose type says a person confirms each booking waits as `new` until they do. The customer was told it is reserved, not confirmed, so no reminder goes out for it:
+ * a reminder would present as settled a time nobody has agreed to. Confirming it plans the reminders (setNativeAppointmentStatus syncs them). Calendars that report their own statuses
+ * (GoHighLevel maps an unknown status to `new`) are not held back.
+ */
+export const awaitingHostConfirmation = (a: { provider: string; status: string }) => a.provider === "native" && a.status === "new";
+
+/**
  * Brings an appointment's reminders in line with the appointment as it is now: created when it is booked, moved when it is
  * rescheduled, and withdrawn when it is cancelled, finished or reminders are off. A reminder already queued for the old time
  * is stopped, so a customer is never told a time that no longer applies.
  */
 export async function syncRemindersFor(db: Queryable, orgId: string, appointmentId: string, now = new Date()) {
-  const { rows } = await db.query<{ status: string; start_at: Date; contact_id: string | null; reminders_enabled: boolean | null; offsets: number[] | null }>(
-    `select a.status, a.start_at, a.contact_id, s.reminders_enabled, s.reminder_offsets_minutes as offsets
+  const { rows } = await db.query<{ status: string; provider: string; start_at: Date; contact_id: string | null; reminders_enabled: boolean | null; offsets: number[] | null }>(
+    `select a.status, a.provider, a.start_at, a.contact_id, s.reminders_enabled, s.reminder_offsets_minutes as offsets
      from appointment_refs a left join appointment_settings s on s.org_id = a.org_id where a.id = $1 and a.org_id = $2`,
     [appointmentId, orgId],
   );
   const a = rows[0];
   if (!a) return;
-  const upcoming = LIVE.includes(a.status) && new Date(a.start_at).getTime() > now.getTime();
+  const upcoming = LIVE.includes(a.status) && !awaitingHostConfirmation(a) && new Date(a.start_at).getTime() > now.getTime();
   const wanted = upcoming && a.reminders_enabled && a.contact_id ? reminderSchedule(new Date(a.start_at), a.offsets ?? [], now) : [];
   const keep = new Set(wanted.map((w) => w.offsetMinutes));
 
@@ -31,7 +38,7 @@ export async function syncRemindersFor(db: Queryable, orgId: string, appointment
     "select id, offset_minutes, due_at, status, message_id from appointment_reminders where appointment_id = $1 and org_id = $2 for update",
     [appointmentId, orgId],
   );
-  const why = !upcoming ? "The appointment is no longer upcoming." : !a.reminders_enabled ? "Reminders are switched off." : !a.contact_id ? "There is no contact to remind." : "That reminder time was removed.";
+  const why = awaitingHostConfirmation(a) ? "The appointment is waiting for the host to confirm it." : !upcoming ? "The appointment is no longer upcoming." : !a.reminders_enabled ? "Reminders are switched off." : !a.contact_id ? "There is no contact to remind." : "That reminder time was removed.";
   for (const r of existing.rows) {
     if (keep.has(r.offset_minutes) || ["sent", "cancelled", "skipped"].includes(r.status)) continue;
     await stopMessage(db, orgId, r.message_id, "appointment_changed");
@@ -203,7 +210,7 @@ export async function claimDueReminders(now: Date, limit?: number): Promise<Clai
     // A reminder is never sent after its appointment has started, or for one that is no longer upcoming.
     await db.query(
       `update appointment_reminders r set status = 'skipped', reason = 'The appointment is no longer upcoming.'
-       from appointment_refs a where a.id = r.appointment_id and r.status = 'scheduled' and r.due_at <= $1 and (a.status <> all($2::text[]) or a.start_at <= $1)`,
+       from appointment_refs a where a.id = r.appointment_id and r.status = 'scheduled' and r.due_at <= $1 and (a.status <> all($2::text[]) or a.start_at <= $1 or (a.provider = 'native' and a.status = 'new'))`,
       [now.toISOString(), LIVE],
     );
     const res = await db.query<ClaimedReminder>(
@@ -239,14 +246,14 @@ export async function queueClaimedReminder(d: ClaimedReminder, now: Date): Promi
     // go on only if it is still the reminder that was claimed, for an appointment that is still upcoming at the same time.
     const dueAt = new Date(d.due_at);
     const startAt = new Date(d.start_at);
-    const { rows: current } = await db.query<{ status: string; due_at: Date; message_id: string | null; appt_status: string; start_at: Date }>(
-      `select r.status, r.due_at, r.message_id, a.status as appt_status, a.start_at from appointment_reminders r
+    const { rows: current } = await db.query<{ status: string; due_at: Date; message_id: string | null; appt_status: string; appt_provider: string; start_at: Date }>(
+      `select r.status, r.due_at, r.message_id, a.status as appt_status, a.provider as appt_provider, a.start_at from appointment_reminders r
        join appointment_refs a on a.id = r.appointment_id and a.org_id = r.org_id where r.id = $1 for update of r`,
       [d.id],
     );
     const c = current[0];
     if (!c || c.status !== "queued" || c.message_id || new Date(c.due_at).getTime() !== dueAt.getTime()) return "skipped";
-    if (!LIVE.includes(c.appt_status) || new Date(c.start_at).getTime() <= now.getTime()) {
+    if (!LIVE.includes(c.appt_status) || awaitingHostConfirmation({ provider: c.appt_provider, status: c.appt_status }) || new Date(c.start_at).getTime() <= now.getTime()) {
       await db.query("update appointment_reminders set status = 'skipped', reason = 'The appointment is no longer upcoming.' where id = $1 and status = 'queued' and due_at = $2", [d.id, dueAt]);
       return "skipped";
     }

@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { withServiceRole, withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -37,6 +38,7 @@ import { notifyAgency, notifyOrgRoles, notifyUser } from "@/server/notifications
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/reviews";
 import { clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { liveFactsBlock } from "@/server/workforce/live-facts";
 
 export interface AgentInstanceRow {
   id: string;
@@ -463,7 +465,7 @@ export async function createConfigVersion(
     ],
   );
   const versionId = rows[0].id;
-  if (status === "applied") await activateVersion(db, input.orgId, input.agentId, versionId, compiled.settings.displayName);
+  if (status === "applied") await activateVersion(db, input.orgId, input.agentId, versionId, compiled.settings.displayName, input.userId);
 
   // A newer submission replaces any earlier version that is still waiting for review. The earlier
   // row stays in history with its original settings and flags, but it can no longer be approved in
@@ -554,7 +556,72 @@ export async function createConfigVersion(
   };
 }
 
-async function activateVersion(db: Queryable, orgId: string, agentId: string, versionId: string, displayName: string) {
+/** The workspace switch (org_features) that makes an autonomous employee ask again after its customer-facing settings change. Absent means off. */
+export const AUTONOMY_RECONFIRM_FEATURE = "autonomy_reconfirm";
+
+/** The settings a customer reads or feels in a reply. A change to any of them is a change to what the owner agreed to let run without asking. */
+const CUSTOMER_FACING_SETTINGS: ReadonlyArray<{ field: keyof AgentSettings; label: string }> = [
+  { field: "tone", label: "tone" },
+  { field: "language", label: "language" },
+  { field: "replyLength", label: "reply length" },
+  { field: "companyRules", label: "company rules" },
+  { field: "neverPromise", label: "what it must never promise" },
+  { field: "escalateWhen", label: "when it hands over to a person" },
+  { field: "roleAnswers", label: "its role answers" },
+  { field: "customInstruction", label: "its custom instruction" },
+];
+
+/**
+ * An employee that works autonomously was agreed to on the settings it had then. When a version that changes what a customer reads from it is applied, the owner is asked again:
+ * the mode drops to approval-required, with the reason, and the owners are told. Only where the workspace switched the rule on (default off), only for a client's own employee in
+ * a real workspace, and only for a change of those settings: a name, a colour or a note to self never asks. Called before the new version becomes the active one, in the same
+ * transaction, so the previous settings are still the ones it compares against. `actorUserId` is the person who applied or approved the version (null only for work no person started): the drop is the system acting on a
+ * rule, but a person caused it, and the mode record and the audit row both say who.
+ */
+async function reconfirmAutonomyForVersion(db: Queryable, orgId: string, agentId: string, versionId: string, actorUserId: string | null) {
+  const { rows } = await db.query<{ mode: string; role_key: string; display_name: string; kind: string; is_demo: boolean; enabled: boolean | null; previous: unknown; next: unknown; version: number | null; same: boolean }>(
+    `select a.mode, a.role_key, a.display_name, o.kind, o.is_demo,
+            (select f.enabled from org_features f where f.org_id = a.org_id and f.feature = $4) as enabled,
+            prev.settings as previous, nxt.settings as next, nxt.version, (a.active_config_version_id is not distinct from $3::uuid) as same
+       from agent_instances a join organizations o on o.id = a.org_id
+       left join agent_config_versions prev on prev.id = a.active_config_version_id and prev.org_id = a.org_id
+       left join agent_config_versions nxt on nxt.id = $3 and nxt.org_id = a.org_id
+      where a.id = $1 and a.org_id = $2`,
+    [agentId, orgId, versionId, AUTONOMY_RECONFIRM_FEATURE],
+  );
+  const row = rows[0];
+  if (!row || row.mode !== "autonomous" || row.kind !== "client" || row.is_demo || row.enabled !== true || row.same || !row.previous || !row.next) return;
+  const before = agentSettingsSchema.safeParse(row.previous);
+  const after = agentSettingsSchema.safeParse(row.next);
+  if (!before.success || !after.success) return;
+  const changed = CUSTOMER_FACING_SETTINGS.filter(({ field }) => !isDeepStrictEqual(before.data[field], after.data[field]));
+  if (!changed.length) return;
+  const what = changed.map((c) => c.label).join(", ");
+  const reason = `Its customer-facing settings changed (${what}) in version ${row.version ?? ""}. Confirm autonomous work again for the new version.`.slice(0, 500);
+  const moved = await db.query(
+    "update agent_instances set mode = 'approval_required', mode_changed_by = $4, mode_changed_at = now(), mode_reason = $3 where id = $1 and org_id = $2 and mode = 'autonomous'",
+    [agentId, orgId, reason, actorUserId],
+  );
+  if (!moved.rowCount) return;
+  await recordAudit(
+    {
+      orgId, actorUserId, actorKind: "system", agentInstanceId: agentId, action: "agent.mode_changed", targetType: "agent_instance", targetId: agentId, result: "success",
+      metadata: { from: "autonomous", to: "approval_required", role: row.role_key, reason, via: AUTONOMY_RECONFIRM_FEATURE, fields: changed.map((c) => c.field), version: row.version },
+    },
+    db,
+  );
+  await notifyOrgRoles(db, orgId, ["owner"], {
+    kind: "agent_status",
+    severity: "warning",
+    title: `${row.display_name} asks for approval again`,
+    body: `You changed ${what}, so ${row.display_name} now needs approval before it acts, until you confirm autonomous work again for the new version.`,
+    link: `/employees/${isAgentRoleKey(row.role_key) ? AGENT_BY_KEY[row.role_key].slug : ""}`,
+    dedupeKey: `autonomy-reconfirm:${agentId}:${versionId}`,
+  });
+}
+
+async function activateVersion(db: Queryable, orgId: string, agentId: string, versionId: string, displayName: string, actorUserId: string | null) {
+  await reconfirmAutonomyForVersion(db, orgId, agentId, versionId, actorUserId);
   await db.query(
     `update agent_config_versions set status = 'superseded'
      where agent_instance_id = $1 and status = 'applied' and id <> $2`,
@@ -631,7 +698,7 @@ export async function applyDraftVersion(db: Queryable, orgId: string, versionId:
   );
   const v = rows[0];
   if (!v) throw new AppError("conflict", "This configuration was already applied or replaced.");
-  await activateVersion(db, orgId, v.agent_instance_id, versionId, agentSettingsSchema.parse(v.settings).displayName);
+  await activateVersion(db, orgId, v.agent_instance_id, versionId, agentSettingsSchema.parse(v.settings).displayName, userId);
 }
 
 /** Agency review of a held version. Blocked content can never be approved. */
@@ -687,7 +754,7 @@ export async function decideHeldVersion(
   );
   const decided = updated[0];
   if (!decided) throw new AppError("conflict", "This version has already been reviewed.");
-  if (input.approve) await activateVersion(db, input.orgId, decided.agent_instance_id, decided.id, agentSettingsSchema.parse(decided.settings).displayName);
+  if (input.approve) await activateVersion(db, input.orgId, decided.agent_instance_id, decided.id, agentSettingsSchema.parse(decided.settings).displayName, input.agencyUserId);
 
   // The review request is no longer actionable once a decision exists. Mark the original request
   // read for every recipient so an old "needs review" item cannot linger as unread; the decision
@@ -779,11 +846,13 @@ export interface RunInstructions {
   knowledgeEntryIds: string[];
   knowledgeDocumentIds: string[];
   knowledgeTruncated: boolean;
+  /** Some of the live booking rules or pipeline stages did not fit their size cap and were left out of the block (src/server/workforce/live-facts.ts). */
+  liveFactsTruncated: boolean;
 }
 
 /**
- * Layered run instructions: the employee configuration, then approved company and employee knowledge, then the
- * immutable agency policy last so later context can never overshadow it.
+ * Layered run instructions: the employee configuration, then approved company and employee knowledge, then the client's live booking rules and pipeline stages (read now, so
+ * they never go stale), then the immutable agency policy last so later context can never overshadow it.
  */
 export async function composeRunInstructions(
   db: Queryable,
@@ -794,6 +863,13 @@ export async function composeRunInstructions(
   organization: { kind: WorkforceOrganizationKind; name: string },
 ): Promise<RunInstructions> {
   const knowledge = await employeeKnowledgeContext(db, orgId, agentId);
+  // The booking rules and pipeline stages a client edits in the CRM are read at run time, for a client workspace only: the stored text would keep saying whatever they were when the
+  // configuration was compiled. The internal agency tier is untouched (and costs no query).
+  let live: { block: string; truncated: boolean } = { block: "", truncated: false };
+  if (organization.kind === "client") {
+    const role = (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [agentId, orgId])).rows[0]?.role_key;
+    if (role && isAgentRoleKey(role)) live = await liveFactsBlock(db, { orgId, orgKind: "client", role });
+  }
   // The live policy is source controlled and must not go stale when an employee's active config
   // predates a policy update. Workspace knowledge stays ahead of the policy so it cannot override it.
   const policyVersion = policyVersionFor(organization.kind);
@@ -808,12 +884,13 @@ export async function composeRunInstructions(
     ...immutablePolicy(companyName, organization.kind).map((rule, index) => `${index + 1}. ${rule}`),
   ].join("\n");
   return {
-    instructions: [head, knowledge.block, policy].filter(Boolean).join("\n\n"),
+    instructions: [head, knowledge.block, live.block, policy].filter(Boolean).join("\n\n"),
     versionId,
     policyVersion,
     knowledgeEntryIds: knowledge.entryIds,
     knowledgeDocumentIds: knowledge.documentIds,
     knowledgeTruncated: knowledge.truncated,
+    liveFactsTruncated: live.truncated,
   };
 }
 

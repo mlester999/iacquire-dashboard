@@ -3,12 +3,12 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { notifyAgency } from "@/server/notifications";
+import { recordAudit } from "@/server/audit";
 import { describeAction } from "@/lib/activity";
 import { getDashboard } from "@/server/queries/dashboard";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { deriveLaunchReadiness, fingerprintOf } from "@/lib/launch-readiness";
-import { createConfigVersion } from "@/server/workforce/service";
-import { defaultSettings } from "@/server/workforce/compiler";
+import { createConfigVersion, currentSettings } from "@/server/workforce/service";
 import { waiveSetupFee } from "@/server/billing/manual";
 import { pickUpSetupEvidence } from "@/server/setup/evidence-pickup";
 import { sweepLaunchVerification, sweepLaunchVerificationAfter } from "@/server/setup/launch-sweep";
@@ -97,6 +97,36 @@ describe("the ledger writes one row per real change", () => {
     expect(await ledgerRows(fresh.id)).toHaveLength(0);
   }, 120_000);
 
+  it("compares with the newest row by its sequence number, not by its text, when one client's rows straddle a digit boundary", async () => {
+    const c = await draftClient("Digit Boundary Dental", "Asia/Manila");
+    const top = async () => Number((await withSystem((db) => db.query<{ n: string }>("select coalesce(max(id), 0)::text as n from audit_logs"))).rows[0].n);
+    // Put the audit sequence just under the next power of ten, so the client's first row has one digit fewer than its second: sorted as text, "999" would be newer than "1003".
+    const boundary = 10 ** String((await top()) + 40).length;
+    await withSystem((db) => db.query("select setval(pg_get_serial_sequence('audit_logs', 'id'), $1)", [boundary - 20]));
+    await recordLaunchSnapshot(c.org.id, SYSTEM);
+    while ((await top()) < boundary + 2) {
+      await recordAudit({ orgId: c.org.id, actorKind: "system", action: "test.digit_boundary_filler", targetType: "organization", targetId: c.org.id, result: "success" });
+    }
+    expect((await runLaunchIntent(c.ctx, "assign_host")).ok).toBe(true);
+    const rows = await ledgerRows(c.org.id);
+    expect(rows).toHaveLength(2);
+    expect(Number(rows[0].id)).toBeLessThan(boundary);
+    expect(Number(rows[1].id)).toBeGreaterThanOrEqual(boundary);
+    expect(rows[1].metadata.from).toBe("action_required");
+    // The state is unchanged since the second row: nothing is written.
+    expect(await recordLaunchSnapshot(c.org.id, SYSTEM)).toMatchObject({ recorded: false });
+    expect(await ledgerRows(c.org.id)).toHaveLength(2);
+    expect(await notices(c.org.id, ["setup_action_required"])).toHaveLength(1);
+    // A later real change is still recorded, from the second row's state. Compared by text, the first row would look like the newest one: the writer would think another call had written
+    // meanwhile, stand down, and the change would be lost.
+    await withSystem((db) => db.query("delete from crm_appointment_types where org_id = $1", [c.org.id]));
+    expect(await recordLaunchSnapshot(c.org.id, SYSTEM)).toMatchObject({ recorded: true });
+    const after = await ledgerRows(c.org.id);
+    expect(after).toHaveLength(3);
+    expect(after[2].metadata.fingerprint).not.toBe(after[1].metadata.fingerprint);
+    expect(after[2].metadata.from).toBe(after[1].metadata.to);
+  }, 180_000);
+
   it("makes one row when it is called several times at once", async () => {
     const c = await draftClient("Concurrent Roofing", "Europe/London");
     const results = await Promise.all([recordLaunchSnapshot(c.org.id, SYSTEM), recordLaunchSnapshot(c.org.id, SYSTEM), recordLaunchSnapshot(c.org.id, { kind: "user", userId: c.people.owner.id })]);
@@ -172,7 +202,8 @@ describe("owners are told once for each moment that is theirs", () => {
 
     // The analyst's configuration changes: its last check no longer describes it, so the client is not ready any more, and that step back is recorded.
     const analyst = await agentId(c.org.id, "performance_analyst");
-    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...defaultSettings("performance_analyst"), personality: "Plain and exact." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
+    const analystSettings = (await withSystem((db) => currentSettings(db, analyst, c.org.id))).settings;
+    await withSystem((db) => createConfigVersion(db, { orgId: c.org.id, agentId: analyst, settings: { ...analystSettings, personality: "Plain and exact." }, source: "client_edit", userId: c.people.owner.id, apply: true }));
     expect(await recordLaunchSnapshot(c.org.id, SYSTEM)).toMatchObject({ recorded: true, state: "action_required" });
     rows = (await ledgerRows(c.org.id)).slice(base);
     expect(rows[1].metadata).toMatchObject({ from: "ready_to_launch", to: "action_required" });
