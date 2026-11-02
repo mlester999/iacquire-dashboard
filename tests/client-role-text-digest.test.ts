@@ -22,14 +22,14 @@ const sha256 = (text: string) => createHash("sha256").update(text, "utf8").diges
 
 /** The pinned digest of each role and of all six together, in the order of AGENT_ROLE_KEYS. */
 const PINNED: Record<AgentRoleKey, string> = {
-  operations_manager: "034e33285602315691ad601be113f2f9dd2c187fe55ca7dd5686b106aa6c9d2b",
+  operations_manager: "fb8ce41e822821f8a20ec88f872e81da8f7c96bde4c9141b66128cb6fa751e37",
   lead_hunter: "afffe556a681e26747cfbfcbbf4d517facf6d132cb7cfc7a1714aa2359edab2c",
   appointment_setter: "bb8c8bb9ace80ac57ede2530209c57726ffdee045e60076869fb427035af2773",
   sales_assistant: "561dcc4de2b9a9dac15da58c575034be533c9a9e5049b78a79c50e346445cd90",
   crm_manager: "de44dfdbc4a6a4becf27688769f8b196bcce7d7fde08ecc8ac42948e7bdaa7c7",
   performance_analyst: "09de5a9b25096b6ed612e839bb40ab2268efff50eb4c74b970253dc433adbce5",
 };
-const PINNED_OVERALL = "0c5ed62db1df338b4501429d7e5b6ec0b24abdcb7611ee481c32bc74a91d92c8";
+const PINNED_OVERALL = "9370773dfc07576385a3e942b894c975015feaf06b2834e1889915659c66d055";
 
 async function shipped() {
   const { rows } = await withSystem((db) => db.query<{ key: string; default_tools: string[] }>("select key, default_tools from agent_roles"));

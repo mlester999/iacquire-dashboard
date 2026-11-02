@@ -119,13 +119,15 @@ Options that were on the table (A was taken):
 
 The digests of the shipped client role texts as of the commit that added this record. `tests/client-role-text-digest.test.ts` recomputes them and fails if they differ.
 
-- operations_manager: 034e33285602315691ad601be113f2f9dd2c187fe55ca7dd5686b106aa6c9d2b
+- operations_manager: fb8ce41e822821f8a20ec88f872e81da8f7c96bde4c9141b66128cb6fa751e37
 - lead_hunter: afffe556a681e26747cfbfcbbf4d517facf6d132cb7cfc7a1714aa2359edab2c
 - appointment_setter: bb8c8bb9ace80ac57ede2530209c57726ffdee045e60076869fb427035af2773
 - sales_assistant: 561dcc4de2b9a9dac15da58c575034be533c9a9e5049b78a79c50e346445cd90
 - crm_manager: de44dfdbc4a6a4becf27688769f8b196bcce7d7fde08ecc8ac42948e7bdaa7c7
 - performance_analyst: 09de5a9b25096b6ed612e839bb40ab2268efff50eb4c74b970253dc433adbce5
-- overall: 0c5ed62db1df338b4501429d7e5b6ec0b24abdcb7611ee481c32bc74a91d92c8
+- overall: 9370773dfc07576385a3e942b894c975015feaf06b2834e1889915659c66d055
+
+Changed since the first record (2026-11-03): only the `operations_manager` digest, and with it the overall one. The Operations Manager's template now opens "You are Zeng, the AI Operations Manager for ..." instead of "You are Operations Manager, the AI Operations Manager for ...": the founder's decision that every client workspace's Operations Manager starts as Zeng (a separate employee from iAcquire's own Zeng, renameable by the client). It is the name only. Rendering the old text with the name "Operations Manager" reproduces the earlier digest (`034e3328...`) exactly, and the two templates differ in that one line. No "may", "may never" or approval rule changed. The other five roles' digests are unchanged.
 
 ## 7. Changing a role text
 

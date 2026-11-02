@@ -63,7 +63,7 @@ async function publish(
   return withSystem((db) =>
     publishReviewReport(db, {
       job,
-      agent: { display_name: "Operations Manager", role_key: "operations_manager" },
+      agent: { display_name: "Zeng", role_key: "operations_manager" },
       subject: "Operations",
       findings,
       metrics: [],
@@ -136,7 +136,7 @@ describe("proactive report delivery policy", () => {
     const published = await publish([finding()]);
     expect(published.created).toBe(true);
     const reports = await listProactiveReports(ctxFor(owner, org, "owner"));
-    expect(reports[0]).toMatchObject({ id: published.reportId, kind: "alert", severity: "warning", employeeName: "Operations Manager" });
+    expect(reports[0]).toMatchObject({ id: published.reportId, kind: "alert", severity: "warning", employeeName: "Zeng" });
     expect(reports[0].findings[0]?.key).toBe("integration_attention");
     expect(reports[0].deliveryStatus).toBe("delivered");
     expect(await notificationCount(owner.id)).toBe(1);
