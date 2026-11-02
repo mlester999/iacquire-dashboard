@@ -11,6 +11,7 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { saveProvisionedHermesCredential } from "@/server/security/credentials";
 import { claimHermesProvisionerJob, completeHermesProvisionerJob } from "@/server/workforce/hermes-provisioner";
+import { formatClientCredential, verifyClientCredential } from "@/server/workforce/hermes-client-business-credential";
 import { CLIENT_BUSINESS_TOOLS_FEATURE, clientBusinessMcpRuntimeNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { requestBusinessToolSync, requestProvisioning } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
@@ -179,6 +180,21 @@ describe("what the portal does with the worker's result", () => {
       await q("select detail, result_reference from agent_provisioning_jobs where org_id = $1", [w.org.id]),
     ]);
     expect(everywhere).not.toContain(secret);
+  });
+
+  it("makes the token the worker wrote usable exactly when the completion registers its hash, for that employee alone, and never with another secret", async () => {
+    const w = await world();
+    const job = await syncInTier(w);
+    const { secret, hash } = newSecret();
+    // The worker reports the sha256 of the secret part of the token it wrote (the third dotted segment), which is what the portal's own verification hashes.
+    const token = formatClientCredential(job.businessCredentialId as string, secret);
+    expect(token.split(".")[2]).toBe(secret);
+    expect(await withSystem((db) => verifyClientCredential(db, token))).toMatchObject({ ok: false });
+    await completeHermesProvisionerJob(resultOf(job, { businessCredentialSha256: hash }), gatewayId);
+    expect(await withSystem((db) => verifyClientCredential(db, token))).toMatchObject({
+      ok: true, claims: { credentialId: job.businessCredentialId, orgId: w.org.id, agentId: w.agents.lead_hunter, role: "lead_hunter", profile: job.profile, status: "active" },
+    });
+    expect(await withSystem((db) => verifyClientCredential(db, formatClientCredential(job.businessCredentialId as string, newSecret().secret)))).toMatchObject({ ok: false, reason: "invalid" });
   });
 
   it("moves the employee's earlier credential aside for the overlap, so the profile can be re-keyed without a gap", async () => {
