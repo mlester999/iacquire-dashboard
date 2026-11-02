@@ -340,4 +340,3 @@ describe("the online checkout switch", () => {
     expect(document.body.textContent).toMatch(/Only a Super Admin/);
   });
 });
-
