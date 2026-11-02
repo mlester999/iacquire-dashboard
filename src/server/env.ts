@@ -118,6 +118,10 @@ const schema = z.object({
   // Standing automation, off unless the founder switches it on: after a paying self-service client's questionnaire is submitted and the setup payment is cleared, apply the matching reviewed
   // industry CRM starter under the authority of the Super Admin who allowed the client's creation (re-checked at run time). Never touches calendars, forms, workflows or assignment rules.
   CLIENT_CRM_AUTO_SETUP_ENABLED: bool,
+  // Containment of a removed client's runtime profile (a deprovision job is claimable only with this on). Off until the founder approves the worker image that supports it.
+  HERMES_PROVISIONER_DEPROVISION_ENABLED: bool,
+  // A client may switch customer-facing activity on only after setup payment and (for calendar-dependent activity) a verified calendar. Off until the founder approves it.
+  CLIENT_CUSTOMER_FACING_GATE_ENABLED: bool,
   // Restricted, no-tool DeepSeek worker. Its endpoint and HMAC secret are server-only; disabled unless explicitly enabled.
   HERMES_INFERENCE_WORKER_ENABLED: bool,
   // Temporary, no-provider prompt-size diagnostic. Separate from inference and disabled unless explicitly enabled.
