@@ -138,7 +138,24 @@ On the development preview (`/dev/runtime-controls-preview`, sample data, develo
 
 The Docker-based acceptance (`hermes-client-acceptance.yml`, branch `codex/hermes-gha-acceptance`) last passed on 2026-10-26 against the earlier worker; it is the way to prove the real provisioner image end to end in CI before the VPS, and it needs to be re-run on this code (it runs from that branch, not this one).
 
-## 11. Order of approvals
+## 11. Switch by switch: how to turn it on, what to check, how to turn it back
+
+Every switch is an environment setting of the portal (or, where noted, a workspace setting in the runtime controls). "Back" means the previous value, which is the safe state. Nothing below needs a database change.
+
+| Switch | On | Check right after | Back |
+| --- | --- | --- | --- |
+| `CLIENT_CUSTOMER_FACING_GATE_ENABLED` | `true` | A test client that has not paid cannot switch the website chat on (the refusal says "Finish setup first"); the agency's own workspace is unaffected | `false`; nothing already on is touched |
+| `LAUNCH_AUTOMATION_SINCE` | the release time (ISO) | Only a workspace whose onboarding finished after it gets automatic final checks; an older client's panel shows none started | unset |
+| `LAUNCH_NOTIFICATIONS_ENABLED`, or `launch_notifications` on the pilot workspace only | `true` / on | The pilot's owner receives exactly one "needs something from you" notice and later one "ready"; no other workspace receives anything | `false` / off |
+| `HERMES_PROVISIONER_ENABLED`, `..._GATEWAY_ID`, `..._TOKEN`, `..._MAX_PROFILES` | as the operator guide says | The preflight (read-only) reports the pin, the token and the capacity; the worker's claim is empty with no client paid | `HERMES_PROVISIONER_ENABLED=false` |
+| `HERMES_CLIENT_BUSINESS_MCP_ENABLED` + the workspace's switch (runtime controls) | on, with the supervised restart (section 7) | Every profile's inventory shows exactly its role's tools; one live read per role; the employee is online | the workspace switch off (no restart), then the deployment flag |
+| `CLIENT_CRM_AUTO_SETUP_ENABLED` | `true` | A paid client's questionnaire submission applies the matching industry CRM once, under the named Super Admin; nothing else is created | `false`; what was applied stays and can be archived |
+| `HERMES_PROVISIONER_DEPROVISION_ENABLED` | `true`, only after the image with `revoke` is out and a synthetic profile was contained | A contained synthetic profile's old key is refused and its tools are gone | `false` |
+| `SCHEDULER_ENABLED`, `CRON_SECRET` | last | The four new jobs report their counts and write no notice to a client that has launch notices off | `SCHEDULER_ENABLED=false` |
+
+Rollback of the release itself, in order: switch the switches off (no data change); redeploy the previous production deployment recorded in the completion checklist (read it again before use: it moves with every release); the four migrations are additive, so they stay in place and need no rollback for the previous code to run; the rollbacks and then the restore point (section 3) are for a migration that is itself at fault.
+
+## 12. Order of approvals
 
 1. **Restore point:** take, verify and restore-test it (section 3).
 2. Apply migrations 0115 to 0118, one at a time, then release to master and production with every switch off (a fast-forward of `integration/hermes-bridge-final`).
