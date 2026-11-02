@@ -193,7 +193,7 @@ Rollback of the release itself, in order: switch the switches off (no data chang
 
 1. **Restore point: done on 2026-11-02** (taken, restore-tested and rehearsed on a copy; section 3, evidence). It goes stale with every write to production; before applying the migrations, count the rows again and take a fresh one if anything meaningful was written.
 2. **Migrations 0115 to 0118: done on 2026-11-02** (section 3, evidence). Then the release to master and production with every switch off (a fast-forward of `integration/hermes-bridge-final`): **done on 2026-11-02** (section 13, evidence).
-3. Runtime side: capacity and placement, backups of client profile data, then the worker image on one canary profile.
+3. Runtime side: **placement decided on 2026-11-02: the existing VPS, as a separate gateway** (`docs/client-runtime-vps-host-check-2026-11-02.md`: the read-only host check first, then the capacity number, backups of client profile data, and the worker image on one canary profile).
 4. The switches in this order, each reversible: `CLIENT_CUSTOMER_FACING_GATE_ENABLED`; `LAUNCH_AUTOMATION_SINCE` (the release time) and `LAUNCH_NOTIFICATIONS_ENABLED` for the pilot workspace; `HERMES_PROVISIONER_ENABLED` with the gateway pin and `HERMES_PROVISIONER_MAX_PROFILES`; the business-tool tier (with the supervised restart); `CLIENT_CRM_AUTO_SETUP_ENABLED`; containment; the scheduler.
 5. The supervised pilot: payment cleared, onboarding completed, native CRM and calendar configured, six roles configured, entitled profiles provisioned, real tools verified, role-specific acceptance, a genuine 100% Ready to Launch. Controlled test data first; no real customer message or booking without separate approval. Stop rules are in `docs/client-pilot-package-2026-11-01.md`.
 
