@@ -84,6 +84,9 @@ const CRM_MIGRATION_NAMES = [
   "0110_maintenance_agreements.sql",
   // Credit notes on customer invoices: a table that points at 0093's invoices, a new invoice column, two replaced checks and the guard function; its rollback refuses while a credit note is issued (none is here).
   "0111_customer_credit_notes.sql",
+  // Knowledge revisions and held edits: a revision table with read and insert policies on app.permitted_orgs (so 0060's rollback cannot drop that function while it exists), two columns
+  // on company_knowledge and one on knowledge_documents; its rollback refuses while a section holds both approved text and a waiting edit (none does here) and is rolled back first of all.
+  "0117_company_knowledge_revisions.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

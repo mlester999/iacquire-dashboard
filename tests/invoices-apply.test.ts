@@ -42,7 +42,8 @@ describe("recording a payment received outside the product", () => {
     const audit = await rows<{ metadata: Record<string, unknown> }>("select metadata from audit_logs where target_id = $1 and action = 'invoice.payment_recorded' order by created_at", [inv.id]);
     expect(audit).toHaveLength(2);
     expect(audit[0].metadata).toMatchObject({ amount: "500.00", currency: "PHP", method: "bank_transfer", number: "INV-0001" });
-    expect(JSON.stringify(audit)).not.toContain("7731");
+    // The evidence text stays out of the audit row. A standalone token only: a random id in the same JSON can contain these four hex digits by chance (it failed CI once).
+    expect(JSON.stringify(audit)).not.toMatch(/(?<![0-9a-f-])7731(?![0-9a-f-])/i);
   });
 
   it("needs a permission, an issued invoice, a real day that is not in the future, a plausible amount and no card number", async () => {
