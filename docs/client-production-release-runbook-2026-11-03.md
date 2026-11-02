@@ -1,12 +1,12 @@
-# Client onboarding and provisioning: production release runbook (2026-11-03)
+# Client onboarding and provisioning: production release runbook (2026-11-02)
 
-Prepared, not executed. **Nothing in this file has been applied to production, merged to master, deployed, restarted or changed on the VPS.** Every step names the approval it needs. Keep every new switch OFF at release.
+Prepared, not executed. **Nothing in this file has been applied to production, merged to master, deployed, restarted or changed on the VPS.** The one thing done against production is the read-only restore point of section 3. Every step names the approval it needs. Keep every new switch OFF at release. (The file name carries 2026-11-03 by mistake and is kept because other documents link to it; the work is dated 2026-11-02.)
 
-## 1. What was verified on 2026-11-03
+## 1. What was verified on 2026-11-02
 
 | Check | Result |
 | --- | --- |
-| Live master | `7598ab73` (read from GitHub); an ancestor of the integration branch, so the release is a **fast-forward**: as of `c8887175` (the tip pushed for CI on 2026-11-03) 36 commits, 416 files (+58,764 / -1,308), four migrations and four rollbacks, no other schema change. Re-count against the live master before the approval: `git rev-list --count master..integration/hermes-bridge-final` |
+| Live master | `7598ab73` (read from GitHub); an ancestor of the integration branch, so the release is a **fast-forward**: as of `c8887175` (the tip pushed for CI on 2026-11-02) 36 commits, 416 files (+58,764 / -1,308), four migrations and four rollbacks, no other schema change. Re-count against the live master before the approval: `git rev-list --count master..integration/hermes-bridge-final` |
 | Whole migration history (`scripts/rehearse-combined-migrations.mjs`, embedded Postgres) | Sections A to G pass: every file applies in order; each migration applied one at a time on a populated database leaves every earlier row unchanged; schema equals the fresh chain; every rollback runs newest first and forward again; the reserved 0084 slots in; the hosted procedure from **the production ledger as it is now (108 rows, 0115 to 0118 pending)**: backup, dry run lists exactly 0115, 0116, 0117, 0118, each applied with per-step checks, restoring the backup returns ledger 108 |
 | Linux CI on `c8887175` | Both workflows passed: the full suite, typecheck, lint and the production build (60 minutes), the pinned Hermes worker checks, the operator scripts, and the two-client real-gateway proof (`hermes-business-mcp-compat`). Runs 41434614732 and 41434614653 |
 | Prompt budget | Fixed by priority fitting (section 6): all six roles fit at their ceiling for three differently shaped clients |
@@ -38,7 +38,23 @@ A real, **independently verified** restore point comes first and is its own appr
 4. **Only then** apply to production, in the same order, with the same post-checks (read-only), and keep the dump until the release has been verified and the founder says it can go. Delete the throwaway cluster.
 5. **The way back.** The rollbacks come first (they are tested above and keep data); restoring the dump is the last resort because anything written after it is lost.
 
-Not provable from here: the production database's actual size and the restore time; both are measured in step 1 and 2.
+**Status: steps 1 to 3 were done on 2026-11-02 (evidence below), with the founder's approval for exactly this. Step 4 (apply to production) is not approved and not done.**
+
+### Evidence: the restore point of 2026-11-02
+
+| Item | Result |
+| --- | --- |
+| Taken | 2026-11-02 12:24:32 UTC from the production project over verified TLS (the Supabase root CA): `pg_dump` 18.0 against the server's 17.11, custom format, no owners, schemas `public` and `app`; 56.5 seconds. Production was only read (a read-only snapshot, then the dump) |
+| The file | 2,831,452 bytes; 5,396 entries in `pg_restore --list`; sha256 `c65fb2c39386fb804c6f65c765a93698e4412d131128294c6f4b1f59b40e2c62`. Kept in the operator's profile folder under `iacquire-restore-points\20261102T122432Z\`, outside every repository and readable only by the operator account, the local Administrators and SYSTEM, with its logs, its object list and the production facts it was compared with |
+| Production at that moment | Ledger 108 rows ending `0113_demo_registration_requests`; none of the objects the four migrations create; 381 public tables, all with row-level security; 3,838 rows in 381 tables, **counted before the dump, after it and again at 12:30 UTC: identical in every table** |
+| Restored | Into a throwaway local PostgreSQL 18.0 cluster in 5.8 seconds (the project runs 17.11; no 17.x cluster was available on this machine). Six errors, all benign: `public` already exists; two foreign keys to Supabase's own `auth.users` (the `auth` schema is not in the dump); three `ALTER DEFAULT PRIVILEGES` statements for Supabase's own `supabase_admin` role. No error about a table, a policy, a function or data |
+| Compared with production | Ledger 108 = 108; 381 of 381 tables with row-level security; **381 of 381 tables with the same row count** (3,838 rows). Schema fingerprint of everything the dump carries (the rehearsal's own query): 20,018 of the 20,024 production items identical; the other six are those two foreign keys and four CHECK constraints that PostgreSQL 18 prints with different parentheses (the same expression). PostgreSQL 18's own 3,244 NOT NULL rows were left out of the comparison |
+| The real runner on the copy | `scripts/migrate.ts --dry-run` listed exactly 0115, 0116, 0117, 0118. Applied one at a time with `--only`: 0115 added 63 schema items, 0116 added 3, 0117 added 66, 0118 replaced exactly one function (`app.audit_logs_append_only()`) and changed nothing else. Every existing table kept its rows (only the ledger grew, 108 to 112); row-level security on all 383 public tables; final dry run: nothing pending |
+| Rollbacks on the copy | Newest first, each checked: after the fourth the schema equalled the restored copy exactly (nothing added, nothing removed, ledger back to 108, no new table). Rolled forward again cleanly |
+| Production afterwards | Read again at 12:30:47 UTC: ledger still 108 rows, none of the four migrations' objects, the audit function unchanged, every row count unchanged. **Nothing was written to production** |
+| Cleanup | The throwaway server was stopped and its directory deleted (it held a copy of client data). The dump stays until the release has been verified and the founder says it can go |
+
+What this restore point does not cover: Supabase's own schemas (`auth`, `storage`) and platform roles; anything written to production after 12:24:32 UTC (which is why the rollbacks come before a restore); a restore into a PostgreSQL 17 cluster (the proof used 18, as the 2026-10-26 one did). The dump is also the only restore point there is: the project has no managed backups.
 
 ## 4. No existing client is started, switched on or told anything
 
@@ -158,7 +174,7 @@ Rollback of the release itself, in order: switch the switches off (no data chang
 
 ## 12. Order of approvals
 
-1. **Restore point:** take, verify and restore-test it (section 3).
+1. **Restore point: done on 2026-11-02** (taken, restore-tested and rehearsed on a copy; section 3, evidence). It goes stale with every write to production; before applying the migrations, count the rows again and take a fresh one if anything meaningful was written.
 2. Apply migrations 0115 to 0118, one at a time, then release to master and production with every switch off (a fast-forward of `integration/hermes-bridge-final`).
 3. Runtime side: capacity and placement, backups of client profile data, then the worker image on one canary profile.
 4. The switches in this order, each reversible: `CLIENT_CUSTOMER_FACING_GATE_ENABLED`; `LAUNCH_AUTOMATION_SINCE` (the release time) and `LAUNCH_NOTIFICATIONS_ENABLED` for the pilot workspace; `HERMES_PROVISIONER_ENABLED` with the gateway pin and `HERMES_PROVISIONER_MAX_PROFILES`; the business-tool tier (with the supervised restart); `CLIENT_CRM_AUTO_SETUP_ENABLED`; containment; the scheduler.

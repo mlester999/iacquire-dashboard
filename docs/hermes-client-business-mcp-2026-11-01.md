@@ -26,11 +26,11 @@ Proven by tests (synthetic): the manifest's keys equal the worker's (the test re
 
 **NOT proven, and each is a rollout gate:**
 2. That the tool names the real gateway reports on `/v1/tools` and `/v1/toolsets` are the runtime names the portal computes (the tests use the portal's own names on a fake gateway).
-3. ~~That two client profiles multiplexed in one gateway each send only their own credential~~ **Proven 2026-11-03** on a real gateway: eight profiles for two clients, own keys, credentials and tools, no cross-reads through Hermes' own MCP client. Still open: the production container and the real VPS, and whether Hermes' `/reload-mcp` command could load the tools through the API without a restart (untested).
+3. ~~That two client profiles multiplexed in one gateway each send only their own credential~~ **Proven 2026-11-02** on a real gateway: eight profiles for two clients, own keys, credentials and tools, no cross-reads through Hermes' own MCP client. Still open: the production container and the real VPS, and whether Hermes' `/reload-mcp` command could load the tools through the API without a restart (untested).
 
 ## 5. Rollout order (each its own approval)
 
 1. Build a worker image that contains this code and roll it out with the tier switch off (nothing changes).
-2. **Done 2026-11-03:** the pinned-runtime test (client route, two tenants, restart so the entry loads) passes, and records that containment's key replacement needs no restart.
+2. **Done 2026-11-02:** the pinned-runtime test (client route, two tenants, restart so the entry loads) passes, and records that containment's key replacement needs no restart.
 3. Turn on `HERMES_CLIENT_BUSINESS_MCP_ENABLED` for the deployment (and, only later, the proposals phase).
 4. Switch one synthetic workspace into the tier (runtime controls), watch its synchronization fail closed as expected, restart the client gateway in an approved window (`docs/client-production-release-runbook-2026-11-03.md`, section 7), press **Synchronize**, watch it complete and its health check pass, then the supervised pilot client.
