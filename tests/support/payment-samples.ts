@@ -18,7 +18,7 @@ export const sampleIntent = (over: Partial<PurchaseIntentView> = {}): PurchaseIn
   maintenanceSelected: true, setupFeeCents: 149900, maintenanceMonthlyCents: 29900, currency: "USD", productVersion: "launch-2026-10", status: "invited", storedStatus: "invited",
   statusText: PURCHASE_STATUS_TEXT.invited, statusTone: PURCHASE_STATUS_TONE.invited, expiresAt: ahead(14), startedAt: null, paymentAt: null, provisionedAt: null, cancelledAt: null, expiredAt: null, paymentMethod: null,
   paymentReference: null, paymentPaidOn: null, paymentNote: null, paymentAmountCents: null, clientOrgId: null, autoProvision: false, paymentSource: "manual", paymentHold: null, holdText: null, provisionAttempts: 0,
-  lastProvisionError: null, createdAt: ago(0.05), delivery: null, can: { start: true, verify: false, provision: false, cancel: true, rotate: true, release: false },
+  lastProvisionError: null, sandboxOnLive: false, createdAt: ago(0.05), delivery: null, can: { start: true, verify: false, provision: false, cancel: true, rotate: true, release: false },
   ...over,
 });
 

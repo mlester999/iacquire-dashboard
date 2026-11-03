@@ -7,6 +7,7 @@ import { isValidTimeZone } from "@/lib/calendars/slots";
 import { todayIn } from "@/lib/invoices/state";
 import { checkManualPayment, MAX_MANUAL_PAYMENT_CENTS } from "@/lib/billing-clearance";
 import { createClientTenant } from "@/server/admin/tenants";
+import { isLiveDeployment } from "@/server/env";
 import { rolesForPlan } from "@/lib/plan-employees";
 import { recordManualPayment } from "@/server/billing/manual";
 import { recordProviderSetupPayment, type AdoptedCheckout } from "@/server/billing/provider-setup-payment";
@@ -85,6 +86,8 @@ export interface IntentRow {
   auto_provision: boolean;
   payment_source: "manual" | "provider";
   payment_checkout_id: string | null;
+  /** Whether the checkout that paid this purchase was in the provider's LIVE mode (false: a sandbox / test payment; null: no provider checkout paid it). */
+  payment_livemode: boolean | null;
   payment_hold: "refunded" | "disputed" | "mismatch" | null;
   provision_attempts: number;
   last_provision_error: string | null;
@@ -92,6 +95,12 @@ export interface IntentRow {
   created_at: Date;
   updated_at: Date;
 }
+
+/**
+ * A payment made in a provider's test mode (PayPal Sandbox) that reached the LIVE site. It is recorded and shown, but it moved no real money, so it never creates a workspace, clears a
+ * setup fee or starts an employee's provisioning there. Off the live site (a developer's machine, the tests, a preview) this is always false: a test payment works from end to end.
+ */
+export const sandboxOnLiveOf = (row: Pick<IntentRow, "payment_source" | "payment_livemode">): boolean => row.payment_source === "provider" && row.payment_livemode === false && isLiveDeployment();
 
 export interface PurchaseIntentView {
   id: string;
@@ -129,6 +138,8 @@ export interface PurchaseIntentView {
   holdText: string | null;
   provisionAttempts: number;
   lastProvisionError: string | null;
+  /** Paid in a provider's test mode and seen on the live site: no real money moved, so nothing real was changed (see sandboxOnLiveOf). */
+  sandboxOnLive: boolean;
   createdAt: string;
   /** The latest attempt to put the link in the buyer's hands (null for a purchase made before delivery records existed). The creation form, the list and the detail page all read this. */
   delivery: DeliveryView | null;
@@ -205,6 +216,7 @@ export const statusOf = (row: IntentRow, now: Date): PurchaseStatus => effective
 export function toView(row: IntentRow, now: Date, delivery: DeliveryView | null = null): PurchaseIntentView {
   const state = { status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() };
   const status = statusOf(row, now);
+  const sandboxOnLive = sandboxOnLiveOf(row);
   return {
     id: row.id,
     reference: row.reference,
@@ -221,9 +233,9 @@ export function toView(row: IntentRow, now: Date, delivery: DeliveryView | null 
     productVersion: row.product_version,
     status,
     storedStatus: row.status as PurchaseStatus,
-    // A purchase closed after its payment was verified (refunded or disputed) is not an ordinary cancellation: the money record is still on it.
-    statusText: status === "cancelled" && row.payment_reference ? "Closed after payment" : PURCHASE_STATUS_TEXT[status],
-    statusTone: PURCHASE_STATUS_TONE[status],
+    // A purchase closed after its payment was verified (refunded or disputed) is not an ordinary cancellation: the money record is still on it. And a payment made in a provider's sandbox is never called a payment.
+    statusText: status === "cancelled" && row.payment_reference ? (sandboxOnLive ? "Closed: sandbox test" : "Closed after payment") : sandboxOnLive && status === "payment_verified" ? "Sandbox payment (test)" : PURCHASE_STATUS_TEXT[status],
+    statusTone: sandboxOnLive && status === "payment_verified" ? "neutral" : PURCHASE_STATUS_TONE[status],
     expiresAt: new Date(row.expires_at).toISOString(),
     startedAt: iso(row.started_at),
     paymentAt: iso(row.payment_at),
@@ -242,25 +254,26 @@ export function toView(row: IntentRow, now: Date, delivery: DeliveryView | null 
     holdText: provisionHoldText(row.payment_hold),
     provisionAttempts: row.provision_attempts,
     lastProvisionError: row.last_provision_error,
+    sandboxOnLive,
     createdAt: new Date(row.created_at).toISOString(),
     delivery,
     can: {
       start: canBuyerStart(state, now).ok,
       verify: canVerifyPayment(state, now).ok,
-      provision: canProvision(state, row.client_org_id, now, row.payment_hold).ok,
-      cancel: canCancel(state, now, row.payment_hold).ok,
+      provision: canProvision(state, row.client_org_id, now, row.payment_hold, sandboxOnLive).ok,
+      cancel: canCancel(state, now, row.payment_hold, sandboxOnLive).ok,
       rotate: canRotateLink(state, now).ok,
       release: canReleaseHold(state, row.payment_hold, now).ok,
     },
   };
 }
 
-const publicProblem = (status: PurchaseStatus, payOnline = false, held = false): string | null =>
+const publicProblem = (status: PurchaseStatus, payOnline = false, held = false, sandbox = false): string | null =>
   status === "expired" ? "This purchase link has expired. Ask iAcquire for a new one."
     : status === "cancelled" ? "This purchase was cancelled."
       : held && (status === "started" || status === "payment_verified") ? HELD_BUYER_TEXT
       : status === "started" ? (payOnline ? null : "Your purchase is confirmed. iAcquire will verify the payment and send your workspace invitation.")
-        : status === "payment_verified" ? "Your payment is confirmed. iAcquire is creating your workspace and will email your invitation."
+        : status === "payment_verified" ? (sandbox ? "This was a test payment in the payment provider's sandbox. No real money moved, and no workspace will be created." : "Your payment is confirmed. iAcquire is creating your workspace and will email your invitation.")
           : status === "provisioned" ? "Your workspace is ready. Check the email address on this purchase for your invitation."
           : null;
 
@@ -281,7 +294,7 @@ function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["check
     expiresAt: new Date(row.expires_at).toISOString(),
     timezone: row.timezone,
     canConfirm: status === "invited",
-    problem: publicProblem(status, checkout.offered, row.payment_hold !== null),
+    problem: publicProblem(status, checkout.offered, row.payment_hold !== null, sandboxOnLiveOf(row)),
     checkout,
   };
 }
@@ -289,7 +302,8 @@ function toPublic(row: IntentRow, now: Date, checkout: PublicPurchaseView["check
 export const SELECT = `select id, agency_org_id, reference, buyer_name, buyer_email, company, industry, website, timezone, maintenance_selected, setup_fee_cents,
   maintenance_monthly_cents, currency, product_version, status, expires_at, started_at, payment_at, provisioned_at, cancelled_at, expired_at,
   payment_method, payment_reference, to_char(payment_paid_on, 'YYYY-MM-DD') as payment_paid_on, payment_note, payment_amount_cents, payment_id, client_org_id,
-  auto_provision, payment_source, payment_checkout_id, payment_hold, provision_attempts, last_provision_error, created_by, created_at, updated_at
+  auto_provision, payment_source, payment_checkout_id, (select c.livemode from purchase_intent_checkouts c where c.id = purchase_intents.payment_checkout_id) as payment_livemode,
+  payment_hold, provision_attempts, last_provision_error, created_by, created_at, updated_at
   from purchase_intents`;
 
 export async function addEvent(db: Queryable, intentId: string, agencyOrgId: string, kind: string, detail: Record<string, unknown> = {}, actorId: string | null = null, actorKind: "user" | "system" | "buyer" = "system") {
@@ -619,7 +633,7 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
     const agency = requireProvision(actor);
     const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2`, [id, agency])).rows[0];
     if (!row) throw new AppError("not_found", "That purchase was not found.");
-    const allowed = canProvision({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, row.client_org_id, now, row.payment_hold);
+    const allowed = canProvision({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, row.client_org_id, now, row.payment_hold, sandboxOnLiveOf(row));
     if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "This purchase cannot be provisioned now.");
     return row;
   });
@@ -772,7 +786,7 @@ export async function cancelPurchaseIntent(user: SessionUser, id: unknown, reaso
     const agency = requireManage(actor);
     const row = (await db.query<IntentRow>(`${SELECT} where id = $1 and agency_org_id = $2 for update`, [id, agency])).rows[0];
     if (!row) throw new AppError("not_found", "That purchase was not found.");
-    const allowed = canCancel({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now, row.payment_hold);
+    const allowed = canCancel({ status: row.status as PurchaseStatus, expiresAt: new Date(row.expires_at).toISOString() }, now, row.payment_hold, sandboxOnLiveOf(row));
     if (!allowed.ok) throw new AppError("conflict", allowed.reason ?? "This purchase cannot be cancelled.");
     const afterPayment = row.status === "payment_verified";
     // An online checkout that is still open is closed here. The provider's own page stays payable until it expires (this application cannot withdraw it), so a payment that still
@@ -780,7 +794,7 @@ export async function cancelPurchaseIntent(user: SessionUser, id: unknown, reaso
     await db.query("update purchase_intent_checkouts set status = 'cancelled', failure_reason = 'The purchase was cancelled' where intent_id = $1 and status in ('creating', 'pending')", [id]);
     await db.query("update purchase_intents set status = 'cancelled', cancelled_at = $2 where id = $1", [id, now.toISOString()]);
     await addEvent(db, row.id, agency, "cancelled", { reason: why, afterPayment, hold: row.payment_hold }, user.id, "user");
-    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: afterPayment ? "purchase_intent.closed_after_payment" : "purchase_intent.cancelled", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, afterPayment, hold: row.payment_hold } }, db);
+    await recordAudit({ orgId: agency, actorUserId: user.id, actorKind: "agency", action: afterPayment ? "purchase_intent.closed_after_payment" : "purchase_intent.cancelled", targetType: "purchase_intent", targetId: id, result: "success", metadata: { reference: row.reference, afterPayment, hold: row.payment_hold, ...(sandboxOnLiveOf(row) ? { sandbox: true } : {}) } }, db);
     const fresh = (await db.query<IntentRow>(`${SELECT} where id = $1`, [id])).rows[0];
     return toView(fresh, now);
   });

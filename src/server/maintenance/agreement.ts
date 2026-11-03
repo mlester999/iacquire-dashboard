@@ -1,6 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
-import { env } from "@/server/env";
+import { env, isLiveDeployment } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
@@ -200,6 +200,15 @@ export async function applyAgreementCharge(db: Queryable, event: NormalizedPayme
       link: "/admin/billing?tab=rates", dedupeKey: `agreement-unmatched:${event.provider}:${charge.id}`,
     });
     return { outcome: "ignored", detail: "A charge was reported for a subscription we have no record of." };
+  }
+  // A charge made in PayPal's sandbox moved no real money. On the live site it is never recorded as a payment and never extends a plan (the receipt ledger still shows the event arrived).
+  if (!row.livemode && isLiveDeployment()) {
+    await notifyAgency(db, row.org_id, {
+      kind: "billing_reconciliation", severity: "warning", title: "A sandbox charge reached the live site",
+      body: `Agreement ${row.reference_number}: PayPal reports a charge made in its sandbox. No real money moved, so nothing was recorded or applied to the plan.`,
+      link: `/admin/clients/${row.org_id}?tab=billing`, dedupeKey: `agreement-sandbox:${row.id}:${charge.id}`,
+    });
+    return { outcome: "ignored", detail: "A sandbox charge on the live site: nothing was applied." };
   }
   const already = (await db.query(
     "select 1 from maintenance_agreement_charges where agreement_id = $1 and provider_charge_id = $2 union all select 1 from payments where provider = 'paypal' and provider_payment_id = $2", [row.id, charge.id],

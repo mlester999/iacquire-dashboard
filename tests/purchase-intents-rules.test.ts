@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, noPaymentYetText, priceSnapshot,
-  PURCHASE_LINK_DAYS, PURCHASE_STATUSES,
+  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, checkoutReturnText, effectiveStatus, formatUsdCents, noPaymentYetText, priceSnapshot,
+  PURCHASE_LINK_DAYS, PURCHASE_STATUSES, SANDBOX_PAYMENT_TEXT,
 } from "@/lib/purchase-intents/rules";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 
@@ -68,6 +68,32 @@ describe("what a buyer and the team may do", () => {
     expect(noPaymentYetText("started")).toMatch(/No payment has been verified yet/);
     expect(noPaymentYetText("expired")).toMatch(/expired/);
     expect(noPaymentYetText("cancelled")).toMatch(/cancelled before any payment/);
+  });
+
+  it("never provisions a payment made in a provider's sandbox on the live site, lets it be closed as the test it was, and leaves every other case as it was", () => {
+    // paid in the sandbox, seen on the live site: no real money moved
+    expect(canProvision(state("payment_verified"), null, NOW, null, true)).toEqual({ ok: false, reason: SANDBOX_PAYMENT_TEXT });
+    expect(canCancel(state("payment_verified"), NOW, null, true).ok).toBe(true);
+    // the isolated route (a developer's machine, a preview, the tests): a test payment goes all the way
+    expect(canProvision(state("payment_verified"), null, NOW, null, false)).toEqual({ ok: true });
+    expect(canCancel(state("payment_verified"), NOW, null, false).ok).toBe(false);
+    // a workspace that already exists is never undone, and a held payment keeps its own words
+    expect(canProvision(state("provisioned"), "client-org", NOW, null, true)).toEqual({ ok: true });
+    expect(canProvision(state("payment_verified"), null, NOW, "disputed", true).reason).toMatch(/dispute/);
+    expect(canCancel(state("provisioned"), NOW, null, true).ok).toBe(false);
+    expect(canCancel(state("cancelled"), NOW, null, true).ok).toBe(false);
+    expect(SANDBOX_PAYMENT_TEXT).toMatch(/no real money moved/);
+  });
+
+  it("does not tell a buyer a sandbox payment on the live site was confirmed, and promises no workspace", () => {
+    const sandbox = checkoutReturnText("paid", "payment_verified", false, true);
+    expect(sandbox).toMatchObject({ tone: "neutral", title: "Test payment recorded" });
+    expect(sandbox.body).toMatch(/No real money moved, and no workspace will be created/);
+    // anything else reads as before
+    expect(checkoutReturnText("paid", "payment_verified", false, false).title).toBe("Payment confirmed");
+    expect(checkoutReturnText("paid", "payment_verified").title).toBe("Payment confirmed");
+    expect(checkoutReturnText("refunded", "payment_verified", false, true).title).toBe("Your payment needs a person to look at it");
+    expect(checkoutReturnText("pending", "started", false, true).title).toBe("Waiting for the payment provider");
   });
 
   it("lets a person withdraw only an unpaid purchase, and prohibits reopening a cancelled one with a link", () => {

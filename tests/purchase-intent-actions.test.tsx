@@ -23,7 +23,7 @@ const base: PurchaseIntentView = {
   statusText: "Payment verified", statusTone: "warning", expiresAt: "2026-11-08T12:00:00.000Z", startedAt: "2026-10-25T12:00:00.000Z", paymentAt: "2026-10-25T12:05:00.000Z", provisionedAt: null,
   cancelledAt: null, expiredAt: null, paymentMethod: "paymongo", paymentReference: "pay_test", paymentPaidOn: "2026-10-25", paymentNote: "Confirmed by the provider.", paymentAmountCents: 149900,
   clientOrgId: null, autoProvision: false, paymentSource: "provider", paymentHold: "refunded", holdText: "The payment provider reported a refund for this payment.", provisionAttempts: 0,
-  lastProvisionError: null, createdAt: "2026-10-25T12:00:00.000Z", delivery: null,
+  lastProvisionError: null, sandboxOnLive: false, createdAt: "2026-10-25T12:00:00.000Z", delivery: null,
   can: { start: false, verify: false, provision: false, cancel: true, rotate: false, release: true },
 };
 
@@ -69,6 +69,37 @@ describe("a purchase on hold", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/cannot be cancelled/);
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Why is it being closed?")).toBeTruthy();
+  });
+});
+
+describe("a purchase paid in a provider's sandbox and seen on the live site", () => {
+  const sandbox: PurchaseIntentView = { ...base, statusText: "Sandbox payment (test)", statusTone: "neutral", paymentHold: null, holdText: null, sandboxOnLive: true, can: { ...base.can, provision: false, release: false, cancel: true } };
+
+  it("says plainly that no real money moved, never offers a workspace, and offers to close it as a test", () => {
+    render(<PurchaseIntentActions intent={sandbox} />);
+    expect(screen.getByRole("status").textContent).toMatch(/paid in the payment provider's sandbox: no real money moved/);
+    expect(screen.queryByRole("button", { name: /Create client workspace/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Release the hold/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Close without a workspace/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Close as a test purchase/ })).toBeTruthy();
+  });
+
+  it("explains that closing ends the test (nothing to refund), and closes it with the person's reason", async () => {
+    mocks.cancel.mockResolvedValue({ ok: true, data: {} });
+    render(<PurchaseIntentActions intent={sandbox} />);
+    fireEvent.click(screen.getByRole("button", { name: /Close as a test purchase/ }));
+    expect(screen.getByText(/This ends the test\. No real money moved, so nothing is refunded and no workspace is created/)).toBeTruthy();
+    expect(screen.queryByText(/refunded or lost to a dispute/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Why is it being closed?"), { target: { value: "A sandbox test of the live site." } });
+    fireEvent.click(screen.getByRole("button", { name: "Close the purchase" }));
+    await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith({ id: base.id, reason: "A sandbox test of the live site." }));
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+  });
+
+  it("leaves the wording of a payment that was refunded or disputed exactly as it was", () => {
+    render(<PurchaseIntentActions intent={{ ...base, sandboxOnLive: false }} />);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: /Close without a workspace/ })).toBeTruthy();
   });
 });
 

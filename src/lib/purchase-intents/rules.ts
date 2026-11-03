@@ -114,10 +114,12 @@ export function provisionHoldText(hold: "refunded" | "disputed" | "mismatch" | n
 }
 
 /** What the buyer reads after coming back from the provider's page: the site never says "paid" on the strength of a redirect. */
-export function checkoutReturnText(status: CheckoutStatus | null, purchase: PurchaseStatus | null, leftThePaymentPage = false): { tone: "neutral" | "success" | "warning" | "danger"; title: string; body: string } {
+export function checkoutReturnText(status: CheckoutStatus | null, purchase: PurchaseStatus | null, leftThePaymentPage = false, sandboxOnLive = false): { tone: "neutral" | "success" | "warning" | "danger"; title: string; body: string } {
   // A refund, dispute or mismatch comes first: the money is not simply "confirmed" while a person is looking at it.
   if (status === "refunded" || status === "disputed" || status === "mismatch") return { tone: "warning", title: "Your payment needs a person to look at it", body: "iAcquire will contact you at the email address on your purchase. Nothing more is charged." };
   if (purchase === "provisioned") return { tone: "success", title: "Your workspace is ready", body: "iAcquire sent an invitation to the email address on your purchase. Open it to set a password and start." };
+  // A payment made in the provider's sandbox (test mode) on the live site moved no real money: it is never called a confirmed payment and promises no workspace.
+  if (sandboxOnLive && (purchase === "payment_verified" || status === "paid")) return { tone: "neutral", title: "Test payment recorded", body: "This was a payment in the payment provider's sandbox. No real money moved, and no workspace will be created." };
   if (purchase === "payment_verified" || status === "paid") return { tone: "success", title: "Payment confirmed", body: "The payment provider confirmed your payment. iAcquire is creating your workspace now and will email your invitation." };
   if (status === "failed" || status === "cancelled" || status === "expired") return { tone: "danger", title: "The payment did not go through", body: "Nothing was charged. You can try again from your purchase link." };
   // The provider's cancel link adds a hint. It never says anything was paid or cancelled (only the provider's signed notice does that); it only stops this page waiting for a payment
@@ -208,11 +210,17 @@ export function noPaymentYetText(status: PurchaseStatus): string {
   }
 }
 
-/** Provisioning requires verified payment evidence and no workspace yet. Repeating it returns the existing workspace instead. */
-export function canProvision(state: PurchaseState, clientOrgId: string | null, now: Date, hold: "refunded" | "disputed" | "mismatch" | null = null): PurchaseTransition {
+/** What a Super Admin is told about a purchase that was paid in a payment provider's test mode (a sandbox) and reached the live site. */
+export const SANDBOX_PAYMENT_TEXT = "This purchase was paid in the payment provider's sandbox: no real money moved, so on the live site it cannot create a workspace or clear a setup fee. Close it as a test purchase.";
+
+/**
+ * Provisioning requires verified payment evidence and no workspace yet. Repeating it returns the existing workspace instead. A payment made in a provider's test mode that reached
+ * the live site (`sandboxOnLive`) is evidence of nothing: it never provisions.
+ */
+export function canProvision(state: PurchaseState, clientOrgId: string | null, now: Date, hold: "refunded" | "disputed" | "mismatch" | null = null, sandboxOnLive = false): PurchaseTransition {
   const status = effectiveStatus(state, now);
   if (clientOrgId || status === "provisioned") return yes();
-  if (status === "payment_verified") return hold ? no(provisionHoldText(hold) as string) : yes();
+  if (status === "payment_verified") return hold ? no(provisionHoldText(hold) as string) : sandboxOnLive ? no(SANDBOX_PAYMENT_TEXT) : yes();
   if (status === "started") return no("Record the verified payment before creating the workspace.");
   if (status === "expired") return no("The link expired before the purchase was completed.");
   if (status === "cancelled") return no("This purchase was cancelled.");
@@ -223,10 +231,11 @@ export function canProvision(state: PurchaseState, clientOrgId: string | null, n
  * The buyer has not paid, so an invitation can be withdrawn. A verified payment is never quietly cancelled: it can be closed without a workspace only while the provider has
  * reported a refund, a dispute or a mismatch for it (the hold), because then the money is already in question and nothing was created from it. The payment record stays on the purchase.
  */
-export function canCancel(state: PurchaseState, now: Date, hold: PaymentHold | null = null): PurchaseTransition {
+export function canCancel(state: PurchaseState, now: Date, hold: PaymentHold | null = null, sandboxOnLive = false): PurchaseTransition {
   const status = effectiveStatus(state, now);
   if (status === "invited" || status === "started") return yes();
-  if (status === "payment_verified") return hold ? yes() : no("The payment is verified. Record a refund if the purchase must be stopped.");
+  // A sandbox payment on the live site moved no real money, so there is nothing to refund: it can be closed as the test it was.
+  if (status === "payment_verified") return hold || sandboxOnLive ? yes() : no("The payment is verified. Record a refund if the purchase must be stopped.");
   if (status === "provisioned") return no("A workspace already exists. Use the client offboarding path.");
   return no("There is nothing open to cancel.");
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { assertSafeDevelopmentDatabase, env, resetEnvCache } from "@/server/env";
+import { assertSafeDevelopmentDatabase, env, isLiveDeployment, resetEnvCache, setLiveDeploymentForTests } from "@/server/env";
 import { SIM_PAYMONGO } from "../scripts/crm-qa-env.mjs";
 
 /**
@@ -198,5 +198,52 @@ describe("PayPal settings typed by hand", () => {
     Object.assign(process.env, { PAYPAL_API_BASE: "http://127.0.0.1:4010", PAYPAL_CLIENT_ID: "qa-sim-client-0123", PAYPAL_ENVIRONMENT: " LIVE " });
     resetEnvCache();
     expect(() => env()).toThrow(/never used with the live environment/);
+  });
+});
+
+// Money from a payment provider's test mode (PayPal Sandbox) must never change anything real on the live site, and must work from end to end everywhere else. This is the one definition of
+// "the live site": a production build that is not a Vercel preview or development deployment.
+describe("what counts as the live site", () => {
+  const PRODUCTION = {
+    NODE_ENV: "production", AUTH_PROVIDER: "supabase", SECRET_STORE: "vault", NEXT_PUBLIC_SUPABASE_URL: "https://portalref.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
+    SUPABASE_SECRET_KEY: "sb_secret_placeholder", DATABASE_DRIVER: "postgres", DATABASE_URL: "postgresql://postgres.portalref:placeholder@aws-0-region.pooler.supabase.com:5432/postgres",
+    DATABASE_SSL_CA_FILE: "certs/supabase-root.crt", APP_ENCRYPTION_KEY: "test-only-key-0123456789abcdef0123456789abcdef", ALLOW_INSECURE_HERMES_URLS: "false",
+    ALLOW_LEGACY_CREDENTIAL_READS: "false", HERMES_PROVISIONER_ENABLED: "false", HERMES_CLIENT_BUSINESS_MCP_ENABLED: "false",
+  };
+  afterEach(() => {
+    setLiveDeploymentForTests(null);
+    delete process.env.VERCEL_ENV;
+    restore();
+  });
+
+  it("is the production site, and a production build anywhere that is not a Vercel preview or development deployment", () => {
+    Object.assign(process.env, PRODUCTION);
+    for (const [vercel, live] of [["production", true], ["Production ", true], [undefined, true], ["", true], ["preview", false], ["Preview", false], ["development", false]] as const) {
+      if (vercel === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = vercel;
+      resetEnvCache();
+      expect(isLiveDeployment(), JSON.stringify(vercel)).toBe(live);
+    }
+  });
+
+  it("is never a developer's machine or the tests, whatever else is set", () => {
+    Object.assign(process.env, { NODE_ENV: "development", AUTH_PROVIDER: "local", DATABASE_DRIVER: "pglite", SECRET_STORE: "vault", APP_ENCRYPTION_KEY: "test-only-key-0123456789abcdef0123456789abcdef", VERCEL_ENV: "production" });
+    delete process.env.DATABASE_URL;
+    resetEnvCache();
+    expect(isLiveDeployment()).toBe(false);
+  });
+
+  it("can be set either way by a test, and goes back to reading the environment", () => {
+    Object.assign(process.env, PRODUCTION);
+    process.env.VERCEL_ENV = "production";
+    resetEnvCache();
+    setLiveDeploymentForTests(false);
+    expect(isLiveDeployment()).toBe(false);
+    setLiveDeploymentForTests(true);
+    expect(isLiveDeployment()).toBe(true);
+    setLiveDeploymentForTests(null);
+    expect(isLiveDeployment()).toBe(true);
+    process.env.VERCEL_ENV = "preview";
+    expect(isLiveDeployment()).toBe(false);
   });
 });

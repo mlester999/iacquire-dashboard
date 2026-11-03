@@ -2,7 +2,7 @@
 // when PayPal reports a COMPLETED charge for it, and that charge goes through the same transition a payment recorded by hand uses. Failed renewals walk the plan through past due and
 // grace to the premium pause (the core system, the CRM and the AI employees are never touched), a verified charge brings it back, and a refund or a dispute never re-enables or revokes
 // anything by itself: it holds the agreement for a person. PayPal is a stand-in written from the documentation (tests/support/paypal-subscriptions.ts): nothing here reaches PayPal.
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 process.env.PAYMONGO_SECRET_KEY = "sk_test_notarealkey123";
 process.env.PAYMONGO_WEBHOOK_SECRET = "whsec_test_only_not_a_real_secret";
@@ -12,7 +12,7 @@ process.env.PAYPAL_WEBHOOK_ID = "WH-TEST-0123456789";
 process.env.PAYPAL_ENVIRONMENT = "sandbox";
 process.env.PAYPAL_MAINTENANCE_PLAN_ID = "P-5ML4271244454362WXNWU5NQ";
 
-import { resetEnvCache } from "@/server/env";
+import { resetEnvCache, setLiveDeploymentForTests } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { handleProviderWebhook, recordAndApply } from "@/server/billing/payments";
 import { createPaypalAdapter } from "@/server/billing/providers/paypal";
@@ -51,6 +51,8 @@ beforeAll(async () => {
   await setAgencyTimezone("UTC");
   superAdmin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
 });
+
+afterEach(() => setLiveDeploymentForTests(null));
 
 beforeEach(async () => {
   // Agreements and plans of earlier cases belong to earlier PayPal stand-ins.
@@ -123,6 +125,22 @@ describe("automatic payments are offered only when they can be taken and confirm
     expect((await setRecurringBillingEnabled(superAdmin, false)).enabled).toBe(false);
     expect((await agreement(c.plan)).status).toBe("active");
     expect(started.sub.status).toBe("ACTIVE");
+  });
+
+  it("is not offered in PayPal's sandbox on the live site (no real money would move, yet a plan would look paid), and is offered everywhere else", async () => {
+    const c = await client("active", 10);
+    setLiveDeploymentForTests(true);
+    const a = await withSystem((db) => recurringAvailability(db));
+    expect(a).toMatchObject({ enabled: true, available: false, livemode: false });
+    expect(a.reason).toMatch(/sandbox mode here, and the live site does not open automatic monthly payments/);
+    await expect(startMaintenanceAgreement(c.ctx, deps())).rejects.toMatchObject({ code: "integration_unavailable" });
+    expect(pp.calls).toHaveLength(0);
+    expect(await rows("select 1 from maintenance_agreements where subscription_id = $1", [c.plan])).toHaveLength(0);
+    // The isolated route: the same configuration off the live site opens an agreement.
+    setLiveDeploymentForTests(false);
+    expect((await withSystem((db) => recurringAvailability(db))).available).toBe(true);
+    const started = await startMaintenanceAgreement(c.ctx, deps());
+    expect(started.reference).toBeTruthy();
   });
 
   it("is not offered without the PayPal billing plan id or while PayPal is not connected", async () => {
@@ -282,6 +300,26 @@ describe("an agreement grants nothing by itself", () => {
     const audit = await auditOf(c.org.id, "maintenance.activated");
     expect(audit[0]).toMatchObject({ actor_kind: "system" });
     expect(new Set((await noticesOf(c.org.id, "billing_payment_received", "client")).map((n) => n.dedupe_key)).size).toBe(1);
+  });
+
+  it("records nothing and extends nothing for a sandbox charge that reaches the live site, and says so", async () => {
+    const c = await client("active", 10);
+    const l = await live(c); // opened off the live site: the isolated route
+    const before = await facts(c.plan);
+    const agreementId = (await agreement(c.plan)).id;
+    setLiveDeploymentForTests(true);
+    expect(await deliver(saleCompletedEvent({ agreementId: l.sub.id, saleId: "SALE-SANDBOX-LIVE-1" }))).toMatchObject({ outcome: "ignored", detail: expect.stringMatching(/sandbox charge on the live site: nothing was applied/) });
+    // The hourly list of what PayPal collected must not slip it in either.
+    pp.collect(l.sub.id, { id: "SALE-SANDBOX-LIVE-1" });
+    await runAgreementReconcile({ deps: deps() });
+    expect(await paymentsOf(c.plan)).toHaveLength(0);
+    expect(await charges(agreementId)).toHaveLength(0);
+    expect(await facts(c.plan)).toEqual(before);
+    expect(await rows("select 1 from notifications where dedupe_key = $1 and title = 'A sandbox charge reached the live site'", [`agreement-sandbox:${agreementId}:SALE-SANDBOX-LIVE-1`])).not.toHaveLength(0);
+    // Off the live site the very same charge is applied as before.
+    setLiveDeploymentForTests(false);
+    expect(await deliver(saleCompletedEvent({ agreementId: l.sub.id, saleId: "SALE-SANDBOX-ISO-1" }))).toMatchObject({ outcome: "processed" });
+    expect(await paymentsOf(c.plan)).toHaveLength(1);
   });
 
   it("renews an active plan from the day it was paid through, keeping the days already paid for", async () => {

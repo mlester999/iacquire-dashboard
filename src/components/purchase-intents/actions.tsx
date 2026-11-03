@@ -9,6 +9,7 @@ import { Input, Label, Textarea } from "@/components/ui/primitives";
 import { CopyTextButton } from "@/components/ui/copy-button";
 import { cancelPurchaseIntentAction, provisionPurchaseIntentAction, releasePurchaseHoldAction, verifyPurchasePaymentAction } from "@/app/actions/purchase-intents";
 import { MANUAL_METHOD_LABEL, MANUAL_PAYMENT_METHODS, centsToDollarText, type ManualPaymentMethod } from "@/lib/billing-clearance";
+import { SANDBOX_PAYMENT_TEXT } from "@/lib/purchase-intents/rules";
 import type { PurchaseIntentView } from "@/server/purchase-intents/service";
 import { localDayIso } from "@/lib/local-day";
 
@@ -26,6 +27,8 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   const [releaseNote, setReleaseNote] = React.useState("");
   // A verified payment that the provider reported as refunded or disputed is closed without a workspace, not "cancelled": the money record stays and the wording says so.
   const closesPaid = intent.status === "payment_verified";
+  // Paid in the provider's sandbox and seen on the live site: no real money moved, so there is nothing to refund and nothing to create; the purchase is closed as the test it was.
+  const sandbox = intent.sandboxOnLive && closesPaid;
   const [amount, setAmount] = React.useState(centsToDollarText(intent.setupFeeCents));
   const [method, setMethod] = React.useState<ManualPaymentMethod>("bank_transfer");
   const [externalReference, setExternalReference] = React.useState("");
@@ -87,6 +90,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
   return (
     <div className="space-y-3">
       {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
+      {sandbox && <p role="status" className="rounded-xl border border-warning/40 bg-warning-soft px-3 py-2 text-[13px] leading-relaxed text-warning-ink">{SANDBOX_PAYMENT_TEXT}</p>}
       {provisioned && (
         <div className="rounded-xl border border-success/30 bg-success-soft p-3">
           <p className="flex items-center gap-2 text-[13px] font-medium text-success-ink">
@@ -119,7 +123,7 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
         )}
         {intent.can.cancel && (
           <Button type="button" size="sm" variant="ghost" onClick={() => { setShowCancel((v) => !v); setShowRelease(false); }} disabled={busy !== null}>
-            <AlertTriangle className="size-3.5" aria-hidden /> {closesPaid ? "Close without a workspace" : "Cancel"}
+            <AlertTriangle className="size-3.5" aria-hidden /> {sandbox ? "Close as a test purchase" : closesPaid ? "Close without a workspace" : "Cancel"}
           </Button>
         )}
         {intent.clientOrgId && (
@@ -177,7 +181,9 @@ export function PurchaseIntentActions({ intent }: { intent: PurchaseIntentView }
         <form onSubmit={cancel} className="space-y-2 rounded-xl border border-danger/30 bg-danger-soft p-3">
           {closesPaid && (
             <p className="text-[13px] leading-relaxed text-danger-ink">
-              Use this when the money was refunded or lost to a dispute. No workspace is created, the payment record stays on this purchase, and any open checkout is closed. This cannot be undone.
+              {sandbox
+                ? "This ends the test. No real money moved, so nothing is refunded and no workspace is created; the sandbox payment record stays on this purchase. This cannot be undone."
+                : "Use this when the money was refunded or lost to a dispute. No workspace is created, the payment record stays on this purchase, and any open checkout is closed. This cannot be undone."}
             </p>
           )}
           <Label htmlFor="pi-cancel-reason">{closesPaid ? "Why is it being closed?" : "Why is it being cancelled?"}</Label>

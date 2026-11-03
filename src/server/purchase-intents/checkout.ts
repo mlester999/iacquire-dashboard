@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { env } from "@/server/env";
+import { env, isLiveDeployment } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency } from "@/server/notifications";
@@ -18,7 +18,7 @@ import { checkoutAvailability, PROVIDER_LABEL, type CheckoutProvider } from "@/s
 import { completePaypalOrder, openPaypalOrder, paidEventFromCheckout, paypalAdapter, paypalStatus, readPaypalOrder, type PaypalDeps } from "@/server/billing/providers/paypal";
 import { recordAndApply } from "@/server/billing/payments";
 import { ProviderCallError } from "@/server/customer-payments/providers/types";
-import { addEvent, byToken, provisionPurchaseIntent, SELECT, type IntentRow } from "@/server/purchase-intents/service";
+import { addEvent, byToken, provisionPurchaseIntent, sandboxOnLiveOf, SELECT, type IntentRow } from "@/server/purchase-intents/service";
 
 // Online checkout for a purchase intent. The buyer holds a bearer link; after confirming the offer they may open ONE hosted checkout (PayMongo, or PayPal) for the frozen setup fee. The
 // rules that make this safe, in the order they matter:
@@ -167,11 +167,11 @@ export interface CheckoutReturn {
 export async function getCheckoutReturn(reference: unknown, options: { leftThePaymentPage?: boolean } = {}): Promise<CheckoutReturn> {
   const ref = typeof reference === "string" && /^IAQ-[A-Z0-9]{8,40}$/.test(reference) ? reference : null;
   const row = ref
-    ? (await withSystem((db) => db.query<{ status: CheckoutStatus; purchase_status: PurchaseStatus; provider: CheckoutProvider }>(
-        "select c.status, c.provider, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
+    ? (await withSystem((db) => db.query<{ status: CheckoutStatus; purchase_status: PurchaseStatus; provider: CheckoutProvider; livemode: boolean }>(
+        "select c.status, c.provider, c.livemode, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
       ))).rows[0]
     : undefined;
-  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true);
+  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true, row?.livemode === false && isLiveDeployment());
   return {
     provider: row?.provider ?? null,
     needsCapture: row?.provider === "paypal" && row.status === "pending" && options.leftThePaymentPage !== true,
@@ -307,19 +307,28 @@ export async function applyCheckoutPaid(db: Queryable, event: NormalizedPaymentE
     return { outcome: "processed", detail: "Duplicate payment recorded for a person to refund.", checkoutId: checkout.id };
   }
 
+  // A payment made in the provider's test mode (PayPal Sandbox) that reaches the LIVE site moved no real money. It is recorded, with its checkout, so the whole journey can be seen
+  // and the verified notice proved; it is labelled as the test it was; and it creates nothing and clears nothing (see sandboxOnLiveOf). Off the live site, a test payment goes on.
+  const sandboxOnLive = !event.livemode && isLiveDeployment();
   await db.query(
     `update purchase_intents set status = 'payment_verified', payment_at = $2, payment_method = $7, payment_reference = $3, payment_paid_on = $4::date,
        payment_note = $5, payment_amount_cents = setup_fee_cents, payment_source = 'provider', payment_checkout_id = $6, started_at = coalesce(started_at, $2), expired_at = null where id = $1`,
-    [intent.id, now.toISOString(), paid.id, todayIn(now, tz), `Confirmed by ${PROVIDER_LABEL[event.provider]}'s verified record of checkout ${checkout.reference_number}.`, checkout.id, event.provider],
+    [intent.id, now.toISOString(), paid.id, todayIn(now, tz), `Confirmed by ${PROVIDER_LABEL[event.provider]}'s verified record of checkout ${checkout.reference_number}.${sandboxOnLive ? " This was a sandbox payment: no real money moved." : ""}`, checkout.id, event.provider],
   );
-  await addEvent(db, intent.id, intent.agency_org_id, "payment_received", { reference: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider }, null, "system");
-  await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: "purchase_intent.payment_received", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider, autoProvision: intent.auto_provision } }, db);
-  await notifyAgency(db, null, {
-    kind: "billing_payment_received", severity: "success", title: "A purchase was paid online",
-    body: `${intent.company} (${intent.reference}) paid the setup fee. ${intent.auto_provision ? "Their workspace is being created." : "Create their workspace from the purchase page."}`,
-    link, dedupeKey: `purchase-paid:${checkout.id}`,
-  }, { permission: "agency.prospects.manage" });
-  return { outcome: "processed", checkoutId: checkout.id, followUp: intent.auto_provision ? { intentId: intent.id } : undefined };
+  await addEvent(db, intent.id, intent.agency_org_id, "payment_received", { reference: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider, ...(sandboxOnLive ? { sandbox: true } : {}) }, null, "system");
+  await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: "purchase_intent.payment_received", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, amountCents: intent.setup_fee_cents, provider: event.provider, autoProvision: intent.auto_provision, ...(sandboxOnLive ? { sandbox: true } : {}) } }, db);
+  await notifyAgency(db, null, sandboxOnLive
+    ? {
+      kind: "billing_reconciliation", severity: "info", title: "A SANDBOX purchase payment reached the live site",
+      body: `${intent.company} (${intent.reference}) paid in ${PROVIDER_LABEL[event.provider]}'s sandbox. No real money moved, so no workspace will be created and no setup fee is cleared. Close it as a test purchase.`,
+      link, dedupeKey: `purchase-sandbox:${checkout.id}`,
+    }
+    : {
+      kind: "billing_payment_received", severity: "success", title: "A purchase was paid online",
+      body: `${intent.company} (${intent.reference}) paid the setup fee. ${intent.auto_provision ? "Their workspace is being created." : "Create their workspace from the purchase page."}`,
+      link, dedupeKey: `purchase-paid:${checkout.id}`,
+    }, { permission: "agency.prospects.manage" });
+  return { outcome: "processed", checkoutId: checkout.id, followUp: intent.auto_provision && !sandboxOnLive ? { intentId: intent.id } : undefined };
 }
 
 /** A refund or dispute notice for a payment that belongs to a checkout of ours (and has no workspace payment yet). Reported and held; nothing is created or removed. */
@@ -374,6 +383,8 @@ export async function provisionPaidIntent(intentId: string, deps: { now?: Date }
     if (row.status === "provisioned") return { kind: "skip" as const, outcome: "already_done" as const };
     if (!row.auto_provision || row.payment_source !== "provider") return { kind: "skip" as const, outcome: "not_automatic" as const };
     if (row.status !== "payment_verified" || row.payment_hold) return { kind: "skip" as const, outcome: "waiting_for_a_person" as const };
+    // Nothing is made, counted or retried for a sandbox payment on the live site: a person closes it as a test.
+    if (sandboxOnLiveOf(row)) return { kind: "skip" as const, outcome: "waiting_for_a_person" as const };
     const authorizer = await authorizerOf(db, row.created_by);
     await db.query("update purchase_intents set provision_attempts = provision_attempts + 1, last_provision_at = $2 where id = $1", [row.id, now.toISOString()]);
     if (row.provision_attempts > 0) await addEvent(db, row.id, row.agency_org_id, "provision_retried", { attempt: row.provision_attempts + 1 }, null, "system");
@@ -433,9 +444,12 @@ export async function runPurchaseCheckoutSweep(opts: { now?: Date; maxRecoveries
     return { given: given.rowCount ?? 0, closed: closed.rowCount ?? 0 };
   });
   const pending = await withSystem((db) => db.query<{ id: string }>(
+    // On the live site a sandbox payment is never picked up here: it would only be refused again and again (see sandboxOnLiveOf).
     `select id from purchase_intents where status = 'payment_verified' and auto_provision and payment_source = 'provider' and payment_hold is null and provision_attempts < 6
-       and (last_provision_at is null or last_provision_at < $1) order by payment_at limit $2`,
-    [new Date(now.getTime() - 5 * 60_000).toISOString(), opts.maxRecoveries ?? 10],
+       and (last_provision_at is null or last_provision_at < $1)
+       and (not $3::boolean or not exists (select 1 from purchase_intent_checkouts c where c.id = purchase_intents.payment_checkout_id and c.livemode = false))
+     order by payment_at limit $2`,
+    [new Date(now.getTime() - 5 * 60_000).toISOString(), opts.maxRecoveries ?? 10, isLiveDeployment()],
   ));
   let recovered = 0;
   for (const row of pending.rows) if ((await provisionPaidIntent(row.id, { now })) === "provisioned") recovered++;

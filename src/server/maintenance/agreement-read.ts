@@ -1,5 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
+import { isLiveDeployment } from "@/server/env";
 import { providerReadiness } from "@/server/purchase-intents/availability";
 import { maintenancePlanId } from "@/server/billing/providers/paypal-subscriptions";
 import type { AgreementStatus } from "@/lib/maintenance-agreement";
@@ -91,6 +92,8 @@ export async function recurringAvailability(db: Queryable): Promise<RecurringAva
   const ready = await providerReadiness(db, "paypal");
   const no = (reason: string): RecurringAvailability => ({ enabled, available: false, reason, livemode: ready.livemode });
   if (!ready.available) return no(ready.reason ?? "PayPal is not ready.");
+  // PayPal's sandbox moves no real money. An automatic monthly payment opened in it on the live site would make a real client's plan look paid and then never pay for it.
+  if (ready.livemode === false && isLiveDeployment()) return no("PayPal is in sandbox mode here, and the live site does not open automatic monthly payments in sandbox mode: no real money would move, yet a client's plan would look paid.");
   if (!maintenancePlanId()) return no("The PayPal billing plan for maintenance (PAYPAL_MAINTENANCE_PLAN_ID) is not set.");
   if (!enabled) return no("Automatic payments are switched off in the billing settings.");
   return { enabled, available: true, reason: null, livemode: ready.livemode };

@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
-import { env } from "@/server/env";
+import { env, isLiveDeployment } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
@@ -270,6 +270,18 @@ async function applyPaid(db: Queryable, event: NormalizedPaymentEvent): Promise<
     await db.query("update payments set status = 'mismatch', failure_reason = $2 where id = $1", [payment.id, "Paid amount or currency did not match the checkout."]);
     await notifyAgency(db, payment.org_id, { kind: "billing_reconciliation", severity: "critical", title: "A payment did not match its checkout", body: `Reference ${payment.reference_number}: no credit was granted. Review it in PayMongo.`, link: `/admin/clients/${payment.org_id}`, dedupeKey: `mismatch:${payment.id}` });
     return { outcome: "rejected", detail: "Amount or currency mismatch.", paymentId: payment.id };
+  }
+  // A payment made in the provider's test mode that reaches the LIVE site moved no real money. It must not clear a setup fee, add credits, extend a plan or be counted as money
+  // received, so it is never marked paid: it is recorded as what it was and the team is told. Off the live site (a developer's machine, the tests, a preview) a test payment goes on.
+  if (!payment.livemode && isLiveDeployment()) {
+    await db.query("update payments set status = 'mismatch', failure_reason = $2 where id = $1", [payment.id, "A payment made in the provider's test mode reached the live site. No real money moved, so nothing was applied."]);
+    await notifyAgency(db, payment.org_id, {
+      kind: "billing_reconciliation", severity: "warning", title: "A TEST-MODE payment reached the live site",
+      body: `Reference ${payment.reference_number}: the provider reports a payment made in its test mode (a sandbox). No real money moved, so no setup fee was cleared, no credit added and no plan extended. Check which provider keys the live site is using.`,
+      link: `/admin/clients/${payment.org_id}?tab=billing`, dedupeKey: `sandbox-on-live:${payment.id}`,
+    });
+    await recordAudit({ orgId: payment.org_id, actorKind: "system", action: "billing.sandbox_payment_not_applied", targetType: "payment", targetId: payment.id, result: "success", metadata: { kind: payment.kind, reference: payment.reference_number, provider: event.provider } }, db);
+    return { outcome: "ignored", detail: "A test-mode payment on the live site: nothing was applied.", paymentId: payment.id };
   }
   await db.query("update payments set status = 'paid', paid_at = now(), provider_payment_id = $2, fee_minor = $3, failure_reason = null where id = $1", [payment.id, paid.id, paid.feeMinor]);
 

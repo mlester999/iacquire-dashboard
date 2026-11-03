@@ -420,6 +420,25 @@ export function env(): Env {
 
 export const isProduction = () => env().NODE_ENV === "production";
 
+let liveOverride: boolean | null = null;
+
+/**
+ * True on the live site: a production build that is not one of Vercel's preview or development deployments (a host that is not Vercel counts as live). Money from a payment
+ * provider's test mode (PayPal Sandbox, PayMongo test keys) moved nothing real, so on the live site it must never clear a setup fee, add credits, extend a plan or create a
+ * workspace. Everywhere else (a developer's machine, the tests, a preview or staging deployment) a test payment works from end to end: that is the isolated place to prove a whole journey.
+ */
+export function isLiveDeployment(): boolean {
+  if (liveOverride !== null) return liveOverride;
+  if (env().NODE_ENV !== "production") return false;
+  const vercel = (process.env.VERCEL_ENV ?? "").trim().toLowerCase();
+  return vercel !== "preview" && vercel !== "development";
+}
+
+/** Tests only: act as the live site (true) or as a test environment (false). Pass null to read the real environment again. */
+export function setLiveDeploymentForTests(value: boolean | null) {
+  liveOverride = value;
+}
+
 /**
  * Called once when the Node server starts. It exists separately from `env()` because startup work catches and logs its own
  * failures; a misconfigured development database must stop the process instead of being swallowed and failing per request.
