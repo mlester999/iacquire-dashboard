@@ -16,7 +16,8 @@ import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { handleProviderWebhook } from "@/server/billing/payments";
 import { createPaypalAdapter, normalizePaypalWebhook, paypalStatus } from "@/server/billing/providers/paypal";
-import { createPurchaseIntent, getPublicPurchase, provisionPurchaseIntent, releasePurchaseHold, startPurchase, verifyPurchasePayment, getCheckoutSwitch } from "@/server/purchase-intents/service";
+import { createPurchaseIntent, getPublicPurchase, listPurchaseIntentEvents, provisionPurchaseIntent, releasePurchaseHold, startPurchase, verifyPurchasePayment, getCheckoutSwitch } from "@/server/purchase-intents/service";
+import { paymentHeldEventText } from "@/lib/purchase-intents/rules";
 import { availableCheckoutProviders, providerReadiness } from "@/server/purchase-intents/availability";
 import { completePaypalPurchaseReturn, getCheckoutReturn, listIntentCheckouts, runPurchaseCheckoutSweep, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
 import { agencyUser } from "./support/fixtures";
@@ -378,6 +379,14 @@ describe("refunds, disputes and duplicates are reported to a person; nothing is 
     const b = await paidIntent();
     expect((await deliver(disputeCreatedEvent({ captureId: b.captureId }))).outcome).toBe("processed");
     expect(await intentRow(b.c.id)).toMatchObject({ payment_hold: "disputed" });
+    // The timeline calls each of them a dispute, names PayPal, and carries no refund amount.
+    for (const x of [a, b]) {
+      const held = (await listPurchaseIntentEvents(x.w.superSession, x.c.id)).filter((e) => e.kind === "payment_held");
+      expect(held).toHaveLength(1);
+      expect(held[0].detail).toMatchObject({ what: "dispute", provider: "paypal" });
+      expect(held[0].detail).not.toHaveProperty("refund");
+      expect(paymentHeldEventText(held[0].detail)).toBe("PayPal reported a dispute: provisioning is on hold");
+    }
     // Releasing needs a person with a recorded reason; the hold does not lift by itself.
     const w = await world();
     await expect(provisionPurchaseIntent(w.superSession, b.c.id, { now: NOW })).rejects.toBeTruthy();
@@ -465,6 +474,36 @@ describe("what the team reads", () => {
     expect(list[0]).toMatchObject({ provider: "paypal", chargedCurrency: "USD", chargedAmountMinor: 149900, status: "refunded" });
     const notice = await rows<{ title: string; body: string }>("select title, body from notifications where title like 'PayPal reports a refund%' order by created_at desc limit 1");
     expect(notice[0]?.body).toMatch(/Check it in PayPal/);
+    // A refund of the whole payment says so, in PayPal's own currency and amount.
+    expect(notice[0]?.body).toContain("PayPal reports a refund of USD 1,499.00.");
+  });
+
+  it("keeps what a refund notice named (who, how much, whether it went through) on the timeline, in the notice and in the audit row, and holds the purchase for a part all the same", async () => {
+    const w = await world();
+    const c = await make(w);
+    const o = await open(c.token);
+    const order = pp.byReference(o.reference)!;
+    pp.approve(order.id);
+    await ret(o.reference);
+    await deliver(captureRefundedEvent({ captureId: order.captures[0].id, amount: "100.00" }));
+    const held = (await listPurchaseIntentEvents(w.superSession, c.id)).filter((e) => e.kind === "payment_held");
+    expect(held).toHaveLength(1);
+    expect(held[0].detail).toMatchObject({ what: "refund", provider: "paypal", event: "PAYMENT.CAPTURE.REFUNDED", refund: { amountMinor: 10000, currency: "USD", status: "succeeded" } });
+    expect(paymentHeldEventText(held[0].detail)).toBe("PayPal reported a refund of USD 100.00: provisioning is on hold");
+    expect(await intentRow(c.id)).toMatchObject({ status: "payment_verified", payment_hold: "refunded" });
+    const [{ reference }] = await rows<{ reference: string }>("select reference from purchase_intents where id = $1", [c.id]);
+    const notice = await rows<{ body: string }>("select body from notifications where title = 'PayPal reports a refund on a purchase' and body like $1", [`%${reference}%`]);
+    // One row per Super Admin who may manage purchases; each says the same thing.
+    expect(notice.length).toBeGreaterThan(0);
+    for (const n of notice) {
+      expect(n.body).toContain("PayPal reports a refund of USD 100.00.");
+      expect(n.body).toContain("Creating the workspace is on hold until a person decides.");
+    }
+    const audit = await rows<{ metadata: Record<string, unknown> }>("select metadata from audit_logs where action = 'purchase_intent.refund_reported' and target_id = $1", [c.id]);
+    expect(audit[0].metadata).toMatchObject({ amountMinor: 10000, currency: "USD", status: "succeeded" });
+    // Nothing of the notice's body is kept (no refund id, no link): only these fixed fields.
+    expect(Object.keys(held[0].detail).sort()).toEqual(["event", "provider", "reference", "refund", "what"]);
+    expect(Object.keys(held[0].detail.refund as Record<string, unknown>).sort()).toEqual(["amountMinor", "currency", "status"]);
   });
 
   it("normalizes PayPal's events into the shapes the shared handler applies, and nothing else", () => {
@@ -475,5 +514,15 @@ describe("what the team reads", () => {
     expect(paid.paidPayments).toEqual([{ id: "CAP1", amountMinor: 149900, currency: "USD", feeMinor: 5846 }]);
     // A reference that is not ours is dropped, so a capture for someone else's order can never match one of our checkouts.
     expect(normalizePaypalWebhook(captureCompletedEvent({ orderId: "ORD1", reference: "CP-NOTOURS0123456789012", captureId: "CAP1" }), false)!.reference).toBeNull();
+    // A refund notice names the capture it belongs to (the link that points up), the amount, and a status word the shared handler reads: PayPal's own words become its three.
+    expect(normalizePaypalWebhook(captureRefundedEvent({ captureId: "CAP9", amount: "100.00" }), false)).toMatchObject({
+      kind: "payment_refunded", providerPaymentId: "CAP9", refund: { amountMinor: 10000, currency: "USD", status: "succeeded" },
+    });
+    const refundStatus = (status: unknown) => {
+      const ev = JSON.parse(captureRefundedEvent({ captureId: "CAP9" })) as { resource: { status?: unknown } };
+      ev.resource.status = status;
+      return normalizePaypalWebhook(JSON.stringify(ev), false)!.refund?.status;
+    };
+    expect(["COMPLETED", "PENDING", "FAILED", "CANCELLED", "completed", "SOMETHING", undefined, 7].map(refundStatus)).toEqual(["succeeded", "pending", "failed", "failed", "succeeded", null, null, null]);
   });
 });

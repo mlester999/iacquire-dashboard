@@ -8,7 +8,7 @@ import { usdToChargeMinor } from "@/lib/billing";
 import { todayIn } from "@/lib/invoices/state";
 import { consumeRateLimit, consumeRateLimitInTx, RATE_LIMITS } from "@/server/security/rate-limit";
 import { createCheckoutSession, type FetchLike } from "@/server/billing/paymongo";
-import { newPaymentReference } from "@/server/billing/payments";
+import { newPaymentReference, refundSentence } from "@/server/billing/payments";
 import type { NormalizedPaymentEvent } from "@/server/billing/providers/types";
 import { authorizerOf } from "@/server/admin/authorizer";
 import {
@@ -342,14 +342,17 @@ export async function applyCheckoutReported(db: Queryable, event: NormalizedPaym
   if (checkout.status === "paid") await db.query("update purchase_intent_checkouts set status = $2 where id = $1", [checkout.id, dispute ? "disputed" : "refunded"]);
   // After the workspace exists its own payment row carries the notice (the webhook handler finds that first); before, the purchase is held so nothing is created from money that may come back.
   if (intent.status === "started" || intent.status === "payment_verified") await holdIntent(db, intent, dispute ? "disputed" : "refunded");
-  await addEvent(db, intent.id, intent.agency_org_id, "payment_held", { reference: checkout.reference_number, what: dispute ? "dispute" : "refund", event: event.type }, null, "system");
+  // What the notice said is kept as fixed fields (never its body): who reported it and, for a refund, the amount and status it named, so a person sees how much without opening the provider first.
+  const refund = dispute ? null : event.refund ?? { id: null, amountMinor: null, currency: null, status: null };
+  const refundFacts = refund ? { amountMinor: refund.amountMinor, currency: refund.currency, status: refund.status } : null;
+  await addEvent(db, intent.id, intent.agency_org_id, "payment_held", { reference: checkout.reference_number, what: dispute ? "dispute" : "refund", event: event.type, provider: event.provider, ...(refundFacts ? { refund: refundFacts } : {}) }, null, "system");
   await notifyAgency(db, null, {
     kind: "billing_reconciliation", severity: dispute ? "critical" : "warning",
     title: dispute ? "A purchase payment is disputed" : `${PROVIDER_LABEL[event.provider]} reports a refund on a purchase`,
-    body: `Purchase ${intent.reference} (${intent.company}). ${intent.status === "provisioned" ? "The workspace already exists and was not changed." : "Creating the workspace is on hold until a person decides."} Check it in ${PROVIDER_LABEL[event.provider]}.`,
+    body: `Purchase ${intent.reference} (${intent.company}). ${refund ? `${refundSentence(refund, event.provider)} ` : ""}${intent.status === "provisioned" ? "The workspace already exists and was not changed." : "Creating the workspace is on hold until a person decides."} Check it in ${PROVIDER_LABEL[event.provider]}.`,
     link: AGENCY_LINK(intent.id), dedupeKey: `purchase-${dispute ? "dispute" : "refund"}:${event.provider}:${event.id}`,
   }, { permission: "agency.prospects.manage" });
-  await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: dispute ? "purchase_intent.dispute_reported" : "purchase_intent.refund_reported", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, event: event.type } }, db);
+  await recordAudit({ orgId: intent.agency_org_id, actorKind: "system", action: dispute ? "purchase_intent.dispute_reported" : "purchase_intent.refund_reported", targetType: "purchase_intent", targetId: intent.id, result: "success", metadata: { reference: intent.reference, checkout: checkout.reference_number, event: event.type, ...(refundFacts ?? {}) } }, db);
   return { outcome: "processed", detail: "Recorded for a person to act on; nothing was created or removed.", checkoutId: checkout.id };
 }
 

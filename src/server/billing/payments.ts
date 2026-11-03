@@ -397,7 +397,7 @@ const REPORTED_KIND_LABEL: Record<string, string> = { setup_fee: "setup fee", cr
 const PROVIDER_NAME: Record<string, string> = { paymongo: "PayMongo", paypal: "PayPal" };
 
 /** What a provider's refund notice says happened, from its own status word (never assumed when the payload carried none). */
-function refundSentence(refund: NonNullable<NormalizedPaymentEvent["refund"]>, provider: string): string {
+export function refundSentence(refund: NonNullable<NormalizedPaymentEvent["refund"]>, provider: string): string {
   const name = PROVIDER_NAME[provider] ?? "The payment provider";
   const amount = refund.amountMinor !== null && refund.currency !== null && isCurrency(refund.currency) && Number.isSafeInteger(refund.amountMinor) && refund.amountMinor > 0
     ? ` of ${formatMinor(refund.amountMinor, refund.currency, "code")}`

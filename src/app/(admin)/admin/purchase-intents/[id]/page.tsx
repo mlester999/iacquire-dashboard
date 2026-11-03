@@ -13,7 +13,7 @@ import { PurchaseIntentActions } from "@/components/purchase-intents/actions";
 import { DeliveryActions, DeliveryStatusBlock } from "@/components/purchase-intents/delivery-panel";
 import { InvitationFacts } from "@/components/purchase-intents/invitation-summary";
 import { StatusPill } from "@/components/ui/status";
-import { CHECKOUT_STATUS_TEXT, formatUsdCents, invitationEmailEventText, noPaymentYetText, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
+import { CHECKOUT_STATUS_TEXT, formatUsdCents, invitationEmailEventText, noPaymentYetText, paymentHeldEventText, providerNameText, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
 import { cn, formatDateTime } from "@/lib/utils";
 
 export const metadata = { title: "Purchase intent" };
@@ -34,6 +34,8 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
   const [events, checkouts, deliveries] = await Promise.all([listPurchaseIntentEvents(user, id).catch(() => []), withSystem((db) => listIntentCheckouts(db, intent.id)).catch(() => []), listPurchaseIntentDeliveries(user, id).catch(() => [])]);
   const when = (iso: string | null): string => formatDateTime(iso, user.timezone);
   const email = emailReadiness();
+  // The provider that reported the hold is the one whose checkout carries the same word (refunded, disputed, mismatch): that is where a person checks it.
+  const holdProvider = providerNameText(checkouts.find((c) => c.status === intent.paymentHold)?.provider);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -66,7 +68,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
             <strong>On hold.</strong> {intent.holdText}
-            {(intent.can.release || intent.can.cancel) && <span className="mt-1 block text-[13px]">Check it in PayMongo, then release the hold if the payment stands{intent.can.cancel && intent.status === "payment_verified" ? ", or close the purchase if the money is gone" : ""}.</span>}
+            {(intent.can.release || intent.can.cancel) && <span className="mt-1 block text-[13px]">Check it with {holdProvider}, then release the hold if the payment stands{intent.can.cancel && intent.status === "payment_verified" ? ", or close the purchase if the money is gone" : ""}.</span>}
           </span>
         </p>
       )}
@@ -123,7 +125,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                 <dl className="grid grid-cols-1 gap-2 text-[14px] sm:grid-cols-2">
                   <div className="min-w-0"><dt className="text-[12px] text-muted">Amount</dt><dd className="font-medium text-ink">{formatUsdCents(intent.paymentAmountCents ?? intent.setupFeeCents)}</dd></div>
                   <div className="min-w-0"><dt className="text-[12px] text-muted">Method</dt><dd>{intent.paymentMethod?.replaceAll("_", " ")}</dd></div>
-                  <div className="min-w-0"><dt className="text-[12px] text-muted">Evidence</dt><dd>{intent.paymentSource === "provider" ? "Confirmed by the payment provider's signed notice" : "Recorded by a Super Admin from the bank or a dashboard"}</dd></div>
+                  <div className="min-w-0"><dt className="text-[12px] text-muted">Evidence</dt><dd>{intent.paymentSource === "provider" ? "Confirmed by the payment provider (its own record, checked against this purchase)" : "Recorded by a Super Admin from the bank or a dashboard"}</dd></div>
                   <div className="min-w-0"><dt className="text-[12px] text-muted">Workspace</dt><dd>{intent.clientOrgId ? (intent.autoProvision ? "Created automatically after the verified payment" : "Created by a Super Admin") : intent.sandboxOnLive ? "Never created: a sandbox payment moved no real money" : intent.status === "cancelled" ? "Not created: the purchase was closed" : intent.autoProvision ? "Will be created automatically once nothing holds the payment" : "A Super Admin creates it"}</dd></div>
                   <div className="min-w-0"><dt className="text-[12px] text-muted">Reference</dt><dd className="break-all">{intent.paymentReference}</dd></div>
                   <div className="min-w-0"><dt className="text-[12px] text-muted">Paid on</dt><dd>{intent.paymentPaidOn}</dd></div>
@@ -155,7 +157,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
               ) : (
                 <p className="text-[14px] leading-relaxed text-muted">No online checkout was opened. The buyer sees a Pay button only when online checkout is switched on and the provider is connected.</p>
               )}
-              <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">A checkout becomes paid only when PayMongo&apos;s signed notice matches the reference, mode, currency and amount stored here. The buyer returning to the site proves nothing.</p>
+              <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">A checkout becomes paid only when the payment provider&apos;s own record matches the reference, mode, currency and amount stored here: PayMongo&apos;s signed notice, or PayPal&apos;s answer to this server&apos;s own request to take the money (its signed notice follows and counts once). The buyer returning to the site proves nothing by itself.</p>
             </CardContent>
           </Card>
         </div>
@@ -169,7 +171,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                   <li key={event.id} className="flex gap-3">
                     <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", i === events.length - 1 ? "bg-primary" : "bg-line-strong")} aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-[14px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : event.kind === "invitation_email" ? invitationEmailEventText(event.detail) : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
+                      <p className="text-[14px] font-medium text-ink">{event.kind === "cancelled" && event.detail.afterPayment === true ? "Purchase closed without a workspace after its payment" : event.kind === "invitation_email" ? invitationEmailEventText(event.detail) : event.kind === "payment_held" ? paymentHeldEventText(event.detail) : PURCHASE_EVENT_TEXT[event.kind] ?? event.kind}</p>
                       <p className="text-[12px] text-muted">{when(event.createdAt)} · {event.actorKind}</p>
                     </div>
                   </li>
@@ -179,7 +181,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
               <p className="text-[14px] text-muted">No timeline entries yet.</p>
             )}
             <p className="mt-4 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
-              The public link is stored only as a hash. The buyer confirming it creates no account and takes no payment; the workspace is created only after the payment is verified, by the provider&apos;s signed confirmation or by a Super Admin from the bank.
+              The public link is stored only as a hash. The buyer confirming it creates no account and takes no payment; the workspace is created only after the payment is verified, by the payment provider&apos;s own confirmation or by a Super Admin from the bank.
             </p>
           </CardContent>
         </Card>

@@ -2,6 +2,7 @@
 // service and a test agree. The approved model is US$1,499 setup and the optional US$299/month plan; this file does not compute a price from user input.
 
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD, usdToMicros } from "@/lib/billing";
+import { formatMinor, isCurrency } from "@/lib/money";
 
 export const PURCHASE_STATUSES = ["invited", "started", "payment_verified", "provisioned", "cancelled", "expired"] as const;
 export type PurchaseStatus = (typeof PURCHASE_STATUSES)[number];
@@ -37,7 +38,8 @@ export const PURCHASE_EVENT_TEXT: Record<string, string> = {
   checkout_started: "Online checkout opened",
   checkout_failed: "Online checkout could not be opened",
   checkout_expired: "An unpaid online checkout was closed",
-  payment_received: "Payment confirmed by the payment provider's signed notice",
+  // Not "signed notice": PayPal's answer to this server's own capture records the payment first, and the signed notice that follows is counted as a repeat.
+  payment_received: "Payment confirmed by the payment provider",
   payment_mismatch: "A payment did not match its checkout",
   payment_held: "The provider reported a refund or dispute: provisioning is on hold",
   provision_failed: "Creating the workspace did not finish",
@@ -58,6 +60,29 @@ export function invitationEmailEventText(detail: Record<string, unknown>): strin
     case "manual": return `${first}: no email was sent, the link is shared by hand`;
     default: return PURCHASE_EVENT_TEXT.invitation_email;
   }
+}
+
+/** The payment providers by name, for the words a Super Admin reads. An unknown or missing one is "the payment provider", never a guess. */
+export const PAYMENT_PROVIDER_NAME: Record<string, string> = { paymongo: "PayMongo", paypal: "PayPal" };
+
+export function providerNameText(provider: string | null | undefined): string {
+  return (provider && PAYMENT_PROVIDER_NAME[provider]) || "the payment provider";
+}
+
+/**
+ * The timeline's words for a payment_held entry, from what it recorded: who reported it, a refund or a dispute, and the amount a refund notice named. An entry written before
+ * this was recorded keeps the fixed sentence (or says "the payment provider" when only the kind is known).
+ */
+export function paymentHeldEventText(detail: Record<string, unknown>): string {
+  const what = detail.what === "dispute" ? "dispute" : detail.what === "refund" ? "refund" : null;
+  if (!what) return PURCHASE_EVENT_TEXT.payment_held;
+  const who = providerNameText(typeof detail.provider === "string" ? detail.provider : null);
+  const refund = what === "refund" && typeof detail.refund === "object" && detail.refund !== null ? (detail.refund as Record<string, unknown>) : null;
+  const amount = refund && typeof refund.amountMinor === "number" && Number.isSafeInteger(refund.amountMinor) && refund.amountMinor > 0 && isCurrency(refund.currency)
+    ? ` of ${formatMinor(refund.amountMinor, refund.currency, "code")}`
+    : "";
+  const tail = refund?.status === "pending" ? " that is still being processed" : refund?.status === "failed" ? " that could not be completed" : "";
+  return `${who[0].toUpperCase()}${who.slice(1)} reported a ${what}${amount}${tail}: provisioning is on hold`;
 }
 
 /** An online checkout, as the buyer's page and the Super Admin's page tell it. "paid" is only ever set by the provider's signed notice, never by the buyer's return to the site. */

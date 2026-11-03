@@ -15,6 +15,7 @@ import {
   cancelPurchaseIntent, createPurchaseIntent, getPublicPurchase, listPurchaseIntentEvents, provisionPurchaseIntent, releasePurchaseHold, startPurchase, verifyPurchasePayment,
 } from "@/server/purchase-intents/service";
 import { getCheckoutReturn, listIntentCheckouts, provisionPaidIntent, runPurchaseCheckoutSweep, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
+import { paymentHeldEventText } from "@/lib/purchase-intents/rules";
 import { agencyUser } from "./support/fixtures";
 import { agencyOrgId, rows, staffPerson } from "./support/staff-messages";
 import { mockCheckoutFetch, paymongoDisputeEvent, paymongoPaidEvent, paymongoRefundEvent, signPaymongo } from "./support/billing";
@@ -295,6 +296,10 @@ describe("a notice that must not be believed", () => {
     expect(await checkoutRow(o.reference)).toMatchObject({ status: "refunded" });
     await expect(provisionPurchaseIntent(w.superSession, c.id, { now: NOW })).rejects.toMatchObject({ code: "conflict" });
     expect((await listPurchaseIntentEvents(w.superSession, c.id)).map((e) => e.kind)).toContain("payment_held");
+    // The timeline names the provider that reported it (PayMongo here), not a provider-neutral guess.
+    const held = (await listPurchaseIntentEvents(w.superSession, c.id)).find((e) => e.kind === "payment_held");
+    expect(held?.detail).toMatchObject({ what: "refund", provider: "paymongo" });
+    expect(paymentHeldEventText(held!.detail)).toMatch(/^PayMongo reported a refund.*: provisioning is on hold$/);
     expect((await getCheckoutReturn(o.reference)).tone).toBe("warning");
 
     const d = await make(w);

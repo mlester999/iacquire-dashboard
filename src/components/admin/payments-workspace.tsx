@@ -250,7 +250,7 @@ export function PaymentsWorkspace({ payments, clients, canManage, timeZone }: { 
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-2xl text-[14px] leading-relaxed text-muted">
-            iAcquire&apos;s own setup fees and plan payments. A payment is confirmed either by PayMongo&apos;s signed notice or by a Super Admin who saw the money arrive and recorded the reference. Nothing here is marked paid on a guess.
+            iAcquire&apos;s own setup fees and plan payments. A payment is confirmed either by the payment provider&apos;s own record (PayMongo or PayPal) or by a Super Admin who saw the money arrive and recorded the reference. Nothing here is marked paid on a guess.
           </p>
           {canManage && <Button variant="brand" onClick={() => setRecording(true)}><Banknote className="size-4" aria-hidden /> Record a payment</Button>}
         </CardContent>

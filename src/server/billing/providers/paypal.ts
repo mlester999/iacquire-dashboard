@@ -123,6 +123,17 @@ function minorOf(value: unknown, currency: string | null): number | null {
 
 const currencyOf = (v: unknown): string | null => (typeof v === "string" && isCurrency(v.toUpperCase()) ? v.toUpperCase() : null);
 
+/** PayPal's refund status word as the three words the shared handler reads (PayMongo's are the same three); null when the payload named none or one we do not know. */
+function refundStatusOf(v: unknown): "succeeded" | "pending" | "failed" | null {
+  switch (typeof v === "string" ? v.toUpperCase() : "") {
+    case "COMPLETED": return "succeeded";
+    case "PENDING": return "pending";
+    case "FAILED":
+    case "CANCELLED": return "failed";
+    default: return null;
+  }
+}
+
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
 /** An ISO time PayPal sent, normalised; null when it is not one. */
 const timeOf = (v: unknown): string | null => (typeof v === "string" && ISO_TIME.test(v) && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null);
@@ -170,7 +181,7 @@ export function normalizePaypalWebhook(rawBody: string, livemode: boolean): Norm
       // The resource is the refund; the capture it belongs to is the link that points up.
       const up = (Array.isArray(r.links) ? r.links : []).find((l) => isRecord(l) && l.rel === "up" && typeof l.href === "string");
       const captureId = up && isRecord(up) ? /\/captures\/([A-Za-z0-9_-]{4,120})\/?$/.exec(String(up.href))?.[1] ?? null : null;
-      return { ...base, kind: "payment_refunded", reference, providerPaymentId: captureId, refund: { id: str(r.id), amountMinor, currency, status: str(r.status) } };
+      return { ...base, kind: "payment_refunded", reference, providerPaymentId: captureId, refund: { id: str(r.id), amountMinor, currency, status: refundStatusOf(r.status) } };
     }
     case "PAYMENT.CAPTURE.REVERSED":
       // Money taken back by the buyer's bank or PayPal: held for a person, never applied.

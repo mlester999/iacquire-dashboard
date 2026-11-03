@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, checkoutReturnText, effectiveStatus, formatUsdCents, noPaymentYetText, priceSnapshot,
-  PURCHASE_LINK_DAYS, PURCHASE_STATUSES, SANDBOX_PAYMENT_TEXT,
+  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, checkoutReturnText, effectiveStatus, formatUsdCents, noPaymentYetText, paymentHeldEventText, priceSnapshot,
+  providerNameText, PURCHASE_EVENT_TEXT, PURCHASE_LINK_DAYS, PURCHASE_STATUSES, SANDBOX_PAYMENT_TEXT,
 } from "@/lib/purchase-intents/rules";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 
@@ -119,5 +119,43 @@ describe("what a buyer and the team may do", () => {
       expect(canReleaseHold(state("cancelled"), hold, NOW).ok, `cancelled ${hold}`).toBe(false);
       expect(canReleaseHold(state("expired", -1), hold, NOW).ok, `expired ${hold}`).toBe(false);
     }
+  });
+});
+
+describe("the words a Super Admin reads about a payment and a hold", () => {
+  it("names the provider that reported it, and says 'the payment provider' when it does not know", () => {
+    expect(providerNameText("paypal")).toBe("PayPal");
+    expect(providerNameText("paymongo")).toBe("PayMongo");
+    for (const unknown of [null, undefined, "", "stripe"]) expect(providerNameText(unknown)).toBe("the payment provider");
+  });
+
+  it("says what a refund notice named: who, how much, and whether it went through", () => {
+    const refund = (over: Record<string, unknown> = {}) => ({ what: "refund", provider: "paypal", event: "PAYMENT.CAPTURE.REFUNDED", refund: { amountMinor: 149900, currency: "USD", status: "succeeded", ...over } });
+    expect(paymentHeldEventText(refund())).toBe("PayPal reported a refund of USD 1,499.00: provisioning is on hold");
+    // A part of the money is told as the part it was: the hold is the same, the amount is not hidden.
+    expect(paymentHeldEventText(refund({ amountMinor: 10000 }))).toBe("PayPal reported a refund of USD 100.00: provisioning is on hold");
+    expect(paymentHeldEventText({ ...refund({ amountMinor: 250000, currency: "PHP" }), provider: "paymongo" })).toBe("PayMongo reported a refund of PHP 2,500.00: provisioning is on hold");
+    expect(paymentHeldEventText(refund({ status: "pending" }))).toBe("PayPal reported a refund of USD 1,499.00 that is still being processed: provisioning is on hold");
+    expect(paymentHeldEventText(refund({ status: "failed" }))).toBe("PayPal reported a refund of USD 1,499.00 that could not be completed: provisioning is on hold");
+    // A notice that carried no usable amount says no amount, never a guess.
+    for (const bad of [{ amountMinor: null }, { amountMinor: 0 }, { amountMinor: -5 }, { amountMinor: 1.5 }, { amountMinor: "100" }, { currency: "XXX" }, { currency: null }]) {
+      expect(paymentHeldEventText(refund(bad)), JSON.stringify(bad)).toBe("PayPal reported a refund: provisioning is on hold");
+    }
+  });
+
+  it("tells a dispute as a dispute, and keeps the older, less specific entries readable", () => {
+    expect(paymentHeldEventText({ what: "dispute", provider: "paypal", event: "CUSTOMER.DISPUTE.CREATED" })).toBe("PayPal reported a dispute: provisioning is on hold");
+    // A dispute never shows a refund amount, even if one were stored beside it.
+    expect(paymentHeldEventText({ what: "dispute", provider: "paypal", refund: { amountMinor: 100, currency: "USD", status: "succeeded" } })).toBe("PayPal reported a dispute: provisioning is on hold");
+    // Written before the provider and amount were kept (the Sandbox test purchase of 2026-11-03 is one): the kind is known, the provider is not.
+    expect(paymentHeldEventText({ reference: "IAQ-X", what: "refund", event: "PAYMENT.CAPTURE.REFUNDED" })).toBe("The payment provider reported a refund: provisioning is on hold");
+    expect(paymentHeldEventText({})).toBe(PURCHASE_EVENT_TEXT.payment_held);
+    expect(paymentHeldEventText({ what: "something else" })).toBe(PURCHASE_EVENT_TEXT.payment_held);
+  });
+
+  it("does not claim that every confirmed payment came from a signed notice", () => {
+    // PayPal's answer to the server's own capture records the payment first; the signed notice that follows is a repeat.
+    expect(PURCHASE_EVENT_TEXT.payment_received).toBe("Payment confirmed by the payment provider");
+    expect(PURCHASE_EVENT_TEXT.payment_received).not.toMatch(/signed notice/);
   });
 });
