@@ -291,6 +291,18 @@ describe("sending again and making a new link", () => {
     expect(mocks.resend.mock.calls[2][0].idempotencyKey).not.toBe(mocks.resend.mock.calls[1][0].idempotencyKey);
   });
 
+  it("shows the time of the new link in the page's own time zone, the one the rest of the page uses, not the browser's", async () => {
+    // Found on the live purchase page: right after the press the result said 2:42 PM (the browser's zone, Manila) while the page around it said 6:42 AM for the same moment.
+    mocks.resend.mockResolvedValue({ ok: true, data: { replayed: false, intent: sampleIntent(), path: TOKEN_PATH, delivery: sampleDelivery({ kind: "resend", createdAt: "2026-11-03T06:42:11.000Z" }) } });
+    for (const [zone, clock] of [["UTC", /Nov 3, 2026, 6:42\sAM/], ["Asia/Manila", /Nov 3, 2026, 2:42\sPM/], ["America/Chicago", /Nov 3, 2026, 12:42\sAM/]] as const) {
+      render(<DeliveryActions intent={sampleIntent()} emailReady timeZone={zone} />);
+      fireEvent.click(screen.getByRole("button", { name: /Send the invitation again/ }));
+      await screen.findByText(/New link made/);
+      expect(screen.getByRole("status").textContent, zone).toMatch(clock);
+      cleanup();
+    }
+  });
+
   it("makes a link for hand sharing without emailing, and says email is not set up when it is not", async () => {
     mocks.resend.mockResolvedValue({ ok: true, data: { replayed: false, intent: sampleIntent(), path: TOKEN_PATH, delivery: sampleDelivery({ kind: "rotation", status: "manual", reason: "chosen", provider: "none" }) } });
     render(<DeliveryActions intent={sampleIntent()} emailReady={false} />);

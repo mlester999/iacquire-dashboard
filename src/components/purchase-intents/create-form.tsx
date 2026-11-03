@@ -64,7 +64,7 @@ export function InvitationCreated({ result, emailReady, timeZone, onChanged, onR
         {path && <RevealedLink path={path} delivery={delivery} />}
       </div>
       <div className="mt-3 rounded-xl border border-line bg-surface p-3.5">
-        <DeliveryActions intent={intent} emailReady={emailReady} onChanged={onChanged} />
+        <DeliveryActions intent={intent} emailReady={emailReady} onChanged={onChanged} timeZone={timeZone} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <ButtonLink href={`/admin/purchase-intents/${intent.id}`} variant="secondary" size="sm">Open the invitation</ButtonLink>

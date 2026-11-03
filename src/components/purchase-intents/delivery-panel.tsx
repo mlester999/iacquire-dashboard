@@ -78,7 +78,7 @@ export interface DeliveryChange {
  * "Send the invitation again" makes a NEW link and emails it; "Make a new link to share by hand" makes one and shows it here. Either replaces the link the buyer has, which is also
  * the answer to a lost, expired or leaked link. A double press is one request (the key), and the server allows one new link a minute.
  */
-export function DeliveryActions({ intent, onChanged, emailReady }: { intent: PurchaseIntentView; onChanged?: (change: DeliveryChange) => void; emailReady: boolean }) {
+export function DeliveryActions({ intent, onChanged, emailReady, timeZone }: { intent: PurchaseIntentView; onChanged?: (change: DeliveryChange) => void; emailReady: boolean; timeZone?: string }) {
   const [busy, setBusy] = React.useState<"email" | "hand" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [fresh, setFresh] = React.useState<{ path: string; delivery: DeliveryView | null } | null>(null);
@@ -126,7 +126,7 @@ export function DeliveryActions({ intent, onChanged, emailReady }: { intent: Pur
       {fresh && (
         <div className="space-y-2">
           <p className="flex items-center gap-2 text-[13px] font-medium text-success-ink"><CheckCircle2 className="size-4" aria-hidden /> New link made</p>
-          <DeliveryStatusBlock delivery={fresh.delivery} />
+          <DeliveryStatusBlock delivery={fresh.delivery} timeZone={timeZone} />
           <RevealedLink path={fresh.path} delivery={fresh.delivery} />
         </div>
       )}

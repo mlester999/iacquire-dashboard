@@ -86,7 +86,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                 <DeliveryStatusBlock delivery={intent.delivery} timeZone={user.timezone} />
               </div>
               {!email.ready && <p className="text-[12px] leading-relaxed text-muted">Email is not set up in this environment: {email.problems.join(" ")}</p>}
-              <DeliveryActions intent={intent} emailReady={email.ready} />
+              <DeliveryActions intent={intent} emailReady={email.ready} timeZone={user.timezone} />
               {deliveries.length > 1 && (
                 <details className="rounded-xl border border-line">
                   <summary className="flex min-h-11 cursor-pointer items-center px-3.5 text-[13px] font-medium text-ink">Delivery history ({deliveries.length})</summary>
