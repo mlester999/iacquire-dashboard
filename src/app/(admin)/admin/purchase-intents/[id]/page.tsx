@@ -13,7 +13,7 @@ import { PurchaseIntentActions } from "@/components/purchase-intents/actions";
 import { DeliveryActions, DeliveryStatusBlock } from "@/components/purchase-intents/delivery-panel";
 import { InvitationFacts } from "@/components/purchase-intents/invitation-summary";
 import { StatusPill } from "@/components/ui/status";
-import { CHECKOUT_STATUS_TEXT, formatUsdCents, invitationEmailEventText, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
+import { CHECKOUT_STATUS_TEXT, formatUsdCents, invitationEmailEventText, noPaymentYetText, PURCHASE_EVENT_TEXT, PURCHASE_STATUS_TONE } from "@/lib/purchase-intents/rules";
 import { cn, formatDateTime } from "@/lib/utils";
 
 export const metadata = { title: "Purchase intent" };
@@ -130,7 +130,7 @@ export default async function PurchaseIntentPage({ params }: { params: Promise<{
                   <div className="min-w-0 sm:col-span-2"><dt className="text-[12px] text-muted">What was checked</dt><dd className="break-words leading-relaxed">{intent.paymentNote}</dd></div>
                 </dl>
               ) : (
-                <p className="text-[14px] leading-relaxed text-muted">The buyer has not confirmed, or the payment has not been verified. Record the payment only after you have checked the money in the bank, PayPal or PayMongo account.</p>
+                <p className="text-[14px] leading-relaxed text-muted">{noPaymentYetText(intent.status)}</p>
               )}
               <PurchaseIntentActions intent={intent} />
             </CardContent>

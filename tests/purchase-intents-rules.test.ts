@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, priceSnapshot,
-  PURCHASE_LINK_DAYS,
+  canBuyerStart, canCancel, canProvision, canReleaseHold, canRotateLink, canVerifyPayment, effectiveStatus, formatUsdCents, noPaymentYetText, priceSnapshot,
+  PURCHASE_LINK_DAYS, PURCHASE_STATUSES,
 } from "@/lib/purchase-intents/rules";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 
@@ -55,6 +55,19 @@ describe("what a buyer and the team may do", () => {
     expect(canProvision(state("started"), null, NOW).ok).toBe(false);
     expect(canProvision(state("payment_verified"), null, NOW)).toEqual({ ok: true });
     expect(canProvision(state("provisioned"), "client-org", NOW)).toEqual({ ok: true });
+  });
+
+  it("tells the team the buyer has confirmed exactly when a payment may be recorded, never that a confirmed buyer has not", () => {
+    // Found on the live Purchase intent page of a buyer who had confirmed: the card said "The buyer has not confirmed, or the payment has not been verified."
+    for (const status of PURCHASE_STATUSES) {
+      const text = noPaymentYetText(status);
+      expect(text.startsWith("The buyer has confirmed."), status).toBe(canVerifyPayment(state(status), NOW).ok);
+      if (status !== "invited") expect(text, status).not.toMatch(/has not confirmed/i);
+    }
+    expect(noPaymentYetText("invited")).toMatch(/^The buyer has not confirmed yet\./);
+    expect(noPaymentYetText("started")).toMatch(/No payment has been verified yet/);
+    expect(noPaymentYetText("expired")).toMatch(/expired/);
+    expect(noPaymentYetText("cancelled")).toMatch(/cancelled before any payment/);
   });
 
   it("lets a person withdraw only an unpaid purchase, and prohibits reopening a cancelled one with a link", () => {

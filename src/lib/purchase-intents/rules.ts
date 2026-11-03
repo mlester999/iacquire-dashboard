@@ -194,6 +194,20 @@ export function canVerifyPayment(state: PurchaseState, now: Date): PurchaseTrans
   return no("The buyer has not confirmed the purchase yet.");
 }
 
+/**
+ * What the "Verify the payment" card says while no payment is on the purchase. It follows the status, because "the buyer has not confirmed" is true only before they have:
+ * the first sentence says "has confirmed" exactly when canVerifyPayment lets a person record the payment.
+ */
+export function noPaymentYetText(status: PurchaseStatus): string {
+  switch (status) {
+    case "invited": return "The buyer has not confirmed yet. Once they have, record the payment only after you have checked the money in the bank, PayPal or PayMongo account.";
+    case "started": return "The buyer has confirmed. No payment has been verified yet: record it only after you have checked the money in the bank, PayPal or PayMongo account.";
+    case "expired": return "The link expired before a payment was recorded. Make a new link if the buyer still wants to buy.";
+    case "cancelled": return "This purchase was cancelled before any payment was recorded.";
+    default: return "No payment is recorded on this purchase.";
+  }
+}
+
 /** Provisioning requires verified payment evidence and no workspace yet. Repeating it returns the existing workspace instead. */
 export function canProvision(state: PurchaseState, clientOrgId: string | null, now: Date, hold: "refunded" | "disputed" | "mismatch" | null = null): PurchaseTransition {
   const status = effectiveStatus(state, now);
