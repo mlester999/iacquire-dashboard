@@ -77,14 +77,14 @@ What is **not** proved: no Sandbox payment has been made on the live site, and t
 
 ## 8. After release: the controlled Sandbox test (a separate approval, with its exact scope)
 
-Proposed, not approved: one test purchase (`PUR-ZQ2BV3Z49N`, already confirmed, never paid), the checkout switch turned on only for the test and off straight after, a PayPal Sandbox buyer account paying in the PayPal Sandbox. Expected on the live site: the order is created at PayPal Sandbox, the buyer approves, the server captures, PayPal's signed notice arrives and is verified; the purchase reads "Sandbox payment (test)"; **no workspace, no setup fee, no provisioning, no real money**; the purchase is then closed as a test. The monthly plan and client invoices are proved on the isolated route (a developer's machine with a local database, with the Sandbox credentials in a git-ignored local file), because the live site refuses Sandbox for them by design.
+**Approved by the founder and done on 2026-11-03: section 13.** The scope that was proposed and approved: one test purchase (`PUR-ZQ2BV3Z49N`, already confirmed, never paid), the checkout switch turned on only for the test and off straight after, a PayPal Sandbox buyer account paying in the PayPal Sandbox. Expected on the live site: the order is created at PayPal Sandbox, the buyer approves, the server captures, PayPal's signed notice arrives and is verified; the purchase reads "Sandbox payment (test)"; **no workspace, no setup fee, no provisioning, no real money**; the purchase is then closed as a test. The monthly plan and client invoices are proved on the isolated route (a developer's machine with a local database, with the Sandbox credentials in a git-ignored local file), because the live site refuses Sandbox for them by design.
 
 ## 9. The approval this needs
 
 1. Pushing the three commits to the review branch so CI can run (about 55 minutes), once the run already in progress for the approved release has ended. *Done on 2026-11-03.*
 2. When CI is green, a separate "Release to master", which deploys production. *Approved ("Release when green") and done at 09:46 UTC (section 11).*
 3. Pressing "Check connection" (read-only) after that deployment. *Approved ("Press it") and done at 11:05 UTC (section 12).*
-4. The controlled Sandbox test of section 8, with its own approval. *Not approved, not started.*
+4. The controlled Sandbox test of section 8, with its own approval. *Approved ("Approve", then "Ready", then "Retry now") and done: window 1 made no payment attempt, window 2 made a Sandbox payment (13:25 to 13:31 UTC): section 13.*
 
 ## 10. What is proved against PayPal, and what is only written down (added the same day)
 
@@ -135,3 +135,31 @@ The founder approved one more press ("Press it") after being told that the check
 | What it does not prove | The check compares the **required** events only: the payment confirmation, plus the monthly plan's eleven once `PAYPAL_MAINTENANCE_PLAN_ID` is set (it is not). It does not compare the four recommended events (`PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.REFUNDED`, `PAYMENT.CAPTURE.REVERSED`, `CUSTOMER.DISPUTE.CREATED`), so "every event this site needs" is true of the payment confirmation and says nothing about those four. It does not prove that a signed notice verifies (`verify-webhook-signature` has not run), nor orders, captures or subscriptions |
 
 Seen and not changed: the check could compare the recommended events too and name any that are missing, so a refund or a dispute could not go unnoticed. It is a small addition, held for the next release.
+
+## 13. The controlled Sandbox test on the live site (2026-11-03): two windows, one real Sandbox payment
+
+The founder approved it in three steps: "Approve" (the scope of section 8: one test purchase, the online-checkout switch on only for the test and off straight after, the founder paying with their own PayPal Sandbox buyer account, no workspace, no clearance, no real money, and closing the purchase as a test afterwards), "Ready" (window 1) and "Retry now" (window 2). I pressed the switch once per window on the Purchase intents page and read production read-only; the founder paid on PayPal's Sandbox page themselves, and their Sandbox password was never seen.
+
+| Window | Switch | Result |
+| --- | --- | --- |
+| 1 | On 12:03:46 UTC, off 12:23:48 UTC (the agreed 20-minute limit) | **No payment attempt.** The buyer page loaded once (12:10:33) and no Pay press reached the site. No checkout, receipt, payment or workspace was created |
+| 2 | On 13:25:02 UTC, off 13:31:22 UTC (6 min 20 s) | **A Sandbox payment of US$1,499.00 was made and recorded** |
+
+Window 2, in order (UTC):
+
+| Time | What happened |
+| --- | --- |
+| 13:26:16 and 13:26:23 | The buyer reloaded the page, which now offered Pay, and pressed "Pay US$1,499.00 with PayPal". One `purchase_intent_checkouts` row was made (PayPal, test mode, US$1,499.00 charged in USD), then moved from `creating` to `pending` with PayPal's order id and its approval link: **PayPal Sandbox accepted the order request** |
+| 13:30:44 to 13:30:48 | The buyer came back from PayPal's Sandbox page. This server captured the approved order with its own credentials (the return page's action). **PayPal answered `COMPLETED`, with a capture id and the fee breakdown**, and the reference, mode, amount and currency all equalled what the site had stored. The checkout became `paid` and the purchase `payment_verified` (source provider), labelled as a sandbox payment. One receipt, `ORDER.CAPTURED` (the site's own record of PayPal's answer): processed |
+| 13:31:22 | The switch was turned off |
+| 13:31:27 to 13:31:33 | **PayPal's own signed notice, `PAYMENT.CAPTURE.COMPLETED`, reached `/api/webhooks/paypal` (HTTP 200).** A delivery is recorded only after PayPal itself confirmed its signature (`verify-webhook-signature`), and the receipt exists: test mode, outcome `ignored`, "Already recorded as paid." The payment was counted once, through two doors |
+
+What it did on the live site, seen with a real Sandbox payment (the isolation of section 5): **no workspace** (organizations still 4), **no `payments` row**, no setup fee cleared, no provisioning, **no email queued** (`email_outbox` still 15), and one in-app notification for the single Super Admin: "A SANDBOX purchase payment reached the live site". The admin page reads "Sandbox payment (test)", "Workspace: Never created: a sandbox payment moved no real money", and offers "Close as a test purchase" instead of "Record verified payment". The buyer's return page reads "Test payment recorded. This was a payment in the payment provider's sandbox. No real money moved, and no workspace will be created." No row in six tables holds a purchase link or token, and the health route answered 200 at every check.
+
+**Now proved against the real PayPal Sandbox** (before this, only specifications and stand-ins): the order request and the buyer's approval link; the buyer's approval flow and return; the server-side capture with its capture id and fee; the reference, mode, amount and currency round trip; delivery of a signed notice to the live address; `verify-webhook-signature` with the stored webhook ID answering success; the repeat of a payment through its two doors counted once; and the isolation of a Sandbox payment on the live site.
+
+**Still not proved:** refunds, reversals, disputes and denied payments (their events are not compared by "Check connection", and none has been sent); a repeated `PayPal-Request-Id` returning the same object; the name `ORDER_ALREADY_CAPTURED`; PayPal's retry of an undelivered notice; the monthly plan and client invoices (the live site refuses a Sandbox payment for them by design, so they need an isolated route; `PAYPAL_MAINTENANCE_PLAN_ID` is still absent from Vercel).
+
+**Seen and not changed, for the next release:** (1) The admin page's "Evidence: Confirmed by the payment provider's signed notice" and its timeline line "Payment confirmed by the payment provider's signed notice" (13:30) are not exact for this payment: it was recorded from PayPal's answer to this server's capture, and the signed notice came about a minute later and was recorded as a repeat. (2) The "Online checkouts" card still names only PayMongo's signed notice (section 11). (3) The buyer's return page re-reads the status every 5 seconds for two minutes even after the payment is final; harmless and bounded.
+
+**Not done:** closing the test purchase. The founder's approval covered it, and I filled in the close form (the reason box), but the click on "Close the purchase" was refused by the permission check of the session, and I did not work around it. The purchase stays `payment_verified`, labelled "Sandbox payment (test)", until the founder closes it or tells me to try again. It cannot create a workspace or clear a setup fee while it waits.
