@@ -1,6 +1,6 @@
 # PayPal Sandbox safety release: the candidate, its proof, its way back (2026-11-03)
 
-Status: **a release candidate, not released.** It exists as three commits on the branch `feat/paypal-sandbox-completion`, cut from the review branch tip `85463296`. Nothing here is on `master`, nothing is deployed, no setting is changed, and no migration is needed. Releasing it is the founder's separate decision (section 9).
+Status: **released to `master` on 2026-11-03 at 09:46 UTC, and deployed to production (section 11).** It was built as three commits on the branch `feat/paypal-sandbox-completion`, cut from the review branch tip `85463296`; CI passed on `4b71e746` (those commits merged with the review tip), which is exactly the commit that was pushed. No setting was changed and no migration was needed. Sections 1 to 10 below were written before the release and are left as they were, except where a line says what has since happened.
 
 Why it exists: PayPal Sandbox credentials are going into Vercel Production. Reading the code and PayPal's own documentation showed four ways that could go wrong, and one gap in how a connection is proved. This release closes them. It does not make PayPal "verified", and it does not offer Sandbox checkout to anyone.
 
@@ -33,7 +33,7 @@ The three commits belong together. Without `5aae52ff`, a typo in a hidden PayPal
 
 * 34 new cases: the settings (`tests/environment-safety.test.ts`), the guide and the check (`tests/payment-provider-health.test.ts`, `tests/customer-payments-paypal.test.ts`), the screen (`tests/payment-providers-panel.test.tsx`), the live-site definition and the purchase rules (`tests/environment-safety.test.ts`, `tests/purchase-intents-rules.test.ts`), the Super Admin's buttons (`tests/purchase-intent-actions.test.tsx`), the monthly plan (`tests/maintenance-agreement.test.ts`) and the isolation on a real embedded database (`tests/sandbox-isolation.test.ts`).
 * Run locally on 2026-11-03: the 77 test files that touch purchases, billing, payments, PayPal, the monthly plan, client payments and the environment: **1,023 tests passed, 0 failed**. `tsc --noEmit` and ESLint are clean; the whitespace check CI runs over the range is clean.
-* CI on the Linux workflow ("Synthetic worker isolation and app checks"): **not yet run for this candidate.** Pushing it to the review branch is what starts it (about 55 minutes). It is not started while another run for the review branch is in progress, because a push touching `src/` or `tests/` cancels that run.
+* CI on the Linux workflow ("Synthetic worker isolation and app checks"): it was not started while another run for the review branch was in progress, because a push touching `src/` or `tests/` cancels that run. **Since then: run [41599484016](https://github.com/mlester999/iacquire-dashboard/actions/runs/41599484016) on `4b71e746` succeeded on all three jobs**, 07:54:55 to 08:43:08 UTC (48 minutes for the full tests, type check, lint and production build; about 2 minutes each for the pinned Hermes worker job and the operator-scripts job).
 
 ## 4. Production environment preflight (read-only)
 
@@ -81,10 +81,10 @@ Proposed, not approved: one test purchase (`PUR-ZQ2BV3Z49N`, already confirmed, 
 
 ## 9. The approval this needs
 
-1. Pushing the three commits to the review branch so CI can run (about 55 minutes), once the run already in progress for the approved release has ended.
-2. When CI is green, a separate "Release to master", which deploys production.
-3. Pressing "Check connection" (read-only) after that deployment.
-4. The controlled Sandbox test of section 8, with its own approval.
+1. Pushing the three commits to the review branch so CI can run (about 55 minutes), once the run already in progress for the approved release has ended. *Done on 2026-11-03.*
+2. When CI is green, a separate "Release to master", which deploys production. *Approved ("Release when green") and done at 09:46 UTC (section 11).*
+3. Pressing "Check connection" (read-only) after that deployment. *Not done: it needs its own approval.*
+4. The controlled Sandbox test of section 8, with its own approval. *Not approved, not started.*
 
 ## 10. What is proved against PayPal, and what is only written down (added the same day)
 
@@ -100,3 +100,24 @@ Proposed, not approved: one test purchase (`PUR-ZQ2BV3Z49N`, already confirmed, 
 **The one not confirmed:** the name `ORDER_ALREADY_CAPTURED`, which the code uses to read an order back when two captures race. The specification's examples do not list it, which is neither a confirmation nor a contradiction; it matters only in that rare race, and a Sandbox run can settle it by capturing one order twice.
 
 **What no document settles, so only a Sandbox run can:** the shape of the webhook event payloads (the specifications describe the calls, not the events), in particular `BILLING.SUBSCRIPTION.*` and `PAYMENT.SALE.*`; whether the id on a monthly charge's sale notice equals the id in the transactions list (the code holds a second charge within ten days for a person rather than add a month twice); how PayPal retries and suspends after a failed charge (`payment_failure_threshold`); whether a subscription waiting for approval can be cancelled; that `PayPal-Request-Id` makes a repeated request return the same object; the fees and the currencies a given account accepts; how long PayPal retries an undelivered notice.
+
+## 11. The release (added the same day, after it)
+
+Like sections 14 to 17 of `docs/purchase-invitation-and-demo-release-2026-11-03.md`, this record lives on the review branch only: a documentation commit on `master` would redeploy production.
+
+The founder approved the release with "Release when green", after being told what it carries and what it does not. Not approved and not done: pressing "Check connection" again, turning the online-checkout switch on, any setting, any migration, any PayPal call, any Sandbox checkout.
+
+| Item | Result |
+| --- | --- |
+| Before | Read-only, by one script that prints a verdict (**OK** each time: 08:43, 08:56 and 09:44 UTC). CI run 41599484016 on `4b71e746`: **success, all three jobs** (section 3). `master` was `85463296`, an ancestor of the pushed commit, so a fast-forward; the code outside `docs/` equals the CI-tested commit; **25 files outside `docs/`, 0 migrations**; the whitespace check over the range was clean. The online-checkout switch was **off** (since 07:15:13 UTC). Production was deployment `iacquire-dashboard-d3mmg2z17`, and the health route answered 200 |
+| Released | 2026-11-03 09:46:06 UTC (17:46 in Manila): `git push origin 4b71e746:refs/heads/master`, not forced: `85463296..4b71e746`. Git asks the founder to choose their GitHub account in a sign-in window for every push. Three earlier attempts (08:44, 08:47 and 08:58 UTC) timed out at that window unanswered, pushed nothing and deployed nothing; the fourth went through seconds after the window opened |
+| Built | Vercel production deployment `dpl_FNvH1MkzXq4LRG62DqLpyJ6tCd6f` (`iacquire-dashboard-ax5w1t5wt`): created 09:46:07 UTC, **Ready after a 4 min 6 s build**, target production, and `www.iacquire.online` serves it. The previous production deployment, `iacquire-dashboard-d3mmg2z17` (`dpl_9FLiPCVwvoUJa49nXM9a6GsezXrH`), is the rollback target (section 6) |
+| Live checks (read-only, 09:50 UTC) | `/api/health` answered 200 `{"status":"ok","database":"ok"}` three times (3.2 s for the first request, 0.6 s after); `/login` 200; `/dev` and `/dev/purchase-preview` 404; an invalid purchase link 200 (the "not valid" page) |
+| Runtime logs | The new deployment's first minutes: 14 entries, 11 info and 3 warnings, **no error**. The warnings are the notice that already existed (section 16 of the purchase release doc recorded it for the previous release): the configured Supabase root CA file is absent from the function path and the bundled CA is used. This release changed no database or build configuration file |
+| What the Super Admin sees now | Billing, Payment providers: **PayPal reads "Test verified" in "Test mode"** (the one check of 08:13 UTC, made with the earlier code, still stands); `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID` and `PAYPAL_ENVIRONMENT` read "Set", with "now: sandbox"; `PAYPAL_MAINTENANCE_PLAN_ID` reads "Not set". **The webhook section lists the 16 events, the 11 monthly ones marked "monthly plan", and says a real Sandbox purchase is the test: the advice to use PayPal's simulator is gone.** PayMongo reads "Not connected" with what is missing. The Online checkout card reads **Off**. The test purchase `PUR-ZQ2BV3Z49N` still reads "Buyer confirmed" with "No online checkout was opened"; its "Record verified payment" button was not pressed |
+| The database afterwards | Read-only at 09:50 UTC: the checkout switch `false` (its last audit row is the 07:15:13 switch-off); `audit_logs` 1,622, `purchase_intents` 2, `purchase_intent_checkouts` **0**, `payments` **0**, `payment_webhook_events` **0**, `email_outbox` 15, `notifications` 19: **identical to the state read before the push**. One `payment_provider_checks` row (PayPal, 08:13:32 UTC). No row in six tables holds a purchase link or token. Nothing was written by this release |
+| What was not done | No call was made to PayPal. "Check connection" was not pressed with the new code, so the comparison of the webhook's ID and events **has not run against PayPal**. No checkout was opened and no payment exists, so the isolation of section 5 has been proved by the tests only, not yet by a Sandbox payment on the live site |
+
+Seen and not changed: the "Online checkouts" card on a purchase's admin page says "A checkout becomes paid only when PayMongo's signed notice matches ...", although PayPal is the connected provider (`src/app/(admin)/admin/purchase-intents/[id]/page.tsx`). It should say "the provider's signed notice". It is one line, held for the next release so as not to start another 50-minute CI run for it alone.
+
+Honest limits: the values of the four Sensitive variables were never read, by anyone here; what is known of them is what the running site shows and what PayPal answered on 2026-11-03 at 08:13 UTC (the credentials were accepted and a webhook at this site's address exists). Whether `PAYPAL_WEBHOOK_ID` is that webhook's ID, whether the webhook has the events the site needs, and every step from an order to a verified notice remain unproved until "Check connection" is pressed again and a Sandbox purchase is made, each with the founder's approval.
