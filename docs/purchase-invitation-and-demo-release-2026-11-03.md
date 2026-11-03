@@ -1,6 +1,6 @@
 # Purchase invitations, payment-provider setup and the phone-ready demo: release candidate (2026-11-03)
 
-This is one coordinated fix for the three problems found in the live purchase and demo experience (the founder's three screenshots), built on the existing application, not beside it. It is a **release candidate**: it is on the review branch `integration/hermes-bridge-final`, it is **not on `master`, not deployed, and migration 0119 has not been applied to any hosted database**. Nothing in this work enabled real payments, read or changed a production credential, sent an email to a real customer, or created a client workspace.
+This is one coordinated fix for the three problems found in the live purchase and demo experience (the founder's three screenshots), built on the existing application, not beside it. It is a **release candidate**: it is on the review branch `integration/hermes-bridge-final`, it is **not on `master`, not deployed, and migration 0119 has not been applied to any hosted database**. Nothing in this work enabled real payments, changed a production credential or setting, sent an email to a real customer, or created a client workspace. The one thing done against production is the read-only restore point of section 12, taken on the founder's explicit approval: it used the production database connection string to read, and changed nothing.
 
 The journey it makes work and honest, end to end: **Demo → request (consultation or purchase) → Super Admin invites → invitation emailed automatically (or handed over with the honest reason) → buyer opens the secure link and confirms → pays at a verified provider → the provider's signed notice verifies the payment → only then the client workspace, onboarding and AI Employee provisioning.** Every arrow before "verified payment" is a request or a record; none of them creates a workspace or marks anything paid.
 
@@ -18,7 +18,7 @@ Also changed because the three problems met there: the buyer's page (`/purchase/
 
 * The agreed prices (US$1,499 setup, optional US$299/month) and the package entitlements. The database still refuses any other figure.
 * **Real-money payments stay off.** Nothing here switches online checkout on, sets a provider key, confirms the live-payments review or creates a live checkout. A live key now needs the agency's payment and tax review **and** a passing connection check for the same configuration; until both, buyers are not offered a Pay button.
-* No production credential, environment variable or setting was read or changed. No email was sent to anyone: every email test uses a stand-in provider.
+* While the candidate was built and tested, no production credential, environment variable or setting was read or changed. No email was sent to anyone: every email test uses a stand-in provider. (The restore point of section 12 came afterwards, on its own approval: it read the production database and changed nothing.)
 * The purchase link is still a bearer secret of which only a hash is stored; the confirm, payment-verification and workspace-creation rules are unchanged (`docs/purchase-intents.md`).
 
 ## 3. The release candidate
@@ -53,11 +53,11 @@ Email, so invitations are emailed:
 
 Payments, only when the founder decides to accept online payments (each is its own approval; the Payment providers tab names each one and shows Set or Missing): `PAYMONGO_SECRET_KEY` (start with a `sk_test_` key), `PAYMONGO_WEBHOOK_SECRET`, optionally `PAYMONGO_PAYMENT_METHODS`, the USD to PHP rate and its source under Billing, Rates & payments; `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_ENVIRONMENT=sandbox` first. The webhooks are `/api/webhooks/paymongo` (event `checkout_session.payment.paid`) and `/api/webhooks/paypal` (event `PAYMENT.CAPTURE.COMPLETED`). Live keys additionally need the live-payments review confirmed in Billing.
 
-## 6. Release order (a proposal: none of it is approved or done)
+## 6. Release order (a proposal: step 1 is done; nothing after it is approved)
 
 Each step is a separate approval of the founder's, as on 2026-11-02 (`docs/client-production-release-runbook-2026-11-03.md`, sections 3 and 13).
 
-1. **Restore point.** The previous dump (`...\20261102T122432Z\`) predates 0115 to 0118 and anything written since (including the purchase intent made on 2026-11-02). Take a fresh verified one before the migration (Supabase Free has no managed backups).
+1. **Restore point. Done on 2026-11-03, on the founder's approval (section 12).** The previous dump (`...\20261102T122432Z\`) predated 0115 to 0118 and anything written since, including the purchase intent made on 2026-11-02, so a fresh one was taken, restored into a throwaway copy and checked; 0119 was rehearsed on that copy. Supabase Free has no managed backups, so this file is the last resort.
 2. **Apply 0119 alone**, with the runner's own `--only 0119_purchase_invitation_delivery`, after its dry run says exactly that one is pending, with the same lock gate and post-checks used for 0115 to 0118. 0119 takes a brief lock only to add two empty tables and to replace one check constraint on `purchase_intent_events`, a small table whose few rows are checked against the new constraint.
 3. **Fast-forward `master`** to the release commit (the one with a green CI run) and let Vercel build the production deployment. Check `/api/health` and the set of static assets on `/login` change.
 4. **Smoke** (read-only, no side effects): the Billing page opens and the Payment providers tab reads "Not connected" for both providers; Purchase intents opens and, if the switch was left on with no provider, reads "On, but blocked"; `/demo/room` on a phone-width window.
@@ -108,7 +108,7 @@ The checks fail a scenario on: sideways scroll or anything past the viewport, te
 
 ## 10. Decisions and approvals only the founder can give
 
-1. The three approvals of section 6, steps 1 to 3, in that order, each on its own.
+1. The approvals of section 6, steps 2 and 3, in that order, each on its own (step 1, the restore point, was approved and done on 2026-11-03).
 2. Whether `RESEND_API_KEY` should be a Full access key (so the setup check can prove the domain) or a sending-only key (least privilege; the check then says it could not be checked).
 3. Whether a Resend webhook may point at production (needed for "Delivered" and "Bounced").
 4. Which payment provider to open first, and when; the USD to PHP rate and its source; the live-payments review (legal and tax) before any real money.
@@ -128,3 +128,19 @@ The repository's Linux workflow, "Synthetic worker isolation and app checks", on
 * The first run, on `2cc81c4c` ([run 41507512323](https://github.com/mlester999/iacquire-dashboard/actions/runs/41507512323)), failed in its first job at the entry check, in 11 seconds and before any test ran: that check applies git's default whitespace rules to everything added since the approved master, and one test file ended with a blank line. `de3dec84` removes it. The other two jobs passed on that run too.
 * The exact test counts on Linux are in the job log, which needs a GitHub sign-in to read; the repository's own comparison (`.github/scripts/known-failures.mjs`, whose list of known failures is empty) is what the job passed.
 * Nothing was merged, deployed or applied by this: `master` is still `bb1193b4`, production still runs it, and migration 0119 exists only in the repository.
+
+## 12. Restore point of 2026-11-03 (taken on the founder's approval)
+
+The founder approved exactly one thing on 2026-11-03, "Take restore point": read the production database, write a dump of it, and prove the dump restores. Nothing else: no migration, no push to `master`, no deploy, no setting, no email, no payment. Production was only read. Migration 0119 was rehearsed on a throwaway local copy restored from the dump, and that copy has since been deleted.
+
+| Item | Result |
+| --- | --- |
+| Taken | 2026-11-02 23:53:32 UTC (2026-11-03 07:53 in Manila) from the production project over verified TLS (the Supabase root CA): `pg_dump` 18.0 against the server's 17.11, custom format, no owners, schemas `public` and `app`; 58.5 seconds. A read-only snapshot first (facts, row counts, schema fingerprint), then the dump |
+| The state it holds | Ledger 112 rows ending `0118_audit_logs_purge_detach`; none of the objects of 0119; 383 of 383 public tables with row-level security; 3,804 rows in 383 tables. Row counts were identical before the dump, after it, and again at 23:58:44 UTC after the whole exercise: nothing was written |
+| The file | 2,851,289 bytes; 5,427 entries in `pg_restore --list`; sha256 `e109d33b937ed4fc053d736816c748e6eca377515f0ae86ce8c744cd8a078f76`, read again at the end and unchanged. Kept in the operator's profile folder under `iacquire-restore-points\20261102T235331Z\`, outside every repository and readable only by the operator account, the local Administrators and SYSTEM, with its logs, its object list and the production facts it was compared with. The earlier restore point (`...\20261102T122432Z\`) is untouched |
+| Restore proof | Restored into a throwaway local PostgreSQL 18.0 cluster (deleted afterwards). Six errors, all expected: the `public` schema already exists, two foreign keys point at Supabase's `auth.users` (that schema is not in the dump) and three default-privilege statements name a Supabase platform role. **383 of 383 tables have the same row count as production (3,804 rows)** and the ledger is identical. Schema fingerprint: of the 20,137 items the dump carries, 20,131 are identical; the other 6 are the two foreign keys above and four CHECK constraints that PostgreSQL 18 prints with different parentheses (same text otherwise); the copy also lists 3,263 NOT NULL rows that PostgreSQL 18 shows as constraints and 17 does not. Nothing is unexplained |
+| 0119 on the copy | With the real runner and the real rollback file. The dry run listed exactly `0119_purchase_invitation_delivery`. Applied with `--only`: ledger 113; **the one real purchase intent and its one event, which came from production, are byte-for-byte unchanged** (row hashes equal) and the replaced CHECK accepted them: it allows the 21 earlier event kinds plus `invitation_email` and nothing else; the two new tables exist, empty, with row-level security, a select policy for the application role, their guard triggers and their grants. Against the restored copy: 1 schema item removed (the old CHECK), 127 added, and row counts changed only in `schema_migrations` (+1). Rolled back with the real rollback file: the schema returned **exactly** to the restored state (0 removed, 0 added, no row count changed). Rolled forward again: the same result as the first time |
+| Since the previous restore point (12:24 UTC) | 15 tables differ in row count: `schema_migrations` +4 and the two new empty tables of 0115 to 0118; `audit_logs` +13; the demo funnel (+1 each in prospects, registration requests, sessions, usage days and verifications, +4 events); `email_outbox` +1; `notifications` +2; `rate_limit_buckets` 76 to 11 (expired counters are removed); and **one purchase intent with its one event** (0 to 1 each), made by a person on 2026-11-02 after the previous restore point |
+| Not covered | Supabase's `auth` and `storage` schemas and the platform roles; anything written after 23:53:32 UTC; a restore into a PostgreSQL 17 cluster (the proof used 18). The dump is also the only restore point there is: the project has no managed backups. If anything meaningful is written before 0119 is applied, read the counts again and take a fresh one |
+
+What this does not change: `master` is still `bb1193b4`, production still runs it, and migration 0119 has not been applied to any hosted database. The next step is the founder's approval to apply 0119 alone (section 6, step 2).
