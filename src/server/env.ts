@@ -10,6 +10,30 @@ const bool = z
 
 // Blank values (`VAR=` in .env.local) count as unset.
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+/** A setting someone typed or pasted: the spaces and line breaks around it are not part of it, and nothing but those is the same as not set. */
+const cleaned = (v: unknown) => blankToUndefined(typeof v === "string" ? v.trim() : v);
+
+const PAYPAL_SETTINGS = ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "PAYPAL_ENVIRONMENT", "PAYPAL_MAINTENANCE_PLAN_ID"] as const;
+
+/**
+ * What is wrong with the PayPal settings that were given but cannot be used, by setting name, in words for the Super Admin. The value is never in a message. Blank is not a problem
+ * (it is simply not set), and neither is a value with stray spaces or capitals around a good one: those are fixed silently when the setting is read.
+ */
+export function paypalSettingProblems(raw: Record<string, string | undefined>, parsed: { PAYPAL_CLIENT_ID?: string; PAYPAL_CLIENT_SECRET?: string; PAYPAL_WEBHOOK_ID?: string; PAYPAL_MAINTENANCE_PLAN_ID?: string }): Record<string, string> {
+  const problems: Record<string, string> = {};
+  for (const name of PAYPAL_SETTINGS) {
+    const given = (raw[name] ?? "").trim();
+    if (!given) continue;
+    if (name === "PAYPAL_ENVIRONMENT") {
+      if (given.toLowerCase() !== "sandbox" && given.toLowerCase() !== "live") problems[name] = "PAYPAL_ENVIRONMENT must be exactly sandbox or live. It was ignored, so sandbox (no real money) is in use.";
+    } else if (parsed[name] === undefined) {
+      problems[name] = name === "PAYPAL_MAINTENANCE_PLAN_ID"
+        ? "PAYPAL_MAINTENANCE_PLAN_ID is set but is not a PayPal plan id (it starts with P-), so the automatic monthly plan is off."
+        : `${name} is set but cannot be used (it is too short or too long), so it is treated as not set.`;
+    }
+  }
+  return problems;
+}
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -87,11 +111,14 @@ const schema = z.object({
   // PayPal for iAcquire's OWN purchases and plan payments (server-only). The client ID and secret open a PayPal REST app; the webhook id is the id of the webhook registered for
   // /api/webhooks/paypal (a delivery is verified by asking PayPal, with that id). The environment decides test or live: PayPal events do not say, so the app's environment is the only
   // thing that ties a delivery to a mode, and a live app also needs the review flag in the portal. Nothing here touches the customer-payments connections below.
-  PAYPAL_CLIENT_ID: z.preprocess(blankToUndefined, z.string().min(8).max(200).optional()),
-  PAYPAL_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().min(8).max(300).optional()),
-  PAYPAL_WEBHOOK_ID: z.preprocess(blankToUndefined, z.string().min(8).max(120).optional()),
-  PAYPAL_ENVIRONMENT: z.preprocess(blankToUndefined, z.enum(["sandbox", "live"]).default("sandbox")),
-  PAYPAL_MAINTENANCE_PLAN_ID: z.preprocess(blankToUndefined, z.string().regex(/^P-[A-Za-z0-9]{6,80}$/, "A PayPal billing plan id looks like P-1AB23456CD789012E").optional()),
+  // These five are typed by hand into the hosting dashboard and then hidden, so a stray space, a capital letter or a wrong length cannot be seen afterwards. None of that may take the
+  // whole site down: a stray space or line break is dropped, the mode is read without regard to case, and a value that still cannot be used is treated as not set (the mode then falls
+  // back to sandbox, which never moves real money). paypalSettingProblems() names what was ignored, without printing the value: a secret pasted into the wrong box must not be shown.
+  PAYPAL_CLIENT_ID: z.preprocess(cleaned, z.string().min(8).max(200).optional().catch(undefined)),
+  PAYPAL_CLIENT_SECRET: z.preprocess(cleaned, z.string().min(8).max(300).optional().catch(undefined)),
+  PAYPAL_WEBHOOK_ID: z.preprocess(cleaned, z.string().min(8).max(120).optional().catch(undefined)),
+  PAYPAL_ENVIRONMENT: z.preprocess((v) => { const c = cleaned(v); return typeof c === "string" ? c.toLowerCase() : c; }, z.enum(["sandbox", "live"]).default("sandbox").catch("sandbox")),
+  PAYPAL_MAINTENANCE_PLAN_ID: z.preprocess(cleaned, z.string().regex(/^P-[A-Za-z0-9]{6,80}$/, "A PayPal billing plan id looks like P-1AB23456CD789012E").optional().catch(undefined)),
   // QA ONLY: the address of a simulated PayPal on THIS machine (scripts/paypal-sim.mjs), so a browser run can take a purchase or a monthly agreement from the buyer's button to a
   // confirmed notice without any real provider. It is refused everywhere that is not development or test, for any address that is not this machine's, for the live environment, and
   // for credentials that are not the simulator's made-up ones (their client id starts with "qa-sim-").
@@ -250,6 +277,8 @@ const schema = z.object({
 export type Env = z.infer<typeof schema> & {
   DATABASE_DRIVER: "pglite" | "pglite-memory" | "postgres";
   AUTH_PROVIDER: AuthProviderName;
+  /** PayPal settings that were given but ignored, by name (see paypalSettingProblems). Empty when all is well. */
+  PAYPAL_SETTING_PROBLEMS: Record<string, string>;
 };
 
 let cached: Env | null = null;
@@ -385,7 +414,7 @@ export function env(): Env {
       throw new Error("HERMES_CLIENT_BUSINESS_MCP_ENABLED requires HERMES_PROVISIONER_ENABLED in production.");
     }
   }
-  cached = { ...value, DATABASE_DRIVER: driver, AUTH_PROVIDER: authProvider };
+  cached = { ...value, DATABASE_DRIVER: driver, AUTH_PROVIDER: authProvider, PAYPAL_SETTING_PROBLEMS: paypalSettingProblems(process.env, value) };
   return cached;
 }
 

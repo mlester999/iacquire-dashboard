@@ -3,6 +3,8 @@
 // answer showed (and reports a refusal, an outage or an unreadable answer as exactly that); that a check stops counting when the configuration changes; that the switch can never
 // say "on" over a checkout nobody can use; that nothing a provider needs is ever handed to a browser; and that no workspace appears before a verified payment.
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
@@ -13,7 +15,7 @@ import { createPurchaseIntent, getCheckoutSwitch, getPublicPurchase, setPurchase
 import { startPurchaseCheckout } from "@/server/purchase-intents/checkout";
 import { setAdapterForTests } from "@/server/customer-payments/providers";
 import { createPaypalProvider } from "@/server/customer-payments/providers/paypal";
-import { deriveReadiness, isPublicHttpsUrl, READINESS_LABEL } from "@/lib/payment-providers/readiness";
+import { deriveReadiness, isPublicHttpsUrl, PROVIDER_GUIDE, READINESS_LABEL } from "@/lib/payment-providers/readiness";
 import { agencyUser } from "./support/fixtures";
 import { agencyOrgId, rows, staffPerson } from "./support/staff-messages";
 
@@ -59,6 +61,34 @@ afterEach(() => {
     else process.env[n] = SAVED[n];
   }
   resetEnvCache();
+});
+
+describe("the PayPal webhook events the setup guide tells the Super Admin to subscribe to", () => {
+  // Found while preparing the Sandbox setup (2026-11-03): the guide listed the 5 one-time events and left out the 11 the monthly plan needs, so anyone following it would never have
+  // received an activation, a charge or a failure. The handler's own list is the truth; this keeps the guide equal to it.
+  const handled = () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "src/server/billing/providers/paypal.ts"), "utf8");
+    return [...source.matchAll(/^\s*case "([A-Z]+(?:\.[A-Z][A-Z-]*)+)":/gm)].map((m) => m[1]);
+  };
+
+  it("names exactly the events the webhook handler understands, no fewer and no more", () => {
+    const guide = PROVIDER_GUIDE.paypal.events.map((e) => e.name);
+    expect(handled().length).toBeGreaterThanOrEqual(16);
+    expect([...new Set(guide)].sort()).toEqual([...new Set(handled())].sort());
+    expect(new Set(guide).size).toBe(guide.length);
+  });
+
+  it("marks the monthly plan's events as such, and makes only the payment confirmation required", () => {
+    const events = PROVIDER_GUIDE.paypal.events;
+    expect(events.filter((e) => e.required).map((e) => e.name)).toEqual(["PAYMENT.CAPTURE.COMPLETED"]);
+    expect(events.filter((e) => e.monthly).map((e) => e.name).sort()).toEqual(events.filter((e) => /^(BILLING\.SUBSCRIPTION|PAYMENT\.SALE)\./.test(e.name)).map((e) => e.name).sort());
+    expect(events.filter((e) => e.monthly)).toHaveLength(11);
+  });
+
+  it("does not tell anyone to prove a payment with PayPal's webhook simulator, whose events this site refuses", () => {
+    expect(PROVIDER_GUIDE.paypal.testHow).toMatch(/Do not use PayPal's webhook simulator to prove a payment/);
+    expect(PROVIDER_GUIDE.paypal.testHow).toMatch(/real Sandbox purchase is the test/);
+  });
 });
 
 describe("the readiness ladder", () => {
@@ -176,6 +206,27 @@ describe("what the server reports for each provider", () => {
     // Nothing is blocked once the provider is ready.
     setEnv(paymongo(false, uniq()));
     expect((await healthOf("paymongo")).blockedReason).toBeNull();
+  });
+
+  it("says a PayPal setting that was given but cannot be used is not usable (not Missing), names why, and never prints it", async () => {
+    // The settings are typed into Vercel and then hidden. One that is too short is ignored, so it must not read as "Set" and must not read as "Missing" to someone who is sure they set it.
+    setEnv({ ...paypal(), PAYPAL_CLIENT_ID: "tooShrt" });
+    const pp = await healthOf("paypal");
+    expect(pp.envVars.find((v) => v.name === "PAYPAL_CLIENT_ID")).toMatchObject({ set: false, problem: expect.stringMatching(/PAYPAL_CLIENT_ID is set but cannot be used/) });
+    expect(pp.envVars.find((v) => v.name === "PAYPAL_CLIENT_SECRET")?.problem).toBeNull();
+    expect(pp.readiness.state).toBe("incomplete");
+    expect(pp.blockedReason).toMatch(/^PayPal is only partly set up\. Still missing: PAYPAL_CLIENT_ID\. PAYPAL_CLIENT_ID is set but cannot be used/);
+    expect(JSON.stringify(pp)).not.toMatch(/tooShrt/);
+  });
+
+  it("reads a mistyped mode as sandbox, never as live, and says so", async () => {
+    setEnv({ ...paypal(), PAYPAL_ENVIRONMENT: "Production" });
+    const pp = await healthOf("paypal");
+    expect(pp.mode).toBe("test");
+    expect(pp.envVars.find((v) => v.name === "PAYPAL_ENVIRONMENT")).toMatchObject({ shown: "sandbox", problem: expect.stringMatching(/exactly sandbox or live/) });
+    // Capitals and stray spaces are not a problem at all: they are read as what was meant.
+    setEnv({ ...paypal(), PAYPAL_ENVIRONMENT: " Sandbox " });
+    expect((await healthOf("paypal")).envVars.find((v) => v.name === "PAYPAL_ENVIRONMENT")).toMatchObject({ set: true, shown: "sandbox", problem: null });
   });
 
   it("keeps real money behind BOTH the review and a check made with exactly these live credentials", async () => {

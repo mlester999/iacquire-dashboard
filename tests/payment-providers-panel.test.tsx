@@ -114,6 +114,35 @@ describe("a setting nobody set that has a built-in default", () => {
   });
 });
 
+describe("the webhook events listed for PayPal", () => {
+  it("shows the payment confirmation as required and the monthly plan's events as such", () => {
+    render(<PaymentProvidersPanel health={sampleHealth("none")} canManage />);
+    const rowOf = (name: string) => within(card("PayPal")).getByText(name).closest("li") as HTMLElement;
+    expect(within(rowOf("PAYMENT.CAPTURE.COMPLETED")).getByText("required")).toBeTruthy();
+    expect(within(rowOf("PAYMENT.CAPTURE.REFUNDED")).getByText("recommended")).toBeTruthy();
+    for (const name of ["BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.PAYMENT.FAILED", "PAYMENT.SALE.COMPLETED"]) {
+      expect(within(rowOf(name)).getByText("monthly plan"), name).toBeTruthy();
+    }
+  });
+});
+
+describe("a setting that was given but cannot be used", () => {
+  it("says Not usable with the reason, in place of Set or Missing", () => {
+    const health = sampleHealth("none");
+    const message = "PAYPAL_CLIENT_ID is set but cannot be used (it is too short or too long), so it is treated as not set.";
+    const withProblem = { ...health, providers: health.providers.map((p) => ({ ...p, envVars: p.envVars.map((v) => (v.name === "PAYPAL_CLIENT_ID" ? { ...v, set: false, problem: message } : v)) })) };
+    render(<PaymentProvidersPanel health={withProblem} canManage />);
+    const row = within(card("PayPal")).getByText("PAYPAL_CLIENT_ID").closest("li") as HTMLElement;
+    expect(within(row).getByText("Not usable")).toBeTruthy();
+    expect(within(row).getByText(message)).toBeTruthy();
+    expect(within(row).queryByText("Missing")).toBeNull();
+    expect(within(row).queryByText("Set")).toBeNull();
+    // The other settings are unaffected.
+    const secret = within(card("PayPal")).getByText("PAYPAL_CLIENT_SECRET").closest("li") as HTMLElement;
+    expect(within(secret).queryByText("Not usable")).toBeNull();
+  });
+});
+
 describe("what to set, and where", () => {
   it("names every setting by its exact variable name with Set or Missing, never its value, and the optional ones as optional", () => {
     render(<PaymentProvidersPanel health={sampleHealth("incomplete", "verified")} canManage />);

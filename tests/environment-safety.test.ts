@@ -124,3 +124,79 @@ describe("the client business tool tier in production", () => {
     expect(() => env()).not.toThrow();
   });
 });
+
+// The PayPal settings are typed into the hosting dashboard and then hidden. A stray space, a capital letter or a pasted line break must not make every page fail on the next deployment,
+// and a value that still cannot be used is named (never printed) instead of being silently trusted or silently lost.
+describe("PayPal settings typed by hand", () => {
+  const NAMES = ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "PAYPAL_ENVIRONMENT", "PAYPAL_MAINTENANCE_PLAN_ID", "PAYPAL_API_BASE", "DATABASE_URL", "ALLOW_REMOTE_DB_IN_DEV"];
+
+  beforeEach(() => {
+    Object.assign(process.env, { NODE_ENV: "development", AUTH_PROVIDER: "local", DATABASE_DRIVER: "pglite", SECRET_STORE: "vault", APP_ENCRYPTION_KEY: "test-only-key-0123456789abcdef0123456789abcdef" });
+    for (const name of NAMES) delete process.env[name];
+    resetEnvCache();
+  });
+  afterEach(restore);
+
+  const read = () => {
+    resetEnvCache();
+    return env();
+  };
+
+  it("reads the mode without regard to capitals or stray spaces and line breaks, and finds nothing wrong with it", () => {
+    for (const [given, expected] of [["sandbox", "sandbox"], ["Sandbox", "sandbox"], [" SANDBOX\n", "sandbox"], ["live", "live"], ["LIVE ", "live"]] as const) {
+      process.env.PAYPAL_ENVIRONMENT = given;
+      const e = read();
+      expect(e.PAYPAL_ENVIRONMENT, JSON.stringify(given)).toBe(expected);
+      expect(e.PAYPAL_SETTING_PROBLEMS, JSON.stringify(given)).toEqual({});
+    }
+  });
+
+  it("is sandbox when the mode is not set at all, blank, or only spaces, and that is not a problem", () => {
+    expect(read().PAYPAL_ENVIRONMENT).toBe("sandbox");
+    for (const blank of ["", "   ", "\n"]) {
+      process.env.PAYPAL_ENVIRONMENT = blank;
+      expect(read().PAYPAL_ENVIRONMENT).toBe("sandbox");
+      expect(read().PAYPAL_SETTING_PROBLEMS).toEqual({});
+    }
+  });
+
+  it("falls back to sandbox, never to live, for a mode it does not know, keeps the app running, and does not echo what was typed", () => {
+    process.env.PAYPAL_ENVIRONMENT = "production-LOOKS-LIKE-A-SECRET-12345";
+    const e = read();
+    expect(e.PAYPAL_ENVIRONMENT).toBe("sandbox");
+    expect(e.PAYPAL_SETTING_PROBLEMS.PAYPAL_ENVIRONMENT).toMatch(/exactly sandbox or live/);
+    expect(JSON.stringify(e.PAYPAL_SETTING_PROBLEMS)).not.toMatch(/LOOKS-LIKE-A-SECRET/);
+  });
+
+  it("drops stray spaces and line breaks around the ids and keeps them usable", () => {
+    Object.assign(process.env, { PAYPAL_CLIENT_ID: "  client-id-0123456789\n", PAYPAL_CLIENT_SECRET: "\tsecret-0123456789 ", PAYPAL_WEBHOOK_ID: "WH-0123456789 ", PAYPAL_MAINTENANCE_PLAN_ID: " P-1AB23456CD789012E\n" });
+    const e = read();
+    expect([e.PAYPAL_CLIENT_ID, e.PAYPAL_CLIENT_SECRET, e.PAYPAL_WEBHOOK_ID, e.PAYPAL_MAINTENANCE_PLAN_ID]).toEqual(["client-id-0123456789", "secret-0123456789", "WH-0123456789", "P-1AB23456CD789012E"]);
+    expect(e.PAYPAL_SETTING_PROBLEMS).toEqual({});
+  });
+
+  it("treats an id that cannot be used as not set, names it, keeps the whole app running, and never prints the value", () => {
+    Object.assign(process.env, { PAYPAL_CLIENT_ID: "tooShrt", PAYPAL_WEBHOOK_ID: `WH-${"x".repeat(130)}`, PAYPAL_MAINTENANCE_PLAN_ID: "plan-with-no-p-prefix" });
+    const e = read();
+    expect([e.PAYPAL_CLIENT_ID, e.PAYPAL_WEBHOOK_ID, e.PAYPAL_MAINTENANCE_PLAN_ID]).toEqual([undefined, undefined, undefined]);
+    expect(Object.keys(e.PAYPAL_SETTING_PROBLEMS).sort()).toEqual(["PAYPAL_CLIENT_ID", "PAYPAL_MAINTENANCE_PLAN_ID", "PAYPAL_WEBHOOK_ID"]);
+    expect(e.PAYPAL_SETTING_PROBLEMS.PAYPAL_MAINTENANCE_PLAN_ID).toMatch(/starts with P-/);
+    expect(JSON.stringify(e.PAYPAL_SETTING_PROBLEMS)).not.toMatch(/tooShrt|xxxx|plan-with-no-p-prefix/);
+    // The rest of the configuration is unaffected.
+    expect(e.DATABASE_DRIVER).toBe("pglite");
+  });
+
+  it("does not count a blank setting as a problem, and does not let one bad setting hide a good one", () => {
+    Object.assign(process.env, { PAYPAL_CLIENT_ID: "client-id-0123456789", PAYPAL_CLIENT_SECRET: "   ", PAYPAL_MAINTENANCE_PLAN_ID: "nope" });
+    const e = read();
+    expect(e.PAYPAL_CLIENT_ID).toBe("client-id-0123456789");
+    expect(e.PAYPAL_CLIENT_SECRET).toBeUndefined();
+    expect(Object.keys(e.PAYPAL_SETTING_PROBLEMS)).toEqual(["PAYPAL_MAINTENANCE_PLAN_ID"]);
+  });
+
+  it("still refuses a simulated PayPal with the live environment, however the mode is written", () => {
+    Object.assign(process.env, { PAYPAL_API_BASE: "http://127.0.0.1:4010", PAYPAL_CLIENT_ID: "qa-sim-client-0123", PAYPAL_ENVIRONMENT: " LIVE " });
+    resetEnvCache();
+    expect(() => env()).toThrow(/never used with the live environment/);
+  });
+});

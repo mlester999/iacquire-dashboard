@@ -50,6 +50,8 @@ export interface EnvVarStatus extends EnvVarGuide {
   usingDefault: boolean;
   /** Only for settings that are not secret and have a few fixed values (a mode, a list of methods). Never a key. */
   shown: string | null;
+  /** A value was given in Vercel but cannot be used, so it is ignored; why, in words, never the value. Null when there is nothing wrong. */
+  problem: string | null;
 }
 
 export interface ProviderHealth {
@@ -64,7 +66,7 @@ export interface ProviderHealth {
     url: string;
     /** The address is https on a real domain, so the provider can reach it. */
     reachableByProvider: boolean;
-    events: Array<{ name: string; required: boolean; why: string }>;
+    events: Array<{ name: string; required: boolean; why: string; monthly?: boolean }>;
     where: string;
     testHow: string;
     /** The newest notice this site received from the provider (a real signal that the webhook reaches here), and how many were refused in the last 7 days. */
@@ -120,11 +122,13 @@ function envVarStatus(provider: ProviderId): EnvVarStatus[] {
     // These two have built-in defaults, so a value is in force even when nobody set the variable in Vercel. Which of the two it is must not be blurred.
     const hasDefault = g.name === "PAYMONGO_PAYMENT_METHODS" || g.name === "PAYPAL_ENVIRONMENT";
     const usingDefault = hasDefault && set && !(process.env[g.name] ?? "").trim();
-    return { ...g, set, usingDefault, shown };
+    // A value that was given but could not be used is not "Set": it is ignored, and the screen says why.
+    const problem = g.name.startsWith("PAYPAL_") ? e.PAYPAL_SETTING_PROBLEMS[g.name] ?? null : null;
+    return { ...g, set, usingDefault, shown, problem };
   });
 }
 
-function configFacts(provider: ProviderId, rateOk: boolean): { anySet: boolean; missing: string[]; mode: Mode | null } {
+function configFacts(provider: ProviderId, rateOk: boolean): { anySet: boolean; missing: string[]; problems: string[]; mode: Mode | null } {
   const e = env();
   if (provider === "paymongo") {
     const pm = paymongoStatus();
@@ -133,14 +137,14 @@ function configFacts(provider: ProviderId, rateOk: boolean): { anySet: boolean; 
     if (!e.PAYMONGO_WEBHOOK_SECRET) missing.push("PAYMONGO_WEBHOOK_SECRET");
     if (!pm.paymentMethods.length) missing.push("PAYMONGO_PAYMENT_METHODS (it lists no methods)");
     if (!rateOk) missing.push("the USD to PHP exchange rate (Billing, Rates & payments)");
-    return { anySet: Boolean(e.PAYMONGO_SECRET_KEY || e.PAYMONGO_WEBHOOK_SECRET), missing, mode: pm.livemode === null ? null : pm.livemode ? "live" : "test" };
+    return { anySet: Boolean(e.PAYMONGO_SECRET_KEY || e.PAYMONGO_WEBHOOK_SECRET), missing, problems: [], mode: pm.livemode === null ? null : pm.livemode ? "live" : "test" };
   }
   const pp = paypalStatus();
   const missing: string[] = [];
   if (!e.PAYPAL_CLIENT_ID) missing.push("PAYPAL_CLIENT_ID");
   if (!e.PAYPAL_CLIENT_SECRET) missing.push("PAYPAL_CLIENT_SECRET");
   if (!e.PAYPAL_WEBHOOK_ID) missing.push("PAYPAL_WEBHOOK_ID");
-  return { anySet: Boolean(e.PAYPAL_CLIENT_ID || e.PAYPAL_CLIENT_SECRET || e.PAYPAL_WEBHOOK_ID), missing, mode: pp.livemode === null ? (e.PAYPAL_CLIENT_ID || e.PAYPAL_CLIENT_SECRET ? (e.PAYPAL_ENVIRONMENT === "live" ? "live" : "test") : null) : pp.livemode ? "live" : "test" };
+  return { anySet: Boolean(e.PAYPAL_CLIENT_ID || e.PAYPAL_CLIENT_SECRET || e.PAYPAL_WEBHOOK_ID), missing, problems: Object.values(e.PAYPAL_SETTING_PROBLEMS), mode: pp.livemode === null ? (e.PAYPAL_CLIENT_ID || e.PAYPAL_CLIENT_SECRET ? (e.PAYPAL_ENVIRONMENT === "live" ? "live" : "test") : null) : pp.livemode ? "live" : "test" };
 }
 
 async function noticeSignal(db: Queryable, provider: ProviderId): Promise<{ last: ProviderHealth["webhook"]["lastNotice"]; refused: number }> {
@@ -169,7 +173,7 @@ async function healthOf(db: Queryable, provider: ProviderId): Promise<ProviderHe
   const blockedReason = gate.available
     ? null
     : setupUnfinished
-      ? `${label} ${readiness.state === "incomplete" ? "is only partly set up" : "is not connected yet"}. Still missing: ${facts.missing.join(", ")}.`
+      ? `${label} ${readiness.state === "incomplete" ? "is only partly set up" : "is not connected yet"}. Still missing: ${facts.missing.join(", ")}.${facts.problems.length ? ` ${facts.problems.join(" ")}` : ""}`
       : gate.reason;
   const url = appUrl(guide.webhookPath);
   const storedFacts = stored?.facts ?? {};

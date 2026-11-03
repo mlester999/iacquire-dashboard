@@ -102,7 +102,7 @@ export interface ProviderGuide {
   /** The path on this site the provider must call (the full address is built from the site's address on the server). */
   webhookPath: string;
   /** Events to subscribe the webhook to; `required` ones are what confirm a payment. */
-  events: Array<{ name: string; required: boolean; why: string }>;
+  events: Array<{ name: string; required: boolean; why: string; /** Only needed for the automatic monthly plan. */ monthly?: boolean }>;
   webhookWhere: string;
   testHow: string;
 }
@@ -152,9 +152,21 @@ export const PROVIDER_GUIDE: Record<ProviderId, ProviderGuide> = {
       { name: "PAYMENT.CAPTURE.REFUNDED", required: false, why: "Reports a refund to a person." },
       { name: "PAYMENT.CAPTURE.REVERSED", required: false, why: "Reports money taken back, which puts the purchase on hold." },
       { name: "CUSTOMER.DISPUTE.CREATED", required: false, why: "Reports a dispute, which puts the purchase on hold." },
+      // The automatic monthly maintenance plan. Subscribe to these too if PAYPAL_MAINTENANCE_PLAN_ID is set; without them the plan never hears about an approval, a charge or a failure.
+      { name: "BILLING.SUBSCRIPTION.CREATED", required: false, monthly: true, why: "A monthly subscription was opened and is waiting for the customer's approval." },
+      { name: "BILLING.SUBSCRIPTION.ACTIVATED", required: false, monthly: true, why: "The customer's approval took effect. It grants nothing by itself: only a completed charge extends the plan." },
+      { name: "BILLING.SUBSCRIPTION.RE-ACTIVATED", required: false, monthly: true, why: "A paused subscription was switched back on." },
+      { name: "BILLING.SUBSCRIPTION.UPDATED", required: false, monthly: true, why: "PayPal changed the subscription." },
+      { name: "BILLING.SUBSCRIPTION.SUSPENDED", required: false, monthly: true, why: "PayPal paused the subscription, usually after failed payments." },
+      { name: "BILLING.SUBSCRIPTION.CANCELLED", required: false, monthly: true, why: "The subscription was cancelled." },
+      { name: "BILLING.SUBSCRIPTION.EXPIRED", required: false, monthly: true, why: "The subscription ended." },
+      { name: "BILLING.SUBSCRIPTION.PAYMENT.FAILED", required: false, monthly: true, why: "A monthly charge failed: the plan's grace period starts when the paid-through day has passed." },
+      { name: "PAYMENT.SALE.COMPLETED", required: false, monthly: true, why: "A monthly charge was collected. Only this verified notice extends the plan by a month." },
+      { name: "PAYMENT.SALE.REFUNDED", required: false, monthly: true, why: "A monthly charge was refunded: reported to a person, and the plan is held." },
+      { name: "PAYMENT.SALE.REVERSED", required: false, monthly: true, why: "A monthly charge was taken back: reported to a person, and the plan is held." },
     ],
-    webhookWhere: "developer.paypal.com, your app, Webhooks, Add webhook. The address must be a public https address.",
-    testHow: "In sandbox, buy with a sandbox buyer account, or use PayPal's webhook simulator. The purchase becomes paid only when the verified notice arrives; the last notice received is shown here.",
+    webhookWhere: "developer.paypal.com, your app, Webhooks, Add webhook. The address must be a public https address (PayPal delivers to port 443). Subscribe to the one-time events, and to the monthly plan's too if you use the monthly plan.",
+    testHow: "In sandbox, buy with a sandbox buyer account: a real Sandbox purchase is the test. Do not use PayPal's webhook simulator to prove a payment: PayPal says its mock events cannot be verified the way this site verifies them (by asking PayPal), so they are refused, which is correct. The purchase becomes paid only when the verified notice arrives; the last notice received is shown here.",
   },
 };
 

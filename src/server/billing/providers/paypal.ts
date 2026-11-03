@@ -32,6 +32,8 @@ export function paypalStatus(): PaypalStatus {
   if (!e.PAYPAL_CLIENT_ID) problems.push("PAYPAL_CLIENT_ID is not set.");
   if (!e.PAYPAL_CLIENT_SECRET) problems.push("PAYPAL_CLIENT_SECRET is not set.");
   if (!e.PAYPAL_WEBHOOK_ID) problems.push("PAYPAL_WEBHOOK_ID is not set, so payments cannot be confirmed.");
+  // A setting that was given but cannot be used is reported next to the ones that are missing (never its value).
+  problems.push(...Object.values(e.PAYPAL_SETTING_PROBLEMS));
   const configured = Boolean(e.PAYPAL_CLIENT_ID && e.PAYPAL_CLIENT_SECRET);
   return { configured, webhookConfigured: Boolean(e.PAYPAL_WEBHOOK_ID), livemode: configured ? e.PAYPAL_ENVIRONMENT === "live" : null, environment: e.PAYPAL_ENVIRONMENT, problems };
 }

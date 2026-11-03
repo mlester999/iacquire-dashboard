@@ -51,6 +51,7 @@ function provider(id: ProviderId, st: ProviderState): ProviderHealth {
       set: hasDefault ? true : complete ? true : st === "incomplete" ? i === 0 : false,
       usingDefault,
       shown: g.name === "PAYPAL_ENVIRONMENT" ? (live ? "live" : "sandbox") : g.name === "PAYMONGO_PAYMENT_METHODS" ? (usingDefault ? "card" : "card, gcash") : null,
+      problem: null,
     };
   });
   const failed = st === "failed";

@@ -115,9 +115,12 @@ function ProviderCard({ health, canManage }: { health: ProviderHealth; canManage
                   </p>
                   <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{v.label}. {v.note}</p>
                   <p className="mt-0.5 text-[12px] leading-relaxed text-muted">Where: {v.where}</p>
+                  {v.problem && <p className="mt-1 text-[13px] leading-relaxed text-warning-ink">{v.problem}</p>}
                 </div>
                 <span className="shrink-0 sm:pt-0.5">
-                  <StatusPill tone={v.usingDefault ? "neutral" : v.set ? "success" : v.required ? "warning" : "neutral"} size="sm">{v.usingDefault ? "Default" : v.set ? "Set" : v.required ? "Missing" : "Not set"}</StatusPill>
+                  {v.problem
+                    ? <StatusPill tone="warning" size="sm">Not usable</StatusPill>
+                    : <StatusPill tone={v.usingDefault ? "neutral" : v.set ? "success" : v.required ? "warning" : "neutral"} size="sm">{v.usingDefault ? "Default" : v.set ? "Set" : v.required ? "Missing" : "Not set"}</StatusPill>}
                 </span>
               </li>
             ))}
@@ -160,7 +163,7 @@ function ProviderCard({ health, canManage }: { health: ProviderHealth; canManage
             {health.webhook.events.map((e) => (
               <li key={e.name} className="flex flex-wrap items-baseline gap-x-2">
                 <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12.5px]">{e.name}</code>
-                <span className="text-[12px] font-medium text-muted">{e.required ? "required" : "recommended"}</span>
+                <span className="text-[12px] font-medium text-muted">{e.required ? "required" : e.monthly ? "monthly plan" : "recommended"}</span>
                 <span className="basis-full text-muted sm:basis-auto">{e.why}</span>
               </li>
             ))}
