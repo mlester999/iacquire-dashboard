@@ -20,7 +20,7 @@ import { agencyUser } from "./support/fixtures";
 import { agencyOrgId, rows, staffPerson } from "./support/staff-messages";
 
 const SITE = "https://www.iacquire.online";
-const NAMES = ["PAYMONGO_SECRET_KEY", "PAYMONGO_WEBHOOK_SECRET", "PAYMONGO_PAYMENT_METHODS", "PAYMONGO_API_BASE", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "PAYPAL_ENVIRONMENT", "PAYPAL_API_BASE", "APP_URL"] as const;
+const NAMES = ["PAYMONGO_SECRET_KEY", "PAYMONGO_WEBHOOK_SECRET", "PAYMONGO_PAYMENT_METHODS", "PAYMONGO_API_BASE", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "PAYPAL_ENVIRONMENT", "PAYPAL_MAINTENANCE_PLAN_ID", "PAYPAL_API_BASE", "APP_URL"] as const;
 const SAVED: Record<string, string | undefined> = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]));
 const setEnv = (over: Partial<Record<(typeof NAMES)[number], string | undefined>>) => {
   for (const n of NAMES) delete process.env[n];
@@ -387,7 +387,8 @@ describe("Check connection", () => {
   it("verifies PayPal through the existing adapter (token, then the webhook list) and reports a refusal as such", async () => {
     setEnv(paypal(false, "pp1pp1pp1pp1"));
     const w = await world();
-    const hooks = [{ id: "WH-1", url: `${SITE}/api/webhooks/paypal` }];
+    // The registered webhook's id is the one the app was given (PAYPAL_WEBHOOK_ID), as it must be for a delivery to be verified.
+    const hooks = [{ id: "WH-pp1pp1pp1pp1", url: `${SITE}/api/webhooks/paypal` }];
     const http = (token: number, list: unknown[]) => vi.fn(async (req: { path: string }) => {
       if (req.path === "/v1/oauth2/token") return token === 200 ? { status: 200, json: { access_token: "A21AA-test-token" } } : { status: token, json: { error: "invalid_client" } };
       if (req.path === "/v1/notifications/webhooks") return { status: 200, json: { webhooks: list } };
@@ -405,6 +406,48 @@ describe("Check connection", () => {
     const refused = await checkPaymentProvider(w.superSession, "paypal");
     expect(refused.outcome).toBe("credentials_rejected");
     expect(refused.health.check?.message).toMatch(/did not accept/);
+  });
+
+  it("compares PayPal's webhook with what the site needs: its ID, and its events (the monthly plan's too when that plan is set up)", async () => {
+    const w = await world();
+    const id = "WH-pp2pp2pp2pp2";
+    const url = `${SITE}/api/webhooks/paypal`;
+    const stubFor = (hooks: unknown[]) => setAdapterForTests("paypal", createPaypalProvider({
+      http: vi.fn(async (req: { path: string }) => (req.path === "/v1/oauth2/token" ? { status: 200, json: { access_token: "A21AA-test-token" } } : { status: 200, json: { webhooks: hooks } })) as never,
+    }));
+    const check = () => checkPaymentProvider(w.superSession, "paypal");
+
+    // Without a monthly plan, the payment confirmation alone is all the webhook must take.
+    setEnv(paypal(false, "pp2pp2pp2pp2"));
+    stubFor([{ id, url, event_types: [{ name: "PAYMENT.CAPTURE.COMPLETED" }] }]);
+    let r = await check();
+    expect(r.outcome).toBe("verified");
+    expect(r.health.check).toMatchObject({ webhook: "registered", webhookId: "matches", eventsKnown: true, eventsMissing: [] });
+
+    // With a monthly plan, the plan's events are needed too, and the screen lists the ones that are missing.
+    setEnv({ ...paypal(false, "pp2pp2pp2pp2"), PAYPAL_MAINTENANCE_PLAN_ID: "P-1AB23456CD789012E" });
+    r = await check();
+    expect(r.outcome).toBe("webhook_not_registered");
+    expect(r.health.check?.eventsMissing).toHaveLength(11);
+    expect(r.health.check?.eventsMissing).toEqual(expect.arrayContaining(["BILLING.SUBSCRIPTION.ACTIVATED", "PAYMENT.SALE.COMPLETED"]));
+    expect(r.health.readiness.state).not.toBe("test_verified");
+
+    // A webhook that takes every event is enough.
+    stubFor([{ id, url, event_types: [{ name: "*" }] }]);
+    expect((await check()).outcome).toBe("verified");
+
+    // The ID PayPal shows for this address must be the one in PAYPAL_WEBHOOK_ID, or every delivery would be refused. Neither ID is printed.
+    stubFor([{ id: "WH-someoneelse", url, event_types: [{ name: "*" }] }]);
+    r = await check();
+    expect(r.outcome).toBe("webhook_not_registered");
+    expect(r.health.check).toMatchObject({ webhookId: "differs", message: expect.stringMatching(/different ID from PAYPAL_WEBHOOK_ID/) });
+    expect(JSON.stringify(r)).not.toMatch(/WH-someoneelse|WH-pp2pp2pp2pp2/);
+
+    // When PayPal does not list a webhook's events or ID, that is "not compared", never a pass or a failure of its own.
+    stubFor([{ url }]);
+    r = await check();
+    expect(r.outcome).toBe("verified");
+    expect(r.health.check).toMatchObject({ webhookId: "unknown", eventsKnown: false });
   });
 });
 

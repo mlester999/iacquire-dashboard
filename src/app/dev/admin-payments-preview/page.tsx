@@ -75,8 +75,8 @@ function provider(id: ProviderId, st: ProviderState): ProviderHealth {
       st === "none" || st === "incomplete" || st === "testing"
         ? null
         : failed
-          ? { at: ago(1), ok: false, outcome: "credentials_rejected", text: "The provider did not accept these credentials. Check that they are the right key for the right mode, and still active.", stale: false, mode: "test", webhook: "unknown", eventsMissing: [], message: id === "paypal" ? "PayPal did not accept this client ID and secret." : null }
-          : { at: ago(st === "stale" ? 30 : 2), ok: true, outcome: "verified", text: "The provider accepted the credentials.", stale: st === "stale", mode: live ? "live" : "test", webhook: "registered", eventsMissing: [], message: null },
+          ? { at: ago(1), ok: false, outcome: "credentials_rejected", text: "The provider did not accept these credentials. Check that they are the right key for the right mode, and still active.", stale: false, mode: "test", webhook: "unknown", eventsMissing: [], webhookId: null, eventsKnown: null, message: id === "paypal" ? "PayPal did not accept this client ID and secret." : null }
+          : { at: ago(st === "stale" ? 30 : 2), ok: true, outcome: "verified", text: "The provider accepted the credentials.", stale: st === "stale", mode: live ? "live" : "test", webhook: "registered", eventsMissing: [], webhookId: id === "paypal" ? "matches" : null, eventsKnown: id === "paypal" ? true : null, message: null },
     exchangeRate: id === "paymongo" ? { set: st !== "none" && st !== "incomplete", usdPhpRate: st !== "none" && st !== "incomplete" ? 58 : null, source: "BSP reference rate, 2 Nov", updatedAt: ago(20) } : null,
     available,
     blockedReason: available ? null : readiness.state === "live_approval_required" ? "Live payments are switched off until iAcquire confirms the payment and tax review." : readiness.next,

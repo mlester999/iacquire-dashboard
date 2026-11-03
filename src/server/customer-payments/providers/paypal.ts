@@ -309,7 +309,11 @@ export function createPaypalProvider(deps: { http?: PaypalHttp } = {}): PaymentP
         const res = await http({ method: "GET", path: "/v1/notifications/webhooks", environment, bearer });
         if (res.status >= 200 && res.status < 300) {
           const list = isRecord(res.json) && Array.isArray(res.json.webhooks) ? res.json.webhooks : null;
-          return { ok: true, accountLabel: null, webhookFound: list === null ? null : list.some((w) => isRecord(w) && w.url === opts.webhookUrl) };
+          const ours = list === null ? null : list.find((w) => isRecord(w) && w.url === opts.webhookUrl);
+          // The webhook's own id and the events it subscribes to are passed on when PayPal listed them, so the caller can compare them with what the site was set up with.
+          const id = isRecord(ours) ? str(ours.id) : null;
+          const events = isRecord(ours) && Array.isArray(ours.event_types) ? ours.event_types.map((t) => (isRecord(t) ? str(t.name) : null)).filter((n): n is string => n !== null) : null;
+          return { ok: true, accountLabel: null, webhookFound: list === null ? null : ours !== undefined, ...(id ? { webhookId: id } : {}), ...(events ? { webhookEvents: events } : {}) };
         }
         // The keys work (the token call accepted them) but this app may not be allowed to list webhooks: whether a webhook exists is simply not known.
         return { ok: true, accountLabel: null, webhookFound: null };

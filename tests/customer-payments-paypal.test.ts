@@ -57,7 +57,7 @@ describe("PayPal: proving the app's keys", () => {
     const f = fakePaypal(WH);
     const pp = createPaypalProvider({ http: f.http });
     f.on((r) => r.method === "GET" && r.path === "/v1/notifications/webhooks", { status: 200, json: { webhooks: [{ id: WH, url }] } });
-    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toEqual({ ok: true, accountLabel: null, webhookFound: true });
+    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toEqual({ ok: true, accountLabel: null, webhookFound: true, webhookId: WH });
     expect(f.calls[0]).toMatchObject({ method: "POST", path: "/v1/oauth2/token", environment: "sandbox", basic: { id: CLIENT_ID, secret: CLIENT_SECRET }, contentType: "application/x-www-form-urlencoded", body: "grant_type=client_credentials" });
     expect(f.calls[1]).toMatchObject({ method: "GET", path: "/v1/notifications/webhooks", environment: "sandbox", bearer: "A21AAfixtureToken" });
     // Nothing that creates, changes or deletes anything at PayPal was asked.
@@ -70,6 +70,25 @@ describe("PayPal: proving the app's keys", () => {
     // The keys work but this app may not be allowed to list webhooks: that is "not known", not a failure.
     f.on((r) => r.path === "/v1/notifications/webhooks", { status: 403, json: { name: "NOT_AUTHORIZED" } });
     expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toMatchObject({ ok: true, webhookFound: null });
+  });
+
+  it("passes on the id and the subscribed events of the webhook that has this address, and only when PayPal listed them", async () => {
+    const f = fakePaypal(WH);
+    const pp = createPaypalProvider({ http: f.http });
+    const list = (webhooks: unknown[]) => f.on((r) => r.path === "/v1/notifications/webhooks", { status: 200, json: { webhooks } });
+    list([
+      { id: "OTHER", url: "https://other.example/hook", event_types: [{ name: "PAYMENT.CAPTURE.DENIED" }] },
+      { id: WH, url, event_types: [{ name: "PAYMENT.CAPTURE.COMPLETED", description: "A payment was completed" }, { name: "PAYMENT.SALE.COMPLETED" }, { description: "an entry with no name" }] },
+    ]);
+    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toEqual({ ok: true, accountLabel: null, webhookFound: true, webhookId: WH, webhookEvents: ["PAYMENT.CAPTURE.COMPLETED", "PAYMENT.SALE.COMPLETED"] });
+    // A webhook that takes every event is listed as "*".
+    list([{ id: WH, url, event_types: [{ name: "*" }] }]);
+    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toMatchObject({ webhookFound: true, webhookEvents: ["*"] });
+    // A webhook without a list of events says nothing about them; another webhook's events are never taken for ours.
+    list([{ id: WH, url }]);
+    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toEqual({ ok: true, accountLabel: null, webhookFound: true, webhookId: WH });
+    list([{ id: "OTHER", url: "https://other.example/hook", event_types: [{ name: "PAYMENT.CAPTURE.COMPLETED" }] }]);
+    expect(await pp.verifyCredentials(creds, { webhookUrl: url })).toEqual({ ok: true, accountLabel: null, webhookFound: false });
   });
 
   it("uses PayPal's live origin only for a live app, and refuses an app that does not say which it is", async () => {

@@ -126,6 +126,27 @@ describe("the webhook events listed for PayPal", () => {
   });
 });
 
+describe("the result of a PayPal check", () => {
+  const withCheck = (check: Partial<NonNullable<ReturnType<typeof sampleHealth>["providers"][number]["check"]>>) => {
+    const health = sampleHealth("none", "verified");
+    return { ...health, providers: health.providers.map((p) => (p.provider === "paypal" && p.check ? { ...p, check: { ...p.check, ...check } } : p)) };
+  };
+
+  it("says the webhook has the ID that was set and takes every event this site needs, once PayPal said so", () => {
+    render(<PaymentProvidersPanel health={withCheck({ webhook: "registered", webhookId: "matches", eventsKnown: true, eventsMissing: [] })} canManage />);
+    expect(within(card("PayPal")).getByText(/webhook for this address has the ID you set, and it takes every event this site needs/)).toBeTruthy();
+  });
+
+  it("says plainly when PayPal did not say enough to compare, and names the events that are missing when it did", () => {
+    render(<PaymentProvidersPanel health={withCheck({ webhook: "registered", webhookId: "unknown", eventsKnown: false })} canManage />);
+    expect(within(card("PayPal")).getByText(/did not say enough to compare its ID and events/)).toBeTruthy();
+    cleanup();
+    render(<PaymentProvidersPanel health={withCheck({ ok: false, outcome: "webhook_not_registered", webhook: "registered", webhookId: "matches", eventsKnown: true, eventsMissing: ["PAYMENT.SALE.COMPLETED"] })} canManage />);
+    expect(within(card("PayPal")).getByText(/The webhook is missing: PAYMENT\.SALE\.COMPLETED/)).toBeTruthy();
+    expect(within(card("PayPal")).queryByText(/takes every event this site needs/)).toBeNull();
+  });
+});
+
 describe("a setting that was given but cannot be used", () => {
   it("says Not usable with the reason, in place of Set or Missing", () => {
     const health = sampleHealth("none");

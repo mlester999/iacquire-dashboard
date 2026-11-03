@@ -32,6 +32,8 @@ function CheckResult({ health }: { health: ProviderHealth }) {
       </p>
       <p className="text-[13px] leading-relaxed text-ink-2">{c.stale ? "A key, the mode, a payment method or the webhook setting changed since, so this result no longer counts. Run the check again." : c.text}</p>
       {c.eventsMissing.length > 0 && <p className="text-[13px] leading-relaxed text-warning-ink">The webhook is missing: {c.eventsMissing.join(", ")}.</p>}
+      {c.ok && !c.stale && c.webhookId === "matches" && c.eventsKnown === true && c.eventsMissing.length === 0 && <p className="text-[13px] leading-relaxed text-ink-2">{health.label}&apos;s webhook for this address has the ID you set, and it takes every event this site needs.</p>}
+      {c.ok && !c.stale && c.webhook === "registered" && (c.webhookId === "unknown" || c.eventsKnown === false) && <p className="text-[13px] leading-relaxed text-ink-2">The webhook is registered, but {health.label} did not say enough to compare its ID and events. A first test payment settles that.</p>}
       {c.message && <p className="text-[12px] leading-relaxed text-muted">{c.message}</p>}
     </div>
   );

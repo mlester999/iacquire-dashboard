@@ -39,7 +39,16 @@ export interface CheckoutResult {
 }
 
 export type CredentialCheck =
-  | { ok: true; accountLabel: string | null; /** Whether a webhook pointing at this connection's address was seen at the provider; null when the provider cannot say. */ webhookFound: boolean | null }
+  | {
+      ok: true;
+      accountLabel: string | null;
+      /** Whether a webhook pointing at this connection's address was seen at the provider; null when the provider cannot say. */
+      webhookFound: boolean | null;
+      /** Only when the provider listed it: the id of that webhook, which a delivery is verified against. Present only when the provider said it. */
+      webhookId?: string;
+      /** Only when the provider listed them: the event names that webhook subscribes to ("*" means all). Present only when the provider said it. */
+      webhookEvents?: string[];
+    }
   | { ok: false; reason: "rejected" | "unreachable"; message: string };
 
 /** The provider's own record of a checkout and the payments made through it: the authenticated read-back. */

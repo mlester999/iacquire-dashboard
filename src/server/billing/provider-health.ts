@@ -39,6 +39,10 @@ export interface ProviderCheckView {
   mode: Mode;
   webhook: "registered" | "not_registered" | "unknown" | null;
   eventsMissing: string[];
+  /** PayPal only: whether the id of the webhook that has this site's address is the one in PAYPAL_WEBHOOK_ID (the id itself is never shown). Null when not compared. */
+  webhookId: "matches" | "differs" | "unknown" | null;
+  /** Whether the provider listed the webhook's events, so they could be compared with what the site needs. Null when not applicable. */
+  eventsKnown: boolean | null;
   /** The provider's own sentence, when it gave a safe one (never a key, a body or an address). */
   message: string | null;
 }
@@ -181,7 +185,9 @@ async function healthOf(db: Queryable, provider: ProviderId): Promise<ProviderHe
     ? {
         at: stored.checkedAt.toISOString(), ok: stored.ok, outcome: stored.outcome, text: CHECK_OUTCOME_TEXT[stored.outcome], stale: stored.fingerprint !== fingerprint, mode: stored.livemode ? "live" : "test",
         webhook: storedFacts.webhook === "registered" || storedFacts.webhook === "not_registered" || storedFacts.webhook === "unknown" ? storedFacts.webhook : null,
-        eventsMissing: Array.isArray(storedFacts.eventsMissing) ? storedFacts.eventsMissing.filter((x): x is string => typeof x === "string").slice(0, 10) : [],
+        eventsMissing: Array.isArray(storedFacts.eventsMissing) ? storedFacts.eventsMissing.filter((x): x is string => typeof x === "string").slice(0, 20) : [],
+        webhookId: storedFacts.webhookId === "matches" || storedFacts.webhookId === "differs" || storedFacts.webhookId === "unknown" ? storedFacts.webhookId : null,
+        eventsKnown: typeof storedFacts.eventsKnown === "boolean" ? storedFacts.eventsKnown : null,
         message: typeof storedFacts.message === "string" ? storedFacts.message : null,
       }
     : null;
@@ -257,8 +263,19 @@ export async function checkPaymentProvider(user: SessionUser, provider: Provider
     const credentials = paypalAppCredentials() as NonNullable<ReturnType<typeof paypalAppCredentials>>;
     const answer = await providerFor("paypal").verifyCredentials(credentials, { webhookUrl });
     if (answer.ok) {
-      outcome = answer.webhookFound === false ? "webhook_not_registered" : "verified";
-      facts = { webhook: answer.webhookFound === null ? "unknown" : answer.webhookFound ? "registered" : "not_registered", eventsMissing: [], proof: "oauth" };
+      // What this site needs the webhook to deliver: the payment confirmation, and the monthly plan's events when a monthly plan is set up. PayPal lists "*" for a webhook that takes all events.
+      const expected = guide.events.filter((x) => x.required || (x.monthly && Boolean(env().PAYPAL_MAINTENANCE_PLAN_ID))).map((x) => x.name);
+      const subscribed = answer.webhookEvents ?? null;
+      const eventsMissing = answer.webhookFound && subscribed && !subscribed.includes("*") ? expected.filter((name) => !subscribed.includes(name)) : [];
+      // A delivery is verified against the webhook's own id, so the id in PAYPAL_WEBHOOK_ID must be the one PayPal shows for the webhook that has this site's address.
+      const configuredId = env().PAYPAL_WEBHOOK_ID ?? null;
+      const webhookId: "matches" | "differs" | "unknown" = !answer.webhookFound || !answer.webhookId || !configuredId ? "unknown" : answer.webhookId === configuredId ? "matches" : "differs";
+      outcome = answer.webhookFound === false || eventsMissing.length > 0 || webhookId === "differs" ? "webhook_not_registered" : "verified";
+      facts = {
+        webhook: answer.webhookFound === null ? "unknown" : answer.webhookFound ? "registered" : "not_registered",
+        eventsMissing, eventsKnown: subscribed !== null, webhookId, proof: "oauth",
+        ...(webhookId === "differs" ? { message: "PayPal's webhook for this address has a different ID from PAYPAL_WEBHOOK_ID, so every delivery would be refused. Copy the Webhook ID PayPal shows next to that webhook into PAYPAL_WEBHOOK_ID and redeploy." } : {}),
+      };
     } else {
       outcome = answer.reason === "rejected" ? "credentials_rejected" : "unreachable";
       facts = { webhook: "unknown", eventsMissing: [], message: clip(answer.message, 200) };
