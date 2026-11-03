@@ -321,6 +321,17 @@ describe("the online checkout switch", () => {
     expect((screen.getByRole("switch", { name: "Allow buyers to pay online" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("does not tell the team to come back and switch on a checkout that is already on", () => {
+    // The 2026-11-03 walkthrough of the live page: the switch was on and blocked, and the card still said "then come back to switch checkout on".
+    render(<CheckoutSwitch initial={sampleSwitch("blocked")} canManage />);
+    expect(document.body.textContent).toMatch(/the switch is already on, so buyers are offered online payment as soon as one provider is ready/);
+    expect(document.body.textContent).not.toMatch(/come back to switch checkout on/);
+    cleanup();
+    render(<CheckoutSwitch initial={sampleSwitch("off", sampleHealth("none", "none", "off"))} canManage />);
+    expect(document.body.textContent).toMatch(/then come back to switch checkout on/);
+    expect(document.body.textContent).not.toMatch(/already on/);
+  });
+
   it("allows switching on once a provider is ready, reports the mode, and calls the server once", async () => {
     mocks.toggle.mockResolvedValue({ ok: true, data: sampleSwitch("open_test") });
     render(<CheckoutSwitch initial={sampleSwitch("off", sampleHealth("verified", "none", "off"))} canManage />);

@@ -44,7 +44,10 @@ export interface ProviderCheckView {
 }
 
 export interface EnvVarStatus extends EnvVarGuide {
+  /** A value is in force: the variable is set in Vercel, or it has a built-in default. */
   set: boolean;
+  /** The value in force is the built-in default, because nobody set the variable. The page says "Default", never "Set". */
+  usingDefault: boolean;
   /** Only for settings that are not secret and have a few fixed values (a mode, a list of methods). Never a key. */
   shown: string | null;
 }
@@ -114,7 +117,10 @@ function envVarStatus(provider: ProviderId): EnvVarStatus[] {
       }
     })();
     const shown = g.name === "PAYMONGO_PAYMENT_METHODS" ? pm.paymentMethods.join(", ") || null : g.name === "PAYPAL_ENVIRONMENT" ? e.PAYPAL_ENVIRONMENT : null;
-    return { ...g, set, shown };
+    // These two have built-in defaults, so a value is in force even when nobody set the variable in Vercel. Which of the two it is must not be blurred.
+    const hasDefault = g.name === "PAYMONGO_PAYMENT_METHODS" || g.name === "PAYPAL_ENVIRONMENT";
+    const usingDefault = hasDefault && set && !(process.env[g.name] ?? "").trim();
+    return { ...g, set, usingDefault, shown };
   });
 }
 
@@ -157,6 +163,14 @@ async function healthOf(db: Queryable, provider: ProviderId): Promise<ProviderHe
   const verified = stored !== null && stored.ok && stored.fingerprint === fingerprint;
   const readiness = deriveReadiness({ anySet: facts.anySet, missing: facts.missing, mode: facts.mode, verifiedForCurrentConfig: verified, liveReviewed: Boolean(gate.settings.liveReviewedAt) });
   const notice = await noticeSignal(db, provider);
+  const label = PROVIDER_LABEL[provider as CheckoutProvider];
+  // The checkout gate names only the first thing in its way. When the setup is simply not done, the team needs the whole list, by name; every other reason is the gate's own.
+  const setupUnfinished = (readiness.state === "not_connected" || readiness.state === "incomplete") && facts.missing.length > 0;
+  const blockedReason = gate.available
+    ? null
+    : setupUnfinished
+      ? `${label} ${readiness.state === "incomplete" ? "is only partly set up" : "is not connected yet"}. Still missing: ${facts.missing.join(", ")}.`
+      : gate.reason;
   const url = appUrl(guide.webhookPath);
   const storedFacts = stored?.facts ?? {};
   const check: ProviderCheckView | null = stored
@@ -168,12 +182,12 @@ async function healthOf(db: Queryable, provider: ProviderId): Promise<ProviderHe
       }
     : null;
   return {
-    provider, label: PROVIDER_LABEL[provider as CheckoutProvider], readiness, mode: facts.mode,
+    provider, label, readiness, mode: facts.mode,
     envVars: envVarStatus(provider), missing: facts.missing,
     webhook: { url, reachableByProvider: isPublicHttpsUrl(url), events: guide.events, where: guide.webhookWhere, testHow: guide.testHow, lastNotice: notice.last, refusedLast7Days: notice.refused },
     check,
     exchangeRate: provider === "paymongo" ? { set: rateOk, usdPhpRate: gate.settings.usdPhpRate, source: gate.settings.fxSource, updatedAt: iso(gate.settings.fxUpdatedAt) } : null,
-    available: gate.available, blockedReason: gate.available ? null : gate.reason, docsUrl: guide.docsUrl,
+    available: gate.available, blockedReason, docsUrl: guide.docsUrl,
   };
 }
 

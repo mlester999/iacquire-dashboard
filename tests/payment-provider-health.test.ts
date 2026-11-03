@@ -142,6 +142,42 @@ describe("what the server reports for each provider", () => {
     expect((await healthOf("paypal")).envVars.find((v) => v.name === "PAYPAL_ENVIRONMENT")).toMatchObject({ set: true, shown: "sandbox" });
   });
 
+  it("says Default, not Set, for a setting nobody set that has a built-in default", async () => {
+    setEnv({});
+    const pm = await healthOf("paymongo");
+    expect(pm.envVars.find((v) => v.name === "PAYMONGO_PAYMENT_METHODS")).toMatchObject({ set: true, usingDefault: true, shown: "card" });
+    expect(pm.envVars.find((v) => v.name === "PAYMONGO_SECRET_KEY")).toMatchObject({ set: false, usingDefault: false });
+    expect((await healthOf("paypal")).envVars.find((v) => v.name === "PAYPAL_ENVIRONMENT")).toMatchObject({ set: true, usingDefault: true, shown: "sandbox" });
+    // Set on purpose, it is Set, even when the value equals the default.
+    setEnv({ PAYMONGO_PAYMENT_METHODS: "card,gcash", PAYPAL_ENVIRONMENT: "sandbox" });
+    expect((await healthOf("paymongo")).envVars.find((v) => v.name === "PAYMONGO_PAYMENT_METHODS")).toMatchObject({ set: true, usingDefault: false, shown: "card, gcash" });
+    expect((await healthOf("paypal")).envVars.find((v) => v.name === "PAYPAL_ENVIRONMENT")).toMatchObject({ set: true, usingDefault: false, shown: "sandbox" });
+    setEnv({ PAYMONGO_PAYMENT_METHODS: "card" });
+    expect((await healthOf("paymongo")).envVars.find((v) => v.name === "PAYMONGO_PAYMENT_METHODS")).toMatchObject({ usingDefault: false });
+  });
+
+  it("names everything still missing, by name, when a provider is not connected or only partly set up", async () => {
+    // The 2026-11-03 walkthrough of the live page: PayMongo said "secret key or payment methods missing" while the payment methods were fine and the webhook secret and the rate were not.
+    await setBilling({ rate: null });
+    setEnv({});
+    const pm = await healthOf("paymongo");
+    expect(pm.blockedReason).toBe("PayMongo is not connected yet. Still missing: PAYMONGO_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET, the USD to PHP exchange rate (Billing, Rates & payments).");
+    expect(pm.blockedReason).not.toMatch(/payment methods/);
+    expect((await healthOf("paypal")).blockedReason).toBe("PayPal is not connected yet. Still missing: PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID.");
+    setEnv({ PAYPAL_CLIENT_ID: "client-only-12345" });
+    expect((await healthOf("paypal")).blockedReason).toBe("PayPal is only partly set up. Still missing: PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID.");
+    // A complete setup that is blocked for another reason keeps the gate's own words, never a list of settings.
+    await setBilling({ rate: 58 });
+    setEnv(paymongo(true, uniq()));
+    const live = await healthOf("paymongo");
+    expect(live.available).toBe(false);
+    expect(live.blockedReason).toMatch(/Live payments are switched off until iAcquire confirms/);
+    expect(live.blockedReason).not.toMatch(/Still missing/);
+    // Nothing is blocked once the provider is ready.
+    setEnv(paymongo(false, uniq()));
+    expect((await healthOf("paymongo")).blockedReason).toBeNull();
+  });
+
   it("keeps real money behind BOTH the review and a check made with exactly these live credentials", async () => {
     const id = uniq();
     setEnv(paymongo(true, id));

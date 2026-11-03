@@ -117,7 +117,7 @@ function ProviderCard({ health, canManage }: { health: ProviderHealth; canManage
                   <p className="mt-0.5 text-[12px] leading-relaxed text-muted">Where: {v.where}</p>
                 </div>
                 <span className="shrink-0 sm:pt-0.5">
-                  <StatusPill tone={v.set ? "success" : v.required ? "warning" : "neutral"} size="sm">{v.set ? "Set" : v.required ? "Missing" : "Not set"}</StatusPill>
+                  <StatusPill tone={v.usingDefault ? "neutral" : v.set ? "success" : v.required ? "warning" : "neutral"} size="sm">{v.usingDefault ? "Default" : v.set ? "Set" : v.required ? "Missing" : "Not set"}</StatusPill>
                 </span>
               </li>
             ))}

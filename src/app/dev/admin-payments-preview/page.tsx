@@ -42,11 +42,17 @@ function provider(id: ProviderId, st: ProviderState): ProviderHealth {
   const verified = st === "verified" || st === "live_approval" || st === "live_ready";
   const readiness = deriveReadiness({ anySet, missing, mode, verifiedForCurrentConfig: verified, liveReviewed: st === "live_ready" });
   const available = complete && (mode === "test" || st === "live_ready");
-  const envVars = guide.envVars.map((g, i) => ({
-    ...g,
-    set: g.name === "PAYPAL_ENVIRONMENT" ? true : complete ? true : st === "incomplete" ? i === 0 : false,
-    shown: g.name === "PAYPAL_ENVIRONMENT" ? (live ? "live" : "sandbox") : g.name === "PAYMONGO_PAYMENT_METHODS" ? "card, gcash" : null,
-  }));
+  const envVars = guide.envVars.map((g, i) => {
+    // With nothing set, the two settings that have a built-in default show it as "Default", exactly as the live page does.
+    const hasDefault = g.name === "PAYMONGO_PAYMENT_METHODS" || g.name === "PAYPAL_ENVIRONMENT";
+    const usingDefault = hasDefault && !anySet;
+    return {
+      ...g,
+      set: hasDefault ? true : complete ? true : st === "incomplete" ? i === 0 : false,
+      usingDefault,
+      shown: g.name === "PAYPAL_ENVIRONMENT" ? (live ? "live" : "sandbox") : g.name === "PAYMONGO_PAYMENT_METHODS" ? (usingDefault ? "card" : "card, gcash") : null,
+    };
+  });
   const failed = st === "failed";
   return {
     provider: id,

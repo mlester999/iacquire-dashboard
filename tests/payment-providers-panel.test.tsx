@@ -86,6 +86,34 @@ describe("every setup state, in its own words", () => {
   });
 });
 
+describe("a setting nobody set that has a built-in default", () => {
+  it("says Default, not Set, so the team is not told it set something it did not", () => {
+    // The 2026-11-03 walkthrough of the live page: PAYMONGO_PAYMENT_METHODS and PAYPAL_ENVIRONMENT showed a green "Set" while neither exists in Vercel.
+    const health = sampleHealth("none");
+    const withDefaults = {
+      ...health,
+      providers: health.providers.map((p) => ({
+        ...p,
+        envVars: p.envVars.map((v) => (v.name === "PAYMONGO_PAYMENT_METHODS" ? { ...v, set: true, usingDefault: true, shown: "card" } : v.name === "PAYPAL_ENVIRONMENT" ? { ...v, set: true, usingDefault: true, shown: "sandbox" } : v)),
+      })),
+    };
+    render(<PaymentProvidersPanel health={withDefaults} canManage />);
+    const rowOf = (provider: string, name: string) => within(card(provider)).getByText(name).closest("li") as HTMLElement;
+    for (const [provider, name, value] of [["PayMongo", "PAYMONGO_PAYMENT_METHODS", "card"], ["PayPal", "PAYPAL_ENVIRONMENT", "sandbox"]] as const) {
+      const row = rowOf(provider, name);
+      expect(within(row).getByText("Default")).toBeTruthy();
+      expect(within(row).queryByText("Set")).toBeNull();
+      expect(within(row).getByText(`now: ${value}`)).toBeTruthy();
+    }
+    // A required setting that is missing still says Missing, and one that is really set still says Set.
+    expect(within(rowOf("PayMongo", "PAYMONGO_SECRET_KEY")).getByText("Missing")).toBeTruthy();
+    cleanup();
+    render(<PaymentProvidersPanel health={sampleHealth("testing")} canManage />);
+    expect(within(rowOf("PayMongo", "PAYMONGO_SECRET_KEY")).getByText("Set")).toBeTruthy();
+    expect(within(rowOf("PayMongo", "PAYMONGO_PAYMENT_METHODS")).getByText("Set")).toBeTruthy();
+  });
+});
+
 describe("what to set, and where", () => {
   it("names every setting by its exact variable name with Set or Missing, never its value, and the optional ones as optional", () => {
     render(<PaymentProvidersPanel health={sampleHealth("incomplete", "verified")} canManage />);

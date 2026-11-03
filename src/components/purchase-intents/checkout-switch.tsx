@@ -67,7 +67,8 @@ export function CheckoutSwitch({ initial, canManage }: { initial: CheckoutSwitch
       </ul>
       {!anyReady && (
         <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
-          No provider is ready yet. <Link href="/admin/billing?tab=providers" className="font-medium text-primary hover:underline">Set up and check the payment providers</Link>, then come back to switch checkout on.
+          No provider is ready yet. <Link href="/admin/billing?tab=providers" className="font-medium text-primary hover:underline">Set up and check the payment providers</Link>
+          {state.enabled ? ": the switch is already on, so buyers are offered online payment as soon as one provider is ready." : ", then come back to switch checkout on."}
         </p>
       )}
       {!canManage && <p className="mt-2 text-[12px] text-muted">Only a Super Admin with the billing and client-creation permissions can change this.</p>}

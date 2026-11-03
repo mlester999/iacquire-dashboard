@@ -39,7 +39,7 @@ export function sampleProvider(id: ProviderId, st: SampleProviderState, over: Pa
     label: id === "paymongo" ? "PayMongo" : "PayPal",
     readiness,
     mode,
-    envVars: guide.envVars.map((g, i) => ({ ...g, set: g.name === "PAYPAL_ENVIRONMENT" ? true : complete ? true : st === "incomplete" ? i === 0 : false, shown: g.name === "PAYPAL_ENVIRONMENT" ? (live ? "live" : "sandbox") : g.name === "PAYMONGO_PAYMENT_METHODS" ? "card, gcash" : null })),
+    envVars: guide.envVars.map((g, i) => ({ ...g, set: g.name === "PAYPAL_ENVIRONMENT" ? true : complete ? true : st === "incomplete" ? i === 0 : false, usingDefault: false, shown: g.name === "PAYPAL_ENVIRONMENT" ? (live ? "live" : "sandbox") : g.name === "PAYMONGO_PAYMENT_METHODS" ? "card, gcash" : null })),
     missing,
     webhook: {
       url: `https://www.iacquire.online${guide.webhookPath}`, reachableByProvider: true, events: guide.events, where: guide.webhookWhere, testHow: guide.testHow,
