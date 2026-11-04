@@ -4,7 +4,7 @@
 export const KNOWLEDGE_SECTIONS = [
   { key: "business_description", label: "Business description", hint: "Explain what your business does, who it serves, and what makes it different. Your AI Growth Partner may use this as business context." },
   { key: "products_services", label: "Products and services", hint: "List the products or services you provide. Include important limitations or conditions." },
-  { key: "faq", label: "Frequently asked questions", hint: "Add questions customers commonly ask, along with the answers your employees are allowed to provide." },
+  { key: "faq", label: "Frequently asked questions", hint: "Add questions customers commonly ask, along with answers your AI Growth Partner is allowed to provide." },
   { key: "approved_pricing", label: "Approved prices", hint: "Only prices your AI Growth Partner may quote. Leave empty if it should not quote prices." },
   { key: "business_hours", label: "Business hours", hint: "Opening hours, holidays and response times." },
   { key: "policies", label: "Policies", hint: "Refunds, cancellations, guarantees and terms customers ask about." },

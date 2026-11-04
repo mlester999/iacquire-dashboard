@@ -339,19 +339,19 @@ export function snapshotWithExtras(
 /** The sentence about the employees after a business-information save, never reporting a version that is waiting for review as applied. Empty when nothing was said. */
 export function employeeUpdateMessage(r: { updated: number; held: number; failed?: boolean }): string {
   const parts: string[] = [];
-  if (r.updated > 0) parts.push(`${r.updated} employee${r.updated === 1 ? "" : "s"} updated.`);
-  if (r.held > 0) parts.push(`${r.held} update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
-  if (r.failed) parts.push("Your AI employees could not be updated yet. They keep what they had until they are.");
+  if (r.updated > 0) parts.push(`${r.updated} retained profile${r.updated === 1 ? "" : "s"} updated.`);
+  if (r.held > 0) parts.push(`${r.held} profile update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
+  if (r.failed) parts.push("Your retained profiles could not be updated yet. They keep their current settings until the update succeeds.");
   return parts.join(" ");
 }
 
 /** The sentence after "apply to employees": how many got the new preferences, how many wait for review, how many kept their own wording, and how many could not be changed. */
 export function aiPreferencesApplyMessage(r: { updated: number; held: number; keptOwn: number; blocked: number }): string {
   const parts: string[] = [];
-  if (r.updated > 0) parts.push(`Applied to ${r.updated} employee${r.updated === 1 ? "" : "s"}.`);
+  if (r.updated > 0) parts.push(`Applied to ${r.updated} retained profile${r.updated === 1 ? "" : "s"}.`);
   if (r.held > 0) parts.push(`${r.held} update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
-  if (r.keptOwn > 0) parts.push(`${r.keptOwn} employee${r.keptOwn === 1 ? " kept its" : "s kept their"} own wording for some fields.`);
-  if (r.blocked > 0) parts.push(`${r.blocked} employee${r.blocked === 1 ? "" : "s"} could not be updated.`);
+  if (r.keptOwn > 0) parts.push(`${r.keptOwn} retained profile${r.keptOwn === 1 ? " kept its" : "s kept their"} own wording for some fields.`);
+  if (r.blocked > 0) parts.push(`${r.blocked} retained profile${r.blocked === 1 ? "" : "s"} could not be updated.`);
   return parts.join(" ");
 }
 

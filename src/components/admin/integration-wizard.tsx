@@ -472,7 +472,7 @@ export function ConnectionWizard({
                 <Input id="w-gateway-id" value={reportedGatewayId} onChange={(e) => setReportedGatewayId(e.target.value)} autoComplete="off" maxLength={120} />
               </Field>
             </> : <>
-              <Field label="Approved Hermes gateway" htmlFor="w-gateway-select" hint="Choose a gateway configured and controlled by iAcquire. This employee receives its own Hermes profile key.">
+              <Field label="Approved Hermes gateway" htmlFor="w-gateway-select" hint="Choose a gateway configured and controlled by iAcquire. Each client profile receives its own Hermes profile key.">
                 <Select id="w-gateway-select" value={gatewayId} onChange={(e) => { const selected = hermesGateways.find((g) => g.id === e.target.value); setGatewayId(e.target.value); if (selected) setBaseUrl(selected.baseUrl); }}>
                   <option value="">Select an approved gateway…</option>
                   {hermesGateways.filter((g) => g.status !== "disconnected").map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.label} · {gateway.host}</option>)}
@@ -484,7 +484,7 @@ export function ConnectionWizard({
               </Field>
             </>}
             {!isGatewayWizard && (
-              <Field label="AI employee" htmlFor="w-role">
+              <Field label="Client profile role" htmlFor="w-role">
                 <Select id="w-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
                   {AGENT_ROLE_KEYS.map((key) => <option key={key} value={key}>{AGENT_BY_KEY[key].name}</option>)}
                 </Select>
@@ -565,7 +565,7 @@ export function ConnectionWizard({
                   <Input id="w-access-secret" type="password" autoComplete="new-password" value={accessClientSecret} onChange={(e) => setAccessClientSecret(e.target.value)} placeholder={connection.hasCredential ? "New service token secret" : "Service token secret"} maxLength={2048} />
                 </Field>
               </>}
-              <Notice>Cloudflare Access authenticates iAcquire to the protected hostname. Each employee will still use its own Hermes profile API key.</Notice>
+              <Notice>Cloudflare Access authenticates iAcquire to the protected hostname. Each mapped profile still uses its own Hermes API key.</Notice>
             </> : <Field label={secretLabel} htmlFor="w-secret" hint={connection.hasCredential ? "Leave empty to keep the stored credential. Enter a new value to rotate it; the old portal credential is revoked." : "Enter it only here. Never paste private keys into chat, tickets or email."}>
               <Input id="w-secret" type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={connection.hasCredential ? "Existing credential securely stored" : "Enter credential securely"} maxLength={4096} />
             </Field>}
@@ -592,7 +592,7 @@ export function ConnectionWizard({
             <p className="text-[14px] leading-relaxed text-muted">
               {provider === "hermes" && (isGatewayWizard
                 ? "The portal sends a Cloudflare-authenticated, read-only request to the Hermes health endpoint. This verifies gateway connectivity only; each agency profile is checked separately."
-                : "The portal reaches the gateway, signs in with this employee's own key, and checks which profile answers. No AI run is started.")}
+                : "The portal reaches the gateway, signs in with this profile's own key, and checks which profile answers. No AI run is started.")}
               {provider === "ghl" && "The portal reads only this location: it confirms the token belongs to it, then tests each read permission you selected. Nothing is written."}
               {provider === "n8n" && "The portal authenticates with the API key and reads the workflow list. It never edits, runs or activates a workflow."}
             </p>
@@ -626,7 +626,7 @@ export function ConnectionWizard({
               <div><dt className="text-xs text-muted">Serves</dt><dd className="font-medium">{orgId ? `${companyName ?? "This client"} · ${AGENT_BY_KEY[roleKey as keyof typeof AGENT_BY_KEY]?.name ?? roleKey}` : "Agency gateway (not a client identity)"}</dd></div>
               <div><dt className="text-xs text-muted">Identity check</dt><dd className="font-medium">{caps.identityVerified === true ? "Verified" : "Not verified"}</dd></div>
             </dl>
-            <Notice>{orgId ? "This profile can only serve this client's employee. The portal refuses to reuse it for another employee or client." : "Client employees use their own dedicated profiles, never agency profiles."} Employee “Online” also needs a separate employee health check.</Notice>
+            <Notice>{orgId ? "This profile is dedicated to this client workspace and role. The portal refuses to reuse it for another role or client." : "Client workspaces use their own dedicated profiles, separate from iAcquire's internal profiles."} A profile is ready only after its connection and permissions pass a separate check.</Notice>
           </div>
         );
       case "agencyWorkforce": {
@@ -778,8 +778,8 @@ export function ConnectionWizard({
             </div>
             {isGatewayWizard && <div className="space-y-2 rounded-2xl border border-line p-4">
               <h3 className="text-sm font-semibold">Combined readiness</h3>
-              <Row ok={caps.gatewayHealthVerified === true} title="Protected Hermes gateway">Cloudflare-authenticated health endpoint; does not imply any employee profile is connected.</Row>
-              <Row ok={setupState?.steps.find((item) => item.index === 3)?.complete === true} title="Six iAcquire employee profiles">{setupState?.steps.find((item) => item.index === 3)?.detail ?? "Run the profile checks from Internal Workforce."}</Row>
+              <Row ok={caps.gatewayHealthVerified === true} title="Protected Hermes gateway">Cloudflare-authenticated health endpoint; does not imply any client profile is connected.</Row>
+              <Row ok={setupState?.steps.find((item) => item.index === 3)?.complete === true} title="Six iAcquire internal profiles">{setupState?.steps.find((item) => item.index === 3)?.detail ?? "Run the profile checks from iAcquire Internal Profiles."}</Row>
               <Row ok={setupState?.steps.find((item) => item.index === 4)?.complete === true} title="Client profile provisioning">{setupState?.steps.find((item) => item.index === 4)?.detail ?? "No restricted client provisioning service is verified."}</Row>
             </div>}
             {provider === "n8n" && <ExecutionSummary caps={caps} />}

@@ -17,7 +17,7 @@ import { reorderTemplateAction, saveTemplateTaskAction } from "@/app/(admin)/adm
 const PHASES = [
   { title: "Business information", icon: Building2, note: "Company context and workspace" },
   { title: "CRM setup", icon: Layers, note: "Customer records and lead capture" },
-  { title: "AI employee setup", icon: Sparkles, note: "Dedicated roles and company knowledge" },
+  { title: "AI Growth Partner setup", icon: Sparkles, note: "One tenant profile and its approved company knowledge" },
   { title: "Automations", icon: Workflow, note: "Approved workflow preparation" },
   { title: "Website & funnel", icon: Globe, note: "Optional deliverables and client review" },
   { title: "Email & calendar", icon: CalendarDays, note: "Sending and appointment readiness" },

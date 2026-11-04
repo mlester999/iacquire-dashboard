@@ -22,14 +22,14 @@ const sha256 = (text: string) => createHash("sha256").update(text, "utf8").diges
 
 /** The pinned digest of each role and of all six together, in the order of AGENT_ROLE_KEYS. */
 const PINNED: Record<AgentRoleKey, string> = {
-  operations_manager: "fb8ce41e822821f8a20ec88f872e81da8f7c96bde4c9141b66128cb6fa751e37",
-  lead_hunter: "afffe556a681e26747cfbfcbbf4d517facf6d132cb7cfc7a1714aa2359edab2c",
-  appointment_setter: "bb8c8bb9ace80ac57ede2530209c57726ffdee045e60076869fb427035af2773",
-  sales_assistant: "561dcc4de2b9a9dac15da58c575034be533c9a9e5049b78a79c50e346445cd90",
-  crm_manager: "de44dfdbc4a6a4becf27688769f8b196bcce7d7fde08ecc8ac42948e7bdaa7c7",
-  performance_analyst: "09de5a9b25096b6ed612e839bb40ab2268efff50eb4c74b970253dc433adbce5",
+  operations_manager: "837a54f050db0ac54feb83f49f353cf066a73e464f1aa84831b537b0a4ce1dc0",
+  lead_hunter: "bb251351c5ab64be1c9050ba57474feaf65b3c27289de994047bfd9891cbb09c",
+  appointment_setter: "cd7e1b5862ee1435f1cc2d6c78d5d2652ed46c54395397d49eab2c0c1059fde2",
+  sales_assistant: "27c8f16566ee9d6ff95bdc28348c98aa1bb253febad9b04e024d74445da69724",
+  crm_manager: "a5218289e03318183438661af6c412f0f3f152ed276716339d2ddac5c8259f08",
+  performance_analyst: "9ed8221d68c6b0cf4b52e7bcae3c92b7a71b941e04815e91f3cfca869a502dca",
 };
-const PINNED_OVERALL = "9370773dfc07576385a3e942b894c975015feaf06b2834e1889915659c66d055";
+const PINNED_OVERALL = "1cda38097eb81025e5211c68dc9ad2e374cdb5a4db8c8fed50fd73a90cac0320";
 
 async function shipped() {
   const { rows } = await withSystem((db) => db.query<{ key: string; default_tools: string[] }>("select key, default_tools from agent_roles"));

@@ -696,7 +696,7 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   const native = facts.crmMode === "native";
   const permissions = [
     native
-      ? `Read and update contacts, pipelines and opportunities in your iAcquire CRM, within the permissions you give ${workforceModel === "growth_partner" ? "the AI Growth Partner" : "each AI employee"}.`
+      ? `Read and update contacts, pipelines and opportunities in your iAcquire CRM, within the permissions you give ${workforceModel === "growth_partner" ? "the AI Growth Partner" : "each retained profile"}.`
       : `Read and update contacts, pipelines and opportunities in your CRM location, once iAcquire has linked and verified it${workforceModel === "growth_partner" ? " for the AI Growth Partner" : ""}.`,
     "Read your appointment calendar to offer real availability. Nothing is booked from a guessed time.",
     "Reply to customers as an AI assistant only on channels you enable, and only after you turn automatic replies on.",
@@ -715,7 +715,7 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   const runtimeVerified = workforceModel === "growth_partner" ? facts.growthPartnerRuntimeVerified ?? 0 : facts.aiEmployeesVerified;
   if (runtimeVerified < runtimeTotal) missingConnections.push(workforceModel === "growth_partner"
     ? { key: "ai", label: `AI Growth Partner not yet online (${runtimeVerified}/${runtimeTotal})`, why: "The partner goes online only after its dedicated runtime, identity and permitted tools pass a live check." }
-    : { key: "ai", label: `AI employees not yet online (${runtimeVerified}/${runtimeTotal})`, why: "Each employee goes online only after a live connection check passes." });
+    : { key: "ai", label: `Retained profiles not yet online (${runtimeVerified}/${runtimeTotal})`, why: "Each existing profile goes online only after a live connection check passes." });
   if (!facts.automationMapped) missingConnections.push({ key: "automation", label: "Automation not set up", why: "iAcquire connects approved workflows to your workspace. They stay inactive until tested." });
   for (const ch of wanted as Array<"sms" | "whatsapp" | "email">) {
     if (ch in facts.channels && !facts.channels[ch].enabled) {
@@ -741,7 +741,7 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   humanTasks.push(native
     ? { key: "crm", label: "Apply your industry CRM Blueprint and check pipelines, tags and fields", owner: "iacquire" }
     : { key: "crm", label: "Link your CRM location and apply the iAcquire master snapshot", owner: "iacquire" });
-  humanTasks.push({ key: "profiles", label: workforceModel === "growth_partner" ? "Prepare and verify your AI Growth Partner" : enabledRoles.length ? `Create and verify your ${countWord(enabledRoles.length)} AI employee${enabledRoles.length === 1 ? "" : "s"}` : "Create and verify your AI employees", owner: "iacquire" });
+  humanTasks.push({ key: "profiles", label: workforceModel === "growth_partner" ? "Prepare and verify your AI Growth Partner" : "Prepare or update and verify retained profiles", owner: "iacquire" });
   humanTasks.push({ key: "test", label: "Run safe tests before anything customer-facing is activated", owner: "iacquire" });
 
   const check = submitCheck(storedAll, scope);

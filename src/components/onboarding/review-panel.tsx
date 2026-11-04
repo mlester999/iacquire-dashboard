@@ -179,7 +179,7 @@ export function ReviewPanel({
           ) : (
             <>
               <p className="text-[14px] font-medium">
-                {included === total ? `Your plan includes all ${countWord(total)} AI employees.` : included === 0 ? "Your plan includes none of the AI employees yet." : `Your plan includes ${countWord(included)} of the ${countWord(total)} AI employees.`}
+                {included === total ? `Your current plan includes all ${countWord(total)} retained role profiles.` : included === 0 ? "Your current plan includes none of the retained role profiles yet." : `Your current plan includes ${countWord(included)} of the ${countWord(total)} retained role profiles.`}
               </p>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 {review.plan.included.map((role) => (
@@ -210,13 +210,14 @@ export function ReviewPanel({
               ))}
             </ul>
           )}
+          {review.workforceModel === "legacy" && <p className="mt-3 text-[13px] leading-relaxed text-muted">These existing role profiles and their histories stay with your workspace while iAcquire prepares a staged migration to one AI Growth Partner. Approving this setup can update profile settings; it does not migrate or delete profiles.</p>}
           <p className="mt-3 text-[13px] text-muted">Your CRM, inbox, booking and website are not part of any plan limit.</p>
         </div>
       </section>
 
       <section aria-labelledby="rv-team" className="space-y-3">
         <h2 id="rv-team" className="text-[15px] font-semibold">
-          {review.workforceModel === "growth_partner" ? "How your AI Growth Partner will be prepared" : included > 0 ? `How your ${countWord(included)} AI employee${included === 1 ? "" : "s"} will be set up` : "How your AI employees will be set up"}
+          {review.workforceModel === "growth_partner" ? "How your AI Growth Partner will be prepared" : "Existing profile settings"}
         </h2>
         {review.workforceModel === "growth_partner" ? (
           <div className="rounded-2xl border border-line bg-surface p-4 text-[14px] leading-relaxed">
@@ -245,7 +246,7 @@ export function ReviewPanel({
                 </div>
               ))}
             </div>
-            <p className="text-[13px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
+            <p className="text-[13px] leading-relaxed text-muted">Each retained profile starts in Approval required mode. Nothing runs autonomously until its connections are verified and an owner switches it on.</p>
           </>
         )}
       </section>
@@ -363,14 +364,14 @@ export function ReviewPanel({
           <span>
             {review.workforceModel === "growth_partner"
               ? "I’ve reviewed these answers. I understand this prepares one AI Growth Partner and website draft, and that nothing contacts customers, books appointments or goes live until each connection is verified and I turn it on."
-              : "I’ve reviewed these answers. I understand this prepares my AI employees and website draft, and that nothing contacts my customers, books appointments or goes live until each connection is verified and I turn it on."}
+              : "I’ve reviewed these answers and understand this can update my existing profile settings and prepare a website draft. It does not migrate or delete profiles. Nothing contacts my customers, books appointments or goes live until each connection is verified and I turn it on."}
           </span>
         </label>
         {alreadySubmitted && (
           <p className="mt-3 text-[14px] leading-relaxed text-muted">
             {review.workforceModel === "growth_partner"
               ? "You’ve approved a setup before. Your approved Business Brain stays active while this submission prepares a reviewable update. Earlier versions remain available."
-              : "You’ve approved a setup before. Approving again saves a new version of each employee’s configuration, keeps the changes you made to individual employees, and leaves earlier versions available to restore."}
+              : "You’ve approved a setup before. Approving again saves a new version of each retained profile’s configuration, keeps the changes you made to those profiles, and leaves earlier versions available to restore."}
           </p>
         )}
         {error && (
@@ -381,7 +382,7 @@ export function ReviewPanel({
         {!hideSubmit && <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
           <Sparkles className="size-4" /> {review.workforceModel === "growth_partner"
             ? alreadySubmitted ? "Approve and update my AI Growth Partner" : "Approve and prepare my AI Growth Partner"
-            : alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
+              : alreadySubmitted ? "Approve and update retained profiles" : "Approve and prepare retained profiles"}
         </Button>}
         {blockers.length > 0 && <p className="mt-2 text-[13px] text-muted">Resolve the items above to continue.</p>}
       </section>

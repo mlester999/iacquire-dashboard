@@ -1,7 +1,7 @@
 import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, isWorkforceRoleKey, workforceRoleShortName, workforceRoleSlug } from "@/lib/agents";
 import { resolveCapabilities } from "@/server/crm/workspace";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 
@@ -131,6 +131,7 @@ interface DashboardRow {
   members: number;
   knowledge_sections: number;
   conversations: number;
+  growth_partner_conversation: boolean;
   activity: Array<{ day: string; n: number }>;
   tasks: Array<{ id: string; title: string; due_at: string | null; category: string }>;
   agents: Array<{ role_key: string; status: string; enabled: boolean }>;
@@ -175,6 +176,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
          (select count(*)::int from organization_memberships where org_id = $1 and status = 'active') as members,
          (select count(*)::int from company_knowledge where org_id = $1 and content <> '') as knowledge_sections,
          (select count(*)::int from agent_runs where org_id = $1 and purpose = 'chat') as conversations,
+         (select exists(select 1 from chat_conversations c where c.org_id = $1 and c.growth_partner_id is not null and c.deleted_at is null)) as growth_partner_conversation,
          (select coalesce(json_agg(json_build_object('day', day, 'n', n) order by day), '[]'::json) from (
             select to_char(d::date, 'YYYY-MM-DD') as day,
                    (select count(*)::int from usage_events u where u.org_id = $1 and u.kind = 'agent_message' and u.created_at >= d and u.created_at < d + interval '1 day') as n
@@ -205,6 +207,11 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     const data = rows[0];
     const sources = interpretSourceAvailability(data, ctx.org.isDemo);
     const agents = data.agents ?? [];
+    const growthPartner = agents.find((agent) => agent.role_key === "growth_partner");
+    const growthPartnerOnline = Boolean(growthPartner?.enabled && (growthPartner.status === "online" || growthPartner.status === "busy"));
+    const primaryProfileOnline = growthPartner ? growthPartnerOnline : agents.some((agent) => agent.enabled && (agent.status === "online" || agent.status === "busy"));
+    const primaryProfileHref = growthPartner ? "/growth-partner" : "/employees";
+    const primaryConversationReady = growthPartner ? data.growth_partner_conversation : data.conversations > 0;
 
     let appointmentsBooked: Metric = unavailable("Calendar not connected");
     let upcoming: Metric = unavailable("Calendar not connected");
@@ -230,9 +237,9 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
 
     const alerts: DashboardData["alerts"] = [];
     for (const a of agents) {
-      if (!a.enabled || !isAgentRoleKey(a.role_key)) continue;
+      if (!a.enabled || !isWorkforceRoleKey(a.role_key)) continue;
       if (a.status === "offline" || a.status === "error") {
-        alerts.push({ tone: "critical", title: `${AGENT_BY_KEY[a.role_key].shortName} is unavailable`, body: "The last connection check failed. iAcquire has been notified.", href: `/employees/${AGENT_BY_KEY[a.role_key].slug}` });
+        alerts.push({ tone: "critical", title: `${workforceRoleShortName(a.role_key)} is unavailable`, body: "The last connection check failed. iAcquire has been notified.", href: a.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "/growth-partner" : `/employees/${workforceRoleSlug(a.role_key)}` });
       }
     }
     for (const i of data.integration_errors ?? []) {
@@ -250,17 +257,21 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       sources.native.opportunities
         ? { key: "crm", label: "iAcquire CRM ready", done: true, href: "/crm" }
         : { key: "crm", label: "CRM connected by iAcquire", done: sources.crm, href: "/settings/integrations" },
-      { key: "agent", label: "First AI employee online", done: online > 0, href: "/employees" },
-      { key: "chat", label: "First conversation with your AI team", done: data.conversations > 0, href: "/employees" },
+      { key: "agent", label: growthPartner ? "AI Growth Partner online" : "Retained profile online", done: growthPartner ? growthPartnerOnline : online > 0, href: primaryProfileHref },
+      { key: "chat", label: growthPartner ? "Permanent Growth Partner conversation ready" : "Retained profile conversation started", done: primaryConversationReady, href: growthPartner ? "/growth-partner/conversation" : "/employees" },
     ];
 
     const nextActions: DashboardData["nextActions"] = [];
-    if (!ctx.org.onboardingCompletedAt) nextActions.push({ title: "Finish company setup", body: "Answer a few short questions so your AI team understands your business.", href: "/onboarding", cta: "Continue setup" });
-    if (data.approvals) nextActions.push({ title: `Review ${data.approvals} pending approval${data.approvals === 1 ? "" : "s"}`, body: "Your AI team is waiting on your decision.", href: "/approvals", cta: "Open approvals" });
+    if (!ctx.org.onboardingCompletedAt) nextActions.push({ title: "Finish company setup", body: "Answer a few short questions so iAcquire can prepare your AI Growth Partner.", href: "/onboarding", cta: "Continue setup" });
+    if (data.approvals) nextActions.push({ title: `Review ${data.approvals} pending approval${data.approvals === 1 ? "" : "s"}`, body: "A pending AI action is waiting for your decision.", href: "/approvals", cta: "Open approvals" });
     if (data.pending_leads) nextActions.push({ title: `${data.pending_leads} lead${data.pending_leads === 1 ? "" : "s"} to review`, body: "Approve the businesses that fit before anything goes to your CRM.", href: "/leads?tab=review", cta: "Review leads" });
-    if (online > 0 && data.conversations === 0) nextActions.push({ title: "Say hello to your AI team", body: "Ask your Operations Manager what needs attention today.", href: "/chat/operations-manager", cta: "Start a chat" });
-    if (data.knowledge_sections < 3 && ctx.can("knowledge.edit")) nextActions.push({ title: "Teach your AI team the basics", body: "Add your FAQs, hours and policies to the Knowledge Center.", href: "/knowledge", cta: "Add knowledge" });
-    if (online === 0 && ctx.org.onboardingCompletedAt) nextActions.push({ title: "Your AI team is being set up", body: "iAcquire is preparing each employee's private environment. You'll be notified when they're online.", href: "/employees", cta: "View status" });
+    if (primaryProfileOnline && !primaryConversationReady) nextActions.push(growthPartner
+      ? { title: "Open your permanent conversation", body: "Your AI Growth Partner is ready for a conversation in the shared workspace thread.", href: "/growth-partner/conversation", cta: "Open conversation" }
+      : { title: "Review your retained profiles", body: "Your existing profile history is available while the workspace migration is reviewed.", href: "/employees", cta: "View profiles" });
+    if (data.knowledge_sections < 3 && ctx.can("knowledge.edit")) nextActions.push({ title: "Add approved company knowledge", body: "Add your FAQs, hours and policies to the Knowledge Center.", href: "/knowledge", cta: "Add knowledge" });
+    if (!primaryProfileOnline && ctx.org.onboardingCompletedAt) nextActions.push(growthPartner
+      ? { title: "Your AI Growth Partner is being set up", body: "iAcquire is preparing its dedicated runtime and verifying its identity, tools and permissions.", href: "/growth-partner", cta: "View status" }
+      : { title: "Retained profile setup is in progress", body: "iAcquire is preparing the existing profile records while migration is reviewed.", href: "/employees", cta: "View status" });
 
     return {
       sources,

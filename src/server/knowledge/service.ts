@@ -209,7 +209,7 @@ export async function decideHeldKnowledge(db: Queryable, input: { orgId: string;
     kind: "knowledge_update_ready",
     severity: approve ? "success" : "warning",
     title: approve ? "Knowledge update approved and applied" : "A knowledge update wasn't applied",
-    body: approve ? "Your AI employees use it from their next message." : "It conflicted with AI safety rules. Your previously approved text is unchanged. Edit the section or contact support.",
+    body: approve ? "Your AI Growth Partner and any retained profiles use it from their next message." : "It conflicted with AI safety rules. Your previously approved text is unchanged. Edit the section or contact support.",
     link: "/knowledge",
   });
   await recordAudit(

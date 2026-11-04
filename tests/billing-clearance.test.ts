@@ -187,7 +187,7 @@ describe("what an AI employee card says before the setup payment is confirmed", 
       expect(r).toMatchObject({ stage: "setup", label: "Setup required", chatAvailable: false, cta: "none" });
       expect(r.description).toBe(`${PAYMENT_REQUIRED_SENTENCE}.`);
     }
-    expect(PAYMENT_REQUIRED_SENTENCE).toBe("Your AI team starts after your setup payment is confirmed");
+    expect(PAYMENT_REQUIRED_SENTENCE).toBe("Your workspace setup starts after your setup payment is confirmed");
   });
 
   it("changes nothing when the payment is confirmed or the caller did not ask", () => {

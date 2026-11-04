@@ -419,7 +419,7 @@ async function runExecutor(
           });
           return { status: "blocked" as const, detail: "Held for iAcquire review because the text may conflict with AI safety policy. The previous approved text is still in use." };
         }
-        return { status: "succeeded" as const, detail: "Knowledge updated. AI employees use it from their next message." };
+        return { status: "succeeded" as const, detail: "Knowledge updated. The AI Growth Partner and any retained profiles use it from their next message." };
       });
     }
     case "config_change": {

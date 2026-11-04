@@ -302,7 +302,7 @@ export function OpsChat({ chat, scope, onScopeChange, variant, pickerSignal, dra
             <span className="flex size-12 items-center justify-center rounded-2xl border border-line bg-surface text-primary shadow-card"><Sparkles className="size-5" aria-hidden /></span>
             <h3 className="mt-4 text-[17px] font-semibold tracking-[-0.025em] text-ink">What should we investigate?</h3>
             <p className="mt-2 text-[14px] leading-relaxed text-muted">
-              {scope.type === "platform" ? "Ask about platform health, a client, AI Employees, support, security, costs or integrations." : <>Investigating <strong className="text-ink-2">{scope.label}</strong>. Evidence stays inside this context.</>}
+              {scope.type === "platform" ? "Ask about platform health, a client, Growth Partners, retained profiles, support, security, costs or integrations." : <>Investigating <strong className="text-ink-2">{scope.label}</strong>. Evidence stays inside this context.</>}
               {" "}I show what I checked, when, and what cannot be determined. Changes are previewed and need your confirmation.
             </p>
             <div className="mt-5 grid w-full gap-2 sm:grid-cols-2" role="group" aria-label="Suggested questions">
@@ -347,7 +347,7 @@ export function OpsChat({ chat, scope, onScopeChange, variant, pickerSignal, dra
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
             }}
             rows={1}
-            placeholder="Ask about health, a client, AI Employees, support, security or costs"
+            placeholder="Ask about health, a client, Growth Partners, support, security or costs"
             className="max-h-40 min-h-11 resize-none"
             maxLength={MAX + 200}
             aria-describedby="ops-composer-hint"

@@ -146,7 +146,7 @@ describe("what your plan includes", () => {
     expect(review.plan.included).toEqual(five);
     expect(review.plan.notIncluded).toEqual(["sales_assistant"]);
     expect(review.employees).toHaveLength(5);
-    expect(review.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Create and verify your five AI employees");
+    expect(review.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Prepare or update and verify retained profiles");
     expect(countWord(five.length)).toBe("five");
   });
 
@@ -154,9 +154,9 @@ describe("what your plan includes", () => {
     const review = buildReviewModel(stored(base()), facts, [...AGENT_ROLE_KEYS]);
     expect(review.plan.included).toHaveLength(6);
     expect(review.plan.notIncluded).toEqual([]);
-    expect(review.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Create and verify your six AI employees");
+    expect(review.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Prepare or update and verify retained profiles");
     const one = buildReviewModel(stored(base()), facts, ["crm_manager"]);
-    expect(one.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Create and verify your one AI employee");
+    expect(one.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Prepare or update and verify retained profiles");
   });
 
   it("words the paid extras from the entitlement, and an empty list when none were read", () => {
@@ -275,11 +275,11 @@ describe("a workspace's plan, read from the database", () => {
     expect(m.plan.included).toHaveLength(5);
     expect(m.plan.notIncluded).toEqual(["sales_assistant"]);
     expect(m.employees.map((e) => e.role)).not.toContain("sales_assistant");
-    expect(m.humanTasks.find((t) => t.key === "profiles")?.label).toContain("five");
+    expect(m.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Prepare or update and verify retained profiles");
     const f = await getOnboardingReview(full.ctx);
     expect(f.plan.included).toHaveLength(6);
     expect(f.plan.notIncluded).toEqual([]);
-    expect(f.humanTasks.find((t) => t.key === "profiles")?.label).toContain("six");
+    expect(f.humanTasks.find((t) => t.key === "profiles")?.label).toBe("Prepare or update and verify retained profiles");
   });
 
   it("follows maintenance_subscriptions for the paid extras", async () => {

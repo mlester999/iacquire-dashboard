@@ -233,7 +233,7 @@ export function EmergencyControls({
             <h2 className="text-[15px] font-semibold tracking-tight">{agencyPaused ? "Automation is on hold" : anyPaused ? "Some automation is paused" : "Emergency controls"}</h2>
             <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-muted">
               {agencyPaused
-                ? "iAcquire has paused automation for your workspace. Our team will be in touch. Private chat with your employees still works."
+                ? "iAcquire has paused automation for your workspace. Our team will be in touch. Your AI Growth Partner chat remains available."
                 : "Stop messages instantly if something looks wrong. These apply on our servers, so queued messages are blocked too."}
             </p>
           </div>

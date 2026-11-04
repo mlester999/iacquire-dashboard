@@ -75,7 +75,7 @@ export function ConnectionChips({ r, compact = false }: { r: ClientSetupRow; com
   const aiTone: Tone = h.failingAgents > 0 ? "danger" : h.agentsEnabled > 0 && h.agentsOnline === h.agentsEnabled ? "success" : h.agentsOnline > 0 ? "warning" : "neutral";
   const chips: Array<{ key: string; label: string; tone: Tone; detail: string }> = [
     { key: "crm", label: "CRM", tone: connectionTone(h.ghl), detail: `CRM: ${h.ghl ? STATUS_WORDS[h.ghl] ?? h.ghl : "not mapped"}` },
-    { key: "ai", label: `AI ${h.agentsOnline}/${h.agentsEnabled}`, tone: aiTone, detail: `AI employees online: ${h.agentsOnline} of ${h.agentsEnabled}${h.failingAgents ? ` · ${plural(h.failingAgents, "employee")} failing` : ""}` },
+    { key: "ai", label: `AI ${h.agentsOnline}/${h.agentsEnabled}`, tone: aiTone, detail: `Runtime profiles online: ${h.agentsOnline} of ${h.agentsEnabled}${h.failingAgents ? ` · ${plural(h.failingAgents, "profile")} need attention` : ""}` },
     { key: "calendar", label: "Calendar", tone: connectionTone(h.calendar), detail: `Calendar: ${h.calendar && h.calendar !== "not_configured" ? STATUS_WORDS[h.calendar] ?? h.calendar : "not connected"}` },
     { key: "n8n", label: "n8n", tone: connectionTone(h.n8n), detail: `n8n: ${h.n8n ? STATUS_WORDS[h.n8n] ?? h.n8n : "not configured"}` },
   ];

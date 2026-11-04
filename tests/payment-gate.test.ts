@@ -57,7 +57,7 @@ describe("AI employee provisioning waits for the setup payment", () => {
     expect(c.result.employees).toHaveLength(6);
     expect(await provisioningJobs(c.org.id)).toBe(0);
     const ownerNotices = await rows<{ title: string; severity: string }>("select title, severity from notifications where user_id = $1 and kind = 'billing_setup_payment_required'", [c.owner.id]);
-    expect(ownerNotices).toEqual([{ title: "Your AI team starts after your setup payment is confirmed", severity: "info" }]);
+    expect(ownerNotices).toEqual([{ title: "Your workspace setup starts after your setup payment is confirmed", severity: "info" }]);
     const agencyNotices = await rows("select 1 from notifications where user_id = $1 and org_id = $2 and kind = 'billing_setup_payment_required'", [superAdmin.id, c.org.id]);
     expect(agencyNotices).toHaveLength(1);
     // Asking again (the client presses the button, the questionnaire is saved again) repeats nothing.

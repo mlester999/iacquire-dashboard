@@ -78,7 +78,7 @@ export function ConfigReviewCard({
               <dd className="mt-0.5 font-medium text-ink">{item.orgName}</dd>
             </div>
             <div>
-              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">AI employee</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[.1em] text-faint">Retained profile</dt>
               <dd className="mt-0.5 font-medium text-ink">{item.agentName}</dd>
             </div>
             <div>
@@ -162,7 +162,7 @@ export function ConfigReviewCard({
               </summary>
               <div className="border-t border-line p-3">
                 <p className="mb-2 text-[12px] leading-relaxed text-muted">
-                  This is the exact instruction the employee would receive if this version were applied. Credential-like values are redacted.
+                  This is the exact instruction the profile would receive if this version were applied. Credential-like values are redacted.
                 </p>
                 <pre tabIndex={0} className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-2.5 font-mono text-[12px] leading-relaxed text-ink-2">{item.compiledInstructions}</pre>
                 {item.compiledInstructionsTruncated && <p className="mt-2 text-[12px] text-warning-ink">The preview is truncated for the browser. The full compiled instructions remain stored with the version.</p>}

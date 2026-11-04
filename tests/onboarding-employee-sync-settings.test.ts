@@ -142,7 +142,7 @@ describe("a Settings > Business profile edit reaches the employees", () => {
     }
     // The words the screen shows for it.
     const said = employeeUpdateMessage({ updated: saved.employees.updated.length, held: saved.employees.held.length });
-    expect(said).toBe(`${APPLIED_ROLES.length} updates are waiting for iAcquire's review.`);
+    expect(said).toBe(`${APPLIED_ROLES.length} profile updates are waiting for iAcquire's review.`);
     expect(said).not.toMatch(/employees? updated/);
     expect((await profileAudit(c.org.id))?.employees).toEqual({ updated: 0, held: APPLIED_ROLES.length, failed: false });
   }, 120_000);
@@ -199,10 +199,10 @@ describe("a Settings > Business profile edit reaches the employees", () => {
 describe("employeeUpdateMessage", () => {
   it("says only what is true", () => {
     expect(employeeUpdateMessage({ updated: 0, held: 0 })).toBe("");
-    expect(employeeUpdateMessage({ updated: 1, held: 0 })).toBe("1 employee updated.");
-    expect(employeeUpdateMessage({ updated: 5, held: 0 })).toBe("5 employees updated.");
-    expect(employeeUpdateMessage({ updated: 0, held: 1 })).toBe("1 update is waiting for iAcquire's review.");
-    expect(employeeUpdateMessage({ updated: 3, held: 2 })).toBe("3 employees updated. 2 updates are waiting for iAcquire's review.");
+    expect(employeeUpdateMessage({ updated: 1, held: 0 })).toBe("1 retained profile updated.");
+    expect(employeeUpdateMessage({ updated: 5, held: 0 })).toBe("5 retained profiles updated.");
+    expect(employeeUpdateMessage({ updated: 0, held: 1 })).toBe("1 profile update is waiting for iAcquire's review.");
+    expect(employeeUpdateMessage({ updated: 3, held: 2 })).toBe("3 retained profiles updated. 2 profile updates are waiting for iAcquire's review.");
   });
 });
 

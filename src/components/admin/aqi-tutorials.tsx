@@ -28,7 +28,7 @@ import { CRM_CAPABILITIES } from "@/lib/crm/types";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { AqiTutorialAdminData, AqiTutorialAdminRow, AqiTutorialPreview } from "@/server/aqi/tutorials";
 
-const CATEGORIES = ["Getting started", "CRM", "Calendar", "AI workforce", "Account", "Support", "Agency", "AQi"];
+const CATEGORIES = ["Getting started", "CRM", "Calendar", "AI Growth Partner", "Account", "Support", "Agency", "AQi"];
 
 function blankDefinition(): AqiTutorialDefinition {
   return {

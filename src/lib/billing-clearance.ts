@@ -11,15 +11,15 @@ export const isSetupCleared = (status: string | null | undefined): boolean => st
 /** The recorded reason for the one data step of migration 0099 (founder decision 1, open). The migration text and this constant are kept in step by a test. */
 export const ACTIVATED_BEFORE_GATE_REASON = "Activated before the payment gate";
 
-/** What the client sees on an AI employee while its setup payment is not confirmed. */
-export const PAYMENT_REQUIRED_SENTENCE = "Your AI team starts after your setup payment is confirmed";
+/** What the client sees while the one-time setup payment is not confirmed. */
+export const PAYMENT_REQUIRED_SENTENCE = "Your workspace setup starts after your setup payment is confirmed";
 
 /** Why the agency cannot activate a client yet. */
 export const PAYMENT_UNVERIFIED_MESSAGE = "The setup payment has not been confirmed. Record the payment, or waive the setup fee with a reason, on the client's billing tab.";
 
 export const MAINTENANCE_PAYMENT_NOTE = "Maintenance becomes available once your setup payment is confirmed.";
 
-export const PROVISIONING_PAYMENT_NOTE = "The setup payment is not confirmed, so no AI employee profile is started for this client.";
+export const PROVISIONING_PAYMENT_NOTE = "The setup payment is not confirmed, so no new AI profile setup is started for this client.";
 
 export const SETUP_STATUS_LABEL: Record<SetupPaymentStatus, string> = {
   not_invoiced: "Not invoiced",

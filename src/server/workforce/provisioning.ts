@@ -279,10 +279,8 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
       await notifyOrgRoles(db, orgId, ["owner", "admin"], {
         kind: "billing_setup_payment_required",
         severity: "info",
-        title: growthPartnerOnly ? "Your AI Growth Partner setup starts after payment confirmation" : "Your AI team starts after your setup payment is confirmed",
-        body: growthPartnerOnly
-          ? "Your business information is saved. iAcquire will start setting up your AI Growth Partner as soon as the setup payment is confirmed."
-          : "Your business information is saved. iAcquire will start setting up your AI employees as soon as the setup payment is confirmed.",
+        title: "Your workspace setup starts after your setup payment is confirmed",
+        body: "Your business information is saved. iAcquire will continue preparing your workspace as soon as the setup payment is confirmed.",
         link: growthPartnerOnly ? "/growth-partner" : "/employees",
         dedupeKey,
       });

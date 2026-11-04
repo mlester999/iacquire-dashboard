@@ -14,12 +14,12 @@ export const INTERNAL_BUSINESS = {
   productName: "iAcquireOS",
   industry: "AI-powered business operations and client acquisition software",
   description:
-    "iAcquire provides an AI-powered client acquisition and business operations solution designed to help businesses organize leads, improve response and follow-up processes, coordinate appointments, manage sales activity and use authorized AI Employees to assist with business workflows.",
+    "iAcquire provides an AI-powered client acquisition and business operations solution with one AI Growth Partner per client workspace. It helps businesses organize leads, improve response and follow-up processes, coordinate appointments, manage sales activity and use authorized capabilities.",
   services: [
     "iAcquireOS AI-powered business platform",
     "AI-assisted lead and customer acquisition workflows",
     "CRM, pipeline and operational workflow capabilities",
-    "Configured AI Employees and their supported integrations",
+    "One AI Growth Partner with coordinated capabilities and supported integrations",
     "Business automation implementation and onboarding",
     "Optional ongoing managed maintenance where purchased",
   ].join("\n- "),

@@ -185,7 +185,7 @@ function RefundForm({ payment, onClose, timeZone }: { payment: AgencyPaymentView
     >
       <div className="space-y-3">
         {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger-ink">{error}</p>}
-        {payment.kind === "setup_fee" && <p className="text-[13px] leading-relaxed text-muted">A full refund of the payment that cleared the setup fee stops new AI employees from being set up. Anything already running keeps running.</p>}
+        {payment.kind === "setup_fee" && <p className="text-[13px] leading-relaxed text-muted">A full refund of the payment that cleared the setup fee stops new AI Growth Partner setup. Existing runtime profiles keep their current state.</p>}
         <Field label="Amount refunded (US dollars)" htmlFor="rf-amount">
           <Input id="rf-amount" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>

@@ -183,7 +183,7 @@ export function InboxRolloutAdmin({ rows, globallyOff }: { rows: RolloutRow[]; g
             {impactError ? <p className="mt-1 text-danger-ink">{impactError}</p> : !impact ? <p className="mt-1 text-muted">Reading…</p> : (
               <ul className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted">
                 <li>{count(impact.openConversations, "open conversation")}</li>
-                <li>{impact.aiOwned} handled by an AI employee</li>
+                <li>{impact.aiOwned} handled by an authorized AI profile</li>
                 <li>{impact.aiPaused} with AI replies paused</li>
                 <li>{impact.openEscalations} waiting for a person</li>
                 <li>{count(impact.queuedAiReplies, "AI reply", "AI replies")} queued</li>

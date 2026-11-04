@@ -16,7 +16,7 @@ import { currentTime } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return { title: AGENT_BY_SLUG[slug]?.name ?? "AI employee" };
+  return { title: AGENT_BY_SLUG[slug]?.name ?? "Retained profile" };
 }
 
 export default async function EmployeePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string; version?: string }> }) {

@@ -12,7 +12,7 @@ export interface SetupPaymentLine {
 export const SETUP_PAYMENT_CONFIRMED: SetupPaymentLine = {
   state: "confirmed",
   title: "Setup payment confirmed",
-  detail: "iAcquire has confirmed your setup payment, so your AI team can be set up.",
+  detail: "iAcquire has confirmed your setup payment, so your workspace profile setup can continue.",
 };
 
 export const SETUP_PAYMENT_WAITING: SetupPaymentLine = {

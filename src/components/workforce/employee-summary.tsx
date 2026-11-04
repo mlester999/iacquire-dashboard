@@ -95,7 +95,7 @@ export function EmployeeProfileHero({
   displayName,
   description,
   readiness,
-  eyebrow = "AI employee",
+  eyebrow = "Retained role profile",
   actions,
   footer,
   dark = false,

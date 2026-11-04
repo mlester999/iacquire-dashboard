@@ -64,13 +64,13 @@ export function AqiAdmin({
   const [draftId, setDraftId] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
-  const [testPrompt, setTestPrompt] = React.useState("Where do I manage my AI employees?");
+  const [testPrompt, setTestPrompt] = React.useState("Where do I manage my AI Growth Partner?");
   const [testResult, setTestResult] = React.useState<{ ok: boolean; text: string; intent?: string; words?: number; sources?: Array<{ id: string; title: string; category: string }> } | null>(null);
   const [knowledge, setKnowledge] = React.useState<(typeof data.knowledge)[number] | null>(data.knowledge[0] ?? null);
   const [knowledgeDraft, setKnowledgeDraft] = React.useState({ title: "", category: "Platform overview", routePrefix: "", body: "", status: "draft" as "draft" | "published" | "archived", source: "iAcquire approved documentation", roles: "" });
   const [questionDraft, setQuestionDraft] = React.useState({ question: "", scope: "global" as "global" | "role" | "page", role: "", routePrefix: "", sortOrder: 100, enabled: true });
   const [busy, setBusy] = React.useState(false);
-  const [previewQuery, setPreviewQuery] = React.useState("How do I manage my AI employees?");
+  const [previewQuery, setPreviewQuery] = React.useState("How do I manage my AI Growth Partner?");
   const [previewPath, setPreviewPath] = React.useState("/employees");
   const [previewing, setPreviewing] = React.useState(false);
   const [previewResult, setPreviewResult] = React.useState<Array<{ id: string; title: string; category: string; body: string }>>([]);
@@ -196,7 +196,7 @@ export function AqiAdmin({
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.16em] text-primary-ink"><Sparkles className="size-3" /> Platform assistant</p>
           <h1 className="text-[27px] font-semibold tracking-[-0.045em] text-ink">AQi Management</h1>
-          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted">Configure the assistant, its approved knowledge, suggestions and publishing. AQi is separate from AI employees and never inherits Hermes tools.</p>
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted">Configure the assistant, its approved knowledge, suggestions and publishing. AQi is separate from the AI Growth Partner and never inherits Hermes tools.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={data.health.available ? "success" : "warning"}>{data.health.available ? "Provider connected" : "No provider"}</StatusPill>

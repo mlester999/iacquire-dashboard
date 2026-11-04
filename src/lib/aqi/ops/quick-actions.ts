@@ -21,8 +21,8 @@ export interface OpsQuickAction {
 
 const PLATFORM: OpsQuickAction[] = [
   { key: "health", label: "Investigate System Health", description: "Database, scheduler, incidents and delivery, with what cannot be measured.", kind: "ask", ask: "Investigate system health" },
-  { key: "client", label: "Inspect Client Workspace", description: "Pick a client to see onboarding blockers, integrations and AI Employees.", kind: "scope" },
-  { key: "hermes", label: "View Hermes Workforce", description: "Evidence-based status of every AI Employee.", kind: "ask", ask: "Which AI Employees failed today?" },
+  { key: "client", label: "Inspect Client Workspace", description: "Pick a client to see onboarding blockers, integrations and Growth Partner readiness.", kind: "scope" },
+  { key: "hermes", label: "Check Client Runtime Profiles", description: "Evidence-based status of the Growth Partner and any retained profiles.", kind: "ask", ask: "Which client Growth Partners or retained profiles failed today?" },
   { key: "support", label: "Review Support Tickets", description: "Unresolved, urgent and overdue requests.", kind: "ask", ask: "Which support tickets are unresolved and urgent?" },
   { key: "usage", label: "Analyze Platform Usage", description: "Highest AI and messaging costs by client.", kind: "ask", ask: "Which clients have the highest AI operating costs this month?" },
   { key: "integrations", label: "Investigate Integration Failures", description: "Connections in error and delivery failures.", kind: "ask", ask: "Investigate integration failures" },
@@ -33,9 +33,9 @@ const PLATFORM: OpsQuickAction[] = [
 ];
 
 const TENANT: OpsQuickAction[] = [
-  { key: "blockers", label: "What is blocking onboarding?", description: "Setup tasks, integrations and employees for this client.", kind: "ask", ask: "What is blocking this client's onboarding?" },
+  { key: "blockers", label: "What is blocking onboarding?", description: "Setup tasks, integrations and profile checks for this client.", kind: "ask", ask: "What is blocking this client's onboarding?" },
   { key: "delivery", label: "Trace message delivery", description: "Failed, blocked and stuck messages, reminders and workflows.", kind: "ask", ask: "Why didn't the appointment confirmation send?" },
-  { key: "employees", label: "Check AI Employees", description: "Status, last runs and approvals for this client.", kind: "ask", ask: "What are this client's AI Employees doing?" },
+  { key: "employees", label: "Check the Growth Partner", description: "Status, last runs and approvals for this client, with retained profiles when present.", kind: "ask", ask: "How is this client's AI Growth Partner doing? Include retained profiles if they are still enabled." },
   { key: "tickets", label: "Review this client's tickets", description: "Open Support & Requests for this client.", kind: "ask", ask: "Show this client's open support tickets" },
   { key: "pause", label: "Pause automation…", description: "Prepare an emergency pause for this client. You confirm it separately.", kind: "draft", draft: "Pause automation for this client: " },
   { key: "issue", label: "Create Internal Issue", description: "Record a platform bug or engineering task.", kind: "draft", draft: "Create an internal issue: " },
@@ -54,8 +54,8 @@ const INCIDENT: OpsQuickAction[] = [
 ];
 
 const EMPLOYEE: OpsQuickAction[] = [
-  { key: "status", label: "What is this employee doing?", description: "Evidence-based status.", kind: "ask", ask: "What is this employee doing right now?" },
-  { key: "runs", label: "Why did it stop?", description: "Latest runs, errors and tools.", kind: "ask", ask: "Why did this employee stop?" },
+  { key: "status", label: "What is this profile doing?", description: "Evidence-based status.", kind: "ask", ask: "What is this profile doing right now?" },
+  { key: "runs", label: "Why did it stop?", description: "Latest runs, errors and tools.", kind: "ask", ask: "Why did this profile stop?" },
 ];
 
 const WORKFLOW: OpsQuickAction[] = [
@@ -83,7 +83,7 @@ export const scopeLabelFor = (scope: OpsScope) => (opsScopeKey(scope) === "platf
 export const SCOPE_TYPE_LABEL: Record<OpsScope["type"], string> = {
   platform: "Platform",
   tenant: "Client",
-  employee: "AI Employee",
+  employee: "AI Profile",
   workflow: "Workflow",
   ticket: "Support ticket",
   incident: "Incident",

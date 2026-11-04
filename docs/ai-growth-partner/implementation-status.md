@@ -1,7 +1,7 @@
 # AI Growth Partner implementation and acceptance status
 
 **Updated:** 2026-11-04
-**Code state:** local worktree on `codex/ai-growth-partner`; not pushed or deployed.
+**Code state:** Follow-up work is isolated on the preview branch `codex/ai-growth-partner`, building on base commit `303aa4b8`. No production deployment or tenant migration has been performed.
 
 ## Implemented and verified locally
 
@@ -23,13 +23,14 @@
 - Production build: `npm run build` passed locally on Next.js 16.4.2 after the latest changes, including TypeScript and generation of all 16 static pages.
 - Lint: repository-wide lint passed with no errors and four unused-import warnings in AQI service, Hermes client, and setup connectors. Targeted lint for the latest changes passed cleanly.
 - Full regression: `npm test -- --reporter=dot` completed with **864 test files passed, 2 skipped; 13,674 tests passed, 103 skipped** (21m 48s). The skipped cases are included in those totals and were not counted as passes.
-- Latest terminology/accessibility follow-up: **4 focused test files passed; 118 tests passed**, plus TypeScript and targeted lint. The full regression above preceded this copy-only follow-up; the production build was repeated afterward.
+- Latest focused regression: **9 files passed; 278 tests passed**, including the Growth Partner canonical-conversation dashboard check, role-text review digests, onboarding/readiness copy, and payment-gate wording.
+- The current `npm run build` passed, including TypeScript and rendering all 16 static pages. Targeted ESLint passed without warnings for the changed code and tests; `git diff --check` passed.
 - Migration rehearsal: `npm run rehearse:migrations -- --sections D` passed after the latest rollback changes. The populated fixture retained all 7,198 original rows through rollback and replay. The 0123 research-role rollback refuses non-legacy request provenance; 0124 refuses customized setup copy; 0126 refuses removal of persisted signal or qualification data. The rehearsal's generic data warning counts non-empty seeded values and does not inspect those guards. It changes only embedded local rehearsal databases.
-- The branch-scoped offline test/build workflow now includes `codex/ai-growth-partner`; its CI result is pending the preview-branch push. Base commit `f0ddb190346a7e296acc03eceec668f446204c16` has a successful Vercel status check, which does not cover this worktree.
+- Full CI for remote commit `303aa4b8` completed as [run 41839673842](https://github.com/mlester999/iacquire-dashboard/actions/runs/41839673842). Operator checks and pinned-Hermes synthetic checks passed. The full test step had 13,701 passed, 2 failed and 75 skipped; both failures were stale reviewed role-text digests. The digests and review note are corrected in this local follow-up. TypeScript passed in CI, lint reported four unused-import warnings, and the build was skipped after the test step failed. A fresh full CI result is still needed for the follow-up commit.
 
 ## Acceptance still requiring provider or environment evidence
 
-- Acquisition research has evidence validation, qualification, duplicate checks, and CRM handoff code. The source review now records published and account-specific rate limits, current public pricing where available, and terms for X, LinkedIn, Reddit, Meta, Indeed, SEEK, public company pages, Google/Bing search, DataForSEO, Yelp, licensed data, ATS feeds, and tenant CRM. The research runtime still has no per-provider adapter or cost meter, and no discovery provider has completed an authorized runtime acceptance. Provider choice, access terms, tenant credentials, source quotas, and spend limits remain prerequisites; paid or unsupported sources stay disabled.
+- Acquisition research has evidence validation, qualification, duplicate checks, and CRM handoff code. The owner selected OpenStreetMap business data and public company websites for the first isolated acceptance test. The research runtime still has no source-specific adapter or cost meter; no endpoint, region, non-production tenant or company-site allowlist is configured, and no external request has been made. The pilot remains fixture-only until that source scope is identified. No paid provider or outreach is active.
 - No real Hermes runtime, external CRM/calendar provider, customer-approved schedule cutover, or source-to-booking conversion was exercised. The local database and provider transports in the test suites are synthetic.
 - The migration strategy covers staged inventory, tenant-specific provisioning, schedule reconciliation, rollback, and retirement approval. No staging or production tenant was migrated, no profile was revoked, and no production database or deployment was changed.
 

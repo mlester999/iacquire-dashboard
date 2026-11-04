@@ -143,7 +143,7 @@ const SAMPLE_POLICIES: PolicyRow[] = [
 const SAMPLE_FAIR_USE: FairUseRow[] = [
   { metric: "storage_bytes", label: "File storage", window: "now", explain: "Documents, images, attachments and website pictures kept for your workspace.", value: 1.2 * 1024 ** 3, valueText: "1.2 GB", state: "warning", warn: 1024 ** 3, limit: 2 * 1024 ** 3, limitText: "2.0 GB", enforcement: "report_only", measuredAt: hoursAgo(1) },
   { metric: "site_requests_30d", label: "Website requests", window: "last 30 days", explain: "Page and file requests to your hosted website.", value: 48210, valueText: "48,210", state: "unset", warn: null, limit: null, limitText: null, enforcement: "report_only", measuredAt: hoursAgo(1) },
-  { metric: "ai_runs_30d", label: "AI employee runs", window: "last 30 days", explain: "Conversations and tasks your AI employees ran.", value: 932, valueText: "932", state: "ok", warn: 5000, limit: 10000, limitText: "10,000", enforcement: "report_only", measuredAt: hoursAgo(1) },
+  { metric: "ai_runs_30d", label: "AI Growth Partner runs", window: "last 30 days", explain: "Conversations and tasks your AI Growth Partner ran.", value: 932, valueText: "932", state: "ok", warn: 5000, limit: 10000, limitText: "10,000", enforcement: "report_only", measuredAt: hoursAgo(1) },
 ];
 
 export default async function OperationsPreview({ searchParams }: { searchParams: Promise<{ view?: string; expired?: string; tab?: string }> }) {

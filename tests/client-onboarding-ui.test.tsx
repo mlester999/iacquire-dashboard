@@ -173,21 +173,21 @@ describe("the review's plan", () => {
   const show = (roles: readonly AgentRoleKey[], studio = false) =>
     render(<ReviewPanel review={buildReviewModel(answers, facts, [...roles], planScope(roles), planAddOns({ studio: { entitled: studio, reason: "Automation Studio is part of the optional Managed Maintenance plan." }, managedStorage: studio }))} loading={false} error={null} confirmed={false} submitting={false} alreadySubmitted={false} onRetry={() => {}} onEdit={() => {}} onConfirmChange={() => {}} onSubmit={() => {}} hideSubmit />);
 
-  it("says five for a plan that leaves one employee out, names the one that is not part of it, and does not say six", () => {
+  it("shows five retained role profiles for a plan that leaves one out and keeps the existing plan exclusion", () => {
     show(AGENT_ROLE_KEYS.filter((r) => r !== "sales_assistant"));
     const plan = screen.getByRole("region", { name: "What your plan includes" });
-    expect(plan.textContent).toContain("Your plan includes five of the six AI employees.");
+    expect(plan.textContent).toContain("Your current plan includes five of the six retained role profiles.");
     expect(plan.textContent).toMatch(/AI Sales Assistant: not part of your plan, so it does not hold up launch/);
     expect(within(plan).getAllByRole("listitem").length).toBeGreaterThanOrEqual(6);
-    expect(screen.getByRole("heading", { name: "How your five AI employees will be set up" })).toBeTruthy();
-    expect(screen.queryByText(/six AI employees will be set up/)).toBeNull();
-    expect(screen.getByText("Create and verify your five AI employees")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Existing profile settings" })).toBeTruthy();
+    expect(screen.getByText(/histories stay with your workspace.*staged migration to one AI Growth Partner/i)).toBeTruthy();
+    expect(screen.getByText("Prepare or update and verify retained profiles")).toBeTruthy();
   });
 
-  it("says six for the full plan", () => {
+  it("shows all six retained role profiles for the full legacy plan", () => {
     show(AGENT_ROLE_KEYS);
-    expect(screen.getByRole("region", { name: "What your plan includes" }).textContent).toContain("Your plan includes all six AI employees.");
-    expect(screen.getByRole("heading", { name: "How your six AI employees will be set up" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "What your plan includes" }).textContent).toContain("Your current plan includes all six retained role profiles.");
+    expect(screen.getByRole("heading", { name: "Existing profile settings" })).toBeTruthy();
   });
 
   it("shows the paid extras as information, included only when the plan has them", () => {

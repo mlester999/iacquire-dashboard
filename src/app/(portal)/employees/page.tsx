@@ -8,7 +8,7 @@ import { WorkforceSafetyControls } from "@/components/workforce/safety-controls"
 import { getControlState } from "@/server/automation/controls";
 import { currentTime } from "@/lib/utils";
 
-export const metadata = { title: "Existing employee profiles" };
+export const metadata = { title: "Retained profile settings" };
 export default async function WorkforcePage() {
   const ctx = await requireOrgContext();
   if (ctx.org.kind !== "client") redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");

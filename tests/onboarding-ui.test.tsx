@@ -463,7 +463,7 @@ describe("Settings > AI preferences: apply to employees", () => {
 
     fireEvent.click(saveButton());
     await waitFor(() => expect(settingsActions.updateAiPreferencesAction).toHaveBeenCalledWith(expect.objectContaining({ applyToEmployees: true, replaceOwnEdits: false })));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("AI preferences saved", { description: "Applied to 1 employee. 2 updates are waiting for iAcquire's review. 1 employee kept its own wording for some fields." }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("AI preferences saved", { description: "Applied to 1 retained profile. 2 updates are waiting for iAcquire's review. 1 retained profile kept its own wording for some fields." }));
   });
 
   it("counts only the employees that would really get a version: one whose every difference is its own wording gets none unless the client ticks to replace it", async () => {
@@ -505,13 +505,13 @@ describe("Settings > Business profile: what reached the employees", () => {
   it("says how many employees were updated and how many updates are waiting, and never calls a waiting one applied", async () => {
     const { toast } = await import("sonner");
     await saveProfile({ updated: 3, held: 2, failed: false });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Business profile saved", { description: "3 employees updated. 2 updates are waiting for iAcquire's review." }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Business profile saved", { description: "3 retained profiles updated. 2 profile updates are waiting for iAcquire's review." }));
   });
 
   it("says only what is true when everything is waiting, when nothing needed updating, and when the employees could not be updated", async () => {
     const { toast } = await import("sonner");
     await saveProfile({ updated: 0, held: 5, failed: false });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Business profile saved", { description: "5 updates are waiting for iAcquire's review." }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Business profile saved", { description: "5 profile updates are waiting for iAcquire's review." }));
     cleanup();
     vi.mocked(toast.success).mockClear();
     await saveProfile({ updated: 0, held: 0, failed: false });

@@ -404,7 +404,7 @@ function ServiceEditor({ initial, categories, portfolio, onClose, onSaved }: { i
           <Field label="Platforms supported" htmlFor="sv-plat" hint="Comma separated.">
             <Textarea id="sv-plat" rows={3} value={f.platforms} onChange={text("platforms")} />
           </Field>
-          <Field label="Note when it overlaps the core package" htmlFor="sv-ov" optional className="sm:col-span-2" hint="For example: standard AI employees are already included and never an add-on.">
+          <Field label="Note when it overlaps the core package" htmlFor="sv-ov" optional className="sm:col-span-2" hint="For example: the AI Growth Partner is already included and is never an add-on.">
             <Textarea id="sv-ov" rows={2} value={f.coreOverlapNote} maxLength={500} onChange={text("coreOverlapNote")} />
           </Field>
         </FormSection>

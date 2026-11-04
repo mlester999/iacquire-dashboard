@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { applyRetention, getConversation, listConversations } from "@/server/chat/service";
 import { getGrowthPartnerConversationPage, searchGrowthPartnerConversation } from "@/server/ai-growth-partner/service";
+import { getDashboard } from "@/server/queries/dashboard";
 import { agentId, addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
 describe("AI Growth Partner canonical conversation foundation", () => {
@@ -44,6 +45,17 @@ describe("AI Growth Partner canonical conversation foundation", () => {
        values ($1, $2, null, $3, 'AI Growth Partner', $4) returning id`,
       [org.id, runtimeId, partner.id, `growth-partner-${randomUUID()}`],
     )).rows[0]);
+
+    const readyDashboard = await getDashboard(ctxFor(ownerA, org, "owner"));
+    expect(readyDashboard.setup.find((item) => item.key === "chat")).toMatchObject({
+      label: "Permanent Growth Partner conversation ready",
+      done: true,
+      href: "/growth-partner/conversation",
+    });
+    await withSystem((db) => db.query("update chat_conversations set deleted_at = now() where id = $1", [thread.id]));
+    const deletedDashboard = await getDashboard(ctxFor(ownerA, org, "owner"));
+    expect(deletedDashboard.setup.find((item) => item.key === "chat")).toMatchObject({ done: false });
+    await withSystem((db) => db.query("update chat_conversations set deleted_at = null where id = $1", [thread.id]));
 
     await withUser(ownerA.id, (db) => db.query(
       `insert into chat_messages (conversation_id, org_id, role, content, author_user_id)

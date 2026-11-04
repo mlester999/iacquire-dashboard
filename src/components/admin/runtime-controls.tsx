@@ -94,7 +94,7 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     label: "The whole client runtime",
     buttonLabel: "Synchronize",
     title: "Synchronize the client runtime?",
-    confirm: "Asks the restricted worker to bring every provisioned client employee's profile in line with its applied configuration again, at most 200 employees at a time. An employee that already has a request open is left alone, so pressing it again is safe. This covers every client, not only this one.",
+    confirm: "Asks the restricted worker to bring every provisioned client profile in line with its applied configuration again, at most 200 profiles at a time. A profile that already has a request open is left alone, so pressing it again is safe. This covers every client, not only this one.",
     tone: "brand",
     disabled: provisionerOff,
     run: (reason) => requestFleetSyncAction(reason),

@@ -289,7 +289,7 @@ export const COMPANY_FIELD_GUIDANCE = {
   companyName: {
     description: "The name your team and customers see in this workspace.",
     example: "e.g. Brightside Roofing",
-    info: "It appears in reports, notifications and some customer-facing messages. Changing it does not change your AI employees' roles.",
+    info: "It appears in reports, notifications and some customer-facing messages. Changing it does not change your Growth Partner's permissions.",
   },
   industry: {
     description: "Choose the closest match for your business. This helps tailor examples and reporting.",
@@ -306,19 +306,19 @@ export const COMPANY_FIELD_GUIDANCE = {
     info: "Used to qualify leads and set customer expectations. It does not change which leads can be contacted.",
   },
   description: {
-    description: "Explain what your business does, who it serves, and what makes it different. Your authorized AI employees may use this to understand your company.",
+    description: "Explain what your business does, who it serves, and what makes it different. Your AI Growth Partner and any retained profiles may use this to understand your company.",
     example: "e.g. We repair storm-damaged roofs for homeowners across Central Texas, with a free inspection before any quote.",
-    info: "This is business context, not instructions. AI employees treat it as information and cannot gain permissions from it.",
+    info: "This is business context, not instructions. The AI Growth Partner and retained profiles treat it as information and cannot gain permissions from it.",
   },
   services: {
     description: "List the products or services you provide. Include important limitations or conditions.",
     example: "e.g. Roof inspections, storm damage repair, gutter replacement. Free inspection. Repairs quoted after assessment.",
-    info: "Only list what you are prepared to stand behind. Approved prices belong in the pricing section or your employee's instructions.",
+    info: "Only list what you are prepared to stand behind. Approved prices belong in the pricing section or an authorized profile's instructions.",
   },
   idealCustomers: {
     description: "Describe the types of people or businesses you want to serve.",
     example: "e.g. Homeowners with houses older than ten years, mostly in suburban neighbourhoods.",
-    info: "This helps AI employees prioritise and qualify work. Do not include sensitive personal data.",
+    info: "This helps your AI Growth Partner prioritise and qualify work. Do not include sensitive personal data.",
   },
   brandColor: {
     description: "The accent colour used in customer-facing pages and messages.",
@@ -328,7 +328,7 @@ export const COMPANY_FIELD_GUIDANCE = {
 
 export const KNOWLEDGE_GUIDANCE = {
   upload: {
-    description: "Upload approved company material that your authorized AI employees may reference. Avoid including information employees should not access.",
+    description: "Upload approved company material that your authorized AI Growth Partner may reference. Avoid including information it should not access.",
     info: "Files are processed and may be held for review if their content conflicts with AI safety policy. Uploading a file does not make it visible to customers.",
   },
   title: {

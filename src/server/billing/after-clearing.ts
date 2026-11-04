@@ -15,8 +15,8 @@ export async function afterSetupCleared(db: Queryable, orgId: string, o: { actor
     kind: "billing_setup_cleared",
     severity: "success",
     title: o.how === "payment" ? "Your setup payment is confirmed" : "Your setup fee has been waived",
-    body: "Your AI team can now be set up. iAcquire will tell you as each employee is ready.",
-    link: "/employees",
+    body: "Your workspace profile setup can now continue. Follow current progress in the Setup Center.",
+    link: "/setup",
     dedupeKey: `setup-cleared:${o.eventKey}`,
   });
   // The industry CRM waits for the same two things the employees do (questionnaire submitted, fee cleared); whichever of the two arrives second starts it. It runs only after this

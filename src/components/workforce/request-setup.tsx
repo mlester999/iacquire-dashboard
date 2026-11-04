@@ -20,7 +20,7 @@ export function RequestSetupButton({ count }: { count: number }) {
         if (!res.ok) return toast.error(res.error);
         // Nothing was opened and the payment is not confirmed: say that, never "already in progress".
         if (!res.data.requested && !res.data.paymentCleared) return toast.info(PAYMENT_REQUIRED_SENTENCE + ".");
-        toast.success(res.data.requested ? "iAcquire has been asked to finish setting up your employees." : `Setup for ${count} employee${count === 1 ? " is" : "s are"} already in progress with iAcquire.`);
+        toast.success(res.data.requested ? "iAcquire has been asked to finish preparing your retained profiles." : `Setup for ${count} retained profile${count === 1 ? " is" : "s are"} already in progress with iAcquire.`);
       }}
     >
       <Wrench className="size-4" /> Check setup status

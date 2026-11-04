@@ -153,10 +153,10 @@ function chatStatusMeta(readiness: EmployeeReadiness): { label: string; tone: Ch
 }
 
 const ERROR_TEXT: Record<string, string> = {
-  start_failed: "Couldn't reach your AI employee.",
+  start_failed: "Couldn't reach this AI profile.",
   connection_lost: "The connection dropped before the answer finished.",
   timeout: "This took too long and was stopped.",
-  run_failed: "Your AI employee couldn't finish this request.",
+  run_failed: "This AI profile couldn't finish the request.",
   interrupted: "The AI service restarted while answering.",
   stream_ended: "The response ended unexpectedly.",
 };
@@ -552,7 +552,7 @@ export function ChatWorkspace(props: Props) {
       <aside className={cn("hidden shrink-0 border-r border-white/10 lg:block", compactRail ? "w-20" : "w-[280px]")}>
         <ChatRail {...railProps} compact={compactRail} onToggleCompact={toggleCompactRail} />
       </aside>
-      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Switch AI specialist, open a conversation, or return to AI Employees." hideHeader className="!bg-[#0c101b]">
+      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Open a conversation or return to your workspace profiles." hideHeader className="!bg-[#0c101b]">
         <ChatRail {...railProps} idPrefix="conv-search-drawer" onNavigate={() => setRailOpen(false)} onClose={() => setRailOpen(false)} />
       </Sheet>
 
@@ -1059,7 +1059,7 @@ function Composer({
             className="block max-h-[200px] w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint disabled:cursor-not-allowed"
           />
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
-            <Tooltip content="Attachments aren't supported by AI employees yet">
+            <Tooltip content="Attachments aren't supported in this chat yet">
               <span>
                 <button type="button" disabled className="flex size-9 items-center justify-center rounded-xl text-faint" aria-label="Attach a file (not available)">
                   <Paperclip className="size-4" />
@@ -1072,7 +1072,7 @@ function Composer({
                   <ShieldCheck className="mr-1.5 size-3.5" />Restricted Chat check
                 </Button>
               )}
-              <span className="hidden text-[12px] text-faint sm:inline">{disabled?"Chat is unavailable until the employee is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
+              <span className="hidden text-[12px] text-faint sm:inline">{disabled?"Chat is unavailable until this profile is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
               {streaming ? (
                 <Button type="button" size="icon" variant="secondary" onClick={onStop} disabled={!canStop} aria-label="Stop generating" className="rounded-xl">
                   <Square className="size-3.5 fill-current" />
@@ -1086,7 +1086,7 @@ function Composer({
           </div>
         </div>
         <p className="mt-2 text-center text-[12px] text-faint">
-          {allowRestrictedInferenceMode ? "Restricted Chat check sends one fixed internal prompt to DeepSeek with zero tools and no business actions." : operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI employees can make mistakes. Customer-facing actions always need your approval."}
+          {allowRestrictedInferenceMode ? "Restricted Chat check sends one fixed internal prompt to DeepSeek with zero tools and no business actions." : operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI responses can make mistakes. Customer-facing actions always need your approval."}
         </p>
       </div>
     </div>

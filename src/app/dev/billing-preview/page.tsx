@@ -47,7 +47,7 @@ const overview = (kind: AgreementKind): MaintenanceOverview => ({
   plan: {
     id: "p", slug: "managed-maintenance", kind: "maintenance_plan", categoryId: "c", categoryCode: "managed_maintenance", categoryName: "Managed Maintenance", name: "Fully Managed Maintenance",
     tagline: "Optional hands-on upkeep for your iAcquire system: monitoring, troubleshooting, reasonable configuration adjustments and AI optimization.", description: "", problemSolved: "", accomplishes: [],
-    deliverables: ["Monitoring of your connected integrations and AI employee health, with alerts to our team", "Troubleshooting when an integration, workflow or AI employee stops working as configured"],
+    deliverables: ["Monitoring of your connected integrations and AI Growth Partner health, with alerts to our team", "Troubleshooting when an integration, workflow or AI Growth Partner stops working as configured"],
     exclusions: ["New automations, AI agents, websites, funnels or software: quoted separately, even with an active plan", "Third-party platform subscriptions and usage or API costs"],
     optionalUpgrades: [], platforms: [], useCases: [], tags: [], keywords: [], deliveryMinDays: null, deliveryMaxDays: null, availability: "available", featured: false, requiresQuote: false, visible: true, sortOrder: 900,
     monthlyRequestAllowance: 4, coreOverlapNote: null, sourceNote: null, price: { type: "monthly", minCents: 29900, maxCents: null, currency: "USD", note: "Optional monthly plan. Billing starts only after you accept the plan and your system is activated." },

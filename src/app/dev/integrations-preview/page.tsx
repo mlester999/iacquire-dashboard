@@ -18,7 +18,7 @@ const EMPTY_HERMES_SETUP: HermesSetupSummary = {
     { index: 0, label: "Gateway", status: "not_started", complete: false, detail: "Save the gateway label, environment and approved HTTPS URL." },
     { index: 1, label: "Secure Authentication", status: "blocked", complete: false, detail: "Save the gateway before adding Cloudflare Access credentials." },
     { index: 2, label: "Gateway Test", status: "blocked", complete: false, detail: "Run the live test after the endpoint and credentials are saved." },
-    { index: 3, label: "Agency Workforce", status: "blocked", complete: false, detail: "No agency employee profiles are mapped to a gateway yet." },
+    { index: 3, label: "Agency Workforce", status: "blocked", complete: false, detail: "No iAcquire internal profiles are mapped to a gateway yet." },
     { index: 4, label: "Client Provisioning", status: "blocked", complete: false, detail: "Blocked until a restricted provisioning service passes its isolation checks." },
     { index: 5, label: "Final Health", status: "not_started", complete: false, detail: "Not started: save gateway settings and run a live test first." },
   ],
