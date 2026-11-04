@@ -727,7 +727,7 @@ describe("the employees that do not run what the client approved, read from the 
     expect((await loadLaunchFacts(viewer))!.canSyncEmployees).toBe(false);
     const item = itemOf((await getLaunchReadiness(viewer))!, "employees.in_sync");
     expect(item.action).toBeUndefined();
-    expect(item.detail).toContain("Only an owner or admin can update them.");
+    expect(item.detail).toContain("Only an owner or admin can update these profiles.");
   }, 180_000);
 
   it("does not call an employee with no configuration at all behind (the employee's own line says that), and keeps two clients apart", async () => {

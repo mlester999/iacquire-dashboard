@@ -205,7 +205,7 @@ describe("waiving the fee and recording a refund", () => {
     render(<RefundDialog payment={payment({ refundedMicros: 99_000_000 })} onClose={onClose} timeZone="UTC" />);
     const dialog = within(screen.getByRole("dialog"));
     expect(dialog.getByText(/only records a refund you already made/)).toBeTruthy();
-    expect(dialog.getByText(/Anything already running keeps running/)).toBeTruthy();
+    expect(dialog.getByText(/Existing runtime profiles keep their current state/)).toBeTruthy();
     expect((dialog.getByLabelText("Amount refunded (US dollars)") as HTMLInputElement).value).toBe("1400.00");
     fireEvent.change(dialog.getByLabelText("Why was it refunded?"), { target: { value: "Client cancelled before the work began" } });
     fireEvent.click(dialog.getByRole("button", { name: "Record refund" }));

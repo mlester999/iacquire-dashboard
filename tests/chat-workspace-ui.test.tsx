@@ -327,7 +327,7 @@ describe("dedicated employee chat surface", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /Message Zeng/ }), { target: { value: "Please review this request" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("Approve the requested action", expect.objectContaining({ description: "Waiting for approval in the Approval Center.", action: expect.objectContaining({ label: "Review" }) })));
-    await waitFor(() => expect(screen.getByText(/Your AI employee couldn't finish this request/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/This AI profile couldn't finish the request/)).toBeInTheDocument());
   });
 
   it("labels server preflight as verification before the employee run starts", async () => {
@@ -428,7 +428,7 @@ describe("what kind of reply each message is", () => {
   it("hides the chip on a reply that failed, where the error is the truth", () => {
     renderChat({ initialConversation: saved([reply("f1", "", { v: 1, class: "model_response" }, { status: "failed", run_id: "r1", error_code: "run_failed" })]) });
     expect(chips()).toEqual([]);
-    expect(screen.getByText(/Your AI employee couldn't finish this request/)).toBeInTheDocument();
+    expect(screen.getByText(/This AI profile couldn't finish the request/)).toBeInTheDocument();
   });
 
   it("shows the chip from the ready event while the reply is still streaming, and keeps it when the reply finishes", async () => {

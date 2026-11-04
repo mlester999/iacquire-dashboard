@@ -13,6 +13,7 @@
 - Product language and entry points were updated across onboarding, calendar, leads, chat, Work Board, demo, purchase pages, CRM workflow summaries, and legacy-profile navigation. The purchase experience presents one Growth Partner with six capabilities.
 - A final terminology pass removed stale Lead Hunter-only guidance from shared chat safety copy, removed role-specific copy from the AQi research and calendar tips, and labeled retained legacy profiles as pre-cutover records requiring separate runtime checks and owner approval.
 - Growth Partner onboarding now uses the unified questionnaire scope and Partner-specific readiness facts. Its control center links to existing workspace controls, filtered by the signed-in member's permissions.
+- Disabled acquisition source adapters now cover one bounded OpenStreetMap Overpass request and a small, exact-domain company website read. They preserve OSM object IDs, attribution/license and source timestamps; enforce explicit activation/allowlists, URL redirect checks and request caps; and return per-run request/provider-fee usage. The website reader also fails closed when robots.txt cannot be checked and paces requests by host. Neither adapter is connected to the research worker or a persistent usage ledger.
 
 ## Local verification
 
@@ -30,7 +31,7 @@
 
 ## Acceptance still requiring provider or environment evidence
 
-- Acquisition research has evidence validation, qualification, duplicate checks, and CRM handoff code. The owner selected OpenStreetMap business data and public company websites for the first isolated acceptance test. The research runtime still has no source-specific adapter or cost meter; no endpoint, region, non-production tenant or company-site allowlist is configured, and no external request has been made. The pilot remains fixture-only until that source scope is identified. No paid provider or outreach is active.
+- Acquisition research has evidence validation, qualification, duplicate checks, and CRM handoff code. The owner selected OpenStreetMap business data and public company websites for the first isolated acceptance test. Source modules now have bounded request logic and per-run usage reporting, but are not wired into the research worker. No endpoint, region, non-production tenant or company-site allowlist is configured, and no external request has been made. The pilot remains fixture-only until that source scope is identified. No paid provider or outreach is active.
 - No real Hermes runtime, external CRM/calendar provider, customer-approved schedule cutover, or source-to-booking conversion was exercised. The local database and provider transports in the test suites are synthetic.
 - The migration strategy covers staged inventory, tenant-specific provisioning, schedule reconciliation, rollback, and retirement approval. No staging or production tenant was migrated, no profile was revoked, and no production database or deployment was changed.
 

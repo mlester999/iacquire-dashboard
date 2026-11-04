@@ -233,9 +233,9 @@ describe("apply to employees", () => {
 describe("aiPreferencesApplyMessage", () => {
   it("says only what is true", () => {
     expect(aiPreferencesApplyMessage({ updated: 0, held: 0, keptOwn: 0, blocked: 0 })).toBe("");
-    expect(aiPreferencesApplyMessage({ updated: 1, held: 0, keptOwn: 0, blocked: 0 })).toBe("Applied to 1 employee.");
+    expect(aiPreferencesApplyMessage({ updated: 1, held: 0, keptOwn: 0, blocked: 0 })).toBe("Applied to 1 retained profile.");
     expect(aiPreferencesApplyMessage({ updated: 4, held: 2, keptOwn: 1, blocked: 1 })).toBe(
-      "Applied to 4 employees. 2 updates are waiting for iAcquire's review. 1 employee kept its own wording for some fields. 1 employee could not be updated.",
+      "Applied to 4 retained profiles. 2 updates are waiting for iAcquire's review. 1 retained profile kept its own wording for some fields. 1 retained profile could not be updated.",
     );
   });
 });

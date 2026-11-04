@@ -505,7 +505,7 @@ describe("an employee that fell behind what the client approved", () => {
     const behind = await readiness(c);
     expect(behind.state).not.toBe("ready_to_launch");
     expect(behind.percent).toBeLessThan(100);
-    expect(itemOf(behind, "employees.in_sync")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { label: "Update my employees", intent: "sync_employees" } });
+    expect(itemOf(behind, "employees.in_sync")).toMatchObject({ state: "action_required", required: true, owner: "you", action: { label: "Update retained profiles", intent: "sync_employees" } });
     // The line names the first three and counts the rest.
     const named = facts.employeesBehind!.slice(0, 3).map((b) => AGENT_BY_KEY[b.role].shortName);
     for (const name of named) expect(itemOf(behind, "employees.in_sync").detail).toContain(name);

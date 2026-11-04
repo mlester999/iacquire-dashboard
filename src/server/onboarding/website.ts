@@ -119,6 +119,13 @@ export interface FetchedPage {
 }
 export type PageFetcher = (url: URL) => Promise<FetchedPage>;
 
+export interface PublicPageFetchPolicy {
+  /** Checked before the first request and before following every redirect. */
+  allowUrl?: (url: URL) => boolean;
+  /** Called immediately before every network request, including redirect hops. */
+  beforeRequest?: (url: URL) => Promise<void> | void;
+}
+
 function requestOnce(url: URL): Promise<FetchedPage & { location?: string }> {
   return new Promise((resolve, reject) => {
     const lib = url.protocol === "https:" ? https : http;
@@ -157,10 +164,14 @@ function requestOnce(url: URL): Promise<FetchedPage & { location?: string }> {
 }
 
 /** Fetches one public page, following a few redirects and re-validating each destination. */
-export const fetchPublicPage: PageFetcher = async (start) => {
+export async function fetchPublicPageWithPolicy(start: URL, policy: PublicPageFetchPolicy = {}): Promise<FetchedPage> {
   let url = start;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     parsePublicUrl(url.toString());
+    if (policy.allowUrl && !policy.allowUrl(url)) {
+      throw new AppError("forbidden", "That website redirected outside the approved company domain, so we stopped reading it.");
+    }
+    await policy.beforeRequest?.(url);
     let res: Awaited<ReturnType<typeof requestOnce>>;
     try {
       res = await requestOnce(url);
@@ -174,7 +185,9 @@ export const fetchPublicPage: PageFetcher = async (start) => {
     return res;
   }
   throw new AppError("upstream_error", "That website redirected too many times.");
-};
+}
+
+export const fetchPublicPage: PageFetcher = (start) => fetchPublicPageWithPolicy(start);
 
 // ---------------------------------------------------------------------------
 // robots.txt
@@ -259,10 +272,22 @@ export interface WebsiteAnalysis {
 
 const INTERESTING = /\b(about|services?|faq|faqs|contact|pricing|treatments?|areas?|locations?)\b/i;
 
-export async function analyzeWebsite(rawUrl: string, fetcher: PageFetcher = fetchPublicPage): Promise<WebsiteAnalysis> {
+export async function analyzeWebsite(
+  rawUrl: string,
+  fetcher: PageFetcher = fetchPublicPage,
+  options: { robotsFailureMode?: "allow_unknown" | "fail_closed" } = {},
+): Promise<WebsiteAnalysis> {
   const start = parsePublicUrl(rawUrl);
   const origin = start.origin;
-  const robots = await fetcher(new URL("/robots.txt", origin)).catch(() => null);
+  const robots = await fetcher(new URL("/robots.txt", origin)).catch(() => {
+    if (options.robotsFailureMode === "fail_closed") {
+      throw new AppError("upstream_error", "We couldn't check this website's robots.txt, so we stopped before reading its pages.");
+    }
+    return null;
+  });
+  if (options.robotsFailureMode === "fail_closed" && robots && robots.status !== 200 && robots.status !== 404) {
+    throw new AppError("upstream_error", "This website did not allow a reliable robots.txt check, so we stopped before reading its pages.");
+  }
   const robotsBody = robots && robots.status === 200 ? robots.body : "";
   const allowed = (u: URL) => robotsAllows(robotsBody, u.pathname || "/");
   if (!allowed(start)) throw new AppError("forbidden", "That website asks automated readers to stay away, so we haven't read it. You can type your answers instead.");
