@@ -7,6 +7,7 @@
 import type { EditorOptions } from "@/components/crm/workflows/types";
 import { isReviewTemplate } from "@/components/crm/reviews/model";
 import type { MessageChannel, TriggerType, WorkflowDefinition, WorkflowStep } from "@/lib/crm/workflow/spec";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 
 export type StudioInputKind = "tag" | "user" | "pipeline" | "stage" | "message_template" | "review_template" | "calendar" | "form" | "slack" | "http" | "employee";
 
@@ -32,7 +33,7 @@ export type StudioTemplateCategory = (typeof STUDIO_TEMPLATE_CATEGORIES)[number]
 
 /** What a template does outside iAcquire, in the words the gallery shows. */
 export type StudioReach = "messages" | "slack" | "http" | "employee";
-export const REACH_LABELS: Record<StudioReach, string> = { messages: "Sends approved messages to customers", slack: "Posts to Slack", http: "Calls another system", employee: "Asks an AI employee" };
+export const REACH_LABELS: Record<StudioReach, string> = { messages: "Sends approved messages to customers", slack: "Posts to Slack", http: "Calls another system", employee: "Starts an internal AI task" };
 
 export interface StudioTemplate {
   key: string;
@@ -62,7 +63,7 @@ function chain(steps: Draft[]): WorkflowStep[] {
   return steps.map((s, i) => (s.kind === "branch" || s.kind === "end" ? (s as WorkflowStep) : ({ ...s, next: steps[i + 1]?.key ?? null } as WorkflowStep)));
 }
 
-const sendStep = (key: string, name: string, m: MessageChoice, sendAs: "sales_assistant" | "appointment_setter" = "sales_assistant"): Draft => ({
+const sendStep = (key: string, name: string, m: MessageChoice, sendAs: WorkforceRoleKey = AI_GROWTH_PARTNER_ROLE_KEY): Draft => ({
   key, kind: "send_message", name, config: { templateId: m.templateId, contentHash: m.contentHash, channel: m.channel, sendAs, businessHoursOnly: true },
 });
 const slackStep = (key: string, name: string, connectionId: string | null, text: string): Draft => ({ key, kind: "slack_message", name, config: { connectionId: connectionId ?? "", text } });
@@ -177,17 +178,17 @@ export const STUDIO_TEMPLATES: StudioTemplate[] = [
   },
   {
     key: "ai-lead-qualification",
-    name: "AI employee reviews new leads",
+    name: "AI Growth Partner reviews new leads",
     category: "Leads",
-    description: "Ask one of your AI employees to review each new lead and leave a note, then give the owner a task to act on it.",
+    description: "Ask your AI Growth Partner to review each new lead and leave a note, then give the owner a task to act on it.",
     trigger: "contact.created",
     reach: ["employee"],
-    inputs: [{ key: "employee", label: "AI employee", help: "Works within its own mode and permissions; it can't do more than it already can.", kind: "employee", required: true }],
-    before: "Check the employee is ready to chat, and read its first few notes before relying on them.",
+    inputs: [{ key: "employee", label: "AI Growth Partner", help: "Works within its approved mode and permissions; it cannot do more than it is authorized to do.", kind: "employee", required: true }],
+    before: "Check that your AI Growth Partner is ready, then review its first few notes before relying on them.",
     build: (i) => ({
       trigger: { type: "contact.created", reentry: "once" },
       steps: chain([
-        { key: "review", kind: "ai_task", name: "AI review", config: { roleKey: (str(i.employee) ?? "crm_manager") as never, instruction: "Review this new lead's details, update the lead status if it is clear, and add an internal note with the recommended next step." } },
+        { key: "review", kind: "ai_task", name: "AI review", config: { roleKey: (str(i.employee) ?? "growth_partner") as never, instruction: "Review this new lead's details, update the lead status if it is clear, and add an internal note with the recommended next step." } },
         taskStep("act", "Act on the review", "Read the AI review of {{contact.full_name}} and act on it", { dueIn: { amount: 4, unit: "hours" } }),
       ]),
     }),
@@ -210,9 +211,9 @@ export const STUDIO_TEMPLATES: StudioTemplate[] = [
     build: (i) => ({
       trigger: { type: "appointment.booked", ...(str(i.calendar) ? { filters: { calendarIds: [str(i.calendar)!] } } : {}) },
       steps: chain([
-        sendStep("confirm", "Send confirmation", messageOf(i.confirmation) ?? NO_MESSAGE, "appointment_setter"),
+        sendStep("confirm", "Send confirmation", messageOf(i.confirmation) ?? NO_MESSAGE),
         { key: "wait", kind: "wait", name: "Wait until 24 hours before", config: { mode: "until_date", source: "appointment_start", offset: { amount: 24, unit: "hours", direction: "before" }, ifMissing: "end" } },
-        sendStep("remind", "Send reminder", messageOf(i.reminder) ?? NO_MESSAGE, "appointment_setter"),
+        sendStep("remind", "Send reminder", messageOf(i.reminder) ?? NO_MESSAGE),
       ]),
     }),
   },
@@ -228,7 +229,7 @@ export const STUDIO_TEMPLATES: StudioTemplate[] = [
     build: (i) => ({
       trigger: { type: "appointment.no_show" },
       steps: [
-        { ...sendStep("offer", "Offer to rebook", messageOf(i.message) ?? NO_MESSAGE, "appointment_setter"), next: "wait" } as WorkflowStep,
+        { ...sendStep("offer", "Offer to rebook", messageOf(i.message) ?? NO_MESSAGE), next: "wait" } as WorkflowStep,
         { key: "wait", kind: "wait", name: "Wait 3 days", config: { mode: "duration", amount: 3, unit: "days" }, next: "quiet" } as WorkflowStep,
         noReplyBranch("quiet", "No reply yet?", "call"),
         { ...taskStep("call", "Call task", "Call {{contact.full_name}}: missed appointment, no reply", { dueIn: { amount: 4, unit: "hours" } }), next: null } as WorkflowStep,
@@ -541,7 +542,7 @@ export function templateReadiness(template: Pick<StudioTemplate, "inputs" | "nee
       case "review_template": if (!o.templates.some(isReviewTemplate)) missing.push("an approved review request template"); break;
       case "calendar": if (!o.calendars.length) missing.push("a calendar"); break;
       case "form": if (!(o.forms ?? []).length) missing.push("a form"); break;
-      case "employee": if (!o.employees.length) missing.push("an AI employee in your workspace"); break;
+      case "employee": if (!o.employees.length) missing.push("your AI Growth Partner"); break;
       case "slack": {
         const list = (o.connections ?? []).filter((c) => c.kind === "slack_webhook");
         if (!list.length) missing.push("a Slack connection");

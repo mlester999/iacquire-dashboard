@@ -55,8 +55,7 @@ import { CTA_COPY, HOLD_COPY, PRIVACY_EMAIL, ROOM_COPY } from "@/lib/demo/outcom
 import { FIELD_COPY, LINK_SENT_COPY, PUBLIC_COPY } from "@/lib/demo/copy";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
 import { demoNotice } from "@/lib/demo/notice";
-import { AGENT_ROLES } from "@/lib/agents";
-import { JOURNEY, VIEWS, VIEW_IDS } from "@/lib/demo/showroom/content";
+import { DEMO_CAPABILITY_AREAS, JOURNEY, VIEWS, VIEW_IDS } from "@/lib/demo/showroom/content";
 import { addNote, assignOwner, blockProspect, eraseProspect, extendDemo } from "@/server/demo/admin";
 import { recordCta, registerProspect } from "@/server/demo/public";
 import { count, demoEnv, formInput, hashOf, ipFor, linkTokenFor, messagePace, openDemo, rows, say, startDemo, team, type Team } from "./support/demo";
@@ -122,8 +121,8 @@ describe("/demo, where a prospect asks", () => {
     const t = text(markup);
     expect(t).not.toMatch(BAD);
     expect((markup.match(/<h1\b/g) ?? []).length).toBe(1);
-    expect(t).toContain("See your AI team at work");
-    expect(t).toContain("Up to 10 questions to ask the AI team");
+    expect(t).toContain("See the AI Growth Partner at work");
+    expect(t).toContain("Up to 10 questions");
     expect(t).toContain("stays open for 24 hours");
     // The form, native and scriptless: a post to the demo API.
     expect(markup).toMatch(/<form[^>]*method="post"[^>]*action="\/api\/public\/demo\/start"|<form[^>]*action="\/api\/public\/demo\/start"[^>]*method="post"/);
@@ -154,7 +153,7 @@ describe("/demo, where a prospect asks", () => {
     expect(markup).toMatch(/<label[^>]*for="return-email"/);
   });
 
-  it("shows the pitch around the form: the form first on a phone, an invented sample labelled as one, the six roles by their role names, what can be explored, and a way to the public page", async () => {
+  it("shows the pitch around the form: the form first on a phone, an invented sample, six capability areas and the public page", async () => {
     state.model = { ready: true };
     // The agency's own Operations Manager is called Zeng: a name belongs to one company, so the public page shows role labels only.
     await rows("update agent_instances set display_name = 'Zeng' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
@@ -164,19 +163,19 @@ describe("/demo, where a prospect asks", () => {
       expect(markup).not.toContain("Zeng");
       expect(t).toContain("Free guided demo");
       // The form comes straight after the headline in the page's order, and the benefits after it, so a phone shows the form first.
-      expect(t.indexOf("Ask for your demo")).toBeGreaterThan(t.indexOf("See your AI team at work"));
-      expect(t.indexOf("Walk through each role")).toBeGreaterThan(t.indexOf("Ask for your demo"));
+      expect(t.indexOf("Ask for your demo")).toBeGreaterThan(t.indexOf("See the AI Growth Partner at work"));
+      expect(t.indexOf("Explore six capability areas")).toBeGreaterThan(t.indexOf("Ask for your demo"));
       // The three steps, the first one current.
       expect(markup).toMatch(/aria-label="How you get your demo"/);
       expect((markup.match(/aria-current="step"/g) ?? []).length).toBe(1);
       for (const step of ["Details", "Confirm email", "Demo opens"]) expect(t).toContain(step);
-      // The sample hand-off says it is invented, and that a person approves what reaches a customer.
+      // The sample workflow is illustrative; customer-facing actions still require approval.
       expect(t).toContain("Sample preview");
-      expect(t).toContain("An invented example. Nothing here is real");
-      expect(t).toContain("Waiting for your approval");
-      // Who the visitor will meet, by role name (never a company's chosen name), and what else is inside.
-      for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
-      expect(t).toContain("Meet the six AI Employees");
+      expect(t).toContain("Illustrative only. No prospect is researched or saved here");
+      expect(t).toContain("a customer-facing action follows the required approval");
+      // One visitor-facing identity with six integrated capability areas.
+      expect(t).toContain("Meet your AI Growth Partner");
+      for (const area of DEMO_CAPABILITY_AREAS) expect(t).toContain(area.title);
       for (const v of ["CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing"]) expect(t, v).toContain(v);
       expect(markup).toMatch(/href="\/demo\/why"/);
       // The theme control is the portal's own.
@@ -193,7 +192,7 @@ describe("/demo, where a prospect asks", () => {
     try {
       const full = await demoPage();
       expect(text(full)).toContain(PUBLIC_COPY.daily_cap);
-      expect(text(full)).toContain("Meet the six AI Employees");
+      expect(text(full)).toContain("Meet your AI Growth Partner");
       expect(full).not.toContain('name="consent"');
     } finally {
       await openDemo(people.superAdmin, { dailyStartCap: 10_000 });
@@ -201,7 +200,7 @@ describe("/demo, where a prospect asks", () => {
     demoEnv({ DEMO_ENABLED: "false" });
     const closed = await demoPage();
     expect(text(closed)).toContain("The demo is not open");
-    expect(text(closed)).not.toContain("Meet the six AI Employees");
+    expect(text(closed)).not.toContain("Meet your AI Growth Partner");
     expect(text(closed)).not.toContain("Free guided demo");
     expect((closed.match(/<h1\b/g) ?? []).length).toBe(1);
   });
@@ -217,7 +216,7 @@ describe("/demo, where a prospect asks", () => {
     state.model = { ready: false };
     const t = text(await demoPage());
     expect(t).toContain("The AI chat is not open right now, so the guided tour is what you will see.");
-    expect(t).not.toContain("questions to ask the AI team");
+    expect(t).not.toContain("questions to ask the AI Growth Partner");
   });
 
   it("says the AI chat is not open when the Super Admin has it switched off, even if a model is connected", async () => {
@@ -388,7 +387,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(await redirectOf(() => roomPage())).toBe("REDIRECT:/demo?r=no_session");
   });
 
-  it("opens on a headline about the prospect's own business, with the window, the messages, the six employees, the four steps and the two requests, and AQi when a model is connected", async () => {
+  it("opens on a headline about the prospect's business, one partner, six capabilities, four steps and two requests, with AQi as demo guide", async () => {
     state.model = { ready: true };
     const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals", industry: "home_services" });
     state.cookie = s.sessionToken;
@@ -397,15 +396,15 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).not.toMatch(BAD);
     expect((markup.match(/<h1\b/g) ?? []).length).toBe(1);
     expect(t).toContain("Welcome, Rosalind");
-    expect(t).toMatch(/Meet the AI team that could help run Roomy Rentals ?\./);
+    expect(t).toMatch(/Meet the AI Growth Partner that could help grow Roomy Rentals ?\./);
     expect(t).toContain(ROOM_COPY.sampleBanner);
     expect(t).toMatch(/Your demo is open until .* UTC ?\./);
     expect(t).toContain("You have 10 of 10 messages left.");
-    expect(t).toContain("Explore your AI team");
+    expect(t).toContain("Explore the Growth Partner");
     expect(t).toContain("Explore freely");
-    // The six employees, the four steps of the tour, and every area a visitor can open.
-    for (const role of AGENT_ROLES) expect(t, role.shortName).toContain(role.shortName);
-    expect((markup.match(/aria-label="Open (?!AQi)[A-Za-z ]+"/g) ?? []).length).toBe(6);
+    // The six capabilities, the four steps of the tour, and every area a visitor can open.
+    for (const area of DEMO_CAPABILITY_AREAS) expect(t).toContain(area.title);
+    expect((markup.match(/aria-label="Open [^"]+"/g) ?? []).filter((label) => !label.startsWith('aria-label="Open AQi'))).toHaveLength(6);
     for (const j of JOURNEY) expect(t, j.short).toContain(j.short);
     for (const v of VIEWS) expect(t, v.label).toContain(v.label);
     // AQi is the public demo guide.
@@ -413,7 +412,7 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain("Demo guide");
     expect(t).toContain(ROOM_COPY.chatIntro);
     expect(markup).toMatch(/<label[^>]*for="demo-message"/);
-    expect(markup).toMatch(/<label[^>]*for="demo-employee"/);
+    expect(markup).not.toMatch(/name="employeeRole"|id="demo-employee"/);
     expect(markup).toContain('role="log"');
     expect(markup).toMatch(/aria-label="AQi conversation"/);
     // The two requests say what they do before they are pressed. A scheduling page is set in this room, so the consultation button may say "Book"; without one it says "Request" (below).
@@ -452,7 +451,7 @@ describe("/demo/room, the prospect's own demo", () => {
     const s = await startDemo({ name: "Rosalind Roomy", business: "Roomy Rentals" });
     state.cookie = s.sessionToken;
     const id = (await rows<{ id: string }>("select id from demo_prospects where email_normalized = $1", [s.email]))[0].id;
-    // The agency's own Operations Manager is called Zeng. That is one company's choice: the public demo shows role labels and never reads a name from any workforce.
+    // The agency's own Operations Manager is called Zeng. The public demo describes the Growth Partner and never reads a name from any workforce.
     await rows("update agent_instances set display_name = 'Zeng' where role_key = 'operations_manager' and org_id in (select id from organizations where kind = 'agency')");
     try {
       for (const view of VIEW_IDS) {
@@ -469,8 +468,8 @@ describe("/demo/room, the prospect's own demo", () => {
       expect(text(markup), view).not.toMatch(BAD);
       for (const secret of [s.email, id, s.sessionToken, s.token, s.ip]) expect(markup, `${view} ${secret.slice(0, 8)}`).not.toContain(secret);
     }
-    expect(text(await roomPage({ view: "workforce" }))).toContain("Six AI Employees. One job each.");
-    expect(text(await roomPage({ view: "nonsense" }))).toMatch(/Meet the AI team that could help run Roomy Rentals ?\./);
+    expect(text(await roomPage({ view: "workforce" }))).toContain("One partner. Six connected capabilities.");
+    expect(text(await roomPage({ view: "nonsense" }))).toMatch(/Meet the AI Growth Partner that could help grow Roomy Rentals ?\./);
     expect(text(await roomPage({ view: "<script>" }))).not.toContain("<script>");
   });
 
@@ -533,8 +532,8 @@ describe("/demo/room, the prospect's own demo", () => {
     expect(t).toContain(REFUSAL_COPY.ai_off);
     expect(markup).not.toContain('name="clientMessageId"');
     expect(markup).not.toContain("demo-message");
-    expect((markup.match(/aria-label="Open (?!AQi)[A-Za-z ]+"/g) ?? []).length).toBe(6);
-    expect(t).toContain("Explore your AI team");
+    expect((markup.match(/aria-label="Open [^"]+"/g) ?? []).filter((label) => !label.startsWith('aria-label="Open AQi'))).toHaveLength(6);
+    expect(t).toContain("Explore the Growth Partner");
     expect(t).not.toContain("messages left");
     expect(actionsOf(markup)).not.toContain("/api/public/demo/message");
     // Without the chat, the page still offers a person.

@@ -80,6 +80,8 @@ describe("an employee only offers what the chat router really starts", () => {
     expect(text).toContain(CAPABILITY_SECTION_HEADING);
     expect(text).not.toMatch(/prepared as a proposal|Offer and prepare only/);
     expect(text).toMatch(/cannot change records, book or move appointments, create tasks or approvals, or contact anyone/);
+    expect(text).toContain("Public web search is only for authorized prospect-research jobs");
+    expect(text).not.toContain("Lead Hunter's approved research");
     expect(text).toContain("Abilities this workspace has allowed for you: Read contacts.");
     // This text is in every run's instructions, and the restricted inference worker budgets the whole prompt (instructions, SOUL and framing) at 24,576 bytes, so it must not grow past what it replaced.
     const replacedBytes = Buffer.byteLength([

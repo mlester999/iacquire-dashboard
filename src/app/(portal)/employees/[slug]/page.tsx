@@ -31,6 +31,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   if (ctx.org.kind !== "client" && !internalEmployee) redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
+  if (ctx.org.kind === "client" && !agent.enabled) redirect("/growth-partner");
   const canConfigure = ctx.can("agents.configure");
   const canViewKnowledge = ctx.can("knowledge.view");
   const requestedVersion = typeof version === "string" && /^[0-9a-f-]{36}$/i.test(version) ? version : null;

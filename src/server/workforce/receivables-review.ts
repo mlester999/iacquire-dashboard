@@ -225,7 +225,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
 export async function runReceivablesReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "receivables_review",
-    allowedRoles: ["performance_analyst"],
+    allowedRoles: ["performance_analyst", "growth_partner"],
     scanningMessage: "Reading issued invoices, recorded payments and refunds, payment provider notices and the payment account's connection…",
     analyzingMessage: "Working out which invoices are overdue and which payments need a person…",
     checks: [notSwitchedOn, connectionNeedsAttention, deliveriesNotApplied, paymentsNeedReview, overdueInvoices, failedPayments, disputedPayments, overpaidInvoices, approvalsWaiting, remindersOnHold, remindersNotSent],

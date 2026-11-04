@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   cleanQualificationAnswers, embedSnippet, hostFromOrigin, installState, isClientMessageId, isHostAllowed, isSessionToken, isWidgetKey, normalizeAllowedHost, normalizeAllowedHosts,
-  qualificationComplete, readLandingVisit, readVisitorDetails, validateQualificationQuestions, visitorText,
+  qualificationComplete, readLandingVisit, readVisitorDetails, validateQualificationQuestions, visitorText, WIDGET_AI_ROLES,
 } from "@/lib/webchat/rules";
 
 describe("which sites may run the widget", () => {
+  it("keeps legacy saved profile values available for compatibility", () => {
+    expect(WIDGET_AI_ROLES).toEqual(["sales_assistant", "appointment_setter", "growth_partner"]);
+  });
+
   it("reduces what an owner typed to a lower-case host", () => {
     expect(normalizeAllowedHost("https://WWW.Example.com/contact?x=1")).toEqual({ ok: true, host: "www.example.com" });
     expect(normalizeAllowedHost("example.com")).toEqual({ ok: true, host: "example.com" });

@@ -534,9 +534,9 @@ const CONVERSATION_ACTION_HELP: Record<ConversationAction, string> = {
   resolve: "Left open if the customer wrote after this workflow started, or if a person was asked to take the conversation over.",
   reopen: "Only changes a conversation that is resolved.",
   set_priority: "Urgent also starts workflows that listen for urgent conversations.",
-  assign_person: "They are told. Assigning doesn't change who replies: the AI employee keeps handling the conversation until a person takes it over.",
+  assign_person: "They are told. Assigning doesn't change who replies: the AI profile keeps handling the conversation until a person takes it over.",
   assign_contact_owner: "Uses the contact's owner when their role can reply to customers; otherwise this step is skipped.",
-  pause_ai: "The AI employee stays on the conversation but stops replying. Only a person can turn it back on.",
+  pause_ai: "The AI profile stays on the conversation but stops replying. Only a person can turn it back on.",
 };
 
 function ConversationActionFields({ step, options, errorAt, replace }: KindProps) {
@@ -673,7 +673,7 @@ function SendMessageFields({ step, options, errorAt, config, replace, base }: Ki
           </p>
         </div>
       )}
-      <Field label="Send as" htmlFor="wf-msg-as" error={errorAt("config.sendAs")} hint="The AI employee the message goes out under. If it's paused, or set to ask first without this workflow's approval, nothing is sent.">
+      <Field label="Send as" htmlFor="wf-msg-as" error={errorAt("config.sendAs")} hint="The AI identity the message goes out under. If it's paused, or set to ask first without this workflow's approval, nothing is sent.">
         <Select id="wf-msg-as" value={s.sendAs} aria-describedby={sendAs && sendAs.state !== "ok" ? "wf-msg-as-state" : undefined} onChange={(e) => config({ sendAs: e.target.value })}>
           {employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{e.name}{!e.enabled ? " (off)" : e.mode === "paused" ? " (paused)" : !e.ready ? " (not ready)" : ""}</option>)}
           {!employees.some((e) => e.roleKey === s.sendAs) && <option value={s.sendAs}>{s.sendAs.replace(/_/g, " ")} (not in this workspace)</option>}
@@ -866,7 +866,7 @@ function AiTaskFields({ step, options, errorAt, config }: KindProps) {
   const state = chosen ? aiTaskState(chosen) : null;
   return (
     <>
-      <Field label="AI employee" htmlFor="wf-ai-role" error={errorAt("config.roleKey")}>
+      <Field label="AI profile" htmlFor="wf-ai-role" error={errorAt("config.roleKey")}>
         <Select id="wf-ai-role" value={a.roleKey} aria-describedby={state ? "wf-ai-role-state" : undefined} onChange={(e) => config({ roleKey: e.target.value })}>
           {options.employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{e.name}</option>)}
           {!chosen && <option value={a.roleKey}>{a.roleKey.replace(/_/g, " ")} (not in this workspace)</option>}

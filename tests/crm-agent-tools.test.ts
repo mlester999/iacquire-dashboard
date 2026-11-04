@@ -29,6 +29,7 @@ import { AiToolsScreen } from "@/components/crm/agent-tools/ai-tools-screen";
 import type { CrmScope } from "@/server/crm/page";
 import { sha256 } from "@/server/security/crypto";
 import { createContact } from "@/server/crm/contacts";
+import { createOpportunity } from "@/server/crm/opportunities";
 import { createTag } from "@/server/crm/tags";
 import { listPipelines } from "@/server/crm/pipelines";
 import { agentActor } from "@/server/crm/actor";
@@ -40,6 +41,7 @@ import { callAgentTool, describeAgentTools, inputHash, stableStringify } from "@
 import { handleAgentToolHttp } from "@/server/crm/agent-tools/http";
 import { requestAgentTask } from "@/server/crm/agent-tools/tasks";
 import { getAgentToolsOverview } from "@/server/crm/agent-tools/overview";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { agentId as roleAgent, createOrg, ctxFor } from "./support/fixtures";
 import { crmOrg, type CrmOrg } from "./support/crm";
 
@@ -77,6 +79,7 @@ const count = async (sql: string, params: unknown[]) => Number((await one<{ n: s
 beforeAll(async () => {
   a = await crmOrg({ name: "Agent Tools Co" });
   b = await crmOrg({ name: "Other Tenant Co" });
+  await withSystem((db) => ensureGrowthPartnerRuntime(a.org.id, db));
 });
 
 describe("catalog", () => {
@@ -364,6 +367,26 @@ describe("high-impact changes always wait for a person", () => {
     const closed = await decideApproval(ctxFor(a.people.owner, a.org, "owner"), closedApproval, "approve");
     expect(closed.outcome).toMatchObject({ status: "succeeded" });
     expect(await one("select status, stage_ref from crm_opportunities where id = $1", [dealId])).toEqual({ status: "won", stage_ref: won.id });
+  });
+
+  it("lets Growth Partner propose a pipeline move through the shared CRM approval path", async () => {
+    const agent = await ready(a, "growth_partner", "approval_required");
+    const token = await tokenFor(a, agent);
+    const owner = a.actor("owner");
+    const contact = await createContact(owner, { firstName: "Partner", lastName: "Opportunity" });
+    const pipeline = (await listPipelines(owner, { ensureDefault: true }))[0];
+    const from = pipeline.stages.find((stage) => stage.kind === "open")!;
+    const to = pipeline.stages.filter((stage) => stage.kind === "open")[1]!;
+    const deal = await createOpportunity(owner, { name: "Growth Partner stage test", contactId: contact.id, pipelineId: pipeline.id, stageId: from.id });
+
+    const proposed = await call(token.token, "move_opportunity_stage", { opportunityId: deal.id, stageId: to.id, reason: "The prospect confirmed the next step." });
+    expect(proposed).toMatchObject({ ok: true, status: "pending_approval" });
+    const approvalId = proposed.ok ? proposed.approvalId as string : "";
+    expect(await one("select status, stage_ref from crm_opportunities where id = $1", [deal.id])).toEqual({ status: "open", stage_ref: from.id });
+
+    expect((await decideApproval(ctxFor(a.people.owner, a.org, "owner"), approvalId, "approve")).outcome).toMatchObject({ status: "succeeded" });
+    expect(await one("select status, stage_ref from crm_opportunities where id = $1", [deal.id])).toEqual({ status: "open", stage_ref: to.id });
+    expect(await count("select 1 from audit_logs where approval_id = $1 and action = 'crm.agent_tool.move_opportunity_stage' and metadata->>'approved' = 'true'", [approvalId])).toBe(1);
   });
 });
 
@@ -735,7 +758,7 @@ describe("settings screen and its emergency control", () => {
     await tokenFor(a, agent);
     const overview = await getAgentToolsOverview(a.actor("owner"));
     const html = renderToStaticMarkup(React.createElement(AiToolsScreen, { scope: scope(), overview }));
-    expect(html).toContain("AI Employee Tools");
+      expect(html).toContain("AI Tools");
     expect(html).toContain("Not in use yet");
     expect(html).toContain("Sales Assistant");
     expect(html).toContain("Always asks");

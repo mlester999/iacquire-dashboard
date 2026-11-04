@@ -1,0 +1,26 @@
+import { redirect } from "next/navigation";
+import { PermanentGrowthPartnerConversation } from "@/components/growth-partner/permanent-conversation";
+import { getGrowthPartnerConversationPage } from "@/server/ai-growth-partner/service";
+import { requireOrgContext } from "@/server/tenancy/context";
+
+export const metadata = { title: "Permanent Conversation" };
+
+export default async function GrowthPartnerConversationPage() {
+  const ctx = await requireOrgContext();
+  if (ctx.org.kind !== "client") {
+    redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
+  }
+
+  const conversation = await getGrowthPartnerConversationPage(ctx);
+  const initial = conversation ? {
+    conversation: {
+      ...conversation.conversation,
+      lastMessageAt: conversation.conversation.lastMessageAt?.toISOString() ?? null,
+      createdAt: conversation.conversation.createdAt.toISOString(),
+    },
+    messages: conversation.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
+    hasMore: conversation.hasMore,
+  } : null;
+
+  return <PermanentGrowthPartnerConversation initial={initial} timeZone={ctx.org.timezone} nowIso={new Date().toISOString()} />;
+}

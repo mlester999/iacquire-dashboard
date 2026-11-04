@@ -175,4 +175,52 @@ describe("Lead Hunter business context", () => {
     }));
     expect(unsupportedOnly.leads[0].qualification_summary).toBeNull();
   });
+
+  it("stores each signal against an exact cited evidence URL and clears unsupported confidence", () => {
+    const parsed = parseResearchOutput(JSON.stringify({
+      leads: [{
+        business_name: "Evidence First Clinic",
+        website: "https://clinic.example",
+        evidence: [{ url: "https://clinic.example/careers", summary: "The clinic is hiring a scheduling coordinator." }],
+        buying_signals: [
+          { signal: "Hiring scheduling staff", evidence_url: "https://clinic.example/careers", confidence: 0.78, client_fit: "Scheduling support is relevant to the stated service." },
+          { signal: "Expanding into a new region", evidence_url: "https://clinic.example/news/expansion", confidence: 0.99, client_fit: "An unsupported fit claim." },
+          "Legacy uncited signal",
+        ],
+      }],
+    }));
+
+    expect(parsed.error).toBeNull();
+    expect(parsed.leads[0].buying_signals).toEqual([
+      "Hiring scheduling staff",
+      "Expanding into a new region",
+      "Legacy uncited signal",
+    ]);
+    expect(parsed.leads[0].signal_records).toEqual([
+      {
+        signal: "Hiring scheduling staff",
+        source: "clinic.example",
+        evidence_url: "https://clinic.example/careers",
+        recorded_at: null,
+        confidence: 0.78,
+        client_fit: "Scheduling support is relevant to the stated service.",
+      },
+      {
+        signal: "Expanding into a new region",
+        source: null,
+        evidence_url: null,
+        recorded_at: null,
+        confidence: null,
+        client_fit: null,
+      },
+      {
+        signal: "Legacy uncited signal",
+        source: null,
+        evidence_url: null,
+        recorded_at: null,
+        confidence: null,
+        client_fit: null,
+      },
+    ]);
+  });
 });

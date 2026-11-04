@@ -187,7 +187,7 @@ const REASONS: Record<string, string> = {
   no_consent: "They haven't agreed to this kind of message",
   automation_paused: "Customer messaging was paused",
   org_inactive: "The workspace isn't active",
-  agent_not_ready: "The AI employee wasn't ready",
+  agent_not_ready: "The AI Growth Partner wasn't ready",
   retention_limit: "They already had the most program messages allowed this month",
   retention_too_soon: "Too soon after their last program message",
   contact_unreachable: "There's no way to reach them",

@@ -115,8 +115,8 @@ export default async function IntegrationsPage() {
     {
       key: "hermes",
       icon: Bot,
-      name: "AI workforce environment",
-      body: `${agents?.online ?? 0} of ${agents?.total ?? 0} AI employees online. Each runs in its own private environment.`,
+      name: "AI runtime",
+      body: `${agents?.online ?? 0} of ${agents?.total ?? 0} AI profiles online. Each runs in its own private environment.`,
       status: cardStatus("hermes") ?? { provider: "hermes", status: agents?.online ? "connected" : "not_configured", detail: null, last_checked_at: null },
     },
     {
@@ -125,7 +125,7 @@ export default async function IntegrationsPage() {
       name: "Customer messaging",
       body: enabledChannels
         ? `${enabledChannels} channel${enabledChannels === 1 ? "" : "s"} on. Email, SMS and WhatsApp send through iAcquire with consent checks and delivery tracking.`
-        : "No messaging channel is on yet. Turn one on when you're ready; AI employees prepare drafts for approval until then.",
+        : "No messaging channel is on yet. Turn one on when you're ready; your AI Growth Partner prepares drafts for approval until then.",
       fact: testedChannels ? `${testedChannels} tested` : undefined,
       status: enabledChannels ? { provider: "native_messaging", status: "configured", detail: null, last_checked_at: null } : undefined,
       statusLabel: enabledChannels ? "Configured" : "Not enabled",
@@ -157,7 +157,7 @@ export default async function IntegrationsPage() {
       </section>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <MetricCard label="Verified connections" value={connected} detail="From the latest recorded service checks" tone="green" icon={<CheckCircle2 className="size-4" />} />
-        <MetricCard label="AI employees online" value={`${agents?.online ?? 0}/${agents?.total ?? 0}`} detail="Ready employees in your private workforce" tone="blue" icon={<Bot className="size-4" />} />
+        <MetricCard label="AI profiles online" value={`${agents?.online ?? 0}/${agents?.total ?? 0}`} detail="Verified runtimes in your private workspace" tone="blue" icon={<Bot className="size-4" />} />
       </div>
       <div className="grid gap-4 md:grid-cols-2" data-aqi-target="settings.integrations.list">
         {rows.map((r) => {

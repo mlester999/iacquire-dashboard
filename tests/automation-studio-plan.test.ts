@@ -63,7 +63,7 @@ describe("entitlementFor", () => {
   it("describes a lapse without promising anything the engine doesn't do", () => {
     const text = Object.values(STUDIO_LAPSE_POLICY).join(" ");
     expect(text).toMatch(/paused/);
-    expect(text).toMatch(/AI employees/);
+    expect(text).toMatch(/AI Growth Partner/);
     expect(text).not.toMatch(/deleted after|removed after|permanently/i);
   });
 });

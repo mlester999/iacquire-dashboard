@@ -1,5 +1,8 @@
 import * as React from "react";
-import { AGENT_ROLES } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
+
+const CAPABILITY_LABELS = ["Lead Discovery", "Sales & Outreach", "Calendar & Appointments", "CRM & Pipeline", "Business Operations", "Performance & Analytics"] as const;
+const CAPABILITY_COLORS = ["#5CCB2E", "#7B9CFF", "#FF9500", "#A995FF", "#4DE3B4", "#45C3DF"] as const;
 
 /** The buyer's company as two letters for the middle of the orbit: the first letters of its first two words, a leading "The" left out (one word gives one letter). */
 export function companyInitials(company: string): string {
@@ -9,8 +12,7 @@ export function companyInitials(company: string): string {
   return (letters || "i").toUpperCase();
 }
 
-// The six AI employees circling the buyer's own workspace. It is a picture, so it is hidden from assistive technology; the same six names follow it as a list, which is what a screen
-// reader (or a visitor who stops the animation) reads. Nothing here claims they are working yet: the line under it says they are set up after the payment is verified.
+// One Growth Partner identity with six capability areas around the buyer's workspace. The orbit is decorative; the list provides the capability names to assistive technology.
 export function TeamOrbit({ company }: { company: string }) {
   return (
     <div>
@@ -19,21 +21,11 @@ export function TeamOrbit({ company }: { company: string }) {
         <span className="room-ring room-ring-2" />
         <span className="room-ring room-ring-sweep" />
         <div className="room-orbit-spin">
-          {AGENT_ROLES.map((role, i) => (
-            <div key={role.key} className="room-node" style={{ "--i": i, "--accent": role.accent } as React.CSSProperties}>
+          {AI_GROWTH_PARTNER_CAPABILITIES.map((capability, i) => (
+            <div key={capability} className="room-node" style={{ "--i": i, "--accent": CAPABILITY_COLORS[i] } as React.CSSProperties}>
               <div className="room-node-counter">
                 <div className="room-node-bob">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`${role.mascot}-128.webp`}
-                    srcSet={`${role.mascot}-128.webp 128w, ${role.mascot}-256.webp 256w`}
-                    sizes="80px"
-                    alt=""
-                    width={80}
-                    height={80}
-                    draggable={false}
-                    decoding="async"
-                  />
+                  <span aria-hidden className="grid size-full place-items-center rounded-full border border-white/20 bg-[#101a34] font-mono text-[12px] font-bold text-white">{i + 1}</span>
                 </div>
               </div>
             </div>
@@ -41,12 +33,12 @@ export function TeamOrbit({ company }: { company: string }) {
         </div>
         <div className="room-core"><span>{companyInitials(company)}</span></div>
       </div>
-      <p className="room-lede mt-6 max-w-md">Six AI employees, set up for you once your payment is verified.</p>
+      <p className="room-lede mt-6 max-w-md">One AI Growth Partner with six connected capabilities, prepared after your payment is verified.</p>
       <ul className="room-roster">
-        {AGENT_ROLES.map((role) => (
-          <li key={role.key} style={{ "--accent": role.accent } as React.CSSProperties}>
+        {AI_GROWTH_PARTNER_CAPABILITIES.map((capability, i) => (
+          <li key={capability} style={{ "--accent": CAPABILITY_COLORS[i] } as React.CSSProperties} title={AI_GROWTH_PARTNER_CAPABILITY_INFO[capability].description}>
             <span className="room-roster-dot" aria-hidden />
-            <span className="truncate">{role.shortName}</span>
+            <span className="truncate">{CAPABILITY_LABELS[i]}</span>
           </li>
         ))}
       </ul>

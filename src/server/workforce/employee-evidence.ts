@@ -1,5 +1,5 @@
 import "server-only";
-import type { AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 import { hasExplicitTargeting } from "@/lib/leads-targeting";
 import { formatSlot } from "@/lib/appointments";
 import { addDays, weekdayOf, zonedDate, zonedToInstant } from "@/lib/calendars/slots";
@@ -45,18 +45,27 @@ const STATEMENT_TIMEOUT = "5s";
 const DAY_MS = 86_400_000;
 
 /** Areas whose abilities are narrower than the role's list (the role's list, ROLE_ABILITIES in src/lib/employee-tool-policy.ts, applies to every other area). */
-const SECTION_ABILITIES: Partial<Record<AgentRoleKey, Record<string, readonly string[]>>> = {
+const SECTION_ABILITIES: Partial<Record<WorkforceRoleKey, Record<string, readonly string[]>>> = {
   appointment_setter: {
     calendar: ["calendar.read_availability"],
     open_times: ["calendar.read_availability"],
     appointments: ["appointments.read", "appointments.request_change"],
     booking_requests: ["appointments.read", "appointments.request_change"],
   },
+  [AI_GROWTH_PARTNER_ROLE_KEY]: {
+    work_board: ["tasks.read"], schedules: ["tasks.read"], operations: ["tasks.read"],
+    handoffs: ["leads.stage_for_review", "appointments.read"],
+    leads: ["leads.stage_for_review", "research.public_web"], targeting: ["leads.stage_for_review", "research.public_web"],
+    calendar: ["calendar.read_availability"], open_times: ["calendar.read_availability"],
+    booking_requests: ["appointments.read", "appointments.request_change"],
+    crm: ["crm.read"], crm_quality: ["crm.read"], pipeline: ["crm.read_opportunities"],
+    performance: ["analytics.read"],
+  },
 };
 
 interface Build {
   ctx: OrgContext;
-  roleKey: AgentRoleKey;
+  roleKey: WorkforceRoleKey;
   now: Date;
   timeZone: string;
   /** What this employee may still do in this workspace (its role's abilities minus the ones switched off). Null when that could not be confirmed, in which case nothing is read. */
@@ -874,7 +883,10 @@ function missingSetup(requestKey: string, facts: WorkspaceFacts | null): string 
 function chatRequestsSection(b: Build): EvidenceSection {
   const canStart: EvidenceRecord[] = [];
   const cannotStart: EvidenceRecord[] = [];
-  for (const def of CHAT_REQUESTS[b.roleKey]) {
+  // Growth Partner's permanent conversation does not use the legacy role chat router yet.
+  // Do not advertise its actions here until that runner is wired to the same policy checks.
+  const requests = b.roleKey === AI_GROWTH_PARTNER_ROLE_KEY ? [] : CHAT_REQUESTS[b.roleKey];
+  for (const def of requests) {
     const capability = def.capability ? capabilityDefinition(def.capability) : null;
     if (def.capability && !capability?.allowedRoles.includes(b.roleKey)) continue;
     const permissions = capability ? ["agents.use" as const, capability.requiredPermission, ...(capability.additionalPermissions ?? [])] : (def.permissions ?? []);
@@ -942,7 +954,7 @@ async function performanceSection(b: Build): Promise<EvidenceSection[]> {
 // Roles
 // ---------------------------------------------------------------------------
 
-const ROLE_SECTIONS: Record<AgentRoleKey, (b: Build) => Promise<EvidenceSection[]>> = {
+const ROLE_SECTIONS: Record<WorkforceRoleKey, (b: Build) => Promise<EvidenceSection[]>> = {
   operations_manager: async (b) => operationsSections(b),
   lead_hunter: async (b) => leadSections(b),
   appointment_setter: async (b) => appointmentSections(b),
@@ -962,6 +974,15 @@ const ROLE_SECTIONS: Record<AgentRoleKey, (b: Build) => Promise<EvidenceSection[
       return b.nativeAppointments ? (await calendarSetup(b)).section : unavailableSection("calendar", CALENDAR_TITLE, OTHER_SYSTEM);
     }),
   ],
+  [AI_GROWTH_PARTNER_ROLE_KEY]: async (b) => [
+    ...await operationsSections(b),
+    ...await leadSections(b),
+    ...await appointmentSections(b),
+    ...await guard(b, "crm", CRM_TITLE, () => crmSection(b)),
+    ...await guard(b, "crm_quality", QUALITY_TITLE, () => dataQualitySection(b)),
+    ...await guard(b, "pipeline", PIPELINE_TITLE, () => pipelineSection(b)),
+    ...await performanceSection(b),
+  ],
 };
 
 export interface PreparedEmployeeEvidence {
@@ -974,12 +995,12 @@ export interface PreparedEmployeeEvidence {
  * Null when the employee cannot be found for this workspace and role, or the read fails, so that nothing is read on a guess. Exported for the client business-tool gate; the read
  * itself is `employeeAbilities` (src/server/workforce/abilities.ts), which the dispatcher and the work runner also use.
  */
-export function readAbilities(ctx: OrgContext, agentId: string, roleKey: AgentRoleKey): Promise<ReadonlySet<string> | null> {
+export function readAbilities(ctx: OrgContext, agentId: string, roleKey: WorkforceRoleKey): Promise<ReadonlySet<string> | null> {
   return readSystem((db) => employeeAbilities(db, ctx.org.orgId, agentId, roleKey));
 }
 
 /** Whether a role still has at least one of its abilities switched on (the rule every area of the snapshot follows). Null abilities (unreadable) never allow. Pure. */
-export function roleAbilitiesAllow(role: AgentRoleKey, abilities: ReadonlySet<string> | null): boolean {
+export function roleAbilitiesAllow(role: WorkforceRoleKey, abilities: ReadonlySet<string> | null): boolean {
   return abilities !== null && ROLE_ABILITIES[role].some((ability) => abilities.has(ability));
 }
 
@@ -991,7 +1012,7 @@ export function roleAbilitiesAllow(role: AgentRoleKey, abilities: ReadonlySet<st
  */
 export async function prepareEmployeeEvidence(
   ctx: OrgContext,
-  input: { agentId: string; roleKey: AgentRoleKey; now?: Date; limits?: { sectionMs?: number; totalMs?: number } },
+  input: { agentId: string; roleKey: WorkforceRoleKey; now?: Date; limits?: { sectionMs?: number; totalMs?: number } },
 ): Promise<PreparedEmployeeEvidence> {
   const started = Date.now();
   const now = input.now ?? new Date();

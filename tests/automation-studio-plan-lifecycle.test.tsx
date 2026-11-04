@@ -77,7 +77,7 @@ describe("plan lifecycle controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "End plan now" }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toMatch(/paused straight away \(nothing is deleted\)/);
-    expect(dialog.textContent).toMatch(/CRM, AI employees and external automations are not affected/);
+    expect(dialog.textContent).toMatch(/CRM, AI Growth Partner and its schedules, and external automations are not affected/);
     expect(actions.expireSubscriptionAction).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "End plan" }));
     await waitFor(() => expect(actions.expireSubscriptionAction).toHaveBeenCalledWith("s1"));

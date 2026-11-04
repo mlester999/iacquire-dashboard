@@ -1,7 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import { PUBLIC_COPY } from "@/lib/demo/copy";
 import { chatRefusalFor, cleanMessage, isClientMessageId, MAX_MESSAGE_CHARS, MAX_REPLY_CHARS, messagesLeft, REFUSAL_COPY, RESERVATION_TIMEOUT_MINUTES, type ChatRefusal } from "@/lib/demo/rules";
 import { addEvent, addressKey, dayOf, factsOf, lockProspect } from "@/server/demo/core";
@@ -41,7 +40,7 @@ export type ReserveResult =
       seq: number;
       /** The cleaned text of the message, as stored. */
       text: string;
-      employeeRole: AgentRoleKey | null;
+      employeeRole: null;
       messagesLeft: number;
       /** The UTC day whose budget the message was taken from. */
       day: string;
@@ -51,7 +50,7 @@ export type ReserveResult =
 export interface ReserveInput {
   text: unknown;
   clientMessageId: unknown;
-  /** Which of the six AI Employees the prospect is asking (only a persona). */
+  /** Rejected legacy selector. New public demo conversations only address AQi. */
   employeeRole?: unknown;
 }
 
@@ -77,11 +76,7 @@ export async function reserveDemoMessage(input: ReserveInput, ctx: DemoContext, 
   if (!looksLikeDemoToken(ctx.sessionToken)) return reason("no_session");
   const text = cleanMessage(input.text);
   if (!text || text.length > MAX_MESSAGE_CHARS || !isClientMessageId(input.clientMessageId)) return reason("invalid");
-  let employeeRole: AgentRoleKey | null = null;
-  if (input.employeeRole !== undefined && input.employeeRole !== null && input.employeeRole !== "") {
-    if (typeof input.employeeRole !== "string" || !isAgentRoleKey(input.employeeRole)) return reason("invalid");
-    employeeRole = input.employeeRole;
-  }
+  if (input.employeeRole !== undefined && input.employeeRole !== null && input.employeeRole !== "") return reason("invalid");
   const sessionKey = hashDemoToken(ctx.sessionToken as string).slice(0, 40);
   const burst = await consumeRateLimit(RATE_LIMITS.demoMessageByProspect, sessionKey);
   if (!burst.allowed) return reason("rate_limited", burst.retryAfterSeconds);
@@ -138,11 +133,11 @@ export async function reserveDemoMessage(input: ReserveInput, ctx: DemoContext, 
     const inserted = await db.query<{ id: string }>(
       `insert into demo_messages (prospect_id, seq, role, employee_role, body, client_message_id, state, input_chars, created_at)
        values ($1, $2, 'user', $3, $4, $5, 'pending', $6, $7::timestamptz) returning id::text as id`,
-      [p.id, row.message_seq, employeeRole, text, clientMessageId, text.length, now.toISOString()],
+      [p.id, row.message_seq, null, text, clientMessageId, text.length, now.toISOString()],
     );
     const left = messagesLeft({ messageLimit: p.message_limit, extraMessages: p.extra_messages, messagesUsed: row.messages_used });
     if (left === 0) await addEvent(db, p.id, "limit_reached", { kind: "prospect" }, { messagesUsed: row.messages_used }, now);
-    return { ok: true, kind: "reserved", prospectId: p.id, messageId: inserted.rows[0].id, seq: row.message_seq, text, employeeRole, messagesLeft: left, day: dayOf(now) };
+    return { ok: true, kind: "reserved", prospectId: p.id, messageId: inserted.rows[0].id, seq: row.message_seq, text, employeeRole: null, messagesLeft: left, day: dayOf(now) };
   });
   for (const n of notices) await withSystem((db) => notifyProspectTeam(db, n)).catch(() => undefined);
   return result;

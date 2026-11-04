@@ -39,7 +39,8 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.automation-studio", label: "Automation Studio", description: "Automation Studio in the main navigation.", routes: ["*"], permission: "workflows.view", navigation: true },
   { id: "nav.approvals", label: "Approvals", description: "Approvals in the main navigation.", routes: ["*"], permission: "approvals.view", navigation: true },
   { id: "nav.knowledge", label: "Knowledge Center", description: "Knowledge Center in the main navigation.", routes: ["*"], permission: "knowledge.view", navigation: true },
-  { id: "nav.workforce", label: "AI Employees", description: "AI Employees in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
+  { id: "nav.workforce", label: "AI Growth Partner", description: "AI Growth Partner in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
+  { id: "nav.previous-profiles", label: "Previous employee profiles", description: "Saved employee profiles from before the Growth Partner migration.", routes: ["*"], permission: "agents.configure", navigation: true },
   { id: "nav.settings", label: "Settings", description: "Settings in the main navigation.", routes: ["*"], permission: "workspace.view", navigation: true },
   { id: "nav.website", label: "Website", description: "Website in the main navigation.", routes: ["*"], permission: "website.view", navigation: true },
   { id: "nav.support", label: "Support", description: "Support in the main navigation.", routes: ["*"], permission: "support.use", navigation: true },
@@ -53,9 +54,13 @@ export const AQI_TARGETS: AqiTarget[] = [
 
   // Overview.
   { id: "overview.hero", label: "Workspace overview", description: "The overview welcome panel.", routes: ["/overview"] },
+  { id: "growth-partner.header", label: "AI Growth Partner status", description: "The partner identity and current setup status.", routes: ["/growth-partner"], permission: "agents.use" },
+  { id: "growth-partner.brain", label: "Business Brain", description: "Versioned business knowledge and its review status.", routes: ["/growth-partner"], permission: "agents.use" },
+  { id: "growth-partner.conversation", label: "Growth Partner conversation", description: "The permanent conversation with the AI Growth Partner.", routes: ["/growth-partner/conversation"], permission: "agents.use" },
+  { id: "growth-partner.composer", label: "Growth Partner message box", description: "Where the person writes to the Growth Partner in the permanent conversation.", routes: ["/growth-partner/conversation"], permission: "agents.use" },
   { id: "overview.kpis", label: "Key metrics", description: "The real workspace metrics.", routes: ["/overview"] },
   { id: "overview.next-actions", label: "What needs attention", description: "Suggested next actions.", routes: ["/overview"] },
-  { id: "overview.ai-team", label: "Your AI team", description: "The AI employees available in this workspace.", routes: ["/overview"] },
+  { id: "overview.ai-team", label: "AI Growth Partner", description: "The AI Growth Partner available in this workspace.", routes: ["/overview"] },
 
   // CRM contacts.
   { id: "crm.contacts.search", label: "Search contacts", description: "Search across contacts.", routes: ["/crm/contacts"], permission: "contacts.view" },
@@ -97,20 +102,20 @@ export const AQI_TARGETS: AqiTarget[] = [
   // Leads.
   { id: "leads.tabs", label: "Lead views", description: "Review, researching and history tabs.", routes: ["/leads"], permission: "leads.view" },
   { id: "leads.review-table", label: "Lead review table", description: "Leads waiting for review.", routes: ["/leads"], permission: "leads.view" },
-  { id: "leads.research", label: "New research request", description: "Ask the Lead Hunter for new prospects.", routes: ["/leads"], permission: "leads.research" },
+  { id: "leads.research", label: "New prospect research request", description: "Prepare a cited, human-reviewable prospect research job.", routes: ["/leads"], permission: "leads.research" },
 
   // Workforce.
-  { id: "workforce.hero", label: "AI Employees", description: "The AI employees page header.", routes: ["/employees"], permission: "agents.use" },
-  { id: "workforce.gallery", label: "Employee gallery", description: "The AI employees in this workspace.", routes: ["/employees"], permission: "agents.use" },
-  { id: "workforce.employee", label: "AI employee", description: "An employee card with chat and configuration actions.", routes: ["/employees"], permission: "agents.use" },
-  { id: "workforce.employee.hero", label: "Employee profile", description: "The selected AI employee's identity, readiness and primary actions.", routes: ["/employees"], permission: "agents.use" },
-  { id: "workforce.employee.configure", label: "Guided configuration", description: "The employee's grouped, guided configuration form.", routes: ["/employees"], permission: "agents.configure" },
-  { id: "workforce.employee.history", label: "Version history", description: "Saved configuration versions, decisions and review status.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.hero", label: "Previous employee profiles", description: "Saved role profiles from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.gallery", label: "Previous employee profiles", description: "Saved employee profiles retained from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.employee", label: "Previous role profile", description: "A saved role profile with its original history and configuration.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.employee.hero", label: "Previous role profile", description: "The saved role profile's identity, readiness and primary actions.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.employee.configure", label: "Previous profile configuration", description: "The saved profile's grouped configuration form.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.employee.history", label: "Previous profile history", description: "Saved configuration versions, decisions and review status.", routes: ["/employees"], permission: "agents.configure" },
 
   // Chat.
-  { id: "chat.rail", label: "Chat sidebar", description: "The iAcquire chat sidebar with specialists and conversation history.", routes: ["/chat"], permission: "agents.use" },
-  { id: "chat.employee", label: "Selected employee", description: "The AI employee selected for this conversation.", routes: ["/chat"], permission: "agents.use" },
-  { id: "chat.composer", label: "Message box", description: "Where the person writes a message to the AI employee.", routes: ["/chat"], permission: "agents.use" },
+  { id: "chat.rail", label: "Previous employee chats", description: "Saved conversations from before the Growth Partner migration.", routes: ["/chat"], permission: "agents.configure" },
+  { id: "chat.employee", label: "Previous employee chat", description: "A saved conversation with one of the former role profiles.", routes: ["/chat"], permission: "agents.configure" },
+  { id: "chat.composer", label: "Previous chat message box", description: "Where an administrator writes in a saved employee conversation.", routes: ["/chat"], permission: "agents.configure" },
 
   // Notifications.
   { id: "notifications.bell", label: "Notification bell", description: "The saved notification feed for the signed-in person.", routes: ["*"], navigation: true },
@@ -193,7 +198,8 @@ export function aqiNavTarget(href: string, area: "client" | "agency" = "client")
         "/automation-studio": "nav.automation-studio",
         "/approvals": "nav.approvals",
         "/knowledge": "nav.knowledge",
-        "/employees": "nav.workforce",
+        "/growth-partner": "nav.workforce",
+        "/employees": "nav.previous-profiles",
         "/website": "nav.website",
         "/settings": "nav.settings",
         "/support": "nav.support",

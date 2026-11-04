@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
 import { recordAudit } from "@/server/audit";
 import type { SessionUser } from "@/server/auth/service";
 import { withSystem, type Queryable } from "@/server/db";
@@ -65,7 +65,7 @@ export interface ClientCredentialClaims {
   credentialId: string;
   orgId: string;
   agentId: string;
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   profile: string;
   orgSlug: string;
   displayName: string;
@@ -103,7 +103,7 @@ const DECOY_ID = "00000000-0000-4000-8000-000000000000";
 const DECOY_SECRET = "A".repeat(43);
 const DECOY_HASH = sha256("client-business-credential-decoy");
 
-const isRole = (value: string): value is AgentRoleKey => (AGENT_ROLE_KEYS as readonly string[]).includes(value);
+const isRole = isWorkforceRoleKey;
 const iso = (at: Date) => at.toISOString();
 
 interface CredentialRow {
@@ -384,7 +384,7 @@ export interface ExpiringClientCredential {
   orgId: string;
   orgName: string;
   agentId: string;
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   expiresAt: Date;
   /** Whole days left, rounded up: a credential with an hour left has one day. */
   daysLeft: number;
@@ -406,12 +406,13 @@ export async function expiringClientCredentials(db: Queryable, withinDays: numbe
       order by c.expires_at, c.id`,
     [iso(now), iso(new Date(now.getTime() + withinDays * DAY))],
   );
-  return rows.filter((row) => isRole(row.role_key)).map((row) => {
+  return rows.flatMap((row) => {
+    if (!isRole(row.role_key)) return [];
     const expiresAt = new Date(row.expires_at);
-    return {
-      id: row.id, orgId: row.org_id, orgName: row.org_name, agentId: row.agent_instance_id, role: row.role_key as AgentRoleKey, expiresAt,
+    return [{
+      id: row.id, orgId: row.org_id, orgName: row.org_name, agentId: row.agent_instance_id, role: row.role_key, expiresAt,
       daysLeft: Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / DAY)),
-    };
+    }];
   });
 }
 
@@ -429,7 +430,7 @@ export async function runClientBusinessCredentialExpiry(now: Date = new Date()):
       const windowDays = credential.daysLeft <= near ? near : wide;
       const dedupeKey = `client-credential-expiry:${credential.id}:${windowDays}`;
       if ((await db.query("select 1 from notifications where dedupe_key = $1 limit 1", [dedupeKey])).rows.length) continue;
-      const who = AGENT_BY_KEY[credential.role].shortName;
+      const who = workforceRoleShortName(credential.role);
       await notifyAgency(db, credential.orgId, {
         kind: "agent_status",
         severity: windowDays === near ? "warning" : "info",

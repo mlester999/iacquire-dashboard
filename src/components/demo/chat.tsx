@@ -17,8 +17,8 @@ import { SHORT_QUERY, useMediaQuery } from "@/components/demo/showroom/use-media
 // A message that may not have arrived (the connection dropped) keeps its key, so pressing Send again can never count it twice. A question put in the box from elsewhere on the page
 // (a suggestion, a button on a feature) only fills the box: it is sent when the visitor presses Send, and only then does it count.
 //
-// While an answer is on its way the visitor's own message is already in the conversation (and the box is empty), and the one shown writing is the employee they asked, or AQi when they
-// asked no one in particular. That message is only a picture of what was sent: the record the server returns replaces it, and if the message did not go through it goes back into the box.
+// While an answer is on its way the visitor's own message is already in the conversation (and the box is empty), and AQi is shown as writing. Historic transcript rows keep their original role attribution. That message is only a picture of what was sent:
+// the record the server returns replaces it, and if the message did not go through it goes back into the box.
 
 export interface DemoChatProps {
   initial: RoomChatState;
@@ -48,7 +48,7 @@ function speaker(line: RoomLine, roles: DemoChatProps["roles"]): string {
 
 const isRole = (k: string | null): k is AgentRoleKey => !!k && k in AGENT_BY_KEY;
 
-/** Who is writing the answer: the employee the visitor asked, or AQi, the demo guide, when they asked no one in particular. Said aloud once; the dots are only a picture. */
+/** AQi writes every new public demo answer. Said aloud once; the dots are only a picture. */
 function Writing({ employee, roles }: { employee: string; roles: DemoChatProps["roles"] }) {
   const role = isRole(employee) ? AGENT_BY_KEY[employee] : null;
   const name = role ? (roles.find((r) => r.key === employee)?.name ?? role.name) : "AQi";
@@ -75,7 +75,6 @@ function Writing({ employee, roles }: { employee: string; roles: DemoChatProps["
 export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft = null, suggestions = [], closedFooter, onRecord, className }: DemoChatProps) {
   const [state, setState] = React.useState<RoomChatState>(initial);
   const [text, setText] = React.useState("");
-  const [employee, setEmployee] = React.useState("");
   const [sending, setSending] = React.useState(false);
   /** The message on its way: what was sent and who it was asked of, so the conversation can show it and the right employee writing. */
   const [outgoing, setOutgoing] = React.useState<{ body: string; employee: string } | null>(null);
@@ -110,7 +109,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
     setSending(true);
     setNotice(null);
     // The message shows at once and the box empties; anything that does not go through gives it back to the box, to be sent again with the same key.
-    setOutgoing({ body, employee });
+    setOutgoing({ body, employee: "" });
     setText("");
     const giveBack = () => {
       setOutgoing(null);
@@ -120,7 +119,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
       const res = await fetch("/api/public/demo/message", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ text: body, clientMessageId: key, employeeRole: employee }),
+        body: JSON.stringify({ text: body, clientMessageId: key }),
       });
       const json = (await res.json().catch(() => null)) as {
         ok?: boolean;
@@ -178,7 +177,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
       >
         {state.transcript.length === 0 && (
           <div className="space-y-3 py-1">
-            <p className="text-[14px] leading-relaxed text-ink-2">Nothing here yet. Ask AQi what the AI team does or what it costs.</p>
+            <p className="text-[14px] leading-relaxed text-ink-2">Nothing here yet. Ask AQi about the AI Growth Partner, iAcquireOS or current pricing.</p>
             {/* The starter questions live in the scrolling part, not above the question box: on a short phone the box (and the Send button) must never be pushed out of reach by them. */}
             {state.canSend && suggestions.length > 0 && (
               <div className="flex flex-wrap gap-1.5" aria-label="Suggested questions" role="group">
@@ -238,23 +237,8 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
         <form ref={formRef} method="post" action="/api/public/demo/message" onSubmit={send} className="shrink-0 space-y-2.5 [@media(max-height:500px)]:space-y-1.5">
           <input type="hidden" name="clientMessageId" value={fallbackMessageId} />
           <div className="flex items-center gap-2">
-            <label htmlFor="demo-employee" className="shrink-0 text-[13px] font-medium text-muted">
-              Ask
-            </label>
-            <select
-              id="demo-employee"
-              name="employeeRole"
-              value={employee}
-              onChange={(e) => setEmployee(e.target.value)}
-              className="h-11 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface-2 px-2.5 text-[16px] text-ink focus-visible:outline-2 sm:h-9 sm:text-[13px] [@media(max-height:500px)]:h-10 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <option value="">Any AI Employee</option>
-              {roles.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+            <label htmlFor="demo-message" className="shrink-0 text-[13px] font-medium text-muted">Ask AQi</label>
+            <span className="text-[12px] text-muted">iAcquire guide</span>
           </div>
           <div className="space-y-1.5">
             <label htmlFor="demo-message" className="sr-only">
@@ -277,7 +261,7 @@ export function DemoChat({ initial, roles, fallbackMessageId, pageNotice, draft 
                     formRef.current?.requestSubmit();
                   }
                 }}
-                placeholder={short ? "Ask about the AI team or pricing" : "For example: what does the Appointment Setter do?"}
+                placeholder={short ? "Ask about the Growth Partner or pricing" : "For example: how does the Growth Partner use the CRM?"}
                 className="max-h-32 min-h-11 [@media(max-height:500px)]:h-11 [@media(max-height:500px)]:max-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-[16px] leading-relaxed text-ink outline-none sm:text-[14px] placeholder:text-faint focus-visible:outline-none focus-visible:ring-0"
               />
               <button type="submit" disabled={sending} aria-label={sending ? "Sending" : "Send"} className="sx-btn-primary grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-60">

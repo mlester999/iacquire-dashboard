@@ -361,14 +361,14 @@ export function RequestWizard({
               <p className="text-[13px] font-semibold">Already connected to your workspace</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {connected.map((c) => (
-                  <StatusPill key={c} size="sm" tone="success">{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI workforce" : c === "ghl_calendar" ? "GoHighLevel calendar" : sentenceCase(c)}</StatusPill>
+                <StatusPill key={c} size="sm" tone="success">{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI Growth Partner" : c === "ghl_calendar" ? "GoHighLevel calendar" : sentenceCase(c)}</StatusPill>
                 ))}
               </div>
             </Card>
           )}
           <Card className="p-4">
             <StatusPill tone="primary" icon={<Info className="size-3" />}>Good to know</StatusPill>
-            <p className="mt-2 text-[13px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">Your AI Growth Partner is part of your core package, not an add-on. Check the Growth Partner page first, and ask Support if you&apos;re unsure.</p>
           </Card>
         </aside>
       </div>

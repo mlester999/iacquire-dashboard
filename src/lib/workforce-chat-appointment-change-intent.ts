@@ -1,4 +1,4 @@
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { asksAboutWhatHappened } from "@/lib/workforce-chat-booking-intent";
 
 export type WorkforceChatAppointmentChangeIntent =
@@ -44,8 +44,8 @@ function makeProposal(operation: "cancel" | "reschedule", contactName: string, o
 }
 
 /** Parse only an exact upcoming appointment change request. A separate chat confirmation and owner/admin approval are required. */
-export function parseWorkforceChatAppointmentChangeIntent(role: AgentRoleKey, content: string): WorkforceChatAppointmentChangeIntent {
-  if (role !== "appointment_setter") return { kind: "none" };
+export function parseWorkforceChatAppointmentChangeIntent(role: WorkforceRoleKey, content: string): WorkforceChatAppointmentChangeIntent {
+  if (role !== "appointment_setter" && role !== "growth_partner") return { kind: "none" };
   const text = content.replace(/\s+/g, " ").trim().slice(0, 2000);
   if (!text) return { kind: "none" };
   const command = text.toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, " ").trim();

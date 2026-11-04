@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { AGENT_BY_KEY, AGENT_ROLES, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -80,11 +80,12 @@ function roleKey(value: string): AgentRoleKey | null {
 }
 
 function jobHref(job: WorkBoardJob): string | null {
+  if (job.capability === "lead_research") return "/leads?tab=review";
+  if (job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY) return job.conversationId ? "/growth-partner/conversation" : "/growth-partner";
   const key = roleKey(job.employeeRole);
   if (!key) return null;
   const meta = AGENT_BY_KEY[key];
   if (job.conversationId) return `/chat/${meta.slug}?c=${job.conversationId}`;
-  if (job.capability === "lead_research") return "/leads?tab=review";
   return `/employees/${meta.slug}`;
 }
 
@@ -176,7 +177,7 @@ function JobCard({
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-semibold text-ink-2 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Activity className="size-3.5" aria-hidden />{expanded ? "Hide activity" : "Activity"}
         </button>
-        {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{job.capability === "lead_research" ? "Review" : "Open employee"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
+        {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{job.capability === "lead_research" ? "Review" : job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? "Open Growth Partner" : "Open employee"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
       </div>
       {expanded && <WorkJobPanel jobId={job.id} className="mt-3" />}
     </article>
@@ -190,7 +191,9 @@ function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; o
   return (
     <article className="rounded-xl border border-line bg-surface p-3 shadow-soft">
       <div className="flex items-start gap-2.5">
-        <AgentAvatar role={AGENT_BY_KEY[schedule.employeeRole]} size="sm" />
+        {schedule.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? (
+          <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span>
+        ) : <AgentAvatar role={AGENT_BY_KEY[schedule.employeeRole]} size="sm" />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="inline-flex h-5 items-center gap-1 rounded-full border border-primary/15 bg-primary-soft px-2 text-[12px] font-semibold uppercase tracking-wide text-primary-ink"><CalendarClock className="size-3" aria-hidden />Scheduled · not a job</span>
@@ -228,17 +231,21 @@ export function WorkBoardKanban({
   scheduleOperatorEnabled: boolean;
   timeZone: string;
   focusJobId: string | null;
-  employeeNames?: Partial<Record<AgentRoleKey, string>>;
+  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   referenceTime: string;
 }) {
   const router = useRouter();
   const [view, setView] = React.useState<BoardView>("kanban");
   const [query, setQuery] = React.useState("");
-  const [employeeFilter, setEmployeeFilter] = React.useState("all");
+  const [employeeFilter, setEmployeeFilter] = React.useState<"all" | WorkforceRoleKey>("all");
   const [dateScope, setDateScope] = React.useState<DateScope>("any");
   const [expanded, setExpanded] = React.useState<string | null>(focusJobId);
   const today = calendarDateKeyAt(new Date(referenceTime), timeZone);
   const planned = React.useMemo(() => buildPlannedWork(schedules, referenceTime), [schedules, referenceTime]);
+  const roleFilters = React.useMemo(() => [...new Set([
+    ...jobs.map((job) => job.employeeRole).filter(isWorkforceRoleKey),
+    ...schedules.map((schedule) => schedule.employeeRole),
+  ])], [jobs, schedules]);
   const cleanQuery = query.trim().toLocaleLowerCase();
 
   const filteredJobs = React.useMemo(() => jobs.filter((job) => {
@@ -311,9 +318,12 @@ export function WorkBoardKanban({
           </select>
           <Button variant="secondary" size="sm" onClick={() => router.refresh()} className="h-10">Refresh</Button>
         </div>
-        <div className="relative mt-3 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter by AI employee">
-          <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All six</button>
-          {AGENT_ROLES.map((role) => <button key={role.key} type="button" aria-pressed={employeeFilter === role.key} onClick={() => setEmployeeFilter(role.key)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role.key ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}><AgentAvatar role={role} size="xs" />{employeeNames?.[role.key] ?? role.shortName}</button>)}
+        <div className="relative mt-3 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter by AI runtime">
+          <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All work</button>
+          {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>
+            {role === AI_GROWTH_PARTNER_ROLE_KEY ? <span className="flex size-5 items-center justify-center rounded-md bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span> : <AgentAvatar role={AGENT_BY_KEY[role]} size="xs" />}
+            {employeeNames?.[role] ?? workforceRoleShortName(role)}
+          </button>)}
         </div>
       </div>
 

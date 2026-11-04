@@ -284,7 +284,7 @@ function OpportunitySheet({ opp, onClose, canNote, canTask, timeZone }: { opp: O
               <dd className="mt-0.5 font-medium">{opp.remote_updated_at ? formatDateTime(opp.remote_updated_at, timeZone) : "—"}</dd>
             </div>
           </dl>
-          <p className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[13px] leading-relaxed text-muted"><IconTile tone="neutral" size="sm"><ShieldCheck /></IconTile><span>Proposal and requirements status, stage changes and follow-up messages are managed through your AI Sales Assistant and the Approval Center.</span></p>
+          <p className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[13px] leading-relaxed text-muted"><IconTile tone="neutral" size="sm"><ShieldCheck /></IconTile><span>Proposal and requirements status, stage changes and follow-up messages are managed through AI Growth Partner and the Approval Center.</span></p>
           {canTask && (
             <div className="space-y-2">
               <p className="text-[14px] font-semibold">Add a follow-up task</p>

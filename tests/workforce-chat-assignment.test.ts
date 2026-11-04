@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
+import { parseWorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
+import { parseWorkforceChatAppointmentChangeIntent } from "@/lib/workforce-chat-appointment-change-intent";
+import { parseWorkforceChatScheduleIntent } from "@/lib/workforce-chat-schedule-intent";
+import { parseResearchAssignment } from "@/lib/research-intent";
 
 describe("employee chat assignment routing", () => {
   it.each([
@@ -31,7 +35,10 @@ describe("employee chat assignment routing", () => {
   });
 
   it("refuses research from other roles and unsupported external or business writes", () => {
-    expect(workforceChatRefusal("appointment_setter", "Find 10 agencies in Miami" )?.reason).toBe("out_of_role_research");
+    const researchRefusal = workforceChatRefusal("appointment_setter", "Find 10 agencies in Miami");
+    expect(researchRefusal?.reason).toBe("out_of_role_research");
+    expect(researchRefusal?.message).toContain("workspace's approved research workflow");
+    expect(researchRefusal?.message).not.toContain("Lead Hunter");
     expect(workforceChatRefusal("sales_assistant", "Send an email to these prospects" )?.reason).toBe("external_outreach");
     expect(workforceChatRefusal("crm_manager", "Merge these duplicate contacts" )?.reason).toBe("crm_write");
     expect(workforceChatRefusal("appointment_setter", "Cancel this appointment" )?.reason).toBe("appointment_write");
@@ -45,5 +52,25 @@ describe("employee chat assignment routing", () => {
   it("keeps read-only calendar checks and normal conversation available", () => {
     expect(workforceChatRefusal("appointment_setter", "Check our appointment availability and help me schedule a consultation")).toBeNull();
     expect(workforceChatRefusal("sales_assistant", "What is a sales pipeline?")).toBeNull();
+  });
+
+  it("routes unified Growth Partner requests through the same reviewed capability and confirmation paths", () => {
+    expect(parseWorkforceChatAssignment("growth_partner", "Review our CRM for duplicates and incomplete records")?.capability).toBe("crm_quality_review");
+    expect(parseWorkforceChatAssignment("growth_partner", "Review our opportunities and prepare follow-up drafts")?.capability).toBe("pipeline_followup_drafts");
+    expect(parseWorkforceChatAssignment("growth_partner", "Check our missed calls")?.capability).toBe("missed_call_review");
+    expect(parseWorkforceChatAssignment("growth_partner", "Review our receivables and overdue invoices")?.capability).toBe("receivables_review");
+    expect(parseWorkforceChatAssignment("growth_partner", "Review our social posts and tracked leads")?.capability).toBe("social_performance_review");
+    expect(parseWorkforceChatAssignment("growth_partner", "Review our online reputation and customer reviews")?.capability).toBe("reputation_review");
+
+    const booking = parseWorkforceChatBookingIntent("growth_partner", "Book an appointment with Jane Doe at 2026-11-10T09:00+08:00");
+    expect(booking.kind).toBe("proposal");
+    expect(parseWorkforceChatAppointmentChangeIntent("growth_partner", "Cancel the appointment for Jane Doe at 2026-11-10T09:00+08:00").kind).toBe("proposal");
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Review our CRM every Monday at 9 AM").kind).toBe("proposal");
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Email prospects every Monday at 9 AM").kind).toBe("clarification");
+  });
+
+  it("routes prospect research to the unified role's durable research handler rather than refusing it as out of role", () => {
+    expect(workforceChatRefusal("growth_partner", "Find 10 agencies in Miami")).toBeNull();
+    expect(parseResearchAssignment("Find 10 agencies in Miami")).toMatchObject({ quantity: 10, target: "agencies", location: "Miami" });
   });
 });

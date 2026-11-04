@@ -70,7 +70,7 @@ export const SKILL_LABELS: Record<Skill, string> = {
   setup: "Client setup",
   crm: "CRM and automations",
   website: "Websites",
-  ai_employees: "AI employees",
+  ai_employees: "AI Growth Partner",
   integrations: "Integrations",
   billing: "Billing",
   projects: "Custom projects",

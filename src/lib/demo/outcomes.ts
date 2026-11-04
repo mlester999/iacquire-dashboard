@@ -142,8 +142,8 @@ export const PRIVACY_EMAIL = "support@iacquire.ai";
 
 export const ROOM_COPY = {
   sampleBanner: "Sample data only. Nothing in this demo is real, nothing is sent to anyone and nothing is booked.",
-  tourHeading: "A guided tour of your AI team",
-  tourIntro: "Six AI Employees, each with one job. The examples below are invented for this tour so you can see the idea. They are not results and not a promise of any.",
+  tourHeading: "Meet your AI Growth Partner",
+  tourIntro: "One partner works across six connected capabilities. The examples below are invented for this tour so you can see the idea. They are not results and not a promise of any.",
   chatHeading: "Ask AQi",
   chatIntro: "AQi uses published information and sample data only. It cannot access real business data, send messages, book appointments or charge anything.",
   chatOffHeading: "The AI chat is not open",

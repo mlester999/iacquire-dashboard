@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - codex/internal-iacquire-activation
+      - codex/ai-growth-partner
       - integration/hermes-bridge-final
     # Any change to the application or its tests runs the whole suite. Until 2026-10-31 only the worker files did, so a push that changed tests or source ran nothing at all.
     paths:
@@ -40,7 +41,7 @@ jobs:
   # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation.
   app-checks:
     name: Full tests, TypeScript, lint (offline) and production build
-    if: contains(fromJSON('["codex/internal-iacquire-activation","integration/hermes-bridge-final"]'), github.ref_name)
+    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -133,7 +134,7 @@ jobs:
   # no daemon, no network and no secret. They are the only thing that notices a later edit to a script or overlay that drops one of its safeguards.
   client-runtime-ops-tests:
     name: Client runtime operator scripts, overlays and preflight (no Docker daemon)
-    if: contains(fromJSON('["codex/internal-iacquire-activation","integration/hermes-bridge-final"]'), github.ref_name)
+    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -153,7 +154,7 @@ jobs:
 
   worker-build-and-smoke:
     name: Build pinned Hermes worker and run synthetic checks
-    if: contains(fromJSON('["codex/internal-iacquire-activation","integration/hermes-bridge-final"]'), github.ref_name)
+    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

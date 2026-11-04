@@ -117,7 +117,7 @@ export const REFUSAL_COPY: Record<ChatRefusal | "ai_off" | "daily_cap" | "rate_l
   not_verified: "Confirm your email address to start the demo.",
   window_ended: "Your demo window has ended. You can still read your conversation and ask for a consultation.",
   limit_reached: "You have used all of your demo messages. Ask for a consultation to talk to a person.",
-  ai_off: "The AI chat is not available right now. The guided tour shows what the AI team does, with sample data.",
+  ai_off: "The AI chat is not available right now. The guided tour shows how one AI Growth Partner works across six capabilities, with sample data.",
   daily_cap: "The demo chat has reached its limit for today. Please try again tomorrow, or ask for a consultation.",
   rate_limited: "You are sending messages too fast. Wait a moment and try again.",
   unavailable: "The demo is temporarily unavailable.",

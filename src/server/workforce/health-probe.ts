@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import type { AgentRoleKey, AgentStatus } from "@/lib/agents";
+import type { WorkforceRoleKey, AgentStatus } from "@/lib/agents";
 import { probeConfig, type ProbeConfig } from "@/lib/health-probe-config";
 import { runHealthCheck, type HealthResult } from "@/server/workforce/service";
 import { announceHealthObservation, healthProbeSchemaReady, recordHealthObservation, type HealthObservation } from "@/server/workforce/health-alerts";
@@ -20,7 +20,7 @@ import { announceHealthObservation, healthProbeSchemaReady, recordHealthObservat
 export interface ProbeOutcome {
   agentId: string;
   orgId: string;
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   ok: boolean;
   status: AgentStatus;
   detail: string;
@@ -55,7 +55,7 @@ export interface ProbeDeps {
 interface DueAgent {
   id: string;
   org_id: string;
-  role_key: AgentRoleKey;
+  role_key: WorkforceRoleKey;
 }
 
 const realCheck = (agentId: string, opts: { countFailure: boolean; now: Date }) => runHealthCheck(agentId, { userId: null, kind: "system" }, { skipSetupSync: true, scheduled: true, countFailure: opts.countFailure, now: opts.now });

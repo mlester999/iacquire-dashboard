@@ -10,6 +10,7 @@ import { createPipeline, listPipelines } from "@/server/crm/pipelines";
 import { approveTemplate, createTemplate } from "@/server/crm/message-templates";
 import { createAppointmentType, createCalendar } from "@/server/calendars/setup";
 import { createForm } from "@/server/crm/forms/definitions";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { crmOrg, type CrmOrg } from "./crm";
 
 export interface StudioWorkspace {
@@ -50,6 +51,7 @@ export async function grantStudioPlan(o: CrmOrg, status: "active" | "past_due" |
 
 export async function studioWorkspace(opts: WorkspaceOptions = {}): Promise<StudioWorkspace> {
   const o = await crmOrg({ ...(opts.name ? { name: opts.name } : {}), ...(opts.timezone ? { timezone: opts.timezone } : {}) });
+  await withSystem((db) => ensureGrowthPartnerRuntime(o.org.id, db));
   if (opts.plan !== false) await grantStudioPlan(o);
   const owner = o.actor("owner");
 

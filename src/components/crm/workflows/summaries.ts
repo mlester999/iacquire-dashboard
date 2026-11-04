@@ -4,7 +4,7 @@
 import type { RunStatus } from "@/components/crm/workflows/parts";
 import { CALL_CLASS_LABELS } from "@/lib/missed-calls/state";
 import { LEAD_LABEL_TEXT } from "@/lib/lead-scoring/types";
-import { AGENT_ROLES } from "@/lib/agents";
+import { AGENT_ROLES, isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import { CHANNEL_LABELS } from "@/lib/messaging";
 import { idleLabel, OUTCOME_LABELS } from "@/lib/inbox";
 import { CONTACT_FILTER_FIELDS, isGroup, OP_LABELS, type FilterCondition, type FilterGroup } from "@/lib/crm/filters";
@@ -31,7 +31,7 @@ const EFFECT_LABELS: Record<string, string> = {
   http: "Calls a web address",
   slack: "Posts to Slack",
   n8n: "Runs n8n",
-  hermes: "Asks an AI employee",
+  hermes: "Starts an internal AI task",
 };
 export const EFFECT_TONE: Record<string, Tone> = { send_email: "primary", send_sms: "primary", send_whatsapp: "primary", webhook: "warning", http: "warning", slack: "warning", n8n: "warning", hermes: "violet" };
 export function effectLabel(effect: string): string {
@@ -169,7 +169,7 @@ export function namesFrom(src: NameSource): Names {
     n8n: (id) => n8n.get(id),
     webhook: (id) => webhooks.get(id),
     connection: (id) => connections.get(id),
-    agent: (k) => agents.get(k) ?? AGENT_ROLES.find((r) => r.key === k)?.shortName ?? k.replace(/_/g, " "),
+    agent: (k) => agents.get(k) ?? (isWorkforceRoleKey(k) ? workforceRoleShortName(k) : AGENT_ROLES.find((r) => r.key === k)?.shortName ?? k.replace(/_/g, " ")),
     calendar: (id) => calendars.get(id),
     appointmentType: (id) => types.get(id),
     form: (id) => forms.get(id),
@@ -390,7 +390,7 @@ export function stepSummary(step: Pick<WorkflowStep, "kind" | "config">, names: 
         case "set_priority": return c.priority ? `Set the conversation's priority to ${c.priority}` : "Choose the priority";
         case "assign_person": return c.userId ? `Assign the conversation to ${names.user(c.userId) ?? "a former teammate"}` : "Choose who gets the conversation";
         case "assign_contact_owner": return "Assign the conversation to the contact's owner";
-        case "pause_ai": return "Pause the AI employee on the conversation";
+        case "pause_ai": return "Pause the AI profile on the conversation";
       }
       return "Update the conversation";
     }

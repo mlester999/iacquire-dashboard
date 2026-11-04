@@ -9,13 +9,14 @@ import { LaunchReadinessPanel } from "@/components/setup/launch-readiness-panel"
 import { getLaunchReadiness } from "@/server/setup/launch-readiness";
 import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
+import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { crmOwners } from "@/server/setup/native-evidence";
 import { latestOnboardingNotes } from "@/server/onboarding/service";
 import { loadAnswerRows, toStored } from "@/server/onboarding/answers";
 import { CALENDAR_NOTICE_COOKIE, calendarNoticeFor } from "@/server/calendars/connections";
 import { computeProgress, planScope } from "@/lib/onboarding/engine";
-import { isAgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, isAgentRoleKey } from "@/lib/agents";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { firstName } from "@/lib/utils";
@@ -78,18 +79,19 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   // Who runs the CRM decides what the team does next: a Blueprint for iAcquire's own CRM (native or hybrid), the sub-account for GoHighLevel.
   // A trusted read of this workspace's own provider mode, only when the banner shows.
   const nativeCrm = onboarded === "1" ? (await withSystem((db) => crmOwners(db, ctx.org.orgId))).mode !== "ghl" : false;
-  const [agents, provisioning] = onboarded === "1" ? await Promise.all([
+  const [agents, provisioning, growthPartner] = onboarded === "1" ? await Promise.all([
     listAgents(ctx.user.id, ctx.org.orgId),
     withUser(ctx.user.id, async (db) => {
       const { rows } = await db.query<EmployeeProvisioningState>(
         `select distinct on (a.role_key) a.role_key as role, j.status, j.detail
          from agent_instances a left join agent_provisioning_jobs j on j.agent_instance_id = a.id and j.org_id = a.org_id
-         where a.org_id = $1 order by a.role_key, j.created_at desc nulls last`,
-        [ctx.org.orgId],
+         where a.org_id = $1 and a.role_key = any($2::text[]) order by a.role_key, j.created_at desc nulls last`,
+        [ctx.org.orgId, AGENT_ROLE_KEYS],
       );
       return rows;
     }),
-  ]) : [[], []];
+    getGrowthPartnerControlState(ctx).catch(() => null),
+  ]) : [[], [], null];
   // The database's yes or no (app.setup_payment_cleared), asked as this member. A sample workspace has no setup fee, so it says nothing about one.
   const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
   // The one honest launch state, from the workspace's own records. If it cannot be read the panel says so and offers to try again; nothing is claimed, and the checklist below still works.
@@ -107,7 +109,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const calendarNotice = calendarNoticeFor((await cookies()).get(CALENDAR_NOTICE_COOKIE)?.value, "setup");
   return (
     <>
-      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} readiness={launch} />}
+      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} readiness={launch} growthPartner={growthPartner} />}
       {outcomeNotes.length > 0 && (
         <section aria-label="What your submission changed" data-testid="outcome-notes" className="mx-auto mb-6 max-w-6xl rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
           <h2 className="text-[15px] font-semibold text-ink">What your submission changed</h2>

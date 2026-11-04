@@ -8,7 +8,7 @@ import {
 } from "@/server/workforce/jobs";
 import { publishReviewReport } from "@/server/workforce/reports";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey } from "@/lib/agents";
 
 /**
  * On-demand Operations Manager review.
@@ -258,7 +258,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
     );
     return rows[0] ?? null;
   });
-  if (!agent || !roleMayUseCapability(agent.role_key as AgentRoleKey, job.capability)) {
+  if (!agent || !isWorkforceRoleKey(agent.role_key) || !roleMayUseCapability(agent.role_key, job.capability)) {
     await withSystem(async (db) => {
       await finishWorkJob(db, {
         jobId: job.id,

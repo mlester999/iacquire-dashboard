@@ -3,11 +3,11 @@ import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import WhyPage from "@/app/demo/why/page";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
+import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
 import { DEMO_INDUSTRIES } from "@/lib/demo/industries";
-import { CORE_INCLUDES, DIY_ROWS, IMPLEMENTATION_SETS, JOURNEY, NEXT_STEPS, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, VIEWS, VIEW_IDS, WHY_BLOCKS, faqs, isViewId, sampleDeals } from "@/lib/demo/showroom/content";
-import { OVERSIGHT_FOOTER, SCOPE_NOTE, profiles, scenarioOf } from "@/lib/demo/showroom/employees";
+import { CORE_INCLUDES, DEMO_CAPABILITY_AREAS, DIY_ROWS, IMPLEMENTATION_SETS, JOURNEY, NEXT_STEPS, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, VIEWS, VIEW_IDS, WHY_BLOCKS, faqs, isViewId, sampleDeals } from "@/lib/demo/showroom/content";
+import { OVERSIGHT_FOOTER, SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
 import { BUY_CONFIRM, CONSULT_CONFIRM, isConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 
@@ -16,44 +16,33 @@ import { BUY_CONFIRM, CONSULT_CONFIRM, isConfirmKind } from "@/lib/demo/showroom
 // carry a visitor's details anywhere the demo's own endpoints do not.
 
 const INDUSTRIES = [null, ...DEMO_INDUSTRIES.map((i) => i.value)];
-/** Money, percentages, multipliers and guarantees: nothing the showroom writes about the AI Employees' work may contain them. */
+/** Money, percentages, multipliers and guarantees: nothing the showroom writes about the Growth Partner may contain them. */
 const CLAIM = /[$€£]\s?\d|\d+(\.\d+)?\s?%|\b\d+\s?x\b|\bguarantee|\bROI\b|\bsaves? (you )?\d|\d+ hours? (a|per|saved)/i;
 
 const flat = (v: unknown): string[] => (typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(flat) : v && typeof v === "object" ? Object.values(v).flatMap(flat) : []);
 
-describe("the six AI Employees in the showroom", () => {
-  it("presents every role once, with what it needs a person for, and states no price, percentage or result", () => {
-    const all = profiles();
-    expect(all.map((p) => p.role).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
-    // A role has no nickname of its own: names belong to the company that chose them (see the naming tests below).
-    for (const p of all) expect(Object.keys(p), p.role).not.toContain("alias");
-    for (const p of all) {
-      expect(p.needsApproval.length, p.role).toBeGreaterThan(0);
-      expect(p.worksWith.length, p.role).toBeGreaterThan(0);
-      for (const t of flat([p.solves, p.typicalDay, p.capabilities, p.example, p.worksWith, p.needsApproval])) expect(t, `${p.role}: ${t}`).not.toMatch(CLAIM);
+describe("the AI Growth Partner in the showroom", () => {
+  it("presents one employee identity and six internal capability areas without inventing a result", () => {
+    expect(DEMO_CAPABILITY_AREAS.map((area) => area.key)).toEqual([...AI_GROWTH_PARTNER_CAPABILITIES]);
+    expect(DEMO_CAPABILITY_AREAS).toHaveLength(6);
+    for (const area of DEMO_CAPABILITY_AREAS) {
+      expect(area.title.length).toBeGreaterThan(0);
+      expect(area.description.length).toBeGreaterThan(0);
+      for (const t of flat(area)) expect(t, `${area.key}: ${t}`).not.toMatch(CLAIM);
     }
-    expect(SCOPE_NOTE).toMatch(/implementation agreement/);
+    expect(Object.keys(AI_GROWTH_PARTNER_CAPABILITY_INFO)).toEqual([...AI_GROWTH_PARTNER_CAPABILITIES]);
+    expect(SCOPE_NOTE).toMatch(/implementation/);
     expect(OVERSIGHT_FOOTER).toMatch(/approval/);
+    expect(OVERSIGHT_FOOTER).toMatch(/authorized workspace data/);
   });
 
-  it("gives every role a simulated scenario for every industry, in which the customer-facing step waits for a person and nothing claims a result", () => {
-    for (const industry of INDUSTRIES) {
-      const sample = scenarioFor(industry);
-      for (const role of AGENT_ROLE_KEYS) {
-        const s = scenarioOf(role, sample);
-        const where = `${industry ?? "generic"} / ${role}`;
-        expect(s.steps.length, where).toBeGreaterThanOrEqual(3);
-        expect(s.prompt, where).toMatch(/^(Show|See|Watch|How)\b/i);
-        for (const t of flat(s)) expect(t, `${where}: ${t}`).not.toMatch(CLAIM);
-        // Somewhere in each scenario something is left for a person to decide or review: a role that prepares a customer-facing message never sends it.
-        expect(flat(s.steps.map((x) => x.rows)).join(" "), where).toMatch(/approval|decision|review|suggest|confirm/i);
-        for (const step of s.steps) {
-          // A sentence that says nothing happened ("Nothing is sent without you") is the opposite of a claim.
-          const text = `${step.title} ${step.narration}`.replace(/nothing[^.]*\./gi, "");
-          expect(text, `${where}: ${step.title}`).not.toMatch(/\b(has been|was|were|is) (sent|booked|emailed|called|charged)\b/i);
-        }
-      }
-    }
+  it("marks the acquisition workflow as illustrative and says that it performs no live research or business action", () => {
+    const source = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/workforce.tsx"), "utf8");
+    expect(source).toMatch(/Illustrative workflow/);
+    expect(source).toMatch(/Sample only/);
+    expect(source).toMatch(/No company is researched, no CRM record is changed and no message or booking is made/);
+    expect(source).toMatch(/DEMO_CAPABILITY_AREAS\.map/);
+    expect(DEMO_CAPABILITY_AREAS.map((area) => area.title)).toContain("Business Operations");
   });
 });
 
@@ -71,9 +60,9 @@ describe("the sample business", () => {
     expect(scenarioFor("no-such-industry")).toEqual(scenarioFor(null));
   });
 
-  it("walks one sample lead through the five stages, each owned by one of the six roles", () => {
+  it("walks one sample lead through the five stages under one partner identity", () => {
     expect(PIPELINE_STAGES).toEqual(["New Lead", "Qualified", "Appointment Scheduled", "Proposal", "Won"]);
-    for (const stage of PIPELINE_STAGES) expect(AGENT_ROLE_KEYS as readonly string[], stage).toContain(STAGE_STORY[stage].whoRole);
+    for (const stage of PIPELINE_STAGES) expect(DEMO_CAPABILITY_AREAS.map((area) => area.title), stage).toContain(STAGE_STORY[stage].capability);
     const deals = sampleDeals(scenarioFor("real_estate"));
     expect(deals.filter((d) => d.followed)).toHaveLength(1);
     expect(deals.every((d) => (PIPELINE_STAGES as readonly string[]).includes(d.stage))).toBe(true);
@@ -105,7 +94,7 @@ describe("the plans as the showroom words them", () => {
 
 describe("the views", () => {
   it("are the eight the brief names, in order, with the four guided steps pointing at real views", () => {
-    expect(VIEWS.map((v) => v.label)).toEqual(["Overview", "AI Workforce", "CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing", "Why iAcquireOS?"]);
+    expect(VIEWS.map((v) => v.label)).toEqual(["Overview", "AI Growth Partner", "CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing", "Why iAcquireOS?"]);
     expect(JOURNEY.map((j) => j.step)).toEqual([1, 2, 3, 4]);
     for (const j of JOURNEY) expect(VIEW_IDS, j.title).toContain(j.view);
     expect(JOURNEY.map((j) => j.view)).toEqual(["workforce", "crm", "automation", "summary"]);
@@ -273,6 +262,6 @@ describe("the public entry pages follow the portal's design system too", () => {
     }
     const sections = ENTRY.find((e) => e.file.endsWith("landing-sections.tsx"))!.text;
     expect(sections).toMatch(/Sample preview/);
-    expect(sections).toMatch(/An invented example/);
+    expect(sections).toMatch(/Illustrative only/);
   });
 });

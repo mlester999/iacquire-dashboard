@@ -103,7 +103,7 @@ describe("Automation Studio upgrade page", () => {
     const kept = within(table).getAllByRole("row").filter((r) => within(r).queryAllByText(/included$/).length === 2 && within(r).getAllByText(/: included$/).length === 2);
     const keptText = kept.map((r) => r.textContent).join(" ");
     expect(keptText).toMatch(/CRM, its workflow builder/);
-    expect(keptText).toMatch(/AI employees/);
+    expect(keptText).toMatch(/AI Growth Partner/);
     expect(keptText).toMatch(/n8n, Zapier and Make/);
     const added = within(table).getAllByRole("row").filter((r) => within(r).queryAllByText(/Now: not included/).length === 1).map((r) => r.textContent).join(" ");
     expect(added).toMatch(/AI Automation Builder/);
@@ -180,7 +180,7 @@ describe("the example's script", () => {
   it("is an automation the real workflow spec accepts, in the real canvas's words", () => {
     const templateId = "00000000-0000-4000-8000-0000000000a1";
     const steps = {
-      text: { key: "text", kind: "send_message", name: DEMO_NODES.text.title, config: { templateId, contentHash: "a".repeat(64), channel: "sms", sendAs: "sales_assistant", businessHoursOnly: true } },
+      text: { key: "text", kind: "send_message", name: DEMO_NODES.text.title, config: { templateId, contentHash: "a".repeat(64), channel: "sms", sendAs: "growth_partner", businessHoursOnly: true } },
       task: { key: "task", kind: "create_task", name: DEMO_NODES.task.title, config: { title: "Follow-up call", priority: "high", assignee: "contact_owner", dueIn: { amount: 1, unit: "days" } } },
       wait: { key: "wait", kind: "wait", name: DEMO_NODES.wait.title, config: { mode: "duration", amount: 1, unit: "days" } },
       check: { key: "check", kind: "branch", name: DEMO_NODES.check.title, config: { subject: "contact", filter: { op: "and", conditions: [] }, reply: "not_replied" } },

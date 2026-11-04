@@ -59,7 +59,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   escalation_pending: "A person is being asked to take over",
   automation_paused: "Automation is paused",
   org_inactive: "This workspace is not active",
-  agent_not_ready: "The AI employee has not passed its connection check",
+  agent_not_ready: "The AI Growth Partner has not passed its connection check",
   suppressed: "The customer opted out or the address is suppressed",
   no_consent: "No consent on record for this kind of message",
   identity_unverified: "The visitor typed this number or address and it has not been confirmed",

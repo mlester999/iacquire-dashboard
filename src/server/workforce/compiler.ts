@@ -1,5 +1,5 @@
 import "server-only";
-import { AGENT_BY_KEY, defaultEmployeeName, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, defaultEmployeeName, workforceRoleName, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
 import {
   agentSettingsSchema,
   LANGUAGES,
@@ -37,7 +37,7 @@ export function sanitizeClientText(value: string | undefined | null, max = 2000)
 // Defaults
 // ---------------------------------------------------------------------------
 
-export function defaultSettings(role: AgentRoleKey, prefs?: Partial<AiPreferences>): AgentSettings {
+export function defaultSettings(role: WorkforceRoleKey, prefs?: Partial<AiPreferences>): AgentSettings {
   return agentSettingsSchema.parse({
     displayName: defaultEmployeeName(role),
     tone: prefs?.tone ?? "friendly",
@@ -59,9 +59,9 @@ const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + 
 const TONE_WORD: Record<Tone, string> = { friendly: "friendly", professional: "professional", casual: "relaxed", premium: "polished, premium" };
 const LENGTH_WORD: Record<ReplyLength, string> = { concise: "short and practical", balanced: "balanced", detailed: "detailed" };
 
-export function summarizeSettings(role: AgentRoleKey, s: AgentSettings): string {
+export function summarizeSettings(role: WorkforceRoleKey, s: AgentSettings): string {
   const a = (id: string) => clean(sanitizeClientText(s.roleAnswers[id] ?? "", 300));
-  const name = s.displayName || AGENT_BY_KEY[role].shortName;
+  const name = s.displayName || workforceRoleShortName(role);
   const parts: string[] = [];
   switch (role) {
     case "lead_hunter": {
@@ -100,6 +100,9 @@ export function summarizeSettings(role: AgentRoleKey, s: AgentSettings): string 
       parts.push(p ? `Your ${name} will prioritise ${lowerFirst(p)}${ar ? ` and will ask you before ${lowerFirst(ar)}` : ""}.` : `Your ${name} will coordinate your AI team and prepare daily summaries.`);
       break;
     }
+    case AI_GROWTH_PARTNER_ROLE_KEY:
+      parts.push(`Your ${name} will coordinate lead discovery, sales support, calendar requests, CRM and pipeline review, business operations, and performance reporting through the workspace's approved tools.`);
+      break;
   }
   parts.push(`It replies in a ${TONE_WORD[s.tone]}, ${LENGTH_WORD[s.replyLength]} style in ${s.language}.`);
   if (s.escalateWhen) parts.push(`It asks a human for help when ${lowerFirst(clean(sanitizeClientText(s.escalateWhen, 200)))}.`);
@@ -146,14 +149,16 @@ export interface CompiledConfig {
 }
 
 export function compileAgentConfig(input: {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   settings: AgentSettings;
   company: CompanyContext;
   version: number;
   allowedTools: string[];
 }): CompiledConfig {
   const settings = agentSettingsSchema.parse(input.settings);
-  const meta = AGENT_BY_KEY[input.role];
+  const meta = input.role === AI_GROWTH_PARTNER_ROLE_KEY
+    ? { name: workforceRoleName(input.role), shortName: workforceRoleShortName(input.role), questions: [] }
+    : AGENT_BY_KEY[input.role];
   const c = input.company;
   const companyName = sanitizeClientText(c.companyName, 120) || (c.orgKind === "agency" ? "iAcquire" : "the client");
   const policyVersion = policyVersionFor(c.orgKind);

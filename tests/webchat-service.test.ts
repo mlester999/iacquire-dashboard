@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { ensureWidget, readWidgetView, rotatePublicKey, saveWidgetSettings } from "@/server/webchat/config";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { getConversationDetail, sendHumanReply } from "@/server/messaging/inbox";
 import { getInboxCrmContext } from "@/server/messaging/inbox-context";
 import { inboxViewCounts, listConversationsPage } from "@/server/messaging/inbox-list";
@@ -24,11 +25,21 @@ describe("the widget's configuration", () => {
     const fresh = await messagingOrg();
     const created = await withSystem((db) => ensureWidget(db, fresh.org.id));
     expect(created).toMatchObject({ enabled: false, allowedOrigins: [], aiEnabled: true, allowBooking: true, leadForm: "offer", offlineBehavior: "ai_answers", version: 1 });
+    expect(created.aiRoleKey).toBe("sales_assistant"); // Legacy workspaces retain their existing visitor profile until a reviewed move.
     expect(created.publicKey).toMatch(/^wk_[A-Za-z0-9]{24}$/);
     expect(created.knowledgeSections).not.toContain("approved_pricing");
     await expect(saveWidgetSettings(fresh.ctx("owner"), { enabled: true }, created.version)).rejects.toThrow(/website the chat will run on/i);
+    await expect(saveWidgetSettings(fresh.ctx("owner"), { aiRoleKey: "growth_partner" }, created.version)).rejects.toThrow(/set up the AI Growth Partner/i);
+    await expect(saveWidgetSettings(fresh.ctx("owner"), { aiRoleKey: "appointment_setter" }, created.version)).rejects.toThrow(/use the AI Growth Partner profile/i);
     const on = await saveWidgetSettings(fresh.ctx("owner"), { enabled: true, allowedOrigins: ["https://Shop.Example.com/page"] }, created.version);
     expect(on).toMatchObject({ enabled: true, allowedOrigins: ["shop.example.com"], version: 2 });
+  });
+
+  it("defaults new Growth Partner workspaces to the same identity in website chat", async () => {
+    const fresh = await messagingOrg({ name: "Unified Website Chat" });
+    await withSystem((db) => ensureGrowthPartnerRuntime(fresh.org.id, db));
+    const created = await withSystem((db) => ensureWidget(db, fresh.org.id));
+    expect(created.aiRoleKey).toBe("growth_partner");
   });
 
   it("is changed only by people who can edit the website, from the version they saw, with checked values", async () => {

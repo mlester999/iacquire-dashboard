@@ -23,22 +23,22 @@ export default async function AppointmentsPage() {
     const home = await nativeAppointmentsHome(ctx.org.orgId);
     if (home) redirect(home);
   }
-  const [data, setter, pending, policy] = await Promise.all([
+  const [data, partner, pending, policy] = await Promise.all([
     getAppointments(ctx),
-    getAgentByRole(ctx.user.id, ctx.org.orgId, "appointment_setter"),
+    getAgentByRole(ctx.user.id, ctx.org.orgId, "growth_partner"),
     listPendingBookings(ctx),
     getPolicyView(ctx),
   ]);
   return (
     <div className="space-y-6">
-      <PageHero target="appointments.hero" eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your Appointment Setter only ever offers times your calendar reports as free.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
+      <PageHero target="appointments.hero" eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your AI Growth Partner only offers times your calendar reports as free.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
       {data.connected ? (
         <AppointmentsView
           appointments={JSON.parse(JSON.stringify(data.appointments))}
           timeZone={ctx.org.timezone}
           lastSync={data.integration?.last_checked_at ? new Date(data.integration.last_checked_at).toISOString() : null}
           canRefresh={ctx.can("integrations.view") && !ctx.org.isDemo}
-          setterReady={Boolean(setter?.enabled && canChat(setter.status))}
+          partnerReady={Boolean(partner?.enabled && canChat(partner.status))}
           pending={pending}
           policy={policy}
           canBook={ctx.can("appointments.book")}
@@ -48,7 +48,7 @@ export default async function AppointmentsPage() {
       ) : (
         <NotConnected
           title="Your calendar isn't connected yet"
-          body="Once iAcquire connects your GoHighLevel calendar, your upcoming meetings, booking status and history appear here. Your Appointment Setter only ever offers real availability."
+          body="Once iAcquire connects your GoHighLevel calendar, your upcoming meetings, booking status and history appear here. Your AI Growth Partner only offers real availability."
           canRequest={ctx.can("support.use")}
         />
       )}

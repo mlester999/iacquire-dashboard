@@ -226,7 +226,7 @@ export function BillingWorkspace({
                 })}
               </ul>
             ) : (
-              <EmptyState compact icon={<Coins className="size-5" />} title="No credit activity yet" description="Add credits to let your AI team send replies and follow-ups." className="border-t border-line" />
+              <EmptyState compact icon={<Coins className="size-5" />} title="No credit activity yet" description="Add credits to let your AI Growth Partner send replies and follow-ups." className="border-t border-line" />
             )}
           </Panel>
 

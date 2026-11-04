@@ -227,7 +227,7 @@ function launchFacts(over: Partial<LaunchFacts> = {}): LaunchFacts {
 }
 const companyNotSaved = { companyName: false, industry: true, description: true, timezone: "America/Chicago", timezoneAnswered: true };
 
-describe("the 'Meet your AI team' banner", () => {
+describe("the existing AI profiles banner", () => {
   it("never says 'N/6 ready' while the launch judge says action required, and shows only the judge's own numbers", () => {
     // Every employee answers in chat, and the company details are not saved: the old count would have said 6/6 ready above an "Action required".
     const readiness = deriveLaunchReadiness(launchFacts({ profile: companyNotSaved }));
@@ -256,6 +256,14 @@ describe("the 'Meet your AI team' banner", () => {
     expect(document.body.textContent).not.toMatch(/\d+\s*\/\s*6\s*ready/i);
     expect(screen.queryByTestId("banner-launch")).toBeNull();
     expect(screen.getAllByText("Action required")).toHaveLength(6);
+  });
+
+  it("labels retained records as existing profiles and explains that cutover needs approval", () => {
+    render(<OnboardedBanner nativeCrm crmGuide readiness={null} />);
+    expect(screen.getByRole("status", { name: "Existing AI profiles" })).toBeTruthy();
+    expect(screen.getByText("Existing AI profiles preserved")).toBeTruthy();
+    expect(screen.getByText(/Moving this workspace to one AI Growth Partner requires its own runtime and permission checks plus your approval/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/six AI employees/i);
   });
 });
 

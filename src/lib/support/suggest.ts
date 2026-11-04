@@ -62,7 +62,7 @@ export interface KindSuggestion {
 
 const AREAS: Array<{ category: string; re: RegExp; label: string }> = [
   { category: "crm", re: /\b(contacts?|pipelines?|deals?|opportunit\w+|crm|smart lists?|tags?|tasks?)\b/i, label: "mentions CRM" },
-  { category: "ai_employees", re: /\b(ai (employee|assistant|agent)s?|lead hunter|sales assistant|aqi|chatbot|hermes|knowledge)\b/i, label: "mentions your AI employees" },
+  { category: "ai_employees", re: /\b(ai (employee|assistant|agent)s?|growth partner|lead hunter|sales assistant|aqi|chatbot|hermes|knowledge)\b/i, label: "mentions your AI Growth Partner" },
   { category: "integrations", re: /\b(integrat\w+|connect(ed|ion)?|google|calendar|gohighlevel|ghl|n8n|zapier|whatsapp|twilio|resend|webhook)\b/i, label: "mentions a connected service" },
   { category: "website", re: /\b(website|web site|domain|landing page|site editor|published site)\b/i, label: "mentions your website" },
   { category: "billing", re: /\b(bill\w*|invoice|credits?|usage|payment|charge[sd]?|plan|subscription)\b/i, label: "mentions billing or usage" },

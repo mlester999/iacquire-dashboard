@@ -1,5 +1,6 @@
 // Pure rules for the embeddable website chat. No I/O: the same code decides on the server and is easy to test.
 import { normalizeEmail, normalizePhone } from "@/lib/messaging";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 
 // ---------------------------------------------------------------------------
 // Where the widget may run
@@ -98,7 +99,7 @@ export const DEFAULT_WIDGET_KNOWLEDGE: readonly KnowledgeSectionKey[] = ["busine
 export const WIDGET_POSITIONS = ["bottom-right", "bottom-left"] as const;
 export const LEAD_FORM_MODES = ["never", "offer", "required"] as const;
 export const OFFLINE_BEHAVIORS = ["ai_answers", "leave_message"] as const;
-export const WIDGET_AI_ROLES = ["sales_assistant", "appointment_setter"] as const;
+export const WIDGET_AI_ROLES = ["sales_assistant", "appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY] as const satisfies readonly WorkforceRoleKey[];
 
 export interface QualificationQuestion {
   key: string;

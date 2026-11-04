@@ -139,7 +139,6 @@ export async function sendDemoMessage(input: ReserveInput, ctx: DemoContext, dep
       .map((l) => ({ role: l.role, text: l.body }));
     const catalog = await (deps.catalog ?? publishedCatalog)();
     const prompt = buildDemoPrompt({
-      persona: reserved.employeeRole,
       business: prospect?.business_name ?? null,
       industryLabel: demoIndustryLabel(prospect?.industry),
       history,

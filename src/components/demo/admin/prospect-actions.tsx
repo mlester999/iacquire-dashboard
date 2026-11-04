@@ -334,7 +334,7 @@ export function ProspectActions({
           }
         }}
         title="Make this prospect a client"
-        description="Creates a client workspace, with six AI Employees that need setting up, and emails an invitation to the owner. The prospect's conversation is not copied into it. This is the same as creating a client by hand."
+        description="Creates a client workspace with one AI Growth Partner ready for onboarding, then emails an invitation to the owner. The prospect's conversation is not copied into it."
         footer={
           converted ? (
             <Button

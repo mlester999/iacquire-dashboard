@@ -25,6 +25,7 @@ import { ServiceNotices } from "@/components/overview/service-notices";
 import { ClosingNotice } from "@/components/offboarding/closing-notice";
 import { getOffboardingForOwner } from "@/server/offboarding/service";
 import { listAgents } from "@/server/workforce/service";
+import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
@@ -34,7 +35,6 @@ import { describeAction } from "@/lib/activity";
 import { SetupNudge } from "@/components/setup/setup-nudge";
 import { PageHero } from "@/components/ui/workspace";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
-import { isRuntimeOnline } from "@/lib/employee-runtime";
 
 export const metadata = { title: "Overview" };
 
@@ -50,11 +50,10 @@ function greeting(timeZone: string) {
 
 export default async function OverviewPage() {
   const ctx = await requireOrgContext();
-  const [data, agents, notices, closing] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId), listIncidentsForClient(ctx), getOffboardingForOwner(ctx)]);
+  const [data, agents, growthPartner, notices, closing] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId), getGrowthPartnerControlState(ctx), listIncidentsForClient(ctx), getOffboardingForOwner(ctx)]);
   const first = ctx.user.fullName.split(" ")[0] || "there";
   const setupDone = data.setup.filter((s) => s.done).length;
   const setupPct = Math.round((setupDone / data.setup.length) * 100);
-  const operationsReady=agents.some(agent=>agent.role_key==="operations_manager"&&agent.enabled&&isRuntimeOnline(agent.status));
   const k = data.kpis;
   const metric = (m: (typeof k)[keyof typeof k]) => (m.available ? m.value : null);
   const reason = (m: (typeof k)[keyof typeof k]) => (m.available ? undefined : m.reason);
@@ -71,20 +70,20 @@ export default async function OverviewPage() {
     { key: "wonDeals", label: "Won deals", icon: <Trophy className="size-[18px]" />, definition: nativeDeals ? "Deals marked Won in your iAcquire CRM in the last 30 days." : "Opportunities marked Won in your CRM in the last 30 days.", href: nativeDeals ? "/crm/opportunities" : "/sales", accent: "success" as const },
     { key: "followUps", label: "Follow-ups due", icon: <ClipboardList className="size-[18px]" />, definition: "Open tasks that are overdue or due within 24 hours.", href: "/overview#tasks", accent: "warning" as const },
     { key: "customerIssues", label: "Open customer issues", icon: <HeartPulse className="size-[18px]" />, definition: "Open issues across your active customer accounts in Customer Retention.", href: "/retention", accent: "warning" as const },
-    { key: "aiActivity", label: "AI tasks completed", icon: <Bot className="size-[18px]" />, definition: "AI employee runs that finished successfully in the last 30 days.", href: "/activity", accent: "primary" as const },
-    { key: "pendingApprovals", label: "Pending approvals", icon: <ShieldCheck className="size-[18px]" />, definition: "Requests from your AI team waiting for a decision.", href: "/approvals", accent: "violet" as const },
+    { key: "aiActivity", label: "AI tasks completed", icon: <Bot className="size-[18px]" />, definition: "AI Growth Partner and previous employee runs that finished in the last 30 days.", href: "/activity", accent: "primary" as const },
+    { key: "pendingApprovals", label: "Pending approvals", icon: <ShieldCheck className="size-[18px]" />, definition: "AI work waiting for a decision.", href: "/approvals", accent: "violet" as const },
   ] as const;
 
   return (
     <div className="space-y-6">
-      <PageHero target="overview.hero" tone="dark" eyebrow={`${ctx.org.name} · ${formatDate(new Date(),ctx.org.timezone)}`} title={`${greeting(ctx.org.timezone)}, ${first}.`} description="Your team, your pipeline and the decisions that move your business forward — in one workspace." action={<>
+      <PageHero target="overview.hero" tone="dark" eyebrow={`${ctx.org.name} · ${formatDate(new Date(),ctx.org.timezone)}`} title={`${greeting(ctx.org.timezone)}, ${first}.`} description="Your AI Growth Partner, pipeline and the decisions that move your business forward — in one workspace." action={<>
           <ButtonLink href="/approvals" variant="secondary" size="md">
             <ShieldCheck className="size-4" /> Approvals
           </ButtonLink>
-          <ButtonLink href={operationsReady?"/chat/operations-manager":"/employees"} variant="brand" size="md">
-            {operationsReady?"Ask your Operations Manager":"Review your AI team"} <ArrowRight className="size-4" />
+          <ButtonLink href="/growth-partner" variant="brand" size="md">
+            Open AI Growth Partner <ArrowRight className="size-4" />
           </ButtonLink>
-        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&isRuntimeOnline(agent.status)).length}<span className="ml-2 text-[14px] font-normal text-slate-300">employees ready to work</span></p><Link href="/employees" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
+        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI Growth Partner</p><p className="mt-3 text-[17px] font-semibold">{growthPartner?.status === "configured" ? "Business Brain ready" : growthPartner?.status === "paused" ? "Partner paused" : growthPartner ? "Partner setup in progress" : "Ready to set up"}</p><p className="mt-1 text-[13px] text-slate-300">{growthPartner?.currentVersion ? `Active Business Brain v${growthPartner.currentVersion}` : "One lasting conversation for coordinated business work."}</p><Link href="/growth-partner" className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-200">Open Partner Control Center<ArrowRight className="size-3"/></Link></div>}/>
 
       <ClosingNotice view={closing} />
       <ServiceNotices incidents={notices} />
@@ -143,8 +142,8 @@ export default async function OverviewPage() {
         <Card className="min-w-0 xl:col-span-2">
           <CardHeader>
             <div>
-              <CardTitle>AI workforce activity</CardTitle>
-              <CardDescription>Messages handled by your AI employees per day, last 14 days.</CardDescription>
+              <CardTitle>AI work activity</CardTitle>
+              <CardDescription>Messages handled by your AI runtime per day, last 14 days.</CardDescription>
             </div>
           </CardHeader>
           <CardContent>
@@ -169,15 +168,15 @@ export default async function OverviewPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2" data-aqi-target="overview.ai-team">
+      <div className={cn("grid gap-6", agents.length > 0 ? "xl:grid-cols-3" : "xl:grid-cols-1")}>
+        {agents.length > 0 && <Card className="xl:col-span-2" data-aqi-target="overview.ai-team">
           <CardHeader>
             <div>
-              <CardTitle>Your AI team</CardTitle>
-              <CardDescription>Latest recorded connection status for each employee.</CardDescription>
+              <CardTitle>Previous employee profiles</CardTitle>
+              <CardDescription>Existing profile records retained during the move to one AI Growth Partner.</CardDescription>
             </div>
             <ButtonLink href="/employees" variant="ghost" size="sm">
-              Manage <ArrowRight className="size-3.5" />
+              Review profiles <ArrowRight className="size-3.5" />
             </ButtonLink>
           </CardHeader>
           <CardContent>
@@ -201,9 +200,9 @@ export default async function OverviewPage() {
               })}
             </ul>
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card>
+        <Card className={agents.length > 0 ? "" : "xl:col-span-3"}>
           <CardHeader>
             <div>
               <CardTitle>Alerts</CardTitle>

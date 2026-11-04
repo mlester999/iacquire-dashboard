@@ -317,7 +317,7 @@ describe("editor rules", () => {
     expect(notes.send_message).toMatch(/approved message template/);
     expect(notes.n8n).toMatch(/agency/);
     expect(notes.webhook).toMatch(/webhook endpoint/);
-    expect(notes.ai_task).toMatch(/AI employees/);
+    expect(notes.ai_task).toMatch(/AI profiles/);
     expect(notes.add_tag).toMatch(/tags/);
     expect(notes.wait).toBeNull();
     expect(kindChoices(bare).map((c) => c.kind)).toEqual([...STEP_KIND_LIST]);
@@ -399,9 +399,9 @@ describe("editor rules", () => {
 });
 
 describe("navigation", () => {
-  it("lists Workflows and Workflow Activity under Automation for people who can see automations, keeping AI Employees", () => {
+  it("lists Workflows and Workflow Activity under Automation for people who can see automations, with the Growth Partner link", () => {
     const automation = (can: (p: string) => boolean, mode: "client" | "agency") => navFor(can as (p: import("@/lib/permissions").Permission) => boolean, mode).find((s) => s.key === "automation")?.items.map((i) => i.path) ?? [];
-    expect(automation((p) => p === "workflows.view" || p === "agents.use", "client")).toEqual(["/workflows", "/workflows/activity", "/employees"]);
+    expect(automation((p) => p === "workflows.view" || p === "agents.use", "client")).toEqual(["/workflows", "/workflows/activity", "/growth-partner"]);
     // The agency's view has no AI workforce link (it leaves the CRM), but keeps the workflow screens.
     expect(automation((p) => p === "workflows.view" || p === "agents.use", "agency")).toEqual(["/workflows", "/workflows/activity"]);
     expect(automation((p) => p === "crm.view", "client")).toEqual([]);

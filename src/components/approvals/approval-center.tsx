@@ -171,7 +171,7 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
 
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Human control, by design" title="Your team's ideas. Your final say." description="Review what your AI employees propose before customer-facing or CRM actions run. Every decision stays in the history; rejected or expired requests never execute." icon={<ShieldCheck className="size-4"/>} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Decision queue</p><p className="mt-2 text-[36px] font-semibold tracking-tight">{pending.length}<span className="ml-2 text-[14px] font-normal tracking-normal text-muted">awaiting review</span></p><div className="mt-3"><CoverageBar label="Approval request status" parts={[{label:"Pending",count:pending.length,color:"var(--warning)"},{label:"History",count:history.length,color:"var(--primary)"}]}/></div></div>}/>
+      <PageHero eyebrow="Human control, by design" title="Your call on important actions." description="Review what your AI Growth Partner proposes before customer-facing or CRM actions run. Every decision stays in the history; rejected or expired requests never execute." icon={<ShieldCheck className="size-4"/>} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Decision queue</p><p className="mt-2 text-[36px] font-semibold tracking-tight">{pending.length}<span className="ml-2 text-[14px] font-normal tracking-normal text-muted">awaiting review</span></p><div className="mt-3"><CoverageBar label="Approval request status" parts={[{label:"Pending",count:pending.length,color:"var(--warning)"},{label:"History",count:history.length,color:"var(--primary)"}]}/></div></div>}/>
       {!canDecide && (
         <p className="flex items-center gap-3 rounded-2xl bg-surface-2/80 p-3 text-[14px] text-ink-2 ring-1 ring-inset ring-line">
           <IconTile tone="primary" size="sm">
@@ -191,7 +191,7 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
       >
       {list.length === 0 ? (
         <Card>
-          <EmptyState icon={<ShieldCheck className="size-5" />} title={tab === "pending" ? "Nothing waiting for you" : "No decisions yet"} description={tab === "pending" ? "When an AI employee needs your go-ahead, it will appear here and in your notifications." : "Approved, rejected and expired requests will be listed here."} />
+          <EmptyState icon={<ShieldCheck className="size-5" />} title={tab === "pending" ? "Nothing waiting for you" : "No decisions yet"} description={tab === "pending" ? "When your AI Growth Partner needs your go-ahead, it will appear here and in your notifications." : "Approved, rejected and expired requests will be listed here."} />
         </Card>
       ) : (
         <ul className="space-y-3">

@@ -283,7 +283,7 @@ export function CaseDetailContent({ scope, detail, members, canWork }: { scope: 
   );
 }
 
-const actorText = (a: { kind: string; name: string | null }) => (a.name ? a.name : a.kind === "provider" ? "Voice provider" : a.kind === "ai" ? "AI employee" : a.kind === "workflow" ? "Automation" : a.kind === "agency" ? "iAcquire support" : "iAcquire");
+const actorText = (a: { kind: string; name: string | null }) => (a.name ? a.name : a.kind === "provider" ? "Voice provider" : a.kind === "ai" ? "AI Growth Partner" : a.kind === "workflow" ? "Automation" : a.kind === "agency" ? "iAcquire support" : "iAcquire");
 function eventText(e: CaseDetail["events"][number]): string {
   switch (e.kind) {
     case "case_created": return "Missed call detected";

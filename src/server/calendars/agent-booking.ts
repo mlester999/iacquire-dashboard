@@ -110,7 +110,7 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
       action: { bookingId: held.bookingId }, targetType: "appointment_booking", targetId: held.bookingId, targetLabel: held.contactName || undefined,
       reason: req.requestSource === "staff_chat"
         ? `A team member selected and explicitly confirmed this contact and time in AI Employee Chat for the ${held.typeName} calendar. The booking still needs your approval.`
-        : `Your Appointment Setter found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
+        : `AI Growth Partner found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
       expectedEffect: req.requestSource === "staff_chat"
         ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
         : held.needsHostConfirmation

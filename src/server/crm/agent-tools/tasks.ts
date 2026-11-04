@@ -4,7 +4,7 @@ import { recordAudit } from "@/server/audit";
 import { sha256 } from "@/server/security/crypto";
 import { automationGate, checkOrgAutomation } from "@/server/automation/gate";
 import { toolInventoryReady } from "@/server/integrations/hermes/inventory";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { workforceRoleShortName } from "@/lib/agents";
 import { isAgentRole } from "@/server/crm/agent-tools/catalog";
 
 /**
@@ -74,7 +74,7 @@ export function agentLiveRunsVerified(agent: {
 
 export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Promise<AgentTaskResult> {
   if (!isAgentRole(req.roleKey)) return { status: "blocked", detail: "That AI employee role doesn't exist, so nothing was asked." };
-  const role = AGENT_BY_KEY[req.roleKey];
+  const roleName = workforceRoleShortName(req.roleKey);
   const instruction = req.instruction.trim();
   if (!instruction || instruction.length > MAX_INSTRUCTION) return { status: "blocked", detail: `The instruction must be between 1 and ${MAX_INSTRUCTION} characters, so nothing was asked.` };
   if (!req.runId || !req.stepKey) return { status: "blocked", detail: "The workflow step couldn't be identified, so nothing was asked." };
@@ -86,7 +86,7 @@ export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Pr
     [req.orgId, req.roleKey],
   );
   const agent = rows[0];
-  const name = agent?.display_name || role.shortName;
+  const name = agent?.display_name || roleName;
   const blocked = async (detail: string): Promise<AgentTaskResult> => {
     await recordAudit({
       orgId: req.orgId, actorKind: "system", agentInstanceId: agent?.id ?? null, action: "crm.agent_task_requested", targetType: "crm_workflow_run", targetId: req.runId.slice(0, 120), result: "denied",
@@ -94,7 +94,7 @@ export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Pr
     }, db);
     return { status: "blocked", detail };
   };
-  if (!agent || !agent.enabled) return blocked(`The ${role.shortName} isn't included in this workspace, so nothing was asked.`);
+  if (!agent || !agent.enabled) return blocked(`The ${roleName} isn't included in this workspace, so nothing was asked.`);
 
   if (req.contactId) {
     // A malformed id would abort the caller's transaction in PostgreSQL, so it is refused before any query.

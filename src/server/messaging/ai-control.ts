@@ -91,7 +91,7 @@ export async function assignAiEmployee(ctx: OrgContext, conversationId: string, 
     const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; display_name: string }>("select id, role_key, enabled, display_name from agent_instances where id = $1 and org_id = $2", [agentId, ctx.org.orgId]);
     const agent = rows[0];
     if (!agent) throw new AppError("not_found", "That AI employee isn't part of this workspace.");
-    if (!canHandleConversations(agent.role_key)) throw new AppError("invalid_input", `${agent.display_name} works behind the scenes and can't talk to customers. Choose the Sales Assistant or the Appointment Setter.`);
+    if (!canHandleConversations(agent.role_key)) throw new AppError("invalid_input", `${agent.display_name} works behind the scenes and can't talk to customers. Choose the AI Growth Partner or a supported previous profile.`);
     if (!agent.enabled) throw new AppError("conflict", `${agent.display_name} isn't included in this workspace.`);
     const conv = await lockConversation(db, ctx.org.orgId, conversationId);
     if (conv.ai_agent_id === agentId) return { agentId, ownerKind: conv.owner_kind };

@@ -247,7 +247,7 @@ function EmptyThread({ hasList }: { hasList: boolean }) {
     <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong p-10 text-center">
       <Inbox className="size-7 text-muted" aria-hidden />
       <h2 className="mt-3 text-[16px] font-semibold">{hasList ? "Choose a conversation" : "Your inbox is empty"}</h2>
-      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
+      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI Growth Partner handles conversations it is allowed to, and hands the rest to a person.</p>
     </div>
   );
 }

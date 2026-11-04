@@ -10,6 +10,11 @@ import { parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
+import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
+import { getTargeting, saveTargeting } from "@/server/leads/service";
+import { setScheduleEnabled } from "@/server/workforce/schedules";
+import { memberActor } from "@/server/crm/actor";
+import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -30,6 +35,7 @@ const PROFILE: Record<AgentRoleKey, string> = {
   crm_manager: "c-chat-e2e-crm-manager",
   performance_analyst: "c-chat-e2e-performance-analyst",
 };
+const GROWTH_PARTNER_PROFILE = "c-chat-e2e-growth-partner";
 
 let mock: MockHermes;
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -37,12 +43,14 @@ let owner: Awaited<ReturnType<typeof createUser>>;
 let admin: Awaited<ReturnType<typeof createUser>>;
 let member: Awaited<ReturnType<typeof createUser>>;
 const agents = {} as Record<AgentRoleKey, string>;
+let growthPartnerAgentId: string;
+let growthPartnerConversationId: string;
 
 async function waitForWorkJob(jobId: string, timeoutMs = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const { rows } = await withSystem((db) => db.query<{ status: string; stage: string; result_summary: string | null }>(
-      "select status, stage, result_summary from ai_work_jobs where id = $1 and org_id = $2",
+    const { rows } = await withSystem((db) => db.query<{ status: string; stage: string; result_summary: string | null; failure_message: string | null }>(
+      "select status, stage, result_summary, failure_message from ai_work_jobs where id = $1 and org_id = $2",
       [jobId, org.id],
     ));
     const job = rows[0];
@@ -57,7 +65,10 @@ async function resetAgentMessageRateLimit(userId: string) {
 }
 
 beforeAll(async () => {
-  mock = await startMockHermes(Object.fromEntries(ROLES.map((role) => [PROFILE[role], { key: KEY }])));
+  mock = await startMockHermes({
+    ...Object.fromEntries(ROLES.map((role) => [PROFILE[role], { key: KEY }])),
+    [GROWTH_PARTNER_PROFILE]: { key: KEY },
+  });
   org = await createOrg({ name: "Six Employee Chat E2E" });
   owner = await createUser({ name: "Workflow Owner" });
   admin = await createUser({ platformRole: "agency_super_admin", name: "Test Workforce Admin" });
@@ -80,6 +91,39 @@ beforeAll(async () => {
     const health = await runHealthCheck(id, { userId: admin.id, kind: "agency" });
     expect(health).toMatchObject({ ok: true, status: "online" });
   }
+
+  growthPartnerAgentId = await withSystem(async (db) => (await db.query<{ id: string }>(
+    "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner') returning id",
+    [org.id],
+  )).rows[0].id);
+  await withSystem((db) => createConfigVersion(db, {
+    orgId: org.id,
+    agentId: growthPartnerAgentId,
+    settings: defaultSettings("growth_partner"),
+    source: "onboarding",
+    userId: owner.id,
+    apply: true,
+  }));
+  await connectHermesProfile({ agentId: growthPartnerAgentId, baseUrl: mock.url, profile: GROWTH_PARTNER_PROFILE, apiKey: KEY, agencyUserId: admin.id });
+  const partnerId = await withSystem(async (db) => {
+    const partner = (await db.query<{ id: string }>(
+      "insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2) returning id",
+      [org.id, growthPartnerAgentId],
+    )).rows[0].id;
+    await db.query(
+      `insert into ai_growth_partner_versions (partner_id, org_id, version, business_brain, source, created_by)
+       values ($1, $2, 1, $3::jsonb, 'onboarding', $4)`,
+      [partner, org.id, JSON.stringify(emptyBusinessBrain()), owner.id],
+    );
+    await db.query("update ai_growth_partners set current_version = 1 where id = $1 and org_id = $2", [partner, org.id]);
+    return partner;
+  });
+  const growthPartnerHealth = await runHealthCheck(growthPartnerAgentId, { userId: admin.id, kind: "agency" });
+  expect(growthPartnerHealth).toMatchObject({ ok: true, status: "online" });
+  growthPartnerConversationId = (await withSystem((db) => db.query<{ id: string }>(
+    "select id from chat_conversations where org_id = $1 and growth_partner_id = $2",
+    [org.id, partnerId],
+  ))).rows[0].id;
 
   await withSystem(async (db) => {
     await db.query(
@@ -120,6 +164,219 @@ afterAll(async () => {
 });
 
 describe("six employee chat to native workflow", () => {
+  it("saves lead targeting and updates one real Growth Partner schedule through the permanent chat", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const ctx = ctxFor(owner, org, "owner");
+    const previousTargeting = await getTargeting(ctx);
+    try {
+      const targetingUpdate = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        content: "Only look for dental clinics in Florida.",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect(targetingUpdate).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+      const targetingReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [targetingUpdate.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(targetingReply).toContain("Saved lead targeting");
+      expect(await getTargeting(ctx)).toMatchObject({ industries: ["dental clinics"], regions: ["Florida"] });
+      expect((await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+        "select metadata from audit_logs where org_id = $1 and action = 'leads.targeting_saved' order by created_at desc limit 1",
+        [org.id],
+      ))).rows[0].metadata).toMatchObject({ changedKeys: expect.arrayContaining(["industries", "regions"]) });
+
+      const schedulePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        content: "Research 10 dental clinics in Florida every weekday at 9 AM",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const previewText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [schedulePreview.assistantMessageId]))).rows[0].content;
+      expect(previewText).toContain("Schedule preview");
+      expect(schedulePreview.conversationId).toBe(growthPartnerConversationId);
+      await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "confirm schedule", clientMessageId: crypto.randomUUID(),
+      });
+      const created = (await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown>; payload: Record<string, unknown> }>(
+        "select id, enabled, recurrence_rule, payload from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+        [org.id, growthPartnerAgentId],
+      ))).rows[0];
+      expect(created).toMatchObject({ enabled: false, recurrence_rule: { kind: "weekly", localTime: "09:00" }, payload: { target: "dental clinics", location: "Florida", quantity: 10 } });
+      await setScheduleEnabled(ctx, created.id, true);
+
+      const changePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        content: "Change my lead-hunting schedule to 2 PM",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const changeText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [changePreview.assistantMessageId]))).rows[0].content;
+      expect(changeText).toContain("updated in place");
+      expect(changeText).toContain("remain enabled");
+      await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "confirm schedule", clientMessageId: crypto.randomUUID(),
+      });
+      const changed = (await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown>; payload: Record<string, unknown>; next_run_at: Date }>(
+        "select id, enabled, recurrence_rule, payload, next_run_at from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+        [org.id, growthPartnerAgentId],
+      ))).rows[0];
+      expect(changed).toMatchObject({ id: created.id, enabled: true, recurrence_rule: { kind: "weekly", localTime: "14:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] }, payload: created.payload });
+      expect(new Date(changed.next_run_at).getTime()).toBeGreaterThan(Date.now());
+      expect((await withSystem((db) => db.query(
+        "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+        [org.id, growthPartnerAgentId],
+      ))).rows).toHaveLength(1);
+    } finally {
+      await saveTargeting(ctx, previousTargeting);
+      await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, growthPartnerAgentId]));
+      await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
+  it("creates one CRM contact from the permanent chat, checks duplicates and respects its ability switch", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    await resetAgentMessageRateLimit(owner.id);
+    const created = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      content: "Add Jamie Lee to our CRM with email jamie.lee-chat@example.test",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(created.conversationId).toBe(growthPartnerConversationId);
+    const response = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [created.assistantMessageId]))).rows[0].content;
+    expect(response).toContain("Added Jamie Lee to the CRM");
+    expect(response).toContain("No message was sent");
+    const contact = (await withSystem((db) => db.query<{ id: string; source: string; email: string }>(
+      "select id, source, email::text as email from contacts where org_id = $1 and email = 'jamie.lee-chat@example.test' and deleted_at is null",
+      [org.id],
+    ))).rows[0];
+    expect(contact).toMatchObject({ source: "AI Growth Partner chat", email: "jamie.lee-chat@example.test" });
+
+    await resetAgentMessageRateLimit(owner.id);
+    const duplicate = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      content: "Add Jamie Lee to our CRM with email jamie.lee-chat@example.test",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const duplicateText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [duplicate.assistantMessageId]))).rows[0].content;
+    expect(duplicateText).toContain("already in the CRM");
+    expect((await withSystem((db) => db.query("select id from contacts where org_id = $1 and email = 'jamie.lee-chat@example.test' and deleted_at is null", [org.id]))).rows).toHaveLength(1);
+
+    const active = (await withSystem((db) => db.query<{ config_version_id: string | null; settings: unknown }>(
+      `select a.active_config_version_id as config_version_id, v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.id = $1 and a.org_id = $2`,
+      [growthPartnerAgentId, org.id],
+    ))).rows[0];
+    const originalConfigId = active.config_version_id;
+    const settings = active.settings && typeof active.settings === "object" && !Array.isArray(active.settings) ? active.settings as Record<string, unknown> : {};
+    const existingDisabled = Array.isArray(settings.disabledTools) ? settings.disabledTools.filter((value): value is string => typeof value === "string") : [];
+    await withSystem((db) => db.query("update agent_config_versions set settings = $2::jsonb where id = $1 and org_id = $3", [originalConfigId, JSON.stringify({ ...settings, disabledTools: [...new Set([...existingDisabled, "crm.contacts.create"])] }), org.id]));
+    try {
+      await resetAgentMessageRateLimit(owner.id);
+      const refused = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        content: "Add Robin Chen to our CRM with email robin.chen-chat@example.test",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const refusalText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [refused.assistantMessageId]))).rows[0].content;
+      expect(refusalText).toContain('"Create individual CRM contacts" switched off in Allowed actions');
+      expect((await withSystem((db) => db.query("select id from contacts where org_id = $1 and email = 'robin.chen-chat@example.test' and deleted_at is null", [org.id]))).rows).toHaveLength(0);
+    } finally {
+      await withSystem((db) => db.query("update agent_config_versions set settings = $2::jsonb where id = $1 and org_id = $3", [originalConfigId, JSON.stringify(settings), org.id]));
+      await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
+  it("updates a native appointment type's booking rule through its real calendar service", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const type = (await withSystem((db) => db.query<{ id: string; duration_minutes: number }>(
+      "select id, duration_minutes from crm_appointment_types where org_id = $1 and slug = 'discovery-call' and archived_at is null",
+      [org.id],
+    ))).rows[0];
+    const previousDuration = type.duration_minutes;
+    try {
+      await resetAgentMessageRateLimit(owner.id);
+      const changed = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        content: "Set the duration for Discovery Call to 45 minutes",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect(changed.conversationId).toBe(growthPartnerConversationId);
+      const response = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [changed.assistantMessageId]))).rows[0].content;
+      expect(response).toContain("Updated Discovery Call appointment duration to 45 minutes");
+      expect((await withSystem((db) => db.query<{ duration_minutes: number }>("select duration_minutes from crm_appointment_types where id = $1 and org_id = $2", [type.id, org.id]))).rows[0].duration_minutes).toBe(45);
+      expect((await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+        "select metadata from audit_logs where org_id = $1 and action = 'crm.appointment_type_updated' and target_id = $2 order by created_at desc limit 1",
+        [org.id, type.id],
+      ))).rows[0].metadata).toMatchObject({ changed: { durationMinutes: [previousDuration, 45] } });
+    } finally {
+      await updateAppointmentType(memberActor(ctx), type.id, { durationMinutes: previousDuration });
+      await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
+  it("creates a private calendar and hidden appointment type for a named active host", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const name = `Chat Consultation ${crypto.randomUUID().slice(0, 8)}`;
+    await resetAgentMessageRateLimit(owner.id);
+    const created = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      content: `Create a calendar named ${name} for Workflow Owner with a 45-minute appointment`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(created).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+    const response = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [created.assistantMessageId]))).rows[0].content;
+    expect(response).toContain(`Created the private “${name}” calendar`);
+    expect(response).toContain("hidden");
+    expect(response).toContain("existing host hours were left unchanged");
+    const saved = await withSystem(async (db) => {
+      const calendar = (await db.query<{ id: string; public: boolean }>(
+        "select id, public from crm_calendars where org_id = $1 and name = $2 and archived_at is null",
+        [org.id, name],
+      )).rows[0];
+      const memberRows = await db.query<{ user_id: string }>("select user_id from crm_calendar_members where org_id = $1 and calendar_id = $2", [org.id, calendar.id]);
+      const type = (await db.query<{ id: string; name: string; duration_minutes: number; location_kind: string; public: boolean; requires_confirmation: boolean }>(
+        "select id, name, duration_minutes, location_kind, public, requires_confirmation from crm_appointment_types where org_id = $1 and calendar_id = $2 and archived_at is null",
+        [org.id, calendar.id],
+      )).rows[0];
+      return { calendar, memberRows: memberRows.rows, type };
+    });
+    expect(saved.calendar.public).toBe(false);
+    expect(saved.memberRows).toEqual([{ user_id: owner.id }]);
+    expect(saved.type).toMatchObject({ name, duration_minutes: 45, location_kind: "none", public: false, requires_confirmation: true });
+    expect((await withSystem((db) => db.query<{ action: string }>(
+      "select action from audit_logs where org_id = $1 and ((action = 'crm.calendar_created' and target_id = $2) or (action = 'crm.appointment_type_created' and target_id = $3)) order by action",
+      [org.id, saved.calendar.id, saved.type.id],
+    ))).rows.map((row) => row.action)).toEqual(["crm.appointment_type_created", "crm.calendar_created"]);
+    await resetAgentMessageRateLimit(owner.id);
+  });
+
+  it("uses one shared Growth Partner conversation for real, permission-checked work", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      content: "Check our CRM for duplicates and incomplete records",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: expect.any(String) });
+    expect((await withSystem((db) => db.query<{ role: string; author_user_id: string | null }>(
+      "select role, author_user_id from chat_messages where id = $1 and conversation_id = $2",
+      [sent.userMessageId, growthPartnerConversationId],
+    ))).rows[0]).toMatchObject({ role: "user", author_user_id: owner.id });
+    expect((await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from chat_conversations where org_id = $1 and agent_instance_id = $2 and growth_partner_id is null",
+      [org.id, growthPartnerAgentId],
+    ))).rows[0].count).toBe("0");
+    expect((await withSystem((db) => db.query<{ agent_instance_id: string; capability: string }>(
+      "select agent_instance_id, capability from ai_work_jobs where id = $1 and org_id = $2",
+      [sent.jobId, org.id],
+    ))).rows[0]).toEqual({ agent_instance_id: growthPartnerAgentId, capability: "crm_quality_review" });
+    const settled = await waitForWorkJob(sent.jobId!);
+    console.log("Growth Partner capability result", settled);
+    expect(settled).toMatchObject({ status: "completed" });
+    await resetAgentMessageRateLimit(owner.id);
+  });
+
   it.each([
     ["operations_manager", "Review our current operations, identify blocked work and tell me what needs my attention", "proactive_review"],
     ["lead_hunter", "Review our recent lead research and explain which candidates need review", "lead_generation_review"],

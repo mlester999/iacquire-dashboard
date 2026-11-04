@@ -444,8 +444,8 @@ async function applyReported(db: Queryable, event: NormalizedPaymentEvent): Prom
   const kindLabel = REPORTED_KIND_LABEL[payment.kind] ?? "payment";
   const sentence = dispute ? `${providerName} reports a dispute on this payment.` : refundSentence(event.refund ?? { id: null, amountMinor: null, currency: null, status: null }, event.provider);
   const advice = dispute
-    ? `Nothing was changed: the payment still counts as received until you record what happened. Respond to the dispute in ${providerName}. Access and AI employees are not affected.`
-    : "Nothing was changed. If this refund is not recorded yet, record it on the payment; if you already recorded it, nothing more is needed. Access and AI employees are not affected.";
+    ? `Nothing was changed: the payment still counts as received until you record what happened. Respond to the dispute in ${providerName}. Access and AI operations are not affected.`
+    : "Nothing was changed. If this refund is not recorded yet, record it on the payment; if you already recorded it, nothing more is needed. Access and AI operations are not affected.";
   await notifyAgency(db, payment.org_id, {
     kind: "billing_reconciliation",
     severity: dispute ? "critical" : "warning",

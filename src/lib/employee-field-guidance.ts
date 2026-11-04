@@ -248,6 +248,18 @@ export const ROLE_TOOL_GUIDANCE: Record<string, { description: string; off: stri
     description: "Lets the employee prepare a booking or change request for your team to review. It cannot change the calendar directly with this permission alone.",
     off: "The employee cannot prepare booking or change requests.",
   },
+  "calendar.create": {
+    description: "Lets AI Growth Partner create a private calendar and a non-public appointment type after you provide an exact name and host. It does not publish a booking page or change host availability.",
+    off: "AI Growth Partner cannot create calendars or appointment types.",
+  },
+  "calendar.booking_rules.update": {
+    description: "Lets AI Growth Partner update supported booking rules such as appointment length, minimum notice and booking window. Each change is checked and recorded.",
+    off: "AI Growth Partner cannot change booking rules.",
+  },
+  "crm.contacts.create": {
+    description: "Lets AI Growth Partner create one CRM contact from exact details you provide. Duplicate checks run first; this does not send a message.",
+    off: "AI Growth Partner cannot create CRM contacts.",
+  },
   "crm.read_opportunities": {
     description: "Lets the employee read sales opportunities in your CRM. It cannot edit them.",
     off: "The employee will not read CRM opportunities.",

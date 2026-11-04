@@ -8,7 +8,7 @@ import {
 } from "@/server/workforce/jobs";
 import { publishReviewReport } from "@/server/workforce/reports";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 
 /**
  * Shared execution path for a reviewed, read-only native review capability.
@@ -69,7 +69,7 @@ export type ReviewCapabilityArea = "contacts" | "companies" | "opportunities" | 
 
 export interface ReadOnlyReviewSpec {
   capability: string;
-  allowedRoles: readonly AgentRoleKey[];
+  allowedRoles: readonly WorkforceRoleKey[];
   /** Copy for the first stage, e.g. "Reading persisted CRM records…". */
   scanningMessage: string;
   /** Copy for the analysis stage. */
@@ -183,7 +183,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
     );
     return rows[0] ?? null;
   });
-  if (!agent || !spec.allowedRoles.includes(agent.role_key as AgentRoleKey) || !roleMayUseCapability(agent.role_key as AgentRoleKey, job.capability)) {
+  if (!agent || !isWorkforceRoleKey(agent.role_key) || !spec.allowedRoles.includes(agent.role_key) || !roleMayUseCapability(agent.role_key, job.capability)) {
     await withSystem(async (db) => {
       await finishWorkJob(db, {
         jobId: job.id,

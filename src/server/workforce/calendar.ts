@@ -5,7 +5,7 @@ import { validateBusinessHours, type BusinessHours } from "@/lib/messaging";
 import { validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
 import { withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import type { OrgContext } from "@/server/tenancy/context";
 import { schedulesOperatorEnabled, type ScheduleCadence } from "@/server/workforce/schedules";
 
@@ -28,7 +28,7 @@ export interface WorkforceCalendarJob {
   resultCount: number;
   failureMessage: string | null;
   employeeName: string;
-  employeeRole: AgentRoleKey;
+  employeeRole: WorkforceRoleKey;
   startsAt: string;
   createdAt: string;
   startedAt: string | null;
@@ -44,7 +44,7 @@ export interface WorkforceCalendarSchedule {
   capability: string;
   capabilityLabel: string;
   employeeName: string;
-  employeeRole: AgentRoleKey;
+  employeeRole: WorkforceRoleKey;
   cadence: ScheduleCadence;
   intervalMinutes: number;
   recurrenceRule: WorkforceScheduleRule | null;
@@ -159,7 +159,7 @@ export async function getWorkforceCalendarData(
         id: string; capability: string; title: string; status: WorkJobStatus; stage: string | null;
         result_summary: string | null; result_count: number; failure_message: string | null;
         created_at: Date; started_at: Date | null; finished_at: Date | null;
-        employee_name: string; employee_role: AgentRoleKey;
+        employee_name: string; employee_role: WorkforceRoleKey;
         scheduled: string | null; scheduled_at: string | null; schedule_id: string | null; origin: string | null;
         research_scheduled: string | null; research_schedule_id: string | null; research_schedule_slot: string | null;
         draft_message_ids: unknown;
@@ -234,7 +234,7 @@ export async function getWorkforceCalendarData(
         recurrence_rule: unknown; timezone: string; business_hours: unknown; enabled: boolean;
         next_run_at: Date; last_run_at: Date | null; last_job_id: string | null;
         last_skipped_reason: string | null; last_skipped_at: Date | null;
-        employee_role: AgentRoleKey; employee_name: string;
+        employee_role: WorkforceRoleKey; employee_name: string;
       }>(
         `select s.id, s.capability, s.cadence, s.interval_minutes, s.recurrence_rule, s.timezone,
                 s.business_hours, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,

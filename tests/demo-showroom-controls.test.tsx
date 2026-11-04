@@ -97,7 +97,7 @@ describe("the navigation rail", () => {
 
     const links = () => sections().getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")]);
     const open = links();
-    expect(open.map(([name]) => name)).toEqual(["Overview", "AI Workforce", "CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing", "Why iAcquireOS?"]);
+    expect(open.map(([name]) => name)).toEqual(["Overview", "AI Growth Partner", "CRM & Pipeline", "Inbox & Appointments", "Automation Studio", "Reports & Insights", "Plans & Pricing", "Why iAcquireOS?"]);
     expect(open[0][1]).toBe("/demo/room");
     expect(open[5][1]).toBe("/demo/room?view=reports");
 
@@ -223,7 +223,7 @@ describe("AQi", () => {
     expect(launcher().getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "Ask how the weekly note works" }));
     expect(launcher().getAttribute("aria-expanded")).toBe("true");
-    expect(question().value).toBe("How does the Performance Analyst decide what to put in the weekly note?");
+    expect(question().value).toBe("How does the Growth Partner decide what to put in the weekly note?");
     await waitFor(() => expect(document.activeElement).toBe(question()));
     expect(fetchMock).not.toHaveBeenCalled();
   });

@@ -195,7 +195,7 @@ export function OpportunitiesTable({
       ) : (
         <Card>
           <EmptyState icon={<Handshake className="size-5" />} title={state.q || state.owner || state.stage ? "No deals match" : "No deals yet"}
-            description={state.q || state.owner || state.stage ? "Try a different search or clear the filters." : "Deals you add, and deals created from bookings, forms and your AI employees, appear here."} />
+            description={state.q || state.owner || state.stage ? "Try a different search or clear the filters." : "Deals you add, and deals created from bookings, forms and your AI Growth Partner, appear here."} />
         </Card>
       )}
 

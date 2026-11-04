@@ -9,19 +9,19 @@ export const metadata = { title: "Leads" };
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
   const ctx = await requireOrgContext("leads.view");
-  const [leads, requests, targeting, hunter] = await Promise.all([
+  const [leads, requests, targeting, partner] = await Promise.all([
     listLeads(ctx, "all"),
     listResearchRequests(ctx),
     getTargeting(ctx),
-    getAgentByRole(ctx.user.id, ctx.org.orgId, "lead_hunter"),
+    getAgentByRole(ctx.user.id, ctx.org.orgId, "growth_partner"),
   ]);
   return (
     <LeadsWorkspace
       leads={JSON.parse(JSON.stringify(leads))}
       requests={JSON.parse(JSON.stringify(requests))}
       targeting={targeting}
-      hunterReady={Boolean(hunter?.enabled && canChat(hunter.status))}
-      hunterStatus={hunter?.enabled ? hunter.status : "disabled"}
+      hunterReady={Boolean(partner?.enabled && canChat(partner.status))}
+      hunterStatus={partner?.enabled ? partner.status : "disabled"}
       canResearch={ctx.can("leads.research")}
       canReview={ctx.can("leads.review")}
       canExport={ctx.can("leads.export")}

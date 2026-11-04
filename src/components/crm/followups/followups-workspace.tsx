@@ -122,7 +122,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
     <div className="space-y-8">
       <PageTitle
         title="Follow-up sequences"
-        description="When your AI employee has answered someone and they go quiet, it follows up a few times, spaced out, and stops the moment they reply, book, opt out or a person takes over. One allowance per person across SMS, WhatsApp and email."
+        description="When your AI Growth Partner has answered someone and they go quiet, it follows up a few times, spaced out, and stops the moment they reply, book, opt out or a person takes over. One allowance per person across SMS, WhatsApp and email."
       />
       {!canConfigure && <ReadOnlyNotice>{scope.agency ? "You can see follow-ups in this support session. The workspace's owner or a manager changes them." : "Only owners and managers can change how follow-ups work."}</ReadOnlyNotice>}
 
@@ -348,7 +348,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
         {!data.canSeePeople ? (
           <ReadOnlyNotice>Who is in a sequence is visible to people who can see every conversation.</ReadOnlyNotice>
         ) : !people.length ? (
-          <Card><EmptyState compact icon={<Clock className="size-5" />} title="Nobody is due a follow-up" description="When your AI employee answers someone and they go quiet, their sequence appears here." /></Card>
+          <Card><EmptyState compact icon={<Clock className="size-5" />} title="Nobody is due a follow-up" description="When your AI Growth Partner answers someone and they go quiet, their sequence appears here." /></Card>
         ) : (
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
             {people.map(({ next, remaining }) => {
@@ -419,7 +419,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
 
       <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
         <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-        Follow-ups go out under the AI employee that answered, through the same checks as every message: its mode (a draft for approval when it asks first), consent, opt-outs, quiet hours, credits and pauses.
+        Follow-ups go out from your AI Growth Partner, through the same checks as every message: approval mode, consent, opt-outs, quiet hours, credits and pauses.
       </p>
 
       <ConfirmDialog
@@ -436,7 +436,7 @@ export function FollowUpsWorkspace({ scope, data, nowIso, canConfigure, inboxLin
         open={!!stopping}
         onOpenChange={(o) => !o && setStopping(null)}
         title={`Stop follow-ups for ${stopping?.contactName ?? "this person"}?`}
-        description="Their remaining follow-ups are cancelled, including one waiting for approval. A new sequence can start only after the AI employee answers them again."
+        description="Their remaining follow-ups are cancelled, including one waiting for approval. A new sequence can start only after your AI Growth Partner answers them again."
         confirmLabel="Stop follow-ups"
         danger
         loading={busy("stop")}

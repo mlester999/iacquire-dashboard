@@ -346,6 +346,20 @@ export interface LaunchFacts {
     teamHosts?: TeamHostFact[];
   };
   channels: ChannelFact[];
+  /** Present only for tenants using the unified Growth Partner model. */
+  growthPartner?: {
+    status: "setup_required" | "provisioning" | "configured" | "paused" | "migration_required";
+    runtimeBound: boolean;
+    enabled: boolean | null;
+    runtimeStatus: "setup_required" | "provisioning" | "online" | "busy" | "offline" | "error" | "disabled" | null;
+    profileConnected: boolean;
+    runtimeReady: boolean;
+    healthFailed: boolean;
+    brainActive: boolean;
+    latestBrainVersion: number | null;
+    conversationReady: boolean;
+    provisioning: "requested" | "in_progress" | "awaiting_health_check" | "succeeded" | "failed" | "retrying" | "cancelled" | null;
+  };
   employees: EmployeeFact[];
   verification: VerificationFact[];
   /**
@@ -862,7 +876,7 @@ function driftItems(cal: CalendarFacts, manage: boolean, ask: string): LaunchIte
 function bookingRulesItem(b: LaunchFacts["bookingSettings"]): LaunchItem | null {
   if (!b) return null;
   const late = b.lateCancelHours === null ? "No late-cancellation rule is set." : `A cancellation less than ${plural(b.lateCancelHours, "hour", "hours")} before the start counts as late.`;
-  const ai = b.aiBookingEnabled ? "The Appointment Setter may book on its own, because you turned that on." : "The Appointment Setter only proposes a booking, and a person confirms it.";
+  const ai = b.aiBookingEnabled ? "AI Growth Partner may book on its own, because you turned that on." : "AI Growth Partner proposes a booking, and a person confirms it.";
   const reminders = b.remindersEnabled ? "Reminders to customers are on." : "Reminders to customers are off until you turn them on.";
   return { key: "calendar.booking_settings", label: "Booking rules", state: "done", required: false, owner: "you", detail: `${ai} ${late} ${reminders}`, action: { label: "Review booking rules", href: "/appointments" } };
 }
@@ -1048,6 +1062,18 @@ function employeesInSyncItem(f: LaunchFacts): LaunchItem | null {
   return { ...base, state: "action_required", detail: `${lead} Updating changes nothing you wrote yourself, and a change that needs iAcquire's review waits for it.`, action: { label: "Update my employees", intent: "sync_employees" } };
 }
 
+function growthPartnerStep(partner: NonNullable<LaunchFacts["growthPartner"]>): LaunchStep {
+  const brain: LaunchItem = partner.brainActive
+    ? { key: "growth_partner.brain", label: "Business Brain", state: "done", required: true, owner: "system", detail: `Your onboarding answers are saved in active version ${partner.latestBrainVersion}. Unknown or unconfirmed facts stay out of the active knowledge.` }
+    : { key: "growth_partner.brain", label: "Business Brain", state: "action_required", required: true, owner: "iacquire", detail: "The submitted business information has not been activated as a Business Brain yet. iAcquire needs to review setup." };
+  const conversation: LaunchItem = partner.conversationReady
+    ? { key: "growth_partner.conversation", label: "Permanent conversation", state: "done", required: true, owner: "system", detail: "The partner's one shared conversation is ready for authorized workspace members." }
+    : partner.runtimeReady
+      ? { key: "growth_partner.conversation", label: "Permanent conversation", state: "action_required", required: true, owner: "iacquire", detail: "The runtime passed its checks but the permanent conversation is not available yet. iAcquire needs to review setup." }
+      : { key: "growth_partner.conversation", label: "Permanent conversation", state: "in_progress", required: true, owner: "system", detail: "The one permanent conversation opens after the dedicated runtime passes its checks." };
+  return { key: "employees", title: "AI Growth Partner", ...summarize([item(brain), item(conversation)]) };
+}
+
 function employeesStep(f: LaunchFacts, clock: Clock): LaunchStep {
   const byRole = new Map(f.employees.map((e) => [e.role, e]));
   // A role with no record at all is an employee that was never created: that is something iAcquire must look at, never a quiet "not applicable".
@@ -1062,6 +1088,19 @@ function employeesStep(f: LaunchFacts, clock: Clock): LaunchStep {
 }
 
 function verificationStep(f: LaunchFacts, clock: Clock): LaunchStep {
+  if (f.growthPartner) {
+    const partner = f.growthPartner;
+    const verification: LaunchItem = partner.runtimeReady
+      ? { key: "growth_partner.runtime", label: "Runtime identity and tool checks", state: "done", required: true, owner: "system", detail: "The dedicated profile, identity, permitted tools and connection have passed their live checks." }
+      : partner.healthFailed
+        ? { key: "growth_partner.runtime", label: "Runtime identity and tool checks", state: "action_required", required: true, owner: "iacquire", detail: "The latest profile or tool check did not pass. iAcquire can review the recorded result and retry." }
+        : partner.provisioning === "failed"
+          ? { key: "growth_partner.runtime", label: "Runtime identity and tool checks", state: "action_required", required: true, owner: "iacquire", detail: "Preparing the dedicated profile did not finish. iAcquire can review the setup request and retry." }
+          : partner.status === "paused"
+            ? { key: "growth_partner.runtime", label: "Runtime identity and tool checks", state: "action_required", required: true, owner: "iacquire", detail: "The AI Growth Partner is paused. iAcquire needs to review its runtime state before work resumes." }
+            : { key: "growth_partner.runtime", label: "Runtime identity and tool checks", state: "in_progress", required: true, owner: "iacquire", detail: partner.profileConnected ? "The profile is linked; its identity, tools and connection still need a passing check." : "iAcquire is preparing a dedicated profile for your workspace." };
+    return { key: "verification", title: "Partner verification", ...summarize([item(verification)]) };
+  }
   const verification = new Map(f.verification.map((v) => [v.role, v]));
   const employees = new Map(f.employees.map((e) => [e.role, e]));
   const items: LaunchItem[] = [];
@@ -1149,7 +1188,7 @@ function controlsOf(facts: LaunchControlFact[]): LaunchControl[] {
  */
 export function deriveLaunchReadiness(f: LaunchFacts, now?: Date, stall: Partial<StallMinutes> = {}): LaunchReadiness {
   const clock: Clock = { now: now ?? null, stall: { ...STALL_MINUTES, ...stall } };
-  const steps: LaunchStep[] = [profileStep(f), knowledgeStep(f), crmStep(f, clock), calendarStep(f), integrationsStep(f), employeesStep(f, clock), verificationStep(f, clock)];
+  const steps: LaunchStep[] = [profileStep(f), knowledgeStep(f), crmStep(f, clock), calendarStep(f), integrationsStep(f), f.growthPartner ? growthPartnerStep(f.growthPartner) : employeesStep(f, clock), verificationStep(f, clock)];
   const required = steps.flatMap((s) => s.items).filter((i) => i.required && i.state !== "not_applicable");
   const passed = required.filter((i) => i.state === "done").length;
   const total = required.length;

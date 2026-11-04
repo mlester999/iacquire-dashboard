@@ -111,7 +111,7 @@ export function CalendarWorkspace({
     <div className="space-y-4">
       <PageTitle
         title="Calendar"
-        description="Every appointment booked in iAcquire: from booking pages, your team and your AI employees."
+        description="Every appointment booked in iAcquire: from booking pages, your team and your AI Growth Partner."
         actions={
           <>
             <Link href={`${scope.base}/appointments`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[14px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><ListChecks className="size-4" aria-hidden />All appointments</Link>

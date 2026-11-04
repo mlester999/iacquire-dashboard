@@ -166,25 +166,37 @@ export function ReviewPanel({
           What your plan includes
         </h2>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[14px] font-medium">
-            {included === total ? `Your plan includes all ${countWord(total)} AI employees.` : included === 0 ? "Your plan includes none of the AI employees yet." : `Your plan includes ${countWord(included)} of the ${countWord(total)} AI employees.`}
-          </p>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {review.plan.included.map((role) => (
-              <li key={role} className="flex items-start gap-2 text-[14px]">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden />
-                <span>{AGENT_BY_KEY[role].name}</span>
-              </li>
-            ))}
-            {review.plan.notIncluded.map((role) => (
-              <li key={role} className="flex items-start gap-2 text-[14px] text-muted">
-                <span aria-hidden className="mt-0.5 grid size-4 shrink-0 place-items-center text-[14px] leading-none">&ndash;</span>
-                <span>
-                  {AGENT_BY_KEY[role].name}: not part of your plan, so it does not hold up launch
-                </span>
-              </li>
-            ))}
-          </ul>
+          {review.workforceModel === "growth_partner" ? (
+            <>
+              <p className="text-[14px] font-medium">One AI Growth Partner with six coordinated capabilities.</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted">Your onboarding answers are used to prepare one Business Brain and one permanent conversation. Missing or unconfirmed details stay marked as unknown until you verify them.</p>
+              <ul className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
+                {["Lead Discovery & Qualification", "Sales & Outreach", "Calendar & Appointment Management", "CRM & Pipeline Management", "Business Operations", "Performance & Analytics"].map((capability) => (
+                  <li key={capability} className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden /><span>{capability}</span></li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <p className="text-[14px] font-medium">
+                {included === total ? `Your plan includes all ${countWord(total)} AI employees.` : included === 0 ? "Your plan includes none of the AI employees yet." : `Your plan includes ${countWord(included)} of the ${countWord(total)} AI employees.`}
+              </p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {review.plan.included.map((role) => (
+                  <li key={role} className="flex items-start gap-2 text-[14px]">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden />
+                    <span>{AGENT_BY_KEY[role].name}</span>
+                  </li>
+                ))}
+                {review.plan.notIncluded.map((role) => (
+                  <li key={role} className="flex items-start gap-2 text-[14px] text-muted">
+                    <span aria-hidden className="mt-0.5 grid size-4 shrink-0 place-items-center text-[14px] leading-none">&ndash;</span>
+                    <span>{AGENT_BY_KEY[role].name}: not part of your plan, so it does not hold up launch</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {review.plan.addOns.length > 0 && (
             <ul className="mt-3 divide-y divide-line border-t border-line">
               {review.plan.addOns.map((o) => (
@@ -204,29 +216,38 @@ export function ReviewPanel({
 
       <section aria-labelledby="rv-team" className="space-y-3">
         <h2 id="rv-team" className="text-[15px] font-semibold">
-          {included > 0 ? `How your ${countWord(included)} AI employee${included === 1 ? "" : "s"} will be set up` : "How your AI employees will be set up"}
+          {review.workforceModel === "growth_partner" ? "How your AI Growth Partner will be prepared" : included > 0 ? `How your ${countWord(included)} AI employee${included === 1 ? "" : "s"} will be set up` : "How your AI employees will be set up"}
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {review.employees.map((e) => (
-            <div key={e.role} className="rounded-2xl border border-line bg-surface p-4">
-              <div className="flex items-center gap-3">
-                <AgentAvatar role={AGENT_BY_KEY[e.role]} size="md" />
-                <div className="min-w-0">
-                  <p className="text-[14px] font-semibold">{e.name}</p>
-                  <p className="text-[13px] text-muted">{e.tagline}</p>
+        {review.workforceModel === "growth_partner" ? (
+          <div className="rounded-2xl border border-line bg-surface p-4 text-[14px] leading-relaxed">
+            <p className="font-medium">The partner uses only confirmed business information and verified workspace facts.</p>
+            <p className="mt-2 text-muted">iAcquire prepares one tenant-specific runtime. Its real profile, identity, tools and permissions must pass checks before it is ready. Customer-facing actions keep their existing approval and channel safeguards.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {review.employees.map((e) => (
+                <div key={e.role} className="rounded-2xl border border-line bg-surface p-4">
+                  <div className="flex items-center gap-3">
+                    <AgentAvatar role={AGENT_BY_KEY[e.role]} size="md" />
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-semibold">{e.name}</p>
+                      <p className="text-[13px] text-muted">{e.tagline}</p>
+                    </div>
+                  </div>
+                  {e.configuredFrom.length > 0 && <p className="mt-3 text-[13px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
+                  {e.gaps.map((g) => (
+                    <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[13px] text-warning-ink">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      {g}
+                    </p>
+                  ))}
                 </div>
-              </div>
-              {e.configuredFrom.length > 0 && <p className="mt-3 text-[13px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
-              {e.gaps.map((g) => (
-                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[13px] text-warning-ink">
-                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  {g}
-                </p>
               ))}
             </div>
-          ))}
-        </div>
-        <p className="text-[13px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
+            <p className="text-[13px] text-muted">Every employee starts in Approval required mode. Nothing goes autonomous until its connections are verified and an owner switches it on.</p>
+          </>
+        )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -340,12 +361,16 @@ export function ReviewPanel({
         <label className="mt-3 flex cursor-pointer items-start gap-3 text-[14px] leading-relaxed">
           <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--primary)]" checked={confirmed} onChange={(e) => onConfirmChange(e.target.checked)} />
           <span>
-            I&apos;ve reviewed these answers. I understand this prepares my AI employees and website draft, and that nothing contacts my customers, books appointments or goes live until each connection is verified and I turn it on.
+            {review.workforceModel === "growth_partner"
+              ? "I’ve reviewed these answers. I understand this prepares one AI Growth Partner and website draft, and that nothing contacts customers, books appointments or goes live until each connection is verified and I turn it on."
+              : "I’ve reviewed these answers. I understand this prepares my AI employees and website draft, and that nothing contacts my customers, books appointments or goes live until each connection is verified and I turn it on."}
           </span>
         </label>
         {alreadySubmitted && (
           <p className="mt-3 text-[14px] leading-relaxed text-muted">
-            You&apos;ve approved a setup before. Approving again saves a new version of each employee&apos;s configuration, keeps the changes you made to individual employees, and leaves earlier versions available to restore.
+            {review.workforceModel === "growth_partner"
+              ? "You’ve approved a setup before. Your approved Business Brain stays active while this submission prepares a reviewable update. Earlier versions remain available."
+              : "You’ve approved a setup before. Approving again saves a new version of each employee’s configuration, keeps the changes you made to individual employees, and leaves earlier versions available to restore."}
           </p>
         )}
         {error && (
@@ -354,7 +379,9 @@ export function ReviewPanel({
           </p>
         )}
         {!hideSubmit && <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
-          <Sparkles className="size-4" /> {alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
+          <Sparkles className="size-4" /> {review.workforceModel === "growth_partner"
+            ? alreadySubmitted ? "Approve and update my AI Growth Partner" : "Approve and prepare my AI Growth Partner"
+            : alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
         </Button>}
         {blockers.length > 0 && <p className="mt-2 text-[13px] text-muted">Resolve the items above to continue.</p>}
       </section>

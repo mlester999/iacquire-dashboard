@@ -23,7 +23,7 @@ export default async function WebsiteChatPage() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Website" title="Website chat" icon={<MessagesSquare className="size-4" />} tone="neutral"
-        description="Let visitors on your website talk to your AI employee. Every chat is a conversation in your Inbox, and anything a visitor shares is treated as unverified until your team checks it."
+        description="Let visitors on your website talk to your AI Growth Partner. Every chat is a conversation in your Inbox, and anything a visitor shares is treated as unverified until your team checks it."
       />
       <WebChatSettings
         view={JSON.parse(JSON.stringify(view))}

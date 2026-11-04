@@ -1,6 +1,6 @@
 // Pure Unified Inbox vocabulary shared by the server and the interface. No I/O here.
 
-import type { AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 import { CALL_CLASS_LABELS, type CallClass } from "@/lib/missed-calls/state";
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ export const INBOX_VIEW_HELP: Record<InboxView, string> = {
   all: "Every conversation that is not archived.",
   unread: "Conversations with customer messages nobody has opened.",
   mine: "Conversations you own or that were assigned to you.",
-  ai: "Open conversations an AI employee is handling.",
+  ai: "Open conversations your AI Growth Partner is handling.",
   unassigned: "Open conversations nobody, person or AI, is handling.",
   attention: "A person was asked for, a message failed, it is marked urgent, or the customer has waited for a reply.",
   open: "Conversations that are not resolved.",
@@ -98,12 +98,10 @@ export const OUTCOME_LABELS: Record<ConversationOutcome, string> = {
 // ---------------------------------------------------------------------------
 
 /**
- * The employees that may handle a customer's conversation. The Sales Assistant answers customers (the reply path in
- * src/server/messaging/responder.ts) and the Appointment Setter books through the real calendar. The other four roles are internal
- * (operations, lead research, CRM data quality, analytics): none of them has a customer-facing capability in WORKFORCE_CAPABILITIES, so the
- * server refuses to attach them to a conversation rather than hiding them in the interface.
+ * The identities that may handle a customer's conversation. The Growth Partner is the customer-facing identity for new workspaces; the two
+ * earlier customer-facing profiles remain available to existing workspaces. Internal legacy profiles stay excluded by the server allowlist.
  */
-export const CONVERSATION_AI_ROLES = ["sales_assistant", "appointment_setter"] as const satisfies readonly AgentRoleKey[];
+export const CONVERSATION_AI_ROLES = ["sales_assistant", "appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY] as const satisfies readonly WorkforceRoleKey[];
 export type ConversationAiRole = (typeof CONVERSATION_AI_ROLES)[number];
 export const canHandleConversations = (role: string | null | undefined): role is ConversationAiRole => (CONVERSATION_AI_ROLES as readonly string[]).includes(role ?? "");
 
@@ -135,7 +133,7 @@ export function describeConversationEvent(kind: string, detail: Record<string, u
     case "assigned":
       return names.target ? `${who} assigned this to ${names.target}` : `${who} removed the assignment`;
     case "ai_assigned":
-      return `${who} handed this to ${names.agent ?? "an AI employee"}`;
+      return `${who} handed this to ${names.agent ?? "your AI Growth Partner"}`;
     case "ai_paused":
       return `${who} paused AI replies${s("reason") ? `: ${s("reason")}` : ""}`;
     case "ai_resumed":

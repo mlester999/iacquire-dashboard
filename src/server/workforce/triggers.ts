@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { canChat, type WorkforceRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { TRIGGER_EVENT_CAPABILITIES } from "@/lib/workforce-triggers";
 import { jobGate } from "@/server/automation/job-gate";
@@ -27,7 +27,7 @@ export interface TriggerView {
   eventType: string;
   capability: string;
   capabilityLabel: string;
-  employeeRole: AgentRoleKey;
+  employeeRole: WorkforceRoleKey;
   employeeName: string;
   enabled: boolean;
   lastEventId: number;
@@ -35,9 +35,9 @@ export interface TriggerView {
   operatorEnabled: boolean;
 }
 
-type AgentRow = { id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: string; active_config_version_id: string | null };
+type AgentRow = { id: string; role_key: WorkforceRoleKey; display_name: string; enabled: boolean; status: string; active_config_version_id: string | null };
 
-async function resolveAgent(ctx: OrgContext, role: AgentRoleKey, capability: CapabilityKey): Promise<AgentRow> {
+async function resolveAgent(ctx: OrgContext, role: WorkforceRoleKey, capability: CapabilityKey): Promise<AgentRow> {
   const definition = capabilityDefinition(capability);
   if (!definition || !definition.allowedRoles.includes(role) || definition.risk !== "read_only") {
     throw new AppError("invalid_input", "That capability cannot be used by an event trigger.");
@@ -61,7 +61,7 @@ export async function listTriggers(ctx: OrgContext): Promise<TriggerView[]> {
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; event_type: string; capability: string; enabled: boolean; last_event_id: string;
-      last_job_id: string | null; employee_role: AgentRoleKey; employee_name: string;
+      last_job_id: string | null; employee_role: WorkforceRoleKey; employee_name: string;
     }>(
       `select t.id, t.event_type, t.capability, t.enabled, t.last_event_id::text as last_event_id, t.last_job_id,
               a.role_key as employee_role, a.display_name as employee_name
@@ -193,7 +193,7 @@ export async function runDueTriggers(options: { limit?: number } = {}): Promise<
     let skipped = 0;
     for (const trigger of due) {
       const definition = capabilityDefinition(trigger.capability);
-      const agent = await db.query<{ role_key: AgentRoleKey; enabled: boolean; status: string; active_config_version_id: string | null }>(
+      const agent = await db.query<{ role_key: WorkforceRoleKey; enabled: boolean; status: string; active_config_version_id: string | null }>(
         "select role_key, enabled, status, active_config_version_id from agent_instances where id = $1 and org_id = $2",
         [trigger.agent_instance_id, trigger.org_id],
       );

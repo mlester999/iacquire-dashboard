@@ -4,6 +4,7 @@ import { ITEM_STATE_LABEL, type LaunchItem, type LaunchReadiness } from "@/lib/l
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import type { AgentInstanceRow } from "@/server/workforce/service";
+import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 
 export interface EmployeeProvisioningState {
   role: AgentRoleKey;
@@ -24,7 +25,7 @@ function judgedRow(role: AgentRoleKey, item: LaunchItem | undefined): Row {
  * it: there is one answer to "how ready is this client", and a count of employees that merely answer in chat is not it. Without it (the read failed) the employees are listed
  * from their own records and nothing is counted.
  */
-export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared, readiness = null }: {
+export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared, readiness = null, growthPartner = null }: {
   nativeCrm: boolean;
   crmGuide: boolean;
   agents?: AgentInstanceRow[];
@@ -33,6 +34,8 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
   paymentCleared?: boolean;
   /** The launch judge's reading of this workspace. */
   readiness?: LaunchReadiness | null;
+  /** Present for the unified product model; legacy profile records are shown only for older workspaces. */
+  growthPartner?: GrowthPartnerControlState | null;
 }) {
   const jobs = new Map(provisioning.map((job) => [job.role, job]));
   const judged = new Map((readiness?.steps.find((s) => s.key === "employees")?.items ?? []).map((i) => [i.key, i]));
@@ -62,13 +65,36 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     if (agent.hermes_profile && agent.last_health_ok === false) return { role, label: "Connection required", detail: "The latest connection check did not pass. iAcquire needs to resolve it.", ready: false };
     return { role, label: "Action required", detail: employee.description, ready: false };
   });
+  if (growthPartner) {
+    return (
+      <section role="status" aria-label="AI Growth Partner setup" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
+            <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Your AI Growth Partner is being prepared</h2>
+            <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your answers have been organized into one Business Brain. Suggested or missing details remain unconfirmed. iAcquire checks the dedicated runtime and its permitted tools before the partner is ready.</p>
+          </div>
+          {growthPartner.currentVersion !== null && <span className="rounded-full border border-success/20 bg-success-soft px-3 py-1.5 text-[12px] font-semibold text-success-ink">Business Brain v{growthPartner.currentVersion} active</span>}
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Business Brain</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.currentVersion ? `Active version ${growthPartner.currentVersion}` : growthPartner.draftVersion ? `Draft version ${growthPartner.draftVersion}` : "Preparation needed"}</p></div>
+          <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Dedicated runtime</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.runtimeAgentInstanceId ? "Linked · connection verification required" : "Not linked yet"}</p></div>
+          <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Permanent conversation</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.conversationId ? "Ready in Partner Control Center" : "Opens after the runtime passes its checks"}</p></div>
+        </div>
+        <p className="mt-4 text-[12px] leading-relaxed text-muted">{nativeCrm ? "The iAcquire team applies your industry Blueprint to your CRM." : "The iAcquire team links your CRM."} Calendar availability and customer messaging each require their own verified connections and approvals.
+          {crmGuide && <> <Link href="/crm/setup" className="font-semibold text-primary underline underline-offset-2">Open your CRM setup guide</Link></>}
+        </p>
+        <Link href="/growth-partner" className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-primary px-4 text-[13px] font-semibold text-white">Open AI Growth Partner</Link>
+      </section>
+    );
+  }
   return (
-    <section role="status" aria-label="Your six AI employees" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
+    <section role="status" aria-label="Existing AI profiles" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Company information saved</p>
-          <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Meet your AI team</h2>
-          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your business information is saved. Each employee becomes available when its real connection and permission checks pass. You can view and edit its generated configuration at any time.</p>
+          <h2 className="mt-1 text-[23px] font-semibold tracking-tight text-ink">Existing AI profiles preserved</h2>
+          <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">Your existing profiles, histories and schedules stay as-is. Moving this workspace to one AI Growth Partner requires its own runtime and permission checks plus your approval; saving business information alone does not change or retire a profile.</p>
         </div>
         {readiness && (
           <span data-testid="banner-launch" className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink">

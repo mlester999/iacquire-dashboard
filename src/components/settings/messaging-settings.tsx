@@ -56,14 +56,14 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
         <CardHeader>
           <div>
             <CardTitle className="flex items-center gap-2"><Bot className="size-4" />Automatic replies</CardTitle>
-            <CardDescription>When on, AI employees that you have let work autonomously can answer customers on your behalf, any time of day, inside your rules. When off, they prepare drafts for a person to approve.</CardDescription>
+            <CardDescription>When on, your AI Growth Partner can answer customers on your behalf inside your rules. When off, it prepares drafts for a person to approve.</CardDescription>
           </div>
           <Switch checked={settings.autoReplyEnabled} disabled={!isOwner || busy === "auto"} onCheckedChange={(next) => save("auto", { autoReplyEnabled: next }, next ? "Automatic replies are on." : "Automatic replies are off.")} aria-label="Automatic replies" />
         </CardHeader>
         <CardContent className="space-y-2 text-[14px]">
           <ul className="space-y-1.5">
             <li className="flex items-center gap-2"><Badge tone={anyEnabled ? "success" : "warning"}>{anyEnabled ? "Ready" : "Needed"}</Badge>At least one verified channel is switched on</li>
-            <li className="flex items-center gap-2"><Badge tone="neutral">Per employee</Badge>The responsible AI employee is set to Autonomous and has passed its connection check</li>
+            <li className="flex items-center gap-2"><Badge tone="neutral">Per conversation</Badge>The assigned AI profile must pass its connection check and follow its operating mode</li>
             <li className="flex items-center gap-2"><Badge tone="neutral">Always</Badge>Opt-outs, consent, spending limits and emergency stops still apply</li>
           </ul>
           {!isOwner && <p className="flex items-center gap-1.5 text-muted"><Lock className="size-3.5" aria-hidden />Only the business owner can switch this on.</p>}
@@ -156,7 +156,7 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
         <CardHeader>
           <div>
             <CardTitle>Follow-ups</CardTitle>
-            <CardDescription>How your AI team follows up with people who have not replied. One shared allowance per person across SMS, WhatsApp and email.</CardDescription>
+            <CardDescription>How your AI Growth Partner follows up with people who have not replied. One shared allowance per person across SMS, WhatsApp and email.</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

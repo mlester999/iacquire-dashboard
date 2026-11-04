@@ -10,7 +10,7 @@ import { createOrg } from "./support/fixtures";
 import { count, demoEnv, emailFor, hashOf, ipFor, linkTokenFor, messagePace, openDemo, rows, stubModel, team, type Team } from "./support/demo";
 
 const BASE = "http://localhost/api/public/demo";
-const SAFE = "The Appointment Setter turns interest into booked meetings. In this demo it books nothing.";
+const SAFE = "Lead Discovery & Qualification finds relevant prospects, preserves source evidence, and checks fit against client-approved criteria.";
 
 let people: Team;
 let agency: { id: string };
@@ -433,7 +433,7 @@ describe("the room over HTTP", () => {
   it("answers a question with the model's checked answer and the room as the record has it", async () => {
     const s = await signIn();
     const model = stubModel(agency.id, SAFE);
-    const res = await handleDemo(json("message", { text: "What does the Appointment Setter do?", clientMessageId: "id-".padEnd(24, "1"), employeeRole: "appointment_setter" }, { cookie: s.cookie }), "message", { model: model.deps });
+    const res = await handleDemo(json("message", { text: "What does the AI Growth Partner do?", clientMessageId: "id-".padEnd(24, "1") }, { cookie: s.cookie }), "message", { model: model.deps });
     expect(res.status).toBe(200);
     const b = await body(res);
     expect(b).toMatchObject({ ok: true, kind: "answered" });
@@ -465,7 +465,7 @@ describe("the room over HTTP", () => {
     const f = await handleDemo(form("message", { text: "How much again?", clientMessageId: "held-".padEnd(24, "4") }, { cookie: s.cookie }), "message", { model: bad.deps });
     expect(f.status).toBe(303);
     expect(location(f)).toBe("/demo/room?m=held_reply_blocked#chat");
-    const ok = await handleDemo(form("message", { text: "What does the Lead Hunter do?", clientMessageId: "good-".padEnd(24, "5") }, { cookie: s.cookie }), "message", { model: stubModel(agency.id, SAFE).deps });
+    const ok = await handleDemo(form("message", { text: "What does the AI Growth Partner do?", clientMessageId: "good-".padEnd(24, "5") }, { cookie: s.cookie }), "message", { model: stubModel(agency.id, SAFE).deps });
     expect(location(ok)).toBe("/demo/room#chat");
   });
 
@@ -476,7 +476,7 @@ describe("the room over HTTP", () => {
     expect(off.status).toBe(409);
     expect((await body(off)).error.code).toBe("ai_off");
     const model = stubModel(agency.id, SAFE).deps;
-    for (const bad of [{ text: "", clientMessageId: "a".repeat(20) }, { text: "hi", clientMessageId: "short" }, { text: "hi", clientMessageId: "a".repeat(20), employeeRole: "seventh_employee" }, { text: "x".repeat(2001), clientMessageId: "b".repeat(20) }]) {
+    for (const bad of [{ text: "", clientMessageId: "a".repeat(20) }, { text: "hi", clientMessageId: "short" }, { text: "hi", clientMessageId: "a".repeat(20), employeeRole: "lead_hunter" }, { text: "x".repeat(2001), clientMessageId: "b".repeat(20) }]) {
       const res = await handleDemo(json("message", bad, { cookie: s.cookie }), "message", { model });
       expect(res.status, JSON.stringify(bad).slice(0, 60)).toBe(400);
       expect((await body(res)).error.code).toBe("invalid");

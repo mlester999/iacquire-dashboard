@@ -41,6 +41,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
   const working = p.counts.in_progress + p.counts.ready_for_review;
   const needsYou = p.counts.waiting_for_client;
   const allDone = p.total > 0 && p.completed === p.total;
+  const hasGrowthPartner = data.tasks.some((task) => task.title.includes("AI Growth Partner"));
 
   if (accessLost) return <Card role="alert" className="mx-auto max-w-3xl"><EmptyState icon={<AlertTriangle className="size-5" />} title="Setup access changed" description={error} action={<Button variant="secondary" onClick={() => window.location.reload()}><RefreshCw className="size-3.5" /> Refresh access</Button>} /></Card>;
 
@@ -61,7 +62,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold uppercase tracking-wider text-primary">Setup center<span className="text-muted"> · </span><span className="break-words normal-case tracking-normal text-ink-2">{data.orgName}</span></p>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[30px]">
-              {data.state === "activated" ? `${firstName}, your system is approved` : "Your AI workforce is taking shape."}
+              {data.state === "activated" ? `${firstName}, your system is approved` : hasGrowthPartner ? "Your AI Growth Partner is taking shape." : "Your AI setup is taking shape."}
             </h1>
             <p className="mt-1.5 max-w-xl text-[14.5px] leading-relaxed text-muted">
               {data.state !== "activated" && <span className="font-medium text-ink-2">Welcome, {firstName}. </span>}
@@ -69,7 +70,9 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
                 ? `${data.orgName} has passed final review${data.activatedAt ? ` (${formatDate(data.activatedAt, timeZone)})` : ""}. The iAcquire team will confirm before any automation is switched on.`
                 : p.total === 0
                   ? "Your checklist will appear here as soon as the iAcquire team sets it up."
-                  : "We're preparing your AI employees, CRM, automations, and business integrations. Track your progress and complete the few steps that need your attention."}
+                  : hasGrowthPartner
+                    ? "We're preparing your AI Growth Partner, CRM, automations, and business integrations. Track progress and complete the few steps that need your attention."
+                    : "We're preparing your AI runtime, CRM, automations, and business integrations. Track progress and complete the few steps that need your attention."}
             </p>
             <p className="mt-2 text-[13px] text-muted">{p.total > 0 && `${p.completed} of ${p.total} of iAcquire's preparation steps are complete. `}This percentage is iAcquire&apos;s own preparation checklist, not your launch readiness, which is shown in the launch checklist above. Technical steps are completed after verification. Final activation needs a separate agency review.</p>
 

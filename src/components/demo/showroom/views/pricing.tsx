@@ -1,12 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, Check, Layers, MessageSquareText, Minus, Plus, Receipt, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { ArrowDown, Check, Layers, MessageSquareText, Minus, Plus, Receipt, RefreshCw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentAvatar } from "@/components/brand";
-import { AGENT_BY_KEY } from "@/lib/agents";
-import { CORE_INCLUDES, MAINTENANCE_INCLUDES_FALLBACK, PLAN_NOT_INCLUDED, STUDIO_INCLUDES, USAGE_NOTE, faqs } from "@/lib/demo/showroom/content";
-import { EMPLOYEE_ORDER, SCOPE_NOTE } from "@/lib/demo/showroom/employees";
+import { CORE_INCLUDES, DEMO_CAPABILITY_AREAS, MAINTENANCE_INCLUDES_FALLBACK, PLAN_NOT_INCLUDED, STUDIO_INCLUDES, USAGE_NOTE, faqs } from "@/lib/demo/showroom/content";
+import { SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { ROOM_COPY } from "@/lib/demo/outcomes";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { ConsultCta, ConversionPanel, StartCta } from "@/components/demo/showroom/cta";
@@ -14,16 +12,16 @@ import { Chip, FaqItem, ScrollRegion, SectionHead, dollars, usd } from "@/compon
 
 // Plans & pricing, stated exactly as the offer is: a one-time implementation (with no mandatory subscription), an OPTIONAL monthly plan that adds monitoring, troubleshooting and
 // Automation Studio, and usage costs shown in the portal. The two prices come from src/lib/billing.ts through the room's view and the plan's list from the published catalog; no
-// tier, discount, promotion, guarantee or number of AI Employees is stated beyond that. What is configured for a client is set by their written scope.
+// tier, discount, promotion, guarantee or new price is stated beyond that. What is configured for a client is set by their written scope.
 //
 // Layout: the two plans are cards of the same anatomy (name, price, what it is, the buttons centred under the price, what is included) and each ends in a tinted panel that takes up
 // whatever height the other card needs, so neither ever has an empty stretch in it, at any width.
 
 const COMPARE: Array<{ row: string; core: boolean; plus: boolean }> = [
   { row: "Native CRM: contacts, pipelines, deals, tasks", core: true, plus: true },
-  { row: "AI Employees, set up to your agreement", core: true, plus: true },
+  { row: "One AI Growth Partner with six integrated capabilities", core: true, plus: true },
   { row: "Unified inbox, calendars and booking", core: true, plus: true },
-  { row: "Reports and the Performance Analyst", core: true, plus: true },
+  { row: "Reports and acquisition insights", core: true, plus: true },
   { row: "Connect external automation tools through APIs and webhooks", core: true, plus: true },
   { row: "Use your system with no mandatory subscription", core: true, plus: true },
   { row: "Monitoring and alerts for your integrations", core: false, plus: true },
@@ -128,7 +126,7 @@ export function PricingView() {
         <section aria-labelledby="core-plan" className="sx-panel flex flex-col p-6 @xl:p-7">
           <PlanHead id="core-plan" tone="primary" icon={<Layers className="size-5" />} title="Core implementation" chip={<Chip tone="ok">No mandatory subscription</Chip>} />
           <Price prefix="Starting at" amount={setup} suffix="One-time implementation" />
-          <p className="mt-3 text-[14px] leading-relaxed text-ink-2">Your CRM and AI team, set up around your business, verified with you and switched on. Paid once.</p>
+          <p className="mt-3 text-[14px] leading-relaxed text-ink-2">Your CRM and AI Growth Partner, set up around your business, verified with you and switched on. Paid once.</p>
 
           <div className="mt-6 grid gap-2.5">
             <ConsultCta size="lg" className="w-full justify-center" />
@@ -140,18 +138,15 @@ export function PricingView() {
             <Includes items={CORE_INCLUDES} tone="ok" label="Included in the core implementation" />
           </div>
 
-          <div className="@container/team mt-7 flex flex-1 flex-col justify-center rounded-2xl border border-line bg-surface-2/60 p-4">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">The six AI Employees</p>
-            <ul className="mt-3.5 grid grid-cols-3 gap-x-2 gap-y-4 @sm/team:grid-cols-6">
-              {EMPLOYEE_ORDER.map((key) => {
-                const m = AGENT_BY_KEY[key];
-                return (
-                  <li key={key} className="flex flex-col items-center gap-1.5 text-center">
-                    <AgentAvatar role={m} size="md" eager />
-                    <span className="text-[12px] font-medium leading-tight text-ink-2">{m.shortName}</span>
-                  </li>
-                );
-              })}
+          <div className="mt-7 flex flex-1 flex-col justify-center rounded-2xl border border-line bg-surface-2/60 p-4">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">One partner, six capabilities</p>
+            <ul className="mt-3.5 grid gap-2 sm:grid-cols-2">
+              {DEMO_CAPABILITY_AREAS.map((area) => (
+                <li key={area.key} className="flex items-start gap-2 rounded-lg bg-surface px-2.5 py-2">
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary-ink" aria-hidden />
+                  <span className="text-[12px] font-medium leading-snug text-ink-2">{area.title}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </section>

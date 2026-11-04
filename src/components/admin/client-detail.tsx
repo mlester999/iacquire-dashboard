@@ -234,6 +234,29 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
   return (
     <div className="space-y-6">
+      {data.growthPartner && (
+        <Card className="border-primary/25 bg-primary-soft/20">
+          <CardHeader>
+            <div>
+              <CardTitle>AI Growth Partner</CardTitle>
+              <CardDescription>Tenant-scoped partner runtime and Business Brain status. Conversation content stays private to the client workspace.</CardDescription>
+            </div>
+            <Badge tone={data.growthPartner.status === "configured" ? "success" : data.growthPartner.status === "paused" ? "warning" : "neutral"}>
+              {data.growthPartner.status.replaceAll("_", " ")}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <dl className="grid gap-3 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+              <div><dt className="text-muted">Runtime</dt><dd className="mt-1 font-medium">{data.growthPartner.runtime_agent_instance_id ? data.growthPartner.enabled ? data.growthPartner.runtime_status ?? "Unknown" : "Disabled" : "Not bound"}</dd></div>
+              <div><dt className="text-muted">Hermes profile</dt><dd className="mt-1 truncate font-mono text-[12px]">{data.growthPartner.hermes_profile ?? "Not connected"}</dd></div>
+              <div><dt className="text-muted">Business Brain</dt><dd className="mt-1 font-medium">{data.growthPartner.current_version ? `Active v${data.growthPartner.current_version}` : data.growthPartner.latest_version ? `Draft v${data.growthPartner.latest_version}` : "Not prepared"}</dd></div>
+              <div><dt className="text-muted">Runs · 30 days</dt><dd className="mt-1 font-medium">{data.growthPartner.runs_30d}{data.growthPartner.failed_30d > 0 ? ` · ${data.growthPartner.failed_30d} failed` : ""}</dd></div>
+            </dl>
+            {data.growthPartner.last_health_detail && <p className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink-2">{data.growthPartner.last_health_detail}</p>}
+            <p className="text-[12px] text-muted">Last partner conversation activity: {data.growthPartner.last_message_at ? relativeTime(data.growthPartner.last_message_at) : "No messages yet"}. This view contains status only and does not open the client conversation.</p>
+          </CardContent>
+        </Card>
+      )}
       <Card className="border-primary/20 bg-primary-soft/30">
         <CardContent className="pt-5 text-[14px] leading-relaxed text-primary-ink">
           <details><summary className="flex cursor-pointer items-center gap-2 font-medium"><ShieldAlert className="size-4 shrink-0" />Dedicated identities and restricted tool access<ChevronDown className="ml-auto size-3.5"/></summary><p className="mt-3">

@@ -394,7 +394,7 @@ describe("the link in the email", () => {
 describe("the room", () => {
   it("shows a prospect their own window and conversation, and nothing else", async () => {
     const s = await startDemo({ name: "Quinn Ortiz" }, T0);
-    await say(s, "Tell me about the Lead Hunter", { at: hours(1), employeeRole: "lead_hunter" });
+    await say(s, "What does the AI Growth Partner do?", { at: hours(1) });
     const r = await getRoom(s.ctx({ now: hours(2) }));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -402,7 +402,7 @@ describe("the room", () => {
       firstName: "Quinn", business: "Pat's Roofing", industryLabel: "Home services", status: "active", access: "open", messagesLeft: 9, messageAllowance: 10,
       chat: { aiEnabled: true, canSend: true, refusal: null }, pricing: { setupFeeUsd: 1499, monthlyPlanUsd: 299, monthlyPlanOptional: true },
     });
-    expect(r.room.transcript.map((l) => [l.role, l.employeeRole, l.state])).toEqual([["user", "lead_hunter", "answered"], ["assistant", "lead_hunter", null]]);
+    expect(r.room.transcript.map((l) => [l.role, l.employeeRole, l.state])).toEqual([["user", null, "answered"], ["assistant", null, null]]);
     const serialized = JSON.stringify(r.room);
     expect(serialized).not.toContain(s.email);
     expect(serialized).not.toContain(s.prospectId);

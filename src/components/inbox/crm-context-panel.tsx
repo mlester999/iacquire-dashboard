@@ -168,7 +168,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
           </ul>
         )} />
       </Card>
-      <Card title="AI employee activity" icon={Bot}>
+      <Card title="AI activity" icon={Bot}>
         <dl className="space-y-1.5 text-[13px]">
           <div className="flex justify-between gap-2"><dt className="text-muted">Employees involved</dt><dd className="text-right">{d.ai.employees.length ? d.ai.employees.map((e) => employeeShortName(e)).join(", ") : "None"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Messages the AI sent</dt><dd>{d.ai.aiMessages}</dd></div>

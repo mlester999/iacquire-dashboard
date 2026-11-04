@@ -25,6 +25,7 @@ import {
   type WorkJobRow,
 } from "@/server/workforce/jobs";
 import { targetingSchema } from "@/lib/leads-targeting";
+import { isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import {
   findLeadDuplicates,
   normalizeDomain,
@@ -57,6 +58,7 @@ const STAGE_COPY: Record<string, string> = {
 
 interface ResearchSetup {
   requestId: string;
+  sourcePlatform: "lead_hunter" | "growth_partner";
   conn: HermesConnection;
   instructions: string;
   configVersionId: string | null;
@@ -209,6 +211,14 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     return;
   }
 
+  const employeeName = await withSystem(async (db) => {
+    const { rows } = await db.query<{ role_key: string }>(
+      "select role_key from agent_instances where id = $1 and org_id = $2",
+      [job.agent_instance_id, job.org_id],
+    );
+    return rows[0] && isWorkforceRoleKey(rows[0].role_key) ? workforceRoleShortName(rows[0].role_key) : "AI employee";
+  });
+
   let setup: ResearchSetup & { runId: string };
   let agentRunId: string | null = null;
   try {
@@ -231,9 +241,9 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         throw new ResearchBlocked("This research request is no longer queued for work.");
       }
       const conn = await loadConnection(db, job.agent_instance_id);
-      if (!conn) throw new ResearchBlocked("The Lead Hunter is not connected, so no research was started.");
+      if (!conn) throw new ResearchBlocked(employeeName + " is not connected, so no research was started.");
       const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id);
-      if (!runInstructions.versionId) throw new ResearchBlocked("The Lead Hunter has no applied configuration, so no research was started.");
+      if (!runInstructions.versionId) throw new ResearchBlocked(employeeName + " has no applied configuration, so no research was started.");
       const targeting = targetingSchema.safeParse(request.criteria);
       const company = await loadCompanyContext(db, job.org_id);
       // A client with no confirmed business facts must not inherit another tenant's profile. Stop
@@ -262,14 +272,15 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         workerId: context.workerId,
         kind: "notice",
         stage: "preparing",
-        message: "Research started. The Lead Hunter is preparing the assignment.",
+        message: "Research started. " + employeeName + " is preparing the assignment.",
       });
       return {
         requestId,
+        sourcePlatform: conn.roleKey === "growth_partner" ? "growth_partner" : "lead_hunter",
         conn,
         instructions: runInstructions.instructions,
         configVersionId: runInstructions.versionId,
-        memoryScope: `iaq:${job.org_id}:lead_hunter`,
+        memoryScope: ["iaq", job.org_id, conn.roleKey].join(":"),
         input,
         runId: run[0].id,
         agentRunId: run[0].id,
@@ -342,7 +353,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     const message = err instanceof AgentRunNotReadyError
       ? err.message
       : err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")
-        ? "The Lead Hunter's Hermes connection is unavailable, so no research was started."
+        ? employeeName + "'s Hermes connection is unavailable, so no research was started."
         : "The research run could not be started. No provider run was accepted.";
     await markRequestFailed(job, context.workerId, {
       status: err instanceof AgentRunNotReadyError ? "blocked" : "failed",
@@ -401,7 +412,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         usage = event.usage;
         break;
       } else if (event.type === "failed" || event.type === "interrupted") {
-        failure = "The Lead Hunter couldn't complete this research.";
+        failure = employeeName + " couldn't complete this research.";
         usage = "usage" in event ? event.usage ?? null : null;
         break;
       } else if (event.type === "cancelled") {
@@ -429,7 +440,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     }
     else failure = timedOut
       ? "The research took longer than the allowed run time and was stopped."
-      : "The connection to the Lead Hunter dropped before the research finished.";
+      : "The connection to " + employeeName + " dropped before the research finished.";
   } finally {
     clearTimeout(timer);
     clearInterval(heartbeatTimer);
@@ -455,7 +466,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     await markRequestFailed(job, context.workerId, {
       status: "blocked",
       code: "approval_required",
-      message: "The Lead Hunter requested a tool approval that this research workflow cannot grant. No action was taken.",
+      message: employeeName + " requested a tool approval that this research workflow cannot grant. No action was taken.",
       requestId,
       agentRunId: setup.runId,
       usage,
@@ -524,6 +535,8 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         const qualification = qualifyCandidate(lead, duplicate);
         const domain = normalizeDomain(lead.website);
         const { breakdown, total } = normalizeScore(lead.score, lead.evidence.length);
+        const recordedAt = new Date().toISOString();
+        const signalRecords = lead.signal_records.map((signal) => ({ ...signal, recorded_at: recordedAt }));
         // A retry after a crash must not create a second lead for a candidate this request already
         // persisted. Reuse the existing row and keep the same evidence/count semantics.
         const existingLead = await db.query<{ id: string }>(
@@ -542,8 +555,10 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         }
         const { rows } = await db.query<{ id: string }>(
           `insert into leads (org_id, research_request_id, business_name, website, domain, industry, location, source_platform,
-             evidence, score, score_breakdown, qualification_summary, buying_signals, duplicate_status, duplicate_matches, public_contact)
-           values ($1, $2, $3, $4, $5, $6, $7, 'lead_hunter', $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb)
+             evidence, score, score_breakdown, qualification_summary, buying_signals, duplicate_status, duplicate_matches, public_contact,
+             signal_records, qualification_state, qualification_reasons, recommended_next_action)
+           values ($1, $2, $3, $4, $5, $6, $7, $16, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb,
+                   $17::jsonb, $18, $19, $20)
            returning id`,
           [
             job.org_id,
@@ -561,6 +576,11 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
             duplicate.status,
             JSON.stringify(duplicate.matches),
             JSON.stringify(lead.public_contact ?? {}),
+            setup.sourcePlatform,
+            JSON.stringify(signalRecords),
+            qualification.state,
+            qualification.reasons,
+            qualification.recommended_next_action,
           ],
         );
         leadIds.push(rows[0].id);

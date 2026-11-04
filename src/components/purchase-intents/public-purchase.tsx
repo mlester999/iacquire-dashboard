@@ -83,7 +83,7 @@ export function PublicPurchaseBody({ purchase, token }: { purchase: PublicPurcha
           </div>
         </aside>
 
-        <section className="room-a-orbit room-in" style={step(4)} aria-label="Your AI team">
+        <section className="room-a-orbit room-in" style={step(4)} aria-label="Your AI Growth Partner and six capabilities">
           <TeamOrbit company={purchase.company} />
         </section>
 
@@ -99,8 +99,8 @@ export function PublicPurchaseBody({ purchase, token }: { purchase: PublicPurcha
           </article>
           <article className="room-tile">
             <span className="room-tile-icon" aria-hidden><Workflow className="size-5" /></span>
-            <h3>CRM, integrations and your AI team</h3>
-            <p>CRM setup, integrations and AI employee provisioning follow verification and onboarding.</p>
+            <h3>CRM, integrations and your AI Growth Partner</h3>
+            <p>CRM setup, integrations and Growth Partner preparation follow payment verification and onboarding.</p>
           </article>
           <article className="room-tile">
             <span className="room-tile-icon" aria-hidden><Wrench className="size-5" /></span>

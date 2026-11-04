@@ -36,7 +36,7 @@ function Adorned({ icon: Icon, children }: { icon: LucideIcon; children: React.R
   );
 }
 
-const STEPS_AFTER = ["Open the email from iAcquire.", "Press the button inside it. Your demo window starts when you press it.", "Look around: the AI team, the CRM and Automation Studio."];
+const STEPS_AFTER = ["Open the email from iAcquire.", "Press the button inside it. Your demo window starts when you press it.", "Explore the AI Growth Partner, CRM and Automation Studio."];
 
 export function DemoRequestForm({ industries, notice, utm, initialErrors = [] }: RequestFormProps) {
   const [state, setState] = React.useState<State>({ status: "idle" });

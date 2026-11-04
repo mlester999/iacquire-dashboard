@@ -5,14 +5,14 @@ import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-acc
 import { sendChatMessage } from "@/server/chat/service";
 import { sseStream } from "@/server/chat/hub";
 import { toPublicError } from "@/server/errors";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const uuid = z.string().regex(/^[0-9a-f-]{36}$/i);
 const bodySchema = z.object({
-  role: z.enum(AGENT_ROLE_KEYS),
+  role: z.enum([...AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY]),
   conversationId: uuid.nullish(),
   content: z.string().max(8000).optional(),
   clientMessageId: z.string().max(64).optional(),

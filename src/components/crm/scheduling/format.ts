@@ -22,7 +22,7 @@ export const VIA_LABEL: Record<string, string> = {
   booking_page: "Booking page",
   website: "Website",
   staff: "Booked by your team",
-  agent: "AI employee",
+  agent: "AI profile",
   api: "API",
   import: "Import",
   ghl_migration: "Moved from GoHighLevel",

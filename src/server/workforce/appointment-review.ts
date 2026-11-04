@@ -99,7 +99,7 @@ const unassignedUpcoming: ReviewCheck = async (db, job) => {
 export async function runAppointmentReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "appointment_review",
-    allowedRoles: ["appointment_setter"],
+    allowedRoles: ["appointment_setter", "growth_partner"],
     scanningMessage: "Reading persisted appointment requests, confirmations and ownership…",
     analyzingMessage: "Assessing booking risks and preparing recommended next actions…",
     checks: [awaitingApproval, manualBookings, stuckRequests, unassignedUpcoming],

@@ -296,7 +296,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
 export async function runSocialPerformanceReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "social_performance_review",
-    allowedRoles: ["performance_analyst"],
+    allowedRoles: ["performance_analyst", "growth_partner"],
     scanningMessage: "Reading stored social posts, the numbers the platforms returned and the leads their tracked links brought…",
     analyzingMessage: "Working out what needs a person and what the evidence supports…",
     checks: [accountsNeedAttention, failedPosts, approvalBacklog, quietAccounts, engagementAdvice, engagementChange, campaignPerformance, leadsFromPosts],

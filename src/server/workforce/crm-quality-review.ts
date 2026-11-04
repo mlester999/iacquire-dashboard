@@ -125,7 +125,7 @@ const unverifiedIdentities: ReviewCheck = async (db, job) => {
 export async function runCrmQualityReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "crm_quality_review",
-    allowedRoles: ["crm_manager"],
+    allowedRoles: ["crm_manager", "growth_partner"],
     scanningMessage: "Reading persisted CRM contacts, companies and verified identities…",
     analyzingMessage: "Assessing data-quality gaps and preparing recommended fixes…",
     checks: [missingContactDetails, companiesMissingDetails, duplicateCompanies, duplicateContactNames, unverifiedIdentities],

@@ -10,7 +10,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field
 import { rotateWebChatKeyAction, saveWebChatSettingsAction } from "@/app/actions/webchat";
 import { embedSnippet, INSTALL_STATE_LABELS, type QualificationQuestion } from "@/lib/webchat/rules";
 import { relativeTime } from "@/lib/utils";
-import type { WidgetView } from "@/server/webchat/config";
+import type { WidgetSettings, WidgetView } from "@/server/webchat/config";
 import type { ChatOverview, ChatWindowStats, HealthCheck } from "@/server/webchat/analytics";
 
 // Website → Chat. Everything on this screen is either a setting that is saved, or a fact counted from stored records (or a check that says what it looked
@@ -18,7 +18,7 @@ import type { ChatOverview, ChatWindowStats, HealthCheck } from "@/server/webcha
 
 type Draft = {
   enabled: boolean; allowed: string; autoInstallSites: boolean; title: string; welcomeMessage: string; offlineMessage: string; brandColor: string; position: "bottom-right" | "bottom-left";
-  launcherLabel: string; leadForm: "never" | "offer" | "required"; privacyNotice: string; privacyUrl: string; offerMarketingOptIn: boolean; aiEnabled: boolean; aiRoleKey: "sales_assistant" | "appointment_setter";
+  launcherLabel: string; leadForm: "never" | "offer" | "required"; privacyNotice: string; privacyUrl: string; offerMarketingOptIn: boolean; aiEnabled: boolean; aiRoleKey: WidgetSettings["aiRoleKey"];
   offlineBehavior: "ai_answers" | "leave_message"; knowledgeSections: string[]; allowBooking: boolean; questions: Array<{ label: string; kind: "text" | "choice"; choices: string; required: boolean }>;
   dailySessionLimit: number; sessionMessageLimit: number; retentionDays: number; anonymousRetentionDays: number;
 };
@@ -222,11 +222,11 @@ export function WebChatSettings({ view, overview, appOrigin, sections }: { view:
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>What the assistant does</CardTitle><CardDescription>It answers as the AI employee you choose, so taking over, pausing and handing back work exactly as they do in your Inbox.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>What the assistant does</CardTitle><CardDescription>It answers as the AI profile you choose. You can pause replies, take over, and hand conversations back in your Inbox.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          <Check id="wc-ai" checked={d.aiEnabled} onChange={(v) => set("aiEnabled", v)} hint="When off, every chat goes to your team and visitors are told a person will reply.">Let the AI employee answer visitors</Check>
+          <Check id="wc-ai" checked={d.aiEnabled} onChange={(v) => set("aiEnabled", v)} hint="When off, every chat goes to your team and visitors are told a person will reply.">Let AI answer visitors</Check>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Which AI employee" htmlFor="wc-role"><Select id="wc-role" value={d.aiRoleKey} onChange={(e) => set("aiRoleKey", e.target.value as Draft["aiRoleKey"])} disabled={!canEdit}><option value="sales_assistant">Sales Assistant</option><option value="appointment_setter">Appointment Setter</option></Select></Field>
+            <Field label="AI profile for visitors" htmlFor="wc-role"><Select id="wc-role" value={d.aiRoleKey} onChange={(e) => set("aiRoleKey", e.target.value as Draft["aiRoleKey"])} disabled={!canEdit}>{(view.hasGrowthPartner || d.aiRoleKey === "growth_partner") && <option value="growth_partner">AI Growth Partner</option>}{d.aiRoleKey !== "growth_partner" && <option value={d.aiRoleKey} disabled>Current profile (preserved)</option>}</Select></Field>
             <Field label="When the business is closed" htmlFor="wc-offb" hint="By your business hours in Messaging settings."><Select id="wc-offb" value={d.offlineBehavior} onChange={(e) => set("offlineBehavior", e.target.value as Draft["offlineBehavior"])} disabled={!canEdit}><option value="ai_answers">The assistant keeps answering</option><option value="leave_message">Only take a message and details</option></Select></Field>
             <Field label="Visitor details form" htmlFor="wc-lead"><Select id="wc-lead" value={d.leadForm} onChange={(e) => set("leadForm", e.target.value as Draft["leadForm"])} disabled={!canEdit}><option value="offer">Offer it during the chat</option><option value="required">Ask for details before chatting</option><option value="never">Never show it</option></Select></Field>
             <Field label="Privacy page" htmlFor="wc-priv" optional hint="An https address shown under the chat."><Input id="wc-priv" value={d.privacyUrl} onChange={(e) => set("privacyUrl", e.target.value)} disabled={!canEdit} placeholder="https://www.example.com/privacy" /></Field>
@@ -260,7 +260,7 @@ export function WebChatSettings({ view, overview, appOrigin, sections }: { view:
               <Check key={s.key} id={`wc-k-${s.key}`} checked={d.knowledgeSections.includes(s.key)} onChange={(v) => set("knowledgeSections", v ? [...d.knowledgeSections, s.key] : d.knowledgeSections.filter((x) => x !== s.key))} hint={s.key === "approved_pricing" ? "Visitors are anonymous. Tick this only if you are happy for anyone to be told these prices." : undefined}>{s.label}</Check>
             ))}
           </fieldset>
-          <p className="mt-3 text-[13px] text-muted">Edit the text itself in <Link href="/employees" className="font-medium text-primary-ink underline">your AI employees&apos; knowledge</Link>.</p>
+          <p className="mt-3 text-[13px] text-muted">{view.hasGrowthPartner ? <>Review business facts in <Link href="/growth-partner" className="font-medium text-primary-ink underline">your Growth Partner&apos;s Business Brain</Link>.</> : <>Review business facts in the <Link href="/knowledge" className="font-medium text-primary-ink underline">Knowledge Center</Link>.</>}</p>
         </CardContent>
       </Card>
 

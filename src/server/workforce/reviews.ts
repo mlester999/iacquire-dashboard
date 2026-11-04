@@ -14,7 +14,7 @@ import {
   type ReviewReasonView,
   type ReviewVersionView,
 } from "@/lib/config-review";
-import { isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 
 export interface HeldConfigRow {
   id: string;
@@ -191,8 +191,8 @@ export async function countInternalHeldConfigReviews(userId: string): Promise<nu
 /** Shared query for the client-detail reviews tab. Authorization is done by getTenantDetail. */
 export async function listHeldConfigReviewsForOrg(db: Queryable, orgId: string): Promise<ReviewVersionView[]> {
   const { rows } = await db.query<HeldConfigRow>(
-    `${HELD_SELECT} and v.org_id = $1 order by v.created_at`,
-    [orgId],
+    `${HELD_SELECT} and v.org_id = $1 and a.role_key = any($2::text[]) order by v.created_at`,
+    [orgId, AGENT_ROLE_KEYS],
   );
   return rows.map(toReviewVersion);
 }

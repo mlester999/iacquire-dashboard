@@ -85,7 +85,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "a.location", section: "A", title: "Where is your business based?",
-    help: "City, region and country. Your AI team uses this to answer where-are-you-located questions.",
+    help: "City, region and country. Your AI Growth Partner uses this to answer location questions.",
     example: "Austin, Texas, USA", kind: { type: "text", max: 200, placeholder: "City, region, country" }, reviewLabel: "Based in",
   },
   {
@@ -110,7 +110,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "a.hours", section: "A", requiredWhen: needsOpeningHours, title: "When are you open?",
-    help: "Your AI team uses this for business-hours replies and for telling customers when someone is available. It is needed if replies are limited to business hours, or if you take appointments and leave the bookable hours blank.",
+    help: "Your AI Growth Partner uses this for business-hours replies and to tell customers when someone is available. It is needed if replies are limited to business hours, or if you take appointments and leave the bookable hours blank.",
     example: HOURS_EXAMPLE, kind: { type: "hours" }, reviewLabel: "Business hours",
   },
   {
@@ -123,7 +123,7 @@ export const QUESTIONS: QuestionDef[] = [
   // ───────────────────────────── B · Business goals ─────────────────────────────
   {
     id: "b.goals", section: "B", required: true, title: "What would you like to improve?",
-    help: "Choose the outcomes that matter most. Your AI team focuses on these first.",
+    help: "Choose the outcomes that matter most. Your AI Growth Partner prioritizes these.",
     kind: { type: "multi", options: BUSINESS_GOALS.map((g) => ({ value: g.id, label: g.label })), max: 9 }, reviewLabel: "Main goals",
   },
   {
@@ -133,7 +133,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "b.lead_target", section: "B", roles: ["performance_analyst"], title: "How many new leads would you like each month?",
-    help: "A rough target helps your Performance Analyst tell you whether you're on track. It's never shown to customers.",
+    help: "A rough target helps your AI Growth Partner measure progress. It's never shown to customers.",
     kind: { type: "choice", options: opts(["lt20", "Fewer than 20"], ["20_50", "20 to 50"], ["50_150", "50 to 150"], ["150_plus", "More than 150"], ["unsure", "I'm not sure yet"]) },
     reviewLabel: "Monthly lead target",
   },
@@ -145,7 +145,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "b.qualification", section: "B", roles: ["lead_hunter"], assist: "draft", title: "What makes a lead worth a conversation with your team?",
-    help: "These are the things your AI checks before calling someone qualified.",
+    help: "Your AI Growth Partner uses these criteria when it researches and qualifies a prospect.",
     example: "In our service area, owns the property, and wants work done within three months.",
     kind: { type: "longtext", max: 1500, rows: 4 }, reviewLabel: "Qualification criteria",
   },
@@ -163,12 +163,12 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "b.sales_model", section: "B", title: "How do customers usually buy from you?",
-    help: "This decides how your Sales Assistant moves a lead forward.",
+    help: "This helps your AI Growth Partner prepare the right next step for a lead.",
     kind: { type: "choice", options: opts(["call_first", "Enquire, then a call", "They ask, then a person calls to close"], ["quote", "Enquire, then a quote", "We assess the job and send a price"], ["book_visit", "Book a visit or appointment directly"], ["online_purchase", "Buy online"], ["retainer", "Ongoing retainer or subscription"]) },
     reviewLabel: "Sales model",
   },
   {
-    id: "b.appointments", section: "B", required: true, title: "Should your AI team book appointments?",
+    id: "b.appointments", section: "B", required: true, title: "Should your AI Growth Partner book appointments?",
     help: "If yes, we'll ask about appointment types and availability. The AI only offers times from your real calendar.",
     kind: { type: "yesno" }, reviewLabel: "Book appointments",
   },
@@ -232,24 +232,24 @@ export const QUESTIONS: QuestionDef[] = [
 
   // ───────────────────────────── C · AI communication ─────────────────────────────
   {
-    id: "c.tone", section: "C", assist: "choice", title: "How should your AI team sound?",
+    id: "c.tone", section: "C", assist: "choice", title: "How should your AI Growth Partner sound?",
     help: "Pick a voice that feels like your business. You'll see a short example for each.",
     kind: { type: "choice", options: TONES.map((t) => ({ value: t, label: TONE_COPY[t].label, description: `“${TONE_COPY[t].example}”` })) }, reviewLabel: "Tone",
   },
   {
     id: "c.reply_length", section: "C", title: "How much detail should replies include?",
-    help: "Text messages work best short. You can change this per employee later.",
+    help: "Text messages work best short. You can change this preference later.",
     kind: { type: "choice", options: (["concise", "balanced", "detailed"] as const).map((v) => ({ value: v, label: LENGTH_COPY[v].label, description: LENGTH_COPY[v].description })) },
     reviewLabel: "Reply length",
   },
   {
     id: "c.language", section: "C", title: "Which language should replies use?",
-    help: "The default language for your AI employees.",
+    help: "The default language for your AI Growth Partner.",
     kind: { type: "choice", options: LANGUAGES.map((l) => ({ value: l, label: l })) }, reviewLabel: "Language",
   },
   {
     id: "c.channels", section: "C", title: "How will customers reach you?",
-    help: "Pick the channels you want your AI team on. Each one needs a verified sender before anything is sent, and we'll tell you any extra fees.",
+    help: "Pick the channels for your AI Growth Partner. Each one needs a verified sender before anything is sent, and we'll tell you any extra fees.",
     kind: { type: "multi", options: opts(["sms", "SMS", "Text messages from a business number"], ["whatsapp", "WhatsApp", "Needs an approved WhatsApp Business connection"], ["email", "Email", "Needs a verified sending address"]) },
     reviewLabel: "Messaging channels",
   },
@@ -414,7 +414,7 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "longtext", max: 2000, rows: 5 }, reviewLabel: "Sales process",
   },
   {
-    id: "d.handoff_requirements", section: "D", roles: ["crm_manager"], title: "What should be confirmed before a person calls?",
+    id: "d.handoff_requirements", section: "D", roles: ["crm_manager"], title: "What should your AI Growth Partner confirm before a person calls?",
     help: "These details are collected so your team never has to ask twice.", example: "Name, address, what's wrong, and when they can be reached.",
     kind: { type: "longtext", max: 1000, rows: 3 }, reviewLabel: "Before a hand-off",
   },
@@ -453,7 +453,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "e.faqs", section: "E", sensitive: true, assist: "list", title: "What questions do customers ask most?",
-    help: "Add questions customers commonly ask, along with the answers your employees are allowed to provide. Your AI will use these word for word where it can.",
+    help: "Add questions customers commonly ask, along with the answers your AI Growth Partner may provide. It will use these word for word where it can.",
     kind: { type: "list", maxRows: 20, addLabel: "Add a question", fields: [
       { key: "question", label: "Question", type: "text", max: 200, required: true },
       { key: "answer", label: "Answer", type: "longtext", max: 800, required: true },
@@ -472,7 +472,7 @@ export const QUESTIONS: QuestionDef[] = [
     kind: { type: "longtext", max: 1500, rows: 3 }, reviewLabel: "Support information",
   },
   {
-    id: "e.documents", section: "E", title: "Do you have documents your team should read?",
+    id: "e.documents", section: "E", title: "Do you have documents your AI Growth Partner should reference?",
     help: "Price lists, brochures, service guides. PDF, Word, text and CSV files up to 10 MB. Private to your workspace.",
     kind: { type: "files", assetKind: "document", max: 5 }, reviewLabel: "Documents",
   },

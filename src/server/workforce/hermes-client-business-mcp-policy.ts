@@ -1,7 +1,7 @@
 import "server-only";
 import { AGENT_TOOLS, toolsForRole } from "@/server/crm/agent-tools/catalog";
 import type { AgentToolName } from "@/server/crm/agent-tools/catalog";
-import type { AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 import type { Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { featureOn } from "@/server/proposals/features";
@@ -22,13 +22,17 @@ export const CLIENT_BUSINESS_PROPOSALS_FEATURE = "client_business_proposals";
  * accident. It is the internal tier's reads plus list_opportunities (a client-only tool) for the roles that hold the deals scope; the role's scopes still decide what is actually
  * allowed (see clientBusinessMcpToolNamesForRole).
  */
-export const CLIENT_BUSINESS_TOOL_MATRIX: Record<AgentRoleKey, readonly AgentToolName[]> = {
+export const CLIENT_BUSINESS_TOOL_MATRIX: Record<WorkforceRoleKey, readonly AgentToolName[]> = {
   operations_manager: ["find_contacts", "get_contact", "check_availability", "crm_summary_report", "list_opportunities"],
   lead_hunter: ["find_contacts", "get_contact"],
   appointment_setter: ["find_contacts", "get_contact", "check_availability", "get_conversation_history"],
   sales_assistant: ["find_contacts", "get_contact", "check_availability", "get_conversation_history", "list_opportunities"],
   crm_manager: ["find_contacts", "get_contact", "crm_summary_report", "list_opportunities"],
   performance_analyst: ["crm_summary_report", "list_opportunities"],
+  [AI_GROWTH_PARTNER_ROLE_KEY]: [
+    "find_contacts", "get_contact", "check_availability", "crm_summary_report",
+    "list_opportunities", "get_conversation_history",
+  ],
 };
 
 /**
@@ -38,19 +42,19 @@ export const CLIENT_BUSINESS_TOOL_MATRIX: Record<AgentRoleKey, readonly AgentToo
 export const CLIENT_NEVER_OFFERED_TOOLS: readonly AgentToolName[] = ["request_appointment", "prepare_message", "request_send_approval"];
 
 /** The CRM changes a role may PROPOSE: every `write` tool its scopes allow. They only ever become approval requests. A `proposal`-kind tool (a message or a booking) is never offered. */
-export function clientBusinessProposalToolNamesForRole(role: AgentRoleKey): AgentToolName[] {
+export function clientBusinessProposalToolNamesForRole(role: WorkforceRoleKey): AgentToolName[] {
   return toolsForRole(role).filter((name) => AGENT_TOOLS[name].kind === "write" && !CLIENT_NEVER_OFFERED_TOOLS.includes(name));
 }
 
 /** Names exposed to a client employee's model. The matrix is narrowed to read tools the role's scopes allow; proposals are added only when asked for. */
-export function clientBusinessMcpToolNamesForRole(role: AgentRoleKey, options: { proposals?: boolean } = {}): BusinessMcpToolName[] {
+export function clientBusinessMcpToolNamesForRole(role: WorkforceRoleKey, options: { proposals?: boolean } = {}): BusinessMcpToolName[] {
   // The client tier is the one place a client-only tool (list_opportunities) can be offered, so its own matrix is what decides, narrowed by the role's scopes.
   const allowed = new Set<AgentToolName>(toolsForRole(role, { includeClientOnly: true }));
   const reads = CLIENT_BUSINESS_TOOL_MATRIX[role].filter((name) => allowed.has(name) && AGENT_TOOLS[name].kind === "read");
   return [HERMES_BUSINESS_CONTEXT_TOOL, ...reads, ...(options.proposals ? clientBusinessProposalToolNamesForRole(role) : [])];
 }
 
-export function clientBusinessMcpRuntimeNamesForRole(role: AgentRoleKey, options: { proposals?: boolean } = {}): string[] {
+export function clientBusinessMcpRuntimeNamesForRole(role: WorkforceRoleKey, options: { proposals?: boolean } = {}): string[] {
   return clientBusinessMcpToolNamesForRole(role, options).map(hermesMcpToolName).sort();
 }
 

@@ -3,14 +3,14 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { authorizeEmployeeAction, type PolicyAction } from "@/lib/employee-tool-policy";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 
 // The server's side of the AI employee tool policy (src/lib/employee-tool-policy.ts). The role is read from the employee's own database row, in the workspace the caller names, and
 // the decision is the pure table's: nothing a model said, nothing in a prompt and nothing the caller claims about the role can widen it. A refusal leaves an audit record (who asked,
 // which employee, which action, why), because a refused action is the first sign of a prompt trying to reach past its role.
 
 export interface AuthorizedAction {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   action: PolicyAction;
 }
 
@@ -40,17 +40,19 @@ export async function recordActionDenied(input: DenialInput, db?: Queryable): Pr
 }
 
 export type AgentActionDecision =
-  | { allowed: true; role: AgentRoleKey; action: PolicyAction }
-  | { allowed: false; code: "forbidden" | "not_found"; message: string; role: AgentRoleKey | null; reason: string };
+  | { allowed: true; role: WorkforceRoleKey; action: PolicyAction }
+  | { allowed: false; code: "forbidden" | "not_found"; message: string; role: WorkforceRoleKey | null; reason: string };
 
 /**
  * The decision alone: no write, no throw, so it can run inside a caller's transaction without a refusal rolling back its own record. `agentId` must belong to `orgId` (another tenant's
  * employee is "not found") and the role is read from that row, never taken from the caller.
  */
 export async function decideAgentAction(db: Queryable, input: { orgId: string; agentId: string; actionId: string }): Promise<AgentActionDecision> {
-  const { rows } = await db.query<{ role_key: AgentRoleKey }>("select role_key from agent_instances where id = $1 and org_id = $2", [input.agentId, input.orgId]);
+  const { rows } = await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [input.agentId, input.orgId]);
   if (!rows[0]) return { allowed: false, code: "not_found", message: "AI employee not found.", role: null, reason: "The employee does not belong to this workspace." };
-  const role = rows[0].role_key;
+  const rawRole = rows[0].role_key;
+  if (!isWorkforceRoleKey(rawRole)) return { allowed: false, code: "forbidden", message: "This AI employee role is not supported.", role: null, reason: "The employee has an unsupported role." };
+  const role = rawRole;
   const decision = authorizeEmployeeAction(role, input.actionId);
   if (decision.allowed) return { allowed: true, role, action: decision.action };
   return { allowed: false, code: "forbidden", message: decision.reason, role, reason: decision.reason };

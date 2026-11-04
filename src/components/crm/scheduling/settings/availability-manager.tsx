@@ -35,7 +35,7 @@ export function AvailabilityManager({ scope, hosts, people, overrides, orgTimezo
 
   return (
     <div className="space-y-5">
-      <PageTitle title="Availability" description="Working hours decide which times booking pages, your team and your AI Appointment Setter can offer. Each person's hours are in their own time zone." />
+      <PageTitle title="Availability" description="Working hours decide which times booking pages, your team and AI Growth Partner can offer. Each person's hours are in their own time zone." />
       {scope.readOnly && <ReadOnlyNotice />}
 
       <Card>

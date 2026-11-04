@@ -19,7 +19,7 @@ import { COMPANY_FILTER_FIELDS, CONTACT_FILTER_FIELDS, OPS_BY_KIND, checkFilterS
 import { formContextFrom, validateDraft } from "@/lib/crm/forms/spec";
 import { OPPORTUNITY_CONDITION_FIELDS, validateDefinition, validationContextFrom } from "@/lib/crm/workflow/spec";
 import { validateTemplate } from "@/lib/messaging/tokens";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { WORKFORCE_ROLE_KEYS } from "@/lib/agents";
 import { CREATED_VIA, LEAD_STATUSES } from "@/lib/crm/types";
 import {
   ASSET_SECTIONS, ASSET_TYPE_LABELS, BLUEPRINT_MAX_ASSET_BYTES, SLOT_KIND_LABELS, BLUEPRINT_MAX_BYTES, FOLDER_KIND_FOR, ID_PREFIX, SECTION_LABELS, isRef, isSlotKind, refId, typeOfId,
@@ -285,8 +285,9 @@ export function validateContent(input: unknown): ValidationResult {
     n8nMappings: content.slots.filter((s) => typeOfId(s.id) === "n8n").map((s) => ({ id: sid(s.id) })),
     webhookSubscriptions: content.slots.filter((s) => typeOfId(s.id) === "webhook").map((s) => ({ id: sid(s.id) })),
     assignmentRules: rulesCtx,
-    // Which AI employees a workspace includes is a setup requirement ("ai_employee" for senders, "hermes" for AI tasks), not a Blueprint error.
-    agents: AGENT_ROLE_KEYS.map((roleKey) => ({ roleKey })),
+    // Which employee identity a workspace includes is a setup requirement, not a Blueprint error. New workspaces use the Growth Partner sender;
+    // legacy role keys remain available so existing workspaces can keep their approved workflows.
+    agents: WORKFORCE_ROLE_KEYS.map((roleKey) => ({ roleKey })),
     calendars: content.assets.calendars.map((c) => ({ id: sid(c.id) })),
     appointmentTypes: content.assets.calendars.flatMap((c) => c.types.map((t) => ({ id: sid(t.id) }))),
     forms: content.assets.forms.map((f) => ({ id: sid(f.id) })),

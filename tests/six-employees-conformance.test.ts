@@ -5,7 +5,7 @@
 import crypto from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
-import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, AGENT_ROLES, SETUP_REQUIRED_LABEL, canChat, type AgentRoleKey } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, AGENT_ROLES, AI_GROWTH_PARTNER_ROLE_KEY, SETUP_REQUIRED_LABEL, canChat, type WorkforceRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, capabilitiesForRole, roleMayUseCapability, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { createConfigVersion, suggestedProfileName } from "@/server/workforce/service";
@@ -50,7 +50,7 @@ describe("the registry and the identities agree", () => {
     for (const key of CAPABILITY_KEYS) {
       const def = WORKFORCE_CAPABILITIES[key];
       expect(def.allowedRoles.length, key).toBeGreaterThan(0);
-      for (const role of def.allowedRoles) expect(AGENT_ROLE_KEYS, `${key} -> ${role}`).toContain(role);
+      for (const role of def.allowedRoles) expect([...AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY], `${key} -> ${role}`).toContain(role);
       // Read-only reviews, plus the one capability that prepares drafts (never sent) for a person to approve.
       expect(def.risk, key).toBe(APPROVAL_REQUIRED.includes(key) ? "approval_required" : "read_only");
     }
@@ -122,7 +122,8 @@ describe("no employee runs another's work, and nobody runs work they may not sta
       }
     }
     // Every role times every capability, minus the pairs that are allowed.
-    expect(refused).toBe(AGENT_ROLE_KEYS.length * CAPABILITY_KEYS.length - CAPABILITY_KEYS.reduce((n, k) => n + WORKFORCE_CAPABILITIES[k].allowedRoles.length, 0));
+    const allowedLegacyPairs = CAPABILITY_KEYS.reduce((n, capability) => n + AGENT_ROLE_KEYS.filter((role) => roleMayUseCapability(role, capability)).length, 0);
+    expect(refused).toBe(AGENT_ROLE_KEYS.length * CAPABILITY_KEYS.length - allowedLegacyPairs);
   });
 
   it("refuses a viewer, who may not start AI work at all", async () => {
@@ -139,8 +140,8 @@ describe("no employee runs another's work, and nobody runs work they may not sta
   });
 });
 
-describe("a workspace a purchase creates starts with all six employees not working", () => {
-  it("creates six employees in 'Setup required', none online, none able to chat, and no job can be dispatched to them", async () => {
+describe("a workspace a purchase creates starts with one partner not working", () => {
+  it("creates one Growth Partner in 'Setup required', not online or able to chat, and no job can be dispatched to it", async () => {
     await agencyOrgId(); // the agency workspace a purchase belongs to (the database allows exactly one)
     const superAdmin = agencyUser(await staffPerson("agency_super_admin"), "agency_super_admin");
     const email = `buyer-${crypto.randomUUID().slice(0, 8)}@example.test`;
@@ -149,9 +150,10 @@ describe("a workspace a purchase creates starts with all six employees not worki
     await verifyPurchasePayment(superAdmin, created.id, { amount: "1499.00", method: "bank_transfer", externalReference: `BANK-${crypto.randomUUID().slice(0, 8)}`, paidOn: new Date().toISOString().slice(0, 10), note: "Saw the transfer on the statement." }, { now: new Date() });
     const made = await provisionPurchaseIntent(superAdmin, created.id, { now: new Date() });
     expect(made.clientOrgId).toBeTruthy();
-    const agents = await withSystem((db) => db.query<{ role_key: AgentRoleKey; status: string; enabled: boolean; last_health_ok: boolean | null; active_config_version_id: string | null; credential_id: string | null }>(
+    const agents = await withSystem((db) => db.query<{ role_key: WorkforceRoleKey; status: string; enabled: boolean; last_health_ok: boolean | null; active_config_version_id: string | null; credential_id: string | null }>(
       "select role_key, status, enabled, last_health_ok, active_config_version_id, credential_id from agent_instances where org_id = $1 order by role_key", [made.clientOrgId]));
-    expect(agents.rows.map((a) => a.role_key).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
+    expect(agents.rows.map((a) => a.role_key)).toEqual([AI_GROWTH_PARTNER_ROLE_KEY]);
+    expect(agents.rows).toHaveLength(1);
     for (const a of agents.rows) {
       expect(a.status, a.role_key).toBe("setup_required");
       expect(canChat(a.status as never), a.role_key).toBe(false);
@@ -161,14 +163,12 @@ describe("a workspace a purchase creates starts with all six employees not worki
       expect(r.stage, a.role_key).not.toBe("ready");
       expect(r.chatAvailable, a.role_key).toBe(false);
     }
-    // Once the buyer accepts the invitation and is the workspace's owner, they still cannot start work for an employee that has not been set up, whatever the role.
+    // Once the buyer accepts the invitation and is the workspace's owner, they still cannot start work before the Growth Partner is set up.
     const target = (await withSystem((db) => db.query<{ id: string; name: string; slug: string }>("select id, name, slug from organizations where id = $1", [made.clientOrgId]))).rows[0];
     const buyer = await createUser();
     await addMember(target.id, buyer.id, "owner");
-    for (const role of AGENT_ROLE_KEYS) {
-      const capability = capabilitiesForRole(role)[0]?.key ?? "proactive_review";
-      await expect(dispatchCapabilityJob(ctxFor(buyer, target, "owner"), { agentRole: role, capability, title: "Too early", deferKick: true }), role).rejects.toMatchObject({ code: "agent_unavailable" });
-    }
+    await expect(dispatchCapabilityJob(ctxFor(buyer, target, "owner"), { agentRole: AI_GROWTH_PARTNER_ROLE_KEY, capability: "proactive_review", title: "Too early", deferKick: true }))
+      .rejects.toMatchObject({ code: "agent_unavailable" });
     expect(await withSystem((db) => db.query("select 1 from ai_work_jobs where org_id = $1", [target.id]))).toMatchObject({ rows: [] });
   });
 });

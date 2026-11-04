@@ -121,7 +121,7 @@ export function TasksWorkspace({
       {!tasks.length ? (
         <Card>
           <EmptyState icon={<ListChecks className="size-5" />} title={state.view === "completed" ? "Nothing completed yet" : state.view === "overdue" ? "Nothing overdue" : "No tasks here"}
-            description={state.view === "mine" ? "Tasks assigned to you will show up here, including follow-ups your AI employees create for you." : "Tasks from contacts, deals and automations appear here."}
+            description={state.view === "mine" ? "Tasks assigned to you will show up here, including follow-ups your AI Growth Partner creates for you." : "Tasks from contacts, deals and automations appear here."}
             action={canManage && state.view !== "completed" ? <Button variant="secondary" onClick={() => setNewOpen(true)}><Plus className="size-4" />Add a task</Button> : undefined} />
         </Card>
       ) : state.layout === "board" ? (
@@ -217,7 +217,7 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
   }, [scope.orgId, task.id, commentsVersion]);
   const dirty = form.title !== task.title || form.description !== (task.description ?? "") || form.due !== toLocalInput(task.dueAt) || form.remind !== toLocalInput(task.remindAt) || form.priority !== task.priority || form.assigneeId !== (task.assignee?.id ?? "");
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()} title="Task" description={task.source !== "user" ? <>Created by {task.source === "agent" ? "an AI employee" : task.source === "workflow" ? "an automation" : "iAcquire"} · <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></> : <>Created <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></>}>
+    <Sheet open onOpenChange={(o) => !o && onClose()} title="Task" description={task.source !== "user" ? <>Created by {task.source === "agent" ? "your AI Growth Partner" : task.source === "workflow" ? "an automation" : "iAcquire"} · <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></> : <>Created <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></>}>
       <div className="space-y-5 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="ts-status" className="sr-only">Status</label>

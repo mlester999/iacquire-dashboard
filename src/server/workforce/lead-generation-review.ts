@@ -174,7 +174,7 @@ const duplicateQuality: ReviewCheck = async (db, job) => {
 export async function runLeadGenerationReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "lead_generation_review",
-    allowedRoles: ["lead_hunter"],
+    allowedRoles: ["lead_hunter", "growth_partner"],
     scanningMessage: "Reading the authorized research queue, reviewed leads, CRM handoff states and saved targeting…",
     analyzingMessage: "Assessing generation gaps and preparing an evidence-backed next assignment…",
     checks: [stalledResearch, reviewBacklog, crmHandoff, coverageGap, duplicateQuality],

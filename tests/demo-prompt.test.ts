@@ -1,11 +1,10 @@
-// What the demo chat is told. The system prompt is fixed text; only the facts and a persona vary, and what the prospect typed is fenced as untrusted data. Pure (no database, no model).
+// What the demo chat is told. The system prompt and public Growth Partner facts are fixed; what the prospect typed is fenced as untrusted data. Pure (no database, no model).
 import { describe, expect, it } from "vitest";
-import { AGENT_ROLES } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
 import { buildDemoPrompt, fence, messageLooksLikeInjection, PRICE_FACTS, safeBusiness, type PromptInput } from "@/server/demo/prompt";
 
 const base = (over: Partial<PromptInput> = {}): PromptInput => ({
-  persona: null,
   business: "Pat's Roofing",
   industryLabel: "Home services",
   history: [],
@@ -15,15 +14,11 @@ const base = (over: Partial<PromptInput> = {}): PromptInput => ({
 });
 
 describe("the system prompt", () => {
-  it("is the same text for every prospect and every message; only the persona line and the facts can differ", () => {
+  it("is the same text for every prospect and every message", () => {
     const a = buildDemoPrompt(base());
     const b = buildDemoPrompt(base({ business: "Somebody else", industryLabel: "Dental", message: "A completely different question", history: [{ role: "user", text: "earlier" }] }));
     expect(a.system).toBe(b.system);
-    const persona = buildDemoPrompt(base({ persona: "lead_hunter" }));
-    expect(persona.system).not.toBe(a.system);
-    expect(persona.system).toContain("AI Lead Hunter");
-    // Same except the persona line.
-    expect(persona.system.replace(/^The prospect chose.*$/m, "").length).toBeLessThan(a.system.length + 5);
+    expect(a.system).toContain("AQi remains the guide and does not role-play the partner or a capability");
   });
 
   it("states the rules a demo needs: sample data, no actions, only the published prices, readable Markdown, untrusted prospect text", () => {
@@ -43,16 +38,18 @@ describe("the system prompt", () => {
     expect(grounding).toContain("$1,499");
   });
 
-  it("describes all six employees from the tour's own words, and no seventh", () => {
+  it("describes one partner and its six capabilities, and no separate employee personas", () => {
     const { grounding } = buildDemoPrompt(base());
-    for (const r of AGENT_ROLES) expect(grounding, r.name).toContain(r.name);
-    expect(AGENT_ROLES).toHaveLength(6);
-    expect(buildDemoPrompt(base({ persona: "crm_manager" })).system).toContain("AI CRM Manager");
+    expect(grounding).toContain("One AI Growth Partner shares one Business Brain across six connected capabilities.");
+    for (const key of AI_GROWTH_PARTNER_CAPABILITIES) expect(grounding).toContain(AI_GROWTH_PARTNER_CAPABILITY_INFO[key].title);
+    expect(AI_GROWTH_PARTNER_CAPABILITIES).toHaveLength(6);
+    expect(grounding).not.toContain("AI Lead Hunter");
+    expect(grounding).not.toContain("AI Appointment Setter");
   });
 
-  it("has no tools, no workspace and no customer data in it: nothing but constants, the published catalog and the persona", () => {
+  it("has no tools, no workspace and no customer data in it: only public facts and catalog", () => {
     const { system, user } = buildDemoPrompt(base());
-    for (const word of ["org_id", "organization", "contact", "api key", "token", "workspace data", "Hermes", "tool call"]) {
+    for (const word of ["org_id", "organization", "customer data", "api key", "token", "workspace data", "Hermes", "tool call"]) {
       expect(`${system}\n${user}`.toLowerCase(), word).not.toContain(word.toLowerCase());
     }
   });
@@ -126,7 +123,7 @@ describe("the published catalog", () => {
 
   it("copes with an empty catalog", () => {
     const { system } = buildDemoPrompt(base({ catalog: { services: [], plan: null } }));
-    expect(system).toContain("Lead Hunter");
+    expect(system).toContain("Lead Discovery & Qualification");
     expect(system).not.toContain("Other services iAcquire publishes");
   });
 });

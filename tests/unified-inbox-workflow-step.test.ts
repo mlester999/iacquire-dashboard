@@ -105,7 +105,7 @@ describe("the Update conversation step: its rules", () => {
     expect(stepSummary(act({ action: "resolve", outcome: "booked" }), names)).toBe("Resolve the conversation (Appointment booked)");
     expect(stepSummary(act({ action: "assign_person", userId: m.people.sales.id }), names)).toBe("Assign the conversation to Sam Sales");
     expect(stepSummary(act({ action: "set_priority" }), names)).toBe("Choose the priority");
-    expect(stepSummary(act({ action: "pause_ai" }), names)).toBe("Pause the AI employee on the conversation");
+    expect(stepSummary(act({ action: "pause_ai" }), names)).toBe("Pause the AI profile on the conversation");
   });
 
   it("offers no action that messages a customer or turns AI replies on", () => {

@@ -1,4 +1,4 @@
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { Weekday } from "@/lib/messaging";
 import { parseResearchAssignment } from "@/lib/research-intent";
@@ -9,6 +9,7 @@ export type WorkforceScheduleCadence = "hourly" | "daily" | "weekly";
 export type WorkforceChatScheduleIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
+  | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[] }
   | {
       kind: "proposal";
       capability: CapabilityKey;
@@ -36,6 +37,7 @@ const RECURRING_SIGNAL = new RegExp(`\\b(?:every|each)\\s+(?:\\d+\\s+)?${PERIOD}
 const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/i;
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;
+const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?schedule\s+(?:from\s+.+?\s+)?(?:to|for|at)\s+(.+?)[.!?]*$/i;
 
 function weekdaysIn(text: string): Weekday[] {
   return WEEKDAY_ORDER.filter((day) => DAYS.find((entry) => entry.key === day)?.pattern.test(text));
@@ -67,14 +69,44 @@ function removeScheduleWording(text: string): string {
     .trim();
 }
 
-function unsupportedWrite(): WorkforceChatScheduleIntent {
+function unsupportedWrite(researchOwner: string): WorkforceChatScheduleIntent {
   return {
     kind: "clarification",
-    message: "Chat-created schedules can run only approved read-only reviews and Lead Hunter research. I can’t schedule messages, bookings, CRM changes, assignments or follow-up drafts.",
+    message: `Chat-created schedules can run only approved read-only reviews and ${researchOwner} research. I can’t schedule messages, bookings, CRM changes, assignments or follow-up drafts.`,
   };
 }
 
-function capabilityFor(role: AgentRoleKey, task: string): { capability: CapabilityKey; payload: Record<string, unknown> } | null {
+function capabilityFor(role: WorkforceRoleKey, task: string): { capability: CapabilityKey; payload: Record<string, unknown> } | null {
+  if (role === "growth_partner") {
+    const research = parseResearchAssignment(task);
+    if (research) {
+      if (research.missing.length) {
+        const needed = research.missing.map((field) => ({
+          quantity: "how many businesses to research",
+          target: "what kind of businesses to research",
+          location: "which city or service area to cover",
+        }[field]));
+        return { capability: "lead_research", payload: { clarification: needed } };
+      }
+      return {
+        capability: "lead_research",
+        payload: { prompt: research.prompt, target: research.target, location: research.location, quantity: research.quantity },
+      };
+    }
+    if (/\b(?:operations?|operational work|workforce|tasks?|blockers?|approvals?)\b/i.test(task)) return { capability: "proactive_review", payload: { sinceDays: 7 } };
+    if (/\b(?:lead generation|research queue|research pipeline|coverage|lead pipeline)\b/i.test(task)) return { capability: "lead_generation_review", payload: {} };
+    if (/\b(?:availability|available slots|available times|calendar slots)\b/i.test(task)) return { capability: "appointment_availability", payload: {} };
+    if (/\b(?:appointments?|booking requests|bookings)\b/i.test(task)) return { capability: "appointment_review", payload: {} };
+    if (/\bmissed calls?\b/i.test(task)) return { capability: "missed_call_review", payload: {} };
+    if (/\b(?:hot leads?|lead priorities|promising leads?)\b/i.test(task)) return { capability: "lead_priority_review", payload: {} };
+    if (/\b(?:sales pipeline|pipeline|opportunities|deals|stalled sales)\b/i.test(task)) return { capability: "pipeline_review", payload: {} };
+    if (/\b(?:crm|records?|duplicates?|data quality|contacts?|companies)\b/i.test(task)) return { capability: "crm_quality_review", payload: {} };
+    if (/\b(?:social|social media|posts?|engagement|tracked leads?)\b/i.test(task)) return { capability: "social_performance_review", payload: {} };
+    if (/\b(?:receivables|invoices?|payments?|refunds?|overdue)\b/i.test(task)) return { capability: "receivables_review", payload: {} };
+    if (/\b(?:reputation|reviews?|ratings?)\b/i.test(task)) return { capability: "reputation_review", payload: {} };
+    if (/\b(?:performance|metrics?|kpis?|results?|trends?|report)\b/i.test(task)) return { capability: "performance_snapshot", payload: /\b(?:this month|month to date|monthly)\b/i.test(task) ? { period: "current_month" } : {} };
+    return null;
+  }
   if (role === "operations_manager" && /\b(?:operations?|operational work|workforce|tasks?|blockers?|approvals?)\b/i.test(task)) {
     return { capability: "proactive_review", payload: { sinceDays: 7 } };
   }
@@ -125,11 +157,38 @@ function capabilityFor(role: AgentRoleKey, task: string): { capability: Capabili
 }
 
 /** Deterministic, role-scoped parser. A non-null result is a preview or clarification only. */
-export function parseWorkforceChatScheduleIntent(role: AgentRoleKey, content: string): WorkforceChatScheduleIntent {
+export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content: string): WorkforceChatScheduleIntent {
   const text = content.replace(/\s+/g, " ").trim().slice(0, 2000);
-  if (!text || !RECURRING_SIGNAL.test(text)) return { kind: "none" };
+  const researchOwner = role === "growth_partner" ? "AI Growth Partner" : "Lead Hunter";
+  if (!text) return { kind: "none" };
 
-  if (SCHEDULED_WRITE.test(text)) return unsupportedWrite();
+  const scheduleChange = role === "growth_partner" ? text.match(LEAD_SCHEDULE_CHANGE) : null;
+  if (scheduleChange) {
+    const requested = scheduleChange[1];
+    if (/\d\s*(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|\bto\b)\s*\d\s*(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)/i.test(requested)) {
+      return { kind: "clarification", message: "A saved lead research schedule runs once at a chosen local time; it can't reserve a continuous work window yet. Tell me the single run time you want, such as 2 PM. No schedule was changed." };
+    }
+    if (/\b(?:starting|beginning|effective)\s+(?:tomorrow|next\s+(?:week|month)|\d{4}-\d{2}-\d{2})\b/i.test(requested)) {
+      return { kind: "clarification", message: "I can update a saved lead research schedule now, but it can't start on a future date yet. No schedule was changed." };
+    }
+    const parsedTime = parseLocalTime(requested);
+    if (parsedTime.ambiguous) {
+      return { kind: "clarification", message: "What local time should I use? Include AM/PM, such as 2 PM, or use an unambiguous 24-hour time such as 14:00." };
+    }
+    if (!parsedTime.time) {
+      return { kind: "clarification", message: "What single local time should the lead research schedule run? Include AM/PM, such as 2 PM." };
+    }
+    const everyWeekday = /\b(?:every|each)\s+weekday\b|\bweekdays\b/i.test(requested);
+    const weekdays = weekdaysIn(requested);
+    if (everyWeekday) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays: WEEKDAYS };
+    if (weekdays.length) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays };
+    if (/\b(?:daily|every day|each day)\b/i.test(requested)) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "daily" };
+    return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time };
+  }
+
+  if (!RECURRING_SIGNAL.test(text)) return { kind: "none" };
+
+  if (SCHEDULED_WRITE.test(text)) return unsupportedWrite(researchOwner);
 
   const days = weekdaysIn(text);
   const everyWeekday = /\b(?:every|each)\s+weekday\b|\bweekdays\b/i.test(text);
@@ -155,20 +214,20 @@ export function parseWorkforceChatScheduleIntent(role: AgentRoleKey, content: st
 
   const task = removeScheduleWording(text);
   if (!task || !/\b(?:review|check|audit|analy[sz]e|prepare|report|identify|monitor|research|find|show|list|compare|inspect)\b/i.test(task)) {
-    return { kind: "clarification", message: "What approved review or Lead Hunter research assignment should I schedule? I’ll only save it after you review and confirm the preview." };
+    return { kind: "clarification", message: `What approved review or ${researchOwner} research assignment should I schedule? I’ll only save it after you review and confirm the preview.` };
   }
   const match = capabilityFor(role, task);
   if (!match) {
-    return { kind: "clarification", message: "I can schedule only work supported by this employee’s role. Please describe a read-only review or, for Lead Hunter, a complete research assignment." };
+    return { kind: "clarification", message: `I can schedule only work supported by this employee’s role. Please describe a read-only review or, for ${researchOwner}, a complete research assignment.` };
   }
   if (Array.isArray(match.payload.clarification)) {
     return {
       kind: "clarification",
-      message: `To prepare this Lead Hunter schedule, I still need ${match.payload.clarification.join(", ")}. No schedule was saved.`,
+      message: `To prepare this ${researchOwner} schedule, I still need ${match.payload.clarification.join(", ")}. No schedule was saved.`,
     };
   }
   const definition = capabilityDefinition(match.capability);
-  if (!definition || (definition.risk !== "read_only" && match.capability !== "lead_research")) return unsupportedWrite();
+  if (!definition || (definition.risk !== "read_only" && match.capability !== "lead_research")) return unsupportedWrite(researchOwner);
 
   const recurrenceRule: WorkforceScheduleRule | null = cadence === "hourly"
     ? null

@@ -172,7 +172,7 @@ export default function PreviewInner({ seed }: { seed: "empty" | "full" }) {
     () => ({
       questionnaireVersion: 2, status: "draft", revision: server.state.revision, currentQuestionId: resolveCurrentQuestion(server.state.answers, server.state.current),
       answers: server.state.answers, progress: computeProgress(server.state.answers), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false,
-      enabledRoles: [...AGENT_ROLE_KEYS], websiteAnalysis: null,
+      workforceModel: "growth_partner", enabledRoles: [...AGENT_ROLE_KEYS], websiteAnalysis: null,
     }),
     // The session is only the starting point; the interface owns state afterwards.
     // eslint-disable-next-line react-hooks/exhaustive-deps

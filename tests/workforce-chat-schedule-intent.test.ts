@@ -26,6 +26,29 @@ describe("AI workforce chat schedule intent", () => {
     });
   });
 
+  it("lets the one Growth Partner schedule an exact research assignment and change its real run time", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Research 10 dental clinics in Austin every weekday at 9 AM")).toMatchObject({
+      kind: "proposal",
+      capability: "lead_research",
+      payload: { target: "dental clinics", location: "Austin", quantity: 10 },
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule to 2 PM")).toEqual({
+      kind: "update_existing", capability: "lead_research", localTime: "14:00",
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule to 2 PM every weekday")).toEqual({
+      kind: "update_existing", capability: "lead_research", localTime: "14:00", cadence: "weekly", weekdays: ["mon", "tue", "wed", "thu", "fri"],
+    });
+  });
+
+  it("does not invent a work window or future start date the scheduler cannot represent", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule from 9 AM–12 PM to 2 PM–5 PM starting tomorrow")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/continuous work window/),
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule to 2 PM starting tomorrow")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/future date/),
+    });
+  });
+
   it("maps other roles to their own scheduleable read-only reviews", () => {
     expect(parseWorkforceChatScheduleIntent("appointment_setter", "Check calendar availability every weekday at 9 AM")).toMatchObject({
       kind: "proposal", capability: "appointment_availability", recurrenceRule: { localTime: "09:00" },

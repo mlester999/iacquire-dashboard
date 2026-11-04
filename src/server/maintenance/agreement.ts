@@ -118,7 +118,7 @@ export async function applyAgreementStatus(db: Queryable, event: NormalizedPayme
   } else if (to === "suspended") {
     await notifyOrgRoles(db, row.org_id, ["owner", "admin"], {
       kind: "maintenance_update", severity: "warning", title: "Automatic payments are paused",
-      body: "PayPal paused the automatic payment for your maintenance plan. Update your payment method with PayPal, or pay for the plan online. Your CRM, AI employees and external automations are not affected.",
+      body: "PayPal paused the automatic payment for your maintenance plan. Update your payment method with PayPal, or pay for the plan online. Your CRM, AI Growth Partner and its schedules, and external automations are not affected.",
       link: PLAN_LINK, dedupeKey: `agreement-suspended:${row.id}`,
     });
     await notifyAgency(db, row.org_id, { kind: "billing_reconciliation", severity: "warning", title: "PayPal paused a client's automatic payment", body: `Agreement ${row.reference_number} is suspended${(a.failedPayments ?? row.failed_payments) ? ` after ${a.failedPayments ?? row.failed_payments} failed charge(s)` : ""}. The plan stays as it is until a payment is confirmed.`, link: `/admin/clients/${row.org_id}?tab=billing`, dedupeKey: `agreement-suspended:${row.id}` });
@@ -171,8 +171,8 @@ export async function applyAgreementPaymentFailed(db: Queryable, event: Normaliz
     await notifyOrgRoles(db, row.org_id, ["owner", "admin"], {
       kind: "billing_payment_failed", severity: "warning", title: "PayPal could not collect your maintenance payment",
       body: covered
-        ? `Your plan is paid through ${plan?.paid_through_on}, so nothing has changed. Update your payment method with PayPal, or pay for the plan online, before then. Your CRM, AI employees and external automations are not affected.`
-        : "Update your payment method with PayPal, or pay for the plan online, to keep Automation Studio working. Your CRM, AI employees and external automations are not affected.",
+        ? `Your plan is paid through ${plan?.paid_through_on}, so nothing has changed. Update your payment method with PayPal, or pay for the plan online, before then. Your CRM, AI Growth Partner and its schedules, and external automations are not affected.`
+        : "Update your payment method with PayPal, or pay for the plan online, to keep Automation Studio working. Your CRM, AI Growth Partner and its schedules, and external automations are not affected.",
       link: PLAN_LINK, dedupeKey: `agreement-failed:${row.id}:${failed}`,
     });
   }

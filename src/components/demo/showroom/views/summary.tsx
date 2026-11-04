@@ -1,29 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Check, X } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
-import { IMPLEMENTATION_SETS, NEXT_STEPS } from "@/lib/demo/showroom/content";
-import { SCOPE_NOTE } from "@/lib/demo/showroom/employees";
+import { ArrowRight, Check, Sparkles, X } from "lucide-react";
+import { DEMO_CAPABILITY_AREAS, IMPLEMENTATION_SETS, NEXT_STEPS } from "@/lib/demo/showroom/content";
+import { SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { StepNav } from "@/components/demo/showroom/journey";
 import { ConversionPanel } from "@/components/demo/showroom/cta";
 import { PlanTag, SectionHead, dollars } from "@/components/demo/showroom/ui";
 
 // Step 4: how it all comes together for the visitor's business. The before and after are about the WORK (where an enquiry goes, who prepares what), written as what could change, never as a
-// measured result; the six roles are shown handing work along; and the page ends with what the iAcquire team sets up, what is optional, and the next steps.
+// measured result; one AI Growth Partner is shown coordinating six capabilities; and the page ends with what the iAcquire team sets up, what is optional, and the next steps.
 
 const BEFORE = ["Enquiries arrive in several places and wait for whoever sees them first", "Replies and bookings depend on who is free", "Follow-ups are remembered, or they are not", "Records are spread across inboxes, notes and spreadsheets", "Understanding the numbers means building a report by hand"];
-const AFTER = ["Every channel lands in one inbox, connected to one CRM", "A reply and a set of times are prepared for you to approve", "Quiet deals get a prepared nudge, so the next step is always visible", "The CRM Manager keeps contacts, owners and stages tidy", "A weekly note explains what stood out and where it came from"];
-
-const CHAIN: Array<{ role: AgentRoleKey; gives: string }> = [
-  { role: "lead_hunter", gives: "finds and scores prospects" },
-  { role: "crm_manager", gives: "checks and records them" },
-  { role: "appointment_setter", gives: "turns interest into meetings" },
-  { role: "sales_assistant", gives: "prepares the follow-up" },
-  { role: "performance_analyst", gives: "explains what is working" },
-];
+const AFTER = ["Every channel lands in one inbox, connected to one CRM", "The Growth Partner prepares a reply and times for you to review", "Quiet deals get a prepared next step, so the work stays visible", "The Growth Partner keeps authorized contact and pipeline records up to date", "A weekly note explains what stood out and where it came from"];
 
 export function SummaryView() {
   const { business, go, setupFeeUsd, monthlyPlanUsd } = useShowroom();
@@ -38,7 +28,7 @@ export function SummaryView() {
             How this could look for <span className="sx-gradient-text break-words">{name ? name : "your business"}</span>
           </>
         }
-        lead="Put together: an inbox and CRM that stay current, an AI team that prepares the work, and you approving what matters."
+        lead="Put together: an inbox and CRM that stay current, one AI Growth Partner coordinating the work, and you approving what matters."
       />
 
       <section aria-labelledby="ba-heading" className="grid gap-5 @4xl:grid-cols-[1fr_auto_1fr] @4xl:items-stretch">
@@ -73,26 +63,20 @@ export function SummaryView() {
       </section>
 
       <section aria-labelledby="team-heading" className="space-y-6">
-        <SectionHead as="h2" eyebrow="Six roles, one flow" title="How the AI team hands work along" lead="The Operations Manager keeps the others coordinated and tells you what only a person should decide." />
+        <SectionHead as="h2" eyebrow="One employee · six capabilities" title="One partner coordinates the acquisition journey" lead="The capabilities share one business context. Evidence and customer-facing decisions remain visible for the people responsible." />
         <div className="sx-panel p-5 @xl:p-7">
-          <ol className="grid gap-4 @xl:grid-cols-2 @4xl:grid-cols-5">
-            {CHAIN.map((c, i) => (
-              <li key={c.role} className="relative flex items-center gap-3 @4xl:flex-col @4xl:text-center">
-                <AgentAvatar role={AGENT_BY_KEY[c.role]} size="lg" eager />
-                <span>
-                  <span className="block text-[14px] font-semibold text-ink">{AGENT_BY_KEY[c.role].shortName}</span>
-                  <span className="block text-[13px] leading-snug text-muted">{c.gives}</span>
-                </span>
-                {i < CHAIN.length - 1 && <ArrowRight className="absolute -right-3 top-6 hidden size-4 text-primary-ink @4xl:block" aria-hidden />}
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-4">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface text-primary-ink"><Sparkles className="size-5" aria-hidden /></span>
+            <p className="text-[14px] leading-relaxed text-ink-2"><strong className="font-semibold text-ink">AI Growth Partner</strong> keeps one shared view of the work, what is blocked and what needs a person.</p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 @4xl:grid-cols-3">
+            {DEMO_CAPABILITY_AREAS.map((area) => (
+              <li key={area.key} className="rounded-xl border border-line bg-surface-2/60 p-4">
+                <p className="text-[14px] font-semibold text-ink">{area.title}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">{area.description}</p>
               </li>
             ))}
-          </ol>
-          <div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
-            <AgentAvatar role={AGENT_BY_KEY.operations_manager} size="md" eager />
-            <p className="text-[14px] leading-relaxed text-ink-2">
-              <strong className="font-semibold text-ink">Operations Manager</strong> watches the whole flow: what is blocked, what is overdue, and what is waiting for you.
-            </p>
-          </div>
+          </ul>
         </div>
       </section>
 
@@ -100,7 +84,7 @@ export function SummaryView() {
         <section className="sx-panel space-y-3 p-6" aria-labelledby="crm-sum">
           <PlanTag plan="core" />
           <h2 id="crm-sum" className="text-[20px] font-semibold tracking-[-0.01em] text-ink">One CRM for the whole journey</h2>
-          <p className="text-[14px] leading-relaxed text-ink-2">Leads, contacts, the pipeline, the inbox, appointments, tasks and approvals live together, and the AI Employees work on that same data.</p>
+          <p className="text-[14px] leading-relaxed text-ink-2">Leads, contacts, the pipeline, the inbox, appointments, tasks and approvals live together, and the AI Growth Partner works on authorized records in that same system.</p>
           <button type="button" onClick={() => go("crm")} className="inline-flex min-h-10 items-center gap-1.5 text-[14px] font-semibold text-primary-ink hover:text-ink">
             Revisit the CRM
             <ArrowRight className="size-4" aria-hidden />

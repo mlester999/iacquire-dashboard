@@ -164,7 +164,7 @@ export default async function OperationsPreview({ searchParams }: { searchParams
           timeZone="Asia/Manila"
           lastSync={hoursAgo(1)}
           canRefresh={false}
-          setterReady
+          partnerReady
           pending={SAMPLE_PENDING}
           policy={q.expired ? { ...SAMPLE_POLICY, remindersAuthorization: "expired" } : SAMPLE_POLICY}
           canBook

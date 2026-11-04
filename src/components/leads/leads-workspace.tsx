@@ -19,10 +19,11 @@ import {
   Search,
   Send,
   ShieldAlert,
+  Sparkles,
   Target,
   X,
 } from "lucide-react";
-import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
+import { AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
@@ -30,7 +31,7 @@ import { AccentTop, IconTile, Panel } from "@/components/overview/panel";
 import { Segmented, Sheet, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
 import { createResearchAction, requestCrmImportAction, retryResearchAction, reviewLeadsAction, saveTargetingAction } from "@/app/actions/leads";
-import { AGENT_BY_KEY, type AgentStatus } from "@/lib/agents";
+import { type AgentStatus } from "@/lib/agents";
 import { WorkJobPanel } from "@/components/work/job-progress";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 
@@ -44,7 +45,18 @@ interface Lead {
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
+  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
+  qualification_reasons: string[];
+  recommended_next_action: string;
   buying_signals: string[];
+  signal_records: Array<{
+    signal: string;
+    source: string | null;
+    evidence_url: string | null;
+    recorded_at: string | null;
+    confidence: number | null;
+    client_fit: string | null;
+  }>;
   evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null }>;
   duplicate_status: string;
   duplicate_matches?: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
@@ -70,6 +82,19 @@ interface ResearchRequest {
   job_stage_label: string | null;
   job_progress: Record<string, unknown> | null;
 }
+
+const QUALIFICATION_LABEL: Record<Lead["qualification_state"], string> = {
+  evidence_backed: "Cited evidence present",
+  needs_evidence: "Needs more evidence",
+  duplicate: "Duplicate found",
+  possible_duplicate: "Possible duplicate",
+};
+const QUALIFICATION_TONE: Record<Lead["qualification_state"], StatusTone> = {
+  evidence_backed: "success",
+  needs_evidence: "warning",
+  duplicate: "danger",
+  possible_duplicate: "warning",
+};
 
 interface Targeting {
   industries: string[];
@@ -164,16 +189,15 @@ export function LeadsWorkspace(props: {
 }
 
 function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }) {
-  const meta = AGENT_BY_KEY.lead_hunter;
   return (
     <div className="card-surface relative flex flex-col gap-3 overflow-hidden rounded-2xl p-4 sm:flex-row sm:items-center">
       <AccentTop tone={ready ? "success" : "warning"} />
-      <AgentAvatar role={meta} size="md" className="relative" />
+      <IconTile tone={ready ? "success" : "warning"} size="md"><Sparkles className="size-5" /></IconTile>
       <div className="relative min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
-          Lead Hunter <AgentStatusBadge status={status} />
+          AI Growth Partner <AgentStatusBadge status={status} />
         </p>
-        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until the Lead Hunter is connected and online."}</p>
+        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until AI Growth Partner is connected and online."}</p>
       </div>
     </div>
   );
@@ -386,6 +410,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
         <div className="space-y-6 p-5">
           <div className="flex flex-wrap gap-2">
             <StatusPill tone={REVIEW_TONE[lead.review_status]}>{sentenceCase(lead.review_status)}</StatusPill>
+            <StatusPill tone={QUALIFICATION_TONE[lead.qualification_state]}>{QUALIFICATION_LABEL[lead.qualification_state]}</StatusPill>
             {lead.review_status === "approved" && <StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"}>{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill>}
           </div>
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
@@ -415,23 +440,51 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           </div>
           {lead.qualification_summary && (
             <div>
-              <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Lead Hunter’s fit notes</p>
+              <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Growth Partner fit notes</p>
               <p className="text-[14px] leading-relaxed">{lead.qualification_summary}</p>
               <p className="mt-1 text-[12px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
             </div>
           )}
-          {lead.buying_signals.length > 0 && (
+          <div className="rounded-xl border border-line bg-surface-2/40 p-3.5">
+            <p className="text-[12px] font-medium uppercase tracking-wider text-faint">Qualification review</p>
+            {lead.qualification_reasons.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-ink-2">
+                {lead.qualification_reasons.map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}
+              </ul>
+            )}
+            <p className="mt-2 text-[13px] leading-relaxed"><span className="font-medium">Next step:</span> {lead.recommended_next_action}</p>
+            <p className="mt-1 text-[12px] text-faint">Cited evidence and an AI confidence estimate still need human review; neither confirms interest or consent.</p>
+          </div>
+          {lead.signal_records.length > 0 ? (
             <div>
-              <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Signals</p>
-              <div className="flex flex-wrap gap-1.5">
-                {lead.buying_signals.map((s) => (
-                  <Badge key={s} tone="violet">
-                    {s}
-                  </Badge>
+              <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Buying signals</p>
+              <ul className="space-y-2">
+                {lead.signal_records.map((signal, index) => (
+                  <li key={`${index}:${signal.signal}`} className="rounded-xl border border-line p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-[14px] font-medium leading-relaxed">{signal.signal}</p>
+                      <Badge tone={signal.confidence === null ? "neutral" : "violet"}>
+                        {signal.confidence === null ? "No cited confidence" : `AI estimate ${Math.round(signal.confidence * 100)}%`}
+                      </Badge>
+                    </div>
+                    {signal.client_fit && <p className="mt-1.5 text-[13px] text-muted"><span className="font-medium text-ink-2">Fit estimate:</span> {signal.client_fit}</p>}
+                    {signal.evidence_url ? (
+                      <a href={signal.evidence_url} target="_blank" rel="noopener noreferrer nofollow" className="mt-1.5 inline-flex items-center gap-1 break-all text-[13px] text-primary hover:underline">
+                        {signal.source ?? signal.evidence_url} <ExternalLink className="size-3 shrink-0" />
+                      </a>
+                    ) : <p className="mt-1.5 text-[12px] text-warning-ink">No matching source was saved for this signal.</p>}
+                    {signal.recorded_at && <p className="mt-1 text-[12px] text-faint">Recorded {formatDateTime(signal.recorded_at, timeZone)}</p>}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
-          )}
+          ) : lead.buying_signals.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Older signals</p>
+              <div className="flex flex-wrap gap-1.5">{lead.buying_signals.map((signal, index) => <Badge key={`${index}:${signal}`} tone="neutral">{signal}</Badge>)}</div>
+              <p className="mt-1.5 text-[12px] text-faint">These records predate per-signal source links and confidence estimates.</p>
+            </div>
+          ) : null}
           <div>
             <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Source evidence</p>
             {lead.evidence.length === 0 ? (
@@ -535,14 +588,14 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
     const res = await createResearchAction(prompt, campaign);
     setPending(false);
     if (!res.ok) return toast.error(res.error);
-    toast[res.data.status === "queued" ? "success" : "info"](res.data.status === "queued" ? "Research started" : "Request saved — it will run once your Lead Hunter is online");
+    toast[res.data.status === "queued" ? "success" : "info"](res.data.status === "queued" ? "Research started" : "Request saved — it will run once AI Growth Partner is online");
     setActiveJobId(res.data.jobId ?? null);
     setPrompt("");
     router.refresh();
   };
   const statusBadge = (s: string) => {
     const map: Record<string, ["success" | "primary" | "warning" | "danger" | "neutral", string]> = {
-      waiting_for_agent: ["warning", "Waiting for Lead Hunter"],
+      waiting_for_agent: ["warning", "Waiting for AI Growth Partner"],
       queued: ["primary", "Queued"],
       running: ["primary", "Researching"],
       completed: ["success", "Completed"],
@@ -560,7 +613,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       <Panel className="lg:col-span-2" icon={<Radar />} tone="primary" title="New research request" description="Describe who you want to find. Your targeting rules are applied automatically." bodyClassName="space-y-4">
           <Segmented id="campaign" ariaLabel="Campaign type" value={campaign} onChange={setCampaign} options={[{ value: "business", label: "Businesses" }, { value: "influencer", label: "Influencer partners" }]} />
-          <Field label="What should the Lead Hunter look for?" htmlFor="research-prompt">
+          <Field label="What should AI Growth Partner look for?" htmlFor="research-prompt">
             <Textarea id="research-prompt" data-aqi-target="leads.research" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
           </Field>
           {campaign === "influencer" && (
@@ -570,7 +623,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
           )}
           {!hunterReady && (
             <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-[13px] text-warning-ink">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" /> The Lead Hunter isn&apos;t online yet, so this request will be saved but not run.
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" /> AI Growth Partner isn&apos;t online yet, so this request will be saved but not run.
             </p>
           )}
           <Button variant="brand" className="w-full" loading={pending} disabled={!canResearch || prompt.trim().length < 3} onClick={submit}>
@@ -589,7 +642,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
       </Panel>
       <Panel className="lg:col-span-3" icon={<Clock />} tone="neutral" title="Research history" description="Real status of every request.">
           {requests.length === 0 ? (
-            <EmptyState compact icon={<Radar className="size-5" />} title="No research requests yet" description="Describe the businesses you want to find and your Lead Hunter will research them from approved public sources." />
+            <EmptyState compact icon={<Radar className="size-5" />} title="No research requests yet" description="Describe the businesses you want to find and AI Growth Partner will research them from approved public sources." />
           ) : (
             <ul className="divide-y divide-line">
               {requests.map((r) => (

@@ -20,7 +20,7 @@ import { withSystem } from "@/server/db";
 import { handlePaymongoWebhook } from "@/server/billing/payments";
 import { createPurchaseIntent, getPublicPurchase, listPurchaseIntentEvents, startPurchase } from "@/server/purchase-intents/service";
 import { getCheckoutReturn, startPurchaseCheckout } from "@/server/purchase-intents/checkout";
-import { AGENT_ROLE_KEYS, SETUP_REQUIRED_LABEL } from "@/lib/agents";
+import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import { agencyUser } from "../support/fixtures";
 import { agencyOrgId, rows, staffPerson } from "../support/staff-messages";
 import { mockCheckoutFetch, paymongoPaidEvent, signPaymongo } from "../support/billing";
@@ -128,13 +128,12 @@ describe("a purchase becomes an operational client", () => {
     expect((await rows<{ agency_org_id: string; status: string; client_org_id: string }>("select agency_org_id, status, client_org_id from purchase_intents where id = $1", [created.id]))[0]).toMatchObject({ agency_org_id: agencyId, client_org_id: clientOrgId });
     expect((await getCheckoutReturn(checkout.reference)).title).toBe("Your workspace is ready");
 
-    // 8. All six AI employees came with the workspace, switched on and waiting for setup. "Setup required" is the product's own wording for an employee whose
-    // dedicated profile has not been connected yet; none of them is left out, and none is pretending to be working.
+    // 8. One Growth Partner identity came with the workspace, switched on and waiting for setup. "Setup required" means its dedicated profile has not been connected yet.
     const agents = await rows<{ role_key: string; status: string; enabled: boolean; display_name: string }>(
       "select role_key, status, enabled, display_name from agent_instances where org_id = $1 order by role_key", [clientOrgId],
     );
-    expect(agents.map((a) => a.role_key).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
-    expect(agents).toHaveLength(6);
+    expect(agents.map((a) => a.role_key)).toEqual(["growth_partner"]);
+    expect(agents).toHaveLength(1);
     expect(SETUP_REQUIRED_LABEL).toBe("Setup required");
     for (const agent of agents) {
       expect(agent).toMatchObject({ status: "setup_required", enabled: true });
@@ -142,7 +141,7 @@ describe("a purchase becomes an operational client", () => {
     }
 
     // 9. The provider retries its notice (the same event id) and then sends another one for the same checkout. Neither creates a second workspace, a second
-    // payment, or a second set of employees, and neither adds a second "provisioned" line to the purchase's timeline.
+    // payment, or a second Growth Partner, and neither adds a second "provisioned" line to the purchase's timeline.
     expect(await handlePaymongoWebhook({ rawBody: paidBody, signatureHeader: signPaymongo(paidBody) })).toMatchObject({ outcome: "duplicate" });
     const otherEvent = paymongoPaidEvent({
       checkoutId: providerCheckoutId,
@@ -153,7 +152,7 @@ describe("a purchase becomes an operational client", () => {
     expect(await handlePaymongoWebhook({ rawBody: otherEvent, signatureHeader: signPaymongo(otherEvent) })).toMatchObject({ outcome: "ignored" });
     expect(await rows("select 1 from organizations where kind = 'client' and name = $1", [company])).toHaveLength(1);
     expect(await rows("select 1 from payments where org_id = $1", [clientOrgId])).toHaveLength(1);
-    expect(await rows("select 1 from agent_instances where org_id = $1", [clientOrgId])).toHaveLength(6);
+    expect(await rows("select 1 from agent_instances where org_id = $1", [clientOrgId])).toHaveLength(1);
 
     // The purchase's timeline is the agency's account of what happened, one line per real step.
     const events = (await listPurchaseIntentEvents(session, created.id)).map((e) => e.kind);

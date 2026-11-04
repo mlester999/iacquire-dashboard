@@ -26,7 +26,7 @@ export const DEMO_TEMPLATE_NAME = "Welcome text";
 
 export const DEMO_NODES: Record<DemoNodeId, DemoNode> = {
   trigger: { id: "trigger", kind: "trigger", category: "trigger", meta: "When this happens", title: "Contact created", summary: "A new lead is added, from any source" },
-  text: { id: "text", kind: "send_message", category: "action", meta: "First step · Send message", title: "Send a welcome text", summary: `Send SMS “${DEMO_TEMPLATE_NAME}” as Sales Assistant, in business hours`, reachesOut: true },
+  text: { id: "text", kind: "send_message", category: "action", meta: "First step · Send message", title: "Send a welcome text", summary: `Send SMS “${DEMO_TEMPLATE_NAME}” as AI Growth Partner, in business hours`, reachesOut: true },
   task: { id: "task", kind: "create_task", category: "action", meta: "Create task", title: "Follow-up call", summary: "Task “Follow-up call” for the contact's owner, due in 1 day (high priority)" },
   wait: { id: "wait", kind: "wait", category: "delay", meta: "Wait", title: "Give them a day", summary: "Wait 1 day" },
   check: { id: "check", kind: "branch", category: "condition", meta: "If / else", title: "No reply yet?", summary: "If they haven't replied since this run started" },

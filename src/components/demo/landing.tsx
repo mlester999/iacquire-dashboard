@@ -58,10 +58,10 @@ export function DemoLanding({
             Free guided demo
           </Chip>
           <h1 className="text-balance text-[36px] font-semibold leading-[1.06] tracking-[-0.045em] text-ink sm:text-[46px] lg:text-[52px]">
-            See your <span className="sx-gradient-text">AI team</span> at work
+            See the <span className="sx-gradient-text">AI Growth Partner</span> at work
           </h1>
           <p className="max-w-xl text-[17px] leading-relaxed text-ink-2">
-            Tell us a little about your business. We email you a link to a guided demo of the six AI Employees, using sample data only. Nothing is sent to anyone and no workspace is created.
+            Tell us a little about your business. We email you a link to a guided demo of one AI Growth Partner and its six capabilities, using sample data only. Nothing is sent to anyone and no workspace is created.
           </p>
         </header>
 

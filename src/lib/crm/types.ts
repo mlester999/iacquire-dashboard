@@ -61,7 +61,7 @@ export const CREATED_VIA_LABELS: Record<CreatedVia, string> = {
   form: "Form",
   booking: "Booking page",
   api: "API",
-  agent: "AI employee",
+  agent: "AI Growth Partner",
   workflow: "Automation",
   ghl_migration: "GoHighLevel migration",
   call: "Phone call",

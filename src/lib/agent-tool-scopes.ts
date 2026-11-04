@@ -1,6 +1,6 @@
 // Which CRM scopes each AI employee role may ever hold, and what each scope carries. Pure and client-safe: the server-only tool catalog (src/server/crm/agent-tools/catalog.ts)
 // re-exports all of it, and the employee tool policy (src/lib/employee-tool-policy.ts) reads the same table, so there is one list of what a role may do to the CRM.
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
 
 /*
@@ -46,16 +46,23 @@ export const SCOPE_INFO: Record<AgentToolScope, { label: string; permissions: re
  * Which scopes each AI employee role may ever hold. A token can carry fewer, never more. Reopening or deleting records, exports,
  * imports, bulk changes outside the approval path, campaigns and permission changes are not available to any role.
  */
-export const ROLE_SCOPES: Record<AgentRoleKey, readonly AgentToolScope[]> = {
+export const ROLE_SCOPES: Record<WorkforceRoleKey, readonly AgentToolScope[]> = {
   operations_manager: ["contacts:read", "tasks:write", "opportunities:read", "calendar:read", "reports:read"],
   lead_hunter: ["contacts:read", "tags:write", "tasks:write"],
   appointment_setter: ["contacts:read", "contacts:write", "tags:write", "tasks:write", "calendar:read", "appointments:request", "conversations:read", "messages:draft"],
   sales_assistant: ["contacts:read", "contacts:write", "tags:write", "tasks:write", "opportunities:read", "opportunities:write", "calendar:read", "conversations:read", "messages:draft"],
   crm_manager: ["contacts:read", "contacts:write", "tags:write", "tasks:write", "opportunities:read", "opportunities:write", "reports:read"],
   performance_analyst: ["opportunities:read", "reports:read"],
+  // Existing CRM tools enforce each person's permissions and route writes through approvals.
+  // This union makes those reviewed tools available to one runtime without creating role profiles.
+  growth_partner: [
+    "contacts:read", "contacts:write", "tags:write", "tasks:write",
+    "opportunities:read", "opportunities:write", "calendar:read", "appointments:request",
+    "conversations:read", "messages:draft", "reports:read",
+  ],
 };
 
-export const isAgentRole = (value: unknown): value is AgentRoleKey => typeof value === "string" && (AGENT_ROLE_KEYS as readonly string[]).includes(value);
+export const isAgentRole = (value: unknown): value is WorkforceRoleKey => typeof value === "string" && isWorkforceRoleKey(value);
 
 /** The scopes an employee of this role holds with this token: role allowlist ∩ token scopes. */
 export function effectiveScopes(roleKey: string, tokenScopes: readonly string[]): AgentToolScope[] {

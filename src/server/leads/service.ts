@@ -10,10 +10,10 @@ import { createApproval } from "@/server/approvals/service";
 import { createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
-import { canChat, type AgentStatus } from "@/lib/agents";
+import { canChat, isWorkforceRoleKey, type AgentStatus, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import { targetingSchema, type Targeting } from "@/lib/leads-targeting";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
-import { sanitizeQualificationSummary } from "@/server/leads/research-contract";
+import { sanitizeQualificationSummary, type LeadSignalRecord } from "@/server/leads/research-contract";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export { targetingSchema };
@@ -65,35 +65,36 @@ export async function saveTargeting(ctx: OrgContext, input: unknown) {
 // Requests and jobs
 // ---------------------------------------------------------------------------
 
-async function leadHunter(db: Queryable, orgId: string) {
+async function researchAgent(db: Queryable, orgId: string, role: WorkforceRoleKey) {
   const { rows } = await db.query<{ id: string; status: AgentStatus; enabled: boolean }>(
-    "select id, status, enabled from agent_instances where org_id = $1 and role_key = 'lead_hunter'",
-    [orgId],
+    "select id, status, enabled from agent_instances where org_id = $1 and role_key = $2",
+    [orgId, role],
   );
   return rows[0] ?? null;
 }
 
 /**
  * Creates the research request and its durable work job. The job is the unit of execution and
- * evidence; the request keeps the existing review-queue contract. If the Lead Hunter is not ready,
+ * evidence; the request keeps the existing review-queue contract. If the selected runtime is not ready,
  * the request is saved honestly as `waiting_for_agent` and no job pretends to run.
  */
 export async function createResearchRequest(
   ctx: OrgContext,
   input: { prompt: string; campaignType: "business" | "influencer" },
-  options: { conversationId?: string | null; deferKick?: boolean } = {},
+  options: { conversationId?: string | null; deferKick?: boolean; agentRole?: WorkforceRoleKey } = {},
 ) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can request lead research.");
+  const agentRole = options.agentRole ?? "lead_hunter";
   // The reviewed capability allowlist is the same one the generic dispatcher and work board use.
-  if (!roleMayUseCapability("lead_hunter", "lead_research")) {
-    throw new AppError("forbidden", "The Lead Hunter is not allowed to perform research in this deployment.");
+  if (!roleMayUseCapability(agentRole, "lead_research")) {
+    throw new AppError("forbidden", "This AI employee is not allowed to perform research in this deployment.");
   }
   const prompt = input.prompt.trim();
   if (prompt.length < 3 || prompt.length > 1000) throw new AppError("invalid_input", "Describe who you'd like to find in up to 1,000 characters.");
   const limit = await consumeRateLimit(RATE_LIMITS.researchByOrg, ctx.org.orgId);
   if (!limit.allowed) throw new AppError("rate_limited", "Too many research requests this hour.");
   const targeting = await getTargeting(ctx);
-  const agent = await withSystem((db) => leadHunter(db, ctx.org.orgId));
+  const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
   const connected = Boolean(agent?.enabled && canChat(agent.status));
   // Pauses and unavailable employees keep the request honestly waiting; nothing starts in that state.
   const gate = connected && agent
@@ -102,17 +103,18 @@ export async function createResearchRequest(
   const ready = connected && gate?.allowed === true;
   const waitingReason = gate && !gate.allowed
     ? gate.detail
-    : "The Lead Hunter isn't connected yet, so no research has run.";
+    : workforceRoleShortName(agentRole) + " isn't connected yet, so no research has run.";
   if (ready) await assertWithinLimits(ctx.org.orgId, "lead_research");
 
   const created = await withSystem(async (db) => {
     const { rows } = await db.query<{ id: string }>(
-      `insert into lead_research_requests (org_id, requested_by, prompt, campaign_type, criteria, status, failure_reason)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+      `insert into lead_research_requests (org_id, requested_by, prompt, campaign_type, criteria, status, failure_reason, agent_role)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
       [
         ctx.org.orgId, ctx.user.id, prompt, input.campaignType, JSON.stringify(targeting),
         ready ? "queued" : "waiting_for_agent",
         ready ? null : waitingReason,
+        agentRole,
       ],
     );
     const requestId = rows[0].id;
@@ -131,7 +133,7 @@ export async function createResearchRequest(
       jobId = job.id;
       await db.query("update lead_research_requests set work_job_id = $3 where id = $1 and org_id = $2", [requestId, ctx.org.orgId, job.id]);
     }
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "leads.research_requested", targetType: "lead_research_request", targetId: requestId, result: "success", metadata: { ready, jobId } }, db);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "leads.research_requested", targetType: "lead_research_request", targetId: requestId, result: "success", metadata: { ready, jobId, agentRole } }, db);
     return { requestId, jobId };
   });
   if (ready && created.jobId && !options.deferKick) kickWorkJob(created.jobId);
@@ -141,8 +143,16 @@ export async function createResearchRequest(
 /** Re-runs a request that was saved while the Lead Hunter was unavailable. Never automatic. */
 export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can run lead research.");
-  const agent = await withSystem((db) => leadHunter(db, ctx.org.orgId));
-  if (!agent?.enabled || !canChat(agent.status)) throw new AppError("agent_unavailable", "The Lead Hunter isn't connected yet.");
+  const roleRow = await withSystem(async (db) => (await db.query<{ agent_role: string }>(
+    "select agent_role from lead_research_requests where id = $1 and org_id = $2",
+    [requestId, ctx.org.orgId],
+  )).rows[0] ?? null);
+  if (!roleRow || !isWorkforceRoleKey(roleRow.agent_role) || !roleMayUseCapability(roleRow.agent_role, "lead_research")) {
+    throw new AppError("not_found", "Research request not found.");
+  }
+  const agentRole = roleRow.agent_role;
+  const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
+  if (!agent?.enabled || !canChat(agent.status)) throw new AppError("agent_unavailable", workforceRoleShortName(agentRole) + " isn't connected yet.");
   await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
   await assertWithinLimits(ctx.org.orgId, "lead_research");
   const jobId = await withSystem(async (db) => {
@@ -220,7 +230,11 @@ export interface LeadRow {
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
+  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
+  qualification_reasons: string[];
+  recommended_next_action: string;
   buying_signals: string[];
+  signal_records: LeadSignalRecord[];
   evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null }>;
   duplicate_status: string;
   duplicate_matches: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
@@ -230,11 +244,47 @@ export interface LeadRow {
   created_at: Date;
 }
 
+type StoredLeadRow = Omit<LeadRow, "qualification_state" | "qualification_reasons" | "recommended_next_action"> & {
+  qualification_state: LeadRow["qualification_state"] | null;
+  qualification_reasons: string[] | null;
+  recommended_next_action: string | null;
+};
+
+function legacyQualification(row: StoredLeadRow, evidenceCount: number, summary: string | null) {
+  if (row.duplicate_status === "duplicate") {
+    return {
+      state: "duplicate" as const,
+      reasons: ["An existing lead or CRM company has the same domain."],
+      nextAction: "Review the matching CRM or lead record; do not create a second record.",
+    };
+  }
+  if (row.duplicate_status === "possible_duplicate") {
+    return {
+      state: "possible_duplicate" as const,
+      reasons: ["A lead or CRM company has the same name but no matching domain; a person must resolve it."],
+      nextAction: "Compare the possible match with this business before approving it.",
+    };
+  }
+  const reasons = [
+    evidenceCount ? null : "No source URL supports this candidate yet.",
+    row.website ? null : "No website was verified.",
+    summary ? null : "No qualification reasoning was provided.",
+  ].filter((reason): reason is string => Boolean(reason));
+  return reasons.length
+    ? { state: "needs_evidence" as const, reasons, nextAction: "Find and review first-party evidence before approving this lead." }
+    : {
+        state: "evidence_backed" as const,
+        reasons: ["At least one cited source, a website and a qualification explanation are present."],
+        nextAction: "Review the cited evidence and decide whether this lead fits.",
+      };
+}
+
 export async function listLeads(ctx: OrgContext, status: "pending" | "approved" | "rejected" | "all" = "all"): Promise<LeadRow[]> {
   return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<LeadRow>(
+    const { rows } = await db.query<StoredLeadRow>(
       `select id, business_name, website, domain, industry, location, score, score_breakdown, qualification_summary,
-              buying_signals, evidence, duplicate_status, duplicate_matches, public_contact, review_status, crm_sync_status, created_at
+              qualification_state, qualification_reasons, recommended_next_action, buying_signals, signal_records,
+              evidence, duplicate_status, duplicate_matches, public_contact, review_status, crm_sync_status, created_at
        from leads where org_id = $1 and ($2 = 'all' or review_status = $2)
        order by created_at desc limit 500`,
       [ctx.org.orgId, status],
@@ -242,11 +292,20 @@ export async function listLeads(ctx: OrgContext, status: "pending" | "approved" 
     // Older rows may contain model-authored claims about CRM checks, queue persistence, or page
     // observation times. Those are application-owned facts, so suppress unsupported claims at
     // read time as well as when new research is saved; the underlying evidence rows stay intact.
-    return rows.map((row) => ({
-      ...row,
-      qualification_summary: sanitizeQualificationSummary(row.qualification_summary),
-      evidence: Array.isArray(row.evidence) ? row.evidence.map((item) => ({ ...item, observed_at: null })) : [],
-    }));
+    return rows.map((row) => {
+      const summary = sanitizeQualificationSummary(row.qualification_summary);
+      const evidence = Array.isArray(row.evidence) ? row.evidence.map((item) => ({ ...item, observed_at: null })) : [];
+      const legacy = legacyQualification(row, evidence.length, summary);
+      return {
+        ...row,
+        qualification_summary: summary,
+        qualification_state: row.qualification_state ?? legacy.state,
+        qualification_reasons: row.qualification_reasons ?? legacy.reasons,
+        recommended_next_action: row.recommended_next_action ?? legacy.nextAction,
+        signal_records: Array.isArray(row.signal_records) ? row.signal_records.slice(0, 10) : [],
+        evidence,
+      };
+    });
   });
 }
 
@@ -324,9 +383,24 @@ export function leadsToCsv(rows: LeadRow[]): string {
     const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
     return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
-  const header = ["Business", "Website", "Industry", "Location", "Score", "Review status", "Duplicate status", "CRM sync", "Sources", "Researched at"];
+  const header = ["Business", "Website", "Industry", "Location", "Score", "Review status", "Qualification", "Qualification reasons", "Next action", "Duplicate status", "CRM sync", "Signals", "Sources", "Researched at"];
   const lines = rows.map((r) =>
-    [r.business_name, r.website, r.industry, r.location, r.score, r.review_status, r.duplicate_status, r.crm_sync_status, r.evidence.map((e) => e.url).join(" "), new Date(r.created_at).toISOString()]
+    [
+      r.business_name,
+      r.website,
+      r.industry,
+      r.location,
+      r.score,
+      r.review_status,
+      r.qualification_state,
+      r.qualification_reasons.join("; "),
+      r.recommended_next_action,
+      r.duplicate_status,
+      r.crm_sync_status,
+      JSON.stringify(r.signal_records),
+      r.evidence.map((e) => e.url).join(" "),
+      new Date(r.created_at).toISOString(),
+    ]
       .map(esc)
       .join(","),
   );

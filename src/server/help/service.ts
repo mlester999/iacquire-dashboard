@@ -12,7 +12,7 @@ import { listProjects } from "@/server/projects/client";
 import { CORE_OFFER, PROJECT_STATUS_LABEL, formatDelivery, formatMoney, formatPrice } from "@/lib/projects";
 
 export const REDIRECT_MESSAGE =
-  "I'm here to help you with your iAcquire workspace, AI employees, and business automations. What would you like help with?";
+  "I'm here to help you with your iAcquire workspace, AI Growth Partner, and business automations. What would you like help with?";
 
 const STOPWORDS = new Set(
   "a an and are as at be by can could do does for from how i in is it its me my of on or our please should so that the this to was what when where which who why will with you your we us".split(" "),
@@ -75,7 +75,7 @@ export function isOffTopic(question: string, matches: ReturnType<typeof searchHe
 }
 
 const SYSTEM_PROMPT = `You are iAcquire Assistant, the in-portal help guide for the iAcquire Client Portal.
-Scope: portal navigation, AI employees, company setup, leads and approvals, appointments, sales workflows, CRM concepts, analytics, account settings, iAcquire services and supported features (including optional custom projects, add-ons and managed maintenance), troubleshooting, and how to reach the iAcquire team.
+Scope: portal navigation, your AI Growth Partner, company setup, leads and approvals, appointments, sales workflows, CRM concepts, analytics, account settings, iAcquire services and supported features (including optional custom projects, add-ons and managed maintenance), troubleshooting, and how to reach the iAcquire team.
 Rules:
 - Answer only from the HELP ARTICLES and, when present, the ACCOUNT DATA provided. If they don't cover the question, say you're not sure and suggest "Talk to iAcquire Team".
 - If the question is unrelated to iAcquire, reply exactly: "${REDIRECT_MESSAGE}"
@@ -138,7 +138,7 @@ export async function catalogHelpArticles(): Promise<HelpArticle[]> {
         id: "custom-projects",
         title: "Custom projects and add-ons",
         keywords: ["custom", "add-on", "add-ons", "addon", "addons", "project", "projects", "build", "automation", "ai agent", "website", "funnel", "shopify", "software", "saas", "integration", "something specific", "extra", "marketplace"],
-        body: `Custom Projects & Add-ons is where you can request extra automations, AI agents, websites, funnels, Shopify work and custom software beyond your core package. Everything there is optional. ${ready ? `Ready-to-use systems run from ${formatMoney(ready.min)}` : "Ready-to-use systems have published ranges"}; custom work is quoted after review (${customs}). These are starting prices, not guaranteed totals. Standard AI employees already in your package are never an add-on.`,
+        body: `Custom Projects & Add-ons is where you can request extra automations, websites, funnels, Shopify work and custom software beyond your core package. Everything there is optional. ${ready ? `Ready-to-use systems run from ${formatMoney(ready.min)}` : "Ready-to-use systems have published ranges"}; custom work is quoted after review (${customs}). These are starting prices, not guaranteed totals. Your AI Growth Partner is part of your core package, not an add-on.`,
         links,
       },
       {

@@ -66,16 +66,16 @@ export function kindChoices(options: EditorOptions): KindChoice[] {
   const note = (k: StepKind): string | null => {
     if (k === "send_message" && !options.templates.length) return "Needs an approved message template first.";
     if (k === "request_review" && !options.templates.some(isReviewTemplate)) return "Needs an approved review request template (with {{review.link}}) first.";
-    if (k === "send_message" && options.employees.length && !options.employees.some((e) => sendAsState(e).state !== "blocked")) return "None of your AI employees has passed its connection check, so messages wouldn't be sent.";
+    if (k === "send_message" && options.employees.length && !options.employees.some((e) => sendAsState(e).state !== "blocked")) return "None of your AI profiles has passed its connection check, so messages wouldn't be sent.";
     if (k === "n8n" && !options.n8nMappings.length) return "Your agency hasn't verified an n8n automation for you yet.";
     if (k === "n8n" && !n8nProblems.includes(null)) return n8nProblems.length === 1 ? n8nProblems[0] : "None of your n8n automations can run right now, so this step won't run.";
     if (k === "webhook" && !options.webhooks.some((w) => w.active)) return "Add a webhook endpoint first.";
     if (k === "http_request" && !(options.connections ?? []).some((c) => c.kind === "http")) return "Set up an HTTP connection first (Automation Studio → Connections).";
     if (k === "slack_message" && !(options.connections ?? []).some((c) => c.kind === "slack_webhook")) return "Set up a Slack connection first (Automation Studio → Connections).";
     if (k === "conversation_action" && options.inboxEnabled === false) return "The new inbox isn't switched on for this workspace yet, so this step can't be published.";
-    if (k === "ai_task" && !options.employees.length) return "No AI employees are included in your workspace.";
+    if (k === "ai_task" && !options.employees.length) return "No AI profiles are included in your workspace.";
     if (k === "ai_task" && !options.employees.some((e) => aiTaskState(e).state !== "blocked")) {
-      return options.employees.some((e) => e.liveRuns) ? "None of your AI employees can be reached yet, so this step would be skipped." : "AI employee runs are switched off for now, so this step would be skipped.";
+      return options.employees.some((e) => e.liveRuns) ? "None of your AI profiles can be reached yet, so this step would be skipped." : "AI runs are switched off for now, so this step would be skipped.";
     }
     if ((k === "create_opportunity" || k === "move_stage") && !options.pipelines.length) return "Set up a pipeline first.";
     if ((k === "add_tag" || k === "remove_tag") && !options.tags.length) return "Create tags first.";
@@ -243,7 +243,7 @@ export function effectItems(def: WorkflowDefinition, options: EditorOptions): Ef
           { label: "Instruction", value: c.instruction },
           { label: "Its mode", value: e?.mode === "autonomous" ? "Acts on its own, within its tools" : e?.mode === "paused" ? AI_PAUSED : "Asks you before changing anything" },
         ],
-        warning: e ? blockedText(aiTaskState(e)) : "That AI employee isn't included in your workspace.",
+        warning: e ? blockedText(aiTaskState(e)) : "That AI profile isn't included in your workspace.",
       });
     }
   });
@@ -251,7 +251,7 @@ export function effectItems(def: WorkflowDefinition, options: EditorOptions): Ef
 }
 
 // ---------------------------------------------------------------------------
-// Whether a step's AI employee or n8n automation can act right now
+// Whether a step's AI profile or n8n automation can act right now
 // ---------------------------------------------------------------------------
 
 type Employee = EditorOptions["employees"][number];
@@ -266,22 +266,22 @@ export interface ReadyState {
 export const AI_PAUSED = "Paused: this step is skipped while it's paused (nothing is asked) and the run carries on";
 
 /**
- * What an "Ask AI employee" step does with this employee right now, in the order requestAgentTask checks when the step runs: included,
+ * What an "Ask AI profile" step does with this profile right now, in the order requestAgentTask checks when the step runs: included,
  * paused, its connection check, connected to its AI service, live runs verified. Anything but "ok" means the step is skipped and the run
  * carries on; nothing is asked.
  */
 export function aiTaskState(e: Employee | undefined): ReadyState {
-  if (!e || !e.enabled) return { state: "blocked", text: "That AI employee isn't included in your workspace, so this step is skipped." };
+  if (!e || !e.enabled) return { state: "blocked", text: "That AI profile isn't included in your workspace, so this step is skipped." };
   if (e.mode === "paused") return { state: "paused", text: `${AI_PAUSED}.` };
   if (!e.ready) return { state: "blocked", text: `${e.name} hasn't passed its connection check, so this step is skipped (nothing is asked) and the run carries on.` };
   if (!e.connected) return { state: "blocked", text: `${e.name} isn't connected to its AI service yet, so this step is skipped (nothing is asked) and the run carries on.` };
-  if (!e.liveRuns) return { state: "blocked", text: "AI employee runs are switched off for now, so this step is skipped (nothing is asked) and the run carries on." };
+  if (!e.liveRuns) return { state: "blocked", text: "AI runs are switched off for now, so this step is skipped (nothing is asked) and the run carries on." };
   return { state: "ok", text: e.mode === "autonomous" ? "Acts on its own within its tools." : "Asks you before it changes anything." };
 }
 
 /** Whether a message can go out under this employee, as the send path's gate decides: included, not paused, passed its connection check. */
 export function sendAsState(e: Employee | undefined): ReadyState {
-  if (!e || !e.enabled) return { state: "blocked", text: "That AI employee isn't included in your workspace, so nothing is sent." };
+  if (!e || !e.enabled) return { state: "blocked", text: "That AI profile isn't included in your workspace, so nothing is sent." };
   if (e.mode === "paused") return { state: "paused", text: `${e.name} is paused: while it is, this step sends nothing (it's skipped) and the run carries on.` };
   if (!e.ready) return { state: "blocked", text: `${e.name} hasn't passed its connection check, so this step sends nothing (it's skipped) and the run carries on.` };
   return { state: "ok", text: "" };

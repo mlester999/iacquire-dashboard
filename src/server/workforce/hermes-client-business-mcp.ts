@@ -1,5 +1,5 @@
 import "server-only";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { runtimeReadySql } from "@/lib/employee-runtime";
 import { AppError } from "@/server/errors";
 import { withSystem, type Queryable } from "@/server/db";
@@ -57,7 +57,7 @@ const plain = (status: number, body: string, headers: Record<string, string> = {
  * A credential this server issued but cannot honour (ended, expired, re-mapped, or its employee or workspace no longer qualifies) is a signal an operator wants. It is written once per
  * refusal, to the employee's workspace, while the failure limit for the client address still has room. Only a credential id, a role and a short reason code: never a secret or a hash.
  */
-async function auditClientRefusal(claims: { credentialId: string; orgId: string; agentId: string; role: AgentRoleKey }, reason: string, ipHash: string | null): Promise<void> {
+async function auditClientRefusal(claims: { credentialId: string; orgId: string; agentId: string; role: WorkforceRoleKey }, reason: string, ipHash: string | null): Promise<void> {
   await withSystem((db) => recordAudit({
     orgId: claims.orgId, actorKind: "system", agentInstanceId: claims.agentId, action: "hermes.business_mcp.auth_denied", targetType: "agent_instance", targetId: claims.agentId,
     result: "denied", ipHash, metadata: { tier: "client", reason, role: claims.role, jti: claims.credentialId },
@@ -80,7 +80,7 @@ async function authenticateClientCredential(presented: string | null, ipHash: st
     const verified = await verifyClientCredential(db, presented);
     if (!verified.ok) return { ok: false, reason: verified.reason, claims: verified.claims };
     const { claims } = verified;
-    const { rows } = await db.query<{ agent_id: string; org_id: string; role_key: AgentRoleKey; display_name: string; profile: string; slug: string }>(
+    const { rows } = await db.query<{ agent_id: string; org_id: string; role_key: string; display_name: string; profile: string; slug: string }>(
       `select a.id as agent_id, a.org_id, a.role_key, a.display_name, a.hermes_profile as profile, o.slug
          from agent_instances a join organizations o on o.id = a.org_id
          join integration_credentials c on c.id = a.credential_id and c.org_id = a.org_id and c.provider = 'hermes' and c.revoked_at is null
@@ -95,7 +95,7 @@ async function authenticateClientCredential(presented: string | null, ipHash: st
       [claims.agentId, claims.orgId, claims.profile],
     );
     const row = rows[0];
-    if (!row || row.org_id !== claims.orgId || row.agent_id !== claims.agentId || !(AGENT_ROLE_KEYS as readonly string[]).includes(row.role_key)) {
+    if (!row || row.org_id !== claims.orgId || row.agent_id !== claims.agentId || !isWorkforceRoleKey(row.role_key)) {
       return { ok: false, reason: "employee_not_active", claims };
     }
     // The profile is recomputed, never taken from a row or a credential: a client's profile is "c-" plus the workspace and role, exactly as the provisioner names it.
@@ -116,7 +116,7 @@ async function authenticateClientCredential(presented: string | null, ipHash: st
  * lists the inventory verifier accepts), all from the one reviewed server and toolset, and no other MCP tool. A profile verified before its workspace joined the tier, or one that carries a
  * tool nobody reviewed, cannot take a turn here even though its credential is genuine.
  */
-function recordedToolsMatchRole(recorded: unknown, role: AgentRoleKey): boolean {
+function recordedToolsMatchRole(recorded: unknown, role: WorkforceRoleKey): boolean {
   if (!Array.isArray(recorded)) return false;
   const rows = recorded.filter((tool): tool is Record<string, unknown> => typeof tool === "object" && tool !== null);
   const mcp = rows.filter((tool) => tool.source === "mcp" || typeof tool.sourceServer === "string"
@@ -263,13 +263,14 @@ async function readClientContext(profile: InternalProfile) {
   return buildRoleWorkspaceContext(run, { actingUserId: run.userId });
 }
 
-const CONTEXT_DESCRIPTIONS: Record<AgentRoleKey, string> = {
+const CONTEXT_DESCRIPTIONS: Record<WorkforceRoleKey, string> = {
   operations_manager: "Read the current state of your workspace that the person you are talking with is allowed to see: the AI work board, handoffs and setup status.",
   lead_hunter: "Read the saved targeting rules and researched leads that the person you are talking with is allowed to see. Research never means consent to contact.",
   appointment_setter: "Read the calendar setup, this week's appointments and booking requests that the person you are talking with is allowed to see. This does not create or confirm bookings.",
   sales_assistant: "Read the sales pipelines, stages and deals that the person you are talking with is allowed to see.",
   crm_manager: "Read the CRM setup, record counts and data quality that the person you are talking with is allowed to see. Empty counts are reported as empty.",
   performance_analyst: "Read the measured business counts that the person you are talking with is allowed to see, for the last 30 days against the 30 before.",
+  growth_partner: "Read and prepare approved changes across your workspace's CRM, calendar and inbox capabilities, always limited by the signed-in person's permissions and required approvals.",
 };
 
 /** The tool list is the policy module's and nothing else's: the role's reads, plus its changes when this workspace is in the proposals phase. */

@@ -22,7 +22,7 @@ interface HelpMessage {
 }
 
 const SUGGESTIONS = [
-  "How do I set up my AI employees?",
+  "How do I set up my AI Growth Partner?",
   `What does '${SETUP_REQUIRED_LABEL}' mean?`,
   "How do approvals work?",
   "How do I invite my team?",
@@ -167,7 +167,7 @@ function HelpHeader({ view, setView, onClose, canOpenTickets }: { view: View; se
         )}
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold tracking-tight text-ink">{view === "chat" ? "iAcquire Assistant" : view === "human" ? "Talk to iAcquire Team" : "Your support requests"}</p>
-          <p className="text-[12px] text-muted">{view === "chat" ? "Help with your workspace and AI team" : view === "human" ? "A real person on our team will reply" : "Follow up on earlier requests"}</p>
+          <p className="text-[12px] text-muted">{view === "chat" ? "Help with your workspace and AI Growth Partner" : view === "human" ? "A real person on our team will reply" : "Follow up on earlier requests"}</p>
         </div>
         <button type="button" onClick={onClose} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close help">
           <X className="size-4" />
@@ -235,7 +235,7 @@ function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: stri
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl rounded-tl-md border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink">
-          Hi{firstName ? ` ${firstName}` : ""}! I&apos;m the iAcquire Assistant. I can help with your workspace, AI employees, approvals, and settings.
+          Hi{firstName ? ` ${firstName}` : ""}! I&apos;m the iAcquire Assistant. I can help with your workspace, AI Growth Partner, approvals, and settings.
           {aiAvailable === false && <span className="mt-1 block text-[13px] text-muted">Answers come from the iAcquire help center.</span>}
         </motion.div>
         {messages.length === 0 && (
@@ -372,7 +372,7 @@ function HumanView({ onDone }: { onDone: () => void }) {
         <Select id="ticket-category" value={category} onChange={(e) => setCategory(e.target.value)}>
           {["general", "ai_employees", "integrations", "onboarding", "account", "billing", "bug"].map((c) => (
             <option key={c} value={c}>
-              {sentenceCase(c === "ai_employees" ? "AI employees" : c)}
+              {sentenceCase(c === "ai_employees" ? "AI Growth Partner" : c)}
             </option>
           ))}
         </Select>

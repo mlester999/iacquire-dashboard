@@ -108,6 +108,14 @@ describe("checklist creation", () => {
     expect(rows.map((r) => r.key)).toEqual(TEMPLATE_KEYS);
   });
 
+  it("keeps the six-role setup copy for existing legacy workspaces", async () => {
+    const { org } = await fresh("Legacy Setup Copy Co");
+    expect(await task(org.id, "ai_employees")).toMatchObject({
+      title: "Six client-specific Hermes AI employees configured",
+      client_title: "Your six AI employees are configured",
+    });
+  });
+
   it("is idempotent and never creates a checklist for the agency workspace", async () => {
     const { org } = await fresh("Idempotent Co");
     const again = await withSystem((db) => ensureSetupInstance(db, org.id));

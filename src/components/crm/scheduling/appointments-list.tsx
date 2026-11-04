@@ -133,7 +133,7 @@ export function AppointmentsList({
             <EmptyState
               icon={<CalendarDays className="size-5" />}
               title={filtered ? "No appointments match" : state.when === "past" ? "No past appointments" : "Nothing booked yet"}
-              description={filtered ? "Try other filters, or clear them." : "Appointments booked from booking pages, by your team and by your AI employees appear here."}
+              description={filtered ? "Try other filters, or clear them." : "Appointments booked from booking pages, by your team and by your AI Growth Partner appear here."}
               action={canBook && !filtered ? <Button variant="secondary" onClick={() => setNewOpen(true)}><Plus className="size-4" />New appointment</Button> : undefined}
             />
           </Card>

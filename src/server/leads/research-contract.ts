@@ -23,6 +23,17 @@ const publicContactSchema = z.object({
   source_url: httpsUrl.optional().nullable(),
 });
 
+const buyingSignalSchema = z.union([
+  // Accept older model responses, but keep these explicitly uncited and without a confidence claim.
+  z.string().trim().min(1).max(200),
+  z.object({
+    signal: z.string().trim().min(1).max(200),
+    evidence_url: httpsUrl.optional().nullable(),
+    confidence: z.number().min(0).max(1).optional().nullable(),
+    client_fit: z.string().trim().max(400).optional().nullable(),
+  }),
+]);
+
 export const researchLeadSchema = z.object({
   business_name: z.string().trim().min(1).max(200),
   website: z.string().trim().max(300).optional().nullable(),
@@ -32,7 +43,7 @@ export const researchLeadSchema = z.object({
     .array(z.object({ url: httpsUrl, observed_at: z.string().max(40).optional().nullable(), summary: z.string().trim().max(500).optional().nullable() }))
     .max(10)
     .default([]),
-  buying_signals: z.array(z.string().trim().max(200)).max(10).default([]),
+  buying_signals: z.array(buyingSignalSchema).max(10).default([]),
   qualification_summary: z.string().trim().max(2000).optional().nullable(),
   public_contact: publicContactSchema.optional().nullable(),
   score: z
@@ -46,7 +57,19 @@ export const researchLeadSchema = z.object({
     .default({}),
 });
 const researchOutputSchema = z.object({ leads: z.array(z.unknown()).max(50) });
-export type ResearchLead = z.infer<typeof researchLeadSchema>;
+type ResearchLeadInput = z.infer<typeof researchLeadSchema>;
+export interface LeadSignalRecord {
+  signal: string;
+  source: string | null;
+  evidence_url: string | null;
+  recorded_at: string | null;
+  confidence: number | null;
+  client_fit: string | null;
+}
+export type ResearchLead = Omit<ResearchLeadInput, "buying_signals"> & {
+  buying_signals: string[];
+  signal_records: LeadSignalRecord[];
+};
 
 /**
  * Qualification notes come from the model, so they are only allowed to describe business fit or
@@ -117,10 +140,38 @@ export function parseResearchOutput(output: string) {
     const contact = result.data.public_contact;
     if (contact && !contact.source_url) result.data.public_contact = null;
     // The model cannot reliably attest when it observed an individual page. Persisted research
-    // timestamps come from the server's lead row; don't display a model-supplied timestamp as fact.
+    // timestamps come from the server; don't display a model-supplied timestamp as fact.
     result.data.evidence = result.data.evidence.map((item) => ({ ...item, observed_at: null }));
     result.data.qualification_summary = sanitizeQualificationSummary(result.data.qualification_summary);
-    leads.push(result.data);
+    const evidenceUrls = new Set(result.data.evidence.map((item) => item.url));
+    const signalRecords: LeadSignalRecord[] = result.data.buying_signals.map((item) => {
+      const signal = typeof item === "string" ? item : item.signal;
+      const requestedEvidenceUrl = typeof item === "string" ? null : item.evidence_url ?? null;
+      // A signal can claim confidence or client fit only when it points to the exact URL included
+      // in this candidate's evidence. A citation supplied only by the model is not enough.
+      const evidenceUrl = requestedEvidenceUrl && evidenceUrls.has(requestedEvidenceUrl) ? requestedEvidenceUrl : null;
+      let source: string | null = null;
+      if (evidenceUrl) {
+        try {
+          source = new URL(evidenceUrl).hostname.toLowerCase().replace(/^www\./, "");
+        } catch {
+          source = null;
+        }
+      }
+      return {
+        signal,
+        source,
+        evidence_url: evidenceUrl,
+        recorded_at: null,
+        confidence: evidenceUrl && typeof item !== "string" ? item.confidence ?? null : null,
+        client_fit: evidenceUrl && typeof item !== "string" ? item.client_fit?.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 400) || null : null,
+      };
+    });
+    leads.push({
+      ...result.data,
+      buying_signals: signalRecords.map((item) => item.signal),
+      signal_records: signalRecords,
+    });
   }
   return { leads, rejected, error: null as string | null };
 }
@@ -173,7 +224,8 @@ export function researchPrompt(prompt: string, targeting: Targeting, campaign: "
     "Use qualification_summary only for business fit or evidence gaps. Do not describe CRM or duplicate checks, tool availability, saving, persistence, imports or review queue state; those are checked and reported by the application.",
     "Public contact details are optional. Include them only when a cited public source states them; always include that source_url. Never guess an email address, phone number or person's name.",
     "Respond with JSON only, in this exact shape:",
-    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","summary":""}],"buying_signals":[""],"qualification_summary":"","public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
+    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","summary":""}],"buying_signals":[{"signal":"","evidence_url":"https://…","confidence":0.0,"client_fit":""}],"qualification_summary":"","public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
+    "For each buying signal, cite the exact evidence URL already listed in this candidate's evidence. Confidence is an estimate, from 0 to 1, not verification or intent; leave confidence and client_fit null if no listed source supports the signal. The application supplies the recorded time and source host.",
     `Score maxima: service_fit ${SCORE_MAX.service_fit}, problem_evidence ${SCORE_MAX.problem_evidence}, buying_intent ${SCORE_MAX.buying_intent}, market_fit ${SCORE_MAX.market_fit}, source_quality ${SCORE_MAX.source_quality}. A score is a research priority, not consent or confirmed interest.`,
     "If you cannot verify a requested candidate, omit it and explain the limitation in qualification_summary. Never invent a business to reach the requested quantity.",
   ].join("\n");
@@ -231,6 +283,7 @@ export async function findLeadDuplicates(
 export interface LeadQualification {
   state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
   reasons: string[];
+  recommended_next_action: string;
 }
 
 /** Explains why a candidate is ready for review or needs more evidence. Never invents a pass mark. */
@@ -238,17 +291,21 @@ export function qualifyCandidate(lead: ResearchLead, duplicates: DuplicateResult
   const reasons: string[] = [];
   if (duplicates.status === "duplicate") {
     reasons.push("An existing lead or CRM company has the same domain.");
-    return { state: "duplicate", reasons };
+    return { state: "duplicate", reasons, recommended_next_action: "Review the matching CRM or lead record; do not create a second record." };
   }
   if (duplicates.status === "possible_duplicate") {
     reasons.push("A lead or CRM company has the same name but no matching domain; a person must resolve it.");
-    return { state: "possible_duplicate", reasons };
+    return { state: "possible_duplicate", reasons, recommended_next_action: "Compare the possible match with this business before approving it." };
   }
   if (lead.evidence.length === 0) reasons.push("No source URL supports this candidate yet.");
   if (!lead.website) reasons.push("No website was verified.");
   if (!lead.qualification_summary) reasons.push("No qualification reasoning was provided.");
-  if (reasons.length) return { state: "needs_evidence", reasons };
-  return { state: "evidence_backed", reasons: ["At least one cited source, a website and a qualification explanation are present."] };
+  if (reasons.length) return { state: "needs_evidence", reasons, recommended_next_action: "Find and review first-party evidence before approving this lead." };
+  return {
+    state: "evidence_backed",
+    reasons: ["At least one cited source, a website and a qualification explanation are present."],
+    recommended_next_action: "Review the cited evidence and decide whether this lead fits.",
+  };
 }
 
 /** Maps a real Hermes tool event to a genuine research stage. No event means no stage change. */

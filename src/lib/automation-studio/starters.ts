@@ -22,7 +22,7 @@ export const STARTER_CATEGORIES = ["Leads", "Appointments", "Follow-ups", "Sales
 export const STARTERS: Starter[] = [
   { id: "new-lead-welcome", category: "Leads", title: "Welcome every new lead", description: "A task for the owner the moment a lead arrives, so no one waits.", prompt: "When a new lead is added, create a high-priority task for the contact's owner to welcome them and notify the team.", needs: [] },
   { id: "form-leads", category: "Leads", title: "Sort website enquiries", description: "Tag and follow up everyone who sends one of your forms.", prompt: "When someone submits one of my forms, tag them as a website lead and create a task to call them back within a day.", needs: [] },
-  { id: "qualify-lead", category: "Leads", title: "Have an AI employee qualify new leads", description: "Ask one of your AI employees to review each new lead.", prompt: "When a new lead is added, ask my CRM Manager to review the lead's details and update their lead status.", needs: ["employee"] },
+  { id: "qualify-lead", category: "Leads", title: "Have your AI Growth Partner qualify new leads", description: "Ask your AI Growth Partner to review each new lead.", prompt: "When a new lead is added, ask my AI Growth Partner to review the lead's details and update its lead status.", needs: ["employee"] },
   { id: "hot-lead", category: "Leads", title: "Alert me about hot leads", description: "Tell the team as soon as a lead is tagged Hot.", prompt: "When a contact is tagged Hot, notify the owners and managers and create an urgent task to contact them today.", needs: [] },
   { id: "slack-new-lead", category: "Leads", title: "Tell Slack about new leads", description: "Your team hears about a lead the moment it arrives.", prompt: "When a new lead is added, post their name in my Slack sales channel and create a task for the owner to call them.", needs: ["slack"] },
   { id: "webhook-lead", category: "Leads", title: "Add leads from another system", description: "Start from a private webhook address and create the contact.", prompt: "Start from an inbound webhook that creates a contact from the email or phone it receives, then tag them as a webhook lead and create a follow-up task.", needs: [] },
@@ -53,7 +53,7 @@ export function starterReadiness(starter: Pick<Starter, "needs">, o: EditorOptio
   for (const need of starter.needs) {
     if (need === "template" && !o.templates.length) missing.push("an approved message template");
     else if (need === "review_template" && !o.templates.some(isReviewTemplate)) missing.push("an approved review request template");
-    else if (need === "employee" && !o.employees.length) missing.push("an AI employee in your workspace");
+    else if (need === "employee" && !o.employees.length) missing.push("your AI Growth Partner");
     else if (need === "pipeline" && !o.pipelines.length) missing.push("a pipeline");
     else if (need === "calendar" && !o.calendars.length) missing.push("a calendar");
     else if (need === "slack" && !(o.connections ?? []).some((c) => c.kind === "slack_webhook")) missing.push("a Slack connection");

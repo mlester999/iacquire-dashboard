@@ -152,7 +152,7 @@ export function CalendarDetail({ scope, calendar, page, people, orgSlug, appUrl,
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="types-h" className="text-[15px] font-semibold tracking-tight text-ink">Appointment types</h2>
-            <p className="mt-0.5 text-[14px] text-muted">Listed on the booking page in this order.{calendar.isDefault ? " The first one is what your AI Appointment Setter offers when no type is named." : ""}</p>
+            <p className="mt-0.5 text-[14px] text-muted">Listed on the booking page in this order.{calendar.isDefault ? " The first one is what AI Growth Partner offers when no type is named." : ""}</p>
           </div>
           {canManage && <Button onClick={() => openType(null)}><Plus className="size-4" />New appointment type</Button>}
         </div>

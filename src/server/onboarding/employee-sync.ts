@@ -5,7 +5,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
-import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isAgentRoleKey, workforceRoleName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { agentSettingsSchema, type AgentSettings, type OnboardingData } from "@/lib/agent-settings";
 import { confirmedAnswers, planScope, toKnowledgeSections, toLegacyData } from "@/lib/onboarding/engine";
 import { parseProfileSnapshot, type ProfileKey } from "@/lib/onboarding/business-profile";
@@ -27,7 +27,7 @@ import { buildEmployeeSettings, manualOverridesFromHistory, mergeBusinessUpdate,
 // customer-facing feature on; an employee stays "Setup required" until its Hermes profile passes its own checks.
 
 export interface GeneratedEmployee {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   name: string;
   summary: string;
   configStatus: string;
@@ -198,6 +198,35 @@ export async function syncEmployeesFromAnswers(
     const agent = agents.find((a) => a.role_key === role);
     if (!agent) continue;
     out.push(await ensureEmployeeConfigFromAnswers(db, who, { role, agent, data: input.data, basis: input.basis }));
+  }
+
+  const growthPartner = agents.find((agent) => agent.role_key === AI_GROWTH_PARTNER_ROLE_KEY);
+  if (growthPartner && growthPartner.status !== "disabled" && !growthPartner.active_config_version_id) {
+    const pending = await db.query(
+      `select 1 from agent_config_versions
+       where agent_instance_id = $1 and org_id = $2 and status = 'pending_agency_review'
+       limit 1`,
+      [growthPartner.id, who.orgId],
+    );
+    if (!pending.rows.length) {
+      const config = await createConfigVersion(db, {
+        orgId: who.orgId,
+        agentId: growthPartner.id,
+        settings: defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY, input.data.communication),
+        source: "onboarding",
+        changeRequest: "Prepared the unified AI Growth Partner from confirmed company setup.",
+        actorKind: who.actorKind,
+        userId: who.userId,
+        apply: true,
+      });
+      out.push({
+        role: AI_GROWTH_PARTNER_ROLE_KEY,
+        name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY),
+        summary: config.summary,
+        configStatus: config.status,
+        agentStatus: growthPartner.status,
+      });
+    }
   }
   return out;
 }

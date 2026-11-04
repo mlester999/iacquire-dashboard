@@ -1,4 +1,4 @@
-// What each of the six AI employees may DO, in one table, decided by the server and never by the employee's own instructions.
+// What each legacy AI employee and the unified Growth Partner may DO, in one table, decided by the server and never by the employee's own instructions.
 //
 // An employee can affect the business through four doors, and every door is closed by default (deny unless this table names the role and the action):
 //   capability     a durable, reviewed piece of work the portal runs for it (src/lib/workforce-capabilities.ts). Read-only reviews, or drafts a person must approve.
@@ -7,7 +7,7 @@
 //   runtime tool   what its Hermes profile can call by itself: memory, session search, a to-do list, picture analysis, and public web research for the Lead Hunter ONLY.
 // Nothing here reads model output. A prompt that tells the Sales Assistant to "act as the Lead Hunter" changes nothing: the role comes from the employee's database row, and the
 // table is looked up by that role. The portal tests (tests/employee-tool-policy.test.ts and the conformance suite) walk every role against every action and the real enforcement code.
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { AGENT_TOOL_SCOPES, ROLE_SCOPES, SCOPE_INFO } from "@/lib/agent-tool-scopes";
 
@@ -24,9 +24,13 @@ export interface PolicyAction {
   approval: "none" | "person_decides";
 }
 
-const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly AgentRoleKey[]; effect: PolicyEffect }> = {
-  "chat:booking_request": { label: "Prepare an appointment booking for confirmation", roles: ["appointment_setter"], effect: "proposal" },
-  "chat:appointment_change": { label: "Prepare an appointment cancellation or reschedule for approval", roles: ["appointment_setter"], effect: "proposal" },
+const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceRoleKey[]; effect: PolicyEffect }> = {
+  "chat:booking_request": { label: "Prepare an appointment booking for confirmation", roles: ["appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:appointment_change": { label: "Prepare an appointment cancellation or reschedule for approval", roles: ["appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:targeting_update": { label: "Update saved lead targeting rules", roles: ["lead_hunter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:crm_contact_create": { label: "Create one CRM contact after checking for duplicates", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:appointment_policy_update": { label: "Update appointment booking rules", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:calendar_create": { label: "Create a private calendar and hidden appointment type", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
 };
 
 // ---------------------------------------------------------------------------
@@ -39,13 +43,20 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly AgentRoleK
  * The abilities (the employee's Allowed actions) that let a role read its areas. An area is read only when the employee still has at least one of them switched on, in addition to
  * the signed-in person's own permission. The role's list applies to every area unless the role names a narrower one.
  */
-export const ROLE_ABILITIES: Record<AgentRoleKey, readonly string[]> = {
+export const ROLE_ABILITIES: Record<WorkforceRoleKey, readonly string[]> = {
   operations_manager: ["tasks.read"],
   lead_hunter: ["leads.stage_for_review", "research.public_web"],
   appointment_setter: ["calendar.read_availability", "appointments.read", "appointments.request_change"],
   sales_assistant: ["crm.read_opportunities"],
   crm_manager: ["crm.read"],
   performance_analyst: ["analytics.read"],
+  // The unified identity receives the union of the six skill switches. Each action still checks
+  // its own required permission and current switch at dispatch and again when the job runs.
+  growth_partner: [
+    "tasks.read", "research.public_web", "leads.stage_for_review",
+    "calendar.read_availability", "appointments.read", "appointments.request_change",
+    "calendar.booking_rules.update", "calendar.create", "crm.read", "crm.read_opportunities", "crm.contacts.create", "drafts.create", "analytics.read",
+  ],
 };
 
 /**
@@ -87,32 +98,36 @@ export const requiredAbilitiesForCapability = (capability: CapabilityKey): reado
 export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   "chat:booking_request": ["appointments.request_change"],
   "chat:appointment_change": ["appointments.request_change"],
+  "chat:targeting_update": ["research.public_web"],
+  "chat:crm_contact_create": ["crm.contacts.create"],
+  "chat:appointment_policy_update": ["calendar.booking_rules.update"],
+  "chat:calendar_create": ["calendar.create"],
 };
 
 /**
- * The tools a client employee's Hermes profile may expose. The three that every profile needs, and the reviewed optional ones. Public web research belongs to the Lead Hunter
- * alone: a role that is not asked to research prospects does not get the tools to do it.
+ * The tools a client employee's Hermes profile may expose. The three that every profile needs, and the reviewed optional ones. Public web research belongs only to the
+ * unified Growth Partner and retained Lead Hunter runtime; other roles do not get the tools to do it.
  */
-export const RUNTIME_TOOL_ROLES: Record<string, { toolset: string; roles: readonly AgentRoleKey[] | "all"; optional?: boolean }> = {
+export const RUNTIME_TOOL_ROLES: Record<string, { toolset: string; roles: readonly WorkforceRoleKey[] | "all"; optional?: boolean }> = {
   memory: { toolset: "memory", roles: "all" },
   session_search: { toolset: "session_search", roles: "all" },
   todo_list: { toolset: "todo", roles: "all" },
   vision_analyze: { toolset: "vision", roles: "all", optional: true },
-  web_search: { toolset: "web", roles: ["lead_hunter"] },
-  web_extract: { toolset: "web", roles: ["lead_hunter"] },
+  web_search: { toolset: "web", roles: ["lead_hunter", AI_GROWTH_PARTNER_ROLE_KEY] },
+  web_extract: { toolset: "web", roles: ["lead_hunter", AI_GROWTH_PARTNER_ROLE_KEY] },
 };
 
-const runtimeAllowed = (tool: string, role: AgentRoleKey): boolean => {
+const runtimeAllowed = (tool: string, role: WorkforceRoleKey): boolean => {
   const entry = RUNTIME_TOOL_ROLES[tool];
   return Boolean(entry) && (entry.roles === "all" || entry.roles.includes(role));
 };
 
 /** Every tool the role's profile may expose (required and optional). */
-export const runtimeToolsFor = (role: AgentRoleKey): string[] => Object.keys(RUNTIME_TOOL_ROLES).filter((t) => runtimeAllowed(t, role));
+export const runtimeToolsFor = (role: WorkforceRoleKey): string[] => Object.keys(RUNTIME_TOOL_ROLES).filter((t) => runtimeAllowed(t, role));
 /** The tools it must expose to be usable at all. */
-export const requiredRuntimeToolsFor = (role: AgentRoleKey): string[] => runtimeToolsFor(role).filter((t) => !RUNTIME_TOOL_ROLES[t].optional);
+export const requiredRuntimeToolsFor = (role: WorkforceRoleKey): string[] => runtimeToolsFor(role).filter((t) => !RUNTIME_TOOL_ROLES[t].optional);
 /** The toolsets those tools sit in: what the profile's server-side allowlist (platform_toolsets.api_server) should name. */
-export const runtimeToolsetsFor = (role: AgentRoleKey): string[] => [...new Set(runtimeToolsFor(role).map((t) => RUNTIME_TOOL_ROLES[t].toolset))].sort();
+export const runtimeToolsetsFor = (role: WorkforceRoleKey): string[] => [...new Set(runtimeToolsFor(role).map((t) => RUNTIME_TOOL_ROLES[t].toolset))].sort();
 
 export interface RuntimeExposure {
   ok: boolean;
@@ -123,7 +138,7 @@ export interface RuntimeExposure {
 }
 
 /** Judges the tool names a profile actually exposes against the role's policy. Pure; the names come from the verified inventory, never from the employee. */
-export function runtimeToolExposure(role: AgentRoleKey, exposed: readonly string[]): RuntimeExposure {
+export function runtimeToolExposure(role: WorkforceRoleKey, exposed: readonly string[]): RuntimeExposure {
   const names = new Set(exposed);
   const excess = [...names].filter((t) => !runtimeAllowed(t, role)).sort();
   const missing = requiredRuntimeToolsFor(role).filter((t) => !names.has(t)).sort();
@@ -146,7 +161,7 @@ export const roleToolEnforcement = (vars: Record<string, string | undefined> = p
 // The table
 // ---------------------------------------------------------------------------
 
-export function employeeActions(role: AgentRoleKey): PolicyAction[] {
+export function employeeActions(role: WorkforceRoleKey): PolicyAction[] {
   const out: PolicyAction[] = [];
   for (const key of CAPABILITY_KEYS) {
     const def = WORKFORCE_CAPABILITIES[key];
@@ -166,7 +181,7 @@ export function employeeActions(role: AgentRoleKey): PolicyAction[] {
   return out;
 }
 
-/** Every action id that exists anywhere in the product, for the walk across all six roles. */
+/** Every action id that exists anywhere in the product, for the walk across legacy and unified roles. */
 export function allPolicyActionIds(): string[] {
   return [
     ...CAPABILITY_KEYS.map((k) => `capability:${k}`),
@@ -179,9 +194,9 @@ export function allPolicyActionIds(): string[] {
 export type PolicyDecision = { allowed: true; action: PolicyAction } | { allowed: false; reason: string };
 
 /** Deny by default: an action the table does not list for this role is refused, whatever the request says. */
-export function authorizeEmployeeAction(role: AgentRoleKey | string, actionId: string): PolicyDecision {
-  if (!(AGENT_ROLE_KEYS as readonly string[]).includes(role)) return { allowed: false, reason: "That is not one of the six AI employee roles." };
-  const action = employeeActions(role as AgentRoleKey).find((a) => a.id === actionId);
+export function authorizeEmployeeAction(role: WorkforceRoleKey | string, actionId: string): PolicyDecision {
+  if (!isWorkforceRoleKey(role)) return { allowed: false, reason: "That is not a supported AI employee role." };
+  const action = employeeActions(role).find((a) => a.id === actionId);
   if (action) return { allowed: true, action };
   return { allowed: false, reason: allPolicyActionIds().includes(actionId) ? "This employee's role does not include that action." : "That action is not in the AI employee policy." };
 }

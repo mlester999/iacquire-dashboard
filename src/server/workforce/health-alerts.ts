@@ -1,6 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { workforceRoleShortName, workforceRoleSlug, type WorkforceRoleKey } from "@/lib/agents";
 import { HEALTH_FAILURE_THRESHOLD } from "@/lib/workforce-readiness";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { recordAudit } from "@/server/audit";
@@ -74,12 +74,11 @@ export async function recordHealthObservation(db: Queryable, input: { agentId: s
  */
 export async function announceHealthObservation(
   db: Queryable,
-  input: { orgId: string; agentId: string; role: AgentRoleKey; observation: HealthObservation; detail: string },
+  input: { orgId: string; agentId: string; role: WorkforceRoleKey; observation: HealthObservation; detail: string },
 ): Promise<{ alerted: boolean; recovered: boolean }> {
   const { observation } = input;
-  const meta = AGENT_BY_KEY[input.role];
-  if (!meta) return { alerted: false, recovered: false };
-  const link = `/employees/${meta.slug}`;
+  const name = workforceRoleShortName(input.role);
+  const link = input.role === "growth_partner" ? "/growth-partner" : `/employees/${workforceRoleSlug(input.role)}`;
   let alerted = false;
   let recovered = false;
 
@@ -88,9 +87,9 @@ export async function announceHealthObservation(
     const claimed = await db.query("update agent_instances set health_alerted_at = now() where id = $1 and health_alerted_at is null returning id", [input.agentId]);
     if (claimed.rows.length) {
       alerted = true;
-      const body = `${meta.shortName} failed ${observation.consecutiveFailures} automatic connection checks in a row. ${input.detail}`.slice(0, 900);
-      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], { kind: "integration_disconnected", severity: "critical", title: `${meta.shortName} is unavailable`, body, link });
-      await notifyAgency(db, input.orgId, { kind: "integration_disconnected", severity: "critical", title: `${meta.shortName} is unavailable`, body, link: `/admin/employees` });
+      const body = `${name} failed ${observation.consecutiveFailures} automatic connection checks in a row. ${input.detail}`.slice(0, 900);
+      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], { kind: "integration_disconnected", severity: "critical", title: `${name} is unavailable`, body, link });
+      await notifyAgency(db, input.orgId, { kind: "integration_disconnected", severity: "critical", title: `${name} is unavailable`, body, link: `/admin/employees` });
       await recordAudit({
         orgId: input.orgId, actorUserId: null, actorKind: "system", agentInstanceId: input.agentId, action: "agent.health_alert", targetType: "agent_instance", targetId: input.agentId, result: "failure",
         metadata: { consecutiveFailures: observation.consecutiveFailures, threshold: HEALTH_FAILURE_THRESHOLD },
@@ -102,9 +101,9 @@ export async function announceHealthObservation(
     const cleared = await db.query("update agent_instances set health_alerted_at = null where id = $1 and health_alerted_at is not null returning id", [input.agentId]);
     if (cleared.rows.length) {
       recovered = true;
-      const body = `${meta.shortName} passed its connection check again after ${observation.previousFailures} failed ${observation.previousFailures === 1 ? "check" : "checks"}.`;
-      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], { kind: "agent_status", severity: "success", title: `${meta.shortName} is back online`, body, link });
-      await notifyAgency(db, input.orgId, { kind: "agent_status", severity: "success", title: `${meta.shortName} is back online`, body, link: `/admin/employees` });
+      const body = `${name} passed its connection check again after ${observation.previousFailures} failed ${observation.previousFailures === 1 ? "check" : "checks"}.`;
+      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], { kind: "agent_status", severity: "success", title: `${name} is back online`, body, link });
+      await notifyAgency(db, input.orgId, { kind: "agent_status", severity: "success", title: `${name} is back online`, body, link: `/admin/employees` });
       await recordAudit({
         orgId: input.orgId, actorUserId: null, actorKind: "system", agentInstanceId: input.agentId, action: "agent.health_recovered", targetType: "agent_instance", targetId: input.agentId, result: "success",
         metadata: { previousFailures: observation.previousFailures },

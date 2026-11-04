@@ -19,7 +19,7 @@ import { startMockHermes, type MockHermes, type MockInventoryTool } from "./supp
 
 const FROZEN: Record<AgentRoleKey, string[]> = {
   operations_manager: ["capability:proactive_review", "crm:contacts:read", "crm:tasks:write", "crm:opportunities:read", "crm:calendar:read", "crm:reports:read", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
-  lead_hunter: ["capability:lead_research", "capability:lead_generation_review", "crm:contacts:read", "crm:tags:write", "crm:tasks:write", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze", "runtime:web_search", "runtime:web_extract"],
+  lead_hunter: ["capability:lead_research", "capability:lead_generation_review", "chat:targeting_update", "crm:contacts:read", "crm:tags:write", "crm:tasks:write", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze", "runtime:web_search", "runtime:web_extract"],
   appointment_setter: ["capability:appointment_review", "capability:appointment_availability", "capability:missed_call_review", "chat:booking_request", "chat:appointment_change", "crm:contacts:read", "crm:contacts:write", "crm:tags:write", "crm:tasks:write", "crm:calendar:read", "crm:appointments:request", "crm:conversations:read", "crm:messages:draft", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
   sales_assistant: ["capability:pipeline_review", "capability:pipeline_followup_drafts", "capability:lead_priority_review", "crm:contacts:read", "crm:contacts:write", "crm:tags:write", "crm:tasks:write", "crm:opportunities:read", "crm:opportunities:write", "crm:calendar:read", "crm:conversations:read", "crm:messages:draft", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
   crm_manager: ["capability:crm_quality_review", "crm:contacts:read", "crm:contacts:write", "crm:tags:write", "crm:tasks:write", "crm:opportunities:read", "crm:opportunities:write", "crm:reports:read", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
@@ -85,6 +85,26 @@ describe("the policy table, role by role", () => {
     for (const role of AGENT_ROLE_KEYS) expect(runtimeToolsFor(role).includes("web_search"), role).toBe(role === "lead_hunter");
     for (const role of AGENT_ROLE_KEYS) for (const a of employeeActions(role)) expect(/send|book_now|publish|delete|export|import|campaign/.test(a.id), `${role}/${a.id}`).toBe(false);
     expect(Object.keys(RUNTIME_TOOL_ROLES).sort()).toEqual(["memory", "session_search", "todo_list", "vision_analyze", "web_extract", "web_search"]);
+  });
+
+  it("exposes the six reviewed skill domains through one Growth Partner role", () => {
+    const ids = employeeActions("growth_partner").map((action) => action.id);
+    for (const capability of CAPABILITY_KEYS) {
+      expect(roleMayUseCapability("growth_partner", capability), capability).toBe(true);
+      expect(ids).toContain(`capability:${capability}`);
+    }
+    expect(ids).toContain("runtime:web_search");
+    expect(ids).toContain("runtime:web_extract");
+    expect(ids).toContain("chat:booking_request");
+    expect(ids).toContain("chat:appointment_change");
+    expect(ids).toContain("chat:targeting_update");
+    expect(ids).toContain("chat:crm_contact_create");
+    expect(ids).toContain("chat:appointment_policy_update");
+    expect(ids).toContain("chat:calendar_create");
+    expect(ids).not.toContain("runtime:terminal");
+    expect(ids.some((id) => /send|publish|delete|export|import|campaign/.test(id))).toBe(false);
+    expect(runtimeToolExposure("growth_partner", ["memory", "session_search", "todo_list", "vision_analyze", "web_search", "web_extract"]))
+      .toEqual({ ok: true, excess: [], missing: [] });
   });
 });
 

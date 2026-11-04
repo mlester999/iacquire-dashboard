@@ -1,7 +1,7 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { abilitiesForCapability, requiredAbilitiesForCapability } from "@/lib/employee-tool-policy";
 import { isCapabilityKey, WORKFORCE_CAPABILITIES, type CapabilityKey } from "@/lib/workforce-capabilities";
@@ -17,7 +17,7 @@ import { recordActionDenied } from "@/server/workforce/action-policy";
  * What this employee may still do in this workspace: its role's default tools minus the ones switched off in its active configuration. Null when the employee cannot be found for
  * this workspace and role, so that a caller never acts on a guess: null fails closed. `orgId` is always named, so another tenant's employee is simply not found.
  */
-export async function employeeAbilities(db: Queryable, orgId: string, agentId: string, roleKey: AgentRoleKey): Promise<ReadonlySet<string> | null> {
+export async function employeeAbilities(db: Queryable, orgId: string, agentId: string, roleKey: WorkforceRoleKey): Promise<ReadonlySet<string> | null> {
   const { rows } = await db.query<{ default_tools: unknown; disabled: unknown }>(
     `select r.default_tools, v.settings -> 'disabledTools' as disabled
        from agent_instances a
@@ -63,7 +63,7 @@ export interface AbilityRefusal {
  * The decision alone: no write and no throw, so the work runner can use it where a refusal must become a blocked job. A failed read counts as "unreadable" and refuses, because
  * work the owner may have switched off is never started on a guess.
  */
-export async function abilityRefusal(db: Queryable, input: { orgId: string; agentId: string; roleKey: AgentRoleKey; need: AbilityNeed }): Promise<AbilityRefusal | null> {
+export async function abilityRefusal(db: Queryable, input: { orgId: string; agentId: string; roleKey: WorkforceRoleKey; need: AbilityNeed }): Promise<AbilityRefusal | null> {
   let abilities: ReadonlySet<string> | null = null;
   try {
     abilities = await employeeAbilities(db, input.orgId, input.agentId, input.roleKey);
@@ -72,7 +72,7 @@ export async function abilityRefusal(db: Queryable, input: { orgId: string; agen
   }
   const missing = missingAbilities(abilities, input.need);
   if (!missing) return null;
-  const name = AGENT_BY_KEY[input.roleKey]?.shortName ?? "This employee";
+  const name = input.roleKey === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner" : AGENT_BY_KEY[input.roleKey]?.shortName ?? "This employee";
   if (abilities === null) return { message: `What ${name} is allowed to do could not be confirmed just now, so nothing was started.`, reason: "ability_unreadable", abilities: missing };
   return { message: `${name} has ${labels(missing)} switched off in Allowed actions. Nothing was started.`, reason: "ability_switched_off", abilities: missing };
 }
@@ -80,7 +80,7 @@ export async function abilityRefusal(db: Queryable, input: { orgId: string; agen
 /** What a reviewed capability needs, from the reviewed table. */
 export const capabilityNeed = (capability: CapabilityKey): AbilityNeed => ({ anyOf: abilitiesForCapability(capability), allOf: requiredAbilitiesForCapability(capability) });
 
-interface DeniedInput { orgId: string; agentId: string; roleKey: AgentRoleKey; actionId: string; actorUserId?: string | null }
+interface DeniedInput { orgId: string; agentId: string; roleKey: WorkforceRoleKey; actionId: string; actorUserId?: string | null }
 
 /**
  * Writes the refusal to the audit log on its own connection (so it survives the failure it reports) and throws AppError "forbidden". Never call it inside an open transaction: the
@@ -107,12 +107,13 @@ export async function assertAbility(db: Queryable, input: DeniedInput & { need: 
  * The work runner's question: may this queued job still run? Looks the employee's role up from its own row, so a job can never be judged under a role it does not have. A
  * capability that is not a reviewed one is not judged here (the runner blocks it as unavailable on its own). A job whose employee cannot be found is refused.
  */
-export async function jobAbilityRefusal(db: Queryable, input: { orgId: string; agentId: string; capability: string }): Promise<(AbilityRefusal & { roleKey: AgentRoleKey | null }) | null> {
+export async function jobAbilityRefusal(db: Queryable, input: { orgId: string; agentId: string; capability: string }): Promise<(AbilityRefusal & { roleKey: WorkforceRoleKey | null }) | null> {
   if (!isCapabilityKey(input.capability)) return null;
-  let roleKey: AgentRoleKey | null = null;
+  let roleKey: WorkforceRoleKey | null = null;
   try {
-    const { rows } = await db.query<{ role_key: AgentRoleKey }>("select role_key from agent_instances where id = $1 and org_id = $2", [input.agentId, input.orgId]);
-    roleKey = rows[0]?.role_key ?? null;
+    const { rows } = await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [input.agentId, input.orgId]);
+    const rawRole = rows[0]?.role_key;
+    roleKey = rawRole && isWorkforceRoleKey(rawRole) ? rawRole : null;
   } catch {
     roleKey = null;
   }

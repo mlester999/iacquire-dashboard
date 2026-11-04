@@ -112,5 +112,5 @@ export const PAUSED_WHILE_SWITCHING: ReadonlyArray<{ key: string; label: string;
   { key: "messages", label: "Automatic messages", detail: "Queued messages wait (their credit stays held). A person sending by hand is told to wait." },
   { key: "writebacks", label: "Calendar write-backs", detail: "Appointments are written to connected Google or Microsoft calendars after the switch." },
   { key: "events", label: "Event handling", detail: "New workflow triggers, lead assignment and outbound webhooks wait in the queue and run afterwards, once each." },
-  { key: "ai_bookings", label: "AI bookings", detail: "Bookings your AI employees propose wait for a person to approve them." },
+  { key: "ai_bookings", label: "AI bookings", detail: "Bookings your AI Growth Partner proposes wait for a person to approve them." },
 ];

@@ -59,7 +59,7 @@ afterAll(async () => {
 describe("AQi context and knowledge", () => {
   it("adapts suggestions to the current page and only exposes authorized routes", async () => {
     const bootstrap = await getAqiBootstrap(viewer, "/employees");
-    expect(bootstrap.page?.label).toBe("AI Employees");
+    expect(bootstrap.page?.label).toBe("Previous employee profiles");
     expect(bootstrap.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
     expect(bootstrap.allowedPaths).toContain("/employees");
     expect(bootstrap.allowedPaths).not.toContain("/admin/aqi");

@@ -275,8 +275,8 @@ describe("handing a missed caller to the Appointment Setter", () => {
 
 describe("the AI workforce's read-only reviews", () => {
   it("are limited to the roles that make sense, read-only, and need the permission to see what they read", () => {
-    expect(WORKFORCE_CAPABILITIES.missed_call_review).toMatchObject({ allowedRoles: ["appointment_setter"], risk: "read_only", requiredPermission: "calls.view" });
-    expect(WORKFORCE_CAPABILITIES.lead_priority_review).toMatchObject({ allowedRoles: ["sales_assistant"], risk: "read_only", requiredPermission: "contacts.view" });
+    expect(WORKFORCE_CAPABILITIES.missed_call_review).toMatchObject({ allowedRoles: ["appointment_setter", "growth_partner"], risk: "read_only", requiredPermission: "calls.view" });
+    expect(WORKFORCE_CAPABILITIES.lead_priority_review).toMatchObject({ allowedRoles: ["sales_assistant", "growth_partner"], risk: "read_only", requiredPermission: "contacts.view" });
     expect(roleMayUseCapability("sales_assistant", "missed_call_review")).toBe(false);
     expect(roleMayUseCapability("lead_hunter", "lead_priority_review")).toBe(false);
     expect(capabilitiesForRole("appointment_setter").map((c) => c.key)).toContain("missed_call_review");

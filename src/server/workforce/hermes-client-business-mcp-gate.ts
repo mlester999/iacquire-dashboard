@@ -1,6 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import type { CapabilityProvider, CrmCapability, CrmMode } from "@/lib/crm/types";
 import { AGENT_TOOLS, type AgentToolName } from "@/server/crm/agent-tools/catalog";
 import { resolveCapabilities } from "@/server/crm/workspace";
@@ -80,7 +80,7 @@ async function peekCapabilityOwner(db: Queryable, orgId: string, capability: Crm
  * Whether this call may answer now. `db` is the caller's transaction, so every answer is one consistent read of the workspace. The context tool is not asked: it reports each area's own
  * state (empty, not set up, in another system, switched off) in its answer.
  */
-export async function clientToolGate(db: Queryable, input: { orgId: string; agentId: string; roleKey: AgentRoleKey; tool: AgentToolName }): Promise<ClientGateDecision> {
+export async function clientToolGate(db: Queryable, input: { orgId: string; agentId: string; roleKey: WorkforceRoleKey; tool: AgentToolName }): Promise<ClientGateDecision> {
   const { rows } = await db.query<{ enabled: boolean; active: boolean; client: boolean; paid: boolean }>(
     `select a.enabled, (o.status = 'active') as active, (o.kind = 'client' and not o.is_demo) as client, ${PROVISIONING_PAYMENT_CLEARED_SQL} as paid
        from agent_instances a join organizations o on o.id = a.org_id

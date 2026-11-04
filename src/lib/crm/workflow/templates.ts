@@ -2,6 +2,7 @@
 // tag, which stage, which approved message) and builds an ordinary draft definition, which is then validated, published and (when it
 // sends messages) approved like any other. Pure.
 import type { MessageChannel, TriggerType, WorkflowDefinition, WorkflowStep } from "@/lib/crm/workflow/spec";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 
 export type TemplateInputKind = "tag" | "user" | "pipeline" | "stage" | "open_stage" | "message_template";
 
@@ -38,7 +39,7 @@ function chain(steps: Array<Omit<WorkflowStep, "next">>): WorkflowStep[] {
 }
 
 const sendStep = (key: string, m: MessageChoice): Omit<WorkflowStep, "next"> => ({
-  key, kind: "send_message", name: "Send message", config: { templateId: m.templateId, contentHash: m.contentHash, channel: m.channel, sendAs: "sales_assistant", businessHoursOnly: true },
+  key, kind: "send_message", name: "Send message", config: { templateId: m.templateId, contentHash: m.contentHash, channel: m.channel, sendAs: AI_GROWTH_PARTNER_ROLE_KEY, businessHoursOnly: true },
 });
 
 export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [

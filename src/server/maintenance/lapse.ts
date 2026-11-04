@@ -99,8 +99,8 @@ export async function applyPaymentFailed(db: Queryable, input: PaymentFailedInpu
     severity: "warning",
     title: notRecorded ? "iAcquire hasn't recorded a payment for your maintenance plan" : "A payment for your maintenance plan didn't go through",
     body: notRecorded
-      ? `Your plan was paid through ${input.paidThroughOn ?? "the last recorded date"}, and iAcquire has no record of a payment for the next period. ${keeps} until a payment is recorded. If you have already paid, contact iAcquire. Your CRM, AI employees and external automations aren't affected.`
-      : `${keeps} until the payment is sorted out. Your CRM, AI employees and external automations aren't affected.`,
+      ? `Your plan was paid through ${input.paidThroughOn ?? "the last recorded date"}, and iAcquire has no record of a payment for the next period. ${keeps} until a payment is recorded. If you have already paid, contact iAcquire. Your CRM, AI Growth Partner and its schedules, and external automations aren't affected.`
+      : `${keeps} until the payment is sorted out. Your CRM, AI Growth Partner and its schedules, and external automations aren't affected.`,
     link: PLAN_LINK,
     dedupeKey: `studio-payment-failed:${s.id}:${day(input.now)}`,
   });

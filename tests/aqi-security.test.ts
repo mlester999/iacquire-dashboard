@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canOpenAqiRoute, matchAqiRoute, pageFor, safeAqiHref, type AqiAccess } from "@/lib/aqi/routes";
+import { requiredSuggestionAccess } from "@/lib/aqi/suggestions";
 
 const clientOwner: AqiAccess = { can: (permission) => permission === "workspace.view" || permission === "agents.use", agencyRole: null };
 const superAdmin: AqiAccess = { can: () => true, agencyRole: "agency_super_admin" };
@@ -17,7 +18,11 @@ describe("AQi navigation safety", () => {
     expect(safeAqiHref("https://evil.example", superAdmin)).toBeNull();
     expect(safeAqiHref("//evil.example/path", superAdmin)).toBeNull();
     expect(safeAqiHref("/admin/aqi", clientOwner)).toBeNull();
-    expect(safeAqiHref("/employees", clientOwner)?.path).toBe("/employees");
+    expect(safeAqiHref("/growth-partner", clientOwner)?.path).toBe("/growth-partner");
+    expect(safeAqiHref("/growth-partner/conversation", clientOwner)?.path).toBe("/growth-partner/conversation");
+    expect(safeAqiHref("/employees", clientOwner)).toBeNull();
+    const profileAdmin: AqiAccess = { can: (permission) => permission === "workspace.view" || permission === "agents.configure", agencyRole: null };
+    expect(safeAqiHref("/employees", profileAdmin)?.path).toBe("/employees");
     expect(safeAqiHref("/admin/aqi", superAdmin)?.path).toBe("/admin/aqi");
   });
 
@@ -45,5 +50,10 @@ describe("AQi navigation safety", () => {
     const viewer: AqiAccess = { can: (permission) => permission === "workspace.view" || permission === "support.use", agencyRole: null };
     expect(safeAqiHref("/support", viewer)?.path).toBe("/support");
     expect(safeAqiHref("/employees", viewer)).toBeNull();
+  });
+
+  it("gates Growth Partner suggestions behind the same permission as the feature", () => {
+    expect(requiredSuggestionAccess("How do I use my AI Growth Partner?")).toEqual({ permission: "agents.use" });
+    expect(requiredSuggestionAccess("Where is the permanent Growth Partner conversation?")).toEqual({ permission: "agents.use" });
   });
 });

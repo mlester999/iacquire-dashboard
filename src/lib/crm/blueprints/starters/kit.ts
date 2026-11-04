@@ -8,7 +8,7 @@ import { slugValue, type FormKind, type FormPurpose, type FormQuestion, type Not
 import type { FilterCondition, FilterGroup } from "@/lib/crm/filters";
 import type { CreatedVia, FieldEntity, FieldType } from "@/lib/crm/types";
 import type { ReportSection } from "@/components/crm/reports/spec";
-import type { AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 import { slot } from "@/lib/crm/blueprints/builders";
 import {
   BLUEPRINT_FORMAT, BLUEPRINT_SCHEMA_VERSION,
@@ -384,7 +384,7 @@ export interface TaskOptions {
 
 export const step = {
   /** Sends one of the starter's own templates on that template's channel. */
-  send: (key: string, t: MessageTemplateAsset, next: string | null, sendAs: AgentRoleKey = "sales_assistant"): Step => {
+  send: (key: string, t: MessageTemplateAsset, next: string | null, sendAs: WorkforceRoleKey = AI_GROWTH_PARTNER_ROLE_KEY): Step => {
     if (!t.channel) throw new Error(`${t.id} has no channel, so a workflow can't send it.`);
     return { key, kind: "send_message", config: { templateId: ref(t), channel: t.channel, sendAs, businessHoursOnly: true }, next };
   },

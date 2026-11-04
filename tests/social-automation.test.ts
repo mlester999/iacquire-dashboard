@@ -79,8 +79,8 @@ describe("what is announced, and when", () => {
 });
 
 describe("the Performance Analyst's read-only social media review", () => {
-  it("is limited to the analyst, read-only, and needs the permission to see social media", () => {
-    expect(WORKFORCE_CAPABILITIES.social_performance_review).toMatchObject({ allowedRoles: ["performance_analyst"], risk: "read_only", requiredPermission: "social.view" });
+  it("is limited to the analyst and Growth Partner, read-only, and needs the permission to see social media", () => {
+    expect(WORKFORCE_CAPABILITIES.social_performance_review).toMatchObject({ allowedRoles: ["performance_analyst", "growth_partner"], risk: "read_only", requiredPermission: "social.view" });
     expect(roleMayUseCapability("sales_assistant", "social_performance_review")).toBe(false);
     expect(roleMayUseCapability("lead_hunter", "social_performance_review")).toBe(false);
     expect(capabilitiesForRole("performance_analyst").map((c) => c.key)).toContain("social_performance_review");

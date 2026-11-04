@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         : undefined;
   return (
     <>
-      <AuthHeading eyebrow="Welcome back" title="Sign in to iAcquire" description="Access your AI workforce and business operations." />
+      <AuthHeading eyebrow="Welcome back" title="Sign in to iAcquire" description="Open your AI Growth Partner and business workspace." />
       <LoginForm next={params.next} notice={notice} />
       <p className="mt-8 text-center text-[14px] text-muted">
         New to iAcquire?{" "}

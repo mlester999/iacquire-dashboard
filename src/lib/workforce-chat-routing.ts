@@ -1,4 +1,4 @@
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { parseWorkforceChatAssignment, type WorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { parseWorkforceChatScheduleIntent } from "@/lib/workforce-chat-schedule-intent";
@@ -19,7 +19,7 @@ export interface NamedWorkforceHandoff {
 }
 
 /** Recognize a different employee explicitly addressed at the start of a chat request. */
-export function explicitlyAddressedWorkforceRole(sourceRole: AgentRoleKey, content: string): AgentRoleKey | null {
+export function explicitlyAddressedWorkforceRole(sourceRole: WorkforceRoleKey, content: string): AgentRoleKey | null {
   const normalized = content.toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   const addressedRoles = AGENT_ROLE_KEYS.filter((role) => {
@@ -54,7 +54,7 @@ export function explicitlyAddressedWorkforceRole(sourceRole: AgentRoleKey, conte
  * Recognize an explicitly named, supported handoff. The target employee's existing assignment
  * parser determines the capability and payload; this function cannot invent or broaden either.
  */
-export function parseNamedWorkforceHandoff(sourceRole: AgentRoleKey, content: string): NamedWorkforceHandoff | null {
+export function parseNamedWorkforceHandoff(sourceRole: WorkforceRoleKey, content: string): NamedWorkforceHandoff | null {
   const targetRole = explicitlyAddressedWorkforceRole(sourceRole, content);
   if (!targetRole) return null;
   // A different employee's recurring assignment needs its own schedule preview and confirmation.

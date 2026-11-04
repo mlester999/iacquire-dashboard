@@ -225,7 +225,7 @@ export function CalendarDialog({ open, onOpenChange, scope, calendar, people }: 
           <SettingRow
             id={`${formId}-default`}
             label="Default calendar"
-            hint={draft ? "Available once this calendar is activated." : calendar?.isDefault ? "This is the default. To change it, make another calendar the default." : "Used when your AI Appointment Setter or a booking request doesn't name a calendar. Its first appointment type is offered."}
+            hint={draft ? "Available once this calendar is activated." : calendar?.isDefault ? "This is the default. To change it, make another calendar the default." : "Used when AI Growth Partner or a booking request doesn't name a calendar. Its first appointment type is offered."}
             control={<Switch id={`${formId}-default`} checked={form.isDefault} disabled={calendar?.isDefault || draft} onCheckedChange={(v) => set("isDefault", v)} aria-describedby={`${formId}-default-hint`} />}
           />
           {calendar ? (

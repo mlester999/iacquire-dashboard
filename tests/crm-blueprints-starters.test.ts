@@ -25,7 +25,7 @@ import { coversEmail, coversTexting, namedChannels } from "@/lib/crm/forms/conse
 import { validateDefinition, validationContextFrom, type WorkflowDefinition } from "@/lib/crm/workflow/spec";
 import { smsEstimate, validateTemplate } from "@/lib/messaging/tokens";
 import { isGroup, type FilterGroup } from "@/lib/crm/filters";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { WORKFORCE_ROLE_KEYS } from "@/lib/agents";
 import { agencyPeople, crmOrg } from "./support/crm";
 import { uid } from "./support/fixtures";
 
@@ -414,7 +414,7 @@ describe.each(each)("%s in a workspace (stand-in IDs)", (key, s) => {
       templates: s.assets.messageTemplates.filter((t) => t.channel).map((t) => ({ id: sid(t.id), contentHash: ws.hash(t.id), channel: t.channel! })),
       n8nMappings: [], webhookSubscriptions: [],
       assignmentRules: s.assets.assignmentRules.map((r) => ({ id: sid(r.id), entity: r.entity })),
-      agents: AGENT_ROLE_KEYS.map((roleKey) => ({ roleKey })),
+      agents: WORKFORCE_ROLE_KEYS.map((roleKey) => ({ roleKey })),
       calendars: s.assets.calendars.map((c) => ({ id: sid(c.id) })),
       appointmentTypes: s.assets.calendars.flatMap((c) => c.types.map((t) => ({ id: sid(t.id) }))),
       forms: s.assets.forms.map((f) => ({ id: sid(f.id) })),

@@ -290,7 +290,7 @@ export function NotificationCenter({
                 description={
                   filter === "unread"
                     ? "Everything in your latest updates has been read."
-                    : "New updates from your AI team, support and reviews will appear here."
+                    : "New updates from your AI Growth Partner, support and reviews will appear here."
                 }
               />
             ) : (

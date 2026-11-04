@@ -12,7 +12,7 @@ const instrument = Instrument_Serif({ subsets: ["latin"], weight: "400", style: 
 
 export const metadata: Metadata = {
   title: { default: "iAcquire Client Portal", template: "%s · iAcquire" },
-  description: "Manage leads, appointments, sales and customer relationships with a team of AI employees built around your business.",
+  description: "Manage leads, appointments, sales and customer relationships with an AI Growth Partner built around your business.",
   robots: { index: false, follow: false },
   icons: {
     icon: [{ url: "/brand/iacquire-mark.png", type: "image/png", sizes: "1280x1280" }],

@@ -15,7 +15,7 @@ import {
 } from "@/server/integrations/hermes/tool-policy";
 import { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { requiredRuntimeToolsFor, roleToolEnforcement, runtimeToolsFor, runtimeToolsetsFor } from "@/lib/employee-tool-policy";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isAgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { env } from "@/server/env";
 import { businessMcpRuntimeNamesForRole, HERMES_BUSINESS_MCP_SERVER, HERMES_BUSINESS_MCP_TOOLSET } from "@/server/workforce/hermes-business-mcp-policy";
 import { clientBusinessMcpRuntimeNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
@@ -115,7 +115,7 @@ export interface VerifyToolInventoryOptions {
    * The employee's role when its tool exposure must match the role policy (a client employee, with WORKFORCE_ROLE_TOOL_ENFORCEMENT=enforce). Taken from the connection's database
    * row by default; passing it here is for tests. Absent, the shared reviewed set applies, as it always has.
    */
-  role?: AgentRoleKey | null;
+  role?: WorkforceRoleKey | null;
   /**
    * Persisted digest from the last verified health check. A mismatch blocks the operation, and a `run`
    * with no digest is refused because there would be nothing to compare the live catalog against.
@@ -171,7 +171,7 @@ function failure(code: ToolInventoryFailureCode, profile: string | null, reason:
 }
 
 /** The role whose narrower tool policy applies to this connection, or null for the shared reviewed set. */
-function policyRoleOf(conn: HermesConnection, options: VerifyToolInventoryOptions): AgentRoleKey | null {
+function policyRoleOf(conn: HermesConnection, options: VerifyToolInventoryOptions): WorkforceRoleKey | null {
   if (roleToolEnforcement() !== "enforce") return null;
   if (options.role !== undefined) return options.role;
   return conn.orgKind === "client" ? conn.roleKey ?? null : null;
@@ -189,7 +189,9 @@ interface BusinessBridge {
 function businessBridgeOf(conn: HermesConnection): BusinessBridge | null {
   if (!conn.roleKey) return null;
   if (conn.orgKind === "agency") {
-    return env().HERMES_BUSINESS_MCP_ENABLED ? { names: businessMcpRuntimeNamesForRole(conn.roleKey, env().HERMES_BUSINESS_MCP_WRITES_ENABLED) } : null;
+    return isAgentRoleKey(conn.roleKey) && env().HERMES_BUSINESS_MCP_ENABLED
+      ? { names: businessMcpRuntimeNamesForRole(conn.roleKey, env().HERMES_BUSINESS_MCP_WRITES_ENABLED) }
+      : null;
   }
   // A client profile carries MCP tools only while its workspace is in the client tier (loadConnection read the switch); then exactly its role's reviewed list, nothing else.
   if (conn.orgKind === "client" && conn.clientBusinessTools) {
@@ -198,7 +200,7 @@ function businessBridgeOf(conn: HermesConnection): BusinessBridge | null {
   return null;
 }
 
-function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: AgentRoleKey | null = null, business: BusinessBridge | null = null): void {
+function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string, role: WorkforceRoleKey | null = null, business: BusinessBridge | null = null): void {
   const allowBusinessMcp = business !== null;
   const safe = new Set<string>([
     ...(role ? runtimeToolsetsFor(role) : PORTAL_SAFE_TOOLSETS),

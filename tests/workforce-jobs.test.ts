@@ -33,7 +33,12 @@ const researchPayload = {
       industry: "Dental",
       location: "Miami, FL",
       evidence: [{ url: "https://alpha-dental.example/about", observed_at: "2026-10-21T00:00:00Z", summary: "The practice lists two locations and an online booking page." }],
-      buying_signals: ["Online booking page"],
+      buying_signals: [{
+        signal: "Online booking page",
+        evidence_url: "https://alpha-dental.example/about",
+        confidence: 0.84,
+        client_fit: "An online booking workflow may fit the stated appointment automation service.",
+      }],
       qualification_summary: "Independent dental practice with a public booking page; fits the stated category and area.",
       public_contact: { name: "Jordan Lee", role: "Practice manager", email: "hello@alpha-dental.example", source_url: "https://alpha-dental.example/contact" },
       score: { service_fit: 25, problem_evidence: 18, buying_intent: 12, market_fit: 13, source_quality: 9 },
@@ -187,10 +192,22 @@ describe("Lead Hunter durable research", () => {
     const gamma = leads.find((lead) => lead.business_name === "Gamma Smiles");
     expect(alpha).toBeTruthy();
     expect(alpha!.evidence).toHaveLength(1);
+    expect(alpha!.qualification_state).toBe("evidence_backed");
+    expect(alpha!.recommended_next_action).toMatch(/review the cited evidence/i);
+    expect(alpha!.signal_records).toMatchObject([{
+      signal: "Online booking page",
+      source: "alpha-dental.example",
+      evidence_url: "https://alpha-dental.example/about",
+      confidence: 0.84,
+      client_fit: "An online booking workflow may fit the stated appointment automation service.",
+    }]);
+    expect(Date.parse(alpha!.signal_records[0].recorded_at ?? "")).not.toBeNaN();
     expect(alpha!.public_contact.email).toBe("hello@alpha-dental.example");
     expect(existing!.duplicate_status).toBe("duplicate");
+    expect(existing!.qualification_state).toBe("duplicate");
     expect(existing!.duplicate_matches?.[0]?.kind).toBe("crm_company");
     expect(gamma!.evidence).toHaveLength(0);
+    expect(gamma!.qualification_state).toBe("needs_evidence");
     expect(gamma!.score_breakdown.problem_evidence).toBe(0);
   }, 30000);
 

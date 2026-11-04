@@ -166,7 +166,7 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
       action: { bookingId: b.id }, targetType: "appointment_booking", targetId: b.id, targetLabel: held.contactName || undefined,
       reason: req.requestSource === "staff_chat"
         ? "A team member selected and explicitly confirmed this contact and time in AI Employee Chat. The booking still needs your approval."
-        : "Your Appointment Setter found this time on your real calendar and the customer asked to book it.",
+        : "AI Growth Partner found this time on your real calendar and the customer asked to book it.",
       expectedEffect: req.requestSource === "staff_chat"
         ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
         : "The appointment is added to your calendar and the customer is told it is confirmed.",

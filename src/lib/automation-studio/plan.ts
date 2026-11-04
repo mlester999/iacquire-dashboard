@@ -120,7 +120,7 @@ export function paidThroughProblem(value: string, now = new Date()): string | nu
 export const STUDIO_LAPSE_POLICY = {
   paused: "Workflows built in Automation Studio are paused. Runs already in progress wait; none is failed or cancelled because of the lapse.",
   kept: "Your workflows, their versions, run history and conversations are kept for as long as your workspace exists.",
-  unaffected: "Your CRM, AI employees and their schedules, n8n / Zapier / Make connections, webhooks and the API keep working.",
+  unaffected: "Your CRM, AI Growth Partner and its schedules, n8n / Zapier / Make connections, webhooks and the API keep working.",
   resume: "When the plan is active again, each workflow stays off until someone checks it still works and turns it on.",
 } as const;
 
@@ -137,7 +137,7 @@ export type StudioMetric = (typeof STUDIO_METRICS)[number];
 export const STUDIO_METRIC_LABELS: Record<StudioMetric, string> = {
   runs_started: "Workflow runs", runs_refused: "Runs not started (limit or plan)", steps_executed: "Steps executed", step_failures: "Step failures",
   step_retries: "Step retries", test_runs: "Test runs", builder_messages: "AI Builder messages", builder_input_tokens: "AI Builder input tokens",
-  builder_output_tokens: "AI Builder output tokens", employee_invocations: "AI employee requests", integration_calls: "Integration calls",
+  builder_output_tokens: "AI Builder output tokens", employee_invocations: "AI Growth Partner requests", integration_calls: "Integration calls",
 };
 
 /** The limits that can be set per workspace. Every one is a number: there is no "unlimited" unless an agency member sets a high one. */
@@ -160,7 +160,7 @@ export const STUDIO_DEFAULT_LIMITS: StudioLimits = {
 
 export const LIMIT_LABELS: Record<LimitKey, string> = {
   monthlyRuns: "Workflow runs per month", monthlySteps: "Steps per month", monthlyBuilderMessages: "AI Builder messages per month",
-  monthlyEmployeeInvocations: "AI employee requests per month", monthlyIntegrationCalls: "Integration calls per month",
+  monthlyEmployeeInvocations: "AI Growth Partner requests per month", monthlyIntegrationCalls: "Integration calls per month",
   maxActiveWorkflows: "Workflows switched on", maxLiveRuns: "Runs in progress at once",
 };
 

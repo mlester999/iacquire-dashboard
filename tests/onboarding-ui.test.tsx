@@ -44,7 +44,7 @@ const draft: Suggestion = { questionId: "a.description", value: "Marko Bar is a 
 
 function setup(current = "a.description", extra: StoredAnswers = {}, enabledRoles: AgentRoleKey[] = [], props: Partial<React.ComponentProps<typeof AdaptiveOnboarding>> = {}) {
   const answers = { "a.business_name": row("Marko Bar"), "a.industry": row("real_estate"), "a.business_model": row("mixed"), ...extra };
-  const session: OnboardingSession = { questionnaireVersion: 2, status: "draft", revision: 1, currentQuestionId: current, answers, progress: computeProgress(answers, planScope(enabledRoles)), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles, websiteAnalysis: null };
+  const session: OnboardingSession = { workforceModel: "legacy", questionnaireVersion: 2, status: "draft", revision: 1, currentQuestionId: current, answers, progress: computeProgress(answers, planScope(enabledRoles)), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles, websiteAnalysis: null };
   let revision = 1;
   const api = {
     save: vi.fn<OnboardingApi["save"]>().mockImplementation(async () => ({ ok: true, data: { revision: ++revision, rejected: {}, staleBase: false } })),
@@ -295,25 +295,25 @@ describe("premium onboarding interaction", () => {
   it("says out loud that a booking calendar was drafted from the answers, and that it is not live", async () => {
     const { toast } = await import("sonner");
     await approveWith({ state: "created", typesAdded: 2, skipped: [] });
-    expect(toast.success).toHaveBeenCalledWith("Your AI team is being prepared.", expect.objectContaining({ description: expect.stringMatching(/drafted a booking calendar with 2 appointment types.*takes no bookings until you assign a host and activate it/) }));
+    expect(toast.success).toHaveBeenCalledWith("Your AI Growth Partner is being prepared.", expect.objectContaining({ description: expect.stringMatching(/drafted a booking calendar with 2 appointment types.*takes no bookings until you assign a host and activate it/) }));
   });
 
   it("says nothing about a calendar when none was drafted or the draft was skipped", async () => {
     const { toast } = await import("sonner");
     await approveWith({ state: "skipped", reason: "You already have a calendar.", typesAdded: 0, skipped: [] });
-    expect(toast.success).toHaveBeenCalledWith("Your AI team is being prepared.");
+    expect(toast.success).toHaveBeenCalledWith("Your AI Growth Partner is being prepared.");
   });
 
   it("lists what a re-submission kept, held, skipped or left unchanged after the calendar sentence", async () => {
     const { toast } = await import("sonner");
     const notes = [
       { key: "knowledge.kept", message: "We kept your own wording in Policies." },
-      { key: "employees.held", message: "2 employee updates are waiting for iAcquire's review. Until then, those employees keep the setup already approved." },
+      { key: "growth_partner.held", message: "Growth Partner setup changes are waiting for iAcquire's review. Until then, it keeps the setup already approved." },
       { key: "scheduling.drift", message: "Free inspection: your answers now say a 15-minute gap after appointments, your live calendar has no gap after appointments. Your live calendar was not changed: update it in Calendars & Types." },
     ];
     await approveWith({ state: "unchanged", typesAdded: 0, skipped: [], host: { choice: "owner", state: "assigned" } }, notes);
     const call = vi.mocked(toast.success).mock.calls.at(-1)!;
-    expect(call[0]).toBe("Your AI team is being prepared.");
+    expect(call[0]).toBe("Your AI Growth Partner is being prepared.");
     const view = render(<>{(call[1] as { description: React.ReactNode }).description}</>);
     const list = view.getByTestId("outcome-notes");
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(notes.map((n) => n.message));
@@ -591,7 +591,7 @@ describe("a link that opens one question and brings the person back", () => {
 });
 
 describe("the questionnaire page reads the link's question and way back", () => {
-  const session = (): OnboardingSession => ({ questionnaireVersion: 2, status: "submitted", revision: 4, currentQuestionId: "a.description", answers: {}, progress: computeProgress({}, undefined), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles: [], websiteAnalysis: null });
+  const session = (): OnboardingSession => ({ workforceModel: "legacy", questionnaireVersion: 2, status: "submitted", revision: 4, currentQuestionId: "a.description", answers: {}, progress: computeProgress({}, undefined), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false, enabledRoles: [], websiteAnalysis: null });
   const open = async (params: { question?: string | string[]; return?: string | string[] }) => {
     server.session = session();
     const element = (await OnboardingPage({ searchParams: Promise.resolve(params) })) as React.ReactElement<{ startQuestionId: string | null; returnTo: string | null }>;

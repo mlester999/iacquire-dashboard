@@ -73,7 +73,14 @@ export const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toI
  * and only ever for client organizations: the agency's own workspace has no client setup.
  */
 export async function ensureSetupInstance(db: Queryable, orgId: string, actorUserId: string | null = null): Promise<{ id: string; created: boolean } | null> {
-  const { rows: org } = await db.query<{ kind: string }>("select kind from organizations where id = $1", [orgId]);
+  const { rows: org } = await db.query<{ kind: string; growth_partner: boolean }>(
+    `select o.kind,
+            exists(select 1 from ai_growth_partners p join agent_instances a
+                     on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
+                    where p.org_id = o.id and a.role_key = 'growth_partner' and a.enabled) as growth_partner
+       from organizations o where o.id = $1`,
+    [orgId],
+  );
   if (org[0]?.kind !== "client") return null;
   const existing = await db.query<{ id: string }>("select id from client_setup_instances where org_id = $1", [orgId]);
   if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
@@ -92,13 +99,36 @@ export async function ensureSetupInstance(db: Queryable, orgId: string, actorUse
   await db.query(
     `insert into client_setup_tasks (org_id, instance_id, template_key, title, client_title, description, completion_notice, section,
        completion_mode, check_key, service, required, requires_evidence, requires_client_response, client_action, sort_order, service_excluded, crm_provider)
-     select $1, $2, tt.key, tt.title, tt.client_title, tt.description, tt.completion_notice, tt.section, tt.completion_mode, tt.check_key,
-            tt.service, tt.required, tt.requires_evidence, tt.requires_client_response, tt.client_action, tt.sort_order,
+     select $1, $2, tt.key,
+            case when $3::boolean then coalesce(tt.growth_partner_title, tt.title) else case tt.key
+              when 'ai_employees' then 'Six client-specific Hermes AI employees configured'
+              when 'ai_configuration' then 'AI employee configuration drafts prepared'
+              when 'ai_profiles' then 'Dedicated AI employee profiles provisioned'
+              when 'integration_tests' then 'AI workforce and integration tests passed'
+              else tt.title end end,
+            case when $3::boolean then coalesce(tt.growth_partner_client_title, tt.client_title) else case tt.key
+              when 'ai_employees' then 'Your six AI employees are configured'
+              when 'ai_profiles' then 'Your private AI employees are prepared'
+              else tt.client_title end end,
+            case when $3::boolean then coalesce(tt.growth_partner_description, tt.description) else case tt.key
+              when 'ai_employees' then 'Each AI employee gets its own private environment and is checked live before it is marked ready.'
+              when 'ai_configuration' then 'We prepare each included employee around your business knowledge, tone and approved responsibilities.'
+              when 'ai_profiles' then 'We prepare separate employee identities for your company. They become ready only after successful connection and safety checks.'
+              when 'integration_tests' then 'We run live checks across your AI employees and connected tools before activation.'
+              when 'knowledge_review' then 'We review your approved business information so your AI employees have accurate reference material.'
+              else tt.description end end,
+            case when $3::boolean then coalesce(tt.growth_partner_completion_notice, tt.completion_notice) else case when tt.key = 'ai_employees' then 'Your AI team is ready' else tt.completion_notice end end,
+            tt.section, tt.completion_mode, tt.check_key,
+            tt.service, tt.required, tt.requires_evidence, tt.requires_client_response,
+            case when $3::boolean then coalesce(tt.growth_partner_client_action, tt.client_action)
+                 when tt.key = 'ai_employees' then '{"type":"approve","label":"Approve your AI employee configuration","instructions":"Review how each AI employee will work and communicate in AI Workforce, then approve so we can finish and test them."}'::jsonb
+                 else tt.client_action end,
+            tt.sort_order,
             (tt.service is not null and not (tt.service = any(i.services))) or (tt.crm_provider is not null and not app.setup_crm_uses($1, tt.crm_provider)),
             tt.crm_provider
      from client_setup_template_tasks tt join client_setup_templates t on t.id = tt.template_id and t.is_default
      join client_setup_instances i on i.id = $2`,
-    [orgId, instanceId],
+    [orgId, instanceId, org[0].growth_partner],
   );
   await db.query(
     `insert into client_setup_task_dependencies (org_id, task_id, depends_on_task_id)

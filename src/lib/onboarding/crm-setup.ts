@@ -123,7 +123,7 @@ export interface CrmSetupFacts {
   };
   channels: Record<GuideChannel, { level: Level; summary: string; native: boolean; credentialStored: boolean; tested: boolean; enabled: boolean }>;
   workflows: { level: Level; summary: string; total: number; drafts: number; active: number; awaitingApproval: number; proven: number; failing: number };
-  ai: { level: Level; summary: string; enabled: number; ready: number; failing: number; notReady: number };
+  ai: { model?: "none" | "legacy" | "growth_partner" | "mixed"; level: Level; summary: string; enabled: number; ready: number; failing: number; notReady: number };
   checks: { applicable: number; verified: number; failed: number; lastRunAt: string | null };
   setup: { state: "in_setup" | "ready_for_review" | "activated" | null; percent: number | null; clientActions: number; readyRequestedAt: string | null };
   /** Answers from company onboarding, used until the guide's own question is answered. */
@@ -338,7 +338,7 @@ function schedulingStep(f: CrmSetupFacts): CrmSetupStep {
 
 function communicationsStep(f: CrmSetupFacts, answers: CrmSetupAnswers): CrmSetupStep {
   const title = "Communication providers";
-  const intro = "The email, SMS and WhatsApp senders your team and AI employees reply from. Each one is verified by a live test that sends nothing.";
+  const intro = "The email, SMS and WhatsApp senders your team and AI Growth Partner reply from. Each one is verified by a live test that sends nothing.";
   const links: CrmSetupLink[] = [{ label: "Communication Settings", path: "/settings/communications" }];
   const questions: CrmSetupQuestion[] = ["channels"];
   const wanted = effectiveAnswers(f, answers).channels;
@@ -368,14 +368,30 @@ function workflowsStep(f: CrmSetupFacts): CrmSetupStep {
 }
 
 function aiStep(f: CrmSetupFacts): CrmSetupStep {
-  const title = "AI roles";
-  const intro = "Your AI employees and what each one may do.";
-  const links: CrmSetupLink[] = [{ label: "AI Employees", path: "/employees", portal: true }];
   const a = f.ai;
+  const model = a.model ?? "legacy";
+  const title = model === "growth_partner" || model === "none" ? "AI Growth Partner" : model === "mixed" ? "Growth Partner migration" : "Existing AI profiles";
+  const intro = model === "growth_partner" || model === "none"
+    ? "Your AI Growth Partner and its approved tools."
+    : model === "mixed"
+      ? "One Growth Partner is being introduced alongside existing profiles. Their current settings, schedules and history remain available while iAcquire reviews the migration."
+      : "Your existing profiles remain available while iAcquire reviews the Growth Partner migration.";
+  const links: CrmSetupLink[] = model === "legacy"
+    ? [{ label: "Existing profiles", path: "/employees", portal: true }]
+    : [{ label: "AI Growth Partner", path: "/growth-partner", portal: true }];
+  if (model === "mixed") {
+    const status = a.failing ? "failed" : "needs_agency_action";
+    return step("ai_roles", title, intro, {
+      status,
+      summary: `${a.enabled} profiles are enabled; ${a.ready} passed a recent live check and ${a.failing} failed.`,
+      next: "iAcquire reviews the migration and preserves the existing profile history.",
+      links: [...links, { label: "Existing profiles", path: "/employees", portal: true }],
+    });
+  }
   if (!a.enabled) return step("ai_roles", title, intro, { status: "not_started", summary: a.summary, links });
   if (a.failing) return step("ai_roles", title, intro, { status: "failed", summary: a.summary, next: "iAcquire is fixing the connection.", links });
   if (a.level === "verified") return step("ai_roles", title, intro, { status: "verified", summary: a.summary, links });
-  return step("ai_roles", title, intro, { status: "needs_agency_action", summary: a.summary, next: "iAcquire sets up each AI employee's private profile and runs its live check.", links });
+  return step("ai_roles", title, intro, { status: "needs_agency_action", summary: a.summary, next: model === "growth_partner" || model === "none" ? "iAcquire verifies the dedicated runtime, identity and permitted tools." : "iAcquire reviews the existing profiles and their Growth Partner migration.", links });
 }
 
 function verifyStep(f: CrmSetupFacts): CrmSetupStep {

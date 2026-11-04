@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, isWorkforceRoleKey, type WorkforceRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
@@ -41,7 +41,7 @@ export interface ScheduleView {
   id: string;
   capability: string;
   capabilityLabel: string;
-  employeeRole: AgentRoleKey;
+  employeeRole: WorkforceRoleKey;
   employeeName: string;
   cadence: ScheduleCadence;
   intervalMinutes: number;
@@ -76,9 +76,9 @@ function assertSchedulableCapability(capability: string) {
   return definition;
 }
 
-type AgentRow = { id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: AgentStatus; active_config_version_id: string | null };
+type AgentRow = { id: string; role_key: WorkforceRoleKey; display_name: string; enabled: boolean; status: AgentStatus; active_config_version_id: string | null };
 
-async function resolveAgent(ctx: OrgContext, role: AgentRoleKey, transaction?: Queryable): Promise<AgentRow> {
+async function resolveAgent(ctx: OrgContext, role: WorkforceRoleKey, transaction?: Queryable): Promise<AgentRow> {
   const read = async (db: Queryable) => {
     const { rows } = await db.query<AgentRow>(
       "select id, role_key, display_name, enabled, status, active_config_version_id from agent_instances where org_id = $1 and role_key = $2",
@@ -101,7 +101,7 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
       id: string; capability: string; cadence: ScheduleCadence; interval_minutes: number; timezone: string; business_hours: unknown; payload: unknown; enabled: boolean;
       recurrence_rule: unknown;
       next_run_at: Date; updated_at: string; last_run_at: Date | null; last_job_id: string | null; last_skipped_reason: string | null; last_skipped_at: Date | null;
-      employee_role: AgentRoleKey; employee_name: string;
+      employee_role: WorkforceRoleKey; employee_name: string;
     }>(
       `select s.id, s.capability, s.cadence, s.interval_minutes, s.recurrence_rule, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.updated_at::text as updated_at, s.last_run_at, s.last_job_id,
               s.last_skipped_reason, s.last_skipped_at,
@@ -149,6 +149,8 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
 
 export interface SaveWorkforceScheduleInput {
   capability: string;
+  /** Preserve the runtime that initiated a legacy role-specific chat request. General UI requests omit this and prefer the unified Growth Partner. */
+  agentRole?: WorkforceRoleKey;
   cadence: string;
   enabled: boolean;
   businessHours?: unknown;
@@ -186,8 +188,35 @@ export async function saveScheduleInTransaction(
   if (recurrenceRule && ((recurrenceRule.kind === "daily" && cadence !== "daily") || (recurrenceRule.kind === "weekly" && cadence !== "weekly"))) {
     throw new AppError("invalid_input", "The recurrence rule must match the selected daily or weekly cadence.");
   }
-  const role = definition.allowedRoles[0];
+  let role = definition.allowedRoles[0];
   if (!role) throw new AppError("invalid_input", "That capability has no eligible employee role.");
+  if (input.agentRole) {
+    if (!definition.allowedRoles.includes(input.agentRole)) {
+      throw new AppError("invalid_input", "That employee role cannot run this scheduled work.");
+    }
+    role = input.agentRole;
+  }
+  if (input.expectedExistingSchedule?.id) {
+    const { rows: existingRows } = await db.query<{ role_key: string }>(
+      `select a.role_key
+         from ai_work_schedules s
+         join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
+        where s.id = $1 and s.org_id = $2 and s.capability = $3
+        for update of s`,
+      [input.expectedExistingSchedule.id, ctx.org.orgId, definition.key],
+    );
+    const existingRole = existingRows[0]?.role_key;
+    if (!existingRole || !isWorkforceRoleKey(existingRole) || !definition.allowedRoles.includes(existingRole)) {
+      throw new AppError("conflict", "The saved schedule changed after this preview. Review the current schedule and request a fresh preview.");
+    }
+    role = existingRole;
+  } else if (!input.agentRole && definition.allowedRoles.includes(AI_GROWTH_PARTNER_ROLE_KEY)) {
+    const { rows: partnerRows } = await db.query<{ id: string }>(
+      "select id from agent_instances where org_id = $1 and role_key = $2 limit 1",
+      [ctx.org.orgId, AI_GROWTH_PARTNER_ROLE_KEY],
+    );
+    if (partnerRows[0]) role = AI_GROWTH_PARTNER_ROLE_KEY;
+  }
   let payload: Record<string, unknown> = {};
   if (definition.key === "lead_research") {
     const prompt = typeof input.payload === "object" && input.payload !== null && !Array.isArray(input.payload) && typeof (input.payload as Record<string, unknown>).prompt === "string"
@@ -425,7 +454,7 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         continue;
       }
       const definition = capabilityDefinition(schedule.capability);
-      const agent = await db.query<{ role_key: AgentRoleKey; enabled: boolean; status: AgentStatus; active_config_version_id: string | null }>(
+      const agent = await db.query<{ role_key: WorkforceRoleKey; enabled: boolean; status: AgentStatus; active_config_version_id: string | null }>(
         "select role_key, enabled, status, active_config_version_id from agent_instances where id = $1 and org_id = $2",
         [schedule.agent_instance_id, schedule.org_id],
       );

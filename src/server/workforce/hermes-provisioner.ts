@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { isAgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey } from "@/lib/agents";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -161,7 +161,7 @@ async function claimDeprovisionInTransaction(db: Queryable, gatewayId: string) {
     [candidate.id],
   );
   const row = rows[0];
-  if (!row || !isAgentRoleKey(row.role_key)) return null;
+  if (!row || !isWorkforceRoleKey(row.role_key)) return null;
   const expectedProfile = suggestedProfileName(row.slug, row.role_key);
   if (!row.hermes_profile || row.hermes_profile !== expectedProfile || !row.hermes_profile.startsWith("c-") || row.hermes_gateway_id !== gatewayId) {
     throw new AppError("conflict", "The client profile mapping does not match its tenant and role identity.");
@@ -267,7 +267,7 @@ async function claimInTransaction(db: Queryable, gatewayId: string) {
     [candidate.id, DEFAULT_BLOCKED_TOOLSETS],
   );
   const row = rows[0];
-  if (!row || !isAgentRoleKey(row.role_key)) return null;
+  if (!row || !isWorkforceRoleKey(row.role_key)) return null;
   const expectedProfile = suggestedProfileName(row.slug, row.role_key);
   const profile = row.kind === "provision" ? expectedProfile : row.hermes_profile;
   if (!profile || profile !== expectedProfile || !profile.startsWith("c-")) {
@@ -444,7 +444,7 @@ export async function completeHermesProvisionerJob(raw: unknown, gatewayId: stri
     }
 
     if (input.kind !== job.kind || input.orgId !== job.org_id || input.agentId !== job.agent_instance_id ||
-        !isAgentRoleKey(job.role_key) || job.org_kind !== "client" || !job.enabled ||
+        !isWorkforceRoleKey(job.role_key) || job.org_kind !== "client" || !job.enabled ||
         job.gateway_status !== "connected" || job.gateway_type !== "multiplexed_profiles" ||
         job.profile_creation_status !== "restricted_service_verified" || !job.isolation_verified_at ||
         job.gateway_has_agency_profiles ||
@@ -587,7 +587,7 @@ async function completeDeprovisionJob(input: RevokeCompletion, gatewayId: string
         !job.lease_expires_at || new Date(job.lease_expires_at).getTime() <= Date.now()) {
       throw new AppError("conflict", "The provisioning lease is no longer current.");
     }
-    const sameIdentity = input.orgId === job.org_id && input.agentId === job.agent_instance_id && job.org_kind === "client" && !job.is_demo && isAgentRoleKey(job.role_key) &&
+    const sameIdentity = input.orgId === job.org_id && input.agentId === job.agent_instance_id && job.org_kind === "client" && !job.is_demo && isWorkforceRoleKey(job.role_key) &&
       job.hermes_profile === input.profile && job.hermes_gateway_id === gatewayId && input.profile === suggestedProfileName(job.org_slug, job.role_key);
     if (!sameIdentity) {
       await failJob(db, job.org_id, job.agent_instance_id, input.jobId, Number(job.attempt_count), "identity_mismatch", Number(job.job_age_seconds));

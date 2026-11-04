@@ -63,6 +63,11 @@ export function planScope(enabledRoles: readonly AgentRoleKey[]): QuestionScope 
   return enabledRoles.length ? { roles: enabledRoles } : undefined;
 }
 
+/** A Growth Partner has the full capability set, so its onboarding must not be scoped by legacy role entitlements. */
+export function onboardingScope(enabledRoles: readonly AgentRoleKey[], workforceModel: "legacy" | "growth_partner" = "legacy"): QuestionScope | undefined {
+  return workforceModel === "growth_partner" ? undefined : planScope(enabledRoles);
+}
+
 /** A question with `roles` is asked only when at least one of them is in the plan. */
 const inPlan = (q: QuestionDef, scope?: QuestionScope) => !q.roles || !scope || q.roles.some((role) => scope.roles.includes(role));
 
@@ -559,6 +564,9 @@ export interface ConnectionFacts {
   crmLinked: boolean;
   aiEmployeesVerified: number;
   aiEmployeesTotal: number;
+  /** Runtime readiness for the single Growth Partner identity, when the server queried it separately. */
+  growthPartnerRuntimeVerified?: number;
+  growthPartnerRuntimeTotal?: number;
   automationMapped: boolean;
   channels: Record<"sms" | "whatsapp" | "email", { enabled: boolean; registration: string }>;
   calendarConnected: boolean;
@@ -625,6 +633,7 @@ const COUNT_WORDS = ["no", "one", "two", "three", "four", "five", "six"];
 export const countWord = (n: number): string => COUNT_WORDS[n] ?? String(n);
 
 export interface ReviewModel {
+  workforceModel: "legacy" | "growth_partner";
   sections: Array<{ id: SectionId; title: string; rows: ReviewRow[] }>;
   plan: PlanSummary;
   employees: Array<{ role: AgentRoleKey; name: string; tagline: string; configuredFrom: string[]; gaps: string[] }>;
@@ -638,7 +647,7 @@ export interface ReviewModel {
   canSubmit: boolean;
 }
 
-export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[], scope?: QuestionScope, addOns: PlanAddOn[] = []): ReviewModel {
+export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[], scope?: QuestionScope, addOns: PlanAddOn[] = [], workforceModel: ReviewModel["workforceModel"] = "legacy"): ReviewModel {
   const stored = effectiveStored(storedAll, scope);
   const a = answersOf(stored);
   const visible = visibleQuestions(a, scope);
@@ -687,8 +696,8 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   const native = facts.crmMode === "native";
   const permissions = [
     native
-      ? "Read and update contacts, pipelines and opportunities in your iAcquire CRM, within the permissions you give each AI employee."
-      : "Read and update contacts, pipelines and opportunities in your CRM location, once iAcquire has linked and verified it.",
+      ? `Read and update contacts, pipelines and opportunities in your iAcquire CRM, within the permissions you give ${workforceModel === "growth_partner" ? "the AI Growth Partner" : "each AI employee"}.`
+      : `Read and update contacts, pipelines and opportunities in your CRM location, once iAcquire has linked and verified it${workforceModel === "growth_partner" ? " for the AI Growth Partner" : ""}.`,
     "Read your appointment calendar to offer real availability. Nothing is booked from a guessed time.",
     "Reply to customers as an AI assistant only on channels you enable, and only after you turn automatic replies on.",
     "Create staff hand-offs. Your owner is notified first; other eligible staff are informed.",
@@ -702,7 +711,11 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
       ? { key: "crm", label: "CRM not set up yet", why: "Your iAcquire CRM is ready to use. iAcquire applies your industry Blueprint (pipelines, tags and fields); the CRM setup guide shows what's left." }
       : { key: "crm", label: "CRM location not linked", why: "iAcquire links your CRM location after you submit. Contacts and pipelines sync only after it is verified." });
   }
-  if (facts.aiEmployeesVerified < facts.aiEmployeesTotal) missingConnections.push({ key: "ai", label: `AI employees not yet online (${facts.aiEmployeesVerified}/${facts.aiEmployeesTotal})`, why: "Each employee goes online only after a live connection check passes." });
+  const runtimeTotal = workforceModel === "growth_partner" ? facts.growthPartnerRuntimeTotal ?? 1 : facts.aiEmployeesTotal;
+  const runtimeVerified = workforceModel === "growth_partner" ? facts.growthPartnerRuntimeVerified ?? 0 : facts.aiEmployeesVerified;
+  if (runtimeVerified < runtimeTotal) missingConnections.push(workforceModel === "growth_partner"
+    ? { key: "ai", label: `AI Growth Partner not yet online (${runtimeVerified}/${runtimeTotal})`, why: "The partner goes online only after its dedicated runtime, identity and permitted tools pass a live check." }
+    : { key: "ai", label: `AI employees not yet online (${runtimeVerified}/${runtimeTotal})`, why: "Each employee goes online only after a live connection check passes." });
   if (!facts.automationMapped) missingConnections.push({ key: "automation", label: "Automation not set up", why: "iAcquire connects approved workflows to your workspace. They stay inactive until tested." });
   for (const ch of wanted as Array<"sms" | "whatsapp" | "email">) {
     if (ch in facts.channels && !facts.channels[ch].enabled) {
@@ -728,12 +741,12 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   humanTasks.push(native
     ? { key: "crm", label: "Apply your industry CRM Blueprint and check pipelines, tags and fields", owner: "iacquire" }
     : { key: "crm", label: "Link your CRM location and apply the iAcquire master snapshot", owner: "iacquire" });
-  humanTasks.push({ key: "profiles", label: enabledRoles.length ? `Create and verify your ${countWord(enabledRoles.length)} AI employee${enabledRoles.length === 1 ? "" : "s"}` : "Create and verify your AI employees", owner: "iacquire" });
+  humanTasks.push({ key: "profiles", label: workforceModel === "growth_partner" ? "Prepare and verify your AI Growth Partner" : enabledRoles.length ? `Create and verify your ${countWord(enabledRoles.length)} AI employee${enabledRoles.length === 1 ? "" : "s"}` : "Create and verify your AI employees", owner: "iacquire" });
   humanTasks.push({ key: "test", label: "Run safe tests before anything customer-facing is activated", owner: "iacquire" });
 
   const check = submitCheck(storedAll, scope);
   const plan: PlanSummary = { included: AGENT_ROLE_KEYS.filter((r) => enabledRoles.includes(r)), notIncluded: AGENT_ROLE_KEYS.filter((r) => !enabledRoles.includes(r)), addOns };
-  return { sections, plan, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
+  return { workforceModel, sections, plan, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
 }
 
 /**

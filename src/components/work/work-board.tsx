@@ -16,7 +16,7 @@ import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTrig
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
 import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { nextWorkforceScheduleAt } from "@/lib/workforce-calendar-view";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
@@ -92,7 +92,7 @@ export function WorkBoard({
   reports?: ProactiveReportView[];
   monitoring?: MonitoringStatus | null;
   focusReportId?: string | null;
-  employeeNames?: Partial<Record<AgentRoleKey, string>>;
+  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   referenceTime: string;
   focusScheduleId?: string | null;
 }) {
@@ -183,7 +183,7 @@ export function WorkBoard({
     if (!res.ok) return toast.error(res.error);
     toast.success(enabled ? "Schedule enabled" : "Schedule paused", {
       description: enabled && !scheduleOperatorEnabled
-        ? "It will not run until the operator enables AI workforce schedules."
+        ? "It will not run until scheduled work is enabled for the workspace."
         : "The change is recorded in the audit trail.",
     });
     router.refresh();
@@ -221,7 +221,7 @@ export function WorkBoard({
     if (!res.ok) return toast.error(res.error);
     toast.success(enabled ? "Event trigger enabled" : "Event trigger paused", {
       description: enabled && !triggerOperatorEnabled
-        ? "It will not run until the operator enables AI workforce triggers."
+        ? "It will not run until event-triggered work is enabled for the workspace."
         : "The change is recorded in the audit trail.",
     });
     router.refresh();
@@ -315,7 +315,7 @@ export function WorkBoard({
           icon={<CalendarClock />}
           tone="neutral"
           title="Scheduled work"
-          description="A read-only review or one explicitly approved Lead Hunter research assignment. It only runs when both the row and the operator switch are enabled."
+          description="A read-only review or one explicitly approved AI Growth Partner research assignment. It only runs when both the row and the operator switch are enabled."
           action={
             <StatusPill tone={scheduleOperatorEnabled ? "success" : "warning"} size="sm">
               {scheduleOperatorEnabled ? "Operator switch on" : "Operator switch off"}
@@ -379,7 +379,7 @@ export function WorkBoard({
                   aria-describedby="lead-research-assignment-hint"
                 />
                 <p id="lead-research-assignment-hint" className="mt-1 text-[12px] leading-relaxed text-muted">
-                  The Lead Hunter will run exactly this assignment on the cadence, using public sources and the existing research gate. It never contacts a prospect. The schedule is saved paused, and the operator switch and the Lead Hunter&apos;s readiness are still required.
+                  AI Growth Partner will run exactly this assignment on the cadence, using public sources and the existing research gate. It never contacts a prospect. The schedule is saved paused, and the operator switch and Growth Partner readiness are still required.
                 </p>
                 {!selectedScheduleAction?.available && <p className="mt-1 text-[12px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
               </div>
@@ -422,7 +422,7 @@ export function WorkBoard({
             </div>
             {!scheduleOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
+                Scheduled work is paused for this workspace, so an enabled schedule will not create jobs yet.
               </p>
             )}
             {schedules.length === 0 ? (
@@ -502,7 +502,7 @@ export function WorkBoard({
             </div>
             {!triggerOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
-                The operator switch is off (<code className="font-mono text-[12px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
+                Event-triggered work is paused for this workspace, so enabled triggers will not create jobs yet.
               </p>
             )}
             {triggers.length === 0 ? (

@@ -525,7 +525,7 @@ function Overview({ issues, numbers, onSelect, readOnly }: { issues: ReturnType<
         </div>
       )}
       <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-muted">
-        Every step runs on iAcquire&apos;s scheduler and is checked again when it runs: a paused workspace or AI employee, missing consent, quiet hours and sending limits all still apply. Steps that send messages only send after the owner approves the published version.
+        Every step runs on iAcquire&apos;s scheduler and is checked again when it runs: a paused workspace or AI profile, missing consent, quiet hours and sending limits all still apply. Steps that send messages only send after the owner approves the published version.
       </p>
     </div>
   );

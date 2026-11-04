@@ -254,7 +254,7 @@ export function PipelineBoard({
         <EmptyState
           icon={<KanbanSquare className="size-5" />}
           title="No deals in this pipeline yet"
-          description="Deals you add, deals created from bookings and forms, and deals your AI employees open will all land here."
+          description="Deals you add, deals created from bookings and forms, and deals your AI Growth Partner opens will all land here."
           action={canMove ? <Button onClick={() => setNewDeal({})}><Plus className="size-4" />Add the first deal</Button> : undefined}
         />
       )}

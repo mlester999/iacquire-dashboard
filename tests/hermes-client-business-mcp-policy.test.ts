@@ -79,6 +79,24 @@ describe("the read tools a client employee is offered", () => {
     expect(clientBusinessMcpToolNamesForRole("lead_hunter")).not.toContain("check_availability");
     expect(clientBusinessMcpToolNamesForRole("lead_hunter")).not.toContain("crm_summary_report");
   });
+
+  it("offers Growth Partner the reviewed CRM, calendar and inbox read set from one runtime role", () => {
+    const reads = ["find_contacts", "get_contact", "check_availability", "crm_summary_report", "list_opportunities", "get_conversation_history"];
+    expect(clientBusinessMcpToolNamesForRole("growth_partner")).toEqual([CONTEXT, ...reads]);
+    expect(clientBusinessMcpRuntimeNamesForRole("growth_partner")).toEqual([CONTEXT, ...reads].map((name) => `mcp__iacquire_business__${name}`).sort());
+    for (const name of reads) expect(ROLE_SCOPES.growth_partner).toContain(AGENT_TOOLS[name as AgentToolName].scope);
+  });
+
+  it("offers Growth Partner CRM changes only in the proposals phase, including opportunity stage updates", () => {
+    const reads = clientBusinessMcpToolNamesForRole("growth_partner");
+    const writes = clientBusinessProposalToolNamesForRole("growth_partner").sort();
+    expect(writes).toEqual(["apply_tag", "create_opportunity", "create_task", "move_opportunity_stage", "remove_tag", "update_contact"]);
+    expect(reads).not.toContain("move_opportunity_stage");
+    const offeredWithProposals = clientBusinessMcpToolNamesForRole("growth_partner", { proposals: true });
+    expect(offeredWithProposals.slice(0, reads.length)).toEqual(reads);
+    expect(offeredWithProposals.slice(reads.length).sort()).toEqual(writes);
+    expect(offeredWithProposals).not.toContain("request_appointment");
+  });
 });
 
 describe("a tool only the client tier offers", () => {
@@ -140,6 +158,14 @@ describe("the changes a client employee may propose", () => {
       const scopes = new Set<string>(ROLE_SCOPES[role]);
       for (const name of clientBusinessProposalToolNamesForRole(role)) expect(scopes.has(AGENT_TOOLS[name].scope), `${role} ${name}`).toBe(true);
     }
+  });
+
+  it("lets one Growth Partner propose reviewed CRM changes without offering messages or bookings", () => {
+    const proposals = clientBusinessProposalToolNamesForRole("growth_partner").sort();
+    expect(proposals).toEqual(["apply_tag", "create_opportunity", "create_task", "move_opportunity_stage", "remove_tag", "update_contact"]);
+    const offered = clientBusinessMcpToolNamesForRole("growth_partner", { proposals: true });
+    for (const name of NEVER_OFFERED) expect(offered).not.toContain(name);
+    for (const name of proposals) expect(ROLE_SCOPES.growth_partner).toContain(AGENT_TOOLS[name].scope);
   });
 });
 

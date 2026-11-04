@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Check, ShieldCheck, X } from "lucide-react";
 import { DIY_ROWS, IMPLEMENTATION_SETS, NEXT_STEPS, WHY_BLOCKS, faqs } from "@/lib/demo/showroom/content";
-import { SCOPE_NOTE } from "@/lib/demo/showroom/employees";
+import { SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { FaqItem, ScrollRegion, SectionHead, dollars } from "@/components/demo/showroom/ui";
 
 // "Why iAcquireOS?": the case, in order, with the objections answered. It has no state, no session and no client code, so it renders the same inside the demo room and on its own public
@@ -9,10 +9,10 @@ import { FaqItem, ScrollRegion, SectionHead, dollars } from "@/components/demo/s
 // that the figures depend on the tools a business would choose. The two prices passed in come from src/lib/billing.ts.
 
 const MANUAL = [
-  { task: "The first reply to an enquiry", manual: "Depends on who is free and who saw it first", ai: "Prepared quickly by an AI Employee, then approved by you" },
-  { task: "Booking the meeting", manual: "Messages back and forth to find a time", ai: "Times offered from your real calendar, confirmation prepared" },
-  { task: "Following up", manual: "Remembered, sometimes", ai: "A prepared nudge for deals that go quiet" },
-  { task: "Keeping records right", manual: "Duplicates and gaps build up", ai: "The CRM Manager flags them with a suggested fix" },
+  { task: "The first reply to an enquiry", manual: "Depends on who is free and who saw it first", ai: "The Growth Partner prepares a reply for your review" },
+  { task: "Booking the meeting", manual: "Messages back and forth to find a time", ai: "The Growth Partner checks availability and prepares a request" },
+  { task: "Following up", manual: "Remembered, sometimes", ai: "A relevant next step is prepared for review" },
+  { task: "Keeping records right", manual: "Duplicates and gaps build up", ai: "The Growth Partner flags possible duplicates and missing details" },
   { task: "Knowing what is working", manual: "A spreadsheet when someone finds the time", ai: "A weekly note that says where each figure comes from" },
 ];
 
@@ -25,7 +25,7 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
         as={heading}
         eyebrow="Why iAcquireOS?"
         title="Win the follow-up, without adding to your admin."
-        lead="iAcquireOS gives a business a CRM, a team of six AI Employees that prepare the repetitive work, and the people who set it all up. You stay in charge of everything that reaches a customer."
+        lead="iAcquireOS gives a business a CRM and one AI Growth Partner with six coordinated capabilities. The iAcquire team configures the system with you, and your approval rules stay in charge."
       />
 
       <ol className="space-y-5">
@@ -49,15 +49,15 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
       </ol>
 
       <section aria-labelledby="manual-heading" className="space-y-5">
-        <SectionHead as="h2" eyebrow="AI Employees, not more admin" title="The same work, with and without them" />
-        <ScrollRegion label="Table: the same work by hand and with AI Employees">
+        <SectionHead as="h2" eyebrow="AI Growth Partner, not more admin" title="The same work, with and without it" />
+        <ScrollRegion label="Table: the same work by hand and with the AI Growth Partner">
           <table className="w-full min-w-[640px] text-left text-[14px]">
-            <caption id="manual-heading" className="sr-only">Manual administration compared with AI Employees</caption>
+            <caption id="manual-heading" className="sr-only">Manual administration compared with the AI Growth Partner</caption>
             <thead className="bg-surface-2/70 text-[12px] uppercase tracking-[0.08em] text-muted">
               <tr>
                 <th scope="col" className="px-4 py-3 font-semibold">The work</th>
                 <th scope="col" className="px-4 py-3 font-semibold">By hand</th>
-                <th scope="col" className="px-4 py-3 font-semibold text-primary-ink">With AI Employees</th>
+                <th scope="col" className="px-4 py-3 font-semibold text-primary-ink">With the AI Growth Partner</th>
               </tr>
             </thead>
             <tbody>
@@ -153,9 +153,9 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
             You stay in control
           </h2>
           <ul className="space-y-2 text-[14px] leading-relaxed text-ink-2">
-            <li>Anything that reaches a customer or changes a record waits for your approval</li>
-            <li>Each AI Employee has one scoped job and only works with your own data</li>
-            <li>Every action and approval is recorded: who did what, and when</li>
+            <li>Customer-facing actions follow your approval rules</li>
+            <li>One employee identity has six capability areas, each subject to workspace and tool permissions</li>
+            <li>Actions and approvals are recorded with their outcome and time</li>
           </ul>
         </div>
         <div className="sx-panel space-y-3 p-6">

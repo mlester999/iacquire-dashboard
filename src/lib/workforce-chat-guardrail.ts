@@ -1,4 +1,4 @@
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { asksAboutWhatHappened, withoutNonBookingUses } from "@/lib/workforce-chat-booking-intent";
 
 export type WorkforceChatRefusalReason =
@@ -25,24 +25,24 @@ const follows = (text: string, action: RegExp, object: RegExp) => action.test(te
 /**
  * Stop clear requests for effects that have no employee-scoped application executor. Hermes's
  * public research tools are shared across profiles, so role instructions alone cannot enforce
- * that a non-Lead-Hunter never performs prospect research. This guard runs before any Hermes
+ * that a role without the research capability never performs prospect research. This guard runs before any Hermes
  * submission; authorized read-only jobs are handled separately by the capability allowlist.
  */
-export function workforceChatRefusal(role: AgentRoleKey, content: string, employeeName?: string): WorkforceChatRefusal | null {
+export function workforceChatRefusal(role: WorkforceRoleKey, content: string, employeeName?: string): WorkforceChatRefusal | null {
   const text = normalize(content);
   if (!text) return null;
 
   const bookingReadRequest = role === "appointment_setter"
     && /\b(?:check|find|show|list|review)\b.{0,60}\b(?:calendar|availability|available slots|appointment slots)\b/.test(text);
 
-  if (role !== "lead_hunter" && follows(
+  if (role !== "lead_hunter" && role !== "growth_partner" && follows(
     text,
     /\b(?:research|find|source|prospect|discover|identify|generate|compile|search for|look up)\b/,
     /\b(?:leads?|prospects?|businesses|companies|agencies|brokerages|decision makers)\b/,
   )) {
     return {
       reason: "out_of_role_research",
-      message: "Prospect research is reserved for Lead Hunter. I did not search public sources, inspect websites or create leads.",
+      message: "This role cannot run prospect research. Use the workspace's approved research workflow; I did not search public sources, inspect websites or create leads.",
     };
   }
 

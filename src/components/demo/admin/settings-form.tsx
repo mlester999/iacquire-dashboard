@@ -156,7 +156,7 @@ export function DemoSettingsForm({ settings, version, env, canManage }: { settin
             <input type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" checked={form.aiEnabled} disabled={off} onChange={(e) => set("aiEnabled", e.target.checked)} />
             <span>
               <span className="font-medium">The AI chat is on</span>
-              <span className="block text-[14px] text-muted">Off: prospects get the guided tour only. On: they may ask the AI team questions, up to the limits below. It also needs a connected language model.</span>
+              <span className="block text-[14px] text-muted">Off: prospects get the guided tour only. On: they may ask AQi about the AI Growth Partner and iAcquireOS, up to the limits below. It also needs a connected language model.</span>
             </span>
           </label>
           {problems.aiEnabled && (

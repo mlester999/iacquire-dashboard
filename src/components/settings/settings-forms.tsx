@@ -106,7 +106,7 @@ export function ProfileForms({
       <Panel
         icon={<Building2 />}
         title="Business profile"
-        description="Shared with your AI employees as business context."
+        description="Shared with your AI Growth Partner as business context."
         aside={canEdit ? undefined : <StatusPill tone="neutral" icon={<Lock className="size-3" aria-hidden />}>View only</StatusPill>}
         footer={
           canEdit && (
@@ -549,7 +549,7 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
         icon={<Sparkles />}
         tone="violet"
         title="Company-wide AI preferences"
-        description="Defaults for every AI employee. You can still fine-tune each employee separately."
+        description="Shared defaults for your AI Growth Partner."
         aside={!canEdit ? <StatusPill tone="neutral" icon={<Lock className="size-3" aria-hidden />}>View only</StatusPill> : undefined}
         bodyClassName="space-y-6"
         footer={
@@ -731,11 +731,11 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
         icon={<Bot />}
         tone={p.proactive.enabled ? "primary" : "neutral"}
         title="Proactive AI updates"
-        description="How verified reports from your AI employees reach you. Only work that actually ran can produce one; these settings never create monitoring."
+        description="How verified reports from your AI Growth Partner reach you. Only work that actually ran can produce one; these settings never create monitoring."
         aside={<StatusPill tone={p.proactive.enabled ? "success" : "neutral"}>{p.proactive.enabled ? "Updates on" : "Updates off"}</StatusPill>}
         bodyClassName="space-y-3"
       >
-        <SettingRow as="label" title="Proactive reports" description="Issue alerts, recommendations, blockers and completed-work summaries from your AI employees.">
+        <SettingRow as="label" title="Proactive reports" description="Issue alerts, recommendations, blockers and completed-work summaries from your AI Growth Partner.">
           <Switch checked={p.proactive.enabled} aria-label="Proactive reports" onCheckedChange={(v) => saveProactive({ enabled: v })} />
         </SettingRow>
         <SettingRow title="Only tell me about" description="Critical alerts always bypass this threshold.">

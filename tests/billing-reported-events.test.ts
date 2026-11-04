@@ -82,7 +82,7 @@ describe("a refund PayMongo reports", () => {
     expect(told.body).toContain(p.reference);
     expect(told.body).toContain("PayMongo reports a refund of PHP 86,942.00.");
     expect(told.body).toMatch(/Nothing was changed/);
-    expect(told.body).toMatch(/Access and AI employees are not affected/);
+    expect(told.body).toMatch(/Access and AI operations are not affected/);
     // It never says a payment or a refund was applied, only that the provider reported one.
     expect(told.body).not.toMatch(/refunded the|was refunded|has been refunded/i);
 
@@ -163,7 +163,7 @@ describe("a dispute PayMongo reports", () => {
     expect(told.body).toContain(p.reference);
     expect(told.body).toMatch(/still counts as received until you record what happened/);
     expect(told.body).toMatch(/Respond to the dispute in PayMongo/);
-    expect(told.body).toMatch(/Access and AI employees are not affected/);
+    expect(told.body).toMatch(/Access and AI operations are not affected/);
     expect((await auditOf(p.org.id, "billing.provider_dispute_reported"))[0].metadata).toMatchObject({ reference: p.reference, event: "payment.dispute.created" });
   });
 

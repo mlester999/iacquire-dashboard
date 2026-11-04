@@ -11,7 +11,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
-import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, isWorkforceRoleKey, workforceRoleName, workforceRoleShortName, workforceRoleTagline, type WorkforceRoleKey } from "@/lib/agents";
 import { immutablePolicy, policyVersionFor, ROLE_RESPONSIBILITIES, type WorkforceOrganizationKind } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { isReservedProfile, queueSyncJob, suggestedProfileName } from "@/server/workforce/service";
@@ -46,8 +46,8 @@ export interface ProvisioningBundle {
   verification: string[];
 }
 
-export function buildSoul(role: AgentRoleKey, companyName: string, orgKind: WorkforceOrganizationKind = "client"): string {
-  const meta = AGENT_BY_KEY[role];
+export function buildSoul(role: WorkforceRoleKey, companyName: string, orgKind: WorkforceOrganizationKind = "client"): string {
+  const meta = { name: workforceRoleName(role), shortName: workforceRoleShortName(role), tagline: workforceRoleTagline(role) };
   const name = sanitizeClientText(companyName, 120) || (orgKind === "agency" ? "iAcquire" : "this client");
   const policyLabel = orgKind === "agency" ? "Internal iAcquire policy" : "iAcquire policy";
   return [
@@ -71,7 +71,7 @@ export function buildSoul(role: AgentRoleKey, companyName: string, orgKind: Work
 
 /** Full effective profile prompt generated only from the currently applied tenant version. */
 export function buildProvisionerSoul(
-  role: AgentRoleKey,
+  role: WorkforceRoleKey,
   companyName: string,
   compiledInstructions: string,
   challenge: string,
@@ -99,7 +99,7 @@ export function buildProvisionerSoul(
  * provisioner reads the switch in its claim transaction); without it, which is the default, the output is exactly what it has always been. The entry names the credential by the variable the
  * restricted worker writes into the profile's own .env, never by a value, and it is not the profile's API_SERVER_KEY.
  */
-export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS, role?: AgentRoleKey, options: { businessMcp?: boolean } = {}): string {
+export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS, role?: WorkforceRoleKey, options: { businessMcp?: boolean } = {}): string {
   const known = new Set(HERMES_BLOCKABLE_TOOLSETS.map((toolset) => toolset.key));
   if (blockedToolsets.some((toolset) => !known.has(toolset as (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"]))) {
     throw new AppError("invalid_input", "This Hermes policy contains an unsupported toolset.");
@@ -167,7 +167,7 @@ export function buildInternalAgencyConfigYaml(): string {
 
 export async function getProvisioningBundle(agentId: string): Promise<ProvisioningBundle> {
   const row = await withSystem(async (db) => {
-    const { rows } = await db.query<{ role_key: AgentRoleKey; org_id: string; org_name: string; slug: string; kind: WorkforceOrganizationKind; hermes_profile: string | null; blocked_toolsets: string[] }>(
+    const { rows } = await db.query<{ role_key: string; org_id: string; org_name: string; slug: string; kind: WorkforceOrganizationKind; hermes_profile: string | null; blocked_toolsets: string[] }>(
       `select a.role_key, o.id as org_id, o.name as org_name, o.slug, o.kind, a.hermes_profile,
        coalesce(
          (select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='agent' and p.agent_id=a.id),
@@ -179,16 +179,17 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
     );
     return rows[0];
   });
-  if (!row) throw new AppError("not_found", "AI employee not found.");
-  const profile = row.hermes_profile ?? suggestedProfileName(row.slug, row.role_key);
-  const meta = AGENT_BY_KEY[row.role_key];
-  const soul = buildSoul(row.role_key, row.org_name, row.kind);
+  if (!row || !isWorkforceRoleKey(row.role_key)) throw new AppError("not_found", "AI employee not found.");
+  const role = row.role_key;
+  const profile = row.hermes_profile ?? suggestedProfileName(row.slug, role);
+  const meta = { name: workforceRoleName(role) };
+  const soul = buildSoul(role, row.org_name, row.kind);
   const soulSha256 = createHash("sha256").update(soul, "utf8").digest("hex");
   return {
     profile,
     soul,
     soulSha256,
-    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, row.role_key)
+    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS, role)
       : row.kind === "agency" ? buildInternalAgencyConfigYaml() : buildConfigYaml(),
     envTemplate: [
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
@@ -247,7 +248,7 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
          where m.org_id = o.id and m.role = 'owner' and m.status = 'active' and u.email_verified_at is not null
        )
        and not exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id = a.id and j.kind = 'provision')`;
-  const { rows } = await db.query<{ id: string; role_key: AgentRoleKey }>(
+  const { rows } = await db.query<{ id: string; role_key: WorkforceRoleKey }>(
     `insert into agent_provisioning_jobs (org_id, agent_instance_id, kind, requested_by)
      select a.org_id, a.id, 'provision', $2 from agent_instances a
      join organizations o on o.id = a.org_id
@@ -258,37 +259,45 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
   );
   if (!rows.length) {
     // Everything else is in place but the payment is not: say so once, to the agency (who can record the payment or waive the fee) and to the client's owners.
-    const waiting = await db.query<{ n: number }>(
-      `select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${eligible} and not app.setup_payment_cleared(o.id)`,
+    const waiting = await db.query<{ n: number; role_keys: string[] }>(
+      `select count(*)::int as n, array_agg(a.role_key order by a.role_key) as role_keys
+         from agent_instances a join organizations o on o.id = a.org_id where ${eligible} and not app.setup_payment_cleared(o.id)`,
       [orgId],
     );
     if (waiting.rows[0].n > 0) {
       const dedupeKey = `setup-payment-required:${orgId}`;
       const name = (await db.query<{ name: string }>("select name from organizations where id = $1", [orgId])).rows[0]?.name ?? "A client";
+      const growthPartnerOnly = waiting.rows[0].role_keys.length > 0 && waiting.rows[0].role_keys.every((role) => role === AI_GROWTH_PARTNER_ROLE_KEY);
       await notifyAgency(db, orgId, {
         kind: "billing_setup_payment_required",
         severity: "warning",
         title: `${name} finished onboarding, but the setup payment is not confirmed`,
-        body: "No AI employee is being provisioned. Record the payment, or waive the setup fee with a reason, on the client's billing tab.",
+        body: `No ${growthPartnerOnly ? "AI Growth Partner" : "AI employee"} is being provisioned. Record the payment, or waive the setup fee with a reason, on the client's billing tab.`,
         link: `/admin/clients/${orgId}?tab=billing`,
         dedupeKey,
       });
       await notifyOrgRoles(db, orgId, ["owner", "admin"], {
         kind: "billing_setup_payment_required",
         severity: "info",
-        title: "Your AI team starts after your setup payment is confirmed",
-        body: "Your business information is saved. iAcquire will start setting up your AI employees as soon as the setup payment is confirmed.",
-        link: "/employees",
+        title: growthPartnerOnly ? "Your AI Growth Partner setup starts after payment confirmation" : "Your AI team starts after your setup payment is confirmed",
+        body: growthPartnerOnly
+          ? "Your business information is saved. iAcquire will start setting up your AI Growth Partner as soon as the setup payment is confirmed."
+          : "Your business information is saved. iAcquire will start setting up your AI employees as soon as the setup payment is confirmed.",
+        link: growthPartnerOnly ? "/growth-partner" : "/employees",
         dedupeKey,
       });
     }
   }
   if (rows.length) {
+    const growthPartnerOnly = rows.every((r) => r.role_key === AI_GROWTH_PARTNER_ROLE_KEY);
+    const runtimeLabel = growthPartnerOnly
+      ? rows.length === 1 ? "AI Growth Partner" : "AI Growth Partners"
+      : rows.length === 1 ? "AI employee" : "AI employees";
     await notifyAgency(db, orgId, {
       kind: "agent_status",
       severity: "info",
-      title: `${rows.length} AI employee${rows.length === 1 ? "" : "s"} awaiting provisioning`,
-      body: rows.map((r) => AGENT_BY_KEY[r.role_key]?.shortName).filter(Boolean).join(", "),
+      title: `${rows.length} ${runtimeLabel} awaiting provisioning`,
+      body: rows.map((r) => workforceRoleShortName(r.role_key)).join(", "),
       link: `/admin/clients/${orgId}`,
     });
     await recordAudit({ orgId, actorUserId: requestedBy, actorKind: requestedBy ? "user" : "system", action: "agent.provisioning_requested", result: "success", metadata: { count: rows.length } }, db);
@@ -363,7 +372,7 @@ export async function requeueProvisioningJob(agencyUserId: string, orgId: string
     );
     if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
     const { rows: agents } = await db.query<{
-      role_key: AgentRoleKey; enabled: boolean; hermes_profile: string | null; active_config_version_id: string | null;
+      role_key: string; enabled: boolean; hermes_profile: string | null; active_config_version_id: string | null;
       org_kind: string; org_status: string; is_demo: boolean; onboarded: boolean; paid: boolean;
     }>(
       "select a.role_key,a.enabled,a.hermes_profile,a.active_config_version_id,o.kind as org_kind,o.status as org_status,o.is_demo," +
@@ -372,7 +381,7 @@ export async function requeueProvisioningJob(agencyUserId: string, orgId: string
       [agentId, orgId],
     );
     const agent = agents[0];
-    if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found in this workspace.");
+    if (!agent || !isWorkforceRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found in this workspace.");
     if (agent.org_kind !== "client" || agent.is_demo || agent.org_status !== "active") throw new AppError("conflict", "Only an active client workspace can have its setup requeued.");
     if (!agent.enabled) throw new AppError("conflict", "This employee is not included in the workspace, so there is nothing to set up.");
     if (!agent.paid) throw new AppError("conflict", "The workspace's setup payment is not confirmed, so setup cannot be requeued yet.");
@@ -431,7 +440,7 @@ export async function requeueProvisioningJob(agencyUserId: string, orgId: string
     await notifyOrgRoles(db, orgId, ["owner"], {
       kind: "agent_status",
       severity: "info",
-      title: `${AGENT_BY_KEY[agent.role_key].shortName}'s setup is being retried`,
+      title: `${workforceRoleShortName(agent.role_key)}'s setup is being retried`,
       body: "iAcquire restarted this AI employee's setup after a problem. You do not need to do anything.",
       link: "/employees",
       dedupeKey: `provisioning-requeued:${jobId}`,
@@ -494,7 +503,7 @@ export async function requestBusinessToolSync(db: Queryable, orgId: string, agen
   const tierOn = org.status === "active" ? await clientBusinessToolsOn(orgId, db) : false;
   for (const row of rows) {
     const versionId = row.active_config_version_id;
-    if (org.status !== "active" || !row.enabled || !versionId || !isAgentRoleKey(row.role_key) || !row.hermes_profile?.startsWith("c-") || isReservedProfile(row.hermes_profile)) {
+    if (org.status !== "active" || !row.enabled || !versionId || !isWorkforceRoleKey(row.role_key) || !row.hermes_profile?.startsWith("c-") || isReservedProfile(row.hermes_profile)) {
       result.skipped.push(row.id);
       continue;
     }

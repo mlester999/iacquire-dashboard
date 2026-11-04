@@ -24,7 +24,7 @@ export interface AiControlsProps {
 }
 
 /**
- * Who is speaking for this conversation, and the controls over it: take over, pause the AI, hand it back, choose which AI employee, hand it to a
+ * Who is speaking for this conversation, and the controls over it: take over, pause the AI, hand it back, choose which AI profile, hand it to a
  * teammate. Every control is also checked on the server; hiding one here is a convenience, not the rule.
  */
 export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiControlsProps) {
@@ -39,7 +39,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
     c.ownerKind === "ai" && c.aiPaused ? (
       <>
         <PauseCircle className="size-4 text-warning-ink" aria-hidden />
-        <span><strong>AI replies are paused.</strong><span className="hidden sm:inline"> {employee ?? "The AI employee"} stays on this conversation but will not reply until you resume.</span></span>
+        <span><strong>AI replies are paused.</strong><span className="hidden sm:inline"> {employee ?? "The AI profile"} stays on this conversation but will not reply until you resume.</span></span>
       </>
     ) : c.ownerKind === "ai" ? (
       <>
@@ -111,9 +111,9 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
       </div>
       {perms.assign && aiEmployees.length > 0 && (
         <div className="hidden items-center gap-2 sm:flex">
-          <label htmlFor="ai-employee" className="shrink-0 text-muted">AI employee</label>
+          <label htmlFor="ai-employee" className="shrink-0 text-muted">AI profile</label>
           <div className="w-full max-w-[260px]">
-            <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }}>
+            <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI profile updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
               {aiEmployees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>

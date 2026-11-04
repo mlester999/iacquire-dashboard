@@ -145,7 +145,7 @@ export function PlanLifecycle({ subscriptionId, status, info }: { subscriptionId
         open={dialog === "expire"}
         onOpenChange={(o) => !o && setDialog(null)}
         title="End the plan now?"
-        description="Automation Studio workflows for this client are paused straight away (nothing is deleted) and the client is told. Their CRM, AI employees and external automations are not affected."
+        description="Automation Studio workflows for this client are paused straight away (nothing is deleted) and the client is told. Their CRM, AI Growth Partner and its schedules, and external automations are not affected."
         size="sm"
         footer={
           <>

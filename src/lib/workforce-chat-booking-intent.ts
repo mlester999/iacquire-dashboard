@@ -1,4 +1,4 @@
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 
 export type WorkforceChatBookingIntent =
   | { kind: "none" }
@@ -66,8 +66,8 @@ function parseInstant(value: string): string | null {
  * The preview is read-only; the caller must obtain a separate, explicit confirmation before it
  * invokes the calendar booking service.
  */
-export function parseWorkforceChatBookingIntent(role: AgentRoleKey, content: string): WorkforceChatBookingIntent {
-  if (role !== "appointment_setter") return { kind: "none" };
+export function parseWorkforceChatBookingIntent(role: WorkforceRoleKey, content: string): WorkforceChatBookingIntent {
+  if (role !== "appointment_setter" && role !== "growth_partner") return { kind: "none" };
   const text = content.replace(/\s+/g, " ").trim().slice(0, 2000);
   if (!text) return { kind: "none" };
 

@@ -87,6 +87,10 @@ const CRM_MIGRATION_NAMES = [
   // Knowledge revisions and held edits: a revision table with read and insert policies on app.permitted_orgs (so 0060's rollback cannot drop that function while it exists), two columns
   // on company_knowledge and one on knowledge_documents; its rollback refuses while a section holds both approved text and a waiting edit (none does here) and is rolled back first of all.
   "0117_company_knowledge_revisions.sql",
+  // The Growth Partner foundation adds tenant policies on app.permitted_orgs and the parent table references its own version table.
+  "0120_ai_growth_partner_foundation.sql",
+  // A canonical shared thread depends on the Growth Partner identity and the workforce chat tables and permissions.
+  "0121_ai_growth_partner_conversation.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

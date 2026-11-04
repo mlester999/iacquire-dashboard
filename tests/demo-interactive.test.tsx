@@ -92,7 +92,7 @@ const question = () => screen.getByLabelText("Your question") as HTMLTextAreaEle
 const sendButton = () => screen.getByRole("button", { name: /^Send$/ });
 const sentBody = (call = 0) => JSON.parse(fetchMock.mock.calls[call][1].body as string) as Record<string, unknown>;
 const roomAfter = (over: Record<string, unknown> = {}) => ({
-  transcript: [line(), line({ id: "2", seq: 2, role: "assistant", body: "Here is the answer.", state: null, employeeRole: "lead_hunter" })],
+  transcript: [line(), line({ id: "2", seq: 2, role: "assistant", body: "Here is the answer.", state: null, employeeRole: null })],
   messagesLeft: 9,
   messageAllowance: 10,
   chat: { canSend: true, refusalMessage: null },
@@ -138,32 +138,31 @@ describe("the chat", () => {
     expect(question().getAttribute("name")).toBe("text");
     expect(question().maxLength).toBe(1000);
     expect(question().required).toBe(true);
-    expect((screen.getByLabelText("Ask") as HTMLSelectElement).getAttribute("name")).toBe("employeeRole");
-    expect([...(screen.getByLabelText("Ask") as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["Any AI Employee", "AI Lead Hunter", "AI Appointment Setter"]);
+    expect(container.querySelector('select[name="employeeRole"]')).toBeNull();
+    expect(container.querySelector('input[name="employeeRole"]')).toBeNull();
+    expect(screen.getByText("iAcquire guide")).toBeTruthy();
   });
 
   it("sends the question as JSON to the demo API with a key, and shows the conversation the server returns", async () => {
     fetchMock.mockResolvedValueOnce(reply({ ok: true, kind: "answered", room: roomAfter() }));
     chat();
-    fireEvent.change(screen.getByLabelText("Ask"), { target: { value: "lead_hunter" } });
     fireEvent.change(question(), { target: { value: "  What do you do?  " } });
     fireEvent.click(sendButton());
     await waitFor(() => expect(screen.getByText("Here is the answer.")).toBeTruthy());
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/public/demo/message");
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" } });
-    expect(sentBody()).toEqual({ text: "What do you do?", clientMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/), employeeRole: "lead_hunter" });
+    expect(sentBody()).toEqual({ text: "What do you do?", clientMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
     expect(screen.getByText("9 of 10 messages left")).toBeTruthy();
     expect(question().value).toBe("");
     // The focus goes back to the box so the next question can be typed at once.
     await waitFor(() => expect(document.activeElement).toBe(question()));
   });
 
-  it("shows the visitor's own message at once, empties the box, and shows the employee they asked, not AQi, as the one writing", async () => {
+  it("shows the visitor's own message at once, empties the box, and shows AQi as the one writing", async () => {
     let finish: (v: unknown) => void = () => undefined;
     fetchMock.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
     chat();
-    fireEvent.change(screen.getByLabelText("Ask"), { target: { value: "appointment_setter" } });
     fireEvent.change(question(), { target: { value: "What do you do?" } });
     fireEvent.click(sendButton());
     const log = screen.getByRole("log", { name: "AQi conversation" });
@@ -172,10 +171,9 @@ describe("the chat", () => {
     expect(within(log).getByText("You")).toBeTruthy();
     expect(question().value).toBe("");
     expect(question().readOnly).toBe(true);
-    // The employee that was asked is the one writing, with their own name, and it is said aloud once.
-    expect(within(log).getByText("AI Appointment Setter (AI)")).toBeTruthy();
-    expect(within(log).getByText("AI Appointment Setter is writing an answer.")).toBeTruthy();
-    expect(within(log).queryByText("AQi")).toBeNull();
+    // The public demo chat remains AQi, separate from the Growth Partner product experience.
+    expect(within(log).getByText("AQi")).toBeTruthy();
+    expect(within(log).getByText("AQi is writing an answer.")).toBeTruthy();
     finish(reply({ ok: true, kind: "answered", room: roomAfter() }));
     await waitFor(() => expect(screen.getByText("Here is the answer.")).toBeTruthy());
     // The record replaces the picture of the message, so nothing is shown twice, and nobody is writing any more.

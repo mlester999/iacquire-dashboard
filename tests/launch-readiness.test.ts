@@ -63,6 +63,24 @@ describe("the overall state", () => {
     expect(deriveLaunchReadiness(ready()).total).toBeGreaterThan(0);
   });
 
+  it("judges the unified partner instead of inventing six missing employee profiles", () => {
+    const r = deriveLaunchReadiness(ready({
+      employees: [],
+      verification: [],
+      growthPartner: {
+        status: "setup_required", runtimeBound: true, enabled: true, runtimeStatus: "setup_required",
+        profileConnected: false, runtimeReady: false, healthFailed: false,
+        brainActive: true, latestBrainVersion: 1, conversationReady: false, provisioning: null,
+      },
+    }));
+    expect(r.steps.find((step) => step.key === "employees")?.title).toBe("AI Growth Partner");
+    expect(r.steps.find((step) => step.key === "verification")?.title).toBe("Partner verification");
+    expect(r.blocking.map((item) => item.key)).not.toContain("employees.operations_manager");
+    expect(itemOf(r, "growth_partner.brain")).toMatchObject({ state: "done", required: true });
+    expect(itemOf(r, "growth_partner.runtime")).toMatchObject({ state: "in_progress", owner: "iacquire" });
+    expect(r.state).toBe("provisioning");
+  });
+
   it("says who has to move: a failure iAcquire must look at is counted apart from a step the client must do", () => {
     const r = deriveLaunchReadiness(replaceEmployee(ready({ knowledge: { approved: 0, pending: 0 } }), "lead_hunter", { provisioning: "failed", readiness: { state: "pending_setup", chatAvailable: false, workReady: false, description: "", blocking: [] } }));
     expect(r.state).toBe("action_required");
@@ -1227,7 +1245,7 @@ describe("a booking summary that is informational", () => {
     const r = deriveLaunchReadiness(ready({ bookingSettings: { lateCancelHours: 24, aiBookingEnabled: false, remindersEnabled: false } }));
     const i = itemOf(r, "calendar.booking_settings");
     expect(i).toMatchObject({ state: "done", required: false });
-    expect(i.detail).toContain("only proposes a booking, and a person confirms it");
+    expect(i.detail).toContain("AI Growth Partner proposes a booking, and a person confirms it");
     expect(i.detail).toContain("less than 24 hours");
     expect(i.detail).toContain("Reminders to customers are off");
     expect([r.state, r.percent, r.total]).toEqual([plain.state, plain.percent, plain.total]);

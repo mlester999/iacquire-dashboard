@@ -100,7 +100,7 @@ const backlog: ReviewCheck = async (db, job) => {
 export async function runLeadPriorityReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "lead_priority_review",
-    allowedRoles: ["sales_assistant"],
+    allowedRoles: ["sales_assistant", "growth_partner"],
     scanningMessage: "Reading lead priorities that were already assessed and what happened to those leads since…",
     analyzingMessage: "Working out which promising leads need a person…",
     checks: [hotNotContacted, hotNoOwner, mostlyUnknown, backlog],

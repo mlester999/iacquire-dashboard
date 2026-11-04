@@ -6,7 +6,6 @@ import { buildDemoPrompt } from "@/server/demo/prompt";
 import { checkDemoReply, MAX_CHECKED } from "@/server/demo/reply-check";
 
 const GROUNDING = buildDemoPrompt({
-  persona: null,
   business: null,
   industryLabel: null,
   history: [],
@@ -26,10 +25,10 @@ describe("answers that stay inside the facts", () => {
     "Setup is $1,499 one time, and the optional monthly plan is $299 per month.",
     "The monthly plan is optional. It costs $299 a month and is not needed to use the system.",
     "The setup is USD 1,499 and the plan is 299 USD per month, only if you choose it.",
-    "The Lead Hunter looks for businesses that fit the ideal customer you describe and explains why each one looks like a fit.",
+    "Lead Discovery & Qualification finds relevant prospects, preserves source evidence, and checks fit against client-approved criteria.",
     "I do not know that. You can ask for a consultation with the iAcquire team.",
     "This is a demo with sample data, so nothing is sent or booked.",
-    "The Appointment Setter turns interest into booked meetings. In this demo it books nothing.",
+    "Calendar & Appointment Management uses connected availability and booking rules to prepare appointment actions for review. In this demo it books nothing.",
   ])("lets %j through", (text) => {
     expect(check(text)).toMatchObject({ ok: true });
   });

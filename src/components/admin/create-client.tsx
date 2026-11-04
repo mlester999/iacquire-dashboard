@@ -10,8 +10,6 @@ import { Field, Input, Select } from "@/components/ui/primitives";
 import { createClientAction } from "@/app/(admin)/admin/actions";
 import { onboardingBlueprintChoicesAction } from "@/app/(admin)/admin/crm-blueprint-onboarding-actions";
 import { deliverySummary } from "@/components/admin/resend-invitation";
-import { AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
-import { AgentAvatar } from "@/components/brand";
 import { cn } from "@/lib/utils";
 import { INDUSTRY_OPTIONS, industryKeyForLabel } from "@/components/crm/blueprints/industry";
 import { OnboardingBlueprintPicker, choiceFor, type SetupValue } from "@/components/crm/blueprints/onboarding-picker";
@@ -49,7 +47,6 @@ export function clientFormDefaults(initial?: Prefill) {
     industry: "",
     website: initial?.website ?? "",
     timezone: "America/New_York",
-    roles: AGENT_ROLES.map((r) => r.key) as AgentRoleKey[],
     crmMode: "native" as CrmMode,
     setup: "blank" as SetupValue,
   };
@@ -72,7 +69,6 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
   const [industry, setIndustry] = React.useState(first.industry);
   const [website, setWebsite] = React.useState(first.website);
   const [timezone, setTimezone] = React.useState(first.timezone);
-  const [roles, setRoles] = React.useState<AgentRoleKey[]>(first.roles);
   const [crmMode, setCrmMode] = React.useState<CrmMode>(first.crmMode);
   const [setup, setSetup] = React.useState<SetupValue>(first.setup);
   const [choices, setChoices] = React.useState<OnboardingBlueprintChoices | null>(null);
@@ -114,7 +110,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
     setPending(true);
     let res: Awaited<ReturnType<typeof createClientAction>>;
     try {
-      res = await createClientAction({ name, ownerEmail: email, industry, website, timezone, enabledRoles: roles, crmMode, blueprint: choiceFor(effectiveSetup) });
+      res = await createClientAction({ name, ownerEmail: email, industry, website, timezone, crmMode, blueprint: choiceFor(effectiveSetup) });
     } catch {
       // The request may still have reached the server, so the client list is refreshed before anyone tries again.
       router.refresh();
@@ -149,7 +145,6 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
       setIndustry(fresh.industry);
       setWebsite(fresh.website);
       setTimezone(fresh.timezone);
-      setRoles(fresh.roles);
       setCrmMode(fresh.crmMode);
       setSetup(fresh.setup);
     }
@@ -176,7 +171,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
             ? delivery
               ? deliverySummary(delivery.status, delivery.error, email).body
               : ""
-            : "Creates an isolated tenant with its own six AI employee records, limits and billing. Nothing is provisioned on Hermes or GoHighLevel."
+            : "Creates an isolated client workspace with one AI Growth Partner, limits and billing. Its dedicated Hermes profile is requested only after onboarding and the setup payment are confirmed."
         }
         size="xl"
         footer={
@@ -192,7 +187,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
               <Button variant="secondary" onClick={closeDialog} disabled={pending}>
                 Cancel
               </Button>
-              <Button variant="brand" loading={pending} onClick={submit} disabled={name.trim().length < 2 || !email.includes("@") || roles.length === 0}>
+              <Button variant="brand" loading={pending} onClick={submit} disabled={name.trim().length < 2 || !email.includes("@")}>
                 {pending ? pendingLabel : effectiveSetup !== "blank" ? "Create client and apply" : "Create client"}
               </Button>
             </>
@@ -284,26 +279,10 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
               disabledReason={crmMode === "ghl" ? GHL_REASON : null}
             />
 
-            <fieldset>
-              <legend className="mb-2 text-[14px] font-medium text-ink-2">AI employees included</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {AGENT_ROLES.map((r) => {
-                  const on = roles.includes(r.key);
-                  return (
-                    <label key={r.key} className={cn("flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition", on ? "border-primary/40 bg-primary-soft/40" : "border-line")}>
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-[var(--primary)]"
-                        checked={on}
-                        onChange={() => setRoles((rs) => (on ? rs.filter((x) => x !== r.key) : [...rs, r.key]))}
-                      />
-                      <AgentAvatar role={r} size="sm" />
-                      <span className="text-[14px] font-medium">{r.shortName}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
+            <div className="rounded-xl border border-primary/20 bg-primary-soft/30 p-4">
+              <p className="text-[14px] font-semibold text-ink">One AI Growth Partner</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted">A single workspace-isolated assistant for lead discovery, sales support, calendar requests, CRM, operations and performance. The six capabilities share one conversation and one Business Brain.</p>
+            </div>
           </div>
         )}
       </Dialog>

@@ -81,7 +81,7 @@ interface Props {
   nextCursor?: string | null;
   /** What each channel can really do right now (see src/server/messaging/channel-health.ts). */
   channelHealth?: ChannelHealth[];
-  /** The customer-facing AI employees a manager may attach to a conversation. */
+  /** The customer-facing AI profiles a manager may attach to a conversation. */
   aiEmployees?: ConversationAiEmployee[];
   /** Whether this person may ask for AI summaries and suggested replies (and the workspace has them). */
   aiAssist?: boolean;
@@ -500,7 +500,7 @@ function EmptyThread({ hasList }: { hasList: boolean }) {
     <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong p-10 text-center">
       <Inbox className="size-7 text-muted" aria-hidden />
       <h2 className="mt-3 text-[16px] font-semibold">{hasList ? "Choose a conversation" : "Your inbox is empty"}</h2>
-      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your AI team handles conversations it is allowed to, and hands the rest to a person.</p>
+      <p className="mt-1 max-w-sm text-[14px] leading-relaxed text-muted">Every message shows its real delivery state. Your Growth Partner handles authorized conversations and hands the rest to a person.</p>
     </div>
   );
 }
@@ -1423,10 +1423,10 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
           </Select>
           {(props.aiEmployees ?? []).length > 0 && (
             <>
-              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI employee on this conversation</label>
-              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
-                {!c.aiAgent && <option value="">AI employee: none chosen</option>}
-                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>AI employee: {a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
+              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI profile on this conversation</label>
+              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI profile updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
+                {!c.aiAgent && <option value="">AI profile: none chosen</option>}
+                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
               </Select>
             </>
           )}

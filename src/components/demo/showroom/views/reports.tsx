@@ -1,15 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquareText } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { MessageSquareText, Sparkles } from "lucide-react";
 import { REPORT_SERIES, REPORT_SOURCES, REPORT_WEEKS } from "@/lib/demo/showroom/content";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { ContextCta } from "@/components/demo/showroom/cta";
 import { SectionHead, SimTag } from "@/components/demo/showroom/ui";
 
-// Reports & insights: what the Performance Analyst reads and writes about. The figures are invented and rounded so the charts have a shape; the page says so, defines every measure, and
+// Reports & insights: what the Growth Partner can explain from recorded activity. The figures are invented and rounded so the charts have a shape; the page says so, defines every measure, and
 // states no benchmark, no percentage gain and no result. Each chart has a text table for screen readers.
 
 const W = 640;
@@ -30,7 +28,7 @@ export function ReportsView() {
   const last = REPORT_WEEKS.length - 1;
   return (
     <div className="space-y-8">
-      <SectionHead as="h1" eyebrow="Reports & insights" title="See what is working, in plain words." lead="The Performance Analyst reads your CRM every week, says what stood out and shows where each figure comes from. Nothing is hidden behind a score." />
+      <SectionHead as="h1" eyebrow="Reports & insights" title="See what is working, in plain words." lead="The AI Growth Partner can explain recorded activity, say what stood out and show where each figure comes from. Nothing is hidden behind a score." />
 
       <section aria-labelledby="trend-heading" className="sx-panel space-y-5 p-5 @xl:p-7">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -135,10 +133,10 @@ export function ReportsView() {
 
         <section aria-labelledby="note-heading" className="sx-panel space-y-4 p-5 @xl:p-7">
           <div className="flex items-center gap-3">
-            <AgentAvatar role={AGENT_BY_KEY.performance_analyst} size="md" eager />
+            <span className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary-ink"><Sparkles className="size-5" aria-hidden /></span>
             <div>
               <h2 id="note-heading" className="text-[18px] font-semibold tracking-[-0.01em] text-ink">This week&rsquo;s note</h2>
-              <p className="text-[13px] text-muted">Written by the Performance Analyst</p>
+              <p className="text-[13px] text-muted">AI Growth Partner · Performance & Analytics</p>
             </div>
           </div>
           <div className="space-y-3 text-[14px] leading-relaxed text-ink-2">
@@ -160,7 +158,7 @@ export function ReportsView() {
             </div>
           </dl>
           {aiEnabled && !ended && (
-            <button type="button" onClick={() => ask("How does the Performance Analyst decide what to put in the weekly note?")} className="inline-flex min-h-10 items-center gap-2 text-[14px] font-semibold text-primary-ink hover:text-ink">
+            <button type="button" onClick={() => ask("How does the Growth Partner decide what to put in the weekly note?")} className="inline-flex min-h-10 items-center gap-2 text-[14px] font-semibold text-primary-ink hover:text-ink">
               <MessageSquareText className="size-4" aria-hidden />
               Ask how the weekly note works
             </button>
@@ -171,7 +169,7 @@ export function ReportsView() {
       <ContextCta
         plan="core"
         title="See how your own pipeline performs."
-        body="Reports and the Performance Analyst are part of your core implementation. They read your own CRM, so the numbers describe your business, with the source and definition beside each one."
+        body="Reports and insights use authorized records from your own CRM, with the source and definition beside each measure."
         consult
         secondary={{ view: "pricing", label: "See what it costs" }}
       />

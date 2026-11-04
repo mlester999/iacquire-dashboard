@@ -11,7 +11,7 @@ import { MessageMeter, WindowClock } from "@/components/demo/showroom/clock";
 import { ConversionPanel } from "@/components/demo/showroom/cta";
 import { Eyebrow, PlanTag, SectionHead, ViewIcon } from "@/components/demo/showroom/ui";
 
-// The first screen of the demo, and the one a visitor returns to: a headline about THEIR business (the name they gave us, nothing inferred), a picture of the six AI Employees around it,
+// The first screen of the demo, and the one a visitor returns to: a headline about THEIR business (the name they gave us, nothing inferred), one AI Growth Partner and its six capabilities,
 // the live state of the demo, the four-step journey, and a way to just look around.
 
 const AREAS = VIEWS.filter((v) => !["overview", "workforce"].includes(v.id));
@@ -32,16 +32,16 @@ export function OverviewView() {
             {industryLabel ? <span className="text-muted"> · {industryLabel}</span> : null}
           </Eyebrow>
           <h1 id="hero-heading" className="sx-display text-[30px] leading-[1.1] text-ink @xl:text-[38px] @5xl:text-[44px]">
-            Meet the AI team that could help run{" "}
+            Meet the AI Growth Partner that could help grow{" "}
             <span className="sx-gradient-text break-words">{name ? name : "your business"}</span>.
           </h1>
           <p className="max-w-xl text-[17px] leading-relaxed text-ink-2">{scenario.benefit}</p>
           <p className="max-w-xl text-[15px] leading-relaxed text-muted">
-            Explore a working system built around sample {scenario.people}: six AI Employees, a native CRM and an automation builder.
+            Explore an illustrative system built around sample {scenario.people}: one AI Growth Partner, a native CRM and an automation builder.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => go("workforce")} className="sx-btn-primary inline-flex h-13 items-center gap-2.5 rounded-xl px-6 py-3.5 text-[16px] font-semibold">
-              Explore your AI team
+              Explore the Growth Partner
               <ArrowRight className="size-4" aria-hidden />
             </button>
             <a href="#areas" className="sx-btn-quiet inline-flex h-13 items-center gap-2 rounded-xl px-6 py-3.5 text-[16px] font-semibold">

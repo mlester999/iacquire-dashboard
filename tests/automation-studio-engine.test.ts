@@ -511,7 +511,7 @@ describe("the plan's lifecycle", () => {
     // The expiry notice goes to the owner only, and says what is and isn't affected.
     const row = (await withSystem((db) => db.query<{ body: string; n: number }>("select body, count(*) over ()::int as n from notifications where org_id = $1 and dedupe_key = $2", [o.org.id, `studio-expired:${sub}`]))).rows;
     expect(row.length).toBe(1);
-    expect(row[0].body).toMatch(/AI employees/);
+    expect(row[0].body).toMatch(/AI Growth Partner/);
   });
 
   it("lets an agency member verify a payment on an active plan without changing its state, and validates the date", async () => {
@@ -539,7 +539,7 @@ describe("the plan's lifecycle", () => {
     expect((await withSystem((db) => db.query<{ status: string }>("select status from maintenance_subscriptions where id = $1", [sub]))).rows[0].status).toBe("expired");
   });
 
-  it("expires a plan on request, pausing only the premium workflows, and keeps the AI employees and pauses of the workspace as they were", async () => {
+  it("expires a plan on request, pausing only premium workflows and leaving AI profile state and workspace pauses unchanged", async () => {
     const o = await crmOrg();
     await grantPlan(o);
     const { id } = await studioWorkflow(o);

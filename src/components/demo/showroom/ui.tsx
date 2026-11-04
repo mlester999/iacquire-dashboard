@@ -1,7 +1,7 @@
 import * as React from "react";
 import { BarChart3, ChevronDown, Flag, Inbox, LayoutDashboard, SquareKanban, Sparkles, Tag, Users, Workflow } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Tone } from "@/lib/demo/showroom/employees";
+import type { Tone } from "@/lib/demo/showroom/capabilities";
 import type { ViewDef } from "@/lib/demo/showroom/content";
 
 // The small pieces the showroom's views are built from. Server-safe (no state), so a view can render on the server first.

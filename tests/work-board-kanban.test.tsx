@@ -146,7 +146,7 @@ describe("AI Work Board Kanban", () => {
     expect(screen.queryByText("Operations review job")).toBeNull();
     expect(screen.queryByText("Sales follow-up review")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "All six" }));
+    fireEvent.click(screen.getByRole("button", { name: "All work" }));
     expect(screen.getByText("Operations review job")).toBeTruthy();
     expect(screen.getByText("Sales follow-up review")).toBeTruthy();
   });

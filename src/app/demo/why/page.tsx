@@ -40,7 +40,7 @@ export default function WhyPage() {
               <h2 id="why-next" className="sx-display text-[28px] leading-tight text-ink sm:text-[34px]">
                 See it with your own business name on it
               </h2>
-              <p className="max-w-2xl text-[15px] leading-relaxed text-ink-2">The demo is a personal, 24-hour walk through the AI team, the CRM and Automation Studio on sample data. Ask for yours and we will email you a link.</p>
+              <p className="max-w-2xl text-[15px] leading-relaxed text-ink-2">The demo is a personal, 24-hour walk through one AI Growth Partner, the CRM and Automation Studio on sample data. Ask for yours and we will email you a link.</p>
               <div className="flex flex-wrap gap-3">
                 <Link href="/demo" className="sx-btn-primary inline-flex h-12 items-center gap-2 rounded-xl px-6 text-[15px] font-semibold">
                   Request your demo

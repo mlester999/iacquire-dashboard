@@ -392,7 +392,7 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
         <ul className="space-y-2 text-[14px] leading-relaxed text-ink-2">
           <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />PayPal collects {formatMoney((sub?.monthlyPriceCents ?? 29900) / 100, sub?.currency ?? "USD")} each month, in US dollars, until you stop it.</li>
           <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />{sub?.paidThroughOn ? `Your plan is paid through ${formatDate(sub.paidThroughOn, timeZone)}; the first automatic charge comes after that day, so nothing you have paid for is charged twice.` : "PayPal charges the first month when you approve."}</li>
-          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />A month counts as paid only when PayPal confirms the charge. If a charge fails you keep Automation Studio for the grace period; your CRM, AI employees and automations are never switched off.</li>
+          <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />A month counts as paid only when PayPal confirms the charge. If a charge fails you keep Automation Studio for the grace period; your CRM, AI Growth Partner and automations are never switched off.</li>
           <li className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" />You can stop at any time here or in your PayPal account. Stopping never changes the days you have already paid for.</li>
         </ul>
       </Dialog>

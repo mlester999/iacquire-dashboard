@@ -27,8 +27,8 @@ const BLOCK_REASONS: Record<string, string> = {
   no_consent: "No consent on record",
   identity_unverified: "The visitor typed this address and it has not been confirmed",
   authorization_needed: "Waiting for the owner's approval of this version",
-  agent_unavailable: "The AI employee isn't available",
-  agent_not_ready: "The AI employee hasn't passed its connection check",
+  agent_unavailable: "Your AI Growth Partner isn't available",
+  agent_not_ready: "Your AI Growth Partner hasn't passed its connection check",
   automation_paused: "Paused",
   quiet_hours: "Quiet hours",
   frequency_cap: "Sending limit reached",
@@ -183,7 +183,7 @@ export function stepResultDetails(kind: string, result: Record<string, unknown>,
       break;
     }
     case "ai_task":
-      add("Status", str(result.status) ? (result.status === "queued" ? "Handed to the AI employee" : String(result.status).replace(/_/g, " ")) : null);
+      add("Status", str(result.status) ? (result.status === "queued" ? "Handed to your AI Growth Partner" : String(result.status).replace(/_/g, " ")) : null);
       break;
   }
   const detail = str(result.detail);

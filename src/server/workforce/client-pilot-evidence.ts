@@ -28,6 +28,7 @@ import { isReservedProfile, suggestedProfileName } from "@/server/workforce/serv
 /** The tables a pilot's window legitimately writes: provisioning, health, work jobs, the audit trail, the client's own questionnaire and the setup the client's guided steps and the automatic CRM setup make. */
 export const PILOT_EXPECTED_TABLES: readonly string[] = [
   "agent_instances", "agent_provisioning_jobs", "agent_config_versions", "agent_health_probes", "agent_runs", "ai_work_jobs", "ai_work_events", "audit_logs", "integration_credentials",
+  "ai_growth_partners", "ai_growth_partner_versions",
   "credential_references", "notifications",
   "onboarding_answers", "onboarding_responses", "company_profiles", "company_knowledge", "company_knowledge_revisions", "lead_targeting_profiles", "messaging_settings",
   "client_setup_instances", "client_setup_tasks", "client_setup_task_dependencies", "client_setup_task_events", "client_setup_checks", "provisioning_jobs",

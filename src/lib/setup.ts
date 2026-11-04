@@ -37,7 +37,7 @@ export const SECTION_TITLE: Record<Section, string> = {
 
 export const SETUP_SERVICES = [
   { key: "crm", label: "CRM & pipelines", description: "iAcquire CRM from an industry Blueprint: pipelines, tags, fields and forms (or a connected GoHighLevel location for clients who keep GoHighLevel)." },
-  { key: "ai_workforce", label: "AI workforce", description: "Dedicated Hermes AI employees." },
+  { key: "ai_workforce", label: "AI runtime setup", description: "Tenant-specific Hermes profiles and safety checks." },
   { key: "automations", label: "Automation workflows", description: "Follow-up and reminder workflows." },
   { key: "website", label: "Custom website", description: "A custom website, client review, publishing and domain checks." },
   { key: "funnel", label: "Lead-generation funnel", description: "A standard lead-generation funnel with its own review and publication checks." },
@@ -69,7 +69,7 @@ export const CHECK_LABEL: Record<CheckKey, string> = {
   ghl_location: "CRM workspace connection",
   crm_snapshot: "CRM Blueprint applied",
   crm_assets: "CRM pipelines, tags, fields and forms",
-  hermes_employees: "AI employees (live health)",
+  hermes_employees: "AI runtime health",
   workflows: "Automation workflows",
   website_live: "Website and domain",
   email_domain: "Business email sender and domain",

@@ -5,7 +5,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
 import { assertCan, memberActor } from "@/server/crm/actor";
-import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, isAgentRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { PROVISIONING_PAYMENT_NOTE } from "@/lib/billing-clearance";
 import { grantableRoles } from "@/lib/permissions";
 import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
@@ -203,7 +203,7 @@ async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
     return { behind, generated };
   });
   if (!result.behind.length) return { ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." };
-  const names = (roles: AgentRoleKey[]) => roles.map((r) => AGENT_BY_KEY[r].shortName).join(", ");
+  const names = (roles: WorkforceRoleKey[]) => roles.map(workforceRoleShortName).join(", ");
   const updated = result.generated.filter((g) => g.configStatus === "applied").map((g) => g.role);
   const held = result.generated.filter((g) => g.configStatus === "pending_agency_review").map((g) => g.role);
   const parts = [

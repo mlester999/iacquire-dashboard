@@ -147,7 +147,7 @@ export function AutomationView() {
         <div>
           <h3 className="text-[16px] font-semibold text-ink">Not adding Managed Maintenance? Your core system still connects.</h3>
           <p className="mt-1 text-[14px] leading-relaxed text-ink-2">
-            The CRM, the AI Employees, the inbox and booking never wait on the monthly plan. If you already use an automation tool such as n8n, Zapier or Make, you can connect it to your system through supported APIs and webhooks.
+            The CRM, AI Growth Partner, inbox and booking never wait on the monthly plan. If you already use an automation tool such as n8n, Zapier or Make, you can connect it to your system through supported APIs and webhooks.
           </p>
         </div>
       </aside>

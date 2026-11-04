@@ -26,7 +26,7 @@ beforeAll(() => {
   window.matchMedia ??= ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 });
 beforeEach(() => {
-  nav.pathname = "/employees";
+  nav.pathname = "/growth-partner";
 });
 afterEach(cleanup);
 
@@ -53,9 +53,9 @@ function shell(permissions: Permission[], over: Partial<ShellData> = {}): ShellD
   };
 }
 
-function renderSidebar(permissions: Permission[] = ["agents.use", "agents.configure"]) {
+function renderSidebar(permissions: Permission[] = ["agents.use", "agents.configure"], over: Partial<ShellData> = {}) {
   return render(
-    <ShellProvider value={shell(permissions)}>
+    <ShellProvider value={shell(permissions, over)}>
       <TooltipProvider>
         <Sidebar />
       </TooltipProvider>
@@ -65,59 +65,54 @@ function renderSidebar(permissions: Permission[] = ["agents.use", "agents.config
 
 const hrefs = () => screen.getAllByRole("link").map((a) => a.getAttribute("href"));
 
-describe("management navigation (main iAcquire sidebar)", () => {
-  it("opens an employee's profile when the employee is selected, never the chat", () => {
+describe("Growth Partner navigation (main iAcquire sidebar)", () => {
+  it("shows one Growth Partner destination and keeps old profiles under migration access", () => {
     renderSidebar();
     const links = hrefs();
-    expect(links).toContain("/employees/operations-manager");
-    expect(links).toContain("/employees/lead-hunter");
-    expect(links).toContain("/employees/appointment-setter");
-    // The primary row for an employee is the management route; chat is a separate, explicitly labelled action.
-    const lead = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/lead-hunter")!;
-    expect(lead.textContent).toContain("Lead Hunter");
-    expect(links).not.toContain("/chat/lead-hunter");
+    expect(links).toContain("/growth-partner");
+    expect(screen.getByRole("link", { name: "AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner");
+    expect(screen.getByRole("link", { name: "Previous employee profiles" }).getAttribute("href")).toBe("/employees");
+    expect(links.filter((href) => href?.startsWith("/employees/") || href?.startsWith("/chat/")).length).toBe(0);
   });
 
-  it("offers an explicit 'Chat with' shortcut only for employees that can actually chat", () => {
-    renderSidebar();
-    expect(screen.getByRole("link", { name: "Chat with Operations Manager · Operations Manager" }).getAttribute("href")).toBe("/chat/operations-manager");
-    expect(screen.getByRole("link", { name: "Chat with Appointment Setter · Appointment Setter" }).getAttribute("href")).toBe("/chat/appointment-setter");
-    // Setup required: no chat shortcut, so a management click can never land on a blocked chat by accident.
-    expect(screen.queryByRole("link", { name: "Chat with Lead Hunter" })).toBeNull();
-    // Not enabled for this workspace: not listed at all.
-    expect(hrefs()).not.toContain("/employees/sales-assistant");
-    expect(screen.queryByRole("link", { name: /Chat with Sales Assistant/ })).toBeNull();
+  it("keeps migration-only profiles hidden from people who cannot configure agents", () => {
+    renderSidebar(["agents.use"]);
+    expect(hrefs()).toContain("/growth-partner");
+    expect(hrefs()).not.toContain("/employees");
+    expect(hrefs().filter((href) => href?.startsWith("/employees/") || href?.startsWith("/chat/")).length).toBe(0);
   });
 
-  it("names each employee row from its own visible words, with the state said once (WCAG label-in-name)", () => {
-    renderSidebar();
-    const lead = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/lead-hunter")!;
-    // axe's label-content-name-mismatch failed on these rows when an aria-label replaced the visible text and the state was spoken twice.
-    expect(lead.hasAttribute("aria-label")).toBe(false);
-    expect(lead.textContent?.match(/setup required/gi)).toHaveLength(1);
-    // A role line that only repeats the employee's name is hidden from assistive technology instead of being read twice.
-    const ops = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/operations-manager")!;
-    expect(Array.from(ops.querySelectorAll("span[aria-hidden='true']")).map((e) => e.textContent)).toContain("Operations Manager");
+  it("hides previous profiles from a Growth Partner-only workspace", () => {
+    renderSidebar(["agents.use", "agents.configure"], { agents: [] });
+    expect(hrefs()).toContain("/growth-partner");
+    expect(hrefs()).not.toContain("/employees");
   });
 
-  it("hides every chat shortcut from people who may not use AI employees", () => {
+  it("hides retained profile access after legacy runtimes are disabled", () => {
+    const disabled = shell(["agents.use", "agents.configure"]).agents.map((agent) => ({ ...agent, enabled: false }));
+    renderSidebar(["agents.use", "agents.configure"], { agents: disabled });
+    expect(hrefs()).toContain("/growth-partner");
+    expect(hrefs()).not.toContain("/employees");
+  });
+
+  it("hides Growth Partner navigation from people without AI access", () => {
     renderSidebar([]);
-    expect(screen.queryByRole("link", { name: /^Chat with/ })).toBeNull();
-    expect(hrefs()).toContain("/employees/operations-manager");
+    expect(hrefs()).not.toContain("/growth-partner");
+    expect(hrefs()).not.toContain("/employees");
   });
 
-  it("highlights the employee being managed and nothing else", () => {
-    nav.pathname = "/employees/lead-hunter";
+  it("highlights the single partner route", () => {
+    nav.pathname = "/growth-partner";
     renderSidebar();
     const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
-    const employeeRows = current.filter((a) => a.getAttribute("href")?.startsWith("/employees/"));
-    expect(employeeRows.map((a) => a.getAttribute("href"))).toEqual(["/employees/lead-hunter"]);
+    expect(current.map((a) => a.getAttribute("href"))).toContain("/growth-partner");
+    expect(current.map((a) => a.getAttribute("href"))).not.toContain("/employees");
   });
 
-  it("keeps the AQi walkthrough anchors for AI Employees", () => {
+  it("keeps the AQi walkthrough anchor on the Growth Partner link", () => {
     const { container } = renderSidebar();
     expect(container.querySelector('[data-tour="workforce"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/employees"][data-aqi-target="nav.workforce"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/growth-partner"][data-aqi-target="nav.workforce"]')).not.toBeNull();
     expect(container.querySelector('a[href="/overview"][data-aqi-target]')).not.toBeNull();
   });
 

@@ -8,7 +8,7 @@ export default function GetStartedPage() {
     <>
       <AuthHeading
         eyebrow="Get started"
-        title="Bring an AI team to your business"
+        title="Meet your AI Growth Partner"
         description={
           <>
             Tell us a little about your company. The iAcquire team reviews every request and sets up your dedicated workspace. Setup is a one-time{" "}

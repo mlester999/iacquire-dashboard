@@ -1721,6 +1721,12 @@ async function runBCD() {
   const top = cur;
   // 0081 only alters two policies and 0082 adds columns and an index: neither has a data guard. A newer migration without seed data here has nothing to refuse for.
   const REFUSES = new Map(HISTORY.map((f) => [name(f), !["0081", "0082"].includes(prefix(f)) && Boolean(SEEDS[name(f)])]));
+  // 0120 owns the partner tables; 0121 adds a foreign key from the canonical conversation. Its
+  // rollback must run first. Trying 0120 alone at the current head should fail for that dependency,
+  // while D2 below proves the supported reverse order returns to the exact prior schema.
+  const OUT_OF_ORDER_DEPENDENCY = new Map([
+    ["0120", /cannot drop table ai_growth_partners because other objects depend on it/i],
+  ]);
   const refusedNames = [];
   for (const file of HISTORY) {
     const v = name(file);
@@ -1731,7 +1737,10 @@ async function runBCD() {
     const sql = rollbackSql(file);
     const res = await throwaway(db, (tx) => attempt(tx, sql));
     const refused = !res.ok && /Rollback refused/.test(res.message);
-    if (!res.ok && !refused) fail("D", `${v}: the rollback failed for another reason on the full database: ${clip(res.message, 300)}`);
+    const dependency = OUT_OF_ORDER_DEPENDENCY.get(prefix(file));
+    const expectedOutOfOrder = !res.ok && Boolean(dependency?.test(res.message));
+    if (expectedOutOfOrder) finding("D", `${v}: correctly blocked as out of order while its 0121 dependent remains; the supported reverse-order rollback is verified below`);
+    else if (!res.ok && !refused) fail("D", `${v}: the rollback failed for another reason on the full database: ${clip(res.message, 300)}`);
     else if (REFUSES.get(v) && !refused) fail("D", `${v}: the rollback ran on a database that holds the feature's data (it must refuse)`);
     else if (refused) {
       refusedNames.push(prefix(file));
@@ -1763,7 +1772,13 @@ async function runBCD() {
       if (r?.restore) restore = r.restore;
     }
     // Columns this rollback will drop that hold data other than their default, and tables it will drop that still hold rows.
-    const dropCols = [...st.after.fp].filter((x) => x.startsWith("column|") && !st.before.fp.has(x)).map((x) => x.slice("column|".length));
+    // Compare physical column identities, not the full fingerprint line: changing a column's
+    // nullability (0121 makes chat_conversations.user_id nullable) is not a dropped data column.
+    const columnIdentity = (fact) => fact.match(/^column\|((?:public|app)\.[^.]+\.[^:]+):/)?.[1] ?? null;
+    const columnsBefore = new Set([...st.before.fp].map(columnIdentity).filter(Boolean));
+    const dropCols = [...st.after.fp]
+      .filter((x) => x.startsWith("column|") && !columnsBefore.has(columnIdentity(x)))
+      .map((x) => x.slice("column|".length));
     const atRisk = [];
     for (const c of dropCols) {
       const m = /^public\.([a-z0-9_]+)\.([a-z0-9_]+):/.exec(c);
@@ -1819,7 +1834,7 @@ async function runBCD() {
       if (atRisk.length) {
         const byTable = new Map();
         for (const [tb, col, rows] of atRisk) byTable.set(tb, [...(byTable.get(tb) ?? []), `${col} (${rows})`]);
-        noteRisk.push(`${v}: the rollback ran without refusing although these columns it drops held data other than their default: ${[...byTable.entries()].map(([tb, cols]) => `${tb}: ${cols.join(", ")}`).join("; ")}. The guard protects the history tables only, so the new columns of existing tables go silently; export them first if they matter.`);
+        noteRisk.push(`${v}: the rollback completed although these columns it drops held non-empty values: ${[...byTable.entries()].map(([tb, cols]) => `${tb}: ${cols.join(", ")}`).join("; ")}. This generic check does not distinguish migration-seeded baseline data from later customization or inspect migration-specific rollback guards; review the down migration and export meaningful values before any rollback outside rehearsal.`);
       }
     }
   }

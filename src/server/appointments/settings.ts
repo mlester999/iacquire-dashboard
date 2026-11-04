@@ -55,11 +55,13 @@ export async function getPolicyView(ctx: OrgContext): Promise<PolicyView> {
 export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySchema>, now = new Date()): Promise<void> {
   if (!ctx.can("appointments.manage")) throw new AppError("forbidden", "Only owners and managers can change booking rules.");
   const p = policySchema.parse(input);
-  if (p.aiBookingEnabled !== undefined && !ctx.can("automation.go_autonomous")) throw new AppError("forbidden", "Only the business owner can let the Appointment Setter book on its own.");
+  if (p.aiBookingEnabled !== undefined && !ctx.can("automation.go_autonomous")) throw new AppError("forbidden", "Only the business owner can let AI Growth Partner book on its own.");
   const offsets = p.reminderOffsetsMinutes ? [...new Set(p.reminderOffsetsMinutes)].sort((a, b) => b - a) : undefined;
 
   const resync = await withSystem(async (db) => {
-    const current = await loadPolicy(db, ctx.org.orgId);
+    // Ensure the row exists before taking the lock. This keeps concurrent updates from rebuilding a stale full policy snapshot.
+    await db.query("insert into appointment_settings (org_id, updated_by) values ($1, $2) on conflict (org_id) do nothing", [ctx.org.orgId, ctx.user.id]);
+    const current = await loadPolicy(db, ctx.org.orgId, { forUpdate: true });
     // Letting the AI book, and reminders to customers, wait for finished setup and a verified calendar when the deployment asks for it (src/server/setup/customer-facing-gate.ts). Only
     // a real OFF to ON change is judged; switching off and saving anything else is never held.
     if (customerFacingGateOn()) {
@@ -80,6 +82,11 @@ export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySc
       ...(p.remindersEnabled !== undefined ? { remindersEnabled: p.remindersEnabled } : {}),
       ...(offsets ? { reminderOffsetsMinutes: offsets } : {}),
     };
+    const changed: Record<string, [unknown, unknown]> = {};
+    for (const key of ["defaultCalendarId", "slotMinutes", "minNoticeMinutes", "maxDaysAhead", "lateCancelHours", "aiBookingEnabled", "remindersEnabled", "reminderOffsetsMinutes"] as const) {
+      if (JSON.stringify(current[key]) !== JSON.stringify(next[key])) changed[key] = [current[key], next[key]];
+    }
+    if (!Object.keys(changed).length) return false;
     let approvalId = current.remindersApprovalId;
     if (next.remindersEnabled && !current.remindersEnabled) {
       approvalId = await createStandingAuthorization(db, {
@@ -98,8 +105,8 @@ export async function savePolicy(ctx: OrgContext, input: z.input<typeof policySc
       [ctx.org.orgId, next.defaultCalendarId, next.slotMinutes, next.minNoticeMinutes, next.maxDaysAhead, next.lateCancelHours, next.aiBookingEnabled, next.remindersEnabled, next.reminderOffsetsMinutes, approvalId, ctx.user.id],
     );
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "appointments.policy_changed", targetType: "appointment_settings", targetId: ctx.org.orgId, result: "success",
-      metadata: { aiBooking: next.aiBookingEnabled, reminders: next.remindersEnabled, offsets: next.reminderOffsetsMinutes } }, db);
-    return p.remindersEnabled !== undefined || offsets !== undefined;
+      metadata: { changed, aiBooking: next.aiBookingEnabled, reminders: next.remindersEnabled, offsets: next.reminderOffsetsMinutes } }, db);
+    return "remindersEnabled" in changed || "reminderOffsetsMinutes" in changed;
   });
   if (resync) await resyncAllReminders(ctx.org.orgId, now);
 }

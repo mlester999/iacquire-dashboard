@@ -452,7 +452,7 @@ export function AiBody({ data: d, ctx }: { data: SectionPayloads["ai"]; ctx: Sec
   return (
     <div className="space-y-5">
       <StatGrid>
-        <Stat label="CRM tool calls" value={count(d.toolCalls)} definition="Every CRM tool an AI employee called in the period, whatever the result." />
+        <Stat label="CRM tool calls" value={count(d.toolCalls)} definition="Every CRM tool your AI Growth Partner called in the period, whatever the result." />
         <Stat label="Approvals requested" value={count(a.requested)} />
         <Stat label="Approved" value={count(a.approved)} />
         <Stat label="Rejected" value={count(a.rejected)} />
@@ -462,14 +462,14 @@ export function AiBody({ data: d, ctx }: { data: SectionPayloads["ai"]; ctx: Sec
       <div className="grid gap-5 @2xl:grid-cols-3">
         <Block title="By result"><HBarList unit="calls" rows={d.byOutcome.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
         <Block title="By tool"><HBarList unit="calls" rows={d.byTool.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
-        <Block title="By AI employee"><HBarList unit="calls" rows={d.byEmployee.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
+        <Block title="By profile"><HBarList unit="calls" rows={d.byEmployee.map((r) => ({ key: r.key, label: r.label, value: r.count }))} emptyLabel="No tool calls in this period." /></Block>
       </div>
       {d.approvalsByKind.length > 0 && (
         <Block title="Approvals by kind">
           <DataTable caption="Approval requests by kind" head={["Kind", "Requested"]} rows={d.approvalsByKind.map((k) => ({ key: k.key, cells: [k.label, count(k.count)] }))} minWidth="min-w-[16rem]" />
         </Block>
       )}
-      {ctx.can("activity.view") && <TraceLink href={`${ctx.base}/settings/ai-tools`}>Open AI employee tools</TraceLink>}
+      {ctx.can("activity.view") && <TraceLink href={`${ctx.base}/settings/ai-tools`}>Open AI tool permissions</TraceLink>}
     </div>
   );
 }

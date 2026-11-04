@@ -40,7 +40,7 @@ function base(): LaunchFacts {
     bookingSettings: { lateCancelHours: 24, aiBookingEnabled: false, remindersEnabled: false },
     launchControls: [
       { key: "booking_page", label: "Public booking page", on: false, wanted: true, href: "/crm/calendars/preview" },
-      { key: "ai_booking", label: "Appointment Setter books on its own", on: false, wanted: false, href: "/appointments" },
+      { key: "ai_booking", label: "AI Growth Partner books on its own", on: false, wanted: false, href: "/appointments" },
       { key: "auto_reply", label: "AI replies to customers", on: false, wanted: true, href: "/settings/messaging" },
       { key: "channel.email", label: "Email", on: true, wanted: true, href: "/settings/messaging" },
       { key: "channel.sms", label: "SMS", on: false, wanted: false, href: "/settings/messaging" },

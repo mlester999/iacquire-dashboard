@@ -73,7 +73,7 @@ export function ActivityChart({ data }: { data: Array<{ x: string; y: number }> 
         className="min-h-[220px] rounded-xl bg-surface-2/60 ring-1 ring-inset ring-line"
         icon={<Activity className="size-5" />}
         title="Your activity story starts here"
-        description="No AI activity has been recorded yet. Once your employees are verified and you start working together, real activity appears here."
+        description="No AI activity has been recorded yet. Once your Growth Partner is verified and you start working together, real activity appears here."
         action={<StatusPill tone="neutral">0 recorded messages</StatusPill>}
       />
     );

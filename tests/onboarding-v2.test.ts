@@ -8,6 +8,7 @@ import {
 } from "@/lib/onboarding/engine";
 import type { Answers, StoredAnswers } from "@/lib/onboarding/types";
 import { getOnboardingReview, getOnboardingSession, readOnboardingWebsite, saveOnboardingStep, submitOnboarding, suggestOnboardingAnswer } from "@/server/onboarding/service";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import type { PageFetcher } from "@/server/onboarding/website";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
@@ -351,7 +352,7 @@ describe("submission", () => {
     await expect(submitOnboarding(as(rep, org, "sales_rep"))).rejects.toThrow(/Only owners/);
   });
 
-  it("applies the answers: six configurations, profile, contact details, messaging preferences (off), knowledge", async () => {
+  it("keeps legacy role setup intact while applying profile, contact details, messaging preferences (off), and knowledge", async () => {
     await save({
       "a.business_name": { value: "Persist Co" },
       "a.business_model": { value: "local" },
@@ -385,6 +386,12 @@ describe("submission", () => {
 
     const versions = await q("select count(*)::int as n from agent_config_versions where org_id = $1 and source = 'onboarding'");
     expect(versions[0].n).toBe(6);
+    const growthPartner = (await q(
+      `select p.status, p.runtime_agent_instance_id, p.current_version, v.version, v.source, v.business_brain
+       from ai_growth_partners p join ai_growth_partner_versions v on v.org_id = p.org_id and v.partner_id = p.id
+       where p.org_id = $1`,
+    ))[0];
+    expect(growthPartner).toBeUndefined(); // Existing workspaces are not silently migrated by questionnaire submission.
     const appointment = await q("select v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id where a.org_id = $1 and a.role_key = 'appointment_setter'");
     expect(JSON.stringify(appointment[0].settings)).toContain("Free inspection");
     expect(JSON.stringify(appointment[0].settings)).toContain("professional");
@@ -411,6 +418,80 @@ describe("submission", () => {
     expect(session.completedAt).toBeTruthy();
     expect(session.hasUnsubmittedChanges).toBe(false);
     expect((await q("select action from audit_logs where org_id = $1 and action = 'onboarding.completed'")).length).toBe(1);
+  });
+
+  it("submits a new Growth Partner tenant without creating six specialist configurations", async () => {
+    const unifiedOrg = await createOrg({ name: "Unified Setup Co", status: "onboarding" });
+    const unifiedOwner = await createUser();
+    await addMember(unifiedOrg.id, unifiedOwner.id, "owner");
+    const ctx = ctxFor(unifiedOwner, unifiedOrg, "owner");
+    await withSystem(async (db) => {
+      await db.query("update organizations set website = 'https://unified-setup.test' where id = $1", [unifiedOrg.id]);
+      await db.query("update agent_instances set enabled = false, status = 'disabled' where org_id = $1 and role_key <> 'growth_partner'", [unifiedOrg.id]);
+      await ensureGrowthPartnerRuntime(unifiedOrg.id, db);
+    });
+    await saveOnboardingStep(ctx, {
+      answers: {
+        "a.business_name": { value: "Unified Setup Co" },
+        "a.industry": { value: "home_services" },
+        "a.business_model": { value: "local" },
+        "a.description": { value: "We repair and replace roofs for homeowners in Austin." },
+        "a.timezone": { value: "America/Chicago" },
+        "a.hours": { value: { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]] } },
+        "a.contact_email": { value: "hello@unified-setup.test" },
+        "b.goals": { value: ["more_leads", "more_appointments"] },
+        "b.services": { value: "Roof inspections and repairs." },
+        "b.appointments": { value: true },
+        "b.website_need": { value: "new" },
+        "c.tone": { value: "professional" },
+        "c.channels": { value: ["sms"] },
+        "c.response_hours": { value: "business_hours" },
+        "c.never_promise": { value: "Exact prices before an inspection." },
+        "c.human_escalation": { value: ["complaint", "refund_concern"] },
+        "d.appt_types": { value: [{ name: "Roof inspection", minutes: "30", mode: "in_person" }] },
+        "d.pricing_policy": { value: "never" },
+        "d.followup": { value: "gentle" },
+        "e.policies": { value: "Inspection required before final pricing." },
+        "f.review": { value: true },
+      },
+    });
+
+    const outcome = await submitOnboarding(ctx);
+    expect(outcome.employees).toHaveLength(1);
+    expect(outcome.employees[0].role).toBe("growth_partner");
+    const rows = await withSystem(async (db) => (await db.query<{ role_key: string; n: number }>(
+      `select a.role_key, count(v.id)::int as n from agent_instances a
+       left join agent_config_versions v on v.agent_instance_id = a.id and v.source = 'onboarding'
+       where a.org_id = $1 group by a.role_key`,
+      [unifiedOrg.id],
+    )).rows);
+    expect(rows.find((row) => row.role_key === "growth_partner")?.n).toBe(1);
+    expect(rows.filter((row) => row.role_key !== "growth_partner").every((row) => row.n === 0)).toBe(true);
+    const brain = await withSystem(async (db) => (await db.query<{ current_version: number | null; runtime_agent_instance_id: string | null }>(
+      "select current_version, runtime_agent_instance_id from ai_growth_partners where org_id = $1",
+      [unifiedOrg.id],
+    )).rows[0]);
+    expect(brain).toMatchObject({ current_version: 1 });
+    expect(brain.runtime_agent_instance_id).toBeTruthy();
+    const setupCopy = await withSystem((db) => db.query<{
+      template_key: string; title: string; client_title: string | null; description: string; completion_notice: string | null;
+      client_action: { label?: string } | null;
+    }>(
+      "select template_key, title, client_title, description, completion_notice, client_action from client_setup_tasks where org_id = $1 and template_key = any($2::text[])",
+      [unifiedOrg.id, ["ai_employees", "ai_configuration", "ai_profiles", "integration_tests", "knowledge_review"]],
+    ));
+    const setupByKey = Object.fromEntries(setupCopy.rows.map((row) => [row.template_key, row]));
+    expect(setupByKey.ai_employees).toMatchObject({
+      title: "AI Growth Partner runtime and safety checks passed",
+      client_title: "Your AI Growth Partner is ready",
+      description: expect.stringContaining("one tenant-isolated Growth Partner profile"),
+      completion_notice: "Your AI Growth Partner is ready",
+      client_action: { label: "Approve your AI Growth Partner configuration" },
+    });
+    expect(setupByKey.ai_configuration.description).toContain("one stable AI Growth Partner");
+    expect(setupByKey.ai_profiles.title).toContain("AI Growth Partner");
+    expect(setupByKey.integration_tests.description).toContain("your AI Growth Partner");
+    expect(setupByKey.knowledge_review.description).toContain("approved Business Brain");
   });
 
   it("on re-submission refreshes untouched knowledge, keeps edits made elsewhere, and preserves per-employee customisation", async () => {

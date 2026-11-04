@@ -13,7 +13,7 @@ import {
   workflowEvidence,
   type SetupChannel,
 } from "@/server/setup/native-evidence";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import { CHECK_KEYS, CHECK_LABEL, type CheckKey, type CheckStatus } from "@/lib/setup";
 
 /**
@@ -124,7 +124,7 @@ const hermesEmployees: SetupConnector = {
         ),
       ).then((r) => r.rows);
     let agents = await load();
-    if (!agents.length) return { status: "unverified", detail: "No AI employees are enabled for this client." };
+    if (!agents.length) return { status: "unverified", detail: "No AI runtime is enabled for this client." };
     if (live) {
       // A live refresh is a workforce write; runHealthCheck enforces agency.workforce.manage plus the
       // assigned-client scope. Setup staff without that permission keep the stored result (the rejected
@@ -134,16 +134,20 @@ const hermesEmployees: SetupConnector = {
       );
       agents = await load();
     }
-    const name = (a: Row) => (isAgentRoleKey(a.role_key) ? AGENT_BY_KEY[a.role_key].shortName : a.role_key);
+    const partnerOnly = agents.every((a) => a.role_key === AI_GROWTH_PARTNER_ROLE_KEY);
+    const runtimeLabel = partnerOnly ? "AI Growth Partner" : "AI employees";
+    const name = (a: Row) => (isWorkforceRoleKey(a.role_key) ? workforceRoleShortName(a.role_key) : a.role_key);
     const failing = agents.filter((a) => a.status === "error" || a.status === "offline");
     const notReady = agents.filter((a) => a.status === "setup_required" || a.status === "provisioning");
     const stale = agents.filter((a) => (a.status === "online" || a.status === "busy") && !isFresh(a.last_health_check_at));
     const healthy = agents.length - failing.length - notReady.length - stale.length;
-    if (failing.length) return { status: "failed", detail: `${failing.length} of ${agents.length} AI employees failing: ${failing.map((a) => `${name(a)} (${a.status})`).join(", ")}.` };
+    if (failing.length) return { status: "failed", detail: `${failing.length} of ${agents.length} ${runtimeLabel} ${partnerOnly ? "is" : "are"} failing: ${failing.map((a) => `${name(a)} (${a.status})`).join(", ")}.` };
     if (notReady.length || stale.length) {
-      return { status: "unverified", detail: `${healthy} of ${agents.length} AI employees passed a recent live health check. Waiting on: ${[...notReady, ...stale].map(name).join(", ")}.` };
+      return { status: "unverified", detail: `${healthy} of ${agents.length} ${runtimeLabel} passed a recent live health check. Waiting on: ${[...notReady, ...stale].map(name).join(", ")}.` };
     }
-    return { status: "verified", detail: `${agents.length} of ${agents.length} AI employees passed a live health check.` };
+    return { status: "verified", detail: partnerOnly
+      ? "The AI Growth Partner passed a live health check."
+      : `${agents.length} of ${agents.length} AI employees passed a live health check.` };
   },
 };
 

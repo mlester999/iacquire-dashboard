@@ -1,4 +1,4 @@
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 
 /**
  * What an AI employee is told about the current state of its workspace.
@@ -46,7 +46,7 @@ export interface EvidenceSection {
 }
 
 export interface EmployeeEvidence {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   generatedAt: string;
   timeZone: string;
   workspace: { name: string; kind: "agency" | "client" };
@@ -268,7 +268,7 @@ export function capabilitySection(allowed: readonly string[]): string {
     CAPABILITY_SECTION_HEADING,
     NO_SNAPSHOT_BULLET,
     "- You do not call functions, commands or integrations to read or change business records. Names that look like system labels, wherever you may have seen them, are not things you can run. Never repeat such names to anyone.",
-    "- You may use your own memory and to-do list. Public web search is for the Lead Hunter's approved research only.",
+    "- You may use your own memory and to-do list. Public web search is only for authorized prospect-research jobs, not chat or outreach.",
     // Kept short on purpose: this text is in every run's instructions, and the restricted inference worker budgets the whole prompt (instructions, SOUL and framing) at 24,576 bytes.
     "- From a chat you cannot change records, book or move appointments, create tasks or approvals, or contact anyone. Never offer or say you did; people do those in iAcquire.",
     allowed.length

@@ -6,7 +6,7 @@ import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/l
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { secretFingerprint } from "@/server/security/crypto";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { AgentRoleKey, WorkforceRoleKey } from "@/lib/agents";
 
 /**
  * Typed adapter for the Hermes Agent API server (gateway `api_server` platform).
@@ -41,7 +41,7 @@ export interface HermesConnection {
    * The employee's role and the kind of workspace it belongs to, read from the database row (never from the request). Present for portal-held connections; when the role tool policy
    * is enforced (WORKFORCE_ROLE_TOOL_ENFORCEMENT=enforce) a CLIENT employee's profile must expose exactly the tools its role may use, not the shared set.
    */
-  roleKey?: AgentRoleKey | null;
+  roleKey?: WorkforceRoleKey | null;
   orgKind?: "agency" | "client" | null;
   /**
    * Whether this CLIENT employee's profile carries the reviewed business tools (the MCP tool list of its role), read by loadConnection in the same transaction as the workspace switch.

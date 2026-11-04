@@ -293,7 +293,7 @@ export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { wor
   let mayReadRuns = false;
   return runReadOnlyReviewJob(job, {
     capability: "performance_snapshot",
-    allowedRoles: ["performance_analyst"],
+    allowedRoles: ["performance_analyst", "growth_partner"],
     scanningMessage: "Reading persisted leads, contacts, appointments, opportunities and AI runs for the requested period…",
     analyzingMessage: "Calculating measured KPIs for the requested period and checking only the stated anomaly thresholds…",
     beforeScan: async () => {

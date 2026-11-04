@@ -187,7 +187,7 @@ export function PendingBookings({ rows, canBook }: { rows: PendingBookingRow[]; 
                   <StatusPill tone={r.status === "awaiting_approval" ? "primary" : "warning"} size="sm">{r.status === "awaiting_approval" ? "Awaiting your approval" : "Needs a calendar entry"}</StatusPill>
                 </p>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-                  {r.status === "awaiting_approval" ? <span suppressHydrationWarning>{`Your Appointment Setter proposed this ${relativeTime(r.createdAt)}. Confirm it in Approvals.`}</span> : `Add this to your calendar${r.reason ? `. ${r.reason}` : ""}`}
+                  {r.status === "awaiting_approval" ? <span suppressHydrationWarning>{`Your AI Growth Partner proposed this ${relativeTime(r.createdAt)}. Confirm it in Approvals.`}</span> : `Add this to your calendar${r.reason ? `. ${r.reason}` : ""}`}
                 </p>
               </div>
               {r.status === "awaiting_approval" ? (
@@ -226,7 +226,7 @@ const OFFSET_CHOICES = [
   { value: 60, label: "1 hour before" },
 ];
 
-/** The workspace's booking rules, reminders and whether the Appointment Setter may book on its own. */
+/** The workspace's booking rules, reminders and whether the AI Growth Partner may book on its own. */
 export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; canGoAutonomous: boolean }) {
   const router = useRouter();
   const [p, setP] = React.useState(policy);
@@ -247,7 +247,7 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
   const toggleOffset = (v: number) => setP((cur) => ({ ...cur, reminderOffsetsMinutes: cur.reminderOffsetsMinutes.includes(v) ? cur.reminderOffsetsMinutes.filter((x) => x !== v) : [...cur.reminderOffsetsMinutes, v].sort((a, b) => b - a).slice(0, 3) }));
 
   return (
-    <Panel className="xl:col-span-3" icon={<SlidersHorizontal />} title="Booking rules" description="How far ahead and how short a notice customers can book, and what your AI employees may do on their own." bodyClassName="space-y-6">
+    <Panel className="xl:col-span-3" icon={<SlidersHorizontal />} title="Booking rules" description="How far ahead and how short a notice customers can book, and what your AI Growth Partner may do on its own." bodyClassName="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Calendar for bookings" htmlFor="rule-cal" hint={policy.calendars.length ? undefined : "No calendar is connected yet."}>
             <Select id="rule-cal" value={p.defaultCalendarId ?? ""} onChange={(e) => setP({ ...p, defaultCalendarId: e.target.value || null })} disabled={!policy.calendars.length}>
@@ -312,13 +312,13 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
           )}
           <label className={cn("flex items-start justify-between gap-4 p-4", !canGoAutonomous && "opacity-70")}>
             <span>
-              <span className="block text-[14px] font-medium">Let the Appointment Setter book without asking</span>
+              <span className="block text-[14px] font-medium">Let AI Growth Partner book without asking</span>
               <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">
                 Off by default: it proposes a time from your real calendar and you confirm in Approvals. When this is on, an employee that works autonomously books a time the customer clearly chose, and the calendar must still confirm it.
                 {!canGoAutonomous && " Only the business owner can change this."}
               </span>
             </span>
-            <Switch checked={p.aiBookingEnabled} disabled={!canGoAutonomous} aria-label="Let the Appointment Setter book without asking" onCheckedChange={(v) => setP({ ...p, aiBookingEnabled: v })} />
+            <Switch checked={p.aiBookingEnabled} disabled={!canGoAutonomous} aria-label="Let AI Growth Partner book without asking" onCheckedChange={(v) => setP({ ...p, aiBookingEnabled: v })} />
           </label>
         </div>
 

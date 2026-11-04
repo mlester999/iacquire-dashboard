@@ -80,7 +80,7 @@ export function Marketplace({
           <div>
             <StatusPill tone="success">Already yours</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">{CORE_OFFER.name}</p>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted">Your core system and its standard AI employees are covered by your agreement. Nothing on this page is needed to use them.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">Your AI Growth Partner is part of your core system. Nothing on this page is needed to use it.</p>
           </div>
           <div>
             <StatusPill tone="primary">Optional</StatusPill>

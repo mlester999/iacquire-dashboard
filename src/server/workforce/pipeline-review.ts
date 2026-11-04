@@ -124,7 +124,7 @@ export const PIPELINE_REVIEW_CHECKS: readonly ReviewCheck[] = [staleDeals, missi
 export async function runPipelineReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "pipeline_review",
-    allowedRoles: ["sales_assistant"],
+    allowedRoles: ["sales_assistant", "growth_partner"],
     scanningMessage: "Reading persisted sales opportunities and their recorded stage history…",
     analyzingMessage: "Assessing pipeline hygiene and preparing recommended next actions…",
     checks: PIPELINE_REVIEW_CHECKS,

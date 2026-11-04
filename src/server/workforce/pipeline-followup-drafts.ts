@@ -204,12 +204,12 @@ export async function runPipelineFollowUpDraftsJob(
     );
     return rows[0] ?? null;
   });
-  if (!agent || agent.role_key !== "sales_assistant" || job.capability !== CAPABILITY) {
+  if (!agent || (agent.role_key !== "sales_assistant" && agent.role_key !== "growth_partner") || job.capability !== CAPABILITY) {
     await blockJob(job, "capability_not_allowed", "This employee's role cannot prepare sales follow-up drafts. Nothing was read or written.");
     return;
   }
   if (!agent.enabled || !agent.active_config_version_id || !canChat(agent.status as AgentStatus)) {
-    await blockJob(job, "agent_unavailable", "The Sales Assistant is no longer configured and available. No follow-up draft was created.");
+    await blockJob(job, "agent_unavailable", "The selected AI employee is no longer configured and available. No follow-up draft was created.");
     return;
   }
   if (!await requesterStillAuthorized(job)) {
@@ -230,7 +230,7 @@ export async function runPipelineFollowUpDraftsJob(
     orgId: job.org_id,
     workerId: context.workerId,
     stage: "scanning",
-    message: "Reviewing stale opportunities and the existing Sales Assistant conversations…",
+    message: "Reviewing stale opportunities and the existing workspace conversations…",
     progress: { staleOpportunities: candidates.length, draftsToPrepare: eligible.length, priorDrafts: reused.length },
   }));
   for (const candidate of eligible) draftByOpportunity.set(candidate.opportunityId, buildFollowUpDraft(candidate));

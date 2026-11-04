@@ -210,7 +210,7 @@ describe("AI Work Board", () => {
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByText("Scheduled work")).toBeTruthy();
     expect(screen.getByText("Operator switch off")).toBeTruthy();
-    expect(screen.getByText(/no schedule creates work even when its row is enabled/i)).toBeTruthy();
+    expect(screen.getByText(/It only runs when both the row and the operator switch are enabled/i)).toBeTruthy();
     await userEvent.click(screen.getByRole("switch", { name: /Pause On-demand operations review schedule/ }));
     await waitFor(() => expect(setScheduleEnabledAction).toHaveBeenCalledWith("s1", false));
   });
@@ -295,7 +295,7 @@ describe("AI Work Board", () => {
     }];
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={triggers} canManageTriggers triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByText("Event triggers")).toBeTruthy();
-    expect(screen.getByText(/no event creates work even when its trigger is enabled/i)).toBeTruthy();
+    expect(screen.getByText(/It only runs when both the row and the operator switch are enabled/i)).toBeTruthy();
     expect(screen.getByText(/last event #42/)).toBeTruthy();
     await userEvent.click(screen.getByRole("switch", { name: /Pause Appointment cancelled trigger/ }));
     await waitFor(() => expect(setTriggerEnabledAction).toHaveBeenCalledWith("tr1", false));

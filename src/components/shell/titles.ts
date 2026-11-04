@@ -6,8 +6,9 @@ export const FALLBACK_TITLE = "iAcquire";
 export const TITLES: Array<[RegExp, string]> = [
   [/^\/overview/, "Overview"],
   [/^\/setup/, "Setup"],
+  [/^\/growth-partner/, "AI Growth Partner"],
   [/^\/employees\/[^/]+\/configure/, "Configure employee"],
-  [/^\/employees/, "AI Employees"],
+  [/^\/employees/, "Previous employee profiles"],
   [/^\/leads/, "Leads"],
   [/^\/appointments/, "Appointments"],
   [/^\/sales/, "Sales Pipeline"],

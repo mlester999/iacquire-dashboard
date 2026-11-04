@@ -6,6 +6,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
 import { assertCustomerFacingAllowed, customerFacingGateOn } from "@/server/setup/customer-facing-gate";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import {
   KNOWLEDGE_SECTION_KEYS, LEAD_FORM_MODES, OFFLINE_BEHAVIORS, WIDGET_AI_ROLES, WIDGET_POSITIONS,
   installState, normalizeAllowedHosts, validateQualificationQuestions,
@@ -85,7 +86,12 @@ export async function ensureWidget(db: Queryable, orgId: string): Promise<Widget
     const found = await db.query<Row>(`select ${WIDGET_COLUMNS} from web_chat_widgets where org_id = $1`, [orgId]);
     if (found.rows[0]) return map(found.rows[0]);
     // A key collision (astronomically unlikely) or a concurrent create both end in a retry that reads the row.
-    await db.query("insert into web_chat_widgets (org_id, public_key) values ($1, $2) on conflict do nothing", [orgId, newPublicKey()]).catch(() => undefined);
+    await db.query(
+      `insert into web_chat_widgets (org_id, public_key, ai_role_key)
+       values ($1, $2, case when exists (select 1 from agent_instances where org_id = $1 and role_key = 'growth_partner') then 'growth_partner' else 'sales_assistant' end)
+       on conflict do nothing`,
+      [orgId, newPublicKey()],
+    ).catch(() => undefined);
   }
   throw new AppError("conflict", "The chat widget could not be set up. Try again.");
 }
@@ -108,6 +114,7 @@ export async function siteHostsFor(db: Queryable, orgId: string): Promise<string
 
 export interface WidgetView {
   settings: WidgetSettings;
+  hasGrowthPartner: boolean;
   siteHosts: string[];
   install: { state: InstallState; autoInstalledSites: number };
   canEdit: boolean;
@@ -122,7 +129,11 @@ export async function readWidgetView(ctx: OrgContext): Promise<WidgetView> {
   const view = await withSystem(async (db) => {
     const settings = canEdit ? await ensureWidget(db, ctx.org.orgId) : await getWidgetByOrg(db, ctx.org.orgId);
     const siteHosts = await siteHostsFor(db, ctx.org.orgId);
-    return { settings, siteHosts };
+    const hasGrowthPartner = (await db.query(
+      "select 1 from agent_instances where org_id = $1 and role_key = $2",
+      [ctx.org.orgId, AI_GROWTH_PARTNER_ROLE_KEY],
+    )).rows.length > 0;
+    return { settings, siteHosts, hasGrowthPartner };
   });
   if (!view.settings) {
     // A viewer who cannot edit and a workspace that never opened this screen: nothing is configured, and nothing is created on their behalf.
@@ -131,6 +142,7 @@ export async function readWidgetView(ctx: OrgContext): Promise<WidgetView> {
   const autoInstalledSites = view.settings.autoInstallSites ? view.siteHosts.length : 0;
   return {
     settings: view.settings,
+    hasGrowthPartner: view.hasGrowthPartner,
     siteHosts: view.siteHosts,
     install: { state: installState({ enabled: view.settings.enabled, allowedHostCount: view.settings.allowedOrigins.length, autoInstalledSites, lastSeenAt: view.settings.lastSeenAt }), autoInstalledSites },
     canEdit,
@@ -214,6 +226,17 @@ export async function saveWidgetSettings(ctx: OrgContext, rawPatch: WidgetPatch,
   return withSystem(async (db) => {
     const current = await ensureWidget(db, ctx.org.orgId);
     if (current.version !== expectedVersion) throw new AppError("conflict", "Someone else changed these settings. Reload to see their changes, then try again.");
+    const nextRole = p.aiRoleKey ?? current.aiRoleKey;
+    if (p.aiRoleKey && p.aiRoleKey !== AI_GROWTH_PARTNER_ROLE_KEY && p.aiRoleKey !== current.aiRoleKey) {
+      throw new AppError("invalid_input", "New visitor chat settings use the AI Growth Partner profile.");
+    }
+    if (nextRole === AI_GROWTH_PARTNER_ROLE_KEY) {
+      const partnerRuntime = await db.query(
+        "select 1 from agent_instances where org_id = $1 and role_key = $2",
+        [ctx.org.orgId, AI_GROWTH_PARTNER_ROLE_KEY],
+      );
+      if (!partnerRuntime.rows.length) throw new AppError("invalid_input", "Set up the AI Growth Partner before choosing it for website chat.");
+    }
     const switchingOn = p.enabled === true && !current.enabled;
     if (switchingOn) {
       const hostCount = p.allowedOrigins !== undefined ? (normalizeAllowedHosts(p.allowedOrigins) as { hosts: string[] }).hosts.length : current.allowedOrigins.length;

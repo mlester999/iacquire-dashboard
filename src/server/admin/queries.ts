@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
 import type { SessionUser } from "@/server/auth/service";
-import { AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
@@ -86,6 +86,21 @@ export interface TenantDetail {
     runs_30d: number;
     failed_30d: number;
   }>;
+  growthPartner: {
+    id: string;
+    status: "setup_required" | "provisioning" | "configured" | "paused" | "migration_required";
+    runtime_agent_instance_id: string | null;
+    enabled: boolean | null;
+    runtime_status: AgentStatus | null;
+    hermes_profile: string | null;
+    last_health_check_at: Date | null;
+    last_health_detail: string | null;
+    current_version: number | null;
+    latest_version: number | null;
+    last_message_at: Date | null;
+    runs_30d: number;
+    failed_30d: number;
+  } | null;
   heldVersions: ReviewVersionView[];
   /** A waiting section edit (content is the waiting text; the approved text is untouched and still in use) or text held by the older code. */
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
@@ -182,7 +197,25 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d
        from agent_instances a join agent_roles ro on ro.key = a.role_key
        left join agent_config_versions v on v.id = a.active_config_version_id
-       where a.org_id = $1 order by ro.sort_order`,
+       where a.org_id = $1 and a.role_key = any($2::text[]) order by ro.sort_order`,
+      [orgId, AGENT_ROLE_KEYS],
+    );
+    const growthPartner = await db.query<NonNullable<TenantDetail["growthPartner"]>>(
+      `select p.id,
+              case when p.status in ('paused','migration_required') then p.status
+                   when p.current_version is not null and ${runtimeReadySql("a", { credentialRevocation: true })} then 'configured'
+                   when a.status = 'provisioning' or p.status = 'provisioning' then 'provisioning'
+                   else 'setup_required' end as status,
+              p.runtime_agent_instance_id, a.enabled, a.status as runtime_status,
+              a.hermes_profile, a.last_health_check_at, a.last_health_detail,
+              p.current_version,
+              (select max(v.version)::int from ai_growth_partner_versions v where v.org_id = p.org_id and v.partner_id = p.id) as latest_version,
+              (select max(c.last_message_at) from chat_conversations c where c.org_id = p.org_id and c.growth_partner_id = p.id and c.deleted_at is null) as last_message_at,
+              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as runs_30d,
+              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d
+       from ai_growth_partners p
+       left join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
+       where p.org_id = $1`,
       [orgId],
     );
     const heldKnowledge = await db.query<TenantDetail["heldKnowledge"][number]>(
@@ -217,8 +250,8 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
               j.id = (select l.id from agent_provisioning_jobs l where l.agent_instance_id = j.agent_instance_id and l.org_id = j.org_id order by l.created_at desc, l.id desc limit 1) as is_latest
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
        left join agent_config_versions v on v.id=j.config_version_id
-       where j.org_id = $1 order by j.created_at desc limit 30`,
-      [orgId],
+       where j.org_id = $1 and a.role_key = any($2::text[]) order by j.created_at desc limit 30`,
+      [orgId, AGENT_ROLE_KEYS],
     );
     // The last five audit rows of each listed request, for this workspace only.
     const provisioningEvents = provisioningRows.rows.length
@@ -267,8 +300,8 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
     const failedRuns = await db.query<TenantDetail["failedRuns"][number]>(
       `select r.id, a.role_key as agent_role, r.error_code, r.error_message, r.finished_at
        from agent_runs r join agent_instances a on a.id = r.agent_instance_id
-       where r.org_id = $1 and r.status in ('failed', 'timeout', 'interrupted') order by r.finished_at desc nulls last limit 10`,
-      [orgId],
+       where r.org_id = $1 and a.role_key = any($2::text[]) and r.status in ('failed', 'timeout', 'interrupted') order by r.finished_at desc nulls last limit 10`,
+      [orgId, AGENT_ROLE_KEYS],
     );
     // Founder decision D70: while the stricter rule is on, a held knowledge entry's text and a failed run's error text are content, and this reader bypasses
     // row-level security. It withholds them unless the person has an active support session on this client (the same condition the database applies), and keeps
@@ -282,6 +315,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       members: access.team ? members.rows : [],
       invitations: access.team ? invitations.rows : [],
       agents: access.workforce ? agents.rows : [],
+      growthPartner: access.workforce ? growthPartner.rows[0] ?? null : null,
       heldVersions,
       heldKnowledge: access.workforce && contentAccess.permitted
         ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
@@ -313,6 +347,8 @@ export interface AdminOverview {
   activeClients: number;
   agentsOnline: number;
   agentsEnabled: number;
+  agentsPreparing: number;
+  agentsNeedsAttention: number;
   openTickets: number;
   urgentTickets: number;
   provisioningOpen: number;
@@ -344,6 +380,8 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
       activeClients: await n(`select count(*)::int as n from organizations o where ${scope} and o.status = 'active'`),
       agentsOnline: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and ${runtimeReadySql("a")}`) : 0,
       agentsEnabled: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled`) : 0,
+      agentsPreparing: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('provisioning','setup_required')`) : 0,
+      agentsNeedsAttention: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('error','offline')`) : 0,
       openTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress','waiting_for_client')") : 0,
       urgentTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress') and priority in ('high','urgent')") : 0,
       provisioningOpen: canViewWorkforce ? await n(`select count(*)::int as n from agent_provisioning_jobs j join organizations o on o.id = j.org_id where ${scope} and j.status in ('requested','in_progress','awaiting_health_check')`) : 0,
@@ -388,7 +426,56 @@ export async function listAllAgents(user: SessionUser) {
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d,
               (select coalesce(sum(total_tokens),0)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as tokens_30d
        from agent_instances a join organizations o on o.id = a.org_id join agent_roles ro on ro.key = a.role_key
-       where o.kind = 'client' order by o.name, ro.sort_order`,
+       where o.kind = 'client' and a.role_key = any($1::text[]) order by o.name, ro.sort_order`,
+      [AGENT_ROLE_KEYS],
+    );
+    return rows;
+  });
+}
+
+/** Tenant-scoped operational status for the unified partner. Conversation content is never selected here. */
+export async function listGrowthPartners(user: SessionUser) {
+  return withUser(user.id, async (db) => {
+    const access = await db.query<{ allowed: boolean }>(
+      "select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as allowed",
+      [user.id],
+    );
+    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow viewing client workforce status.");
+    const { rows } = await db.query<{
+      id: string;
+      org_id: string;
+      org_name: string;
+      status: "setup_required" | "provisioning" | "configured" | "paused" | "migration_required";
+      runtime_agent_instance_id: string | null;
+      enabled: boolean | null;
+      runtime_status: AgentStatus | null;
+      hermes_profile: string | null;
+      last_health_check_at: Date | null;
+      last_health_detail: string | null;
+      current_version: number | null;
+      latest_version: number | null;
+      last_message_at: Date | null;
+      active_run: boolean;
+      runs_30d: number;
+      failed_30d: number;
+    }>(
+      `select p.id, p.org_id, o.name as org_name,
+              case when p.status in ('paused','migration_required') then p.status
+                   when p.current_version is not null and ${runtimeReadySql("a", { credentialRevocation: true })} then 'configured'
+                   when a.status = 'provisioning' or p.status = 'provisioning' then 'provisioning'
+                   else 'setup_required' end as status,
+              p.runtime_agent_instance_id,
+              a.enabled, a.status as runtime_status, a.hermes_profile, a.last_health_check_at, a.last_health_detail,
+              p.current_version,
+              (select max(v.version)::int from ai_growth_partner_versions v where v.org_id = p.org_id and v.partner_id = p.id) as latest_version,
+              (select max(c.last_message_at) from chat_conversations c where c.org_id = p.org_id and c.growth_partner_id = p.id and c.deleted_at is null) as last_message_at,
+              exists(select 1 from agent_runs running where running.agent_instance_id = a.id and running.status = 'running') as active_run,
+              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as runs_30d,
+              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d
+       from ai_growth_partners p
+       join organizations o on o.id = p.org_id
+       left join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
+       where o.kind = 'client' order by o.name`,
     );
     return rows;
   });

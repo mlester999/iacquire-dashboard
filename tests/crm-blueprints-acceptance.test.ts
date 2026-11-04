@@ -370,7 +370,7 @@ describe("CRM Blueprints acceptance: from a GoHighLevel template sub-account to 
       id: "workflow.welcome-email", key: "welcome_email", name: "Welcome email", description: "Welcomes each new patient.", folder: null, hourlyRunLimit: 200, placeholder: false,
       definition: {
         trigger: { type: "contact.tag_added", filters: { tagIds: [ref(tag("New patient"))] } },
-        steps: [{ key: "welcome", kind: "send_message", config: { templateId: ref(welcome.id), channel: "email", sendAs: "sales_assistant", businessHoursOnly: true } }],
+        steps: [{ key: "welcome", kind: "send_message", config: { templateId: ref(welcome.id), channel: "email", sendAs: "growth_partner", businessHoursOnly: true } }],
       },
     } as WorkflowAsset);
     const saved = await saveDraft(admin, blueprintId, { content: c, revision: detail.draftRevision });
@@ -480,7 +480,7 @@ describe("CRM Blueprints acceptance: from a GoHighLevel template sub-account to 
   it("7. shows the client's setup checklist with evidence: a sender employee included, no Hermes task, placeholders to rebuild", async () => {
     const list = await getBlueprintChecklist(A.owner);
     const by = Object.fromEntries(list.items.map((i) => [i.key, i]));
-    // The welcome workflow sends as the sales assistant, which onboarding included for this client.
+    // New clients have one enabled Growth Partner identity for approved workflow messages.
     expect(by.ai_employee).toMatchObject({ status: "done" });
     expect(by.hermes).toBeUndefined();
     for (const key of ["calendar_hosts", "calendar_verification", "google_calendar", "form_rebuild", "workflow_rebuild", "custom_values", "form_publishing", "email_provider", "template_approval"] as const) {

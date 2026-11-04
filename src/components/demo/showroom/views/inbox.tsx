@@ -1,15 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { CalendarDays, Check, Clock, Mail, MessageCircle, Phone, RotateCcw, ShieldCheck, Globe } from "lucide-react";
+import { CalendarDays, Check, Clock, Mail, MessageCircle, Phone, RotateCcw, ShieldCheck, Globe, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentAvatar } from "@/components/brand";
-import { AGENT_BY_KEY } from "@/lib/agents";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { ContextCta } from "@/components/demo/showroom/cta";
 import { Chip, SectionHead, SimTag } from "@/components/demo/showroom/ui";
 
-// One inbox for every channel and a calendar of what is booked. The visitor can open a conversation, read the reply the Appointment Setter prepared, approve it, and offer new times to a
+// One inbox for every channel and a calendar of what is booked. The visitor can open a conversation, read the reply the Growth Partner prepared, approve it, and offer new times to a
 // customer who asked to move. All of it is a drawing on invented people: Approve changes this page and sends nothing.
 
 type Channel = "sms" | "email" | "chat" | "phone";
@@ -44,7 +42,7 @@ export function InboxView() {
 
   return (
     <div className="space-y-8">
-      <SectionHead as="h1" eyebrow="Inbox & appointments" title="Every conversation in one place." lead="Texts, emails, website chats and missed calls arrive in one inbox. The Appointment Setter prepares replies; you approve what goes out." />
+      <SectionHead as="h1" eyebrow="Inbox & appointments" title="Every conversation in one place." lead="Texts, emails, website chats and missed calls arrive in one inbox. The AI Growth Partner prepares replies; you approve what goes out." />
 
       <div className="sx-panel overflow-hidden">
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
@@ -84,8 +82,8 @@ export function InboxView() {
             <p className="max-w-[85%] rounded-2xl rounded-bl-md border border-line bg-surface-2/70 px-4 py-3 text-[14px] leading-relaxed text-ink">{t.said}</p>
             <div className={cn("ml-auto max-w-[90%] rounded-2xl rounded-br-md border p-4", ok ? "border-success/40 bg-success-soft" : "border-violet/40 bg-violet-soft")}>
               <div className="mb-2 flex items-center gap-2">
-                <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="xs" eager />
-                <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-2">Prepared by the Appointment Setter</p>
+                <span className="grid size-7 place-items-center rounded-lg bg-primary-soft text-primary-ink"><Sparkles className="size-3.5" aria-hidden /></span>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-2">AI Growth Partner · Sales & Outreach</p>
               </div>
               <p className="text-[14px] leading-relaxed text-ink">{t.draft}</p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -114,7 +112,7 @@ export function InboxView() {
       <ContextCta
         plan="core"
         title="Want one inbox and calendar for your own business?"
-        body="The unified inbox, booking and the Appointment Setter are part of your core implementation, connected to the channels and calendar you choose, where supported."
+        body="The unified inbox and booking are part of your core implementation. The Growth Partner can use the channels and calendar you authorize, where supported."
         consult
         secondary={{ view: "automation", label: "See Automation Studio" }}
       />
@@ -180,7 +178,7 @@ function AppointmentsPanel() {
           );
         })}
       </ul>
-      <p className="border-t border-line px-5 py-3 text-[13px] leading-relaxed text-muted">The Appointment Setter checks your connected calendar before it offers a time. Anything it prepares waits for your approval before a customer sees it.</p>
+      <p className="border-t border-line px-5 py-3 text-[13px] leading-relaxed text-muted">The Growth Partner checks authorized calendar availability before offering a time. Anything customer-facing follows your approval rules.</p>
     </section>
   );
 }

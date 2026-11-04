@@ -177,16 +177,16 @@ describe("14: AI steps and Send-as employees show whether they can act, from the
   it("warns, and keeps approval from being requested, when live AI runs are off or the employee isn't connected", () => {
     const def = manual(ask);
     const off = editorOptions({ employees: [{ ...EMPLOYEE, liveRuns: false }] });
-    expect(noteOf(off, "ai_task")).toMatch(/AI employee runs are switched off for now, so this step would be skipped/);
+      expect(noteOf(off, "ai_task")).toMatch(/AI runs are switched off for now, so this step would be skipped/);
     expect(effectItems(def, off)[0].warning).toMatch(/switched off for now/);
     expect(readinessIssues(def, off)).toEqual([expect.objectContaining({ level: "warning", code: "not_ready", stepKey: "ask" })]);
     // The warning shows on the canvas and in the problem list without stopping publishing.
     const grouped = groupIssues([...validateDefinition(def, validationContextOf(off)), ...readinessIssues(def, off)]);
     expect(grouped.errors).toBe(0);
     expect(grouped.byStep.ask.map((i) => i.code)).toEqual(["not_ready"]);
-    expect(panel(ask, off, grouped.byStep.ask)).toContain("AI employee runs are switched off for now, so this step is skipped (nothing is asked)");
+      expect(panel(ask, off, grouped.byStep.ask)).toContain("AI runs are switched off for now, so this step is skipped (nothing is asked)");
     // Shown once, next to the choice, not repeated in the panel's problem list.
-    expect(panel(ask, off, grouped.byStep.ask).match(/AI employee runs are switched off/g)).toHaveLength(1);
+      expect(panel(ask, off, grouped.byStep.ask).match(/AI runs are switched off/g)).toHaveLength(1);
 
     const unplugged = editorOptions({ employees: [{ ...EMPLOYEE, connected: false, liveRuns: false }] });
     expect(panel(ask, unplugged)).toContain("Sales Assistant isn't connected to its AI service yet");

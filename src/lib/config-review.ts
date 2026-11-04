@@ -1,5 +1,5 @@
 import { diffAgentSettings, type AgentSettings } from "@/lib/agent-settings";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import type { PlatformRole } from "@/lib/permissions";
 import { INSTRUCTION_RISK_META, scanInstructionText } from "@/lib/instruction-risk";
 import { sentenceCase } from "@/lib/utils";
@@ -58,7 +58,7 @@ export interface ReviewVersionView {
   orgId: string;
   orgName: string;
   orgKind: ConfigOrgKind;
-  agentRole: AgentRoleKey;
+  agentRole: WorkforceRoleKey;
   agentName: string;
   version: number;
   /** The version currently applied to this employee when the review was loaded, if any. */
@@ -194,7 +194,7 @@ export interface CompanyReviewInput {
 }
 
 export function classifyConfigChange(input: {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   previous: AgentSettings | null;
   next: AgentSettings;
   source: ConfigSource;

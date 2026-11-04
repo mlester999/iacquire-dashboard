@@ -1,12 +1,9 @@
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronDown, Clock, Mail, MailCheck, MessageSquareText, MousePointerClick, Route, UserRound } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
+import { ArrowRight, ChevronDown, Clock, Mail, MailCheck, MessageSquareText, MousePointerClick, Route, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/primitives";
-import { AGENT_BY_KEY } from "@/lib/agents";
-import { VIEWS, type ViewId } from "@/lib/demo/showroom/content";
-import { EMPLOYEE_ORDER } from "@/lib/demo/showroom/employees";
+import { DEMO_CAPABILITY_AREAS, VIEWS, type ViewId } from "@/lib/demo/showroom/content";
 import { Chip, SectionHead, SimTag, ViewIcon } from "@/components/demo/showroom/ui";
 import type { FormView } from "@/server/demo/public";
 
@@ -18,9 +15,9 @@ const hours = (n: number) => `${n} hour${n === 1 ? "" : "s"}`;
 /** What the demo is, in three rows. The AI chat row says what is true now: its allowance when it can answer, and that it is closed when it cannot. */
 export function Benefits({ form }: { form: FormView }) {
   const rows = [
-    { icon: Route, title: "Walk through each role", body: "A guided tour of what each AI Employee does." },
+    { icon: Route, title: "Explore six capability areas", body: "A guided tour of one AI Growth Partner's coordinated work." },
     form.aiChat
-      ? { icon: MessageSquareText, title: "Ask the AI team", body: `Up to ${form.messageLimit} questions to ask the AI team. It is an AI, it can be wrong, and it only knows what iAcquire has published.` }
+      ? { icon: MessageSquareText, title: "Ask about the AI Growth Partner", body: `Up to ${form.messageLimit} questions. It is an AI, it can be wrong, and it only knows what iAcquire has published.` }
       : { icon: MessageSquareText, title: "AI chat is closed right now", body: "The AI chat is not open right now, so the guided tour is what you will see." },
     { icon: Clock, title: `Open for ${hours(form.windowHours)}`, body: `The demo opens when you confirm your email address and stays open for ${hours(form.windowHours)}.` },
   ];
@@ -41,27 +38,29 @@ export function Benefits({ form }: { form: FormView }) {
   );
 }
 
-const HANDOFF = [
-  { role: "lead_hunter", title: "Finds a lead that fits your brief", tag: "Researching", tone: "info" },
-  { role: "appointment_setter", title: "Prepares a reply that offers times", tag: "Waiting for your approval", tone: "violet" },
-  { role: "crm_manager", title: "Checks for duplicates before anything is saved", tag: "Checked", tone: "ok" },
+const PARTNER_WORKFLOW = [
+  { title: "Checks a prospect against your approved brief", tag: "Evidence linked", tone: "info" },
+  { title: "Checks for a matching CRM record", tag: "Duplicate check", tone: "ok" },
+  { title: "Prepares a relevant next step", tag: "Review required", tone: "violet" },
 ] as const;
 
-/** A small, invented example of the AI Employees handing one enquiry along, so the first screen shows the product and not only describes it. Labelled as a sample. */
+/** A small, invented example of one Growth Partner coordinating a task across capabilities. Labelled as a sample. */
 export function HandoffPreview() {
   return (
-    <figure aria-label="A sample hand-off between three AI Employees" className="sx-panel m-0 space-y-4 p-5">
+    <figure aria-label="A sample workflow coordinated by one AI Growth Partner" className="sx-panel m-0 space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">One enquiry, three AI Employees</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">One partner, one coordinated workflow</p>
         <SimTag>Sample preview</SimTag>
       </div>
       <ol className="relative space-y-3">
         <span aria-hidden className="absolute bottom-6 left-[19px] top-6 w-px border-l border-dashed border-line-strong" />
-        {HANDOFF.map((h) => (
-          <li key={h.role} className="relative flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5">
-            <AgentAvatar role={AGENT_BY_KEY[h.role]} size="sm" />
+        {PARTNER_WORKFLOW.map((h, index) => (
+          <li key={h.title} className="relative flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/15 bg-surface text-primary-ink">
+              <span className="text-[12px] font-semibold">{index + 1}</span>
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-semibold text-muted">{AGENT_BY_KEY[h.role].shortName}</p>
+              <p className="text-[12px] font-semibold text-muted">AI Growth Partner</p>
               <p className="text-[14px] font-medium leading-snug text-ink">{h.title}</p>
             </div>
             <Chip tone={h.tone} className="hidden shrink-0 sm:inline-flex">
@@ -70,7 +69,7 @@ export function HandoffPreview() {
           </li>
         ))}
       </ol>
-      <figcaption className="text-[12.5px] leading-relaxed text-muted">An invented example. Nothing here is real, and anything that would reach a customer waits for a person to approve it.</figcaption>
+      <figcaption className="text-[12.5px] leading-relaxed text-muted">Illustrative only. No prospect is researched or saved here; a customer-facing action follows the required approval.</figcaption>
     </figure>
   );
 }
@@ -99,20 +98,19 @@ export function FormStepper() {
   );
 }
 
-/** The six AI Employees as cards: the role's own name and what it is for, from the product's role metadata. No personal names: a name belongs to the company that chose it. */
+/** The six internal capability areas presented as parts of one employee. */
 export function TeamSection() {
   return (
-    <section aria-label="Meet the six AI Employees" className="space-y-6">
-      <SectionHead eyebrow="Your demo is about these six" title="Meet the six AI Employees" lead="Each one has a single job. In the demo you see what each does, and how they hand work along, on sample data." />
+    <section aria-label="AI Growth Partner capability areas" className="space-y-6">
+      <SectionHead eyebrow="One employee · six capabilities" title="Meet your AI Growth Partner" lead="One identity and shared business context, with six coordinated capability areas. The examples are illustrative and use sample data." />
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {EMPLOYEE_ORDER.map((role) => {
-          const m = AGENT_BY_KEY[role];
+        {DEMO_CAPABILITY_AREAS.map((area) => {
           return (
-            <li key={role} className="sx-panel flex items-start gap-4 p-5 transition-all hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lg">
-              <AgentAvatar role={m} size="lg" />
+            <li key={area.key} className="sx-panel flex items-start gap-4 p-5 transition-all hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lg">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-ink"><Sparkles className="size-5" aria-hidden /></span>
               <div className="min-w-0">
-                <p className="text-[16px] font-semibold leading-snug tracking-[-0.01em] text-ink">{m.shortName}</p>
-                <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{m.tagline}</p>
+                <p className="text-[16px] font-semibold leading-snug tracking-[-0.01em] text-ink">{area.title}</p>
+                <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{area.description}</p>
               </div>
             </li>
           );
@@ -129,7 +127,7 @@ export function ExploreSection() {
   const items = EXPLORE.map((id) => VIEWS.find((v) => v.id === id)!);
   return (
     <section aria-label="What you can explore" className="space-y-6">
-      <SectionHead eyebrow="And around them" title="What you can explore" lead="Open any of it in any order. It is all sample data, so nothing you do changes anything real." />
+      <SectionHead eyebrow="Across the system" title="What you can explore" lead="Open any area in any order. It is all sample data, so nothing you do changes anything real." />
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {items.map((v) => (
           <li key={v.id} className="sx-panel space-y-2 p-4">

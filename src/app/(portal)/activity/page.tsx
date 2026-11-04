@@ -3,7 +3,7 @@ import { withUser } from "@/server/db";
 import { EmptyState } from "@/components/ui/primitives";
 import { AgentAvatar } from "@/components/brand";
 import { describeAction } from "@/lib/activity";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey } from "@/lib/agents";
 import { formatDateTime, sentenceCase } from "@/lib/utils";
 import { PageHero, MetricCard } from "@/components/ui/workspace";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -44,7 +44,7 @@ export default async function ActivityPage() {
 
   return (
     <div className="module-stack space-y-6">
-      <PageHero tone="neutral" eyebrow="Workspace timeline" title="A clear record of your team's work." description="Review significant decisions and AI employee runs from your workspace. The timeline respects your access, and message contents stay out of the log." icon={<Activity />} />
+      <PageHero tone="neutral" eyebrow="Workspace timeline" title="A clear record of your AI's work." description="Review significant decisions and AI work runs from your workspace. The timeline respects your access, and message contents stay out of the log." icon={<Activity />} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <MetricCard label="Actions in this view" value={audit.length} detail={ctx.can("activity.view") ? "Significant recorded events" : "Audit history requires owner or admin access"} icon={<ShieldCheck />} />
         <MetricCard label="AI runs in this view" value={runs.length} detail={ctx.can("activity.view") ? "Workspace runs" : "Runs you started"} icon={<Bot />} tone="violet" />
@@ -90,7 +90,7 @@ export default async function ActivityPage() {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-[14px] leading-snug text-ink-2">
-                        <span className="font-semibold text-ink">{a.actor ?? (isAgent ? (a.agent ?? "AI employee") : "iAcquire system")}</span> {describeAction(a.action, a.agent)}
+                        <span className="font-semibold text-ink">{a.actor ?? (isAgent ? (a.agent ?? "AI profile") : "iAcquire system")}</span> {describeAction(a.action, a.agent)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <InfoChip icon={<Clock />}>
@@ -115,17 +115,18 @@ export default async function ActivityPage() {
         <Panel
           icon={<Bot />}
           tone="violet"
-          title="AI employee runs"
+          title="AI runs"
           description={ctx.can("activity.view") ? "All runs in your workspace." : "Runs you started."}
           action={runs.length > 0 && failedRuns > 0 ? <StatusPill tone="danger" size="sm">{failedRuns} need a look</StatusPill> : undefined}
           bodyClassName="px-0 pb-0 pt-3"
         >
           {runs.length === 0 ? (
-            <EmptyState icon={<Bot className="size-5" />} title="No AI runs yet" description="When an AI employee works on a conversation or research request, the run is listed here." />
+            <EmptyState icon={<Bot className="size-5" />} title="No AI runs yet" description="When your AI Growth Partner works on a conversation or research request, the run is listed here." />
           ) : (
-            <ul className="scrollbar-thin max-h-[46rem] divide-y divide-line overflow-y-auto border-t border-line" tabIndex={0} aria-label="AI employee runs">
+            <ul className="scrollbar-thin max-h-[46rem] divide-y divide-line overflow-y-auto border-t border-line" tabIndex={0} aria-label="AI runs">
               {runs.map((r) => {
                 const role = isAgentRoleKey(r.role_key) ? AGENT_BY_KEY[r.role_key] : null;
+                const roleName = r.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner" : role?.shortName ?? sentenceCase(r.role_key);
                 return (
                   <li key={r.id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-2/50">
                     {role ? (
@@ -136,8 +137,8 @@ export default async function ActivityPage() {
                       </IconTile>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-semibold text-ink" title={role?.shortName ?? r.role_key}>
-                        {role?.shortName ?? sentenceCase(r.role_key)}
+                      <p className="truncate text-[14px] font-semibold text-ink" title={roleName}>
+                        {roleName}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <InfoChip>{r.purpose === "lead_research" ? "Research" : "Conversation"}</InfoChip>

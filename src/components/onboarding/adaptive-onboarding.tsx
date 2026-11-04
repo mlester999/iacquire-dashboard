@@ -19,7 +19,7 @@ import {
   isEmptyValue,
   isRequired,
   neighbour,
-  planScope,
+  onboardingScope,
   questionState,
   validateAnswer,
   visibleQuestions,
@@ -80,7 +80,7 @@ export function AdaptiveOnboarding({
   // A deep link opens its question only when this workspace is asked it (the plan and the earlier answers decide that); otherwise the saved position stands.
   const [linked] = React.useState(() => {
     if (!startQuestionId) return null;
-    const scoped = planScope(session.enabledRoles);
+    const scoped = onboardingScope(session.enabledRoles, session.workforceModel);
     return visibleQuestions(effectiveAnswers(session.answers, scoped), scoped).some((q) => q.id === startQuestionId) ? startQuestionId : null;
   });
   const [currentId, setCurrentId] = React.useState(linked ?? session.currentQuestionId);
@@ -153,7 +153,7 @@ export function AdaptiveOnboarding({
   }, []);
 
   // Questions for an employee the plan leaves out are not asked (the server applies the same scope).
-  const scope = React.useMemo(() => planScope(session.enabledRoles), [session.enabledRoles]);
+  const scope = React.useMemo(() => onboardingScope(session.enabledRoles, session.workforceModel), [session.enabledRoles, session.workforceModel]);
   const effective = React.useMemo(() => effectiveAnswers(answers, scope), [answers, scope]);
   const visible = React.useMemo(() => visibleQuestions(effective, scope), [effective, scope]);
   const progress = React.useMemo(() => computeProgress(answers, scope), [answers, scope]);
@@ -384,9 +384,9 @@ export function AdaptiveOnboarding({
     // A draft booking calendar made from the answers is said out loud, with the fact that it is not live, and so is everything a re-submission kept, held, skipped or left alone.
     const drafted = res.data.scheduling ? schedulingDraftMessage(res.data.scheduling) : null;
     const notes = res.data.notes ?? [];
-    if (notes.length) toast.success("Your AI team is being prepared.", { description: <OutcomeNotesList drafted={drafted} notes={notes} />, duration: 20000 });
-    else if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
-    else toast.success("Your AI team is being prepared.");
+    if (notes.length) toast.success("Your AI Growth Partner is being prepared.", { description: <OutcomeNotesList drafted={drafted} notes={notes} />, duration: 20000 });
+    else if (drafted) toast.success("Your AI Growth Partner is being prepared.", { description: drafted, duration: 12000 });
+    else toast.success("Your AI Growth Partner is being prepared.");
     // Stay in the "submitting" state while the page navigates away.
     // Setup is where the submission's notes and the launch status are shown, so a way back to it still lands on that view.
     (onSubmitted ?? (() => router.push(backTo && backTo !== "/setup" ? backTo : "/setup?onboarded=1")))();
@@ -419,7 +419,7 @@ export function AdaptiveOnboarding({
           {session.status === "submitted" && (
             <p className="mb-4 rounded-xl border border-primary/25 bg-primary-soft/50 p-3.5 text-[14px] leading-relaxed text-ink-2">
               <Info className="mr-1.5 inline size-4 align-text-bottom text-primary" aria-hidden />
-              Your setup is already approved. You can edit any answer; changes are saved as a draft and only reach your AI employees when you approve again at the end.
+              Your setup is already approved. You can edit any answer; changes are saved as a draft and only update your AI Growth Partner after you approve again at the end.
             </p>
           )}
 

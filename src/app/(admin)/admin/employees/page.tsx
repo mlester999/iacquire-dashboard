@@ -1,6 +1,7 @@
 import { requireAgency } from "@/server/tenancy/context";
-import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
+import { listAgencyAgents, listAllAgents, listGrowthPartners } from "@/server/admin/queries";
 import { WorkforceManager } from "@/components/admin/workforce-manager";
+import { GrowthPartnerManager } from "@/components/admin/growth-partner-manager";
 import { AgencyWorkforceManager } from "@/components/admin/agency-workforce-manager";
 import { withSystem } from "@/server/db";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
@@ -9,13 +10,14 @@ import { countInternalHeldConfigReviews } from "@/server/workforce/reviews";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 
-export const metadata = { title: "AI Employees" };
+export const metadata = { title: "AI Partner Management" };
 
 export default async function AdminWorkforcePage() {
   const user = await requireAgency();
   if (user.platformRole === "agency_super_admin") await ensureAgencyWorkspace(user).catch(() => null);
-  const [agents, agencyAgents, gateways, agencyTimezoneRows, internalReviewCount] = await Promise.all([
+  const [agents, partners, agencyAgents, gateways, agencyTimezoneRows, internalReviewCount] = await Promise.all([
     listAllAgents(user),
+    listGrowthPartners(user),
     listAgencyAgents(user),
     user.platformRole === "agency_super_admin" ? withSystem(listHermesGateways) : Promise.resolve([]),
     withSystem((db) => db.query<{ timezone: string }>("select timezone from organizations where kind='agency' order by created_at limit 1")),
@@ -34,6 +36,7 @@ export default async function AdminWorkforcePage() {
         </Link>
       )}
       {user.platformRole === "agency_super_admin" && <AgencyWorkforceManager agents={agencyAgents} gateways={gateways} canManage timeZone={agencyTimezoneRows.rows[0]?.timezone ?? "UTC"} />}
+      <GrowthPartnerManager partners={partners} />
       <WorkforceManager agents={agents} />
     </div>
   );

@@ -45,8 +45,8 @@ const fingerprint = async (orgId: string) => {
 };
 
 describe("the capability", () => {
-  it("belongs to the Performance Analyst alone, is read-only, and needs the permission to see invoices", () => {
-    expect(WORKFORCE_CAPABILITIES.receivables_review).toMatchObject({ allowedRoles: ["performance_analyst"], risk: "read_only", requiredPermission: "invoices.view", workBoardAction: true });
+  it("belongs to the Performance Analyst and Growth Partner, is read-only, and needs the permission to see invoices", () => {
+    expect(WORKFORCE_CAPABILITIES.receivables_review).toMatchObject({ allowedRoles: ["performance_analyst", "growth_partner"], risk: "read_only", requiredPermission: "invoices.view", workBoardAction: true });
     for (const role of ["sales_assistant", "lead_hunter", "appointment_setter", "crm_manager", "operations_manager"] as const) expect(roleMayUseCapability(role, "receivables_review"), role).toBe(false);
     expect(roleMayUseCapability("performance_analyst", "receivables_review")).toBe(true);
     expect(capabilitiesForRole("performance_analyst").map((c) => c.key)).toContain("receivables_review");

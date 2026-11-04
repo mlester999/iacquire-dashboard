@@ -16,6 +16,7 @@ import { hostResolver } from "@/server/calendars/adapters/http";
 import { pinnedHttps, type PinnedResponse } from "@/server/security/pinned-https";
 import { createConnection, testConnection } from "@/server/automation-studio/connections";
 import { createStudioFromTemplate } from "@/server/automation-studio/templates";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { getStudioState } from "@/server/automation-studio/studio";
 import { toFlow } from "@/components/automation-studio/canvas/flow-model";
 import { namesFrom } from "@/components/crm/workflows/summaries";
@@ -49,6 +50,7 @@ let fx: Fixture;
 
 async function fixture(): Promise<Fixture> {
   const ws = await studioWorkspace();
+  await withSystem((db) => ensureGrowthPartnerRuntime(ws.o.org.id, db));
   // The post-visit check-in template sends a satisfaction survey, which a Super Admin switches on per workspace.
   await setSurveys(ws.o.org.id, true);
   const owner = ws.o.actor("owner");

@@ -6,7 +6,6 @@ import type { Notice } from "@/lib/demo/outcomes";
 import type { ConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 import type { SampleScenario } from "@/lib/demo/showroom/industry";
 import type { ViewId } from "@/lib/demo/showroom/content";
-import type { AgentRoleKey } from "@/lib/agents";
 
 // What every showroom view shares: who the visitor is (their own first name, business and industry, as the demo session holds them), where the demo stands (the record's words, not a
 // guess), the prices, and the few things a view may ask the shell to do: go to another view, put a question in the chat's box, or tell the team the visitor wants to talk.
@@ -43,10 +42,8 @@ export interface ShowroomState {
 
 export interface ShowroomApi extends ShowroomState {
   view: ViewId;
-  /** Opens a view (and, for the AI workforce, the employee to show first). Moving around changes nothing about the demo and counts no message. */
-  go: (view: ViewId, role?: AgentRoleKey) => void;
-  /** The AI Employee the workforce view should show, when something else sent the visitor there. */
-  focusRole: AgentRoleKey | null;
+  /** Opens a view. Moving around changes nothing about the demo and counts no message. */
+  go: (view: ViewId) => void;
   /** Puts a question in the chat's box and opens the chat. It sends nothing and counts no message: the visitor presses Send. */
   ask: (question: string) => void;
   /** Tells the team the visitor wants to talk to a person (or is ready to start). The server records it once; a second press changes nothing. */
@@ -76,14 +73,12 @@ export function ShowroomProvider({
   state,
   view,
   go,
-  focusRole,
   ask,
   children,
 }: {
   state: ShowroomState;
   view: ViewId;
-  go: (view: ViewId, role?: AgentRoleKey) => void;
-  focusRole: AgentRoleKey | null;
+  go: (view: ViewId) => void;
   ask: (question: string) => void;
   children: React.ReactNode;
 }) {
@@ -131,8 +126,8 @@ export function ShowroomProvider({
   );
 
   const value = React.useMemo<ShowroomApi>(
-    () => ({ ...state, messagesLeft, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, ended: state.access !== "open", reportChat }),
-    [state, messagesLeft, view, go, focusRole, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, reportChat],
+    () => ({ ...state, messagesLeft, view, go, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, ended: state.access !== "open", reportChat }),
+    [state, messagesLeft, view, go, ask, request, confirming, openConfirm, closeConfirm, requesting, requestError, reportChat],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

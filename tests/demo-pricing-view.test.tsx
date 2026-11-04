@@ -20,9 +20,7 @@ vi.mock("next/link", async () => {
 
 import { Workspace, type WorkspaceProps } from "@/components/demo/showroom/workspace";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
-import { AGENT_BY_KEY } from "@/lib/agents";
-import { CORE_INCLUDES, STUDIO_INCLUDES } from "@/lib/demo/showroom/content";
-import { EMPLOYEE_ORDER } from "@/lib/demo/showroom/employees";
+import { CORE_INCLUDES, DEMO_CAPABILITY_AREAS, STUDIO_INCLUDES } from "@/lib/demo/showroom/content";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
 
 const state: WorkspaceProps["state"] = {
@@ -123,11 +121,12 @@ describe("the two plans", () => {
     expect(plus().textContent).toContain("Add it any time, only if you choose it.");
   });
 
-  it("show the six AI Employees by role name in the core plan, and no name a company chose", () => {
+  it("shows one AI Growth Partner with six internal capabilities in the core plan", () => {
     pricing();
-    const names = EMPLOYEE_ORDER.map((k) => AGENT_BY_KEY[k].shortName);
-    expect(names).toHaveLength(6);
-    for (const n of names) expect(within(core()).getByText(n), n).toBeTruthy();
+    expect(core().textContent).toContain("One partner, six capabilities");
+    expect(core().textContent).toContain("AI Growth Partner");
+    expect(DEMO_CAPABILITY_AREAS).toHaveLength(6);
+    for (const area of DEMO_CAPABILITY_AREAS) expect(within(core()).getByText(area.title), area.title).toBeTruthy();
     expect(core().textContent).not.toMatch(/Zeng/);
   });
 

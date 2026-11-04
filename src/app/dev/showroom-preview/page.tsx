@@ -44,8 +44,8 @@ export default async function ShowroomPreview({ searchParams }: { searchParams: 
   const transcript =
     one(q.history) === "1" || exhausted
       ? [
-          { id: "l1", seq: 1, role: "user" as const, employeeRole: null, body: "What does the Appointment Setter do?", state: "answered" as const, at },
-          { id: "l2", seq: 2, role: "assistant" as const, employeeRole: "appointment_setter", body: "The Appointment Setter turns interest into booked meetings. It reads new enquiries, checks the calendar you connect for open times and prepares a reply for you to approve. In this demo everything is sample data.", state: null, at },
+          { id: "l1", seq: 1, role: "user" as const, employeeRole: null, body: "How can AI Growth Partner help with appointments?", state: "answered" as const, at },
+          { id: "l2", seq: 2, role: "assistant" as const, employeeRole: "growth_partner", body: "AI Growth Partner checks the calendar you connect for real availability and prepares a booking for your approval. In this demo everything is sample data.", state: null, at },
           { id: "l3", seq: 3, role: "user" as const, employeeRole: null, body: "Do I need to pay monthly?", state: "answered" as const, at },
           { id: "l4", seq: 4, role: "assistant" as const, employeeRole: null, body: "No. The implementation is paid once and the system is yours to use. Managed Maintenance is optional.", state: null, at },
         ]

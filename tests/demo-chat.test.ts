@@ -21,7 +21,7 @@ afterEach(() => demoEnv());
 
 /** Reserves one message and returns the whole answer. */
 const reserve = (s: Started, text = "Hello", over: { id?: string; at?: Date; role?: unknown } = {}) =>
-  reserveDemoMessage({ text, clientMessageId: over.id ?? messageId(), employeeRole: over.role }, s.ctx(over.at ? { now: over.at } : {}));
+  reserveDemoMessage({ text, clientMessageId: over.id ?? messageId(), ...(over.role === undefined ? {} : { employeeRole: over.role }) }, s.ctx(over.at ? { now: over.at } : {}));
 
 const reservedOf = (r: Awaited<ReturnType<typeof reserve>>) => {
   if (!r.ok || r.kind !== "reserved") throw new Error(`not reserved: ${JSON.stringify(r)}`);
@@ -31,12 +31,12 @@ const reservedOf = (r: Awaited<ReturnType<typeof reserve>>) => {
 describe("reserving, answering and giving back", () => {
   it("counts the message first, keeps it pending, and stores the answer after it", async () => {
     const s = await startDemo({}, T0);
-    const r = reservedOf(await reserve(s, "What do the six employees do?", { at: minutes(5), role: "operations_manager" }));
-    expect(r).toMatchObject({ seq: 1, messagesLeft: 9, employeeRole: "operations_manager", text: "What do the six employees do?" });
+    const r = reservedOf(await reserve(s, "What does the AI Growth Partner do?", { at: minutes(5) }));
+    expect(r).toMatchObject({ seq: 1, messagesLeft: 9, employeeRole: null, text: "What does the AI Growth Partner do?" });
     expect(await prospectRow(s.prospectId)).toMatchObject({ messages_used: 1, message_seq: 1 });
-    expect((await rows("select seq, role, state, body, input_chars from demo_messages where prospect_id = $1", [s.prospectId]))[0]).toMatchObject({ seq: 1, role: "user", state: "pending", input_chars: 29 });
+    expect((await rows("select seq, role, state, body, input_chars from demo_messages where prospect_id = $1", [s.prospectId]))[0]).toMatchObject({ seq: 1, role: "user", state: "pending", input_chars: 35 });
     const done = await completeDemoMessage({ prospectId: s.prospectId, messageId: r.messageId, reply: "They answer, book, follow up and report. This demo uses sample data.", now: minutes(6) });
-    expect(done).toMatchObject({ ok: true, reply: { role: "assistant", seq: 2, employeeRole: "operations_manager" } });
+    expect(done).toMatchObject({ ok: true, reply: { role: "assistant", seq: 2, employeeRole: null } });
     expect((await rows("select seq, role, state, reply_to_id::text as reply_to_id from demo_messages where prospect_id = $1 order by seq", [s.prospectId])).map((m) => [m.seq, m.role, m.state])).toEqual([[1, "user", "answered"], [2, "assistant", null]]);
     expect(await prospectRow(s.prospectId)).toMatchObject({ messages_used: 1, message_seq: 2 });
   });
@@ -97,7 +97,7 @@ describe("reserving, answering and giving back", () => {
     expect((await prospectRow(s.prospectId)).messages_used).toBe(1);
   });
 
-  it("refuses a message that is empty, too long, without a usable key, or for a seventh employee, and counts nothing", async () => {
+  it("refuses a message that is empty, too long, without a usable key, or asks for a legacy role, and counts nothing", async () => {
     const s = await startDemo({}, T0);
     const bad: Array<[string, Parameters<typeof reserveDemoMessage>[0]]> = [
       ["empty", { text: "   ", clientMessageId: messageId() }],
@@ -106,8 +106,8 @@ describe("reserving, answering and giving back", () => {
       ["short key", { text: "hi", clientMessageId: "abc" }],
       ["key with a space", { text: "hi", clientMessageId: "abcdefgh ijkl" }],
       ["no key", { text: "hi", clientMessageId: undefined }],
-      ["a seventh employee", { text: "hi", clientMessageId: messageId(), employeeRole: "social_media_manager" }],
-      ["a role that is not text", { text: "hi", clientMessageId: messageId(), employeeRole: 7 }],
+      ["a legacy employee selector", { text: "hi", clientMessageId: messageId(), employeeRole: "lead_hunter" }],
+      ["a non-text legacy selector", { text: "hi", clientMessageId: messageId(), employeeRole: 7 }],
     ];
     for (const [label, input] of bad) expect(await reserveDemoMessage(input, s.ctx({ now: minutes(1) })), label).toMatchObject({ ok: false, reason: "invalid" });
     expect(await prospectRow(s.prospectId)).toMatchObject({ messages_used: 0, message_seq: 0 });
@@ -135,7 +135,7 @@ describe("reserving, answering and giving back", () => {
     reservedOf(await reserve(s, "Before it was switched off", { id, at: minutes(1) }));
     await openDemo(people.superAdmin, { aiEnabled: false });
     try {
-      expect(await reserve(s, "After", { at: minutes(2) })).toMatchObject({ ok: false, reason: "ai_off", message: "The AI chat is not available right now. The guided tour shows what the AI team does, with sample data." });
+      expect(await reserve(s, "After", { at: minutes(2) })).toMatchObject({ ok: false, reason: "ai_off", message: "The AI chat is not available right now. The guided tour shows how one AI Growth Partner works across six capabilities, with sample data." });
       expect(await reserve(s, "Before it was switched off", { id, at: minutes(3) })).toMatchObject({ ok: true, kind: "duplicate" });
       expect((await prospectRow(s.prospectId)).messages_used).toBe(1);
     } finally {

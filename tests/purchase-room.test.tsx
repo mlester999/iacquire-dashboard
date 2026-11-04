@@ -81,7 +81,7 @@ describe("the purchase page", () => {
     expect(page).toContain("A workspace is created only after the payment is verified: by the payment provider's confirmation, or by iAcquire.");
     expect(page).toContain("No card is charged on this page.");
     expect(page).toContain("A dedicated iAcquireOS client workspace and onboarding.");
-    expect(page).toContain("CRM setup, integrations and AI employee provisioning follow verification and onboarding.");
+    expect(page).toContain("CRM setup, integrations and Growth Partner preparation follow payment verification and onboarding.");
     // The frozen price is on the page as text (it counts up when seen, but is the price without scripts), with the optional plan and whether it was chosen.
     expect(page).toContain("$1,499");
     expect(page).toContain("$299/month");
@@ -178,15 +178,15 @@ describe("the purchase page", () => {
     expect(document.body.textContent).toContain("This purchase was cancelled.");
   });
 
-  it("lists the six AI employees as text, and hides the picture of them from assistive technology", () => {
+  it("describes one AI Growth Partner and six capabilities, while keeping the orbit decorative", () => {
     const { container } = draw(SAMPLE);
-    for (const role of AGENT_ROLES) expect(document.body.textContent).toContain(role.shortName);
-    expect(AGENT_ROLES).toHaveLength(6);
+    const page = document.body.textContent ?? "";
+    for (const role of AGENT_ROLES) expect(page).not.toContain(role.shortName);
+    expect(page).toContain("One AI Growth Partner with six connected capabilities");
+    for (const label of ["Lead Discovery", "Sales & Outreach", "Calendar & Appointments", "CRM & Pipeline", "Business Operations", "Performance & Analytics"]) expect(page).toContain(label);
     const orbit = container.querySelector(".room-orbit");
     expect(orbit?.getAttribute("aria-hidden")).toBe("true");
-    expect(orbit?.querySelectorAll("img[alt='']")).toHaveLength(6);
-    // The picture claims nothing about the employees working: the sentence under it says when they are set up.
-    expect(document.body.textContent).toContain("Six AI employees, set up for you once your payment is verified.");
+    expect(orbit?.querySelectorAll(".room-node")).toHaveLength(6);
   });
 
   it("answers a link that is not valid, and too many attempts, in words and with no offer", () => {

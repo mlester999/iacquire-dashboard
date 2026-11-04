@@ -178,7 +178,7 @@ export function RecoverySettings({ scope, policy, readiness, members, businessNa
 
       <SectionCard title="Other options">
         <div className="space-y-4">
-          <Check id="rp-aicall" label="Ask an AI employee to call back" hint="Not available yet: it needs an outbound-calling connection that has been verified, and none exists. Switching this on only records a blocked step on each case; nothing is ever called." checked={f.actionAiCallback} disabled={disabled} onChange={(v) => set("actionAiCallback", v)} />
+          <Check id="rp-aicall" label="Ask your AI Growth Partner to prepare a call-back" hint="Not available yet: it needs an outbound-calling connection that has been verified, and none exists. Switching this on only records a blocked step on each case; nothing is ever called." checked={f.actionAiCallback} disabled={disabled} onChange={(v) => set("actionAiCallback", v)} />
           <Field label="Close a case that is still open after (hours)" htmlFor="rp-expiry"><Input id="rp-expiry" type="number" min={6} max={720} value={f.caseExpiryHours} disabled={disabled} onChange={(e) => set("caseExpiryHours", Number(e.target.value))} /></Field>
         </div>
       </SectionCard>

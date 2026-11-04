@@ -13,9 +13,9 @@ export interface SampleScenario {
   appointment: string;
   /** The kind of record a deal is, in the sample. */
   deal: string;
-  /** What the Lead Hunter is asked to look for, as an invented ideal-customer brief. */
+  /** An invented ideal-customer brief for the Growth Partner sample. */
   huntBrief: string;
-  /** Names of invented businesses the Lead Hunter "finds" in the sample (all fictional). */
+  /** Names of invented businesses in the sample (all fictional). */
   prospects: [string, string, string, string, string];
   /** One sentence that says why this kind of business gains from the system, written as a possibility, never a promise. */
   benefit: string;

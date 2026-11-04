@@ -10,7 +10,7 @@ import { transcriptOf } from "@/server/demo/public";
 import { createOrg } from "./support/fixtures";
 import { count, demoEnv, messageId, messagePace, MODEL_CONFIG as CONFIG, openDemo, prospectRow, rows, startDemo, stubModel, team, type Started, type Team } from "./support/demo";
 
-const SAFE = "The Appointment Setter turns interest into booked meetings. In this demo it books nothing.";
+const SAFE = "Lead Discovery & Qualification finds relevant prospects, preserves source evidence, and checks fit against client-approved criteria.";
 const DAY = (n: number) => new Date(Date.UTC(2026, 10, 2 + n, 9, 0, 0));
 
 let people: Team;
@@ -29,8 +29,8 @@ afterAll(() => messagePace("real"));
 /** A model that answers with the given text, reports the given usage, and records every call. */
 const model = (answer: Parameters<typeof stubModel>[1], over: Parameters<typeof stubModel>[2] = {}) => stubModel(agency.id, answer, over);
 
-const send = (s: Started, text: string, deps: DemoModelDeps, over: { id?: string; at?: Date; role?: unknown } = {}) =>
-  sendDemoMessage({ text, clientMessageId: over.id ?? messageId(), employeeRole: over.role }, s.ctx(over.at ? { now: over.at } : {}), deps);
+const send = (s: Started, text: string, deps: DemoModelDeps, over: { id?: string; at?: Date } = {}) =>
+  sendDemoMessage({ text, clientMessageId: over.id ?? messageId() }, s.ctx(over.at ? { now: over.at } : {}), deps);
 
 const answered = (r: SendOutcome) => {
   if (!r.ok || r.kind !== "answered") throw new Error(`not answered: ${JSON.stringify(r)}`);
@@ -49,8 +49,8 @@ describe("an answered message", () => {
     const t0 = DAY(0);
     const s = await startDemo({}, t0);
     const m = model(SAFE);
-    const r = answered(await send(s, "What does the Appointment Setter do?", m.deps, { at: new Date(t0.getTime() + 60_000), role: "appointment_setter" }));
-    expect(r.reply).toMatchObject({ role: "assistant", body: SAFE, employeeRole: "appointment_setter" });
+    const r = answered(await send(s, "What does Calendar & Appointment Management do?", m.deps, { at: new Date(t0.getTime() + 60_000) }));
+    expect(r.reply).toMatchObject({ role: "assistant", body: SAFE, employeeRole: null });
     expect(r.messagesLeft).toBe(9);
     expect(m.calls).toHaveLength(1);
     expect(await prospectRow(s.prospectId)).toMatchObject({ messages_used: 1 });

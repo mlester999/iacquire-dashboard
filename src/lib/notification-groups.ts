@@ -4,9 +4,9 @@ import type { ProactivePrefs } from "@/lib/proactive";
 // Critical alerts ignore these switches. Email is controlled separately (see src/lib/ops.ts).
 export const NOTIFICATION_GROUPS = [
   { key: "setup", label: "Setup progress", description: "Setup milestones, requests from your team, and final readiness updates.", kinds: ["setup_milestone", "setup_action_required", "setup_issue", "setup_ready"] },
-  { key: "approvals", label: "Approvals", description: "When an AI employee needs your decision, and when decisions are made.", kinds: ["approval_requested", "approval_decided"] },
+  { key: "approvals", label: "Approvals", description: "When your AI Growth Partner needs your decision, and when decisions are made.", kinds: ["approval_requested", "approval_decided"] },
   { key: "leads", label: "New leads", description: "Research results waiting for review.", kinds: ["lead_awaiting_approval"] },
-  { key: "workforce", label: "AI workforce status", description: "Employees coming online or becoming unavailable.", kinds: ["agent_status", "agent_task_completed"] },
+  { key: "workforce", label: "AI Growth Partner status", description: "Your Growth Partner coming online or becoming unavailable.", kinds: ["agent_status", "agent_task_completed"] },
   { key: "support", label: "Support replies", description: "Replies and status changes from the iAcquire team.", kinds: ["support_reply", "support_status"] },
   { key: "knowledge", label: "Knowledge updates", description: "Reviews of held knowledge or configuration changes.", kinds: ["knowledge_update_ready"] },
   { key: "usage", label: "Usage alerts", description: "When you approach your workspace limits.", kinds: ["usage_limit_approaching"] },

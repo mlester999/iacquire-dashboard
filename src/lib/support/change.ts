@@ -29,7 +29,7 @@ export function changeTargetFor(category: string): ChangeTarget | null {
 }
 
 export const CHANGE_TARGET_LABELS: Record<ChangeTarget, string> = {
-  ai_employee: "An AI employee",
+  ai_employee: "AI Growth Partner",
   website: "Website",
   automation: "Automation or workflow",
   integration: "Connected service",

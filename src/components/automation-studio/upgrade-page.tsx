@@ -82,7 +82,7 @@ function comparison(allowance: number | null) {
   return {
     now: [
       "Your CRM, its workflow builder and every workflow you already run",
-      "Your AI employees, their schedules and their jobs",
+      "Your AI Growth Partner, its schedules and its jobs",
       "n8n, Zapier and Make connections, webhooks and the API",
       "Support, and fixes for anything iAcquire got wrong",
     ],

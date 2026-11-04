@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { CONTACT_FILTER_FIELDS, OPS_BY_KIND, checkFilterShape, customFieldOps, filterGroupSchema, isGroup, type FieldKind, type FilterCondition, type FilterGroup } from "@/lib/crm/filters";
 import { CREATED_VIA, LEAD_STATUSES, PREFERRED_CHANNELS, type FieldType } from "@/lib/crm/types";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, WORKFORCE_ROLE_KEYS, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { customValueKeyOf, extractTokens, isTokenKey } from "@/lib/messaging/tokens";
 import { sha256Hex } from "@/lib/crm/workflow/sha256";
 import { HTTP_METHODS, cleanStepHeaders, pathProblem } from "@/lib/automation-studio/outbound";
@@ -209,7 +209,7 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "conversation.assigned": T("conversation.assigned", "Conversation assigned", "A conversation is assigned to a teammate, or handed to one.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "assigneeIds"]),
   "conversation.resolved": T("conversation.resolved", "Conversation resolved", "A teammate resolves a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
   "conversation.urgent": T("conversation.urgent", "Conversation marked urgent", "A conversation's priority becomes urgent, by a person or because a person was asked for.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
-  "conversation.handoff_requested": T("conversation.handoff_requested", "A person was asked to take over", "An AI employee (or a plain request for a person) asks for a teammate to take a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.handoff_requested": T("conversation.handoff_requested", "A person was asked to take over", "Your AI Growth Partner (or a plain request for a person) asks for a teammate to take a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
   "conversation.idle": T("conversation.idle", "Conversation went quiet", "An open conversation has had no message for the time you choose. A customer who has since written again does not start it.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "idleHours"]),
   // A submission to a native form or survey, once processed. It carries the contact when the form asked for an email or phone number,
   // and the deal when the form creates one.
@@ -333,7 +333,7 @@ export const EFFECT_LABELS: Record<WorkflowEffect, string> = {
   send_whatsapp: "Sends WhatsApp messages to customers",
   webhook: "Sends data to an outside system (webhook)",
   n8n: "Starts an n8n automation",
-  hermes: "Asks an AI employee to do work",
+  hermes: "Asks your AI Growth Partner to do work",
   http: "Calls an outside web address (HTTP request)",
   slack: "Posts a message to Slack",
 };
@@ -458,7 +458,7 @@ const sendMessageSchema = z.strictObject({
   /** Copied from the template: a template has exactly one channel. */
   channel: z.enum(["email", "sms", "whatsapp"]),
   /** The AI employee the message goes out under (its mode and pauses apply). */
-  sendAs: z.enum(AGENT_ROLE_KEYS),
+  sendAs: z.enum(WORKFORCE_ROLE_KEYS),
   /** Hold the message until business hours (quiet hours always apply). */
   businessHoursOnly: z.boolean(),
 });
@@ -531,8 +531,8 @@ const slackMessageSchema = z.strictObject({
 });
 
 const aiTaskSchema = z.strictObject({
-  roleKey: z.enum(AGENT_ROLE_KEYS),
-  instruction: z.string().trim().min(10, "Tell the AI employee what to do (at least a sentence).").max(2000),
+  roleKey: z.enum(WORKFORCE_ROLE_KEYS),
+  instruction: z.string().trim().min(10, "Tell your AI Growth Partner what to do (at least a sentence).").max(2000),
 });
 
 /**
@@ -548,7 +548,7 @@ export const CONVERSATION_ACTION_LABELS: Record<ConversationAction, string> = {
   set_priority: "Set its priority",
   assign_person: "Assign it to a person",
   assign_contact_owner: "Assign it to the contact's owner",
-  pause_ai: "Pause the AI employee on it",
+  pause_ai: "Pause the AI Growth Partner on it",
 };
 export const CONVERSATION_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export type ConversationPriority = (typeof CONVERSATION_PRIORITIES)[number];
@@ -694,7 +694,7 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
   send_message: spec({
     kind: "send_message", label: "Send message", description: "Send an approved message template. Consent, opt-outs, quiet hours, limits and credits are checked when it sends.", group: "Messages",
     schema: sendMessageSchema, branches: false, terminal: false, external: false, emitsEvents: false, approvable: true, needs: () => ({ contact: "required", opportunity: "none" }),
-    effects: (c) => [c.channel === "email" ? "send_email" : c.channel === "sms" ? "send_sms" : "send_whatsapp"], defaults: () => ({ sendAs: "sales_assistant", businessHoursOnly: true }),
+    effects: (c) => [c.channel === "email" ? "send_email" : c.channel === "sms" ? "send_sms" : "send_whatsapp"], defaults: () => ({ sendAs: AI_GROWTH_PARTNER_ROLE_KEY, businessHoursOnly: true }),
   }),
   request_review: spec({
     kind: "request_review", label: "Request a review", description: "Ask the contact how it went with an approved review request template, or send a short satisfaction survey. They get a private feedback page with your public review links; it's sent only if they agreed to messages on that channel.", group: "Messages",
@@ -734,9 +734,9 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
     defaults: () => ({ includeContact: true }),
   }),
   ai_task: spec({
-    kind: "ai_task", label: "Ask AI employee", description: "Ask one of your AI employees to do something for this contact. Its mode and pauses apply to everything it then does, so an employee that asks first asks before each change.", group: "AI",
+    kind: "ai_task", label: "Ask your AI Growth Partner", description: "Ask your AI Growth Partner to do something for this contact. Its approval mode and pauses apply to everything it then does.", group: "AI",
     schema: aiTaskSchema, branches: false, terminal: false, external: false, emitsEvents: false, approvable: true, needs: () => ({ contact: "optional", opportunity: "none" }), effects: () => ["hermes"],
-    defaults: () => ({ roleKey: "crm_manager", instruction: "" }),
+    defaults: () => ({ roleKey: AI_GROWTH_PARTNER_ROLE_KEY, instruction: "" }),
   }),
   http_request: spec({
     kind: "http_request", label: "HTTP request",
@@ -754,7 +754,7 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
   }),
   conversation_action: spec({
     kind: "conversation_action", label: "Update conversation",
-    description: "Resolve or reopen the conversation that started this workflow, set its priority, hand it to a teammate, or pause the AI employee on it. It never sends a message and never turns AI replies on.",
+    description: "Resolve or reopen the conversation that started this workflow, set its priority, hand it to a teammate, or pause the AI Growth Partner on it. It never sends a message or turns AI replies on.",
     group: "Messages", schema: conversationActionSchema, branches: false, terminal: false, external: false, emitsEvents: true, approvable: true,
     needs: (c) => ({ contact: c.action === "assign_contact_owner" ? "required" : "optional", opportunity: "none" }), effects: () => [],
     defaults: () => ({ action: "resolve" as const }),
@@ -1251,7 +1251,7 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
         if (!t) out.push(issue("error", "missing_template", "That template isn't approved for automated messages (or no longer exists).", { ...base, path: "config.templateId" }));
         else if (t.contentHash !== s.contentHash) out.push(issue("error", "template_changed", "The template's approved wording changed. Choose it again to use the new wording.", { ...base, path: "config.templateId" }));
         else if (t.channel !== s.channel) out.push(issue("error", "template_changed", "The template's channel changed. Choose it again.", { ...base, path: "config.channel" }));
-        if (!ctx.agents.has(s.sendAs)) out.push(issue("error", "missing_agent", "That AI employee isn't included in this workspace.", { ...base, path: "config.sendAs" }));
+        if (!ctx.agents.has(s.sendAs)) out.push(issue("error", "missing_agent", "Your AI Growth Partner isn't available in this workspace.", { ...base, path: "config.sendAs" }));
       }
       break;
     }
@@ -1295,7 +1295,7 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
       break;
     }
     case "ai_task":
-      if (ctx && !ctx.agents.has((step.config as AiTaskConfig).roleKey)) out.push(issue("error", "missing_agent", "That AI employee isn't included in this workspace.", { ...base, path: "config.roleKey" }));
+      if (ctx && !ctx.agents.has((step.config as AiTaskConfig).roleKey)) out.push(issue("error", "missing_agent", "Your AI Growth Partner isn't available in this workspace.", { ...base, path: "config.roleKey" }));
       break;
     case "conversation_action":
       out.push(...conversationActionIssues(step.config as ConversationActionConfig, def, ctx, base));
@@ -1468,4 +1468,4 @@ export function validationContextFrom(o: {
   };
 }
 
-export type { AgentRoleKey, FilterGroup };
+export type { AgentRoleKey, WorkforceRoleKey, FilterGroup };

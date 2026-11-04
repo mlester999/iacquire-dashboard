@@ -88,11 +88,11 @@ export const SECTION_INFO: Record<ReportSection, SectionInfo> = {
   },
   ai: {
     label: "AI actions",
-    description: "CRM tool calls by your AI employees and the approvals they asked for.",
+    description: "CRM tool calls by your AI Growth Partner and the approvals it requested.",
     needs: ["activity.view"],
     filters: [],
     dated: true,
-    sources: "The audit log of AI employee CRM tool calls and approval requests.",
+    sources: "The audit log of AI Growth Partner CRM tool calls and approval requests.",
   },
   workflows: {
     label: "Workflows",

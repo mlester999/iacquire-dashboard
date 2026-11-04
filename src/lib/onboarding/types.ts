@@ -3,10 +3,10 @@ import type { AgentRoleKey } from "@/lib/agents";
 
 export const ONBOARDING_SECTIONS = [
   { id: "A", slug: "business", title: "Business profile", short: "Business", blurb: "Who you are and where you operate." },
-  { id: "B", slug: "goals", title: "Business goals", short: "Goals", blurb: "What you want your AI team to achieve." },
-  { id: "C", slug: "communication", title: "AI communication", short: "Voice", blurb: "How your AI employees talk to customers." },
+  { id: "B", slug: "goals", title: "Business goals", short: "Goals", blurb: "What you want your AI Growth Partner to achieve." },
+  { id: "C", slug: "communication", title: "AI communication", short: "Voice", blurb: "How your AI Growth Partner communicates with customers." },
   { id: "D", slug: "sales", title: "Sales and appointments", short: "Sales", blurb: "How leads become appointments and customers." },
-  { id: "E", slug: "knowledge", title: "Company knowledge and branding", short: "Knowledge", blurb: "What your team should know, and how you look." },
+  { id: "E", slug: "knowledge", title: "Company knowledge and branding", short: "Knowledge", blurb: "What your AI Growth Partner should know, and how your business looks." },
   { id: "F", slug: "review", title: "Review and approval", short: "Review", blurb: "Check everything and approve it." },
 ] as const;
 export type SectionId = (typeof ONBOARDING_SECTIONS)[number]["id"];
@@ -65,7 +65,7 @@ export interface QuestionDef {
   kind: QuestionKind;
   /** Adaptive rule. Omitted means always shown. */
   show?: (a: Answers) => boolean;
-  /** Asked only when at least one of these employees is in the plan. Omitted means asked whatever the plan is. */
+  /** Asked only when at least one of these legacy roles is in the plan. Omitted means asked whatever the plan is. */
   roles?: AgentRoleKey[];
   /** The optional AI assistant can suggest an answer for this question. */
   assist?: AssistKind;
@@ -78,7 +78,7 @@ export interface QuestionDef {
   reviewLabel?: string;
 }
 
-/** What the plan changes about the questionnaire. Omitted everywhere means every employee is in the plan. */
+/** Legacy role scope for the questionnaire. A Growth Partner uses the whole questionnaire. */
 export interface QuestionScope {
   roles: readonly AgentRoleKey[];
 }

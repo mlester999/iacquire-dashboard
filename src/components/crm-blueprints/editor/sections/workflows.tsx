@@ -164,7 +164,7 @@ function WorkflowBuilder({ workflow }: { workflow: WorkflowAsset }) {
   return (
     <div className="space-y-3 border-t border-line pt-4">
       <SectionNote>
-        People, AI employees, n8n automations and webhook endpoints are roles in a Blueprint. This builder doesn&apos;t check their connections: each
+        People, AI profiles, n8n automations and webhook endpoints are roles in a Blueprint. This builder doesn&apos;t check their connections: each
         client&apos;s setup checklist lists what it must connect, map and approve before this workflow can run there.
       </SectionNote>
       {bridged.unresolved.length > 0 && (

@@ -160,7 +160,7 @@ function fullContext(over: Partial<Parameters<typeof validationContextFrom>[0]> 
   return validationContextFrom({
     tags: [{ id: TAG }], users: [{ id: USER }], pipelines: [{ id: PIPE, stages: [{ id: OPEN, kind: "open" }, { id: LOST, kind: "lost" }] }],
     fields: [{ id: FIELD, entity: "contact", type: "date", key: "renewal" }], templates: [{ id: TPL, contentHash: HASH, channel: "sms" }],
-    n8nMappings: [{ id: N8N }], webhookSubscriptions: [{ id: HOOK }], assignmentRules: [{ id: RULE, entity: "contact" }], agents: [{ roleKey: "sales_assistant" }, { roleKey: "crm_manager" }],
+    n8nMappings: [{ id: N8N }], webhookSubscriptions: [{ id: HOOK }], assignmentRules: [{ id: RULE, entity: "contact" }], agents: [{ roleKey: "sales_assistant" }, { roleKey: "crm_manager" }, { roleKey: "growth_partner" }],
     calendars: [], appointmentTypes: [], ...over,
   });
 }

@@ -196,10 +196,14 @@ describe("AQi welcome suggestions respect permissions", () => {
     expect(welcome.suggestions.length).toBeGreaterThan(0);
 
     const ownerWelcome = await getAqiWelcome(viewer, "/employees");
-    expect(ownerWelcome.page?.label).toBe("AI Employees");
+    expect(ownerWelcome.page?.label).toBe("Previous employee profiles");
     expect(ownerWelcome.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
     expect(ownerWelcome.suggestions.length).toBeLessThanOrEqual(4);
     expect(org.id).toBeTruthy();
+
+    const partnerWelcome = await getAqiWelcome(viewer, "/growth-partner");
+    expect(partnerWelcome.page?.label).toBe("AI Growth Partner");
+    expect(partnerWelcome.allowedPaths).toContain("/growth-partner/conversation");
   });
 
   it("does not leak a page label for an unauthorized route", async () => {

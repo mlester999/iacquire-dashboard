@@ -99,7 +99,7 @@ const recoveryOff: ReviewCheck = async (db, job) => {
 export async function runMissedCallReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "missed_call_review",
-    allowedRoles: ["appointment_setter"],
+    allowedRoles: ["appointment_setter", "growth_partner"],
     scanningMessage: "Reading missed-call cases, the follow-up actions that were recorded and the recovery policy…",
     analyzingMessage: "Working out which missed calls need a person…",
     checks: [waitingOnTeam, draftsWaiting, failedFollowUps, recoveryOff],

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readSystem, withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { canChat, type WorkforceRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { OrgContext } from "@/server/tenancy/context";
 import { assertJobAllowed } from "@/server/automation/job-gate";
@@ -24,7 +24,7 @@ import { assertAbility, capabilityNeed } from "@/server/workforce/abilities";
 export async function dispatchCapabilityJob(
   ctx: OrgContext,
   input: {
-    agentRole: AgentRoleKey;
+    agentRole: WorkforceRoleKey;
     capability: CapabilityKey;
     title: string;
     input?: Record<string, unknown>;
@@ -114,7 +114,7 @@ export async function dispatchSystemCapabilityJob(input: {
   orgId: string;
   /** The accountable person: an active member of the workspace. */
   onBehalfOf: string;
-  agentRole: AgentRoleKey;
+  agentRole: WorkforceRoleKey;
   capability: CapabilityKey;
   title: string;
   input?: Record<string, unknown>;

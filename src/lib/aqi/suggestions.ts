@@ -15,7 +15,7 @@ export interface AqiSuggestionRule {
 const RULES: Array<{ pattern: RegExp; rule: AqiSuggestionRule }> = [
   { pattern: /\bsuper\s+admin\b/i, rule: { agency: "super_admin" } },
   { pattern: /\badmin\b/i, rule: { agency: "staff" } },
-  { pattern: /\b(?:ai\s+employees?|employees?|ai\s+workforce|workforce)\b/i, rule: { permission: "agents.use" } },
+  { pattern: /\b(?:ai\s+growth\s+partner|growth\s+partner|ai\s+employees?|employees?|ai\s+workforce|workforce)\b/i, rule: { permission: "agents.use" } },
   { pattern: /\bknowledge(?:\s+center)?\b/i, rule: { permission: "knowledge.view" } },
   { pattern: /\bintegrations?\b/i, rule: { permission: "integrations.view" } },
   { pattern: /\b(?:support|contact\s+the\s+(?:i?acquire\s+)?team|get\s+help\s+from\s+(?:i?acquire)?)\b/i, rule: { permission: "support.use" } },

@@ -47,8 +47,8 @@ function Metric({ label, value, definition }: { label: string; value: React.Reac
 function AskAnalyst({ prompt, canChat }: { prompt: string; canChat: boolean }) {
   if (!canChat) return null;
   return (
-    <Link href={`/chat/performance-analyst?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-primary transition hover:bg-primary-soft">
-      <Sparkles className="size-3.5" /> Ask Performance Analyst
+    <Link href={`/chat/growth-partner?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-primary transition hover:bg-primary-soft">
+      <Sparkles className="size-3.5" /> Ask AI Growth Partner
     </Link>
   );
 }
@@ -105,7 +105,7 @@ export function AnalyticsView({
 
   return (
     <div className="module-stack space-y-6">
-      <PageHero eyebrow="Performance intelligence" title="Turn recorded results into your next decision." description={`Lead research, team execution and customer relationships over ${range.days} days. Days are grouped in ${timeZoneLabel(timeZone)}; missing provider data stays unavailable.`} icon={<BarChart3 />} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface-2 p-5"><p className="text-xs font-semibold text-ink">AI employee execution</p><p className="mt-2 text-3xl font-semibold tracking-tight">{runsTotal}<span className="ml-2 text-xs font-normal text-muted">recorded runs</span></p><div className="mt-3"><CoverageBar label="Recorded run outcomes" parts={[{label:"Completed",count:completed,color:"var(--success)"},{label:"Failed",count:failed,color:"var(--danger)"},{label:"Other",count:Math.max(0,runsTotal-completed-failed),color:"var(--primary)"}]} /></div></div>} />
+      <PageHero eyebrow="Performance intelligence" title="Turn recorded results into your next decision." description={`Lead research, AI work and customer relationships over ${range.days} days. Days are grouped in ${timeZoneLabel(timeZone)}; missing provider data stays unavailable.`} icon={<BarChart3 />} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface-2 p-5"><p className="text-xs font-semibold text-ink">AI work</p><p className="mt-2 text-3xl font-semibold tracking-tight">{runsTotal}<span className="ml-2 text-xs font-normal text-muted">recorded runs</span></p><div className="mt-3"><CoverageBar label="Recorded run outcomes" parts={[{label:"Completed",count:completed,color:"var(--success)"},{label:"Failed",count:failed,color:"var(--danger)"},{label:"Other",count:Math.max(0,runsTotal-completed-failed),color:"var(--primary)"}]} /></div></div>} />
       <div data-aqi-target="analytics.range" className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <h2 className="text-[17px] font-semibold tracking-tight">Reporting window</h2>
@@ -190,7 +190,7 @@ export function AnalyticsView({
                 <tbody>
                   {data.leads.bySource.map((s) => (
                     <tr key={s.source} className="border-b border-line">
-                      <td className="py-2">{s.source === "lead_hunter" ? "AI Lead Hunter" : s.source.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}</td>
+                      <td className="py-2">{s.source === "lead_hunter" ? "AI Growth Partner" : s.source.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}</td>
                       <td className="py-2 text-right tabular-nums">{s.total}</td>
                       <td className="py-2 text-right tabular-nums">{s.approved}</td>
                       <td className="py-2 text-right tabular-nums">{s.avg_score ?? "—"}</td>
@@ -258,10 +258,10 @@ export function AnalyticsView({
         <Card className="xl:col-span-2">
           <CardHeader>
             <div>
-              <CardTitle>AI employee task activity</CardTitle>
-              <CardDescription>Runs per employee in this period (conversations and research).</CardDescription>
+              <CardTitle>AI work activity</CardTitle>
+              <CardDescription>Recorded conversations and research runs in this period.</CardDescription>
             </div>
-            <AskAnalyst canChat={canChat} prompt={`My AI employees completed ${completed} of ${runsTotal} runs in the last ${range.days} days with ${failed} failures. What does that tell you?`} />
+            <AskAnalyst canChat={canChat} prompt={`The AI work completed ${completed} of ${runsTotal} runs in the last ${range.days} days with ${failed} failures. What does that tell you?`} />
           </CardHeader>
           <CardContent className="space-y-5">
             <HBarList
@@ -281,7 +281,7 @@ export function AnalyticsView({
               emptyLabel="No AI runs in this period."
             />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Metric label="Runs" value={formatNumber(runsTotal)} definition="AI employee runs started in this period." />
+              <Metric label="Runs" value={formatNumber(runsTotal)} definition="AI work runs started in this period." />
               <Metric label="Success rate" value={formatPercent(runsTotal ? completed / runsTotal : null)} definition="Completed ÷ all runs. Stopped runs count as not completed." />
               <Metric label="Tool steps" value={formatNumber(data.workforce.toolSteps)} definition="Tool calls reported by Hermes during runs." />
               <Metric label="Tokens" value={formatNumber(data.usage.tokens, { compact: true })} definition="Tokens reported by Hermes for completed runs." />
@@ -333,7 +333,7 @@ export function AnalyticsView({
               <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No AI messages in this period.</p>
             )}
             <div className="mt-4 grid grid-cols-3 gap-3">
-              <Metric label="AI messages" value={formatNumber(data.usage.messages)} definition="Messages sent to AI employees in this period." />
+              <Metric label="AI messages" value={formatNumber(data.usage.messages)} definition="Messages sent to your AI Growth Partner in this period." />
               <Metric label="Research runs" value={formatNumber(data.usage.research)} definition="Lead research runs started." />
               <Metric label="Help answers" value={formatNumber(data.usage.help)} definition="AI-written iAcquire Assistant answers (help-center answers aren't counted)." />
             </div>

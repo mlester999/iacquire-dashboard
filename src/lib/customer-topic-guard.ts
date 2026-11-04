@@ -68,5 +68,5 @@ export function detectRestrictedTopics(text: string, selected: readonly Restrict
 
 /** What the team reads: the topic only. Never a word the customer wrote. */
 export function restrictedTopicSummary(topic: RestrictedTopic): string {
-  return `The customer's message is about ${TOPIC_LABEL[topic]}, a topic this business asked to handle with a person. The AI employee did not answer.`;
+  return `The customer's message is about ${TOPIC_LABEL[topic]}, a topic this business asked to handle with a person. The AI Growth Partner did not answer.`;
 }

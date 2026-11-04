@@ -463,6 +463,11 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0119 hangs delivery records off purchase_intents (0101), re-states the timeline kinds 0103 extended, and reads the helpers 0101 created (app.purchase_intent_agency_org,
   // app.purchase_intents_allowed). It also points at email_outbox (0001).
   "0119_purchase_invitation_delivery": ["0001_foundation", "0101_purchase_intents", "0103_purchase_checkouts"],
+  // 0120 adds the one-per-tenant logical partner, same-tenant optional runtime binding, immutable
+  // configuration snapshots and permission-scoped RLS. It preserves all existing employee rows.
+  "0120_ai_growth_partner_foundation": ["0001_foundation", "0002_workforce", "0005_tenant_integrity", "0060_rls_initplan"],
+  // 0121 reserves a tenant-shared permanent chat row, ties it to the partner's exact runtime and protects it from legacy retention.
+  "0121_ai_growth_partner_conversation": ["0002_workforce", "0005_tenant_integrity", "0060_rls_initplan", "0120_ai_growth_partner_foundation"],
 };
 
 /**

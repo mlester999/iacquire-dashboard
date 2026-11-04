@@ -20,6 +20,8 @@ export async function connectionFacts(db: Queryable, orgId: string): Promise<Con
   const crm = Number(await one("select count(*) as n from ghl_location_mappings where org_id = $1 and status = 'connected' and verified_at is not null"));
   const online = Number(await one(`select count(*) as n from agent_instances where org_id = $1 and ${runtimeReadySql("agent_instances")}`));
   const total = Number(await one("select count(*) as n from agent_instances where org_id = $1 and enabled"));
+  const growthPartnerOnline = Number(await one(`select count(*) as n from agent_instances where org_id = $1 and role_key = 'growth_partner' and ${runtimeReadySql("agent_instances")}`));
+  const growthPartnerTotal = Number(await one("select count(*) as n from agent_instances where org_id = $1 and role_key = 'growth_partner' and enabled"));
   const mapped = Number(await one("select count(*) as n from automation_template_mappings where org_id = $1 and status = 'verified'"));
   const calendars = Number(await one("select coalesce(sum(cardinality(calendar_ids)), 0) as n from ghl_location_mappings where org_id = $1 and status = 'connected'"));
   const staff = Number(await one(
@@ -54,9 +56,9 @@ export async function connectionFacts(db: Queryable, orgId: string): Promise<Con
   if (mode === "native") {
     const blueprint = Number(await one("select count(*) as n from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied')"));
     const calendar = Number(await one(`select ${NATIVE_BOOKABLE_CALENDARS_SQL} as n`));
-    return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, invitedStaff: staff, ...optional };
+    return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, growthPartnerRuntimeVerified: growthPartnerOnline, growthPartnerRuntimeTotal: growthPartnerTotal, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, invitedStaff: staff, ...optional };
   }
-  return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, invitedStaff: staff, ...optional };
+  return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, growthPartnerRuntimeVerified: growthPartnerOnline, growthPartnerRuntimeTotal: growthPartnerTotal, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, invitedStaff: staff, ...optional };
 }
 
 type SenderChannel = "sms" | "whatsapp" | "email";

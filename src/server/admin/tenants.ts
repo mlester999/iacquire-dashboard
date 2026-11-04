@@ -6,19 +6,19 @@ import { recordAudit } from "@/server/audit";
 import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/auth/service";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { sha256 } from "@/server/security/crypto";
-import { ensureAgentInstances } from "@/server/workforce/service";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { revokeClientBusinessCredentialsForOrg } from "@/server/workforce/hermes-client-business-credential";
 import { applyRolePlanChange, type PlanChangeResult } from "@/server/onboarding/employee-sync";
 import { ensureSetupInstance } from "@/server/setup/core";
 import { saveCredential,assertCredentialAdmin } from "@/server/security/credentials";
 import type { SessionUser } from "@/server/auth/service";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { canBlueprint, canDoBlueprint, needBlueprint, needBlueprintAction } from "@/server/crm/blueprints/access";
 import { installStarter, listBlueprints, listStarters } from "@/server/crm/blueprints/library";
 import { applyBlueprint, planApplication } from "@/server/crm/blueprints/apply";
 import type { ApplicationPlan, ApplyOptions, PlanAction, RequirementKey } from "@/lib/crm/blueprints/types";
 import type { BlueprintSummary, StarterView } from "@/lib/crm/blueprints/views";
 import { runtimeReadySql } from "@/lib/employee-runtime";
+import { WORKFORCE_ROLE_KEYS } from "@/lib/agents";
 
 /** GHL locations that must never be mapped to a client tenant. */
 export const PROTECTED_GHL_LOCATIONS = {
@@ -64,7 +64,8 @@ export const createTenantSchema = z
     industry: z.string().trim().max(120).optional().default(""),
     website: z.string().trim().max(300).optional().default(""),
     timezone: z.string().trim().max(64).default("America/New_York"),
-    enabledRoles: z.array(z.enum(AGENT_ROLE_KEYS)).min(1, "Enable at least one AI employee.").default([...AGENT_ROLE_KEYS]),
+    // Accepted for older API callers and ignored: new clients always use one Growth Partner.
+    enabledRoles: z.array(z.enum(WORKFORCE_ROLE_KEYS)).optional(),
     crmMode: z.enum(ONBOARDING_CRM_MODES).default("native"),
     blueprint: onboardingBlueprintSchema.optional().default(null),
   })
@@ -156,14 +157,8 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
     await db.query("insert into usage_limits (org_id, updated_by) values ($1, $2)", [orgId, admin.id]);
     await db.query("insert into billing_accounts (org_id, updated_by) values ($1, $2)", [orgId, admin.id]);
     await db.query("insert into onboarding_responses (org_id) values ($1)", [orgId]);
-    await ensureAgentInstances(orgId, db);
+    await ensureGrowthPartnerRuntime(orgId, db);
     await ensureSetupInstance(db, orgId, admin.id);
-    await db.query(
-      `update agent_instances set enabled = (role_key = any($2::text[])),
-         status = case when role_key = any($2::text[]) then 'setup_required' else 'disabled' end
-       where org_id = $1`,
-      [orgId, data.enabledRoles],
-    );
     // A native client has no GoHighLevel connection to track: only GoHighLevel clients start with its two "not connected" rows.
     for (const provider of data.crmMode === "native" ? ["hermes"] : ["hermes", "ghl", "ghl_calendar"]) {
       await db.query("insert into integration_status (org_id, provider, status) values ($1, $2, 'not_configured')", [orgId, provider]);
@@ -179,7 +174,7 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
     await recordAudit(
       {
         orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.created", targetType: "organization", targetId: orgId, result: "success",
-        metadata: { slug, enabledRoles: data.enabledRoles, crmMode: data.crmMode, blueprint: data.blueprint ? (data.blueprint.kind === "blueprint" ? { blueprintId: data.blueprint.blueprintId } : { starterKey: data.blueprint.starterKey }) : null },
+        metadata: { slug, workforceModel: "growth_partner", crmMode: data.crmMode, blueprint: data.blueprint ? (data.blueprint.kind === "blueprint" ? { blueprintId: data.blueprint.blueprintId } : { starterKey: data.blueprint.starterKey }) : null },
       },
       db,
     );

@@ -53,8 +53,8 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
   return (
     <div className="space-y-6">
       <PageTitle
-        title="AI Employee Tools"
-        description="The CRM tools your own AI employees can use, what each may do on its own, and every call they made. Each call is checked on our servers against the employee's role, its operating mode and your pauses. Anything that would reach a customer, close a deal or change several records at once always waits for a person."
+        title="AI Tools"
+        description="The CRM tools available to your AI profiles and every call they make. Each call is checked against the profile's permissions, operating mode and workspace pauses. Anything that would reach a customer, close a deal or change several records at once always waits for a person."
         actions={<ButtonLink href="/approvals" variant="secondary" size="sm"><Clock3 className="size-4" aria-hidden />Approval Center</ButtonLink>}
       />
 
@@ -63,7 +63,7 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
           <Info className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
           <div className="text-[14px] leading-relaxed text-ink-2">
             <p className="font-medium text-ink">Not in use yet</p>
-            <p className="mt-0.5">Live AI employee runs stay switched off until iAcquire can verify each employee&apos;s complete tool permissions, so these tools aren&apos;t being called yet. The rules on this page are already enforced for every call once they are.</p>
+            <p className="mt-0.5">Live AI runs stay switched off until iAcquire verifies the complete tool permissions for your workspace, so these tools aren&apos;t being called yet. The rules on this page are already enforced for every call once they are.</p>
           </div>
         </Card>
       )}
@@ -114,14 +114,14 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
             {employees.map((e) => <EmployeeCard key={e.id} employee={e} canStop={canStop} />)}
           </div>
         ) : (
-          <Card><EmptyState icon={<Sparkles className="size-5" />} title="No AI employees yet" description="Your AI employees appear here once your workspace is set up." /></Card>
+          <Card><EmptyState icon={<Sparkles className="size-5" />} title="No AI profiles yet" description="Your AI Growth Partner appears here once your workspace is set up." /></Card>
         )}
       </section>
 
       <section aria-labelledby="ai-tools-calls">
         <h3 id="ai-tools-calls" className="mb-3 text-[15px] font-semibold tracking-tight text-ink">Recent tool calls</h3>
         {calls.length ? <CallList calls={calls} timezone={scope.timezone} /> : (
-          <Card><EmptyState compact icon={<Wrench className="size-5" />} title="No tool calls yet" description="Every CRM tool call an AI employee makes is listed here with what happened, including refused ones." /></Card>
+          <Card><EmptyState compact icon={<Wrench className="size-5" />} title="No tool calls yet" description="Every CRM tool call an AI profile makes is listed here with what happened, including refused ones." /></Card>
         )}
       </section>
     </div>
@@ -244,7 +244,7 @@ function CallList({ calls, timezone }: { calls: ToolCallEntry[]; timezone: strin
           return (
             <li key={c.id} className="grid gap-1.5 px-4 py-3 text-[14px] md:grid-cols-[9rem_10rem_minmax(0,1fr)_11rem] md:items-center md:gap-3">
               <RelativeTime iso={c.at} timezone={timezone} className="text-[13px] text-muted" />
-              <span className="truncate font-medium text-ink">{c.employee ?? "AI employee"}</span>
+              <span className="truncate font-medium text-ink">{c.employee ?? "AI profile"}</span>
               <div className="min-w-0">
                 <p className="text-ink">{c.toolLabel}{c.approved && <span className="text-muted"> · approved by a person</span>}</p>
                 {c.detail && <p className="line-clamp-2 text-[13px] text-muted">{c.detail}</p>}

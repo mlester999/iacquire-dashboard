@@ -2,7 +2,7 @@
 // must not start work that ability covers. Synthetic workspaces on the embedded database; nothing here calls Hermes or a model.
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, type Queryable } from "@/server/db";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { CHAT_REQUESTS } from "@/lib/employee-chat-requests";
 import { abilitiesForCapability, allPolicyActionIds, CHAT_ACTION_ABILITIES, requiredAbilitiesForCapability, ROLE_ABILITIES } from "@/lib/employee-tool-policy";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES } from "@/lib/workforce-capabilities";
@@ -68,8 +68,8 @@ describe("the reviewed ability tables (pure)", () => {
   });
 
   it("every ability a table names is a real default tool of the roles that may use it", async () => {
-    const { rows } = await withSystem((db) => db.query<{ key: AgentRoleKey; default_tools: string[] }>("select key, default_tools from agent_roles"));
-    const tools = Object.fromEntries(rows.map((r) => [r.key, new Set(r.default_tools)])) as Record<AgentRoleKey, Set<string>>;
+    const { rows } = await withSystem((db) => db.query<{ key: WorkforceRoleKey; default_tools: string[] }>("select key, default_tools from agent_roles"));
+    const tools = Object.fromEntries(rows.map((r) => [r.key, new Set(r.default_tools)])) as Record<WorkforceRoleKey, Set<string>>;
     const anywhere = new Set(rows.flatMap((r) => r.default_tools));
     for (const key of CAPABILITY_KEYS) {
       const roles = WORKFORCE_CAPABILITIES[key].allowedRoles;
@@ -79,7 +79,9 @@ describe("the reviewed ability tables (pure)", () => {
         expect(roles.some((role) => tools[role].has(ability)), `${key}: ${ability} is not a default tool of ${roles.join("/")}`).toBe(true);
       }
     }
-    for (const role of AGENT_ROLE_KEYS) for (const ability of ROLE_ABILITIES[role]) expect(tools[role].has(ability), `${role}: ${ability}`).toBe(true);
+    for (const [role, abilities] of Object.entries(ROLE_ABILITIES) as Array<[WorkforceRoleKey, readonly string[]]>) {
+      for (const ability of abilities) expect(tools[role].has(ability), `${role}: ${ability}`).toBe(true);
+    }
     for (const [action, abilities] of Object.entries(CHAT_ACTION_ABILITIES)) for (const ability of abilities) expect(anywhere.has(ability), `${action}: ${ability}`).toBe(true);
   });
 
@@ -97,7 +99,14 @@ describe("the reviewed ability tables (pure)", () => {
     expect(Object.keys(CHAT_ACTION_ABILITIES).sort()).toEqual(chatActions);
     const booking = CHAT_REQUESTS.appointment_setter.filter((d) => d.key === "booking_preview" || d.key === "appointment_change");
     expect(booking).toHaveLength(2);
-    for (const def of booking) for (const abilities of Object.values(CHAT_ACTION_ABILITIES)) expect([...abilities]).toEqual([...def.abilities]);
+    for (const def of booking) {
+      const action = def.key === "booking_preview" ? "chat:booking_request" : "chat:appointment_change";
+      expect([...CHAT_ACTION_ABILITIES[action]]).toEqual([...def.abilities]);
+    }
+    expect([...CHAT_ACTION_ABILITIES["chat:targeting_update"]]).toEqual(["research.public_web"]);
+    expect([...CHAT_ACTION_ABILITIES["chat:crm_contact_create"]]).toEqual(["crm.contacts.create"]);
+    expect([...CHAT_ACTION_ABILITIES["chat:appointment_policy_update"]]).toEqual(["calendar.booking_rules.update"]);
+    expect([...CHAT_ACTION_ABILITIES["chat:calendar_create"]]).toEqual(["calendar.create"]);
   });
 
   it("the follow-up drafts also need the drafting ability, and no other capability has an extra requirement", () => {
@@ -203,7 +212,7 @@ describe("the switch is enforced where work starts", () => {
   it("every one of the 14 capabilities is refused when all of its abilities are off", async () => {
     // The employee's own role, for each capability; the dispatcher resolves the role's agent and the table decides.
     for (const key of CAPABILITY_KEYS) {
-      const role = WORKFORCE_CAPABILITIES[key].allowedRoles[0];
+      const role = WORKFORCE_CAPABILITIES[key].allowedRoles.find((candidate): candidate is AgentRoleKey => candidate !== "growth_partner")!;
       await switchOff(a, role, [...new Set([...abilitiesForCapability(key), ...requiredAbilitiesForCapability(key)])]);
       const before = await jobCount(a.org.id);
       await expect(dispatchCapabilityJob(a.ctx, { agentRole: role, capability: key, title: key, deferKick: true }), key).rejects.toMatchObject({ code: "forbidden", message: expect.stringMatching(/Nothing was started/) });

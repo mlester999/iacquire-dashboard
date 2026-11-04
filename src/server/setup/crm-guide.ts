@@ -216,7 +216,7 @@ export async function loadCrmSetupFacts(db: Queryable, orgId: string, now: Date 
       : { level: "unverified", summary: "Calendars are managed in GoHighLevel.", connections: [], activeCalendars: 0, draftCalendars: 0, verifiedCalendars: 0, bookableCalendars: 0, firstIssue: null },
     channels: { email: ch("email"), sms: ch("sms"), whatsapp: ch("whatsapp") },
     workflows: { level: wf.status, summary: wf.summary, total: wf.total, drafts: wf.drafts, active: wf.active, awaitingApproval: wf.awaitingApproval, proven: wf.proven, failing: wf.failing },
-    ai: { level: ai.status, summary: ai.summary, enabled: ai.enabled, ready: ai.ready, failing: ai.failing, notReady: ai.notReady },
+    ai: { model: ai.model, level: ai.status, summary: ai.summary, enabled: ai.enabled, ready: ai.ready, failing: ai.failing, notReady: ai.notReady },
     checks: { applicable: Number(k?.applicable ?? 0), verified: Number(k?.verified ?? 0), failed: Number(k?.failed ?? 0), lastRunAt: iso(k?.last_run) },
     setup: {
       state: inst.rows[0]?.state ?? null,

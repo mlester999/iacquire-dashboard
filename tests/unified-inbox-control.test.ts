@@ -5,6 +5,7 @@ import { assignConversation, claimEscalation, resumeAi, takeOverConversation } f
 import { assignAiEmployee, pauseAi, transferConversation } from "@/server/messaging/ai-control";
 import { approveDraft, bulkUpdateConversations, retryFailedMessage, sendHumanReply, setConversationState, getConversationDetail } from "@/server/messaging/inbox";
 import { respondToConversation } from "@/server/messaging/responder";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { dispatchMessage, queueOutbound } from "@/server/messaging/send";
 import { unconfirmedOutcome } from "@/lib/messaging";
 import { canHandleConversations, describeConversationEvent } from "@/lib/inbox";
@@ -32,7 +33,16 @@ describe("which AI employees may handle a conversation", () => {
   it("names only the customer-facing roles", () => {
     expect(canHandleConversations("sales_assistant")).toBe(true);
     expect(canHandleConversations("appointment_setter")).toBe(true);
+    expect(canHandleConversations("growth_partner")).toBe(true);
     for (const internal of ["operations_manager", "lead_hunter", "crm_manager", "performance_analyst", "", null, undefined]) expect(canHandleConversations(internal)).toBe(false);
+  });
+
+  it("lets a manager assign the unified Growth Partner to an inbox conversation", async () => {
+    await withSystem((db) => ensureGrowthPartnerRuntime(m.org.id, db));
+    const partner = await setupAgent(m, "growth_partner");
+    const c = await inbound(m.org.id);
+    expect(await assignAiEmployee(m.ctx("manager"), c.conversationId, partner)).toEqual({ agentId: partner, ownerKind: "ai" });
+    expect((await conv(c.conversationId)).ai_agent_id).toBe(partner);
   });
 
   it("lets a manager choose between the two, and refuses the four that work behind the scenes", async () => {

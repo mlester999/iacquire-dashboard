@@ -9,7 +9,7 @@ export const CONSULT_CONFIRM = {
   description: (business: string | null) => (business ? `A free conversation with the iAcquire team about ${business}.` : "A free conversation with the iAcquire team about your business."),
   purposeHeading: "What the consultation is for",
   purpose: [
-    "To understand what you want your AI team and CRM to do, and how you work today",
+    "To understand what you want your AI Growth Partner and CRM to do, and how you work today",
     "To see whether the core implementation fits, and what it would involve",
     "To answer your questions about pricing, Managed Maintenance and what is not included",
   ],

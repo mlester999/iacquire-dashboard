@@ -20,11 +20,11 @@ export const DEFAULT_POLICY: AppointmentPolicy = {
   defaultCalendarId: null, slotMinutes: 30, minNoticeMinutes: 120, maxDaysAhead: 30, lateCancelHours: null, aiBookingEnabled: false, remindersEnabled: false, reminderOffsetsMinutes: [1440, 120], remindersApprovalId: null,
 };
 
-export async function loadPolicy(db: Queryable, orgId: string): Promise<AppointmentPolicy> {
+export async function loadPolicy(db: Queryable, orgId: string, opts: { forUpdate?: boolean } = {}): Promise<AppointmentPolicy> {
   const { rows } = await db.query<{
     default_calendar_id: string | null; slot_minutes: number; min_notice_minutes: number; max_days_ahead: number; late_cancel_hours: number | null; ai_booking_enabled: boolean;
     reminders_enabled: boolean; reminder_offsets_minutes: number[]; reminders_approval_id: string | null;
-  }>("select * from appointment_settings where org_id = $1", [orgId]);
+  }>(`select * from appointment_settings where org_id = $1${opts.forUpdate ? " for update" : ""}`, [orgId]);
   const r = rows[0];
   if (!r) return DEFAULT_POLICY;
   return {

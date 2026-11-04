@@ -11,7 +11,7 @@ import { publishReviewReport } from "@/server/workforce/reports";
 import { readReviewSource, reviewCount, reviewFinding, sourceLimitation, type ReviewFinding, type ReviewMetric } from "@/server/workforce/read-only-review";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import { readableTimeZone, summarizeSlotsByDay } from "@/lib/calendars/availability-summary";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey } from "@/lib/agents";
 
 /**
  * A week of start times at the finest step a type allows (5 minutes) is 2,016, so this cap is never what limits a real answer. It exists only so a broken calendar cannot fill a
@@ -37,7 +37,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
     );
     return rows[0] ?? null;
   });
-  if (!agent || agent.role_key !== "appointment_setter" || !roleMayUseCapability(agent.role_key as AgentRoleKey, job.capability)) {
+  if (!agent || !isWorkforceRoleKey(agent.role_key) || (agent.role_key !== "appointment_setter" && agent.role_key !== "growth_partner") || !roleMayUseCapability(agent.role_key, job.capability)) {
     await withSystem(async (db) => {
       await finishWorkJob(db, {
         jobId: job.id,

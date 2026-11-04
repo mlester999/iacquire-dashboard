@@ -4,17 +4,16 @@ import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { PencilRuler, FileText, Receipt, Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
-import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
+import { PencilRuler, FileText, Receipt, Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
+import { Logo } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AvatarTile } from "@/components/ui/status";
-import { AGENT_BY_KEY, canChat } from "@/lib/agents";
 import { cn, initials } from "@/lib/utils";
 import { useShell } from "@/components/shell/shell-context";
 import { aqiNavTarget } from "@/lib/aqi/targets";
 import type { Permission } from "@/lib/permissions";
 
-interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Belongs to a client's workspace only: not offered in an agency workspace (the pages and actions refuse there too). */ clientOnly?: boolean; /** A module a Super Admin switches on per workspace (an org_features name): not offered until it is on. The pages and actions check the switch again. */ feature?: string;/** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
+interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Belongs to a client's workspace only: not offered in an agency workspace (the pages and actions refuse there too). */ clientOnly?: boolean; /** Retained migration screen shown only while enabled legacy profiles remain. */ legacyOnly?: boolean; /** A module a Super Admin switches on per workspace (an org_features name): not offered until it is on. The pages and actions check the switch again. */ feature?: string;/** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
 const MAIN: NavItem[] = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard, tour: "overview" },
   { href: "/inbox", label: "Inbox", icon: InboxIcon, permission: "inbox.view", badge: "inbox" },
@@ -63,7 +62,7 @@ const REQUESTS: NavItem[] = [
 const FOOTER: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ];
-export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/employees", label: "AI Employees", icon: Sparkles }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...REQUESTS, ...FOOTER] as NavItem[];
+export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/growth-partner", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", clientOnly: true }, { href: "/employees", label: "Previous employee profiles", icon: Sparkles, permission: "agents.configure", clientOnly: true, legacyOnly: true }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...REQUESTS, ...FOOTER] as NavItem[];
 function NavPendingBar() {
   // useLinkStatus must live inside the Link. A fixed-height bar cannot shift the row, and the
   // click feedback is visible even when the destination's server render is still in flight.
@@ -98,36 +97,33 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
     router.prefetch(href);
   }, [router]);
   const can = (p?: Permission) => !p || shell.permissions.includes(p);
-  const [open, setOpen] = React.useState(true);
   const [growOpen, setGrowOpen] = React.useState(true);
   const [requestsOpen, setRequestsOpen] = React.useState(true);
   const [crmOpen, setCrmOpen] = React.useState(true);
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
-  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client") && !(i.feature && !(shell.features ?? []).includes(i.feature));
+  const hasEnabledLegacyProfile = shell.agents.some((agent) => agent.enabled);
+  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client") && !(i.legacyOnly && !hasEnabledLegacyProfile) && !(i.feature && !(shell.features ?? []).includes(i.feature));
   // The Requests group: what the person may open, and (for a module a Super Admin switches on per workspace) only where it is on.
   const requestItems = REQUESTS.filter((i) => can(i.permission) && !(i.feature && !(shell.features ?? []).includes(i.feature)));
   // Automation Studio builds on the iAcquire workflow engine, so it is offered wherever that engine runs (not in a GoHighLevel-only workspace).
   const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar" || i.href === "/automation-studio") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.
   const crmActivePath = (item: NavItem) => (item.href === "/crm" && crmItems.some((i) => i.href !== "/crm" && (pathname === i.href || pathname.startsWith(`${i.href}/`))) ? "" : pathname);
-  const visibleAgents = shell.agents.filter((a) => a.enabled);
   return <nav aria-label="Main" className="workspace-nav flex h-full flex-col text-white">
     <div className={cn("flex h-[76px] shrink-0 items-center px-5", compact && "justify-center px-2")}><Link href="/overview" onClick={onNavigate} aria-label="iAcquire overview" className="workspace-nav-brand -ml-1.5 inline-flex p-1.5">{compact ? <Image src="/brand/iacquire-mark.png" alt="" width={1280} height={1280} sizes="36px" className="size-9 object-contain" /> : <Logo tone="inverse" />}</Link></div>
     {!compact && <div className="mx-4 mb-3 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><AvatarTile name={shell.org.name} size="sm" /><div className="min-w-0"><p className="truncate text-[12px] font-semibold text-white" title={shell.org.name}>{shell.org.name}</p><span className="mt-1 inline-flex h-[18px] items-center rounded-full bg-white/10 px-2 text-[12px] font-medium capitalize text-[#c9d4ec] ring-1 ring-inset ring-white/10">{shell.org.role.replaceAll("_", " ")} workspace</span></div></div>}
     <div className={cn("scrollbar-thin min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3", compact && "px-2")}>
       <NavLink onWarm={warmRoute} item={MAIN[0]} pathname={pathname} onNavigate={onNavigate} compact={compact} />
       {shell.setup.visible && <NavLink onWarm={warmRoute} item={{ href: "/setup", label: "Setup Center", icon: ClipboardCheck, tour: "setup" }} pathname={pathname} onNavigate={onNavigate} count={(shell.setup.launch ? shell.setup.launch.needsYou : shell.setup.needsAttention) || undefined} trailing={shell.setup.launch ? `${shell.setup.launch.percent}%` : undefined} hint={shell.setup.launch ? `launch readiness: ${shell.setup.launch.label}` : undefined} compact={compact} />}
-      <div data-tour="workforce" className="pb-2"><div className="flex items-center gap-1"><div className="min-w-0 flex-1"><NavLink onWarm={warmRoute} item={{ href: "/employees", label: "AI Employees", icon: Sparkles }} pathname={pathname} onNavigate={onNavigate} compact={compact} /></div>{!compact && <button type="button" onClick={() => setOpen((o) => !o)} className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/5 hover:text-white" aria-expanded={open} aria-label={open ? "Collapse AI employees" : "Expand AI employees"}><ChevronDown className={cn("size-3.5 transition-transform duration-200", !open && "-rotate-90")} /></button>}</div>
-        <AnimatePresence initial={false}>{open && !compact && <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: .22 }} className="ml-6 mt-2 space-y-1 overflow-hidden border-l border-white/10 py-1 pl-3 pr-1">{visibleAgents.map((agent) => {
-          const meta = AGENT_BY_KEY[agent.role]; const href = `/employees/${meta.slug}`; const chatHref = `/chat/${meta.slug}`; const active = pathname === href || pathname.startsWith(`${href}/`); const chatReady = can("agents.use") && agent.enabled && canChat(agent.status); const statusText = agent.status.replaceAll("_", " ");
-          return <li key={agent.role} className="group/employee flex items-center gap-0.5"><Link href={href} prefetch={false} onClick={onNavigate} onMouseEnter={() => { if (!active) warmRoute(href); }} onFocus={() => { if (!active) warmRoute(href); }} aria-current={active ? "page" : undefined} className={cn("group flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-[12px] transition-colors", active ? "bg-[#4268c6]/15 font-medium text-white" : "text-[#a6b3cd] hover:bg-white/5 hover:text-white")}><AgentAvatar role={meta} size="xs" /><span className="min-w-0 flex-1"><span className="block truncate leading-tight">{agent.displayName}</span><span aria-hidden={meta.shortName === agent.displayName ? true : undefined} className="mt-0.5 block truncate text-[12px] leading-tight text-[#a9bada]">{meta.shortName}</span></span><span title={statusText} className="flex"><StatusDot status={agent.status} label={statusText} /></span></Link>{chatReady && <Tooltip content={`Chat with ${agent.displayName} · ${meta.shortName}`} side="right"><Link href={chatHref} prefetch={false} onClick={onNavigate} onMouseEnter={() => warmRoute(chatHref)} onFocus={() => warmRoute(chatHref)} aria-label={`Chat with ${agent.displayName} · ${meta.shortName}`} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#a6b3cd] opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover/employee:opacity-100 group-focus-within/employee:opacity-100 [@media(hover:none)]:opacity-100"><MessageSquare className="size-3.5" /></Link></Tooltip>}</li>;
-        })}</motion.ul>}</AnimatePresence>
-        {can("agents.use") && <div className="mt-1 space-y-1">
-          <NavLink onWarm={warmRoute} item={{ href: "/work", label: "AI Work Board", icon: ListChecks, match: (path) => path === "/work" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
+      {shell.org.kind === "client" && can("agents.use") && <div data-tour="workforce" className="space-y-1 pb-2">
+        <NavLink onWarm={warmRoute} item={{ href: "/growth-partner", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", tour: "workforce", clientOnly: true }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
+        {can("agents.configure") && hasEnabledLegacyProfile && <NavLink onWarm={warmRoute} item={{ href: "/employees", label: "Previous employee profiles", icon: Sparkles, permission: "agents.configure", clientOnly: true, legacyOnly: true }} pathname={pathname} onNavigate={onNavigate} compact={compact} />}
+        <div className="mt-1 space-y-1">
+          <NavLink onWarm={warmRoute} item={{ href: "/work", label: "Work Board", icon: ListChecks, match: (path) => path === "/work" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
           <NavLink onWarm={warmRoute} item={{ href: "/work/calendar", label: "Schedules & Calendar", icon: CalendarDays, match: (path) => path === "/work/calendar" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
-        </div>}
-      </div>
+        </div>
+      </div>}
       {crmItems.length > 0 && <div className="space-y-1 pb-2">{!compact && <button type="button" onClick={() => setCrmOpen((s) => !s)} aria-expanded={crmOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">CRM<ChevronDown className={cn("size-3 transition-transform", !crmOpen && "-rotate-90")} /></button>}{(crmOpen || compact) && crmItems.map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={crmActivePath(item)} onNavigate={onNavigate} compact={compact} locked={item.href === "/automation-studio" && shell.automationStudio?.entitled === false} />)}</div>}
       {!compact && <p className="workspace-nav-section px-3 pb-1 pt-2">Business operations</p>}
       {MAIN.slice(1).filter(showMain).map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "approvals" ? shell.pendingApprovals : item.badge === "inbox" ? shell.inboxAttention : undefined} />)}

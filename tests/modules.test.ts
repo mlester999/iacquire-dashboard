@@ -195,7 +195,12 @@ describe("leads", () => {
 
   it("neutralises spreadsheet formulas in CSV export", () => {
     const csv = leadsToCsv([
-      { id: "1", business_name: "=HYPERLINK(\"http://x\")", website: null, domain: null, industry: null, location: null, score: 10, score_breakdown: {}, qualification_summary: null, buying_signals: [], evidence: [], duplicate_status: "no_match", duplicate_matches: [], public_contact: {}, review_status: "pending", crm_sync_status: "not_synced", created_at: new Date(0) },
+      {
+        id: "1", business_name: "=HYPERLINK(\"http://x\")", website: null, domain: null, industry: null, location: null,
+        score: 10, score_breakdown: {}, qualification_summary: null, qualification_state: "needs_evidence", qualification_reasons: ["No source URL supports this candidate yet."],
+        recommended_next_action: "Find and review first-party evidence before approving this lead.", buying_signals: [], signal_records: [], evidence: [],
+        duplicate_status: "no_match", duplicate_matches: [], public_contact: {}, review_status: "pending", crm_sync_status: "not_synced", created_at: new Date(0),
+      },
     ]);
     expect(csv.split("\n")[1].startsWith(`"'=HYPERLINK`)).toBe(true);
   });
@@ -208,9 +213,7 @@ describe("tenant administration", () => {
     const { rows } = await withSystem((db) =>
       db.query<{ role_key: string; enabled: boolean; status: string }>("select role_key, enabled, status from agent_instances where org_id = $1 order by role_key", [res.orgId]),
     );
-    expect(rows).toHaveLength(6);
-    expect(rows.filter((r) => r.enabled).map((r) => r.role_key).sort()).toEqual(["lead_hunter", "sales_assistant"]);
-    expect(rows.find((r) => r.role_key === "crm_manager")?.status).toBe("disabled");
+    expect(rows).toEqual([{ role_key: "growth_partner", enabled: true, status: "setup_required" }]);
     expect(res.inviteLink).toMatch(/\/invite\//);
   });
 

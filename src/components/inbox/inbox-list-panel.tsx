@@ -26,7 +26,7 @@ export const EMPTY_COPY: Record<InboxView, { title: string; body: string }> = {
   all: { title: "No conversations yet", body: "Customer messages from SMS, WhatsApp and email appear here once a channel is verified and connected. Website enquiries land here too. Nothing is sent until you switch a channel on." },
   unread: { title: "You're all caught up", body: "Every customer message has been opened." },
   mine: { title: "Nothing is assigned to you", body: "Conversations you take over, or that a manager assigns to you, show up here." },
-  ai: { title: "No conversation is with an AI employee", body: "When an AI employee is handling a customer, the conversation is listed here so you can watch it or step in." },
+  ai: { title: "No conversations are handled by AI", body: "When your Growth Partner or a previous profile is handling a customer, the conversation is listed here so you can watch it or step in." },
   unassigned: { title: "Everything has an owner", body: "New conversations nobody, person or AI, is handling would be listed here." },
   attention: { title: "Nothing needs attention", body: "A conversation shows here when a person was asked for, a message failed, it is marked urgent, or a customer has waited for a reply." },
   open: { title: "No open conversations", body: "Resolved and archived conversations are in their own views." },

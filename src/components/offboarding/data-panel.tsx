@@ -22,7 +22,7 @@ const STATUS: Record<string, { tone: StatusTone; label: string }> = {
 
 const WHAT_HAPPENS = [
   { icon: <MessagesSquare />, text: "Asking to close starts a conversation with iAcquire, not an immediate shutdown." },
-  { icon: <DoorOpen />, text: "When the workspace is closed down, AI employees and messaging stop, your team's access is removed, and your data is kept for a period before it is deleted. You're reminded before that happens." },
+  { icon: <DoorOpen />, text: "When the workspace is closed down, AI work and messaging stop, your team's access is removed, and your data is kept for a period before it is deleted. You're reminded before that happens." },
   { icon: <Archive />, text: "Payments, your credit history and the activity record are kept, as financial and audit records. Everything else is deleted." },
 ];
 
@@ -59,7 +59,7 @@ export function DataPanel({ orgName, view, canRequest, canExport }: { orgName: s
         <Panel
           icon={<Download />}
           title="Download your data"
-          description="Everything you own, as readable files: your contacts and every conversation, leads and appointments, website content and images, your AI team's setup and approvals, and your billing history. You can do this any time, whether or not you're leaving."
+          description="Everything you own, as readable files: your contacts and every conversation, leads and appointments, website content and images, your AI Growth Partner setup and approvals, and your billing history. You can do this any time, whether or not you're leaving."
           bodyClassName="space-y-4"
         >
           <a href="/api/data-export" download className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl brand-gradient px-5 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10 sm:w-auto">

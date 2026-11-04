@@ -30,7 +30,7 @@ export const LOCATION_INFO: Record<LocationKind, { label: string; detailLabel: s
 };
 
 /** What a draft calendar is, in one sentence shared by every screen that shows one. */
-export const DRAFT_EXPLAINER = "A draft takes no bookings: it has no booking page, isn't offered to your team, your AI Appointment Setter or your website, and can't be the default until it is verified and activated.";
+export const DRAFT_EXPLAINER = "A draft takes no bookings: it has no booking page, isn't offered to your team, AI Growth Partner or your website, and can't be the default until it is verified and activated.";
 
 /** Marks a calendar that takes no bookings yet. */
 export function DraftBadge() {

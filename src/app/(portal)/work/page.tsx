@@ -4,11 +4,12 @@ import { listWorkBoardJobs, workBoardSummary, type WorkBoardFilter } from "@/ser
 import { listSchedules, schedulesOperatorEnabled } from "@/server/workforce/schedules";
 import { listTriggers, triggersOperatorEnabled } from "@/server/workforce/triggers";
 import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
+import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { WorkBoard } from "@/components/work/work-board";
-import { AGENT_BY_KEY, canChat, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 
-export const metadata = { title: "AI Work Board" };
+export const metadata = { title: "Work Board" };
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -16,24 +17,36 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
   const [{ status, job, report, schedule }, ctx] = await Promise.all([searchParams, requireWorkforceContext()]);
   const referenceTime = new Date().toISOString();
   const filter: WorkBoardFilter = status === "active" || status === "attention" || status === "completed" ? status : "all";
-  const [jobs, summary, agents, schedules, triggers, reports, monitoring] = await Promise.all([
+  const [jobs, summary, legacyAgents, partner, schedules, triggers, reports, monitoring] = await Promise.all([
     listWorkBoardJobs(ctx, filter),
     workBoardSummary(ctx),
     listAgents(ctx.user.id, ctx.org.orgId).catch(() => []),
+    ctx.can("agents.use") ? getGrowthPartnerControlState(ctx).catch(() => null) : Promise.resolve(null),
     listSchedules(ctx).catch(() => []),
     listTriggers(ctx).catch(() => []),
     listProactiveReports(ctx, { limit: 24 }).catch(() => []),
     getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
-  const employeeNames = Object.fromEntries(agents.map((agent) => [agent.role_key, agent.display_name])) as Partial<Record<AgentRoleKey, string>>;
+  const agents = [
+    ...legacyAgents,
+    ...(partner?.runtimeAgentInstanceId ? [{
+      role_key: AI_GROWTH_PARTNER_ROLE_KEY,
+      display_name: partner.name,
+      enabled: partner.runtimeEnabled === true,
+      status: partner.runtimeStatus ?? "setup_required" as const,
+      config_version: partner.currentVersion,
+    }] : []),
+  ];
+  const employeeNames = Object.fromEntries(agents.map((agent) => [agent.role_key, agent.display_name])) as Partial<Record<WorkforceRoleKey, string>>;
 
   const capabilityActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
     .map((key) => WORKFORCE_CAPABILITIES[key])
     .map((definition) => {
-      const role = definition.allowedRoles[0];
-      const meta = AGENT_BY_KEY[role];
+      const role = partner && definition.allowedRoles.includes(AI_GROWTH_PARTNER_ROLE_KEY)
+        ? AI_GROWTH_PARTNER_ROLE_KEY
+        : definition.allowedRoles[0];
       const agent = agents.find((row) => row.role_key === role) ?? null;
-      const employeeName = agent?.display_name ?? meta.shortName;
+      const employeeName = agent?.display_name ?? workforceRoleShortName(role);
       const permission = ctx.can(definition.requiredPermission);
       const reason = !permission
         ? "Your role can't start this work."

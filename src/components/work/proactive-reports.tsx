@@ -320,7 +320,7 @@ export function ProactiveWatch({
       icon={<Radar />}
       tone={monitoring.state === "active" ? "success" : monitoring.state === "paused" ? "warning" : "neutral"}
       title="Proactive watch"
-      description="Verified reports from work an AI employee actually ran. A report can recommend an action, but customer-facing or high-impact changes still need a person."
+      description="Verified reports from work your AI Growth Partner actually ran. A report can recommend an action, but customer-facing or high-impact changes still need a person."
       action={<StatusPill tone={stateTone} size="sm">{stateLabel}</StatusPill>}
     >
       <div className="space-y-4">

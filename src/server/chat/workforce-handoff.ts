@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, type AgentRoleKey, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import type { WorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { systemNoticeMarker } from "@/lib/evidence-class";
@@ -11,7 +11,7 @@ import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export interface WorkforceChatHandoffInput {
-  sourceRole: AgentRoleKey;
+  sourceRole: WorkforceRoleKey;
   sourceAgentId: string;
   sourceConversationId: string;
   sourceMessageId: string;
@@ -36,7 +36,7 @@ export async function createWorkforceChatHandoff(ctx: OrgContext, input: Workfor
     throw new AppError("forbidden", "That employee handoff is not available.");
   }
 
-  const source = AGENT_BY_KEY[input.sourceRole];
+  const source = { shortName: workforceRoleShortName(input.sourceRole) };
   const target = AGENT_BY_KEY[targetRole];
   const idempotencyKey = `chat-handoff:${input.sourceMessageId}`;
   let targetConversationId: string | null = null;

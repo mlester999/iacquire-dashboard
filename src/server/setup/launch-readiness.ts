@@ -35,6 +35,7 @@ import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { activeHostsOfCalendar, hostConnectionStates, proposeCalendarHours, statedBusyAnswer, verifyCalendarInTx } from "@/server/calendars/activation";
 import { calendarConnectionSettings } from "@/server/calendars/connections";
 import { MAX_PROVISIONING_ATTEMPTS } from "@/lib/provisioning-failure";
+import { runtimeReadySql } from "@/lib/employee-runtime";
 import { checkCoversInputs, verificationInputs } from "@/lib/launch-verification";
 import { employeeSyncState } from "@/server/onboarding/employee-sync";
 import { actualDataModel, blueprintEvidence, loadBlueprintState, manifestEvidence } from "@/server/setup/native-evidence";
@@ -551,6 +552,48 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
       [orgId],
     )).rows[0];
     if (!org || org.kind !== "client") return null;
+    const growthPartnerRow = (await db.query<{
+      status: NonNullable<LaunchFacts["growthPartner"]>["status"];
+      runtime_bound: boolean;
+      enabled: boolean | null;
+      runtime_status: NonNullable<LaunchFacts["growthPartner"]>["runtimeStatus"];
+      profile_connected: boolean;
+      runtime_ready: boolean;
+      health_failed: boolean;
+      current_version: number | null;
+      latest_brain_version: number | null;
+      conversation_ready: boolean;
+      provisioning: string | null;
+    }>(
+      `select p.status, (p.runtime_agent_instance_id is not null) as runtime_bound,
+              a.enabled, a.status as runtime_status, (a.hermes_profile is not null) as profile_connected,
+              ${runtimeReadySql("a", { credentialRevocation: true })} as runtime_ready,
+              coalesce(a.last_health_ok = false and a.last_health_check_at is not null, false) as health_failed,
+              p.current_version,
+              (select max(v.version)::int from ai_growth_partner_versions v where v.org_id = p.org_id and v.partner_id = p.id) as latest_brain_version,
+              exists(select 1 from chat_conversations c where c.org_id = p.org_id and c.growth_partner_id = p.id
+                       and c.agent_instance_id = p.runtime_agent_instance_id and c.deleted_at is null) as conversation_ready,
+              (select j.status from agent_provisioning_jobs j where j.org_id = p.org_id and j.agent_instance_id = a.id order by j.created_at desc limit 1) as provisioning
+       from ai_growth_partners p
+       left join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
+       where p.org_id = $1`,
+      [orgId],
+    )).rows[0];
+    const growthPartner = growthPartnerRow ? {
+      status: growthPartnerRow.status,
+      runtimeBound: growthPartnerRow.runtime_bound,
+      enabled: growthPartnerRow.enabled,
+      runtimeStatus: growthPartnerRow.runtime_status,
+      profileConnected: growthPartnerRow.profile_connected,
+      runtimeReady: growthPartnerRow.runtime_ready,
+      healthFailed: growthPartnerRow.health_failed,
+      brainActive: growthPartnerRow.current_version !== null,
+      latestBrainVersion: growthPartnerRow.current_version ?? growthPartnerRow.latest_brain_version,
+      conversationReady: growthPartnerRow.conversation_ready,
+      provisioning: ["requested", "in_progress", "awaiting_health_check", "succeeded", "failed", "retrying", "cancelled"].includes(growthPartnerRow.provisioning ?? "")
+        ? growthPartnerRow.provisioning as NonNullable<LaunchFacts["growthPartner"]>["provisioning"]
+        : null,
+    } satisfies NonNullable<LaunchFacts["growthPartner"]> : undefined;
     // Edits saved after the last approval are not the live setup. The two facts that decide what is required (appointments and channels) read the answers as last approved, so an
     // unapproved edit cannot switch a requirement off; every other fact reads what is saved now.
     const answerRows = await loadAnswerRows(db, orgId);
@@ -615,10 +658,10 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
     const policy = calendar && mode === "native" ? await loadPolicy(db, orgId) : null;
     const autoReply = (await db.query<{ on: boolean }>("select auto_reply_enabled as on from messaging_settings where org_id = $1", [orgId])).rows[0]?.on === true;
     const website = (await db.query<{ published: boolean }>("select published_publication_id is not null as published from websites where org_id = $1 and kind = 'website' limit 1", [orgId])).rows[0];
-    return { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification, digests, behind, told, waitingSince, atCapacity, region, pipelineDraft, team, handoff, policy, autoReply, website };
+    return { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification, digests, behind, told, waitingSince, atCapacity, region, pipelineDraft, team, handoff, policy, autoReply, website, growthPartner };
   });
   if (!read) return null;
-  const { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification: verified, digests, behind, told, waitingSince, atCapacity, region, pipelineDraft, team, handoff, policy, autoReply, website } = read;
+  const { org, answers, answerRows, approved, change, workspace, mode, crm, providerConnected, calendar, teamHosts, externalCalendarConnected, channelRows, jobs, held, paymentCleared, verification: verified, digests, behind, told, waitingSince, atCapacity, region, pipelineDraft, team, handoff, policy, autoReply, website, growthPartner } = read;
   // The alert is a fact of the check itself: a running check carries whether iAcquire was told it is taking long.
   const verification = verified.map((v): VerificationFact => (v.state === "running" && v.since ? { ...v, alerted: told.has(launchStallAlertKey(orgId, `verification.${v.role}`, v.since)) } : v));
 
@@ -672,6 +715,7 @@ async function readLaunchFacts(orgId: string, agents: AgentInstanceRow[], canOpe
         statedSender: statedSenderOf(answers, channel), credentialStored: row?.credential ?? false,
       };
     }),
+    ...(growthPartner ? { growthPartner } : {}),
     employees: employeeFacts(agents, jobs, held, paymentCleared, told, orgId, atCapacity, digests),
     verification,
     ...(behind.length ? { employeesBehind: behind.map((r) => ({ role: r.role, reason: r.reason ?? "" })) } : {}),

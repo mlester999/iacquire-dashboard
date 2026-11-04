@@ -103,7 +103,7 @@ export function ApprovalDialog({ scope, workflowId, workflowStatus, version, opt
           })}
         </ol>
         <p className="text-[13px] leading-relaxed text-muted">
-          The approval covers version {version.version} only (fingerprint <span className="font-mono">#{version.contentHash.slice(0, 10)}</span>). Changing any step makes a new version that needs approving again. A paused workspace, a paused AI employee or missing consent still stops a message at the moment it would send.
+          The approval covers version {version.version} only (fingerprint <span className="font-mono">#{version.contentHash.slice(0, 10)}</span>). Changing any step makes a new version that needs approving again. A paused workspace, a paused AI profile or missing consent still stops a message at the moment it would send.
         </p>
         {blocked && !approved && <p className="rounded-xl bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">The steps marked above can&apos;t run as they are, so approval can&apos;t be requested yet. Change them and publish again, or wait until what they need is ready.</p>}
         {canRequest && !pending && !approved && !blocked && workflowStatus !== "active" && (

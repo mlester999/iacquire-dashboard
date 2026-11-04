@@ -3,16 +3,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Clock, ExternalLink, List, MoveRight, RefreshCw, Video } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
+import { AlertTriangle, CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Clock, ExternalLink, List, MoveRight, RefreshCw, Sparkles, Video } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, EmptyState } from "@/components/ui/primitives";
 import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
-import { Panel } from "@/components/overview/panel";
+import { IconTile, Panel } from "@/components/overview/panel";
 import { Segmented, Sheet } from "@/components/ui/overlays";
 import { MetricCard } from "@/components/ui/workspace";
 import { refreshCrmAction } from "@/app/actions/records";
-import { AGENT_BY_KEY } from "@/lib/agents";
 import { cn, formatDate, formatTime, relativeTime, sentenceCase, timeZoneLabel } from "@/lib/utils";
 import { BookButton, BookDialog, BookingRules, PendingBookings } from "@/components/appointments/booking-panels";
 import type { PendingBookingRow } from "@/server/appointments/overview";
@@ -43,7 +41,7 @@ function flags(a: Appt) {
   if (a.late_cancellation) out.push({ key: "late", label: "Late cancellation", tone: "warning" });
   if (a.conflict) out.push({ key: "conflict", label: "Overlaps another", tone: "danger" });
   if ((a.reschedule_count ?? 0) > 0) out.push({ key: "moved", label: a.reschedule_count === 1 ? "Moved once" : `Moved ${a.reschedule_count} times`, tone: "primary" });
-  if (a.origin === "portal_ai") out.push({ key: "ai", label: "Booked by your AI team", tone: "neutral" });
+  if (a.origin === "portal_ai") out.push({ key: "ai", label: "Booked by your AI Growth Partner", tone: "neutral" });
   return out;
 }
 
@@ -82,7 +80,7 @@ function dayKey(d: Date, tz: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
-export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh, setterReady, pending, policy, canBook, canManage, canGoAutonomous }: { appointments: Appt[]; timeZone: string; lastSync: string | null; canRefresh: boolean; setterReady: boolean; pending: PendingBookingRow[]; policy: PolicyView; canBook: boolean; canManage: boolean; canGoAutonomous: boolean }) {
+export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh, partnerReady, pending, policy, canBook, canManage, canGoAutonomous }: { appointments: Appt[]; timeZone: string; lastSync: string | null; canRefresh: boolean; partnerReady: boolean; pending: PendingBookingRow[]; policy: PolicyView; canBook: boolean; canManage: boolean; canGoAutonomous: boolean }) {
   const router = useRouter();
   const [booking, setBooking] = React.useState(false);
   const [view, setView] = React.useState<"calendar" | "list">("calendar");
@@ -265,13 +263,13 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
         </Panel>
         <Card>
           <CardContent className="flex items-start gap-3 pt-5">
-            <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
+            <IconTile tone="primary" size="md"><Sparkles className="size-5" /></IconTile>
             <div>
-              <p className="text-[14px] font-semibold">Appointment Setter</p>
+              <p className="text-[14px] font-semibold">AI Growth Partner</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
-              {setterReady ? (
-                <ButtonLink href="/chat/appointment-setter" variant="secondary" size="sm" className="mt-3">
-                  Ask the Appointment Setter
+              {partnerReady ? (
+                <ButtonLink href="/chat/growth-partner" variant="secondary" size="sm" className="mt-3">
+                  Ask AI Growth Partner
                 </ButtonLink>
               ) : (
                 <StatusPill tone="neutral" className="mt-3">Available once it&apos;s online</StatusPill>

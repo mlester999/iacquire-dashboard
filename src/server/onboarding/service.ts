@@ -30,8 +30,8 @@ import {
   industryLabel,
   isRequired,
   legacyToAnswers,
+  onboardingScope,
   planAddOns,
-  planScope,
   resolveCurrentQuestion,
   submitCheck,
   toLegacyData,
@@ -47,6 +47,7 @@ import { ASSISTANCE_FIELDS, assistanceRequestSchema, draftUsesProvidedDetails, m
 import { generateEmployeeSettings, type GeneratedSettings } from "@/server/onboarding/employee-generator";
 import { hasUnconfiguredEnabledEmployee, seedKnowledgeFromAnswers, syncEmployeesFromAnswers, type GeneratedEmployee } from "@/server/onboarding/employee-sync";
 import { answerTimes, loadAnswerRows, toStored } from "@/server/onboarding/answers";
+import { draftGrowthPartnerBusinessBrainFromOnboarding } from "@/server/ai-growth-partner/service";
 import { connectionFacts } from "@/server/onboarding/connection-facts";
 import { appliedThrough, lockOnboardingRow, submissionBaselines } from "@/server/onboarding/profile-sync";
 import { pendingChangesOf } from "@/server/onboarding/pending-changes";
@@ -65,6 +66,7 @@ import type { SchedulingDraftOutcome } from "@/lib/onboarding/scheduling-drafts"
 // ===========================================================================
 
 export interface OnboardingSession {
+  workforceModel: "legacy" | "growth_partner";
   questionnaireVersion: number;
   status: "draft" | "submitted";
   revision: number;
@@ -94,6 +96,20 @@ async function enabledRolesOf(db: Queryable, orgId: string): Promise<AgentRoleKe
     [orgId],
   );
   return rows.map((a) => a.role_key).filter(isAgentRoleKey);
+}
+
+async function workforceModelOf(orgId: string): Promise<OnboardingSession["workforceModel"]> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ present: boolean }>(
+      `select exists(
+         select 1 from ai_growth_partners p
+         join agent_instances a on a.org_id = p.org_id and a.id = p.runtime_agent_instance_id
+         where p.org_id = $1 and a.role_key = 'growth_partner' and a.enabled
+       ) as present`,
+      [orgId],
+    );
+    return rows[0]?.present ? "growth_partner" : "legacy";
+  });
 }
 
 const sectionIndex = (questionId: string) => Math.max(1, ONBOARDING_SECTIONS.findIndex((s) => s.id === QUESTION_BY_ID[questionId]?.section) + 1);
@@ -144,6 +160,7 @@ async function buildPrefill(db: Queryable, orgId: string): Promise<Answers> {
 }
 
 export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingSession> {
+  const workforceModel = await workforceModelOf(ctx.org.orgId);
   return withUser(ctx.user.id, async (db) => {
     const orgId = ctx.org.orgId;
     let rows = await loadAnswerRows(db, orgId);
@@ -164,7 +181,7 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
     }>("select questionnaire_version, current_question_id, status, revision, completed_at, submitted_at, submitted_snapshot from onboarding_responses where org_id = $1", [orgId]);
     const s = sessionRows[0];
     const enabledRoles = await enabledRolesOf(db, orgId);
-    const scope = planScope(enabledRoles);
+    const scope = onboardingScope(enabledRoles, workforceModel);
     const stored = toStored(rows);
     const analysisRow = rows.find((r) => r.question_id === WEBSITE_ANALYSIS_KEY);
     const submittedAt = s?.submitted_at ? new Date(s.submitted_at) : null;
@@ -172,6 +189,7 @@ export async function getOnboardingSession(ctx: OrgContext): Promise<OnboardingS
     // counts as applied, so it is not "unsubmitted changes".
     const pending = pendingChangesOf(rows, s ? { submittedAt: s.submitted_at, snapshot: s.submitted_snapshot } : null);
     return {
+      workforceModel,
       questionnaireVersion: s?.questionnaire_version ?? 1,
       status: s?.status ?? "draft",
       revision: s?.revision ?? 0,
@@ -221,10 +239,11 @@ export async function saveOnboardingStep(ctx: OrgContext, input: SaveStepInput):
   for (const id of ids) if (!QUESTION_BY_ID[id] || QUESTION_BY_ID[id].kind.type === "review" && id !== "f.review") throw new AppError("invalid_input", "That question doesn't exist.");
   if (input.currentQuestionId && !QUESTION_BY_ID[input.currentQuestionId]) throw new AppError("invalid_input", "That question doesn't exist.");
 
+  const workforceModel = await workforceModelOf(ctx.org.orgId);
   return withUser(ctx.user.id, async (db) => {
     const orgId = ctx.org.orgId;
     const existing = toStored(await loadAnswerRows(db, orgId));
-    const scope = planScope(await enabledRolesOf(db, orgId));
+    const scope = onboardingScope(await enabledRolesOf(db, orgId), workforceModel);
     // Dynamic options (appointment goals depend on industry) validate against the answers as they will be after this save.
     const merged: Answers = effectiveAnswers(existing, scope);
     for (const id of ids) {
@@ -303,8 +322,14 @@ export async function listOnboardingFiles(ctx: OrgContext) {
 
 export async function getOnboardingReview(ctx: OrgContext): Promise<ReviewModel> {
   const session = await getOnboardingSession(ctx);
-  const { facts, entitlements } = await withSystem(async (db) => ({ facts: await connectionFacts(db, ctx.org.orgId), entitlements: await workspaceEntitlements(db, ctx.org.orgId) }));
-  return buildReviewModel(session.answers, facts, session.enabledRoles, planScope(session.enabledRoles), planAddOns(entitlements));
+  const { facts, entitlements } = await withSystem(async (db) => {
+    const [facts, entitlements] = await Promise.all([
+      connectionFacts(db, ctx.org.orgId),
+      workspaceEntitlements(db, ctx.org.orgId),
+    ]);
+    return { facts, entitlements };
+  });
+  return buildReviewModel(session.answers, facts, session.enabledRoles, onboardingScope(session.enabledRoles, session.workforceModel), planAddOns(entitlements), session.workforceModel);
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +435,7 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
   const burst = await consumeRateLimit({ name: "onboarding:assist:user", limit: 8, windowSeconds: 60 }, `${ctx.org.orgId}:${ctx.user.id}`);
   if (!burst.allowed) throw new AppError("rate_limited", "Please wait a minute before requesting another suggestion.", { retryAfterSeconds: burst.retryAfterSeconds });
   const session = await getOnboardingSession(ctx);
-  const scope = planScope(session.enabledRoles);
+  const scope = onboardingScope(session.enabledRoles, session.workforceModel);
   const answers = confirmedAnswers(session.answers, scope);
   if (!visibleQuestions(answers, scope).some((v) => v.id === q.id)) throw new AppError("invalid_input", "This question isn't part of your current setup.");
   for (const [id, value] of Object.entries(input.clarifications)) {
@@ -541,12 +566,12 @@ export function validateForCompletion(data: OnboardingData): Record<string, stri
   if (!websiteLooksValid(data.business.website.trim())) errors.website = "That website address doesn't look right.";
   if (!data.goals.selected.length) errors.goals = "Choose at least one goal.";
   if (data.goals.selected.some((g) => !BUSINESS_GOALS.some((b) => b.id === g))) errors.goals = "Unknown goal selected.";
-  if (!data.workforce.selected.length) errors.workforce = "Choose at least one AI employee to configure.";
   return errors;
 }
 
 interface V2Extras {
   answers: Answers;
+  storedAnswers: StoredAnswers;
   firstSubmission: boolean;
   generated: Record<AgentRoleKey, GeneratedSettings> | null;
 }
@@ -559,8 +584,16 @@ interface V2Extras {
 async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRoles: AgentRoleKey[], v2?: V2Extras): Promise<OnboardingOutcome> {
   const errors = validateForCompletion(data);
   if (Object.keys(errors).length) throw new AppError("invalid_input", Object.values(errors)[0]);
-  const selected = data.workforce.selected.filter(isAgentRoleKey).filter((r) => enabledRoles.includes(r));
-  if (!selected.length) throw new AppError("invalid_input", "None of the selected employees are enabled for your workspace.");
+  const hasGrowthPartner = await withSystem(async (db) => (await db.query(
+    `select 1 from ai_growth_partners p
+     join agent_instances a on a.org_id = p.org_id and a.id = p.runtime_agent_instance_id
+     where p.org_id = $1 and a.role_key = 'growth_partner' and a.enabled limit 1`,
+    [ctx.org.orgId],
+  )).rows.length > 0);
+  // New Growth Partner tenants use one runtime identity. Leave legacy role profiles untouched,
+  // but do not create or refresh their six specialist configurations during unified onboarding.
+  const selected = hasGrowthPartner ? [] : data.workforce.selected.filter(isAgentRoleKey).filter((r) => enabledRoles.includes(r));
+  if (!selected.length && !hasGrowthPartner) throw new AppError("invalid_input", "None of the selected employees are enabled for your workspace.");
 
   const b = data.business;
   const goalLabels = data.goals.selected
@@ -671,6 +704,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
          current_step = 6, updated_by = excluded.updated_by, submitted_snapshot = coalesce(excluded.submitted_snapshot, onboarding_responses.submitted_snapshot)`,
       [ctx.org.orgId, ctx.user.id, derived ? JSON.stringify(buildSnapshot(derived, stamp, derivedMessaging && derivedPrefs ? { messaging: derivedMessaging, prefs: derivedPrefs } : {})) : null],
     );
+    if (v2 && hasGrowthPartner) await draftGrowthPartnerBusinessBrainFromOnboarding(db, ctx, v2.storedAnswers, stamp, QUESTIONNAIRE_VERSION);
     // Booking rules become a draft calendar and appointment types, never a live one (src/server/onboarding/scheduling-drafts.ts).
     const scheduling = v2 ? await proposeSchedulingDrafts(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : NO_SCHEDULING;
     // The client's own words about who to look for become a first set of lead-targeting rules, only into an empty profile (src/server/onboarding/lead-targeting-draft.ts).
@@ -684,7 +718,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       kind: "system",
       severity: "info",
       title: `${sanitizeClientText(b.companyName, 80)} ${v2 && !v2.firstSubmission ? "updated" : "finished"} company setup`,
-      body: `${out.length} AI employee configuration${out.length === 1 ? "" : "s"} prepared.`,
+      body: hasGrowthPartner ? "AI Growth Partner onboarding saved. The Business Brain is ready for review." : `${out.length} AI employee configuration${out.length === 1 ? "" : "s"} prepared.`,
       link: `/admin/clients/${ctx.org.orgId}`,
     });
     // What this submission left as someone edited it elsewhere: a value it did not write because its answers had not changed, while the workspace holds something else.
@@ -703,7 +737,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     await recordAudit(
       {
         orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success",
-        metadata: { employees: selected, version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state, notes: notesForAudit(notes) },
+        metadata: { employees: selected.length ? selected : hasGrowthPartner ? ["growth_partner"] : [], version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state, notes: notesForAudit(notes) },
       },
       db,
     );
@@ -805,9 +839,9 @@ async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowl
 /** Final approval of the adaptive questionnaire. Requires every blocker cleared and the owner's explicit confirmation. */
 export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutcome> {
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and managers can complete company setup.");
-  if (!ctx.user.emailVerified) throw new AppError("forbidden", "Verify your email before activating your AI team.");
+  if (!ctx.user.emailVerified) throw new AppError("forbidden", "Verify your email before activating your AI Growth Partner.");
   const session = await getOnboardingSession(ctx);
-  const scope = planScope(session.enabledRoles);
+  const scope = onboardingScope(session.enabledRoles, session.workforceModel);
   const check = submitCheck(session.answers, scope);
   if (!check.canSubmit) throw new AppError("invalid_input", check.blockers[0] ?? "Finish the remaining questions first.");
   const confirmed = confirmedAnswers(session.answers, scope);
@@ -820,8 +854,8 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
     );
     return rows.map((row) => row.content);
   }) : [];
-  const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
-  return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, firstSubmission, generated });
+  const generated = firstSubmission && session.workforceModel !== "growth_partner" ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
+  return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, storedAnswers: session.answers, firstSubmission, generated });
 }
 
 /**

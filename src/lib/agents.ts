@@ -1,4 +1,6 @@
-// Client-safe metadata for the six AI employee roles. Mirrors the agent_roles reference rows.
+// Client-safe metadata for the six legacy AI employee roles. Mirrors the legacy agent_roles rows.
+// Growth Partner is a separate logical runtime role; keeping it out of AGENT_ROLE_KEYS prevents
+// legacy setup and entitlement loops from silently provisioning six specialists plus a partner.
 
 export const AGENT_ROLE_KEYS = [
   "operations_manager",
@@ -10,6 +12,33 @@ export const AGENT_ROLE_KEYS = [
 ] as const;
 
 export type AgentRoleKey = (typeof AGENT_ROLE_KEYS)[number];
+
+/** Runtime identity accepted by the unified skill policy and Work Board. */
+export const AI_GROWTH_PARTNER_ROLE_KEY = "growth_partner" as const;
+export type WorkforceRoleKey = AgentRoleKey | typeof AI_GROWTH_PARTNER_ROLE_KEY;
+export const WORKFORCE_ROLE_KEYS = [...AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY] as const;
+
+export function isWorkforceRoleKey(value: string): value is WorkforceRoleKey {
+  return value === AI_GROWTH_PARTNER_ROLE_KEY || (AGENT_ROLE_KEYS as readonly string[]).includes(value);
+}
+
+export function workforceRoleShortName(role: WorkforceRoleKey): string {
+  return role === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner" : AGENT_BY_KEY[role].shortName;
+}
+
+export function workforceRoleName(role: WorkforceRoleKey): string {
+  return role === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner" : AGENT_BY_KEY[role].name;
+}
+
+export function workforceRoleTagline(role: WorkforceRoleKey): string {
+  return role === AI_GROWTH_PARTNER_ROLE_KEY
+    ? "One coordinated partner for customer acquisition and business growth."
+    : AGENT_BY_KEY[role].tagline;
+}
+
+export function workforceRoleSlug(role: WorkforceRoleKey): string {
+  return role === AI_GROWTH_PARTNER_ROLE_KEY ? "growth-partner" : AGENT_BY_KEY[role].slug;
+}
 
 /** Existing iAcquire Hermes employees, confirmed by the agency's Hermes profile inventory. */
 export const AGENCY_HERMES_PROFILE_IDS: Record<AgentRoleKey, string> = {
@@ -235,7 +264,8 @@ export const AGENT_BY_SLUG = Object.fromEntries(AGENT_ROLES.map((r) => [r.slug, 
  * other five roles start with their role name. A client can rename any employee, and an employee that already has a name keeps it.
  */
 export const OPERATIONS_MANAGER_PERSONA = "Zeng";
-export function defaultEmployeeName(role: AgentRoleKey): string {
+export function defaultEmployeeName(role: WorkforceRoleKey): string {
+  if (role === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
   return role === "operations_manager" ? OPERATIONS_MANAGER_PERSONA : AGENT_BY_KEY[role].shortName;
 }
 

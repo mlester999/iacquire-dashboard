@@ -61,12 +61,15 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const shell = useShell();
+  const partnerChatHref = shell.org.kind === "client" ? "/growth-partner/conversation" : "/chat/operations-manager";
+  const partnerChatLabel = shell.org.kind === "client" ? "My AI Growth Partner" : "Ask your AI team";
   const { requestLogout } = useLogoutConfirmation();
   const [navigationOpen, setNavigationOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
   const title = titleFor(pathname);
-  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
+  const hasEnabledLegacyProfile = shell.agents.some((agent) => agent.enabled);
+  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.legacyOnly && !hasEnabledLegacyProfile) && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setNavigationOpen((s) => !s); } };
     document.addEventListener("keydown", key);
@@ -95,11 +98,11 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <button type="button" onClick={() => { setSearch(""); setNavigationOpen(true); }} aria-label="Search workspace navigation" className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink"><Search className="size-4" /></button>
         <button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="hidden size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 sm:flex">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button>
 
-        <ButtonLink href="/chat/operations-manager" variant="secondary" size="sm" className="hidden gap-1.5 sm:inline-flex">
-          <Sparkles className="size-3.5 text-primary" /> Ask your AI team
+        <ButtonLink href={partnerChatHref} variant="secondary" size="sm" className="hidden gap-1.5 sm:inline-flex">
+          <Sparkles className="size-3.5 text-primary" /> {partnerChatLabel}
         </ButtonLink>
-        <Tooltip content="Ask your AI team">
-          <Link href="/chat/operations-manager" className="flex size-10 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 sm:hidden" aria-label="Ask your AI team">
+        <Tooltip content={partnerChatLabel}>
+          <Link href={partnerChatHref} className="flex size-10 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 sm:hidden" aria-label={partnerChatLabel}>
             <Sparkles className="size-[18px] text-primary" />
           </Link>
         </Tooltip>
@@ -156,7 +159,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </MenuContent>
         </Menu>
       </div>
-      <Dialog open={navigationOpen} onOpenChange={setNavigationOpen} title="Jump to your workspace" description="Search the modules available to your account."><Input autoFocus aria-label="Search workspace modules" placeholder="Leads, AI Employees, Support…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && destinations[0]) { router.push(destinations[0].href); setNavigationOpen(false); } }} /><ul className="mt-3 space-y-1">{destinations.map((n) => <li key={n.href}><Link href={n.href} onClick={() => setNavigationOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" />{n.label}</Link></li>)}</ul>{!destinations.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}</Dialog>
+      <Dialog open={navigationOpen} onOpenChange={setNavigationOpen} title="Jump to your workspace" description="Search the modules available to your account."><Input autoFocus aria-label="Search workspace modules" placeholder="Growth Partner, leads, support…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && destinations[0]) { router.push(destinations[0].href); setNavigationOpen(false); } }} /><ul className="mt-3 space-y-1">{destinations.map((n) => <li key={n.href}><Link href={n.href} onClick={() => setNavigationOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" />{n.label}</Link></li>)}</ul>{!destinations.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}</Dialog>
     </header>
   );
 }
@@ -174,7 +177,7 @@ export function SetupBanner() {
     <div className="mx-auto mt-4 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft px-4 py-3 sm:flex-row sm:items-center">
         <p className="text-[14px] text-primary-ink">
-          <span className="font-semibold">Finish your company setup</span> so we can tailor your AI team. It takes about 3–5 minutes and saves as you go.
+          <span className="font-semibold">Finish your company setup</span> so we can prepare your AI Growth Partner. It takes about 3–5 minutes and saves as you go.
         </p>
         <ButtonLink href="/onboarding" size="sm" variant="brand">
           Continue setup

@@ -1,17 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Check, CircleCheck, FileText, RotateCcw, ShieldCheck, UserPlus, X } from "lucide-react";
+import { ArrowRight, Check, CircleCheck, FileText, RotateCcw, ShieldCheck, Sparkles, UserPlus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentAvatar } from "@/components/brand";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { PIPELINE_STAGES, STAGE_STORY, sampleDeals, type PipelineStage, type SampleDeal } from "@/lib/demo/showroom/content";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { StepNav } from "@/components/demo/showroom/journey";
 import { ContextCta } from "@/components/demo/showroom/cta";
 import { Chip, ScrollRegion, SectionHead, SimTag } from "@/components/demo/showroom/ui";
 
-// Step 2: the native CRM. A pipeline the visitor can move a sample lead through (New Lead, Qualified, Appointment Scheduled, Proposal, Won), with the AI Employee that owns each stage
+// Step 2: the native CRM. A pipeline the visitor can move a sample lead through (New Lead, Qualified, Appointment Scheduled, Proposal, Won), with the Growth Partner capability used at each stage
 // and what a person still decides. Contacts and tasks sit beside it. Everything is a drawing on invented data: moving a card changes only this page.
 
 type CrmTab = "pipeline" | "contacts" | "tasks";
@@ -37,7 +35,7 @@ export function CrmView() {
         as="h1"
         eyebrow="Step 2 · See your client acquisition system"
         title="Every lead, from first message to won deal."
-        lead="This is the native CRM your AI Employees work inside. Capture a sample lead, then move it through the pipeline and see who handles each stage."
+        lead="This is the native CRM the AI Growth Partner works inside. Capture a sample lead, then move it through the pipeline and see which capability applies at each stage."
       />
 
       <div className="sx-panel overflow-hidden">
@@ -76,7 +74,7 @@ export function CrmView() {
       <ContextCta
         plan="core"
         title="Ready to manage your actual leads with iAcquireOS?"
-        body="The native CRM, its pipeline and the AI Employees working inside it are part of your core implementation. We set up your stages, fields and forms to match how you sell."
+        body="The native CRM and AI Growth Partner work together within your agreed setup. Your permissions determine which actions are available, and we set up your stages, fields and forms to match how you sell."
         consult
         secondary={{ view: "inbox", label: "See the inbox" }}
       />
@@ -93,7 +91,6 @@ function PipelineTab() {
   const [stage, setStage] = React.useState<PipelineStage>("New Lead");
   const idx = PIPELINE_STAGES.indexOf(stage);
   const story = STAGE_STORY[stage];
-  const owner = AGENT_BY_KEY[story.whoRole as AgentRoleKey];
   const done = stage === "Won";
 
   const reset = () => {
@@ -180,10 +177,10 @@ function PipelineTab() {
         <section aria-live="polite" aria-label="What is happening" className="sx-panel-flat space-y-3 p-5">
           {captured ? (
             <div key={stage} className="sx-rise flex items-start gap-4">
-              <AgentAvatar role={owner} size="lg" eager />
+              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary-ink"><Sparkles className="size-6" aria-hidden /></span>
               <div className="min-w-0 space-y-1.5">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-primary-ink">
-                  {stage} · handled by {story.who}
+                  {stage} · AI Growth Partner · {story.capability}
                 </p>
                 <p className="text-[15px] leading-relaxed text-ink">{story.what}</p>
                 <p className="flex items-start gap-1.5 text-[13px] leading-snug text-muted">
@@ -205,16 +202,12 @@ function PipelineTab() {
         <section aria-label="AI work status" className="sx-panel-flat space-y-3 p-5">
           <h3 className="text-[14px] font-semibold text-ink">AI work status</h3>
           <ul className="space-y-2.5">
-            {(["lead_hunter", "appointment_setter", "sales_assistant", "crm_manager"] as AgentRoleKey[]).map((k) => {
-              const working = captured && story.whoRole === k;
-              return (
-                <li key={k} className="flex items-center gap-2.5">
-                  <AgentAvatar role={AGENT_BY_KEY[k]} size="xs" eager />
-                  <span className="flex-1 text-[13px] text-ink-2">{AGENT_BY_KEY[k].shortName}</span>
-                  <Chip tone={working ? "info" : "neutral"}>{working ? "Working" : "Idle"}</Chip>
-                </li>
-              );
-            })}
+            <li className="flex items-center gap-2.5">
+              <span className="grid size-7 place-items-center rounded-lg bg-primary-soft text-primary-ink"><Sparkles className="size-4" aria-hidden /></span>
+              <span className="min-w-0 flex-1 text-[13px] text-ink-2">AI Growth Partner</span>
+              <Chip tone={captured ? "info" : "neutral"}>{captured ? "Working" : "Idle"}</Chip>
+            </li>
+            {captured && <li className="pl-9 text-[12px] leading-snug text-muted">{story.capability}</li>}
           </ul>
           {aiEnabled && !ended && (
             <button type="button" onClick={() => ask(`How does the CRM decide when a lead is ready to move to the next stage?`)} className="inline-flex min-h-10 items-center gap-1.5 text-[13px] font-semibold text-primary-ink hover:text-ink">
@@ -241,11 +234,11 @@ function ContactsTab() {
   const { scenario } = useShowroom();
   const rows = React.useMemo(
     () => [
-      { name: scenario.lead, detail: scenario.enquiry, source: "Website form", owner: "CRM Manager", status: "New" },
-      { name: "Pat W.", detail: `Asked about ${scenario.deal}`, source: "Phone", owner: "Appointment Setter", status: "Replied" },
-      { name: "Robin E.", detail: "Referred by an existing customer", source: "Referral", owner: "Lead Hunter", status: "Qualified" },
-      { name: "Lee N.", detail: `Booked ${scenario.appointment}`, source: "Messages", owner: "Appointment Setter", status: "Booked" },
-      { name: "Cam D.", detail: `Proposal for ${scenario.deal}`, source: "Website form", owner: "Sales Assistant", status: "Proposal" },
+      { name: scenario.lead, detail: scenario.enquiry, source: "Website form", owner: "AI Growth Partner", status: "New" },
+      { name: "Pat W.", detail: `Asked about ${scenario.deal}`, source: "Phone", owner: "AI Growth Partner", status: "Replied" },
+      { name: "Robin E.", detail: "Referred by an existing customer", source: "Referral", owner: "AI Growth Partner", status: "Qualified" },
+      { name: "Lee N.", detail: `Booked ${scenario.appointment}`, source: "Messages", owner: "AI Growth Partner", status: "Booked" },
+      { name: "Cam D.", detail: `Proposal for ${scenario.deal}`, source: "Website form", owner: "AI Growth Partner", status: "Proposal" },
     ],
     [scenario],
   );
@@ -288,7 +281,7 @@ function ContactsTab() {
         <p className="text-[14px] leading-relaxed text-ink-2">{sel.detail}</p>
         <ul className="space-y-2 text-[13px] text-muted">
           <li>One timeline: every message, call, task and approval about this person</li>
-          <li>The CRM Manager checks for duplicates before a record is added</li>
+          <li>The AI Growth Partner checks for possible duplicates before a record is added</li>
           <li>Tags, owner and stage stay consistent as work moves</li>
         </ul>
       </aside>
@@ -298,12 +291,12 @@ function ContactsTab() {
 
 function TasksTab() {
   const { scenario } = useShowroom();
-  type T = { id: string; title: string; by: AgentRoleKey; kind: "approval" | "task"; state: "open" | "approved" | "declined" | "done" };
+  type T = { id: string; title: string; capability: string; kind: "approval" | "task"; state: "open" | "approved" | "declined" | "done" };
   const [items, setItems] = React.useState<T[]>(() => [
-    { id: "a1", title: `Send the reply to ${scenario.lead} offering times for ${scenario.appointment}`, by: "appointment_setter", kind: "approval", state: "open" },
-    { id: "a2", title: `Send the follow-up to Cam D. about ${scenario.deal}`, by: "sales_assistant", kind: "approval", state: "open" },
-    { id: "t1", title: "Review two contacts that share a phone number", by: "crm_manager", kind: "task", state: "open" },
-    { id: "t2", title: "Look over this week's note on where enquiries come from", by: "performance_analyst", kind: "task", state: "open" },
+    { id: "a1", title: `Review a reply to ${scenario.lead} with times for ${scenario.appointment}`, capability: "Calendar & Appointment Management · Sales & Outreach", kind: "approval", state: "open" },
+    { id: "a2", title: `Review a follow-up to Cam D. about ${scenario.deal}`, capability: "Sales & Outreach", kind: "approval", state: "open" },
+    { id: "t1", title: "Review two contacts that share a phone number", capability: "CRM & Pipeline Management", kind: "task", state: "open" },
+    { id: "t2", title: "Look over this week's note on where enquiries come from", capability: "Performance & Analytics", kind: "task", state: "open" },
   ]);
   const set = (id: string, state: T["state"]) => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, state } : x)));
   const open = items.filter((i) => i.state === "open").length;
@@ -321,11 +314,11 @@ function TasksTab() {
       <ul className="space-y-2.5">
         {items.map((it) => (
           <li key={it.id} className="sx-panel-flat flex flex-wrap items-center gap-3 p-4">
-            <AgentAvatar role={AGENT_BY_KEY[it.by]} size="sm" eager />
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-ink"><Sparkles className="size-4" aria-hidden /></span>
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold leading-snug text-ink">{it.title}</p>
               <p className="text-[12px] text-muted">
-                {it.kind === "approval" ? "Waiting for your approval" : "Task"} · prepared by {AGENT_BY_KEY[it.by].shortName}
+                {it.kind === "approval" ? "Waiting for your approval" : "Task"} · AI Growth Partner · {it.capability}
               </p>
             </div>
             {it.state === "open" ? (
@@ -351,7 +344,7 @@ function TasksTab() {
       </ul>
       <p className="flex items-start gap-2 text-[13px] leading-relaxed text-muted">
         <FileText className="mt-0.5 size-4 shrink-0" aria-hidden />
-        In your real portal, approving sends the message and records who approved it and when. In this demo, pressing Approve changes this page and nothing else.
+        This demo approval changes only the sample page. In a connected workspace, an action requires its authorized tool and the approvals in force.
       </p>
     </div>
   );

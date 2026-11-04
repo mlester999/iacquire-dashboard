@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The demo room on a phone, held to what a person needs there (the pixel measurements, at every width, are the browser run in scripts/demo-responsive-qa.mjs; here is the structure
-// that makes them true and the behaviour no screenshot shows): the six AI Employees are one set of real buttons that can never be placed on top of one another below the wide layout;
+// that makes them true and the behaviour no screenshot shows): the six Growth Partner capabilities are one set of real buttons that can never be placed on top of one another below the wide layout;
 // the section navigation is slim and keeps every section; nothing floats over the page below `lg` (the consultation action and AQi share one bottom bar that keeps clear of the home
 // indicator); and AQi opens as a modal sheet that the page behind cannot be reached through, that closes from the keyboard and the backdrop, and that gives the page back.
 import * as React from "react";
@@ -20,9 +20,8 @@ vi.mock("next/link", async () => {
 });
 
 import { Workspace, type WorkspaceProps } from "@/components/demo/showroom/workspace";
-import { AGENT_ROLES } from "@/lib/agents";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
-import { VIEWS } from "@/lib/demo/showroom/content";
+import { DEMO_CAPABILITY_AREAS, VIEWS } from "@/lib/demo/showroom/content";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
 
 const FALLBACK = "00000000-0000-4000-8000-000000000000";
@@ -77,20 +76,20 @@ const launcher = () => screen.getByRole("button", { name: /^Open AQi/ });
 const panel = () => document.getElementById("showroom-chat")!;
 const question = () => screen.getByLabelText("Your question") as HTMLTextAreaElement;
 
-describe("the six AI Employees on the overview", () => {
-  it("are one set of six real buttons, each named by its role, beside the business's own name", () => {
+describe("the six Growth Partner capabilities on the overview", () => {
+  it("are six real capability buttons beside the one partner identity and business's own name", () => {
     room();
     expect(document.querySelectorAll("[data-business-hub]")).toHaveLength(1);
     const buttons = within(hub()).getAllByRole("button");
     expect(buttons).toHaveLength(6);
-    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(AGENT_ROLES.map((r) => `Open ${r.shortName}`));
-    for (const [i, role] of AGENT_ROLES.entries()) {
-      expect(buttons[i].querySelector("[data-role-name]")!.textContent).toBe(role.shortName);
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(DEMO_CAPABILITY_AREAS.map((area) => `Open ${area.title}`));
+    for (const [i, area] of DEMO_CAPABILITY_AREAS.entries()) {
+      expect(buttons[i].querySelector("[data-capability-name]")!.textContent).toBe(area.title);
     }
     const centre = hub().querySelector("[data-hub-centre]") as HTMLElement;
-    expect(centre.textContent).toContain("Your business");
+    expect(centre.textContent).toContain("AI Growth Partner");
     expect(centre.textContent).toContain("Harborview Realty Group");
-    expect(screen.getByRole("group", { name: "Your business and its six AI Employees" })).toBe(hub());
+    expect(screen.getByRole("group", { name: "Your business and the six capabilities of one AI Growth Partner" })).toBe(hub());
   });
 
   it("are laid out as cards in a grid below the wide layout: nothing is placed by percentage until the container is wide enough, so nothing can collide", () => {
@@ -113,18 +112,18 @@ describe("the six AI Employees on the overview", () => {
     expect(centre.className).toMatch(/col-span-full/);
   });
 
-  it("let a long business name wrap instead of being cut, and keep every role's name wrappable", () => {
+  it("let a long business name wrap instead of being cut, and keep every capability name wrappable", () => {
     const long = "The Very Long Named Harborview Realty & Property Management Group of the Pacific Northwest";
     room({ state: { ...state, business: long } });
     const centre = hub().querySelector("[data-hub-centre]") as HTMLElement;
     expect(centre.textContent).toContain(long);
     expect(centre.innerHTML).toMatch(/break-words/);
-    for (const name of hub().querySelectorAll("[data-role-name]")) expect(name.className).toMatch(/break-words/);
+    for (const name of hub().querySelectorAll("[data-capability-name]")) expect(name.className).toMatch(/break-words/);
   });
 
-  it("opens the employee that was pressed, in the AI workforce view", () => {
+  it("opens the shared Growth Partner overview when a capability is pressed", () => {
     room();
-    fireEvent.click(within(hub()).getByRole("button", { name: "Open Lead Hunter" }));
+    fireEvent.click(within(hub()).getByRole("button", { name: `Open ${DEMO_CAPABILITY_AREAS[0].title}` }));
     expect(window.location.search).toBe("?view=workforce");
   });
 });
@@ -236,10 +235,11 @@ describe("AQi's sheet on a phone", () => {
     expect(document.documentElement.style.overflow).toBe("");
   });
 
-  it("keeps the question box and the chooser at 16px on a phone, so the browser does not zoom the whole page into them", () => {
+  it("keeps the question box at 16px on a phone and has no capability or employee selector", () => {
     room();
     expect(question().className).toMatch(/text-\[16px\]/);
-    expect((screen.getByLabelText("Ask") as HTMLSelectElement).className).toMatch(/text-\[16px\]/);
+    expect(document.querySelector('select[name="employeeRole"]')).toBeNull();
+    expect(document.querySelector('select[name="capability"]')).toBeNull();
   });
 
   it("is a corner panel, not a modal, on a larger screen, and leaves the page usable", () => {

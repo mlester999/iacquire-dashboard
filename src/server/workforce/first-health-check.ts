@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { probeConfig } from "@/lib/health-probe-config";
 import { sanitizeErrorText } from "@/lib/ops";
 import { runHealthCheck, type HealthResult } from "@/server/workforce/service";
@@ -27,7 +27,7 @@ export interface FirstCheckOutcome {
   agentId: string;
   orgId: string;
   jobId: string;
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   ok: boolean;
   status: string;
   detail: string;
@@ -37,9 +37,9 @@ export interface FirstCheckSummary {
   /** Employees whose turn it was. */
   due: number;
   /** Roles that were checked (the same role can appear once per workspace). */
-  checked: AgentRoleKey[];
+  checked: WorkforceRoleKey[];
   /** The subset of `checked` whose check did not pass. */
-  failed: AgentRoleKey[];
+  failed: WorkforceRoleKey[];
   /** Due employees left for the next pass because the budget ran out. */
   deferred: number;
   outcomes: FirstCheckOutcome[];
@@ -61,7 +61,7 @@ const BUDGET_MS = 60_000;
 interface DueEmployee {
   agent_id: string;
   org_id: string;
-  role_key: AgentRoleKey;
+  role_key: WorkforceRoleKey;
   job_id: string;
 }
 

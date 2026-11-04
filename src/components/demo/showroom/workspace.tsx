@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Logo } from "@/components/brand";
 import { TooltipProvider } from "@/components/ui/overlays";
-import { AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLES } from "@/lib/agents";
 import { ROOM_COPY, type Notice } from "@/lib/demo/outcomes";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
 import type { RoomChatState } from "@/lib/demo/room-types";
@@ -37,12 +37,12 @@ import "@/components/demo/showroom/showroom.css";
 const ROLES = AGENT_ROLES.map((r) => ({ key: r.key as string, name: r.name }));
 
 const SUGGESTIONS: Record<ViewId, string[]> = {
-  overview: ["What can the AI team do for a business like mine?", "What is included in the implementation?", "Do I need to pay a monthly fee?"],
-  workforce: ["How do the six AI Employees work together?", "What will the AI Employees never do without my approval?", "Which employee should I start with?"],
+  overview: ["What can the AI Growth Partner do for a business like mine?", "What is included in the implementation?", "Do I need to pay a monthly fee?"],
+  workforce: ["How does one partner coordinate the six capabilities?", "Which actions need my approval?", "What goes into the Business Brain?"],
   crm: ["What is in the native CRM?", "How does a lead move through the pipeline?", "Can I use my own pipeline stages?"],
-  inbox: ["Which channels can the inbox bring together?", "How does the Appointment Setter use my calendar?", "Who approves a reply before it is sent?"],
+  inbox: ["Which channels can the inbox bring together?", "How does the Growth Partner use my calendar?", "Who approves a reply before it is sent?"],
   automation: ["What is Automation Studio?", "Is Automation Studio part of the core system?", "Can I use n8n or Zapier instead?"],
-  reports: ["What does the Performance Analyst report on?", "Where do the numbers come from?", "Can I see reports for my own pipeline?"],
+  reports: ["What does the Growth Partner report on?", "Where do the numbers come from?", "Can I see reports for my own pipeline?"],
   pricing: ["What does the implementation cost?", "What does Managed Maintenance add?", "What costs are separate?"],
   why: ["Why not build this myself?", "How is this different from a normal CRM?", "What happens after I ask for a consultation?"],
   summary: ["What happens after I book a consultation?", "What would you set up for me first?", "How long does setup take?"],
@@ -71,7 +71,6 @@ function StaticConfirmation() {
 
 export function Workspace({ state, initialView, chat }: WorkspaceProps) {
   const [view, setView] = React.useState<ViewId>(initialView);
-  const [focusRole, setFocusRole] = React.useState<AgentRoleKey | null>(null);
   // AQi starts tucked away, unless the page is coming back from a message sent without scripts (its answer or refusal is in the chat, so it should be seen).
   const [chatOpen, setChatOpen] = React.useState(chat.pageNotice !== null);
   const [draft, setDraft] = React.useState<{ text: string; nonce: number } | null>(null);
@@ -104,9 +103,8 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
     };
   }, []);
 
-  const go = React.useCallback((next: ViewId, role?: AgentRoleKey) => {
+  const go = React.useCallback((next: ViewId) => {
     moved.current = true;
-    setFocusRole(role ?? null);
     setView(next);
     // On a phone AQi is a sheet over the whole page, so moving somewhere tucks it away; on a larger screen it floats beside the page and stays where the visitor left it.
     if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 639px)").matches) setChatOpen(false);
@@ -120,7 +118,6 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
   React.useEffect(() => {
     const onPop = () => {
       moved.current = true;
-      setFocusRole(null);
       setView(viewOf(window.location.search));
     };
     window.addEventListener("popstate", onPop);
@@ -144,7 +141,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
 
   return (
     <TooltipProvider>
-      <ShowroomProvider state={state} view={view} go={go} ask={ask} focusRole={focusRole}>
+      <ShowroomProvider state={state} view={view} go={go} ask={ask}>
         <JourneyProvider view={view}>
           <div className="demo-stage app-backdrop grain">
             <a href="#demo-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:text-ink focus:shadow-float">
@@ -214,7 +211,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
                     <StaticConfirmation />
                     <div key={view} className="sx-rise">
                       {view === "overview" && <OverviewView />}
-                      {view === "workforce" && <WorkforceView key={focusRole ?? "any"} />}
+                      {view === "workforce" && <WorkforceView />}
                       {view === "crm" && <CrmView />}
                       {view === "inbox" && <InboxView />}
                       {view === "automation" && <AutomationView />}

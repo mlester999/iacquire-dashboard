@@ -7,7 +7,7 @@ import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { notifyOrgRoles } from "@/server/notifications";
-import { canChat, AGENT_BY_KEY, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { canChat, AGENT_BY_KEY, isAgentRoleKey, isWorkforceRoleKey, type AgentStatus, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import {
   getCapabilities,
   getRunStatus,
@@ -30,10 +30,15 @@ import { findUnbackedActionClaims, withActionClaimCorrection } from "@/lib/actio
 import { classifyBookingResult, classifyModelTurn, parseEvidenceMarker, serverMarker, systemNoticeMarker, type EvidenceMarker, type ServerEvidenceMarker } from "@/lib/evidence-class";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
-import { createResearchRequest } from "@/server/leads/service";
+import { createResearchRequest, getTargeting, saveTargeting } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
+import { targetingSchema } from "@/lib/leads-targeting";
+import { parseWorkforceChatCrmIntent } from "@/lib/workforce-chat-crm-intent";
+import { parseWorkforceChatAppointmentPolicyIntent, type WorkforceChatAppointmentPolicyIntent } from "@/lib/workforce-chat-appointment-policy-intent";
+import { parseWorkforceChatCalendarCreateIntent, type WorkforceChatCalendarCreateIntent } from "@/lib/workforce-chat-calendar-create-intent";
 import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
 import { parseWorkforceChatAppointmentChangeIntent, type WorkforceChatAppointmentChangeIntent } from "@/lib/workforce-chat-appointment-change-intent";
+import { parseWorkforceChatTargetingIntent } from "@/lib/workforce-chat-targeting-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
 import { explicitlyAddressedWorkforceRole, isAutomationBuilderRequest, parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
@@ -53,6 +58,11 @@ import { getAvailability } from "@/server/appointments/availability";
 import { requestBooking, type BookingResult } from "@/server/appointments/booking";
 import { appointmentChangeExpected, customerChangePolicyNote } from "@/server/appointments/changes";
 import { bookedAppointmentStatus } from "@/server/calendars/agent-booking";
+import { bookingIsNative } from "@/server/calendars/agent-booking";
+import { createAppointmentType, createCalendar, listCalendars, listSchedulingPeople, updateAppointmentType } from "@/server/calendars/setup";
+import { getPolicyView, savePolicy } from "@/server/appointments/settings";
+import { createContact, DuplicateContactError } from "@/server/crm/contacts";
+import { memberActor } from "@/server/crm/actor";
 import type { BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
@@ -78,7 +88,7 @@ type PendingChatSchedule = {
   status: "pending" | "accepted" | "cancelled" | "expired";
   requestedBy: string;
   agentInstanceId: string;
-  agentRole: AgentRoleKey;
+  agentRole: WorkforceRoleKey;
   capability: CapabilityKey;
   title: string;
   cadence: WorkforceScheduleCadence;
@@ -86,6 +96,8 @@ type PendingChatSchedule = {
   timezone: string;
   payload: Record<string, unknown>;
   businessHours: Record<string, unknown>;
+  updateExisting: boolean;
+  enabledAfterSave: boolean;
   expectedExistingSchedule: { id: string; updatedAt: string } | null;
   expiresAt: string;
   scheduleId?: string | null;
@@ -147,6 +159,7 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     || typeof item.requestedBy !== "string"
     || !uuid.test(String(item.agentInstanceId ?? ""))
     || typeof item.agentRole !== "string"
+    || !isWorkforceRoleKey(item.agentRole)
     || !isCapabilityKey(String(item.capability ?? ""))
     || typeof item.title !== "string"
     || !["hourly", "daily", "weekly"].includes(String(item.cadence))
@@ -158,6 +171,8 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     || typeof item.payload !== "object"
     || item.payload === null
     || Array.isArray(item.payload)
+    || (item.updateExisting !== undefined && typeof item.updateExisting !== "boolean")
+    || (item.enabledAfterSave !== undefined && typeof item.enabledAfterSave !== "boolean")
   ) return null;
 
   const cadence = item.cadence as WorkforceScheduleCadence;
@@ -181,7 +196,7 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     status: item.status as PendingChatSchedule["status"],
     requestedBy: item.requestedBy,
     agentInstanceId: item.agentInstanceId as string,
-    agentRole: item.agentRole as AgentRoleKey,
+    agentRole: item.agentRole,
     capability: item.capability as CapabilityKey,
     title: item.title,
     cadence,
@@ -189,6 +204,8 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     timezone: item.timezone,
     payload: item.payload as Record<string, unknown>,
     businessHours: businessHours as unknown as Record<string, unknown>,
+    updateExisting: item.updateExisting === true,
+    enabledAfterSave: item.enabledAfterSave === true,
     expectedExistingSchedule,
     expiresAt: item.expiresAt,
     scheduleId: typeof item.scheduleId === "string" ? item.scheduleId : null,
@@ -323,7 +340,7 @@ function parsePendingChatAppointmentChange(value: unknown): PendingChatAppointme
   };
 }
 
-function schedulePermissionAllowed(ctx: OrgContext, role: AgentRoleKey, capability: string): boolean {
+function schedulePermissionAllowed(ctx: OrgContext, role: WorkforceRoleKey, capability: string): boolean {
   const definition = capabilityDefinition(capability);
   return Boolean(
     definition
@@ -380,7 +397,7 @@ async function insertChatScheduleReply(
 
 async function handleChatScheduleAction(
   ctx: OrgContext,
-  input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; action: ChatScheduleAction },
+  input: { agentId: string; agentRole: WorkforceRoleKey; conversationId: string; userMessageId: string | null; action: ChatScheduleAction },
 ): Promise<SendResult> {
   return withSystem(async (db) => {
     const { rows: conversations } = await db.query<{
@@ -388,9 +405,15 @@ async function handleChatScheduleAction(
       pending_workforce_schedule: unknown;
     }>(
       `select id, pending_workforce_schedule from chat_conversations
-        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and deleted_at is null
+          and (user_id = $4 or ($5::boolean and exists (
+            select 1 from ai_growth_partners p
+             where p.id = chat_conversations.growth_partner_id
+               and p.org_id = chat_conversations.org_id
+               and p.runtime_agent_instance_id = chat_conversations.agent_instance_id
+          )))
         for update`,
-      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
+      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id, input.agentRole === "growth_partner"],
     );
     const conversation = conversations[0];
     if (!conversation) throw new AppError("not_found", "Conversation not found.");
@@ -414,12 +437,15 @@ async function handleChatScheduleAction(
 
     if (input.action.kind === "clarification") return reply(input.action.message);
 
-    if (input.action.kind === "proposal") {
-      const definition = capabilityDefinition(input.action.capability);
-      if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, input.action.capability)) {
+    if (input.action.kind === "proposal" || input.action.kind === "update_existing") {
+      const action = input.action;
+      const updateExisting = action.kind === "update_existing";
+      const capability = action.capability;
+      const definition = capabilityDefinition(capability);
+      if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, capability)) {
         return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
       }
-      const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${input.action.capability}`, need: capabilityNeed(input.action.capability) }, db);
+      const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${capability}`, need: capabilityNeed(capability) }, db);
       if (switchedOff) return reply(switchedOff);
 
       const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
@@ -432,20 +458,57 @@ async function handleChatScheduleAction(
         updated_at: string;
         enabled: boolean;
         business_hours: unknown;
+        cadence: WorkforceScheduleCadence;
+        recurrence_rule: unknown;
+        payload: unknown;
       }>(
-        `select s.id, s.updated_at::text as updated_at, s.enabled, s.business_hours
+        `select s.id, s.updated_at::text as updated_at, s.enabled, s.business_hours, s.cadence, s.recurrence_rule, s.payload
            from ai_work_schedules s
            join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
           where s.org_id = $1 and a.role_key = $2 and s.capability = $3
           limit 1`,
-        [ctx.org.orgId, input.agentRole, input.action.capability],
+        [ctx.org.orgId, input.agentRole, capability],
       );
       const existing = scheduleRows[0] ?? null;
+      if (updateExisting && !existing) {
+        return reply("I couldn't find a saved lead research schedule to change. No schedule was changed. Ask me to schedule a complete research assignment first.");
+      }
       const existingHours = existing ? validateBusinessHours(existing.business_hours) : {};
+      let cadence: WorkforceScheduleCadence;
+      let recurrenceRule: WorkforceScheduleRule | null;
+      let payload: Record<string, unknown>;
+      let enabledAfterSave = false;
+      if (action.kind === "update_existing") {
+        const currentRule = validateWorkforceScheduleRule(existing?.recurrence_rule);
+        if (!currentRule) return reply("The saved lead research schedule doesn't have a valid daily or weekday run time, so I couldn't change it safely. Review it in Work Board → Schedules. No schedule was changed.");
+        if (action.cadence === "daily") {
+          recurrenceRule = { kind: "daily", localTime: action.localTime };
+        } else if (action.cadence === "weekly") {
+          const weekdays = action.weekdays ?? (currentRule.kind === "weekly" ? currentRule.weekdays : []);
+          if (!weekdays.length) return reply("I couldn't determine which weekdays to use. No schedule was changed.");
+          recurrenceRule = { kind: "weekly", localTime: action.localTime, weekdays };
+        } else {
+          recurrenceRule = { ...currentRule, localTime: action.localTime };
+        }
+        cadence = recurrenceRule.kind;
+        const storedPayload = typeof existing?.payload === "object" && existing.payload !== null && !Array.isArray(existing.payload)
+          ? existing.payload as Record<string, unknown>
+          : {};
+        const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
+        if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
+          return reply("The saved research assignment couldn't be verified, so I didn't change its schedule. Review its targeting and quantity in Work Board → Schedules.");
+        }
+        payload = { prompt: assignment.prompt, target: assignment.target, location: assignment.location, quantity: assignment.quantity };
+        enabledAfterSave = existing?.enabled === true;
+      } else {
+        cadence = action.cadence;
+        recurrenceRule = action.recurrenceRule;
+        payload = action.payload;
+      }
       let nextRun: Date;
       try {
-        nextRun = input.action.recurrenceRule
-          ? nextWorkforceScheduleOccurrence(input.action.recurrenceRule, timezone, new Date())
+        nextRun = recurrenceRule
+          ? nextWorkforceScheduleOccurrence(recurrenceRule, timezone, new Date())
           : new Date(Date.now() + 60 * 60 * 1000);
       } catch {
         return reply("I couldn't calculate the next time in the workspace timezone. No schedule was saved; check the timezone and try again.");
@@ -466,13 +529,15 @@ async function handleChatScheduleAction(
         requestedBy: ctx.user.id,
         agentInstanceId: input.agentId,
         agentRole: input.agentRole,
-        capability: input.action.capability,
-        title: input.action.title,
-        cadence: input.action.cadence,
-        recurrenceRule: input.action.recurrenceRule,
+        capability,
+        title: definition.label,
+        cadence,
+        recurrenceRule,
         timezone,
-        payload: input.action.payload,
+        payload,
         businessHours: (existingHours ?? {}) as unknown as Record<string, unknown>,
+        updateExisting,
+        enabledAfterSave,
         expectedExistingSchedule: existing ? { id: existing.id, updatedAt: existing.updated_at } : null,
         expiresAt: new Date(Date.now() + SCHEDULE_PREVIEW_TTL_MS).toISOString(),
       };
@@ -481,10 +546,17 @@ async function handleChatScheduleAction(
         ctx.org.orgId,
         JSON.stringify(proposal),
       ]);
-      const existingNotice = existing
-        ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
+      const existingNotice = updateExisting
+        ? ` The existing schedule will be updated in place, with its research assignment preserved. It is currently ${existing?.enabled ? "enabled" : "paused"} and will remain ${enabledAfterSave ? "enabled" : "paused"}.`
+        : existing
+          ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
         : "";
-      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}. The next planned time is ${nextLabel} (${timezone}).${existingNotice} It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled. Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
+      const activationNotice = updateExisting && enabledAfterSave
+        ? " After confirmation it will stay enabled in Schedules; workspace schedule automation must also be enabled."
+        : updateExisting
+          ? " It will stay paused after confirmation."
+          : " It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled.";
+      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}. The next planned time is ${nextLabel} (${timezone}).${existingNotice}${activationNotice} Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
       return reply(content, serverMarker("proposed_change"));
     }
 
@@ -556,8 +628,9 @@ async function handleChatScheduleAction(
     try {
       saved = await saveScheduleInTransaction(db, ctx, {
         capability: pending.capability,
+        agentRole: pending.agentRole,
         cadence: pending.cadence as ScheduleCadence,
-        enabled: false,
+        enabled: pending.enabledAfterSave,
         businessHours: pending.businessHours,
         payload: pending.payload,
         recurrenceRule: pending.recurrenceRule,
@@ -592,7 +665,9 @@ async function handleChatScheduleAction(
     } catch {
       // Saving is already durable in this transaction; the prior preview contains the exact time.
     }
-    const content = `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
+    const content = pending.updateExisting
+      ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}. The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
+      : `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
     return reply(content, serverMarker("approved_write", { kind: "schedule", id: saved.id }));
   });
 }
@@ -607,6 +682,7 @@ export interface ConversationSummary {
 export interface ChatMessageRow {
   id: string;
   role: "user" | "assistant" | "notice";
+  author_user_id: string | null;
   content: string;
   status: "streaming" | "complete" | "failed" | "cancelled" | "superseded";
   run_id: string | null;
@@ -620,7 +696,7 @@ export interface ChatMessageRow {
 async function persistChatAssistantMessage(
   input: {
     orgId: string; userId: string; agentId: string; conversationId: string; content: string; workJobId?: string | null;
-    refusal?: { role: AgentRoleKey; reason: string };
+    refusal?: { role: WorkforceRoleKey; reason: string };
     /** Defaults to a system notice. */
     evidence?: ServerEvidenceMarker;
   },
@@ -688,7 +764,7 @@ function bookingResultReply(result: BookingResult, pending: PendingChatBooking):
  * again where it is applied (the confirmation), so a switch-off after the preview blocks the confirmation. The denial is recorded on the connection the caller gives (inside the
  * caller's transaction, where the refusal reply is also written) or on its own. An unreadable setting refuses: work the owner may have switched off is never started on a guess.
  */
-async function chatAbilityRefusal(ctx: OrgContext, input: { agentId: string; agentRole: AgentRoleKey; actionId: string; need: AbilityNeed }, db?: Queryable): Promise<string | null> {
+async function chatAbilityRefusal(ctx: OrgContext, input: { agentId: string; agentRole: WorkforceRoleKey; actionId: string; need: AbilityNeed }, db?: Queryable): Promise<string | null> {
   const run = async (q: Queryable) => {
     const refusal = await abilityRefusal(q, { orgId: ctx.org.orgId, agentId: input.agentId, roleKey: input.agentRole, need: input.need });
     if (!refusal) return null;
@@ -712,9 +788,319 @@ async function chatActionAllowed(ctx: OrgContext, agentId: string, actionId: str
   }
 }
 
+async function handleChatTargetingIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatTargetingIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "update") return reply("I couldn't identify a safe lead-targeting change. No settings were changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:targeting_update"))) {
+    return reply("The AI Growth Partner's research permission is switched off, so I couldn't change lead targeting. No settings were changed.");
+  }
+  if (!ctx.can("leads.research")) {
+    return reply("Only a workspace owner or admin can change saved lead-targeting rules. No settings were changed.");
+  }
+
+  try {
+    const current = await getTargeting(ctx);
+    const next = targetingSchema.parse({ ...current, industries: [input.intent.industry], regions: [input.intent.region] });
+    await saveTargeting(ctx, next);
+    const saved = await getTargeting(ctx);
+    if (JSON.stringify(saved.industries) !== JSON.stringify(next.industries) || JSON.stringify(saved.regions) !== JSON.stringify(next.regions)) {
+      return reply("I couldn't verify the saved targeting rules after the update, so I can't confirm the change. Please check Partner Settings before starting research.");
+    }
+    const unchanged = JSON.stringify(current.industries) === JSON.stringify(next.industries) && JSON.stringify(current.regions) === JSON.stringify(next.regions);
+    const state = unchanged ? "Those lead-targeting rules were already saved" : "Saved lead targeting";
+    return reply(`${state}: industry ${chatSafeText(input.intent.industry)}; region ${chatSafeText(input.intent.region)}. New lead research and scheduled research will use these workspace rules.`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The targeting service could not save the change just now.";
+    return reply(`I couldn't update saved lead targeting: ${chatSafeText(message)} No settings were confirmed as changed.`);
+  }
+}
+
+async function handleChatCrmIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatCrmIntent> },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (intent.kind === "clarification") return reply(intent.message);
+  if (intent.kind !== "create_contact") return reply("I couldn't identify a safe CRM contact request. No record was changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:crm_contact_create"))) {
+    return reply("The AI Growth Partner's CRM contact permission is switched off, so I couldn't create a contact. No record was changed.");
+  }
+  const switchedOff = await chatAbilityRefusal(ctx, {
+    agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:crm_contact_create", need: chatActionNeed("chat:crm_contact_create"),
+  });
+  if (switchedOff) return reply(switchedOff);
+  if (!ctx.can("contacts.view") || !ctx.can("contacts.create")) {
+    return reply("Your workspace role needs permission to view and create CRM contacts before I can check for duplicates. No record was changed.");
+  }
+
+  try {
+    const matches = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; name: string }>(
+      `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name
+         from contacts
+        where org_id = $1 and deleted_at is null and archived_at is null
+          and lower(btrim(coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')))) = lower($2)
+        order by id limit 2`,
+      [ctx.org.orgId, intent.displayName],
+    )).rows);
+    if (matches.length > 1) {
+      return reply(`More than one active CRM contact is named “${chatSafeText(intent.displayName)}”. No contact was created; use a more specific name before trying again.`);
+    }
+    if (matches[0]) {
+      return reply(`A contact named “${chatSafeText(matches[0].name)}” is already in the CRM, so I didn't create another. [Open the contact](/crm/contacts/${matches[0].id}).`);
+    }
+
+    const actor = memberActor(ctx);
+    const created = await createContact(actor, {
+      displayName: intent.displayName,
+      email: intent.email,
+      phone: intent.phone,
+      source: "AI Growth Partner chat",
+    });
+    if (!created.created) {
+      return reply("That email or phone already belongs to an existing contact. No new contact was created; check CRM before deciding whether to update it.");
+    }
+    const verified = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; name: string }>(
+      `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name
+         from contacts where id = $1 and org_id = $2 and deleted_at is null and archived_at is null`,
+      [created.id, ctx.org.orgId],
+    )).rows[0] ?? null);
+    if (!verified || verified.id !== created.id) {
+      return reply("The CRM accepted the contact, but I couldn't verify the saved record in your workspace. Please check CRM before relying on it.");
+    }
+    return reply(`Added ${chatSafeText(verified.name)} to the CRM. No message was sent. [Open the contact](/crm/contacts/${verified.id}).`, serverMarker("approved_write"));
+  } catch (error) {
+    if (error instanceof DuplicateContactError) {
+      return reply(`That email or phone already belongs to a CRM contact. No duplicate was created. [Open the existing contact](/crm/contacts/${error.existingContactId}).`);
+    }
+    const message = error instanceof AppError ? error.message : "The CRM couldn't save this contact just now.";
+    return reply(`I couldn't create the CRM contact: ${chatSafeText(message)} No successful change was confirmed.`);
+  }
+}
+
+function normalizeSchedulingName(value: string): string {
+  return value.toLocaleLowerCase("en-US").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function handleChatCalendarCreateIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: WorkforceChatCalendarCreateIntent },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (intent.kind === "clarification") return reply(intent.message);
+  if (intent.kind !== "create") return reply("I couldn't identify a safe calendar-creation request. No calendar settings were changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:calendar_create"))) {
+    return reply("The AI Growth Partner's calendar-creation permission is switched off, so I couldn't create a calendar. No settings were changed.");
+  }
+  const switchedOff = await chatAbilityRefusal(ctx, {
+    agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:calendar_create", need: chatActionNeed("chat:calendar_create"),
+  });
+  if (switchedOff) return reply(switchedOff);
+  if (!ctx.can("calendars.manage")) return reply("Your workspace role needs calendar-management permission to create a calendar. No settings were changed.");
+  if (!ctx.can("appointments.view")) return reply("Your workspace role needs permission to view scheduling members before I can safely assign calendar hosts. No settings were changed.");
+
+  let createdCalendarId: string | null = null;
+  try {
+    const actor = memberActor(ctx);
+    const people = await listSchedulingPeople(actor);
+    if (!intent.hostTarget) {
+      const available = people.slice(0, 12).map((person) => person.name).join(", ");
+      return reply(`Which active team members should host “${chatSafeText(intent.calendarName)}”?${available ? ` I can assign: ${chatSafeText(available)}.` : " I couldn't find active scheduling members."} No calendar settings were changed.`);
+    }
+
+    const target = intent.hostTarget.replace(/^(?:our|the)\s+/i, "").trim();
+    const teamMatch = target.match(/^(.+?)\s+(?:team|department)$/i);
+    let hosts: typeof people = [];
+    if (teamMatch) {
+      const group = normalizeSchedulingName(teamMatch[1]);
+      hosts = people.filter((person) => {
+        const role = normalizeSchedulingName(person.role);
+        return role === group || role.startsWith(`${group} `);
+      });
+      if (!hosts.length) {
+        const available = people.slice(0, 12).map((person) => `${person.name} (${person.role})`).join(", ");
+        return reply(`I couldn't match “${chatSafeText(target)}” to an active workspace team role. Please name the hosts${available ? `; active members include ${chatSafeText(available)}` : ""}. No calendar settings were changed.`);
+      }
+    } else {
+      const names = target.split(/\s*,\s*|\s+and\s+/i).map((name) => name.trim()).filter(Boolean);
+      if (!names.length || names.length > 20) return reply("Please name one to twenty active team members who should host this calendar. No settings were changed.");
+      for (const name of names) {
+        const matches = people.filter((person) => normalizeSchedulingName(person.name) === normalizeSchedulingName(name));
+        if (matches.length !== 1) {
+          const reason = matches.length > 1 ? `“${name}” matches more than one active member` : `I couldn't find an active member named “${name}”`;
+          return reply(`${reason}. Please use each host's exact workspace name. No calendar settings were changed.`);
+        }
+        hosts.push(matches[0]);
+      }
+    }
+    hosts = [...new Map(hosts.map((person) => [person.id, person])).values()];
+
+    const calendars = await listCalendars(actor);
+    const duplicate = calendars.find((calendar) => normalizeSchedulingName(calendar.name) === normalizeSchedulingName(intent.calendarName));
+    if (duplicate) {
+      return reply(`A calendar named “${chatSafeText(duplicate.name)}” already exists, so I didn't create a duplicate. Review it in [Calendar & Types](/work/calendar).`);
+    }
+
+    const calendar = await createCalendar(actor, {
+      name: intent.calendarName,
+      members: hosts.map((person) => ({ userId: person.id })),
+      assignment: hosts.length > 1 ? "round_robin" : "single",
+      roundRobinMode: "balanced",
+      public: false,
+    });
+    createdCalendarId = calendar.id;
+    const type = await createAppointmentType(actor, calendar.id, {
+      name: intent.appointmentTypeName,
+      durationMinutes: intent.durationMinutes,
+      minNoticeMinutes: 120,
+      maxDaysAhead: 60,
+      locationKind: "none",
+      requiresConfirmation: true,
+      public: false,
+    });
+    const refreshed = await listCalendars(actor);
+    const verified = refreshed.find((item) => item.id === calendar.id);
+    const verifiedType = verified?.types.find((item) => item.id === type.id);
+    if (!verified || verified.public || !verifiedType || verifiedType.public || verifiedType.durationMinutes !== intent.durationMinutes) {
+      return reply(`The calendar service created “${chatSafeText(intent.calendarName)}”, but I couldn't verify its private appointment setup. Check [Calendar & Types](/work/calendar) before using it.`);
+    }
+    const hostNames = hosts.map((person) => chatSafeText(person.name)).join(", ");
+    const defaultNote = verified.isDefault ? " It is the workspace's default calendar." : "";
+    return reply(`Created the private “${chatSafeText(verified.name)}” calendar for ${hostNames}, with a hidden ${chatSafeText(verifiedType.name)} appointment type (${verifiedType.durationMinutes} minutes). The booking page and appointment type are both hidden, existing host hours were left unchanged, and new bookings require confirmation.${defaultNote} Review it in [Calendar & Types](/work/calendar).`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The calendar service couldn't complete that change just now.";
+    if (createdCalendarId) {
+      return reply(`The private calendar was created, but I couldn't finish or verify its appointment type: ${chatSafeText(message)} Check [Calendar & Types](/work/calendar) before using it.`);
+    }
+    return reply(`I couldn't create the calendar: ${chatSafeText(message)} No successful calendar change was confirmed.`);
+  }
+}
+
+function appointmentPolicyValue(type: { durationMinutes: number; minNoticeMinutes: number; maxDaysAhead: number }, field: "durationMinutes" | "minNoticeMinutes" | "maxDaysAhead"): number {
+  return type[field];
+}
+
+function appointmentPolicyLabel(field: "durationMinutes" | "minNoticeMinutes" | "maxDaysAhead"): string {
+  return field === "durationMinutes" ? "appointment duration" : field === "minNoticeMinutes" ? "minimum notice" : "booking window";
+}
+
+function appointmentPolicyPhrase(field: "durationMinutes" | "minNoticeMinutes" | "maxDaysAhead", value: number): string {
+  if (field === "durationMinutes") return `${value} minutes`;
+  if (field === "minNoticeMinutes") return value % 1440 === 0 ? `${value / 1440} days` : value % 60 === 0 ? `${value / 60} hours` : `${value} minutes`;
+  return `${value} days`;
+}
+
+async function handleChatAppointmentPolicyIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: WorkforceChatAppointmentPolicyIntent },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (intent.kind === "clarification") return reply(intent.message);
+  if (intent.kind !== "update") return reply("I couldn't identify a supported appointment booking rule. No calendar settings were changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:appointment_policy_update"))) {
+    return reply("The AI Growth Partner's appointment-settings permission is switched off, so I couldn't change booking rules. No calendar settings were changed.");
+  }
+  const switchedOff = await chatAbilityRefusal(ctx, {
+    agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:appointment_policy_update", need: chatActionNeed("chat:appointment_policy_update"),
+  });
+  if (switchedOff) return reply(switchedOff);
+
+  try {
+    const native = await withSystem((db) => bookingIsNative(db, ctx.org.orgId));
+    if (native) {
+      if (!ctx.can("calendars.manage")) return reply("Your workspace role needs calendar-management permission to change appointment type rules. No calendar settings were changed.");
+      const actor = memberActor(ctx);
+      const calendars = await listCalendars(actor);
+      const allTypes = calendars.flatMap((calendar) => calendar.types.map((type) => ({ calendar, type })));
+      const matches = intent.appointmentTypeName
+        ? allTypes.filter(({ type }) => type.name.trim().toLocaleLowerCase("en-US") === intent.appointmentTypeName!.trim().toLocaleLowerCase("en-US"))
+        : allTypes;
+      if (intent.appointmentTypeName && matches.length === 0) {
+        return reply(`I couldn't find an appointment type named “${chatSafeText(intent.appointmentTypeName)}”. No calendar settings were changed; check [Calendar & Types](/work/calendar) and use the exact type name.`);
+      }
+      const candidates = intent.appointmentTypeName ? matches : allTypes.filter(({ calendar }) => calendar.status === "active");
+      if (candidates.length === 0) return reply("There isn't an active appointment type to update yet. Create and activate one in [Calendar & Types](/work/calendar), then try again.");
+      if (candidates.length > 1) {
+        const choices = candidates.slice(0, 5).map(({ calendar, type }) => `“${chatSafeText(type.name)}” in ${chatSafeText(calendar.name)}`).join(", ");
+        return reply(`Which appointment type should I update? I found ${choices}${candidates.length > 5 ? ", and others" : ""}. No calendar settings were changed.`);
+      }
+
+      const selected = candidates[0];
+      const patch = intent.field === "durationMinutes" ? { durationMinutes: intent.value }
+        : intent.field === "minNoticeMinutes" ? { minNoticeMinutes: intent.value }
+          : { maxDaysAhead: intent.value };
+      await updateAppointmentType(actor, selected.type.id, patch);
+      const refreshed = await listCalendars(actor);
+      const verified = refreshed.flatMap((calendar) => calendar.types.map((type) => ({ calendar, type }))).find(({ type }) => type.id === selected.type.id);
+      if (!verified || appointmentPolicyValue(verified.type, intent.field) !== intent.value) {
+        return reply("The calendar service returned, but I couldn't verify the saved appointment rule. Check [Calendar & Types](/work/calendar) before relying on it.");
+      }
+      const draftNote = verified.calendar.status === "draft" ? " The calendar is still a draft, so customer booking availability changes after it is activated." : " New availability checks use this rule; existing bookings weren't changed.";
+      return reply(`Updated ${chatSafeText(verified.type.name)} ${appointmentPolicyLabel(intent.field)} to ${appointmentPolicyPhrase(intent.field, intent.value)} in ${chatSafeText(verified.calendar.name)}.${draftNote} [Open Calendar & Types](/work/calendar).`, serverMarker("approved_write"));
+    }
+
+    if (!ctx.can("appointments.manage")) return reply("Your workspace role needs appointment-management permission to change booking rules. No calendar settings were changed.");
+    if (intent.appointmentTypeName) {
+      return reply("This workspace uses booking rules for the connected calendar as a whole, not per appointment type. Rephrase the request for the workspace-wide rule; no settings were changed.");
+    }
+    const current = await getPolicyView(ctx);
+    if (!current.calendars.length) return reply("I couldn't find an active connected booking calendar for this workspace. Connect one before changing its booking rules; no settings were changed.");
+    if (intent.field === "durationMinutes" && intent.value > 480) return reply("This connected calendar accepts appointment lengths up to 8 hours. No settings were changed.");
+    if (intent.field === "minNoticeMinutes" && intent.value > 20160) return reply("This connected calendar accepts minimum notice up to 14 days. No settings were changed.");
+    if (intent.field === "maxDaysAhead" && intent.value > 31) return reply("This connected calendar accepts booking windows up to 31 days. No settings were changed.");
+    const save = intent.field === "durationMinutes" ? { slotMinutes: intent.value }
+      : intent.field === "minNoticeMinutes" ? { minNoticeMinutes: intent.value }
+        : { maxDaysAhead: intent.value };
+    await savePolicy(ctx, save);
+    const saved = await getPolicyView(ctx);
+    const actual = intent.field === "durationMinutes" ? saved.slotMinutes
+      : intent.field === "minNoticeMinutes" ? saved.minNoticeMinutes
+        : saved.maxDaysAhead;
+    if (actual !== intent.value) return reply("The booking service returned, but I couldn't verify the saved rule. Check [Appointments](/appointments) before relying on it.");
+    return reply(`Updated workspace-wide ${appointmentPolicyLabel(intent.field)} to ${appointmentPolicyPhrase(intent.field, intent.value)}. New availability checks use this rule; existing bookings weren't changed. [Open Appointments](/appointments).`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The calendar settings service couldn't save that change just now.";
+    return reply(`I couldn't update the appointment rule: ${chatSafeText(message)} No successful change was confirmed.`);
+  }
+}
+
 async function handleChatBookingIntent(
   ctx: OrgContext,
-  input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatBookingIntent },
+  input: { agentId: string; agentRole: WorkforceRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatBookingIntent },
 ): Promise<SendResult> {
   const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
     const assistantMessageId = await persistChatAssistantMessage({
@@ -998,7 +1384,7 @@ function appointmentChangeReplyText(pending: PendingChatAppointmentChange): stri
 
 async function handleChatAppointmentChangeIntent(
   ctx: OrgContext,
-  input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatAppointmentChangeIntent },
+  input: { agentId: string; agentRole: WorkforceRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatAppointmentChangeIntent },
 ): Promise<SendResult> {
   const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
     const assistantMessageId = await persistChatAssistantMessage({
@@ -1311,7 +1697,7 @@ export async function listConversations(ctx: OrgContext, agentId: string, search
     const q = search?.trim().slice(0, 100);
     const { rows } = await db.query<ConversationSummary>(
       `select c.id, c.title, c.last_message_at, c.created_at from chat_conversations c
-       where c.org_id = $1 and c.agent_instance_id = $2 and c.deleted_at is null
+       where c.org_id = $1 and c.agent_instance_id = $2 and c.growth_partner_id is null and c.deleted_at is null
          and ($3::text is null or c.title ilike '%' || $3 || '%'
               or exists (select 1 from chat_messages m where m.conversation_id = c.id and m.content ilike '%' || $3 || '%'))
        order by coalesce(c.last_message_at, c.created_at) desc limit 100`,
@@ -1324,13 +1710,13 @@ export async function listConversations(ctx: OrgContext, agentId: string, search
 export async function getConversation(ctx: OrgContext, conversationId: string, before?: string) {
   return withUser(ctx.user.id, async (db) => {
     const { rows: conv } = await db.query<{ id: string; title: string; agent_instance_id: string }>(
-      "select id, title, agent_instance_id from chat_conversations where id = $1 and org_id = $2 and deleted_at is null",
+      "select id, title, agent_instance_id from chat_conversations where id = $1 and org_id = $2 and growth_partner_id is null and deleted_at is null",
       [conversationId, ctx.org.orgId],
     );
     if (!conv[0]) return null;
     const { rows } = await db.query<Omit<ChatMessageRow, "evidence"> & { evidence: unknown }>(
       `select * from (
-         select id, role, content, status, run_id, work_job_id, error_code, evidence, created_at from chat_messages
+         select id, role, author_user_id, content, status, run_id, work_job_id, error_code, evidence, created_at from chat_messages
          where conversation_id = $1 and status <> 'superseded' and ($2::timestamptz is null or created_at < $2::timestamptz)
          order by created_at desc limit 60
        ) t order by created_at asc`,
@@ -1346,14 +1732,14 @@ export async function renameConversation(ctx: OrgContext, conversationId: string
   const clean = title.trim().replace(/\s+/g, " ").slice(0, 120);
   if (!clean) throw new AppError("invalid_input", "Give the conversation a name.");
   const res = await withUser(ctx.user.id, (db) =>
-    db.query("update chat_conversations set title = $2 where id = $1 and deleted_at is null", [conversationId, clean]),
+    db.query("update chat_conversations set title = $2 where id = $1 and growth_partner_id is null and deleted_at is null", [conversationId, clean]),
   );
   if (!res.rowCount) throw new AppError("not_found", "Conversation not found.");
 }
 
 export async function deleteConversation(ctx: OrgContext, conversationId: string) {
   const res = await withUser(ctx.user.id, (db) =>
-    db.query("update chat_conversations set deleted_at = now() where id = $1 and deleted_at is null", [conversationId]),
+    db.query("update chat_conversations set deleted_at = now() where id = $1 and growth_partner_id is null and deleted_at is null", [conversationId]),
   );
   if (!res.rowCount) throw new AppError("not_found", "Conversation not found.");
   // Message bodies are removed now; the conversation shell is kept only for referential integrity.
@@ -1377,11 +1763,12 @@ export async function applyRetention(orgId: string) {
     if (!Number.isFinite(days) || days <= 0) return;
     await db.query(
       `update chat_messages set content = '' where org_id = $1 and content <> '' and conversation_id in (
-         select id from chat_conversations where org_id = $1 and coalesce(last_message_at, created_at) < now() - make_interval(days => $2))`,
+         select id from chat_conversations where org_id = $1 and growth_partner_id is null
+           and coalesce(last_message_at, created_at) < now() - make_interval(days => $2))`,
       [orgId, days],
     );
     await db.query(
-      `update chat_conversations set deleted_at = now() where org_id = $1 and deleted_at is null
+      `update chat_conversations set deleted_at = now() where org_id = $1 and growth_partner_id is null and deleted_at is null
          and coalesce(last_message_at, created_at) < now() - make_interval(days => $2)`,
       [orgId, days],
     );
@@ -1393,7 +1780,7 @@ export async function applyRetention(orgId: string) {
 // ---------------------------------------------------------------------------
 
 export interface SendInput {
-  agentRole: AgentRoleKey;
+  agentRole: WorkforceRoleKey;
   conversationId?: string | null;
   content?: string;
   clientMessageId?: string;
@@ -1410,7 +1797,10 @@ export interface SendResult {
   jobId?: string | null;
 }
 
-async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
+async function ensureAgentReady(ctx: OrgContext, role: WorkforceRoleKey) {
+  if (role === "growth_partner" && ctx.org.kind !== "client") {
+    throw new AppError("forbidden", "The AI Growth Partner is available in client workspaces.");
+  }
   const agent = await withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; org_id: string; display_name: string; status: AgentStatus; enabled: boolean; active_config_version_id: string | null;
@@ -1426,7 +1816,8 @@ async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
     return rows[0];
   });
   if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("agent_unavailable", `${AGENT_BY_KEY[role].shortName} isn't enabled for your workspace.`);
+  const roleName = workforceRoleShortName(role);
+  if (!agent.enabled) throw new AppError("agent_unavailable", `${roleName} isn't enabled for your workspace.`);
   try {
     // Check non-refreshable run authorization first. A stale internal acknowledgement or identity
     // must not trigger a provider diagnostic as a side effect of an ineligible chat request.
@@ -1448,8 +1839,8 @@ async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
   if (!canChat(status)) {
     const msg =
       status === "setup_required" || status === "provisioning"
-        ? `${AGENT_BY_KEY[role].shortName} is still being set up by the iAcquire team. You'll be notified when it's ready.`
-        : `${AGENT_BY_KEY[role].shortName} is offline right now. Please try again shortly.`;
+        ? `${roleName} is still being set up by the iAcquire team. You'll be notified when it's ready.`
+        : `${roleName} is offline right now. Please try again shortly.`;
     throw new AppError("agent_unavailable", msg);
   }
   try {
@@ -1472,7 +1863,7 @@ interface PreparedChatTurn {
 async function createInferenceOnlyChatRun(
   ctx: OrgContext,
   agent: NonNullable<Awaited<ReturnType<typeof ensureAgentReady>>>,
-  role: AgentRoleKey,
+  role: WorkforceRoleKey,
   prepared: PreparedChatTurn,
 ) {
   return withSystem(async (db) => {
@@ -1513,7 +1904,7 @@ async function createInferenceOnlyChatRun(
 
 /** Writes `workforce.employee_evidence_attached`: which run, reply and configuration version a workspace read was handed to. Never stops the chat, and holds no record content. */
 async function recordEvidenceAttached(input: {
-  orgId: string; userId: string; agentId: string; role: AgentRoleKey; runId: string; messageId: string; configVersionId: string | null;
+  orgId: string; userId: string; agentId: string; role: WorkforceRoleKey; runId: string; messageId: string; configVersionId: string | null;
   sections: ReadonlyArray<{ id: string; state: string }>;
 }): Promise<void> {
   try {
@@ -1545,17 +1936,21 @@ const REGENERATE_REVIEWED_STEP_NOTICE = "That request is handled by a reviewed s
  * Whether the server, not the model, answers this question: the same list of guards a new message passes before any model is called. A reply to such a question was never a model
  * reply, and asking the model to answer it again would be a way around those guards.
  */
-function isReviewedStepRequest(role: AgentRoleKey, content: string, displayName: string): boolean {
+function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayName: string): boolean {
   return Boolean(
     isAutomationBuilderRequest(content)
       || workforceChatRefusal(role, content, displayName)
       || explicitlyAddressedWorkforceRole(role, content)
+      || parseWorkforceChatCrmIntent(role, content).kind !== "none"
+      || parseWorkforceChatCalendarCreateIntent(role, content).kind !== "none"
+      || parseWorkforceChatAppointmentPolicyIntent(role, content).kind !== "none"
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
+      || parseWorkforceChatTargetingIntent(role, content).kind !== "none"
       || isScheduleConfirmation(content)
       || parseWorkforceChatScheduleIntent(role, content).kind !== "none"
       || parseNamedWorkforceHandoff(role, content)
-      || (role === "lead_hunter" && parseResearchAssignment(content))
+      || ((role === "lead_hunter" || role === "growth_partner") && parseResearchAssignment(content))
       || parseWorkforceChatAssignment(role, content),
   );
 }
@@ -1563,6 +1958,9 @@ function isReviewedStepRequest(role: AgentRoleKey, content: string, displayName:
 export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promise<SendResult> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't chat with AI employees.");
   const inferenceOnly = input.inferenceOnly === true;
+  if (input.agentRole === "growth_partner" && inferenceOnly) {
+    throw new AppError("forbidden", "Restricted employee inference is available to internal Super Admins only.");
+  }
   if (inferenceOnly) {
     const config = env();
     if (!config.HERMES_INFERENCE_WORKER_ENABLED) throw new AppError("forbidden", "Restricted employee inference is not enabled.");
@@ -1589,9 +1987,30 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     throw err;
   }
 
+  // Unified chat may use only the one verified tenant thread. It never falls through to the
+  // legacy path that creates role-private conversations.
+  const growthPartnerThread = input.agentRole === "growth_partner"
+    ? await withUser(ctx.user.id, async (db) => (await db.query<{ partnerId: string; conversationId: string }>(
+      `select p.id as "partnerId", c.id as "conversationId"
+       from ai_growth_partners p
+       join chat_conversations c on c.growth_partner_id = p.id and c.org_id = p.org_id
+       join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
+       where p.org_id = $1 and p.runtime_agent_instance_id = $2 and c.agent_instance_id = $2
+         and a.role_key = 'growth_partner' and c.deleted_at is null
+       limit 1`,
+      [ctx.org.orgId, agent.id],
+    )).rows[0] ?? null)
+    : null;
+  if (input.agentRole === "growth_partner" && !growthPartnerThread) {
+    throw new AppError("agent_unavailable", "The permanent AI Growth Partner conversation is not connected to a verified profile yet.");
+  }
+  if (growthPartnerThread && input.conversationId && input.conversationId !== growthPartnerThread.conversationId) {
+    throw new AppError("not_found", "Conversation not found.");
+  }
+
   // 1. Persist the user's turn under row-level security.
   const prepared = await withUser(ctx.user.id, async (db) => {
-    let conversationId = input.conversationId ?? null;
+    let conversationId = input.conversationId ?? growthPartnerThread?.conversationId ?? null;
     let userContent: string;
     let userMessageId: string | null = null;
     let anchorTime: Date | null = null;
@@ -1603,8 +2022,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         `select m.conversation_id, m.created_at from chat_messages m
          join chat_conversations c on c.id = m.conversation_id
          where m.id = $1 and m.role = 'assistant' and m.run_id is not null and m.status in ('complete', 'failed', 'cancelled')
-           and m.org_id = $3 and c.agent_instance_id = $2 and c.deleted_at is null`,
-        [input.regenerateMessageId, agent.id, ctx.org.orgId],
+           and m.org_id = $3 and c.agent_instance_id = $2 and c.growth_partner_id is not distinct from $4 and c.deleted_at is null`,
+        [input.regenerateMessageId, agent.id, ctx.org.orgId, growthPartnerThread?.partnerId ?? null],
       );
       if (!rows[0]) throw new AppError("not_found", "That response can't be regenerated.");
       conversationId = rows[0].conversation_id;
@@ -1623,11 +2042,14 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       userContent = content;
       if (conversationId) {
         const { rows } = await db.query<{ id: string }>(
-          "select id from chat_conversations where id = $1 and agent_instance_id = $2 and org_id = $3 and deleted_at is null",
-          [conversationId, agent.id, ctx.org.orgId],
+          "select id from chat_conversations where id = $1 and agent_instance_id = $2 and org_id = $3 and growth_partner_id is not distinct from $4 and deleted_at is null",
+          [conversationId, agent.id, ctx.org.orgId, growthPartnerThread?.partnerId ?? null],
         );
         if (!rows[0]) throw new AppError("not_found", "Conversation not found.");
       } else {
+        if (input.agentRole === "growth_partner") {
+          throw new AppError("agent_unavailable", "The permanent AI Growth Partner conversation is not connected to a verified profile yet.");
+        }
         const title = content.replace(/\s+/g, " ").slice(0, 60) + (content.length > 60 ? "…" : "");
         const { rows } = await db.query<{ id: string }>(
           `insert into chat_conversations (org_id, agent_instance_id, user_id, title, hermes_session_id)
@@ -1643,9 +2065,9 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       );
       if (existing[0]) throw new AppError("conflict", "This message was already sent.");
       const { rows } = await db.query<{ id: string; created_at: Date }>(
-        `insert into chat_messages (conversation_id, org_id, role, content, client_message_id)
-         values ($1, $2, 'user', $3, $4) returning id, created_at`,
-        [conversationId, ctx.org.orgId, content, clientMessageId],
+        `insert into chat_messages (conversation_id, org_id, role, content, client_message_id, author_user_id)
+         values ($1, $2, 'user', $3, $4, $5) returning id, created_at`,
+        [conversationId, ctx.org.orgId, content, clientMessageId, ctx.user.id],
       );
       userMessageId = rows[0].id;
       anchorTime = new Date(rows[0].created_at);
@@ -1728,7 +2150,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
 
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
   // depend on an unenforced Hermes approval preference or let a generic run claim an action.
-  if (!input.regenerateMessageId && isAutomationBuilderRequest(prepared.userContent)) {
+  if (!input.regenerateMessageId && isAutomationBuilderRequest(prepared.userContent)
+    && parseWorkforceChatCalendarCreateIntent(input.agentRole, prepared.userContent).kind === "none") {
     let content: string;
     if (!ctx.can("workflows.view")) {
       content = "Building automations belongs in Automation Studio, but your workspace role can't open it. Ask an owner or admin for workflow access. No workflow was created and no email was sent.";
@@ -1755,6 +2178,39 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   const namedOtherRole = !input.regenerateMessageId
     ? explicitlyAddressedWorkforceRole(input.agentRole, prepared.userContent)
     : null;
+  const calendarCreateIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatCalendarCreateIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (calendarCreateIntent.kind !== "none") {
+    return handleChatCalendarCreateIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: calendarCreateIntent,
+    });
+  }
+  const crmIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatCrmIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (crmIntent.kind !== "none") {
+    return handleChatCrmIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: crmIntent,
+    });
+  }
+  const appointmentPolicyIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatAppointmentPolicyIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (appointmentPolicyIntent.kind !== "none") {
+    return handleChatAppointmentPolicyIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: appointmentPolicyIntent,
+    });
+  }
   const bookingIntent = !input.regenerateMessageId && !namedOtherRole
     ? parseWorkforceChatBookingIntent(input.agentRole, prepared.userContent)
     : { kind: "none" as const };
@@ -1779,6 +2235,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       intent: appointmentChangeIntent,
     });
   }
+  const targetingIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatTargetingIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (targetingIntent.kind !== "none") {
+    return handleChatTargetingIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: targetingIntent,
+    });
+  }
   const scheduleConfirmation = !input.regenerateMessageId && !namedOtherRole ? isScheduleConfirmation(prepared.userContent) : null;
   const scheduleIntent = !input.regenerateMessageId && !namedOtherRole
     ? parseWorkforceChatScheduleIntent(input.agentRole, prepared.userContent)
@@ -1792,7 +2259,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       action: { kind: scheduleConfirmation },
     });
   }
-  if (scheduleIntent.kind === "proposal" && (!refusal || refusal.reason === "appointment_write")) {
+  if ((scheduleIntent.kind === "proposal" || scheduleIntent.kind === "update_existing") && (!refusal || refusal.reason === "appointment_write")) {
     return handleChatScheduleAction(ctx, {
       agentId: agent.id,
       agentRole: input.agentRole,
@@ -1900,11 +2367,11 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
   }
 
-  // 1b. A Lead Hunter research assignment becomes a durable job, not a generic chat answer.
+  // 1b. A Growth Partner or legacy Lead Hunter research assignment becomes a durable job, not a generic chat answer.
   // The parser is deterministic and the job is created before any provider call. Missing details
   // produce a focused question; nothing is invented to make the request look complete.
-  const research = input.agentRole === "lead_hunter" && !input.regenerateMessageId && input.content
-    ? parseResearchAssignment(input.content)
+  const research = (input.agentRole === "lead_hunter" || input.agentRole === "growth_partner") && !input.regenerateMessageId
+    ? parseResearchAssignment(prepared.userContent)
     : null;
   if (research) {
     if (!ctx.can("leads.research")) {
@@ -1913,7 +2380,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         userId: ctx.user.id,
         agentId: agent.id,
         conversationId: prepared.conversationId,
-        content: "Your workspace role does not have permission to start Lead Hunter research. No research job was created.",
+        content: `Your workspace role does not have permission to start ${workforceRoleShortName(input.agentRole)} research. No research job was created.`,
       });
       return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
     }
@@ -1931,7 +2398,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     const created = await createResearchRequest(
       ctx,
       { prompt: research.prompt, campaignType: research.campaignType },
-      { conversationId: prepared.conversationId, deferKick: true },
+      { conversationId: prepared.conversationId, deferKick: true, agentRole: input.agentRole },
     );
     const content = created.jobId
         ? `I've started a research job for up to ${research.quantity} ${research.target} in ${research.location}. I'll record each verified stage here, including what I could and could not confirm. You can leave this page and come back; the job runs independently of this tab.`
@@ -2173,7 +2640,7 @@ interface ExecuteRunInput {
   orgId: string;
   agentId: string;
   configVersionId: string | null;
-  agentRole: AgentRoleKey;
+  agentRole: WorkforceRoleKey;
   userId: string;
   assistantMessageId: string;
   conversationId: string;
@@ -2304,6 +2771,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
   if (r.inferenceOnly) {
     try {
       await safeDb((db) => db.query("update agent_runs set status = 'running' where id = $1", [r.runId]));
+      if (!isAgentRoleKey(r.agentRole)) throw new Error("Restricted inference requires a legacy internal employee role.");
       if (typeof r.request.instructions !== "string" || !r.request.instructions.trim()) {
         throw new Error("Restricted inference instructions are unavailable.");
       }
@@ -2353,7 +2821,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       });
       await finish("completed", { content, usage: result.usage });
       return;
-    } catch (err) {
+    } catch {
       const reason = r.abort.signal.aborted ? String((r.abort.signal.reason as Error | undefined)?.message ?? "") : "";
       if (reason === "stopped_by_user" || reason === "timeout") {
         await finish(reason === "timeout" ? "timeout" : "cancelled", reason === "timeout" ? { errorCode: "timeout" } : {});
@@ -2481,7 +2949,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
           break;
         }
         case "approval_request": {
-          const title = `${AGENT_BY_KEY[r.agentRole].shortName} wants to use ${ev.tool ?? "a tool"}`;
+          const title = `${workforceRoleShortName(r.agentRole)} wants to use ${ev.tool ?? "a tool"}`;
           let approvalId: string | null = null;
           await safeDb(async (db) => {
             const { rows } = await db.query<{ id: string }>(
