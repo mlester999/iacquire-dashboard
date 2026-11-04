@@ -1,230 +1,1197 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛ}¼Ñ:-jZ.¶›­–)Ş³R'W6R6Æ–VçB#° ¦–×÷'B¢2&V7Bg&öÒ'&V7B#°¦–×÷'BÆ–æ²g&öÒ&æW‡BöÆ–æ²#°¦–×÷'B²W6U&÷WFW"Òg&öÒ&æW‡Böæf–vF–öâ#°¦–×÷'B²Fö7BÒg&öÒ'6öææW"#°¦–×÷'B²Ö÷F–öâÒg&öÒ&Ö÷F–öâ÷&V7B#°¦–×÷'B²'&÷tÆVgBÂ&âÂ&æ¶æ÷FRÂ'V–ÆF–æs"Â6†V6´6—&6ÆS"Â6†Wg&öäF÷vâÂ6Æ—&ö&D6†V6²ÂFö÷$6Æ÷6VBÂvÆö&RÂ6÷’Âf–ÆT6öFS"Â†æD6ö–ç2Â¶W•&÷VæBÂÆ–æ³"ÂÆö6²ÂÖW76vW57V&RÂÆ”6—&6ÆRÂ&Vg&W6„7rÂ&÷FFT67rÂ6†–VÆDÆW'BÂ„6—&6ÆRÂ7FWF†÷66÷RÂW6W%ÇW2Òg&öÒ&ÇV6–FR×&V7B#°¦–×÷'B²vVçDfF"ÂvVçE7FGW4&FvRÒg&öÒ$ö6ö×öæVçG2ö'&æB#°¦–×÷'B²'WGFöâÂ'WGFöäÆ–æ²Òg&öÒ$ö6ö×öæVçG2÷V’ö'WGFöâ#°¦–×÷'B²&FvRÂ6&BÂ6&D6öçFVçBÂ6&DFW67&—F–öâÂ6&D†VFW"Â6&EF—FÆRÂf–VÆBÂ–çWBÂ&öw&W74&"Â6VÆV7BÂFW‡F&VÒg&öÒ$ö6ö×öæVçG2÷V’÷&–Ö—F—fW2#°¦–×÷'B²F–ÆörÂ7v—F6‚ÂF'2Òg&öÒ$ö6ö×öæVçG2÷V’ö÷fW&Æ—2#°¦–×÷'B²vT†W&òÒg&öÒ$ö6ö×öæVçG2÷V’÷v÷&·76R#°¦–×÷'B²6öæf–u&Wf–Wt6&BÒg&öÒ$ö6ö×öæVçG2öFÖ–âö6öæf–r×&Wf–WrÖ6&B#°¦–×÷'B²'VçF–ÖT6öçG&öÇ2ÂG—R'VçF–ÖT6öçG&öÇ4FFÒg&öÒ$ö6ö×öæVçG2öFÖ–â÷'VçF–ÖRÖ6öçG&öÇ2#°¦–×÷'B²&W6VæD–çf—FF–öä'WGFöâÂFVÆ—fW'•7VÖÖ'’Òg&öÒ$ö6ö×öæVçG2öFÖ–â÷&W6VæBÖ–çf—FF–öâ#°¦–×÷'B°¢76–vå7Ffd7F–öâÀ¢6öææV7D†W&ÖW47F–öâÀ¢FV6–FT†VÆDFö7VÖVçD7F–öâÀ¢FV6–FT†VÆDV×Æ÷–VTæ÷FT7F–öâÀ¢FV6–FT†VÆD¶æ÷vÆVFvT7F–öâÀ¢†VÇF„6†V6´7F–öâÀ¢–çf—FT6Æ–VçEW6W$7F–öâÀ¢&÷f—6–öæ–æt'VæFÆT7F–öâÀ¢&WVWVU&÷f—6–öæ–æt7F–öâÀ¢&Wfö¶T–çf—FF–öä7F–öâÀ¢6WDvVçDVæ&ÆVD7F–öâÀ¢6WDv†ÄÖ–æt7F–öâÀ¢6WEFVæçE7FGW47F–öâÀ¢7–æ4v†Ä7F–öâÀ¢WFFT&–ÆÆ–æt7F–öâÀ¢WFFU&÷f—6–öæ–æt¦ö$7F–öâÀ¢WFFUW6vTÆ–Ö—G47F–öâÀ¢fW&–g”v†Ä7F–öâÀ§Òg&öÒ$öò†FÖ–â’öFÖ–âö7F–öç2#°¦–×÷'B²–ÖVçE&÷rÂ&V6÷&E–ÖVçDF–ÆörÂ&VgVæDF–ÆörÂv—fTfVTF–ÆörÒg&öÒ$ö6ö×öæVçG2öFÖ–â÷–ÖVçG2×v÷&·76R#°¦–×÷'B²6WGW7FGW46÷’Òg&öÒ$öÆ–"ö&–ÆÆ–ærÖ6ÆV&æ6R#°¦–×÷'BG—R²vVæ7•–ÖVçEf–WrÒg&öÒ$÷6W'fW"ö&–ÆÆ–ær÷–ÖVçG2×f–Wr#°¦–×÷'BG—R²&÷f—6–öæ–ætWfVçBÂFVæçDFWF–ÂÒg&öÒ$÷6W'fW"öFÖ–â÷VW&–W2#°¦–×÷'BG—R²&÷f—6–öæ–æt'VæFÆRÒg&öÒ$÷6W'fW"÷v÷&¶f÷&6R÷&÷f—6–öæ–ær#°¦–×÷'B²tTåEô%•ô´U’ÂvVçD–FVçF—G”Æ&VÂÒg&öÒ$öÆ–"övVçG2#°¦–×÷'B²6âÂf÷&ÖDFFRÂf÷&ÖDFFUF–ÖRÂf÷&ÖDçVÖ&W"Â–æ—F–Ç2Â&VÆF—fUF–ÖRÂ6VçFVæ6T66RÒg&öÒ$öÆ–"÷WF–Ç2#° §G—RFWF–ÂÒFVæçDFWF–Ã° ¦gVæ7F–öâW6T7F–öâ‚’°¢6öç7B&÷WFW"ÒW6U&÷WFW"‚“°¢6öç7B·VæF–ærÂ6WEVæF–æuÒÒ&V7BçW6U7FFSÇ7G&–ærÂçVÆÃâ†çVÆÂ“°¢6öç7B'VâÒ7–æ2ÅBÃâ†¶W“¢7G&–ærÂfã¢‚’Óâ&öÖ—6SÇ²ö³¢G'VS²FFó¢BÒÂ²ö³¢fÇ6S²W'&÷#¢7G&–ærÓâÂ7V66W73ó¢7G&–ærÂ‚†C¢BÂVæFVf–æVB’Óâ7G&–ær’’Óâ°¢6WEVæF–ær†¶W’“°¢G'’°¢6öç7B&W2Òv—Bfâ‚“°¢6WEVæF–ær†çVÆÂ“°¢–b‚&W2æö²’°¢Fö7BæW'&÷"‡&W2æW'&÷"“°¢&WGW&âçVÆÃ°¢Ğ¢–b‡7V66W72’Fö7Bç7V66W72‡G—Vöb7V66W72ÓÓÒ&gVæ7F–öâ"ò7V66W72‡&W2æFF’¢7V66W72“°¢&÷WFW"ç&Vg&W6‚‚“°¢&WGW&â&W3°¢Ò6F6‚²Fö7BæW'&÷"‚%F†R6†ævR6÷VÆBæ÷B&R6fVBâÆV6RG'’v–ââ"“·&WGW&âçVÆÃ²Ğ¢f–æÆÇ’·6WEVæF–ær†çVÆÂ“·Ğ¢Ó°¢&WGW&â²VæF–ærÂ'VâÓ°§Ğ ¦W‡÷'BgVæ7F–öâ6Æ–VçDFWF–Â‡²FFÂ7WW$FÖ–âÂ–æ—F–ÅF"ÂF–ÖU¦öæRÂ'VçF–ÖRÒçVÆÂÓ¢²FF¢FWF–Ã²7WW$FÖ–ã¢&ööÆVã²–æ—F–ÅF#¢7G&–æs²F–ÖU¦öæS¢7G&–æs²'VçF–ÖSó¢'VçF–ÖT6öçG&öÇ4FFÂçVÆÂÒ’°¢6öç7B·F"Â6WEF%ÒÒ&V7BçW6U7FFR…²&÷fW'f–Wr"Â'v÷&¶f÷&6R"Â'&Wf–Ww2"Â&–çFVw&F–öç2"Â'W6vR"Â&&–ÆÆ–ær"Â'FVÒ%Òæ–æ6ÇVFW2†–æ—F–ÅF"“ö–æ—F–ÅF#¢&÷fW'f–Wr"“°¢6öç7B†VÆBÒFFæ†VÆEfW'6–öç2æÆVæwF‚²FFæ†VÆD¶æ÷vÆVFvRæÆVæwF‚²FFæ†VÆDæ÷FW2æÆVæwF‚²FFæ†VÆDFö7VÖVçG2æÆVæwFƒ°¢òòF†R÷væW"w2VæF–ær–çf—FF–öâ†W‡—&VBöæW2–æ6ÇVFVB’6â&R&R×6VçB7G&–v‡Bg&öÒF†R†VFW"à¢6öç7B÷væW$–çf—FRÒFFæ–çf—FF–öç2æf–æB‚†’’Óâ’ç&öÆRÓÓÒ&÷væW""’óòçVÆÃ°¢&WGW&â€¢ÆF—b6Æ74æÖSÒ&ÖöGVÆR×7F6²#à¢ÄÆ–æ²‡&VcÒ"öFÖ–âö6Æ–VçG2"6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓãRFW‡BÕ³G…ÒFW‡BÖ×WFVB†÷fW#§FW‡BÖ–æ²#à¢Ä'&÷tÆVgB6Æ74æÖSÒ'6—¦RÓ2ãR"óâ6Æ–VçG0¢ÂôÆ–æ³à¢ÅvT†W&òW–V'&÷sÒ$6Æ–VçBv÷&·76R"–6öã×³Ä'V–ÆF–æs"6Æ74æÖSÒ'6—¦RÓR"óçÒF—FÆS×¶FFæ÷&rææÖWÒFW67&—F–öã×³Ç7ãç¶FFæ÷&ræ–æGW7G'“óò$–æGW7G'’æ÷B6WB'Ò+r¶FFæ÷&rçF–ÖW¦öæRç&WÆ6TÆÂ‚%ò"Â""—ÓÇ7â6Æ74æÖSÒ&×BÓ&Æö6²FW‡B×‡2#å&Vv—7FW&VB¶f÷&ÖDFFR†FFæ÷&ræ7&VFVEöBÇF–ÖU¦öæR—Ò+r&—fFRÂFVæçB×66÷VBv÷&·76SÂ÷7ããÂ÷7ãçÒ6–FS×³ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"vÓB#ãÇ7â6Æ74æÖSÒ&w&–B6—¦RÓbÆ6RÖ—FV×2Ö6VçFW"&÷VæFVBÓ'†Â&÷&FW"&÷&FW"×&–Ö'’óR&r×7W&f6RósFW‡B×†ÂföçB×6VÖ–&öÆBFW‡B×&–Ö'’Ö–æ²#ç¶–æ—F–Ç2†FFæ÷&rææÖR—ÓÂ÷7ããÆF—b6Æ74æÖSÒ'76R×’Ó"#ãÄ&FvRFöæS×¶FFæ÷&rç7FGW2ÓÓÒ&7F—fR"ò'7V66W72"¢FFæ÷&rç7FGW2ÓÓÒ'7W7VæFVB"ò&FævW""¢'&–Ö'’'Óç·6VçFVæ6T66R†FFæ÷&rç7FGW2—ÓÂô&FvSç¶FFæ÷&ræ—5öFVÖòbcÆF—cãÄ&FvRFöæSÒ'f–öÆWB#äFVÖòFFÂô&FvSãÂöF—cçÓÂöF—cãÂöF—cçÒ7F–öã×³ÃãÄ'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒ÷6WGWÒf&–çCÒ&'&æB"6—¦SÒ'6Ò#à¢Ä6Æ—&ö&D6†V6²6Æ74æÖSÒ'6—¦RÓB"óâ6WGWÖævW ¢Âô'WGFöäÆ–æ³à¢·7WW$FÖ–âbf÷væW$–çf—FRbcÅ&W6VæD–çf—FF–öä'WGFöâ÷&t–C×¶FFæ÷&ræ–GÒ–çf—FF–öã×¶÷væW$–çf—FWÒÆ&VÃÒ%&W6VæB–çf—FR"óçĞ¢Ä'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒö–çFVw&F–öç6Òf&–çCÒ'6V6öæF'’"6—¦SÒ'6Ò#ãÄ¶W•&÷VæB6Æ74æÖSÒ'6—¦RÓB"óâ6V7W&R–çFVw&F–öç3Âô'WGFöäÆ–æ³ãÄ'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒö6öÖ×Væ–6F–öç6Òf&–çCÒ'6V6öæF'’"6—¦SÒ'6Ò#ãÄÖW76vW57V&R6Æ74æÖSÒ'6—¦RÓB"óâÖW76v–ær6†ææVÇ3Âô'WGFöäÆ–æ³ãÄ'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒ÷vV'6—FVÒf&–çCÒ'6V6öæF'’"6—¦SÒ'6Ò#ãÄvÆö&R6Æ74æÖSÒ'6—¦RÓB"óâvV'6—FSÂô'WGFöäÆ–æ³ãÄ'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒö7F—fF–öæÒf&–çCÒ&v†÷7B"6—¦SÒ'6Ò#å&VF–æW72&Wf–WsÂô'WGFöäÆ–æ³ç·7WW$FÖ–âbcÄ'WGFöäÆ–æ²‡&Vc×¶öFÖ–âö6Æ–VçG2òG¶FFæ÷&ræ–GÒööff&ö&F–ævÒf&–çCÒ&v†÷7B"6—¦SÒ'6Ò#ãÄFö÷$6Æ÷6VB6Æ74æÖSÒ'6—¦RÓB"óâöff&ö&F–æsÂô'WGFöäÆ–æ³çÓÂóçÓãÆFÂ6Æ74æÖSÒ&w&–Bw&–BÖ6öÇ2Ó"vÓB6Ó¦w&–BÖ6öÇ2ÓB#çµ·¶Æ&VÃ¢$6Æ–VçBFVÒ"ÇfÇVS¦FFæÖVÖ&W'2æf–ÇFW"†ÓÓæÒç7FGW3ÓÓÒ&7F—fR"’æÆVæwF‡ÒÇ¶Æ&VÃ¢$Væ&ÆVB&öf–ÆR&V6÷&G2"ÇfÇVS¦FFævVçG2æf–ÇFW"†ÓææVæ&ÆVB’æÆVæwF‡ÒÇ¶Æ&VÃ¢$v—F–ær&Wf–Wr"ÇfÇVS¦†VÆGÒÇ¶Æ&VÃ¢$76–væVBvVæ7’7Ffb"ÇfÇVS¦FFç7Ffbæf–ÇFW"‡3Óç2æ76–væVB’æÆVæwF‡ÕÒæÖ‡3ÓãÆF—b¶W“×·2æÆ&VÇÓãÆGB6Æ74æÖSÒ'FW‡B×‡2FW‡BÖ×WFVB#ç·2æÆ&VÇÓÂöGCãÆFB6Æ74æÖSÒ&×BÓFW‡B×†ÂföçB×6VÖ–&öÆBF'VÆ"ÖçV×2FW‡BÖ–æ²#ç·2çfÇVWÓÂöFCãÂöF—câ—ÓÂöFÃãÂõvT†W&óà¢ÅF'0¢–CÒ&6Æ–VçB×F'2 ¢fÇVS×·F'Ğ¢öåfÇVT6†ævS×·6WEF'Ğ¢—FV×3×µ°¢²fÇVS¢&÷fW'f–Wr"ÂÆ&VÃ¢$÷fW'f–Wr"ÒÀ¢²fÇVS¢'v÷&¶f÷&6R"ÂÆ&VÃ¢%'FæW"b&WF–æVB&öf–ÆW2"ÒÀ¢²fÇVS¢'&Wf–Ww2"ÂÆ&VÃ¢%&Wf–Ww2"Â6÷VçC¢†VÆBÇÂVæFVf–æVBÒÀ¢²fÇVS¢&–çFVw&F–öç2"ÂÆ&VÃ¢$–çFVw&F–öç2"ÒÀ¢²fÇVS¢'W6vR"ÂÆ&VÃ¢%W6vRbÆ–Ö—G2"ÒÀ¢²fÇVS¢&&–ÆÆ–ær"ÂÆ&VÃ¢$&–ÆÆ–ær"ÒÀ¢²fÇVS¢'FVÒ"ÂÆ&VÃ¢%FVÒb7Ffb"ÒÀ¢×Ğ¢à¢ÆÖ÷F–öâæF—b¶W“×·F'Ò–æ—F–Ã×¶fÇ6WÒæ–ÖFS×·¶÷6—G“£Ç“£×ÒG&ç6—F–öã×·¶GW&F–öã¢ã'×Ò6Æ74æÖSÒ'vRÖ–âÖ–â×rÓ#à¢·F"ÓÓÒ&÷fW'f–Wr"bbÄ÷fW'f–WuF"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒóçĞ¢·F"ÓÓÒ'v÷&¶f÷&6R"bb€¢ÆF—b6Æ74æÖSÒ'76R×’Ób#à¢Åv÷&¶f÷&6UF"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒóà¢²ò¢öæÇ’WfW"v—fVâ6öÖWF†–ærf÷"7WW"FÖ–âÆöö¶–ærB&VÂ6Æ–VçBv÷&·76R‡F†RvRFV6–FW2öâF†R6W'fW"“²—B&VæFW'2æ÷F†–ær÷F†W'v—6Râ¢÷Ğ¢Å'VçF–ÖT6öçG&öÇ2FF×·'VçF–ÖWÒóà¢ÂöF—cà¢—Ğ¢·F"ÓÓÒ'&Wf–Ww2"bbÅ&Wf–Ww5F"FF×¶FFÒF–ÖU¦öæS×·F–ÖU¦öæWÒ6äFV6–FS×¶FFæ66W72çv÷&¶f÷&6TÖævWÒóçĞ¢·F"ÓÓÒ&–çFVw&F–öç2"bbÄ–çFVw&F–öç5F"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒóçĞ¢·F"ÓÓÒ'W6vR"bbÅW6vUF"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒóçĞ¢·F"ÓÓÒ&&–ÆÆ–ær"bbÄ&–ÆÆ–æuF"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒF–ÖU¦öæS×·F–ÖU¦öæWÒóçĞ¢·F"ÓÓÒ'FVÒ"bbÅFVÕF"FF×¶FFÒ7WW$FÖ–ã×·7WW$FÖ–çÒóçĞ¢ÂöÖ÷F–öâæF—cà¢ÂõF'3à¢ÂöF—cà¢“°§Ğ ¦gVæ7F–öâ÷fW'f–WuF"‡²FFÂ7WW$FÖ–âÓ¢²FF¢FWF–Ã²7WW$FÖ–ã¢&ööÆVâÒ’°¢6öç7B²'VâÂVæF–ærÒÒW6T7F–öâ‚“°¢6öç7B·&V6öâÂ6WE&V6öåÒÒ&V7BçW6U7FFR‚""“°¢6öç7B¶6öæf—&ÒÂ6WD6öæf—&ÕÒÒ&V7BçW6U7FFR†fÇ6R“°¢6öç7BöæÆ–æRÒFFævVçG2æf–ÇFW"‚†’ÓâæVæ&ÆVBbbç7FGW2ÓÓÒ&öæÆ–æR"’æÆVæwFƒ°¢6öç7BVæ&ÆVBÒFFævVçG2æf–ÇFW"‚†’ÓâæVæ&ÆVB’æÆVæwFƒ°¢&WGW&â€¢ÆF—b6Æ74æÖSÒ&w&–BvÓbÆs¦w&–BÖ6öÇ2Ó2#à¢Ä6&B6Æ74æÖSÒ&Æs¦6öÂ×7âÓ"÷fW&fÆ÷rÖ†–FFVâ#à¢Ä6&D†VFW#à¢ÆF—cà¢Ä6&EF—FÆSåv÷&·76RW76VçF–Ç3Âô6&EF—FÆSà¢Ä6&DFW67&—F–öãåF†R¶W’66÷VçBÖ–ÆW7FöæW2&V6÷&FVBf÷"F†—26Æ–VçBãÂô6&DFW67&—F–öãà¢ÂöF—cà¢Âô6&D†VFW#à¢Ä6&D6öçFVçB6Æ74æÖSÒ'76R×’Ó2#à¢µ°¢²$÷væW"66WFVB–çf—FF–öâ"ÂFFæÖVÖ&W'2ç6öÖR‚†Ò’ÓâÒç&öÆRÓÓÒ&÷væW""•ÒÀ¢²$öæ&ö&F–ær6ö×ÆWFVB"Â&ööÆVâ†FFæ÷&ræöæ&ö&F–æuö6ö×ÆWFVEöB•ÒÀ¢¶V×Æ÷–VW2öæÆ–æR‚G¶öæÆ–æWÒòG¶Væ&ÆVGÒ–ÂVæ&ÆVBâbböæÆ–æRÓÓÒVæ&ÆVEÒÀ¢²$5$ÒÆö6F–öâfW&–f–VB"ÂFFæv†Ãòç7FGW2ÓÓÒ&6öææV7FVB%ÒÀ¢²%6WGWfVR–B÷"v—fVB"Â²'–B"Â'v—fVB%Òæ–æ6ÇVFW2†FFæ&–ÆÆ–æsòç6WGW÷–ÖVçE÷7FGW2óò""•ÒÀ¢ÒæÖ‚…¶Æ&VÂÂFöæUÒ’Óâ€¢ÆF—b¶W“×µ7G&–ær†Æ&VÂ—Ò6Æ74æÖS×¶6â‚&fÆW‚—FV×2Ö6VçFW"vÓ2&÷VæFVB×†Â&÷&FW"‚ÓB’Ó2FW‡BÕ³G…Ò"ÆFöæSò&&÷&FW"×7V66W72óR&r×7V66W72×6ögBó3R#¢&&÷&FW"ÖÆ–æR&r×7W&f6RÓ"óS"—Óà¢¶FöæRòÄ6†V6´6—&6ÆS"6Æ74æÖSÒ'6—¦RÓRFW‡B×7V66W72"óâ¢Ç7â6Æ74æÖSÒ'6—¦RÓR6‡&–æ²Ó&÷VæFVBÖgVÆÂ&÷&FW"Ó"&÷&FW"ÖÆ–æR×7G&öær"óçĞ¢Ç7â6Æ74æÖS×¶FöæRò'FW‡BÖ–æ²"¢'FW‡BÖ×WFVB'Óç¶Æ&VÇÓÂ÷7ãà¢Ç7â6Æ74æÖSÒ&ÖÂÖWFòFW‡BÕ³'…ÒFW‡BÖ×WFVB#ç¶FöæSò%&V6÷&FVB#¢%VæF–ær'ÓÂ÷7ãà¢ÂöF—cà¢’—Ğ¢Âô6&D6öçFVçCà¢Âô6&Cà¢Ä6&B6Æ74æÖSÒ&&÷&FW"×&–Ö'’óR&r×&–Ö'’×6ögBó##à¢Ä6&D†VFW#à¢ÆF—cà¢Ä6&EF—FÆSåv÷&·76R66W73Âô6&EF—FÆSà¢Ä6&DFW67&—F–öãå7W7VæF–ær&Æö6·2WfW'’6Æ–VçBW6W"–ÖÖVF–FVÇ’ãÂô6&DFW67&—F–öãà¢ÂöF—cà¢Âô6&D†VFW#à¢Ä6&D6öçFVçB6Æ74æÖSÒ'76R×’Ó2#à¢¶FFæ÷&rç7FGW2ÓÓÒ'7W7VæFVB"ò€¢Ãà¢Ç6Æ74æÖSÒ'&÷VæFVB×†Â&rÖFævW"×6ögB‚Ó2’Ó"FW‡BÕ³G…ÒFW‡BÖFævW"Ö–æ²#å7W7VæFVC¢¶FFæ÷&rç7W7VæFVE÷&V6öçÓÂ÷à¢·7WW$FÖ–âbb€¢Ä'WGFöâ6Æ74æÖSÒ'rÖgVÆÂ"ÆöF–æs×·VæF–ærÓÓÒ'&V7F—fFR'Òöä6Æ–6³×²‚’Óâ'Vâ‚'&V7F—fFR"Â‚’Óâ6WEFVæçE7FGW47F–öâ†FFæ÷&ræ–BÂ&7F—fR"’Â%v÷&·76R&V7F—fFVB"—Óà¢&V7F—fFRv÷&·76P¢Âô'WGFöãà¢—Ğ¢Âóà¢’¢7WW$FÖ–âò€¢Ä'WGFöâf&–çCÒ&÷WFÆ–æR"6Æ74æÖSÒ'rÖgVÆÂFW‡BÖFævW"Ö–æ²"öä6Æ–6³×²‚’Óâ6WD6öæf—&Ò‡G'VR—Óà¢Ä&â6Æ74æÖSÒ'6—¦RÓB"óâ7W7VæB66W70¢Âô'WGFöãà¢’¢€¢Ç6Æ74æÖSÒ'FW‡BÕ³G…ÒFW‡BÖ×WFVB#äöæÇ’7WW"FÖ–ç26â7W7VæBv÷&·76W2ãÂ÷à¢—Ğ¢Âô6&D6öçFVçCà¢Âô6&Cà¢Ä6&B6Æ74æÖSÒ&Æs¦6öÂ×7âÓ2#à¢Ä6&D†VFW#à¢ÆF—cà¢Ä6&EF—FÆSå&V6VçBf–ÆVB’'Vç3Âô6&EF—FÆSà¢Ä6&DFW67&—F–öãå6æ—F—¦VBW†V7WF–öâ7FGW2öæÇ’(	BÖW76vR6öçFVçB—2&—fFRFòF†R6Æ–VçBãÂô6&DFW67&—F–öãà¢ÂöF—cà¢Âô6&D†VFW#à¢Ä6&D6öçFVçCà¢¶FFæf–ÆVE'Vç2æÆVæwF‚ÓÓÒò€¢ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"vÓ2&÷VæFVB×†Â&÷&FW"&÷&FW"×7V66W72óR&r×7V66W72×6ögBó3ÓB#ãÇ7â6Æ74æÖSÒ&w&–B6—¦RÓ6‡&–æ²ÓÆ6RÖ—FV×2Ö6VçFW"&÷VæFVB×†Â&r×7V66W72×6ögBFW‡B×7V66W72Ö–æ²#ãÄ6†V6´6—&6ÆS"6Æ74æÖSÒ'6—¦RÓR"óãÂ÷7ããÆF—cãÇ6Æ74æÖSÒ'FW‡B×6ÒföçBÖÖVF—VÒFW‡BÖ–æ²#äæòf–ÆVB'Vç2&V6÷&FVBãÂ÷ãÇ6Æ74æÖSÒ&×BÓFW‡B×‡2FW‡BÖ×WFVB#äW†V7WF–öâ—77VW2v–ÆÂV"†W&Rv—F‚6æ—F—¦VBF–væ÷7F–72v†VâF†W’ö67W"ãÂ÷ãÂöF—cãÂöF—cà¢’¢€¢ÇVÂ6Æ74æÖSÒ&F—f–FR×’F—f–FRÖÆ–æR#à¢¶FFæf–ÆVE'Vç2æÖ‚‡"’Óâ€¢ÆÆ’¶W“×·"æ–GÒ6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ2’Ó"ãRFW‡BÕ³G…Ò#à¢Ç7â6Æ74æÖSÒ&föçBÖÖVF—VÒ#ç´tTåEô%•ô´U•·"ævVçE÷&öÆUÒç6†÷'DæÖWÓÂ÷7ãà¢Ç7â6Æ74æÖSÒ&Ö–â×rÓfÆW‚ÓG'Væ6FRFW‡BÖ×WFVB#ç·"æW'&÷%öÖW76vRóò"æW'&÷%ö6öFWÓÂ÷7ãà¢Ç7â6Æ74æÖSÒ'FW‡BÕ³'…ÒFW‡BÖf–çB#ç·"æf–æ—6†VEöBò&VÆF—fUF–ÖR‡"æf–æ—6†VEöB’¢"'ÓÂ÷7ãà¢ÂöÆ“à¢’—Ğ¢Â÷VÃà¢—Ğ¢Âô6&D6öçFVçCà¢Âô6&Cà¢ÄF–Æöp¢÷Vã×¶6öæf—&×Ğ¢öä÷Vä6†ævS×·6WD6öæf—&×Ğ¢F—FÆS×¶7W7VæBG¶FFæ÷&rææÖWÓöĞ¢FW67&—F–öãÒ$6Æ–VçBW6W'2Æ÷6R66W72VçF–ÂF†Rv÷&·76R—2&V7F—fFVBâFF—2¶WBâ ¢fö÷FW#×°¢Ãà¢Ä'WGFöâf&–çCÒ'6V6öæF'’"öä6Æ–6³×²‚’Óâ6WD6öæf—&Ò†fÇ6R—Óà¢6æ6VÀ¢Âô'WGFöãà¢Ä'WGFöà¢f&–çCÒ&FævW" ¢F—6&ÆVC×²&V6öâçG&–Ò‚—Ğ¢ÆöF–æs×·VæF–ærÓÓÒ'7W7VæB'Ğ¢öä6Æ–6³×¶7–æ2‚’Óâ°¢6öç7Bö²Òv—B'Vâ‚'7W7VæB"Â‚’Óâ6WEFVæçE7FGW47F–öâ†FFæ÷&ræ–BÂ'7W7VæFVB"Â&V6öâ’Â%v÷&·76R7W7VæFVB"“°¢–b†ö²’6WD6öæf—&Ò†fÇ6R“°¢×Ğ¢à¢7W7Væ@¢Âô'WGFöãà¢Âóà¢Ğ¢à¢Äf–VÆBÆ&VÃÒ%&V6öâ‡f—6–&ÆRFòvVæ7’7Ffb’"‡FÖÄf÷#Ò'7W7VæB×&V6öâ#à¢ÅFW‡F&V–CÒ'7W7VæB×&V6öâ"fÇVS×·&V6öçÒöä6†ævS×²†R’Óâ6WE&V6öâ†RçF&vWBçfÇVR—ÒÖ„ÆVæwFƒ×³SÒ&÷w3×³7Òóà¢Âôf–VÆCà¢ÂôF–Æösà¢ÂöF—cà¢“°§Ğ ¦gVæ7F–öâv÷&¶f÷&6UF"‡²FFÂ7WW$FÖ–âÓ¢²FF¢FWF–Ã²7WW$FÖ–ã¢&ööÆVâÒ’°¢6öç7B²'VâÂVæF–ærÒÒW6T7F–öâ‚“°¢6öç7B¶6öææV7Df÷"Â6WD6öææV7Df÷%ÒÒ&V7BçW6U7FFSÄFWF–Å²&vVçG2%Õ¶çVÖ&W%ÒÂçVÆÃâ†çVÆÂ“°¢6öç7B¶'VæFÆRÂ6WD'VæFÆUÒÒ&V7BçW6U7FFSÅ&÷f—6–öæ–æt'VæFÆRÂçVÆÃâ†çVÆÂ“°¢6öç7B·&WVWVTf÷"Â6WE&WVWVTf÷%ÒÒ&V7BçW6U7FFSÄFWF–Å²'&÷f—6–öæ–ær%Õ¶çVÖ&W%ÒÂçVÆÃâ†çVÆÂ“°¢6öç7B·Æä6†ævRÂ6WEÆä6†ævUÒÒ&V7BçW6U7FFSÇ²vVçC¢FWF–Å²&vVçG2%Õ¶çVÖ&W%Ó²Væ&ÆVC¢&ööÆVâÒÂçVÆÃâ†çVÆÂ“°¢&WGW&â€¢ÆF—b6Æ74æÖSÒ'76R×’Ób#à¢¶FFæw&÷wF…'FæW"bb€¢Ä6&B6Æ74æÖSÒ&&÷&FW"×&–Ö'’ó#R&r×&–Ö'’×6ögBó##à¢Ä6&D†VFW#à¢ÆF—cà¢Ä6&EF—FÆSä’w&÷wF‚'FæW#Âô6&EF—FÆSà¢Ä6&DFW67&—F–öãåFVæçB×66÷VB'FæW"'VçF–ÖRæB'W6–æW72'&–â7FGW2â6öçfW'6F–öâ6öçFVçB7F—2&—fFRFòF†R6Æ–VçBv÷&·76RãÂô6&DFW67&—F–öãà¢ÂöF—cà¢Ä&FvRFöæS×¶FFæw&÷wF…'FæW"ç7FGW2ÓÓÒ&6öæf–wW&VB"ò'7V66W72"¢FFæw&÷wF…'FæW"ç7FGW2ÓÓÒ'W6VB"ò'v&æ–ær"¢&æWWG&Â'Óà¢¶FFæw&÷wF…'FæW"ç7FGW2ç&WÆ6TÆÂ‚%ò"Â""—Ğ¢Âô&FvSà¢Âô6&D†VFW#à¢Ä6&D6öçFVçB6Æ74æÖSÒ'76R×’Ó2#à¢ÆFÂ6Æ74æÖSÒ&w&–BvÓ2FW‡BÕ³7…Ò6Ó¦w&–BÖ6öÇ2Ó"Æs¦w&–BÖ6öÇ2ÓB#à¢ÆF—cãÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#å'VçF–ÖSÂöGCãÆFB6Æ74æÖSÒ&×BÓföçBÖÖVF—VÒ#ç¶FFæw&÷wF…'FæW"ç'VçF–ÖUövVçEö–ç7Fæ6Uö–BòFFæw&÷wF…'FæW"æVæ&ÆVBòFFæw&÷wF…'FæW"ç'VçF–ÖU÷7FGW2óò%Væ¶æ÷vâ"¢$F—6&ÆVB"¢$æ÷B&÷VæB'ÓÂöFCãÂöF—cà¢ÆF—cãÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#ä†W&ÖW2&öf–ÆSÂöGCãÆFB6Æ74æÖSÒ&×BÓG'Væ6FRföçBÖÖöæòFW‡BÕ³'…Ò#ç¶FFæw&÷wF…'FæW"æ†W&ÖW5÷&öf–ÆRóò$æ÷B6öææV7FVB'ÓÂöFCãÂöF—cà¢ÆF—cãÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#ä'W6–æW72'&–ãÂöGCãÆFB6Æ74æÖSÒ&×BÓföçBÖÖVF—VÒ#ç¶FFæw&÷wF…'FæW"æ7W'&VçE÷fW'6–öâò7F—fRbG¶FFæw&÷wF…'FæW"æ7W'&VçE÷fW'6–öçÖ¢FFæw&÷wF…'FæW"æÆFW7E÷fW'6–öâòG&gBbG¶FFæw&÷wF…'FæW"æÆFW7E÷fW'6–öçÖ¢$æ÷B&W&VB'ÓÂöFCãÂöF—cà¢ÆF—cãÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#å'Vç2+r3F—3ÂöGCãÆFB6Æ74æÖSÒ&×BÓföçBÖÖVF—VÒ#ç¶FFæw&÷wF…'FæW"ç'Vç5ó3G×¶FFæw&÷wF…'FæW"æf–ÆVEó3Bâò+rG¶FFæw&÷wF…'FæW"æf–ÆVEó3GÒf–ÆVF¢"'ÓÂöFCãÂöF—cà¢ÂöFÃà¢¶FFæw&÷wF…'FæW"æÆ7Eö†VÇF…öFWF–ÂbbÇ6Æ74æÖSÒ'&÷VæFVB×†Â&÷&FW"&÷&FW"ÖÆ–æR&r×7W&f6R‚Ó2’Ó"FW‡BÕ³7…ÒFW‡BÖ–æ²Ó"#ç¶FFæw&÷wF…'FæW"æÆ7Eö†VÇF…öFWF–ÇÓÂ÷çĞ¢Ç6Æ74æÖSÒ'FW‡BÕ³'…ÒFW‡BÖ×WFVB#äÆ7B'FæW"6öçfW'6F–öâ7F—f—G“¢¶FFæw&÷wF…'FæW"æÆ7EöÖW76vUöBò&VÆF—fUF–ÖR†FFæw&÷wF…'FæW"æÆ7EöÖW76vUöB’¢$æòÖW76vW2–WB'ÒâF†—2f–Wr6öçF–ç27FGW2öæÇ’æBFöW2æ÷B÷VâF†R6Æ–VçB6öçfW'6F–öâãÂ÷à¢Âô6&D6öçFVçCà¢Âô6&Cà¢—Ğ¢Ä6&B6Æ74æÖSÒ&&÷&FW"×&–Ö'’ó#&r×&–Ö'’×6ögBó3#à¢Ä6&D6öçFVçB6Æ74æÖSÒ'BÓRFW‡BÕ³G…ÒÆVF–ær×&VÆ†VBFW‡B×&–Ö'’Ö–æ²#à¢ÆFWF–Ç3ãÇ7VÖÖ'’6Æ74æÖSÒ&fÆW‚7W'6÷"×ö–çFW"—FV×2Ö6VçFW"vÓ"föçBÖÖVF—VÒ#ãÅ6†–VÆDÆW'B6Æ74æÖSÒ'6—¦RÓB6‡&–æ²Ó"óäFVF–6FVB–FVçF—F–W2æB&W7G&–7FVBFööÂ66W73Ä6†Wg&öäF÷vâ6Æ74æÖSÒ&ÖÂÖWFò6—¦RÓ2ãR"óãÂ÷7VÖÖ'“ãÇ6Æ74æÖSÒ&×BÓ2#à¢V6‚V×Æ÷–VRæVVG2—G2÷vâÇ7G&öæsæ&Ææ³Â÷7G&öæsâ†W&ÖW2&öf–ÆR†æWfW"6ÆöæRöbâ–çFW&æÂÆ6öFSæ–7V—&RÒ£Âö6öFSâ&öf–ÆR’æB—G2÷vâ’¶W’â†W&ÖW2&öf–ÆW2Föâf÷3·B6æF&÷‚F†RvVçBöâF†P¢Æö6ÂFW&Ö–æÂ&6¶VæBÂ6òF†R÷'FÂöæÇ’Ö&·2âV×Æ÷–VRöæÆ–æRgFW"âWF†VçF–6FVB6&–Æ—F–W26†V6²ÆVÓææCÂöVÓâFööÇ6WG26†V6²6†÷v–æræò6†VÆÂÂf–ÆR÷"6öFRFööÇ2à¢Â÷ãÂöFWF–Ç3à¢Âô6&D6öçFVçCà¢Âô6&Cà¢ÆF—b6Æ74æÖSÒ&w&–BvÓBÖC¦w&–BÖ6öÇ2Ó"†Ã¦w&–BÖ6öÇ2Ó2#à¢¶FFævVçG2æÖ‚†’Óâ°¢6öç7BÖWFÒtTåEô%•ô´U•¶ç&öÆUö¶W•Ó°¢&WGW&â€¢Ä6&B¶W“×¶æ–GÒ6Æ74æÖS×¶6â‚'&VÆF—fR÷fW&fÆ÷rÖ†–FFVâG&ç6—F–öâ†÷fW#¦&÷&FW"×&–Ö'’ó#R"ÂæVæ&ÆVBbb&÷6—G’Ós"—Óà¢ÆF—b&–Ö†–FFVâ6Æ74æÖSÒ&'6öÇWFR–ç6WB×‚ÓF÷Ó‚ÓãR"7G–ÆS×·¶&6¶w&÷VæC¦ÖWFæ66VçG×Òóà¢Ä6&D6öçFVçB6Æ74æÖSÒ'76R×’Ó2BÓR#à¢ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"vÓ2#à¢ÄvVçDfF"&öÆS×¶ÖWFÒ6—¦SÒ&Ær"óà¢ÆF—b6Æ74æÖSÒ&Ö–â×rÓfÆW‚Ó#à¢Ç6Æ74æÖSÒ'G'Væ6FRFW‡BÕ³G…ÒföçB×6VÖ–&öÆB"F—FÆS×¶vVçD–FVçF—G”Æ&VÂ†æF—7Æ•öæÖRÂtTåEô%•ô´U•¶ç&öÆUö¶W•Ò—Óç¶vVçD–FVçF—G”Æ&VÂ†æF—7Æ•öæÖRÂtTåEô%•ô´U•¶ç&öÆUö¶W•Ò—ÓÂ÷à¢ÄvVçE7FGW4&FvR7FGW3×¶æVæ&ÆVBòç7FGW2¢&F—6&ÆVB'Òóà¢ÂöF—cà¢·7WW$FÖ–âbb€¢Å7v—F6€¢6†V6¶VC×¶æVæ&ÆVGĞ¢&–ÖÆ&VÃ×¶G¶æVæ&ÆVBò$F—6&ÆR"¢$Væ&ÆR'ÒG¶ÖWFç6†÷'DæÖWÖĞ¢öä6†V6¶VD6†ævS×²‡b’Óâ6WEÆä6†ævR‡²vVçC¢ÂVæ&ÆVC¢bÒ—Ğ¢óà¢—Ğ¢ÂöF—cà¢Ç6Æ74æÖSÒ'FW‡BÕ³7…ÒÆVF–ær×&VÆ†VBFW‡BÖ×WFVB#ç¶ÖWFçFvÆ–æWÓÂ÷à¢ÆFÂ6Æ74æÖSÒ'76R×’ÓãRFW‡BÕ³7…Ò#à¢ÆF—b6Æ74æÖSÒ&fÆW‚§W7F–g’Ö&WGvVVâvÓ"#à¢ÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#ä†W&ÖW2&öf–ÆSÂöGCà¢ÆFB6Æ74æÖSÒ'G'Væ6FRföçBÖÖöæòFW‡BÕ³'…Ò#ç¶æ†W&ÖW5÷&öf–ÆRóò.(	B'ÓÂöFCà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚§W7F–g’Ö&WGvVVâvÓ"#à¢ÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#ä†÷7CÂöGCà¢ÆFB6Æ74æÖSÒ'G'Væ6FRföçBÖÖöæòFW‡BÕ³'…Ò#ç¶æ†W&ÖW5ö†÷7Bóò.(	B'ÓÂöFCà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚§W7F–g’Ö&WGvVVâvÓ"#à¢ÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#ä6öæf–sÂöGCà¢ÆFCç¶æ6öæf–u÷fW'6–öâòbG¶æ6öæf–u÷fW'6–öçÖ¢$æ÷B6öæf–wW&VB'ÓÂöFCà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚§W7F–g’Ö&WGvVVâvÓ"#à¢ÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#å'Vç2ƒ3B“ÂöGCà¢ÆFB6Æ74æÖSÒ'F'VÆ"ÖçV×2#à¢¶ç'Vç5ó3GĞ¢¶æf–ÆVEó3BâbbÇ7â6Æ74æÖSÒ'FW‡BÖFævW"Ö–æ²#â+r¶æf–ÆVEó3GÒf–ÆVCÂ÷7ãçĞ¢ÂöFCà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚§W7F–g’Ö&WGvVVâvÓ"#à¢ÆGB6Æ74æÖSÒ'FW‡BÖ×WFVB#äÆ7B6†V6³ÂöGCà¢ÆFCç¶æÆ7Eö†VÇF…ö6†V6µöBò&VÆF—fUF–ÖR†æÆ7Eö†VÇF…ö6†V6µöB’¢$æWfW"'ÓÂöFCà¢ÂöF—cà¢ÂöFÃà¢¶æÆ7Eö†VÇF…öFWF–ÂbbÇ6Æ74æÖSÒ'&÷VæFVBÖÆr&r×7W&f6RÓ"‚Ó"ãR’ÓãRFW‡BÕ³'…ÒFW‡BÖ–æ²Ó"#ç¶æÆ7Eö†VÇF…öFWF–ÇÓÂ÷çĞ¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&vÓ"BÓ#à¢Ä'WGFöà¢6—¦SÒ'6Ò ¢f&–çCÒ'6V6öæF'’ ¢öä6Æ–6³×¶7–æ2‚’Óâ°¢6öç7B&W2Òv—B&÷f—6–öæ–æt'VæFÆT7F–öâ†æ–B“°¢–b‡&W2æö²’6WD'VæFÆR‡&W2æFF“°¢VÇ6RFö7BæW'&÷"‡&W2æW'&÷"“°¢×Ğ¢à¢Äf–ÆT6öFS"6Æ74æÖSÒ'6—¦RÓ2ãR"óâ'Væ&öö°¢Âô'WGFöãà¢·7WW$FÖ–âbbæVæ&ÆVBbb€¢Ä'WGFöâ6—¦SÒ'6Ò"f&–çCÒ'6V6öæF'’"öä6Æ–6³×²‚’Óâ6WD6öææV7Df÷"†—Óà¢Ä¶W•&÷VæB6Æ74æÖSÒ'6—¦RÓ2ãR"óâ¶æ†5ö7&VFVçF–Âò%&V6öææV7B"¢$6öææV7B'Ğ¢Âô'WGFöãà¢—Ğ¢¶æ†5ö7&VFVçF–Âbb€¢Ä'WGFöà¢6—¦SÒ'6Ò ¢f&–çCÒ'6V6öæF'’ ¢ÆöF–æs×·VæF–ærÓÓÒ†2ÒG¶æ–GÖĞ¢öä6Æ–6³×²‚’Óâ'Vâ††2ÒG¶æ–GÖÂ‚’Óâ†VÇF„6†V6´7F–öâ†æ–B’Â†B’Óâ†Bbb'7FGW2"–â†B2ö&¦V7B’ò†VÇF‚6†V6³¢G²†B2²7FGW3¢7G&–ærÒ’ç7FGW2ç&WÆ6R‚%ò"Â""—Ö¢$†VÇF‚6†V6²6ö×ÆWFR"’—Ğ¢à¢Å7FWF†÷66÷R6Æ74æÖSÒ'6—¦RÓ2ãR"óâ†VÇF‚6†V6°¢Âô'WGFöãà¢—Ğ¢ÂöF—cà¢Âô6&D6öçFVçCà¢Âô6&Cà¢“°¢Ò—Ğ¢ÂöF—cà ¢Ä6&Cà¢Ä6&D†VFW#à¢ÆF—cà¢Ä6&EF—FÆSå&÷f—6–öæ–ær&WVW7G3Âô6&EF—FÆSà¢Ä6&DFW67&—F–öãå&öf–ÆR6WGWW6W2â—6öÆFVB†÷7Bv÷&¶W"öæÇ’gFW"—G26Æ–VçBÖöæÇ’vFWv’76W2&Wf–Wrâ6öæf–wW&F–öâ7–æ2¦ö'2WFFR&öf–ÆW27&VFVB'’F†Bv÷&¶W#²W†—7F–ærÖçVÆÇ’6öææV7FVB&öf–ÆW2&VÖ–âöâF†RvVæ7’'Væ&öö²ãÂô6&DFW67&—F–öãà¢ÂöF—cà¢Âô6&D†VFW#à¢Ä6&D6öçFVçCà¢¶FFç&÷f—6–öæ–æræÆVæwF‚ÓÓÒò€¢Ç6Æ74æÖSÒ'’ÓBFW‡BÕ³G…ÒFW‡BÖ×WFVB#äæò&÷f—6–öæ–ær&WVW7G2ãÂ÷à¢’¢€¢ÇVÂ6Æ74æÖSÒ&F—f–FR×’F—f–FRÖÆ–æR#à¢¶FFç&÷f—6–öæ–æræÖ‚†¢’Óâ€¢ÆÆ’¶W“×¶¢æ–GÒ6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2Ö6VçFW"vÓ2’Ó"ãRFW‡BÕ³G…Ò#à¢Ç7â6Æ74æÖSÒ&föçBÖÖVF—VÒ#ç´tTåEô%•ô´U•¶¢ævVçE÷&öÆUÒç6†÷'DæÖWÓÂ÷7ãà¢¶¢æ¶–æBÓÓÒ'7–æ2"bbÄ&FvRFöæSÒ&æWWG&Â#ä6öæf–wW&F–öâ7–æ7¶¢æ6öæf–u÷fW'6–öâò"b"²¢æ6öæf–u÷fW'6–öâ¢"'ÓÂô&FvSçĞ¢Ä&FvRFöæS×¶¢ç7FGW2ÓÓÒ'7V66VVFVB"ò'7V66W72"¢¢ç7FGW2ÓÓÒ&f–ÆVB"ò&FævW""¢¢ç7FGW2ÓÓÒ'&WVW7FVB"ò'v&æ–ær"¢'&–Ö'’'Óç·6VçFVæ6T66R†¢ç7FGW2—ÓÂô&FvSà¢Ç7â6Æ74æÖSÒ&Ö–â×rÓfÆW‚ÓG'Væ6FRFW‡BÖ×WFVB#ç¶¢æFWF–Âóò"'×¶¢æGFV×Eö6÷VçBâò+rGFV×BG¶¢æGFV×Eö6÷VçGÒó6¢"'ÓÂ÷7ãà¢Ç7â6Æ74æÖSÒ'FW‡BÕ³'…ÒFW‡BÖf–çB#ç·&VÆF—fUF–ÖR†¢æ7&VFVEöB—ÓÂ÷7ãà¢¶¢æ¶–æBÓÒ'7–æ2"bb†¢ç7FGW2ÓÓÒ'&WVW7FVB"ÇÂ†¢ç7FGW2ÓÓÒ&f–ÆVB"bb¢æGFV×Eö6÷VçBÂ2bb‚¢ææW‡E÷&WG'•öBÇÂæWrFFR†¢ææW‡E÷&WG'•öB’ÃÒæWrFFR‚’’’ÇÂ†¢ç7FGW2ÓÓÒ&–å÷&öw&W72"bb¢æÆV6UöW‡—&W5öBbbæWrFFR†¢æÆV6UöW‡—&W5öB’ÃÒæWrFFR‚’’’bb€¢Ä'WGFöâ6—¦SÒ'6Ò"f&–çCÒ&v†÷7B"öä6Æ–6³×²‚’Óâ'Vâ†¦ö"ÒG¶¢æ–GÖÂ‚’ÓâWFFU&÷f—6–öæ–æt¦ö$7F–öâ†FFæ÷&ræ–BÂ¢æ–BÂ&–å÷&öw&W72"’Â$ÖçVÂ6WGWGFV×B&V6÷&FVB"—Óà¢ÅÆ”6—&6ÆR6Æ74æÖSÒ'6—¦RÓ2ãR"óâ¶¢ç7FGW2ÓÓÒ'&WVW7FVB"ò$&Vv–âÖçVÂ6WGW"¢%&WG'’ÖçVÂ6WGW'Ğ¢Âô'WGFöãà¢—Ğ¢¶¢ç7FGW2ÓÓÒ&f–ÆVB"bb¢æGFV×Eö6÷VçBÂ2bb¢ææW‡E÷&WG'•öBbbæWrFFR†¢ææW‡E÷&WG'•öB’âæWrFFR‚’bbÇ7â6Æ74æÖSÒ'FW‡BÕ³'…ÒFW‡BÖ×WFVB#å&WG'’·&VÆF—fUF–ÖR†¢ææW‡E÷&WG'•öB—ÓÂ÷7ãçĞ¢¶¢æ—5öÆFW7Bbb&÷f—6–öæ–æt¦ö$VæFVB†¢’bb€¢Ä'WGFöâ6—¦SÒ'6Ò"f&–çCÒ'6V6öæF'’"öä6Æ–6³×²‚’Óâ6WE&WVWVTf÷"†¢—Óà¢Å&÷FFT67r6Æ74æÖSÒ'6—¦RÓ2ãR"óâ&WVWVRv—F‚&V6öà¢Âô'WGFöãà¢—Ğ¢¶¢æ—5öÆFW7Bbb&÷f—6–öæ–æt¦ö$6æ6VÆÆ&ÆR†¢’bb€¢Ä'WGFöâ6—¦SÒ'6Ò"f&–çCÒ&v†÷7B"ÆöF–æs×·VæF–ærÓÓÒ6æ6VÂÒG¶¢æ–GÖÒöä6Æ–6³×²‚’Óâ'Vâ†6æ6VÂÒG¶¢æ–GÖÂ‚’ÓâWFFU&÷f—6–öæ–æt¦ö$7F–öâ†FFæ÷&ræ–BÂ¢æ–BÂ&6æ6VÆÆVB"’Â%&WVW7B6æ6VÆÆVB"—Óà¢Å„6—&6ÆR6Æ74æÖSÒ'6—¦RÓ2ãR"óâ6æ6VÂ&WVW7@¢Âô'WGFöãà¢—Ğ¢¶¢æ†—7F÷'’æÆVæwF‚âbb€¢ÇVÂ6Æ74æÖSÒ&&6—2ÖgVÆÂ76R×’ÓãRÂÓFW‡BÕ³'…ÒFW‡BÖ×WFVB"&–ÖÆ&VÃÒ%&V6VçBGFV×G2#à¢¶¢æ†—7F÷'’æÖ‚†RÂ’’Óâ€¢ÆÆ’¶W“×¶—Óç·&÷f—6–öæ–ætWfVçDÆ&VÂ†R—ÒÇ7â6Æ74æÖSÒ'FW‡BÖf–çB#ì+r·&VÆF—fUF–ÖR†RæB—ÓÂ÷7ããÂöÆ“à¢’—Ğ¢Â÷VÃà¢—Ğ¢ÂöÆ“à¢’—Ğ¢Â÷VÃà¢—Ğ¢Âô6&D6öçFVçCà¢Âô6&Cà ¢Ä6öææV7DF–Æör¶W“×¶6öææV7Df÷#òæ–Bóò&æöæR'ÒvVçC×¶6öææV7Df÷'Òöä6Æ÷6S×²‚’Óâ6WD6öææV7Df÷"†çVÆÂ—Òóà¢Ä'VæFÆTF–Æör'VæFÆS×¶'VæFÆWÒöä6Æ÷6S×²‚’Óâ6WD'VæFÆR†çVÆÂ—Òóà¢Å&WVWVTF–Æör¶W“×·&WVWVTf÷#òæ–Bóò&æöæR'Ò÷&t–C×¶FFæ÷&ræ–GÒ¦ö#×·&WVWVTf÷'Òöä6Æ÷6S×²‚’Óâ6WE&WVWVTf÷"†çVÆÂ—Òóà¢ÅÆä6†ævTF–Æör¶W“×·Æä6†ævRòG·Æä6†ævRævVçBæ–GÒÒG·Æä6†ævRæVæ&ÆVGÖ¢&æöæR'Ò÷&t–C×¶FFæ÷&ræ–GÒ6†ævS×·Æä6†ævWÒöä6Æ÷6S×²‚’Óâ6WEÆä6†ævR†çVÆÂ—Òóà¢ÂöF—cà¢“°§Ğ ¢ò¢¢v†BÆâ6†ævRF–BÂ–âv÷&G2F†BFòæ÷B6Æ–ÒÖ÷&RF†â†VæVC¢VWVVB&WVW7B—2æ÷Bv÷&¶–ærV×Æ÷–VRâ¢ğ¦gVæ7F–öâÆä6†ævU7VÖÖ'’†C¢²6öæf–wW&F–öã¢7G&–æs²&÷f—6–öæ–æs¢7G&–æs²7–æ5VWVVC¢&ööÆVã²6æ6VÆÆVD¦ö'3¢çVÖ&W#²'Vææ–æt¦ö'3¢çVÖ&W"ÒÂçVÆÂÂVæFVf–æVBÂVæ&ÆVC¢&ööÆVâ“¢7G&–ær°¢–b‚B’&WGW&âVæ&ÆVBò$V×Æ÷–VRVæ&ÆVB"¢$V×Æ÷–VRF—6&ÆVB#°¢–b‚Væ&ÆVB’°¢6öç7B7F÷VBÒBæ6æ6VÆÆVD¦ö'2òG¶Bæ6æ6VÆÆVD¦ö'7Ò6WGW&WVW7BG¶Bæ6æ6VÆÆVD¦ö'2ÓÓÒò""¢'2'Ò6æ6VÆÆVF¢$æò6WGW&WVW7Bv2v—F–ær#°¢&WGW&âV×Æ÷–VR&VÖ÷fVBg&öÒF†RÆââG·7F÷VGÒG¶Bç'Vææ–æt¦ö'2ò²G¶Bç'Vææ–æt¦ö'7ÒÇ&VG’7F'FVBæBv–ÆÂf–æ—6‚f—'7F¢"'Òæ°¢Ğ¢6öç7B6öæf–rÒBæ6öæf–wW&F–öâÓÓÒ&'V–ÇB"ò$6öæf–wW&VBg&öÒF†R6Æ–VçBw26öæf—&ÖVBç7vW'2â"¢Bæ6öæf–wW&F–öâÓÓÒ&†VÆB"ò$—G26öæf–wW&F–öâ—2v—F–ærf÷"&Wf–Wrâ"¢Bæ6öæf–wW&F–öâÓÓÒ'v—F–æuöf÷%ö6Æ–VçB"ò$æ÷B6öæf–wW&VB–WC¢F†R6Æ–VçB†26ö×ç’6†ævW2F†W’†fRæ÷B&÷fVBâ"¢Bæ6öæf–wW&F–öâÓÓÒ&æ÷EöæVVFVB"ò%F†R6Æ–VçB†2æ÷Bf–æ—6†VBF†RVW7F–öææ—&RÂ6ò—B—26öæf–wW&VBv†VâF†W’Fòâ"¢"#°¢6öç7B6WGWÒBç&÷f—6–öæ–ærÓÓÒ'&WVW7FVB"ò%6WGW&WVW7FVBâ"¢Bç&÷f—6–öæ–ærÓÓÒ&Ç&VG•ö÷Vâ"ò%6WGWv2Ç&VG’&WVW7FVBâ"¢Bç&÷f—6–öæ–ærÓÓÒ'v—F–æuöf÷%÷–ÖVçB"ò%6WGWv—G2f÷"F†R6WGW–ÖVçBâ"¢Bç7–æ5VWVVBò%&öf–ÆRWFFRVWVVBâ"¢"#°¢&WGW&â²$V×Æ÷–VRFFVBFòF†RÆââ"Â6öæf–rÂ6WGWÒæf–ÇFW"„&ööÆVâ’æ¦ö–â‚""“°§Ğ ¦gVæ7F–öâÆä6†ævTF–Æör‡²÷&t–BÂ6†ævRÂöä6Æ÷6RÓ¢²÷&t–C¢7G&–æs²6†ævS¢²vVçC¢FWF–Å²&vVçG2%Õ¶çVÖ&W%Ó²Væ&ÆVC¢&ööÆVâÒÂçVÆÃ²öä6Æ÷6S¢‚’Óâfö–BÒ’°¢6öç7B²'VâÂVæF–ærÒÒW6T7F–öâ‚“°¢6öç7B·&V6öâÂ6WE&V6öåÒÒ&V7BçW6U7FFR‚""“°¢6öç7BæÖRÒ6†ævRòtTåEô%•ô´U•¶6†ævRævVçBç&öÆUö¶W•Òç6†÷'DæÖR¢"#°¢&WGW&â€¢ÄF–Æöp¢÷Vã×´&ööÆVâ†6†ævR—Ğ¢öä÷Vä6†ævS×²†ò’Óâòbböä6Æ÷6R‚—Ğ¢F—FÆS×¶6†ævRòG¶6†ævRæVæ&ÆVBò$FB"¢%&VÖ÷fR'ÒG¶æÖWÒG¶6†ævRæVæ&ÆVBò'Fò"¢&g&öÒ'ÒF†RÆãö¢$6†ævRF†RÆâ'Ğ¢FW67&—F–öã×¶6†ævSòæVæ&ÆV@¢ò$öæ6RF†R6Æ–VçB†2f–æ—6†VBF†RVW7F–öææ—&RÂF†RV×Æ÷–VR—26öæf–wW&VBg&öÒF†V—"6öæf—&ÖVBç7vW'2æB—G26WGW—2&WVW7FVB†—B7F–ÆÂv—G2f÷"F†R6WGW–ÖVçB’âæ÷F†–ær—27v—F6†VBöâf÷"7W7FöÖW'2â ¢¢%6WGW&WVW7G2F†BvW&RöæÇ’&WVW7FVB&R6æ6VÆÆVC²öæRF†Rv÷&¶W"Ç&VG’7F'FVBf–æ—6†W2f—'7Bâ6öçfW'6F–öç2æB¶æ÷vÆVFvR&R¶WBâF†R6Æ–VçBw2÷væW'2&RFöÆBâ'Ğ¢fö÷FW#×°¢Ãà¢Ä'WGFöâf&–çCÒ'6V6öæF'’"öä6Æ–6³×¶öä6Æ÷6WÓä6æ6VÃÂô'WGFöãà¢Ä'WGFöà¢f&–çC×¶6†ævSòæVæ&ÆVBò&'&æB"¢&FævW"'Ğ¢F—6&ÆVC×·&V6öâçG&–Ò‚’æÆVæwF‚ÂWĞ¢ÆöF–æs×·VæF–ærÓÓÒ'ÆâÖ6†ævR'Ğ¢öä6Æ–6³×¶7–æ2‚’Óâ°¢–b‚6†ævR’&WGW&ã°¢6öç7BVæ&ÆVBÒ6†ævRæVæ&ÆVC°¢6öç7Bö²Òv—B'Vâ‚'ÆâÖ6†ævR"Â‚’Óâ6WDvVçDVæ&ÆVD7F–öâ†÷&t–BÂ6†ævRævVçBæ–BÂVæ&ÆVBÂ&V6öâ’Â†B’ÓâÆä6†ævU7VÖÖ'’†BÂVæ&ÆVB’“°¢–b†ö²’öä6Æ÷6R‚“°¢×Ğ¢à¢¶6†ævSòæVæ&ÆVBò$FBFòÆâ"¢%&VÖ÷fRg&öÒÆâ'Ğ¢Âô'WGFöãà¢Âóà¢Ğ¢à¢Äf–VÆBÆ&VÃÒ%&V6öâ†¶WB–âF†RVF—BÆörÂæ÷B6†÷vâFòF†R6Æ–VçB’"‡FÖÄf÷#Ò'ÆâÖ6†ævR×&V6öâ#à¢ÅFW‡F&V–CÒ'ÆâÖ6†ævR×&V6öâ"fÇVS×·&V6öçÒöä6†ævS×²†R’Óâ6WE&V6öâ†RçF&vWBçfÇVR—ÒÖ„ÆVæwFƒ×³SÒ&÷w3×³7Òóà¢Âôf–VÆCà¢ÂôF–Æösà¢“°§Ğ ¦gVæ7F–öâ6öææV7DF–Æör‡²vVçBÂöä6Æ÷6RÓ¢²vVçC¢FWF–Å²&vVçG2%Õ¶çVÖ&W%ÒÂçVÆÃ²öä6Æ÷6S¢‚’Óâfö–BÒ’°¢6öç7B&÷WFW"ÒW6U&÷WFW"‚“°¢6öç7B¶&6UW&ÂÂ6WD&6UW&ÅÒÒ&V7BçW6U7FFR‚""“°¢òò&VÖ÷VçFVBW"vVçB†¶W–VB'’F†R&VçB’Â6òF†Rf÷&ÒÇv—27F'G2g&öÒF†BvVçBw2fÇVW2à¢6öç7B·&öf–ÆRÂ6WE&öf–ÆUÒÒ&V7BçW6U7FFR†vVçCòæ†W&ÖW5÷&öf–ÆRóò""“°¢6öç7B¶”¶W’Â6WD”¶W•ÒÒ&V7BçW6U7FFR‚""“°¢6öç7B·VæF–ærÂ6WEVæF–æuÒÒ&V7BçW6U7FFR†fÇ6R“°¢&WGW&â€¢ÄF–Æöp¢÷Vã×´&ööÆVâ†vVçB—Ğ¢öä÷Vä6†ævS×²†ò’Óâòbböä6Æ÷6R‚—Ğ¢F—FÆS×¶6öææV7BG¶vVçBòtTåEô%•ô´U•¶vVçBç&öÆUö¶W•Òç6†÷'DæÖR¢"'ÖĞ¢FW67&—F–öãÒ%F†R¶W’—2Væ7'—FVBB&W7BæBæWfW"6†÷vâv–ââF†R÷'FÂ'Vç2âWF†VçF–6FVB†VÇF‚6†V6²–ÖÖVF–FVÇ’â ¢fö÷FW#×°¢öóKh‘éì¶»§q«^tÜ[ˆÛ\ÜÓ˜[YOH^VÌLœH^[]]Y•H^[™XYH\›İ™Yİ^\È[ˆ\ÙH[[[İHXÚYKÜÜ[‚ˆÚËœš\Ú×Ù›YÜË›X\
+"use client";
 
-ŠHOˆ
-ˆ˜YÙHÙ^O^ÙŸHÛ™OHØ\›š[™È‚ˆÙ‹œ™\XÙJ×ËÙËˆŠ_BˆĞ˜YÙO‚ˆ
-J_BˆÙ]‚ˆ™HÛ\ÜÓ˜[YOHœØÜ›Û˜\‹][ˆX^ZMİ™\™›İËX]]ÈÚ]\ÜXÙK\™K]Ü˜\›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ^VÌLÜHÚË˜ÛÛ[OÜ™O‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Ø\Lˆ‚ˆ]ÛˆÚ^™OHœÛHˆ\ØX›Y^ÈXØ[‘XÚY_HÛÛXÚÏ^Ê
-HOˆ[ŠËIÚËœÙXİ[ÛŸX
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { motion } from "motion/react";
+import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, Lock, MessagesSquare, PlayCircle, RefreshCw, RotateCcw, ShieldAlert, XCircle, Stethoscope, UserPlus } from "lucide-react";
+import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
+import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
+import { PageHero } from "@/components/ui/workspace";
+import { ConfigReviewCard } from "@/components/admin/config-review-card";
+import { RuntimeControls, type RuntimeControlsData } from "@/components/admin/runtime-controls";
+import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
+import {
+  assignStaffAction,
+  connectHermesAction,
+  decideHeldDocumentAction,
+  decideHeldEmployeeNoteAction,
+  decideHeldKnowledgeAction,
+  healthCheckAction,
+  inviteClientUserAction,
+  provisioningBundleAction,
+  requeueProvisioningAction,
+  revokeInvitationAction,
+  setAgentEnabledAction,
+  setGhlMappingAction,
+  setTenantStatusAction,
+  syncGhlAction,
+  updateBillingAction,
+  updateProvisioningJobAction,
+  updateUsageLimitsAction,
+  verifyGhlAction,
+} from "@/app/(admin)/admin/actions";
+import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
+import { setupStatusCopy } from "@/lib/billing-clearance";
+import type { AgencyPaymentView } from "@/server/billing/payments-view";
+import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
+import type { ProvisioningBundle } from "@/server/workforce/provisioning";
+import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
+import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
 
-HOˆXÚYR[Û›İÛYÙPXİ[ÛŠ]K›Ü™ËšYËœÙXİ[Û‹YJK\›İ™YŠ_O‚ˆ\›İ™BˆĞ]Û‚ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[HœÙXÛÛ™\Hˆ\ØX›Y^ÈXØ[‘XÚY_HÛÛXÚÏ^Ê
-HOˆ[ŠÜ‹IÚËœÙXİ[ÛŸX
+type Detail = TenantDetail;
 
-HOˆXÚYR[Û›İÛYÙPXİ[ÛŠ]K›Ü™ËšYËœÙXİ[Û‹˜[ÙJK”™Z™XİYŠ_O‚ˆ™Z™XİˆĞ]Û‚ˆÙ]‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆ
-J_BˆÙ]Kš[›İ\Ë›X\
+function useAction() {
+  const router = useRouter();
+  const [pending, setPending] = React.useState<string | null>(null);
+  const run = async <T,>(key: string, fn: () => Promise<{ ok: true; data?: T } | { ok: false; error: string }>, success?: string | ((d: T | undefined) => string)) => {
+    setPending(key);
+    try {
+    const res = await fn();
+    setPending(null);
+    if (!res.ok) {
+      toast.error(res.error);
+      return null;
+    }
+    if (success) toast.success(typeof success === "function" ? success(res.data) : success);
+    router.refresh();
+    return res;
+    } catch { toast.error("The change could not be saved. Please try again.");return null; }
+    finally {setPending(null);}
+  };
+  return { pending, run };
+}
 
-ŠHOˆ
-ˆØ\™Ù^O^Û‹šYO‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KLÈMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆÛ\ÜÓ˜[YOH^VÌMH›Û\Ù[ZX›Û‘[\ŞYYH›İH0­ÈĞQÑS•Ğ–WÒÑVVÛ‹˜YÙ[Ü›ÛWOËœÚÜ˜[YHÏÈÙ[[˜ÙPØ\ÙJ‹˜YÙ[Ü›ÛJ_H0­ÈÛ‹]_OÜ‚ˆÛ‹œš\Ú×Ù›YÜË›X\
+export function ClientDetail({ data, superAdmin, initialTab, timeZone, runtime = null }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string; runtime?: RuntimeControlsData | null }) {
+  const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
+  const held = data.heldVersions.length + data.heldKnowledge.length + data.heldNotes.length + data.heldDocuments.length;
+  // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
+  const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
+  return (
+    <div className="module-stack">
+        <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink">
+          <ArrowLeft className="size-3.5" /> Clients
+        </Link>
+        <PageHero eyebrow="Client workspace" icon={<Building2 className="size-5"/>} title={data.org.name} description={<span>{data.org.industry??"Industry not set"} Â· {data.org.timezone.replaceAll("_"," ")}<span className="mt-1 block text-xs">Registered {formatDate(data.org.created_at,timeZone)} Â· Private, tenant-scoped workspace</span></span>} aside={<div className="flex items-center gap-4"><span className="grid size-16 place-items-center rounded-2xl border border-primary/15 bg-surface/70 text-xl font-semibold text-primary-ink">{initials(data.org.name)}</span><div className="space-y-2"><Badge tone={data.org.status === "active" ? "success" : data.org.status === "suspended" ? "danger" : "primary"}>{sentenceCase(data.org.status)}</Badge>{data.org.is_demo&&<div><Badge tone="violet">Demo data</Badge></div>}</div></div>} action={<><ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
+            <ClipboardCheck className="size-4" /> Setup manager
+          </ButtonLink>
+          {superAdmin&&ownerInvite&&<ResendInvitationButton orgId={data.org.id} invitation={ownerInvite} label="Resend invite" />}
+          <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/communications`} variant="secondary" size="sm"><MessagesSquare className="size-4" /> Messaging channels</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="ghost" size="sm">Readiness review</ButtonLink>{superAdmin&&<ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="ghost" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}</>}><dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[{label:"Client team",value:data.members.filter(m=>m.status==="active").length},{label:"Enabled profile records",value:data.agents.filter(a=>a.enabled).length},{label:"Awaiting review",value:held},{label:"Assigned agency staff",value:data.staff.filter(s=>s.assigned).length}].map(s=><div key={s.label}><dt className="text-xs text-muted">{s.label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-ink">{s.value}</dd></div>)}</dl></PageHero>
+      <Tabs
+        id="client-tabs"
+        value={tab}
+        onValueChange={setTab}
+        items={[
+          { value: "overview", label: "Overview" },
+          { value: "workforce", label: "Partner & retained profiles" },
+          { value: "reviews", label: "Reviews", count: held || undefined },
+          { value: "integrations", label: "Integrations" },
+          { value: "usage", label: "Usage & limits" },
+          { value: "billing", label: "Billing" },
+          { value: "team", label: "Team & staff" },
+        ]}
+      >
+      <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
+      {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
+      {tab === "workforce" && (
+        <div className="space-y-6">
+          <WorkforceTab data={data} superAdmin={superAdmin} />
+          {/* Only ever given something for a Super Admin looking at a real client workspace (the page decides on the server); it renders nothing otherwise. */}
+          <RuntimeControls data={runtime} />
+        </div>
+      )}
+      {tab === "reviews" && <ReviewsTab data={data} timeZone={timeZone} canDecide={data.access.workforceManage} />}
+      {tab === "integrations" && <IntegrationsTab data={data} superAdmin={superAdmin} />}
+      {tab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
+      {tab === "billing" && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
+      {tab === "team" && <TeamTab data={data} superAdmin={superAdmin} />}
+      </motion.div>
+      </Tabs>
+    </div>
+  );
+}
 
-ŠHOˆ
-ˆ˜YÙHÙ^O^ÙŸHÛ™OHØ\›š[™È‚ˆÙ‹œ™\XÙJ×ËÙËˆŠ_BˆĞ˜YÙO‚ˆ
-J_BˆÙ]‚ˆ™HÛ\ÜÓ˜[YOHœØÜ›Û˜\‹][ˆX^ZMİ™\™›İËX]]ÈÚ]\ÜXÙK\™K]Ü˜\›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ^VÌLÜHÛ‹˜ÛÛ[OÜ™O‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Ø\Lˆ‚ˆ]ÛˆÚ^™OHœÛHˆ\ØX›Y^ÈXØ[‘XÚY_HÛÛXÚÏ^Ê
-HOˆ[Š‹IÛ‹šYX
+function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+  const { run, pending } = useAction();
+  const [reason, setReason] = React.useState("");
+  const [confirm, setConfirm] = React.useState(false);
+  const online = data.agents.filter((a) => a.enabled && a.status === "online").length;
+  const enabled = data.agents.filter((a) => a.enabled).length;
+  return (
+    <div className="grid gap-6 lg:grid-cols-3">
+      <Card className="lg:col-span-2 overflow-hidden">
+        <CardHeader>
+          <div>
+            <CardTitle>Workspace essentials</CardTitle>
+            <CardDescription>The key account milestones recorded for this client.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[
+            ["Owner accepted invitation", data.members.some((m) => m.role === "owner")],
+            ["Onboarding completed", Boolean(data.org.onboarding_completed_at)],
+            [`Employees online (${online}/${enabled})`, enabled > 0 && online === enabled],
+            ["CRM location verified", data.ghl?.status === "connected"],
+            ["Setup fee paid or waived", ["paid", "waived"].includes(data.billing?.setup_payment_status ?? "")],
+          ].map(([label, done]) => (
+            <div key={String(label)} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 text-[14px]",done?"border-success/15 bg-success-soft/35":"border-line bg-surface-2/50")}>
+              {done ? <CheckCircle2 className="size-5 text-success" /> : <span className="size-5 shrink-0 rounded-full border-2 border-line-strong" />}
+              <span className={done ? "text-ink" : "text-muted"}>{label}</span>
+              <span className="ml-auto text-[12px] text-muted">{done?"Recorded":"Pending"}</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      <Card className="border-primary/15 bg-primary-soft/20">
+        <CardHeader>
+          <div>
+            <CardTitle>Workspace access</CardTitle>
+            <CardDescription>Suspending blocks every client user immediately.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {data.org.status === "suspended" ? (
+            <>
+              <p className="rounded-xl bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">Suspended: {data.org.suspended_reason}</p>
+              {superAdmin && (
+                <Button className="w-full" loading={pending === "reactivate"} onClick={() => run("reactivate", () => setTenantStatusAction(data.org.id, "active"), "Workspace reactivated")}>
+                  Reactivate workspace
+                </Button>
+              )}
+            </>
+          ) : superAdmin ? (
+            <Button variant="outline" className="w-full text-danger-ink" onClick={() => setConfirm(true)}>
+              <Ban className="size-4" /> Suspend access
+            </Button>
+          ) : (
+            <p className="text-[14px] text-muted">Only super admins can suspend workspaces.</p>
+          )}
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-3">
+        <CardHeader>
+          <div>
+            <CardTitle>Recent failed AI runs</CardTitle>
+            <CardDescription>Sanitized execution status only â€” message content is private to the client.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.failedRuns.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border border-success/15 bg-success-soft/30 p-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success-soft text-success-ink"><CheckCircle2 className="size-5"/></span><div><p className="text-sm font-medium text-ink">No failed runs recorded.</p><p className="mt-1 text-xs text-muted">Execution issues will appear here with sanitized diagnostics when they occur.</p></div></div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.failedRuns.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
+                  <span className="font-medium">{AGENT_BY_KEY[r.agent_role].shortName}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{r.error_message ?? r.error_code}</span>
+                  <span className="text-[12px] text-faint">{r.finished_at ? relativeTime(r.finished_at) : ""}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+      <Dialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={`Suspend ${data.org.name}?`}
+        description="Client users lose access until the workspace is reactivated. Data is kept."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!reason.trim()}
+              loading={pending === "suspend"}
+              onClick={async () => {
+                const ok = await run("suspend", () => setTenantStatusAction(data.org.id, "suspended", reason), "Workspace suspended");
+                if (ok) setConfirm(false);
+              }}
+            >
+              Suspend
+            </Button>
+          </>
+        }
+      >
+        <Field label="Reason (visible to agency staff)" htmlFor="suspend-reason">
+          <Textarea id="suspend-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+        </Field>
+      </Dialog>
+    </div>
+  );
+}
 
-HOˆXÚYR[[\ŞYYS›İPXİ[ÛŠ]K›Ü™ËšY‹šYYJK\›İ™YŠ_O‚ˆ\›İ™BˆĞ]Û‚ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[HœÙXÛÛ™\Hˆ\ØX›Y^ÈXØ[‘XÚY_HÛÛXÚÏ^Ê
-HOˆ[Šœ‹IÛ‹šYX
+function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+  const { run, pending } = useAction();
+  const [connectFor, setConnectFor] = React.useState<Detail["agents"][number] | null>(null);
+  const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
+  const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
+  const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
+  return (
+    <div className="space-y-6">
+      {data.growthPartner && (
+        <Card className="border-primary/25 bg-primary-soft/20">
+          <CardHeader>
+            <div>
+              <CardTitle>AI Growth Partner</CardTitle>
+              <CardDescription>Tenant-scoped partner runtime and Business Brain status. Conversation content stays private to the client workspace.</CardDescription>
+            </div>
+            <Badge tone={data.growthPartner.status === "configured" ? "success" : data.growthPartner.status === "paused" ? "warning" : "neutral"}>
+              {data.growthPartner.status.replaceAll("_", " ")}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <dl className="grid gap-3 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+              <div><dt className="text-muted">Runtime</dt><dd className="mt-1 font-medium">{data.growthPartner.runtime_agent_instance_id ? data.growthPartner.enabled ? data.growthPartner.runtime_status ?? "Unknown" : "Disabled" : "Not bound"}</dd></div>
+              <div><dt className="text-muted">Hermes profile</dt><dd className="mt-1 truncate font-mono text-[12px]">{data.growthPartner.hermes_profile ?? "Not connected"}</dd></div>
+              <div><dt className="text-muted">Business Brain</dt><dd className="mt-1 font-medium">{data.growthPartner.current_version ? `Active v${data.growthPartner.current_version}` : data.growthPartner.latest_version ? `Draft v${data.growthPartner.latest_version}` : "Not prepared"}</dd></div>
+              <div><dt className="text-muted">Runs Â· 30 days</dt><dd className="mt-1 font-medium">{data.growthPartner.runs_30d}{data.growthPartner.failed_30d > 0 ? ` Â· ${data.growthPartner.failed_30d} failed` : ""}</dd></div>
+            </dl>
+            {data.growthPartner.last_health_detail && <p className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink-2">{data.growthPartner.last_health_detail}</p>}
+            <p className="text-[12px] text-muted">Last partner conversation activity: {data.growthPartner.last_message_at ? relativeTime(data.growthPartner.last_message_at) : "No messages yet"}. This view contains status only and does not open the client conversation.</p>
+          </CardContent>
+        </Card>
+      )}
+      <Card className="border-primary/20 bg-primary-soft/30">
+        <CardContent className="pt-5 text-[14px] leading-relaxed text-primary-ink">
+          <details><summary className="flex cursor-pointer items-center gap-2 font-medium"><ShieldAlert className="size-4 shrink-0" />Dedicated identities and restricted tool access<ChevronDown className="ml-auto size-3.5"/></summary><p className="mt-3">
+            Each employee needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
+            local terminal backend, so the portal only marks an employee online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
+          </p></details>
+        </CardContent>
+      </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {data.agents.map((a) => {
+          const meta = AGENT_BY_KEY[a.role_key];
+          return (
+            <Card key={a.id} className={cn("relative overflow-hidden transition hover:border-primary/25",!a.enabled && "opacity-70")}>
+              <div aria-hidden className="absolute inset-x-0 top-0 h-0.5" style={{background:meta.accent}}/>
+              <CardContent className="space-y-3 pt-5">
+                <div className="flex items-center gap-3">
+                  <AgentAvatar role={meta} size="lg" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-semibold" title={agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}>{agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}</p>
+                    <AgentStatusBadge status={a.enabled ? a.status : "disabled"} />
+                  </div>
+                  {superAdmin && (
+                    <Switch
+                      checked={a.enabled}
+                      aria-label={`${a.enabled ? "Disable" : "Enable"} ${meta.shortName}`}
+                      onCheckedChange={(v) => setPlanChange({ agent: a, enabled: v })}
+                    />
+                  )}
+                </div>
+                <p className="text-[13px] leading-relaxed text-muted">{meta.tagline}</p>
+                <dl className="space-y-1.5 text-[13px]">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Hermes profile</dt>
+                    <dd className="truncate font-mono text-[12px]">{a.hermes_profile ?? "â€”"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Host</dt>
+                    <dd className="truncate font-mono text-[12px]">{a.hermes_host ?? "â€”"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Config</dt>
+                    <dd>{a.config_version ? `v${a.config_version}` : "Not configured"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Runs (30d)</dt>
+                    <dd className="tabular-nums">
+                      {a.runs_30d}
+                      {a.failed_30d > 0 && <span className="text-danger-ink"> Â· {a.failed_30d} failed</span>}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Last check</dt>
+                    <dd>{a.last_health_check_at ? relativeTime(a.last_health_check_at) : "Never"}</dd>
+                  </div>
+                </dl>
+                {a.last_health_detail && <p className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] text-ink-2">{a.last_health_detail}</p>}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      const res = await provisioningBundleAction(a.id);
+                      if (res.ok) setBundle(res.data);
+                      else toast.error(res.error);
+                    }}
+                  >
+                    <FileCode2 className="size-3.5" /> Runbook
+                  </Button>
+                  {superAdmin && a.enabled && (
+                    <Button size="sm" variant="secondary" onClick={() => setConnectFor(a)}>
+                      <KeyRound className="size-3.5" /> {a.has_credential ? "Reconnect" : "Connect"}
+                    </Button>
+                  )}
+                  {a.has_credential && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={pending === `hc-${a.id}`}
+                      onClick={() => run(`hc-${a.id}`, () => healthCheckAction(a.id), (d) => (d && "status" in (d as object) ? `Health check: ${(d as { status: string }).status.replace("_", " ")}` : "Health check complete"))}
+                    >
+                      <Stethoscope className="size-3.5" /> Health check
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
-HOˆXÚYR[[\ŞYYS›İPXİ[ÛŠ]K›Ü™ËšY‹šY˜[ÙJK”™Z™XİYŠ_O‚ˆ™Z™XİˆĞ]Û‚ˆÙ]‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆ
-J_BˆÙ]Kš[Øİ[Y[Ë›X\
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Provisioning requests</CardTitle>
+            <CardDescription>Profile setup uses an isolated host worker only after its client-only gateway passes review. Configuration sync jobs update profiles created by that worker; existing manually connected profiles remain on the agency runbook.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.provisioning.length === 0 ? (
+            <p className="py-4 text-[14px] text-muted">No provisioning requests.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.provisioning.map((j) => (
+                <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[14px]">
+                  <span className="font-medium">{AGENT_BY_KEY[j.agent_role].shortName}</span>
+                  {j.kind === "sync" && <Badge tone="neutral">Configuration sync{j.config_version ? " v" + j.config_version : ""}</Badge>}
+                  <Badge tone={j.status === "succeeded" ? "success" : j.status === "failed" ? "danger" : j.status === "requested" ? "warning" : "primary"}>{sentenceCase(j.status)}</Badge>
+                  <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}{j.attempt_count > 0 ? ` Â· Attempt ${j.attempt_count}/3` : ""}</span>
+                  <span className="text-[12px] text-faint">{relativeTime(j.created_at)}</span>
+                  {j.kind !== "sync" && (j.status === "requested" || (j.status === "failed" && j.attempt_count < 3 && (!j.next_retry_at || new Date(j.next_retry_at) <= new Date())) || (j.status === "in_progress" && j.lease_expires_at && new Date(j.lease_expires_at) <= new Date())) && (
+                    <Button size="sm" variant="ghost" onClick={() => run(`job-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "in_progress"), "Manual setup attempt recorded")}>
+                      <PlayCircle className="size-3.5" /> {j.status === "requested" ? "Begin manual setup" : "Retry manual setup"}
+                    </Button>
+                  )}
+                  {j.status === "failed" && j.attempt_count < 3 && j.next_retry_at && new Date(j.next_retry_at) > new Date() && <span className="text-[12px] text-muted">Retry {relativeTime(j.next_retry_at)}</span>}
+                  {j.is_latest && provisioningJobEnded(j) && (
+                    <Button size="sm" variant="secondary" onClick={() => setRequeueFor(j)}>
+                      <RotateCcw className="size-3.5" /> Requeue with a reason
+                    </Button>
+                  )}
+                  {j.is_latest && provisioningJobCancellable(j) && (
+                    <Button size="sm" variant="ghost" loading={pending === `cancel-${j.id}`} onClick={() => run(`cancel-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "cancelled"), "Request cancelled")}>
+                      <XCircle className="size-3.5" /> Cancel request
+                    </Button>
+                  )}
+                  {j.history.length > 0 && (
+                    <ul className="basis-full space-y-0.5 pl-1 text-[12px] text-muted" aria-label="Recent attempts">
+                      {j.history.map((e, i) => (
+                        <li key={i}>{provisioningEventLabel(e)} <span className="text-faint">Â· {relativeTime(e.at)}</span></li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
-
-HOˆ
-ˆØ\™Ù^O^ÙšYO‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KLÈMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆÛ\ÜÓ˜[YOH^VÌMH›Û\Ù[ZX›Û‘Øİ[Y[0­ÈÙ™š[[˜[Y_OÜ‚ˆ˜YÙHÛ™OH›™]]˜[ÙœØÛÜHOOHœÚ\™YˆÈ”Ú\™YÚ]]™\H[\ŞYYHˆˆ\ÜÚYÛ™YÈ	Ù˜YÙ[Ü›ÛHÈQÑS•Ğ–WÒÑVVÙ˜YÙ[Ü›ÛWOËœÚÜ˜[YHÏÈÙ[[˜ÙPØ\ÙJ˜YÙ[Ü›ÛJHˆ›Û™H[\ŞYYHŸXOĞ˜YÙO‚ˆÙœš\Ú×Ù›YÜË›X\
+      <ConnectDialog key={connectFor?.id ?? "none"} agent={connectFor} onClose={() => setConnectFor(null)} />
+      <BundleDialog bundle={bundle} onClose={() => setBundle(null)} />
+      <RequeueDialog key={requeueFor?.id ?? "none"} orgId={data.org.id} job={requeueFor} onClose={() => setRequeueFor(null)} />
+      <PlanChangeDialog key={planChange ? `${planChange.agent.id}-${planChange.enabled}` : "none"} orgId={data.org.id} change={planChange} onClose={() => setPlanChange(null)} />
+    </div>
+  );
+}
 
-ŠHOˆ
-ˆ˜YÙHÙ^O^ÙŸHÛ™OHØ\›š[™È‚ˆÙ‹œ™\XÙJ×ËÙËˆŠ_BˆĞ˜YÙO‚ˆ
-J_BˆÙ]‚ˆÙš[İ^OOH[È
-ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ^VÌLÜH^[]]Y•\ÈØİ[Y[Ø\È[™Y›Ü™H]È^Ø\ÈÙ\›Üˆ™]šY]ËÛÈ]Ø[››İ™H\›İ™Yˆ™Z™Xİ][™\ÚÈHÛY[È\ØY]YØZ[‹Ü‚ˆ
-Hˆ
-ˆ™HÛ\ÜÓ˜[YOHœØÜ›Û˜\‹][ˆX^ZMİ™\™›İËX]]ÈÚ]\ÜXÙK\™K]Ü˜\›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ^VÌLÜHÙš[İ^OÜ™O‚ˆ
-_Bˆ]ˆÛ\ÜÓ˜[YOH™›^Ø\Lˆ‚ˆ]ÛˆÚ^™OHœÛHˆ\ØX›Y^ÈXØ[‘XÚYHš[İ^OOH[HÛÛXÚÏ^Ê
-HOˆ[ŠIÙšYX
+/** What a plan change did, in words that do not claim more than happened: a queued request is not a working employee. */
+function planChangeSummary(d: { configuration: string; provisioning: string; syncQueued: boolean; cancelledJobs: number; runningJobs: number } | null | undefined, enabled: boolean): string {
+  if (!d) return enabled ? "Employee enabled" : "Employee disabled";
+  if (!enabled) {
+    const stopped = d.cancelledJobs ? `${d.cancelledJobs} setup request${d.cancelledJobs === 1 ? "" : "s"} cancelled` : "No setup request was waiting";
+    return `Employee removed from the plan. ${stopped}${d.runningJobs ? `; ${d.runningJobs} already started and will finish first` : ""}.`;
+  }
+  const config = d.configuration === "built" ? "Configured from the client's confirmed answers." : d.configuration === "held" ? "Its configuration is waiting for review." : d.configuration === "waiting_for_client" ? "Not configured yet: the client has company changes they have not approved." : d.configuration === "not_needed" ? "The client has not finished the questionnaire, so it is configured when they do." : "";
+  const setup = d.provisioning === "requested" ? "Setup requested." : d.provisioning === "already_open" ? "Setup was already requested." : d.provisioning === "waiting_for_payment" ? "Setup waits for the setup payment." : d.syncQueued ? "Profile update queued." : "";
+  return ["Employee added to the plan.", config, setup].filter(Boolean).join(" ");
+}
 
-HOˆXÚYR[Øİ[Y[Xİ[ÛŠ]K›Ü™ËšYšYYJK\›İ™YŠ_O‚ˆ\›İ™BˆĞ]Û‚ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[HœÙXÛÛ™\Hˆ\ØX›Y^ÈXØ[‘XÚY_HÛÛXÚÏ^Ê
-HOˆ[Š‹IÙšYX
+function PlanChangeDialog({ orgId, change, onClose }: { orgId: string; change: { agent: Detail["agents"][number]; enabled: boolean } | null; onClose: () => void }) {
+  const { run, pending } = useAction();
+  const [reason, setReason] = React.useState("");
+  const name = change ? AGENT_BY_KEY[change.agent.role_key].shortName : "";
+  return (
+    <Dialog
+      open={Boolean(change)}
+      onOpenChange={(o) => !o && onClose()}
+      title={change ? `${change.enabled ? "Add" : "Remove"} ${name} ${change.enabled ? "to" : "from"} the plan?` : "Change the plan"}
+      description={change?.enabled
+        ? "Once the client has finished the questionnaire, the employee is configured from their confirmed answers and its setup is requested (it still waits for the setup payment). Nothing is switched on for customers."
+        : "Setup requests that were only requested are cancelled; one the worker already started finishes first. Conversations and knowledge are kept. The client's owners are told."}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            variant={change?.enabled ? "brand" : "danger"}
+            disabled={reason.trim().length < 5}
+            loading={pending === "plan-change"}
+            onClick={async () => {
+              if (!change) return;
+              const enabled = change.enabled;
+              const ok = await run("plan-change", () => setAgentEnabledAction(orgId, change.agent.id, enabled, reason), (d) => planChangeSummary(d, enabled));
+              if (ok) onClose();
+            }}
+          >
+            {change?.enabled ? "Add to plan" : "Remove from plan"}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Reason (kept in the audit log, not shown to the client)" htmlFor="plan-change-reason">
+        <Textarea id="plan-change-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+      </Field>
+    </Dialog>
+  );
+}
 
-HOˆXÚYR[Øİ[Y[Xİ[ÛŠ]K›Ü™ËšYšY˜[ÙJK”™Z™XİYŠ_O‚ˆ™Z™XİˆĞ]Û‚ˆÙ]‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆ
-J_BˆÙ]‚ˆ
-NÂŸB‚™[˜İ[Ûˆ[YÜ˜][ÛœÕXŠÈ]Kİ\\YZ[ˆNˆÈ]Nˆ]Z[Èİ\\YZ[ˆ›ÛÛX[ˆJHÂˆÛÛœİÈ[‹[™[™ÈHH\ÙPXİ[ÛŠ
-NÂˆÛÛœİÛØØ][Û’YÙ]ØØ][Û’YHH™XXİ\ÙTİ]J]K™ÚË›ØØ][Û—ÚYÏÈˆŠNÂˆÛÛœİÛØØ][Û“˜[YKÙ]ØØ][Û“˜[YWHH™XXİ\ÙTİ]J]K™ÚË›ØØ][Û—Û˜[YHÏÈˆŠNÂˆÛÛœİÜ\[[™RYÙ]\[[™RYHH™XXİ\ÙTİ]J]K™ÚËœ\[[™WÚYÏÈˆŠNÂˆÛÛœİØØ[[™\’YËÙ]Ø[[™\’Y×HH™XXİ\ÙTİ]J
-]K™ÚË˜Ø[[™\—ÚYÈÏÈ×JKš›Ú[Š‹ŠJNÂˆÛÛœİİÚÙ[‹Ù]ÚÙ[—HH™XXİ\ÙTİ]JˆŠNÂˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MˆÎ™ÜšYXÛÛËMH‚ˆØ\™Û\ÜÓ˜[YOH›Î˜ÛÛ\Ü[‹LÈ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O‘ÛÒYÚ]™[ØØ][ÛĞØ\™]O‚ˆØ\™\ØÜš\[Û”İÜ™YÙ\™\‹\ÚYHÛ›KˆH\İ\ˆÛY\ÈØØ][Ûˆ[™PXÜ]Z\™I˜\ÜÎÜÈ[\›˜[ØØ][Ûˆ\™H™Y\ÙYĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆÙ]K™Ú	‰ˆ˜YÙHÛ™O^Ù]K™Úœİ]\ÈOOH˜ÛÛ›™XİYˆÈœİXØÙ\ÜÈˆˆ]K™Úœİ]\ÈOOH™\œ›ÜˆˆÈ™[™Ù\ˆˆˆ›™]]˜[ŸOÜÙ[[˜ÙPØ\ÙJ]K™Úœİ]\Ê_OĞ˜YÙOŸBˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆ‚ˆšY[X™[H“ØØ][ÛˆQˆ[›ÜH™Ë[ØÈ‚ˆ[œ]YH™Ë[ØÈˆ˜[YO^ÛØØ][Û’YHÛÚ[™ÙO^ÊJHOˆÙ]ØØ][Û’Y
-K\™Ù]˜[YJ_H\ØX›Y^È\İ\\YZ[ŸHÛ\ÜÓ˜[YOH™›Û[[Û›ÈˆÏ‚ˆÑšY[‚ˆšY[X™[H“ØØ][Ûˆ˜[YHˆ[›ÜH™Ë[˜[YHˆÜ[Û˜[‚ˆ[œ]YH™Ë[˜[YHˆ˜[YO^ÛØØ][Û“˜[Y_HÛÚ[™ÙO^ÊJHOˆÙ]ØØ][Û“˜[YJK\™Ù]˜[YJ_H\ØX›Y^È\İ\\YZ[ŸHÏ‚ˆÑšY[‚ˆšY[X™[H”\[[™HQˆ[›ÜH™Ë\\HˆÜ[Û˜[‚ˆ[œ]YH™Ë\\Hˆ˜[YO^Ü\[[™RYHÛÚ[™ÙO^ÊJHOˆÙ]\[[™RY
-K\™Ù]˜[YJ_H\ØX›Y^È\İ\\YZ[ŸHÛ\ÜÓ˜[YOH™›Û[[Û›ÈˆÏ‚ˆÑšY[‚ˆšY[X™[HØ[[™\ˆQÈˆ[›ÜH™ËXØ[ˆÜ[Û˜[[HÛÛ[XK\Ù\\˜]Yˆ‚ˆ[œ]YH™ËXØ[ˆ˜[YO^ØØ[[™\’YßHÛÚ[™ÙO^ÊJHOˆÙ]Ø[[™\’YÊK\™Ù]˜[YJ_H\ØX›Y^È\İ\\YZ[ŸHÛ\ÜÓ˜[YOH™›Û[[Û›ÈˆÏ‚ˆÑšY[‚ˆÙ]‚ˆÜİ\\YZ[ˆ	‰ˆ
-ˆšY[ˆX™[H“ØØ][Û‹\ØÛÜYš]˜]H[YÜ˜][ÛˆÚÙ[ˆ‚ˆ[›ÜH™Ë]ÚÙ[ˆ‚ˆÜ[Û˜[^Ğ›ÛÛX[Š]K™ÚËš\×ØÜ™Y[X[
-_Bˆ[H”™XYØÛÜ\ÎˆØØ][ÛœËœ™XYÛ›H
-Y[]JKÜÜ[š]Y\Ëœ™XYÛ›KØ[[™\œËœ™XYÛ›KØ[[™\œËÙ]™[Ëœ™XYÛ›Kˆ™]™\ˆ[ˆYÙ[˜ŞK[]™[ÚÙ[‹ˆ‚ˆ‚ˆ[œ]YH™Ë]ÚÙ[ˆˆ\OHœ\ÜİÛÜ™ˆ˜[YO^İÚÙ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]ÚÙ[ŠK\™Ù]˜[YJ_HXÙZÛ\^Ù]K™ÚËš\×ØÜ™Y[X[È”İÜ™Y8 %X]™H›[šÈÈÙY\ˆˆˆŸH]]ĞÛÛ\]OH›™]Ë\\ÜİÛÜ™ˆÏ‚ˆÑšY[‚ˆ
-_Bˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ‚ˆÜİ\\YZ[ˆ	‰ˆ
-ˆ]Û‚ˆØY[™Ï^Ü[™[™ÈOOH›X\ŸBˆÛÛXÚÏ^Ø\Ş[˜È
+function ConnectDialog({ agent, onClose }: { agent: Detail["agents"][number] | null; onClose: () => void }) {
+  const router = useRouter();
+  const [baseUrl, setBaseUrl] = React.useState("");
+  // Remounted per agent (keyed by the parent), so the form always starts from that agent's values.
+  const [profile, setProfile] = React.useState(agent?.hermes_profile ?? "");
+  const [apiKey, setApiKey] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  return (
+    <Dialog
+      open={Boolean(agent)}
+      onOpenChange={(o) => !o && onClose()}
+      title={`Connect ${agent ? AGENT_BY_KEY[agent.role_key].shortName : ""}`}
+      description="The key is encrypted at rest and never shown again. The portal runs an authenticated health check immediately."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="brand"
+            loading={pending}
+            disabled={!baseUrl || !profile || apiKey.length < 24}
+            onClick={async () => {
+              if (!agent) return;
+              setPending(true);
+              const res = await connectHermesAction(agent.id, { baseUrl, profile, apiKey });
+              setPending(false);
+              setApiKey("");
+              if (!res.ok) return toast.error(res.error);
+              if (res.data.ok) toast.success("Connected and online");
+              else toast.warning(`Connected, but not online: ${res.data.detail}`);
+              router.refresh();
+              onClose();
+            }}
+          >
+            Connect &amp; check
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Hermes API base URL" htmlFor="h-url" hint="The gateway's API listener, e.g. https://hermes.example.com (HTTPS required).">
+          <Input id="h-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://" autoComplete="off" />
+        </Field>
+        <Field label="Profile name" htmlFor="h-profile" hint="Served under /p/<profile>/ by the multiplexed gateway. Internal iacquire-* profiles are refused.">
+          <Input id="h-profile" value={profile} onChange={(e) => setProfile(e.target.value)} autoComplete="off" className="font-mono" />
+        </Field>
+        <Field label="Profile API_SERVER_KEY" htmlFor="h-key" hint="This profile's own key â€” never the default profile's key.">
+          <Input id="h-key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="new-password" className="font-mono" />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
 
-HOˆÂˆ]ØZ][Š›X\‹
+function CodeBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-[13px] font-medium text-ink-2">{label}</p>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[12px] text-primary hover:underline"
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            toast.success(`${label} copied`);
+          }}
+        >
+          <Copy className="size-3" /> Copy
+        </button>
+      </div>
+      <pre className="scrollbar-thin max-h-64 overflow-auto rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed">{value}</pre>
+    </div>
+  );
+}
 
-HOˆÙ]ÚX\[™ĞXİ[ÛŠ]K›Ü™ËšYÈØØ][Û’YØØ][Û“˜[YK\[[™RYØ[[™\’YËÚÙ[ˆJK“X\[™ÈØ]™YŠNÂˆÙ]ÚÙ[ŠˆŠNÂˆ_Bˆ‚ˆ[šÌˆÛ\ÜÓ˜[YOHœÚ^™KMˆÏˆØ]™HX\[™ÂˆĞ]Û‚ˆ
-_BˆÙ]K™Ú	‰ˆ
-ˆ‚ˆ]Ûˆ˜\šX[HœÙXÛÛ™\HˆØY[™Ï^Ü[™[™ÈOOH™\šYHŸHÛÛXÚÏ^Ê
-HOˆ[Š™\šYH‹
+/** A request that has ended without a result and will not start again by itself: failed for good, cancelled, or its last attempt ran out of time. */
+function provisioningJobEnded(j: Detail["provisioning"][number]) {
+  if (j.status === "cancelled") return true;
+  if (j.status === "failed") return j.attempt_count >= 3 || !j.next_retry_at;
+  return j.status === "in_progress" && j.attempt_count >= 3 && Boolean(j.lease_expires_at) && new Date(j.lease_expires_at as Date) <= new Date();
+}
 
-HOˆ™\šYQÚXİ[ÛŠ]K›Ü™ËšY
-K
-
-HOˆ
-\ÈÈ]Z[ˆİš[™ÈH[™Yš[™Y
-OË™]Z[ÏÈÚXÚÙYŠ_O‚ˆİ]ÜØÛÜHÛ\ÜÓ˜[YOHœÚ^™KMˆÏˆ™\šYBˆĞ]Û‚ˆ]Ûˆ˜\šX[HœÙXÛÛ™\HˆØY[™Ï^Ü[™[™ÈOOHœŞ[˜ÈŸHÛÛXÚÏ^Ê
-HOˆ[ŠœŞ[˜È‹
+/** Open or waiting requests can be stopped; a stopped one can be requeued with a reason. */
+function provisioningJobCancellable(j: Detail["provisioning"][number]) {
+  return j.status === "requested" || j.status === "awaiting_health_check" || (j.status === "failed" && !provisioningJobEnded(j));
+}
 
-HOˆŞ[˜ÑÚXİ[ÛŠ]K›Ü™ËšY
-K
-
-HOˆ
-\ÈÈ]Z[ˆİš[™ÈH[™Yš[™Y
-OË™]Z[ÏÈ”Ş[˜ÙYŠ_O‚ˆ™Yœ™\ÚİÈÛ\ÜÓ˜[YOHœÚ^™KMˆÏˆŞ[˜È›İÂˆĞ]Û‚ˆÏ‚ˆ
-_BˆÙ]‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆØ\™Û\ÜÓ˜[YOH›Î˜ÛÛ\Ü[‹Lˆ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O’[YÜ˜][Ûˆİ]\ÏĞØ\™]O‚ˆØ\™\ØÜš\[Û“\İ™XÛÜ™YÚXÚÜÈ›Üˆ\ÈÛY[ĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[‚ˆ[Û\ÜÓ˜[YOH™]šYK^H]šYK[[™H‚ˆÙ]Kš[YÜ˜][ÛœË›X\
+function provisioningEventLabel(e: ProvisioningEvent) {
+  switch (e.action) {
+    case "agent.profile_provisioning_started": return `Attempt ${e.attempt ?? "?"} started`;
+    case "agent.profile_provisioning_failed": return `Attempt ${e.attempt ?? "?"} failed${e.code ? `: ${e.code}` : ""}`;
+    case "agent.profile_provisioned": return "Host profile created and verified";
+    case "agent.profile_configuration_synchronized": return "Configuration synchronized on the host";
+    case "agent.provisioning_requeued": return "Requeued by iAcquire";
+    default: return sentenceCase(e.action.replace(/^agent\./, "").replace(/_/g, " "));
+  }
+}
 
-JHOˆ
-ˆHÙ^O^ÚKœ›İšY\ŸHÛ\ÜÓ˜[YOHœKL‹H‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆØ\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌMH›Û[YY][HÚKœ›İšY\ˆOOH™ÚˆÈ‘ÛÒYÚ]™[Ô“HˆˆKœ›İšY\ˆOOH™ÚØØ[[™\ˆˆÈ‘ÒØ[[™\ˆˆˆKœ›İšY\ˆOOHš\›Y\ÈˆÈ’\›Y\ÈˆˆKœ›İšY\ŸOÜÜ[‚ˆ˜YÙHÛ™O^ÚKœİ]\ÈOOH˜ÛÛ›™XİYˆÈœİXØÙ\ÜÈˆˆKœİ]\ÈOOH™\œ›ÜˆˆÈ™[™Ù\ˆˆˆKœİ]\ÈOOHœ[™[™ÈˆÈØ\›š[™Èˆˆ›™]]˜[ŸOÜÙ[[˜ÙPØ\ÙJKœİ]\Ê_OĞ˜YÙO‚ˆÙ]‚ˆÚK™]Z[	‰ˆÛ\ÜÓ˜[YOH›]LH^VÌLœH^[]]YÚK™]Z[OÜŸBˆÚK›\İØÚXÚÙYØ]	‰ˆÛ\ÜÓ˜[YOH^VÌLœH^Y˜Z[ÚXÚÙYÜ™[]]™U[YJK›\İØÚXÚÙYØ]
-_OÜŸBˆÛO‚ˆ
-J_Bˆİ[‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆÙ]‚ˆ
-NÂŸB‚™[˜İ[Ûˆ\ØYÙUXŠÈ]Kİ\\YZ[ˆNˆÈ]Nˆ]Z[Èİ\\YZ[ˆ›ÛÛX[ˆJHÂˆÛÛœİÈ[‹[™[™ÈHH\ÙPXİ[ÛŠ
-NÂˆÛÛœİHH]K\ØYÙNÂˆÛÛœİÙ›Ü›KÙ]›Ü›WHH™XXİ\ÙTİ]JÂˆ[ÛPYÙ[Y\ÜØYÙ\Îˆİš[™ÊK›[Z]Ë›[ÛWØYÙ[ÛY\ÜØYÙ\ÊKˆ[ÛUÚÙ[œÎˆK›[Z]Ë›[ÛWİÚÙ[œÈOOH[Èˆˆˆİš[™ÊK›[Z]Ë›[ÛWİÚÙ[œÊKˆZ[SXY™\ÙX\˜Úˆİš[™ÊK›[Z]Ë™Z[WÛXYÜ™\ÙX\˜Ú
-Kˆ[ÛR[™\]Y\İÎˆİš[™ÊK›[Z]Ë›[ÛWÚ[Ü™\]Y\İÊKˆ[ÛPİ\İÛY\”™\Y\ÎˆK›[Z]Ë›[ÛWØİ\İÛY\—Ü™\Y\ÈOOH[Èˆˆˆİš[™ÊK›[Z]Ë›[ÛWØİ\İÛY\—Ü™\Y\ÊKˆØ\›]\˜Ù[ˆİš[™ÊK›[Z]ËØ\›—Ø]Ü\˜Ù[
-Kˆ\™İÜˆK›[Z]Ëš\™ÜİÜˆ˜Z\•\ÙS›İNˆK›[Z]Ë™˜Z\—İ\ÙWÛ›İHÏÈˆ‹ˆJNÂˆÛÛœİİHK›[Z]Ë›[ÛWØYÙ[ÛY\ÜØYÙ\ÈÈ
-K˜YÙ[Y\ÜØYÙ\ÈÈK›[Z]Ë›[ÛWØYÙ[ÛY\ÜØYÙ\ÊH
-ˆLˆÂˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MˆÎ™ÜšYXÛÛËMH‚ˆØ\™Û\ÜÓ˜[YOH›Î˜ÛÛ\Ü[‹Lˆ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O•\È[ÛĞØ\™]O‚ˆØ\™\ØÜš\[Û“YX\İ\™Y\ØYÙKˆ™[™Üˆ[›ÚXÙ\È\™H›İ\İ[X]Y\™KĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]‚ˆ]ˆÛ\ÜÓ˜[YOH›X‹LH›^\İYKX™]ÙY[ˆ^VÌMH‚ˆÜ[RHY\ÜØYÙ\ÏÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHX[\‹[[\È‚ˆÙ›Ü›X][X™\ŠK˜YÙ[Y\ÜØYÙ\Ê_HÈÙ›Ü›X][X™\ŠK›[Z]Ë›[ÛWØYÙ[ÛY\ÜØYÙ\Ê_BˆÜÜ[‚ˆÙ]‚ˆ›ÙÜ™\ÜĞ˜\ˆ˜[YO^ÜİHÛ™O^ÜİHLÈ™[™Ù\ˆˆˆİHK›[Z]ËØ\›—Ø]Ü\˜Ù[ÈØ\›š[™Èˆˆœš[X\HŸHX™[HRHY\ÜØYÙH\ØYÙHˆÏ‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH™ÜšYÜšYXÛÛËLˆØ\LÈ^VÌMH‚ˆ]ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ‚ˆÛ\ÜÓ˜[YOH^[]]Y•ÚÙ[œÏÙ‚ˆÛ\ÜÓ˜[YOH^VÌMÜH›Û\Ù[ZX›ÛX[\‹[[\ÈÙ›Ü›X][X™\ŠKÚÙ[œÊ_OÙ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ‚ˆÛ\ÜÓ˜[YOH^[]]Y‘˜Z[Y[œÏÙ‚ˆÛ\ÜÓ˜[YOH^VÌMÜH›Û\Ù[ZX›ÛX[\‹[[\ÈÙ›Ü›X][X™\ŠK™˜Z[Y[œÊ_OÙ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ‚ˆÛ\ÜÓ˜[YOH^[]]Y”™\ÙX\˜ÚÙ^OÙ‚ˆÛ\ÜÓ˜[YOH^VÌMÜH›Û\Ù[ZX›ÛX[\‹[[\ÈÙ›Ü›X][X™\ŠK›XY™\ÙX\˜ÚÙ^J_OÙ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ‚ˆÛ\ÜÓ˜[YOH^[]]Y’[™\]Y\İÏÙ‚ˆÛ\ÜÓ˜[YOH^VÌMÜH›Û\Ù[ZX›ÛX[\‹[[\ÈÙ›Ü›X][X™\ŠKš[™\]Y\İÊ_OÙ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›İ[™Y^™Ë\İ\™˜XÙKLˆLÈ‚ˆÛ\ÜÓ˜[YOH^[]]YRH™\Y\ÈÈİ\İÛY\œÏÙ‚ˆÛ\ÜÓ˜[YOH^VÌMÜH›Û\Ù[ZX›ÛX[\‹[[\È‚ˆÙ›Ü›X][X™\ŠK˜İ\İÛY\”™\Y\Ê_BˆÜ[ˆÛ\ÜÓ˜[YOH›[LH^VÌLœH›Û[›Ü›X[^[]]YİK›[Z]Ë›[ÛWØİ\İÛY\—Ü™\Y\ÈOOH[È“›ÈØ\Ù]ˆˆÙˆ	Ù›Ü›X][X™\ŠK›[Z]Ë›[ÛWØİ\İÛY\—Ü™\Y\Ê_XOÜÜ[‚ˆÙ‚ˆÙ]‚ˆÙ‚ˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆØ\™Û\ÜÓ˜[YOH›Î˜ÛÛ\Ü[‹LÈ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O“[Z]ÏĞØ\™]O‚ˆØ\™\ØÜš\[Û’\™İÜÈ›ØÚÈÛÜİHÜ\˜][ÛœÈ™Y›Ü™H^Hİ\ĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆ‚ˆÊˆÂˆÈ›[ÛPYÙ[Y\ÜØYÙ\È‹RHY\ÜØYÙ\È\ˆ[Û—KˆÈ›[ÛUÚÙ[œÈ‹•ÚÙ[œÈ\ˆ[Û
-›[šÈH›ÈÚÙ[ˆØ\
-H—KˆÈ™Z[SXY™\ÙX\˜Ú‹“XY™\ÙX\˜Ú\ˆ^H—KˆÈ›[ÛR[™\]Y\İÈ‹’[\ÜÚ\İ[RH[œİÙ\œÈ\ˆ[Û—KˆÈ›[ÛPİ\İÛY\”™\Y\È‹RH™\Y\ÈÈİ\İÛY\œÈ\ˆ[Û
-›[šÈH›ÈØ\
-H—KˆÈØ\›]\˜Ù[‹•Ø\›ˆ]
-	JH—KˆH\ÈÛÛœİˆ
-K›X\
+function RequeueDialog({ orgId, job, onClose }: { orgId: string; job: Detail["provisioning"][number] | null; onClose: () => void }) {
+  const { run, pending } = useAction();
+  const [reason, setReason] = React.useState("");
+  return (
+    <Dialog
+      open={Boolean(job)}
+      onOpenChange={(o) => !o && onClose()}
+      title={job ? `Requeue ${AGENT_BY_KEY[job.agent_role].shortName}'s setup?` : "Requeue setup"}
+      description="This opens one new request for the same employee. It is refused while another request is open or the setup payment is not confirmed. The client's owner is told once."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={reason.trim().length < 5}
+            loading={pending === "requeue"}
+            onClick={async () => {
+              if (!job) return;
+              const ok = await run("requeue", () => requeueProvisioningAction(orgId, job.agent_id, reason), "Setup requeued");
+              if (ok) onClose();
+            }}
+          >
+            Requeue
+          </Button>
+        </>
+      }
+    >
+      <Field label="Reason (kept in the audit log, not shown to the client)" htmlFor="requeue-reason">
+        <Textarea id="requeue-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
+      </Field>
+    </Dialog>
+  );
+}
 
-ÚËX™[JHOˆ
-ˆšY[Ù^O^ÚßHX™[^ÛX™[H[›Ü^ØIÚßXO‚ˆ[œ]Y^ØIÚßXH[œ][ÙOH›[Y\šXÈˆ˜[YO^Ù›Ü›VÚ×_H\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹Ú×NˆK\™Ù]˜[YHJJ_HÏ‚ˆÑšY[‚ˆ
-J_Bˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆ›İ[™Y^›Ü™\ˆ›Ü™\‹[[™HLËHKL‹H‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌMH›Û[YY][H’\™İÜ][Z]ÜÜ[‚ˆİÚ]ÚÚXÚÙY^Ù›Ü›Kš\™İÜH\ØX›Y^È\İ\\YZ[ŸHÛÚXÚÙYÚ[™ÙO^ÊŠHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹\™İÜˆˆJJ_H\šXK[X™[H’\™İÜ][Z]ˆÏ‚ˆÙ]‚ˆÙ]‚ˆšY[X™[H‘˜Z\‹]\ÙH›İHÚİÛˆÈHÛY[ˆ[›ÜH›[›İHˆÜ[Û˜[‚ˆ^\™XHYH›[›İHˆ˜[YO^Ù›Ü›K™˜Z\•\ÙS›İ_H\ØX›Y^È\İ\\YZ[ŸH›İÜÏ^ÌŸHX^[™İ^ÌLHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹˜Z\•\ÙS›İNˆK\™Ù]˜[YHJJ_HÏ‚ˆÑšY[‚ˆÜİ\\YZ[ˆ	‰ˆ
-ˆ]ÛˆØY[™Ï^Ü[™[™ÈOOH›[Z]ÈŸHÛÛXÚÏ^Ê
-HOˆ[Š›[Z]È‹
+function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; onClose: () => void }) {
+  return (
+    <Dialog open={Boolean(bundle)} onOpenChange={(o) => !o && onClose()} title={`Provisioning runbook Â· ${bundle?.profile ?? ""}`} description="Run these steps on the Hermes host. The portal never changes Hermes itself." size="xl">
+      {bundle && (
+        <div className="space-y-5">
+          <ol className="space-y-3">
+            {bundle.steps.map((s, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{i + 1}</span>
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-[14px] font-medium">{s.title}</p>
+                  {s.note && <p className="text-[13px] text-muted">{s.note}</p>}
+                  {s.command && <pre className="scrollbar-thin overflow-x-auto rounded-lg border border-line bg-surface-2 px-3 py-2 font-mono text-[12px]">{s.command}</pre>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <CodeBlock label="SOUL.md" value={bundle.soul} />
+          <CodeBlock label="config.yaml (merge)" value={bundle.configYaml} />
+          <CodeBlock label=".env lines" value={bundle.envTemplate} />
+          <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
+            <p className="font-medium">Online only when:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
+              {bundle.verification.map((v) => (
+                <li key={v}>{v}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  );
+}
 
-HOˆ\]U\ØYÙS[Z]ĞXİ[ÛŠ]K›Ü™ËšYÈ‹‹™›Ü›K[ÛUÚÙ[œÎˆ›Ü›K›[ÛUÚÙ[œÈJK“[Z]ÈØ]™YŠ_O‚ˆØ]™H[Z]ÂˆĞ]Û‚ˆ
-_BˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆÙ]‚ˆ
-NÂŸB‚‹ÊŠˆHš[[™ÈXˆÚ\™HHÙ]\™YHİ[™ËHÛÛ›ÛÈ]Ú[™ÙH]
-İ\\ˆYZ[ˆÛ›JKH^[Y[È™XÛÜ™Y›Üˆ\ÈÛY[[™H[›ÚXÙH[™\›\È›Ü›Kˆ
-‹Â™[˜İ[Ûˆš[[™ÕXŠÈ]Kİ\\YZ[‹[YV›Û™HNˆÈ]Nˆ]Z[Èİ\\YZ[ˆ›ÛÛX[È[YV›Û™Nˆİš[™ÈJHÂˆÛÛœİˆH]K˜š[[™ÎÂˆÛÛœİÛÜHHÙ]\İ]\ĞÛÜJËœÙ]\Ü^[Y[Üİ]\ÊNÂˆÛÛœİÜ™XÛÜ™[™ËÙ]™XÛÜ™[™×HH™XXİ\ÙTİ]J˜[ÙJNÂˆÛÛœİİØZ]š[™ËÙ]ØZ]š[™×HH™XXİ\ÙTİ]J˜[ÙJNÂˆÛÛœİÜ™Y[™[™ËÙ]™Y[™[™×HH™XXİ\ÙTİ]OYÙ[˜ŞT^[Y[šY]È[Š[
-NÂˆÛÛœİÛY[Ü[ÛˆHŞÈÜ™ÒYˆ]K›Ü™ËšY˜[YNˆ]K›Ü™Ë›˜[YKÙ]\İ]\ÎˆËœÙ]\Ü^[Y[Üİ]\ÈÏÈ››İÚ[›ÚXÙY‹Ù]\™YPÙ[ÎˆËœÙ]\Ù™YWØÙ[ÈÏÈMNLÛX\™YˆË˜ÛX\™YOOHYHWNÂˆÛÛœİÛX\š[™Ô^[Y[H]Kœ^[Y[Ë™š[™
+/**
+ * What the review screen says when the stricter staff-access rule (D70) is on and this person has no support session on the client: how many held entries exist, and
+ * what to do about it. It is its own component so the development preview can render the exact card a reviewer sees (src/app/dev/billing-preview).
+ */
+export function HeldContentNotice({ count }: { count: number }) {
+  return (
+    <Card>
+      <CardContent className="flex items-start gap-4 py-5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warning-soft text-warning-ink"><Lock className="size-5" aria-hidden /></span>
+        <div>
+          <p className="text-[15px] font-semibold text-ink">{count === 1 ? "1 held knowledge entry is hidden" : `${count} held knowledge entries are hidden`}</p>
+          <p className="mt-1 text-[14px] text-muted">
+            This client&apos;s content needs a support session while the stricter staff-access rule is on. Open a session on this client with a reason the client can see,
+            then reload this page to read and review the held entries.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-
-HOˆšYOOHË™\šYšYYÜ^[Y[ÚY
-NÂˆYˆ
-XŠH™]\›ˆØ\™Û\ÜÓ˜[YOH›X^]ËLŞØ\™ÛÛ[Û\ÜÓ˜[YOH^VÌMH^[]]Y–[İ\ˆ›ÛHÙ\È›İ[˜ÛYH\ÈÛY[	˜\ÜÎÜÈš[[™ËÜĞØ\™ÛÛ[ĞØ\™Âˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆØ\™Û\ÜÓ˜[YOH›X^]ËLŞ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O”Ù]\^[Y[ĞØ\™]O‚ˆØ\™\ØÜš\[Û“™]ÈÛÜšÜÜXÙHÙ]\\ÈXİ]˜]YÛ›HY\ˆHÙ]\™YH\ÈÛÛ™š\›YYˆÛÜ™H™X]\™\È\™H™]™\ˆ[˜XÚÈH^[Y[ĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆ˜YÙHÛ™O^ØÛÜKÛ™_OØÛÜK›X™[OĞ˜YÙO‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌMH^[]]YØÛÜK™]Z[OÜÜ[‚ˆÙ]‚ˆØËœÙ]\Ü^[Y[Üİ]\ÈOOHØZ]™Yˆ	‰ˆ
-ˆÛ\ÜÓ˜[YOHœ›İ[™Y^›Ü™\ˆ›Ü™\‹[[™H™Ë\İ\™˜XÙKLˆLËHKLÈ^VÌMH^Z[šËLˆ‚ˆØZ]™YØ‹ØZ]™YØWÛ˜[YHÈH	Ø‹ØZ]™YØWÛ˜[Y_XˆˆŸ^Ø‹ØZ]™YØ]ÈÛˆ	Ù›Ü›X]]J‹ØZ]™YØ][YV›Û™J_XˆˆŸKˆ™X\ÛÛˆØ‹ØZ]™\—Ü™X\ÛÛŸBˆÜ[ˆÛ\ÜÓ˜[YOH›]LH›ØÚÈ^VÌLœH^[]]Y•HÛY[\ÈÛH™YHØ\ÈØZ]™Y›İÚKÜÜ[‚ˆÜ‚ˆ
-_BˆØËœÙ]\Ü^[Y[Üİ]\ÈOOHœZYˆ	‰ˆ
-ˆÛ\ÜÓ˜[YOH^VÌMH^Z[šËLˆ‚ˆØÛX\š[™Ô^[Y[ÈÛX\™YHH	ØÛX\š[™Ô^[Y[œ›İšY\ˆOOH›X[X[ˆÈœ^[Y[™XÛÜ™Yˆˆœ^[Y[ÛÛ™š\›YYŸH	ØÛX\š[™Ô^[Y[œZY]È›Ü›X]]JÛX\š[™Ô^[Y[œZY][YV›Û™JHˆˆŸK˜ˆ‹™\šYšYYÜ^[Y[ÚYÈÛX\™YHH™\šYšYY^[Y[ˆˆˆ“X\šÙYZY™Y›Ü™H^[Y[ÈÙ\™H™XÛÜ™Y[ˆHÜ[ˆ›È^[Y[™XÛÜ™\È]XÚYˆŸBˆÜ‚ˆ
-_BˆÜİ\\YZ[ˆ	‰ˆXË˜ÛX\™Y	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ‚ˆ]Ûˆ˜\šX[H˜œ˜[™ˆÛÛXÚÏ^Ê
-HOˆÙ]™XÛÜ™[™ÊYJ_O˜[šÛ›İHÛ\ÜÓ˜[YOHœÚ^™KMˆ\šXKZY[ˆÏˆ™XÛÜ™H^[Y[Ğ]Û‚ˆ]Ûˆ˜\šX[HœÙXÛÛ™\HˆÛÛXÚÏ^Ê
-HOˆÙ]ØZ]š[™ÊYJ_O[™ÛÚ[œÈÛ\ÜÓ˜[YOHœÚ^™KMˆ\šXKZY[ˆÏˆØZ]™HHÙ]\™YOĞ]Û‚ˆÙ]‚ˆ
-_BˆÈ\İ\\YZ[ˆ	‰ˆXË˜ÛX\™Y	‰ˆÛ\ÜÓ˜[YOH^VÌLÜH^[]]Y“Û›HHİ\\ˆYZ[ˆØ[ˆ™XÛÜ™H^[Y[ÜˆØZ]™HH™YKÜŸBˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆØ\™Û\ÜÓ˜[YOH›X^]ËLŞİ™\™›İËZY[ˆ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O”^[Y[ÏĞØ\™]O‚ˆØ\™\ØÜš\[ÛšPXÜ]Z\™I˜\ÜÎÜÈİÛˆÙ]\™YH[™[ˆ^[Y[È›Üˆ\ÈÛY[ˆ^[Y[È™XÛÜ™YH[™\™HX™[Y\ÈİXÚĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆÜİ\\YZ[ˆ	‰ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[HœÙXÛÛ™\HˆÛÛXÚÏ^Ê
-HOˆÙ]™XÛÜ™[™ÊYJ_O˜[šÛ›İHÛ\ÜÓ˜[YOHœÚ^™KLËHˆ\šXKZY[ˆÏˆ™XÛÜ™H^[Y[Ğ]ÛŸBˆĞØ\™XY\‚ˆÈY]K˜Ø[•šY]Ô^[Y[ÈÈ
-ˆØ\™ÛÛ[Û\ÜÓ˜[YOH^VÌMH^[]]Y–[İ\ˆ›ÛHÙ\È›İ[˜ÛYH^[Y[™XÛÜ™ËÜĞØ\™ÛÛ[‚ˆ
-Hˆ]Kœ^[Y[Ë›[™İOOHÈ
-ˆØ\™ÛÛ[Û\ÜÓ˜[YOH^VÌMH^[]]Y“›È^[Y[È™XÛÜ™YY]ÜĞØ\™ÛÛ[‚ˆ
-Hˆ
-ˆ[Û\ÜÓ˜[YOH™]šYK^H]šYK[[™H‚ˆÙ]Kœ^[Y[Ë›X\
+export function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: string; canDecide: boolean }) {
+  const { run } = useAction();
+  const held = data.contentAccess.heldKnowledgeHidden;
+  if (!data.heldVersions.length && !data.heldKnowledge.length && !data.heldNotes.length && !data.heldDocuments.length) {
+    if (held > 0) return <div className="space-y-4"><HeldContentNotice count={held} /></div>;
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[14px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {held > 0 ? <HeldContentNotice count={held} /> : null}
+      {data.heldVersions.map((item) => (
+        <ConfigReviewCard key={item.id} item={item} timeZone={timeZone} canDecide={canDecide} />
+      ))}
+      {data.heldKnowledge.map((k) => (
+        <Card key={k.section}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Knowledge Â· {sentenceCase(k.section)}</p>
+              <span className="text-[12px] text-muted">The text already approved stays in use until you decide.</span>
+              {k.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{k.content}</pre>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!canDecide} onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
+                Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {data.heldNotes.map((n) => (
+        <Card key={n.id}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Employee note Â· {AGENT_BY_KEY[n.agent_role]?.shortName ?? sentenceCase(n.agent_role)} Â· {n.title}</p>
+              {n.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{n.content}</pre>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!canDecide} onClick={() => run(`n-${n.id}`, () => decideHeldEmployeeNoteAction(data.org.id, n.id, true), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`nr-${n.id}`, () => decideHeldEmployeeNoteAction(data.org.id, n.id, false), "Rejected")}>
+                Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {data.heldDocuments.map((d) => (
+        <Card key={d.id}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Document Â· {d.filename}</p>
+              <Badge tone="neutral">{d.scope === "shared" ? "Shared with every employee" : `Assigned to ${d.agent_role ? AGENT_BY_KEY[d.agent_role]?.shortName ?? sentenceCase(d.agent_role) : "one employee"}`}</Badge>
+              {d.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+            {d.held_text === null ? (
+              <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">This document was held before its text was kept for review, so it cannot be approved. Reject it and ask the client to upload it again.</p>
+            ) : (
+              <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{d.held_text}</pre>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!canDecide || d.held_text === null} onClick={() => run(`d-${d.id}`, () => decideHeldDocumentAction(data.org.id, d.id, true), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`dr-${d.id}`, () => decideHeldDocumentAction(data.org.id, d.id, false), "Rejected")}>
+                Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
-
-HOˆ^[Y[›İÈÙ^O^ÜšYH^ÜHØ[“X[˜YÙO^Üİ\\YZ[ŸHÛ”™Y[™^ÜÙ]™Y[™[™ßH[YV›Û™O^İ[YV›Û™_HÚİĞÛY[^Ù˜[Ù_HÏŠ_Bˆİ[‚ˆ
-_BˆĞØ\™‚ˆš[[™Ñ]Z[Ñ›Ü›H]O^Ù]_Hİ\\YZ[^Üİ\\YZ[ŸH[YV›Û™O^İ[YV›Û™_HÏ‚ˆ™XÛÜ™^[Y[X[ÙÈÜ[^Ü™XÛÜ™[™ßHÛ“Ü[Ú[™ÙO^ÜÙ]™XÛÜ™[™ßHÛY[Ï^ØÛY[Ü[ÛŸHÜ™ÒY^Ù]K›Ü™ËšYH[YV›Û™O^İ[YV›Û™_HÏ‚ˆØZ]™Q™YQX[ÙÈÜ[^İØZ]š[™ßHÛ“Ü[Ú[™ÙO^ÜÙ]ØZ]š[™ßHÜ™ÒY^Ù]K›Ü™ËšYHÜ™Ó˜[YO^Ù]K›Ü™Ë›˜[Y_HÏ‚ˆ™Y[™X[ÙÈ^[Y[^Ü™Y[™[™ßHÛÛÜÙO^Ê
-HOˆÙ]™Y[™[™Ê[
-_H[YV›Û™O^İ[YV›Û™_HÏ‚ˆÙ]‚ˆ
-NÂŸB‚‹ÊŠˆ[›ÚXÙH[™™XÙZ\[šÜË\›\È[™HXİ]˜][ÛˆX™[ˆHÙ]\^[Y[]Ù[ˆ\ÈÚ[™ÙYÛ›HHHÛÛ›ÛÈX›İ™Kˆ
-‹Â™[˜İ[Ûˆš[[™Ñ]Z[Ñ›Ü›JÈ]Kİ\\YZ[‹[YV›Û™HNˆÈ]Nˆ]Z[Èİ\\YZ[ˆ›ÛÛX[È[YV›Û™Nˆİš[™ÈJHÂˆÛÛœİÈ[‹[™[™ÈHH\ÙPXİ[ÛŠ
-NÂˆÛÛœİˆH]K˜š[[™ÎÂˆÛÛœİÙ›Ü›KÙ]›Ü›WHH™XXİ\ÙTİ]JÂˆÙ]\^[Y[İ]\ÎˆËœÙ]\Ü^[Y[Üİ]\ÈÏÈ››İÚ[›ÚXÙY‹ˆXİ]˜][Û”İ]\ÎˆË˜Xİ]˜][Û—Üİ]\ÈÏÈœ[™[™È‹ˆ[›ÚXÙU\›ˆËš[›ÚXÙWİ\›ÏÈˆ‹ˆ™XÙZ\\›ˆËœ™XÙZ\İ\›ÏÈˆ‹ˆÙ\šXÙU\›\ÎˆËœÙ\šXÙWİ\›\ÈÏÈˆ‹ˆJNÂˆ™]\›ˆ
-ˆØ\™Û\ÜÓ˜[YOH›X^]ËLŞ‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O”Ù]\	˜[\ÈXİ]˜][ÛĞØ\™]O‚ˆØ\™\ØÜš\[Û“Û™K][YHÙ]\™YHÙˆ	Ê
-ËœÙ]\Ù™YWØÙ[ÈÏÈMNL
-HÈL
-KÓØØ[Tİš[™Ê
-_HØË˜İ\œ™[˜ŞHÏÈ•TÑŸKˆXZ[[˜[˜ÙH[™İ\İÛH›Ú™XİÈ\™HX[˜YÙYÙ\\˜][Kˆ[›ÚXÙH[šÜÈ[™\›\È\™HÙ\\™NÈ\È›Ü›HÙ\È›İÛÛXİÜˆÛÛ™š\›H^[Y[ĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆ‚ˆÖÈ››İÚ[›ÚXÙY‹š[›ÚXÙY—Kš[˜ÛY\Ê›Ü›KœÙ]\^[Y[İ]\ÊHÈ
-ˆšY[X™[H”Ù]\[›ÚXÙHˆ[›ÜH˜‹\^Hˆ[H“X\šÚ[™È][›ÚXÙYÙ\È›İÛÛ™š\›H[H^[Y[ˆ‚ˆÙ[XİYH˜‹\^Hˆ˜[YO^Ù›Ü›KœÙ]\^[Y[İ]\ßH\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹Ù]\^[Y[İ]\ÎˆK\™Ù]˜[YHJJ_O‚ˆÜ[Ûˆ˜[YOH››İÚ[›ÚXÙY“›İ[›ÚXÙYÛÜ[Û‚ˆÜ[Ûˆ˜[YOHš[›ÚXÙY’[›ÚXÙYÛÜ[Û‚ˆÔÙ[Xİ‚ˆÑšY[‚ˆ
-Hˆ
-ˆšY[X™[H”Ù]\^[Y[ˆ[›ÜH˜‹\^K\›Èˆ[HÚ[™ÙYÛ›HH™XÛÜ™[™ÈH^[Y[ØZ]š[™ÈH™YHÜˆ™XÛÜ™[™ÈH™Y[™ˆ‚ˆ[œ]YH˜‹\^K\›Èˆ˜[YO^ÜÙ]\İ]\ĞÛÜJ›Ü›KœÙ]\^[Y[İ]\ÊK›X™[H™XYÛ›HÏ‚ˆÑšY[‚ˆ
-_BˆšY[X™[HXİ]˜][Ûˆˆ[›ÜH˜‹XXİ‚ˆÙ[XİYH˜‹XXİˆ˜[YO^Ù›Ü›K˜Xİ]˜][Û”İ]\ßH\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹Xİ]˜][Û”İ]\ÎˆK\™Ù]˜[YHJJ_O‚ˆÖÈœ[™[™È‹˜Xİ]™H‹œİ\Ü[™Y—K›X\
+function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+  const { run, pending } = useAction();
+  const [locationId, setLocationId] = React.useState(data.ghl?.location_id ?? "");
+  const [locationName, setLocationName] = React.useState(data.ghl?.location_name ?? "");
+  const [pipelineId, setPipelineId] = React.useState(data.ghl?.pipeline_id ?? "");
+  const [calendarIds, setCalendarIds] = React.useState((data.ghl?.calendar_ids ?? []).join(", "));
+  const [token, setToken] = React.useState("");
+  return (
+    <div className="grid gap-6 lg:grid-cols-5">
+      <Card className="lg:col-span-3">
+        <CardHeader>
+          <div>
+            <CardTitle>GoHighLevel location</CardTitle>
+            <CardDescription>Stored server-side only. The Aster Homes location and iAcquire&apos;s internal location are refused.</CardDescription>
+          </div>
+          {data.ghl && <Badge tone={data.ghl.status === "connected" ? "success" : data.ghl.status === "error" ? "danger" : "neutral"}>{sentenceCase(data.ghl.status)}</Badge>}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Location ID" htmlFor="g-loc">
+              <Input id="g-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={!superAdmin} className="font-mono" />
+            </Field>
+            <Field label="Location name" htmlFor="g-name" optional>
+              <Input id="g-name" value={locationName} onChange={(e) => setLocationName(e.target.value)} disabled={!superAdmin} />
+            </Field>
+            <Field label="Pipeline ID" htmlFor="g-pipe" optional>
+              <Input id="g-pipe" value={pipelineId} onChange={(e) => setPipelineId(e.target.value)} disabled={!superAdmin} className="font-mono" />
+            </Field>
+            <Field label="Calendar IDs" htmlFor="g-cal" optional hint="Comma-separated.">
+              <Input id="g-cal" value={calendarIds} onChange={(e) => setCalendarIds(e.target.value)} disabled={!superAdmin} className="font-mono" />
+            </Field>
+          </div>
+          {superAdmin && (
+            <Field
+              label="Location-scoped private integration token"
+              htmlFor="g-token"
+              optional={Boolean(data.ghl?.has_credential)}
+              hint="Read scopes: locations.readonly (identity), opportunities.readonly, calendars.readonly, calendars/events.readonly. Never an agency-level token."
+            >
+              <Input id="g-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={data.ghl?.has_credential ? "Stored â€” leave blank to keep" : ""} autoComplete="new-password" />
+            </Field>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {superAdmin && (
+              <Button
+                loading={pending === "map"}
+                onClick={async () => {
+                  await run("map", () => setGhlMappingAction(data.org.id, { locationId, locationName, pipelineId, calendarIds, token }), "Mapping saved");
+                  setToken("");
+                }}
+              >
+                <Link2 className="size-4" /> Save mapping
+              </Button>
+            )}
+            {data.ghl && (
+              <>
+                <Button variant="secondary" loading={pending === "verify"} onClick={() => run("verify", () => verifyGhlAction(data.org.id), (d) => (d as { detail: string } | undefined)?.detail ?? "Checked")}>
+                  <Stethoscope className="size-4" /> Verify
+                </Button>
+                <Button variant="secondary" loading={pending === "sync"} onClick={() => run("sync", () => syncGhlAction(data.org.id), (d) => (d as { detail: string } | undefined)?.detail ?? "Synced")}>
+                  <RefreshCw className="size-4" /> Sync now
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <div>
+            <CardTitle>Integration status</CardTitle>
+            <CardDescription>Last recorded checks for this client.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <ul className="divide-y divide-line">
+            {data.integrations.map((i) => (
+              <li key={i.provider} className="py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[14px] font-medium">{i.provider === "ghl" ? "GoHighLevel CRM" : i.provider === "ghl_calendar" ? "GHL calendar" : i.provider === "hermes" ? "Hermes" : i.provider}</span>
+                  <Badge tone={i.status === "connected" ? "success" : i.status === "error" ? "danger" : i.status === "pending" ? "warning" : "neutral"}>{sentenceCase(i.status)}</Badge>
+                </div>
+                {i.detail && <p className="mt-0.5 text-[12px] text-muted">{i.detail}</p>}
+                {i.last_checked_at && <p className="text-[12px] text-faint">Checked {relativeTime(i.last_checked_at)}</p>}
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-ÊHOˆ
-ˆÜ[ÛˆÙ^O^ÜßH˜[YO^ÜßO‚ˆÜÙ[[˜ÙPØ\ÙJÊ_BˆÛÜ[Û‚ˆ
-J_BˆÔÙ[Xİ‚ˆÑšY[‚ˆšY[X™[H’[›ÚXÙH[šÈ
-ÊHˆ[›ÜH˜‹Z[ˆˆÜ[Û˜[‚ˆ[œ]YH˜‹Z[ˆˆ˜[YO^Ù›Ü›Kš[›ÚXÙU\›H\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹[›ÚXÙU\›ˆK\™Ù]˜[YHJJ_HÏ‚ˆÑšY[‚ˆšY[X™[H”™XÙZ\[šÈ
-ÊHˆ[›ÜH˜‹\™XÈˆÜ[Û˜[‚ˆ[œ]YH˜‹\™XÈˆ˜[YO^Ù›Ü›Kœ™XÙZ\\›H\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹™XÙZ\\›ˆK\™Ù]˜[YHJJ_HÏ‚ˆÑšY[‚ˆÙ]‚ˆšY[X™[H”Ù\šXÙH\›\È	ˆÜ\˜][™È[Z]ÈÚİÛˆÈHÛY[ˆ[›ÜH˜‹]\›\ÈˆÜ[Û˜[‚ˆ^\™XHYH˜‹]\›\Èˆ›İÜÏ^ÍHX^[™İ^ÍH˜[YO^Ù›Ü›KœÙ\šXÙU\›\ßH\ØX›Y^È\İ\\YZ[ŸHÛÚ[™ÙO^ÊJHOˆÙ]›Ü›J
-ŠHOˆ
-È‹‹™‹Ù\šXÙU\›\ÎˆK\™Ù]˜[YHJJ_HÏ‚ˆÑšY[‚ˆÜİ\\YZ[ˆ	‰ˆ
-ˆ]ÛˆØY[™Ï^Ü[™[™ÈOOH˜š[[™ÈŸHÛÛXÚÏ^Ê
-HOˆ[Š˜š[[™È‹
+function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+  const { run, pending } = useAction();
+  const u = data.usage;
+  const [form, setForm] = React.useState({
+    monthlyAgentMessages: String(u.limits.monthly_agent_messages),
+    monthlyTokens: u.limits.monthly_tokens === null ? "" : String(u.limits.monthly_tokens),
+    dailyLeadResearch: String(u.limits.daily_lead_research),
+    monthlyHelpRequests: String(u.limits.monthly_help_requests),
+    monthlyCustomerReplies: u.limits.monthly_customer_replies === null ? "" : String(u.limits.monthly_customer_replies),
+    warnAtPercent: String(u.limits.warn_at_percent),
+    hardStop: u.limits.hard_stop,
+    fairUseNote: u.limits.fair_use_note ?? "",
+  });
+  const pct = u.limits.monthly_agent_messages ? (u.agentMessages / u.limits.monthly_agent_messages) * 100 : 0;
+  return (
+    <div className="grid gap-6 lg:grid-cols-5">
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <div>
+            <CardTitle>This month</CardTitle>
+            <CardDescription>Measured usage. Vendor invoices are not estimated here.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <div className="mb-1 flex justify-between text-[14px]">
+              <span>AI messages</span>
+              <span className="tabular-nums">
+                {formatNumber(u.agentMessages)} / {formatNumber(u.limits.monthly_agent_messages)}
+              </span>
+            </div>
+            <ProgressBar value={pct} tone={pct >= 100 ? "danger" : pct >= u.limits.warn_at_percent ? "warning" : "primary"} label="AI message usage" />
+          </div>
+          <dl className="grid grid-cols-2 gap-3 text-[14px]">
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Tokens</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.tokens)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Failed runs</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.failedRuns)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Research today</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.leadResearchToday)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Help requests</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.helpRequests)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">AI replies to customers</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">
+                {formatNumber(u.customerReplies)}
+                <span className="ml-1 text-[12px] font-normal text-muted">{u.limits.monthly_customer_replies === null ? "No cap set" : `of ${formatNumber(u.limits.monthly_customer_replies)}`}</span>
+              </dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-3">
+        <CardHeader>
+          <div>
+            <CardTitle>Limits</CardTitle>
+            <CardDescription>Hard stops block costly operations before they start.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(
+              [
+                ["monthlyAgentMessages", "AI messages per month"],
+                ["monthlyTokens", "Tokens per month (blank = no token cap)"],
+                ["dailyLeadResearch", "Lead research per day"],
+                ["monthlyHelpRequests", "Help assistant AI answers per month"],
+                ["monthlyCustomerReplies", "AI replies to customers per month (blank = no cap)"],
+                ["warnAtPercent", "Warn at (%)"],
+              ] as const
+            ).map(([k, label]) => (
+              <Field key={k} label={label} htmlFor={`l-${k}`}>
+                <Input id={`l-${k}`} inputMode="numeric" value={form[k]} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+              </Field>
+            ))}
+            <div className="flex items-center justify-between rounded-xl border border-line px-3.5 py-2.5">
+              <span className="text-[14px] font-medium">Hard stop at limit</span>
+              <Switch checked={form.hardStop} disabled={!superAdmin} onCheckedChange={(v) => setForm((f) => ({ ...f, hardStop: v }))} aria-label="Hard stop at limit" />
+            </div>
+          </div>
+          <Field label="Fair-use note shown to the client" htmlFor="l-note" optional>
+            <Textarea id="l-note" value={form.fairUseNote} disabled={!superAdmin} rows={2} maxLength={1000} onChange={(e) => setForm((f) => ({ ...f, fairUseNote: e.target.value }))} />
+          </Field>
+          {superAdmin && (
+            <Button loading={pending === "limits"} onClick={() => run("limits", () => updateUsageLimitsAction(data.org.id, { ...form, monthlyTokens: form.monthlyTokens }), "Limits saved")}>
+              Save limits
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-HOˆ\]Pš[[™ĞXİ[ÛŠ]K›Ü™ËšY›Ü›H\È™]™\ŠKš[[™È\]YŠ_O‚ˆØ]™Hš[[™ÂˆĞ]Û‚ˆ
-_BˆØËœZYØ]	‰ˆ‹œÙ]\Ü^[Y[Üİ]\ÈOOHœZYˆ	‰ˆÛ\ÜÓ˜[YOH^VÌLÜH^[]]YÛÛ™š\›YYZYÙ›Ü›X]]U[YJ‹œZYØ][YV›Û™J_OÜŸBˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆ
-NÂŸB‚‹ÊŠˆÚ]XİX[H\[™YÈH[š]][Ûˆ[XZ[ZÙ[ˆœ›ÛHHİ]›Ş˜]\ˆ[ˆ\Üİ[YYˆ
-‹Â™[˜İ[Ûˆ[š]][Û‘[XZ[İ]\ÊÈ[š]][ÛˆHNˆÈ[š]][Ûˆ]Z[Èš[š]][ÛœÈ—VÛ[X™\—HJHÂˆYˆ
-ZK™[XZ[Üİ]\ÊH™]\›ˆÛ\ÜÓ˜[YOH^VÌLœH^Y˜Z[“›È[š]][Ûˆ[XZ[Ûˆ™XÛÜ™ˆ\ÙH™\Ù[™ÜÂˆÛÛœİÈH[]™\Tİ[[X\JK™[XZ[Üİ]\ËK™[XZ[Ù\œ›Ü‹K™[XZ[
-NÂˆÛÛœİÚ[ˆHK™[XZ[Ø]È	Ü™[]]™U[YJK™[XZ[Ø]
-_XˆˆÂˆÛÛœİ^BˆK™[XZ[Üİ]\ÈOOHœÙ[ˆÈ[XZ[Ù[	İÚ[ŸXˆˆK™[XZ[Üİ]\ÈOOH˜Ø\\™YˆÈ‘[XZ[Ø\È›İ[]™\™Yˆ[XZ[[]™\H\ÈİÚ]ÚYÙ™ˆ›Üˆ\È[š\›Û›Y[‚ˆˆK™[XZ[Üİ]\ÈOOH™˜Z[YˆÈ[XZ[˜Z[Y	ÚK™[XZ[Ù\œ›ÜˆÈˆ	ÚK™[XZ[Ù\œ›ÜŸXˆˆŸXˆˆ‘[XZ[]Y]YY[]™\H›İÛÛ™š\›YYÂˆ™]\›ˆÛ\ÜÓ˜[YO^ØÛŠ^VÌLœH‹ËÛ™HOOHœİXØÙ\ÜÈˆÈ^\İXØÙ\ÜËZ[šÈˆˆËÛ™HOOH™[™Ù\ˆˆÈ^Y[™Ù\‹Z[šÈˆˆ^]Ø\›š[™ËZ[šÈŠ_Hİ\™\ÜÒY˜][Û•Ø\›š[™Ïİ^OÜÂŸB‚™[˜İ[ÛˆX[UXŠÈ]Kİ\\YZ[ˆNˆÈ]Nˆ]Z[Èİ\\YZ[ˆ›ÛÛX[ˆJHÂˆÛÛœİÈ[‹[™[™ÈHH\ÙPXİ[ÛŠ
-NÂˆÛÛœİÙ[XZ[Ù][XZ[HH™XXİ\ÙTİ]JˆŠNÂˆÛÛœİÜ›ÛKÙ]›ÛWHH™XXİ\ÙTİ]O›İÛ™\ˆˆ˜YZ[ˆˆ›Y[X™\ˆŠ›İÛ™\ˆŠNÂˆÛÛœİÛ[šËÙ][š×HH™XXİ\ÙTİ]Oİš[™È[Š[
-NÂˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYÜšYXÛÛËLHØ\MˆÎ™ÜšYXÛÛËLˆÉŠ—N›Z[‹]ËL‚ˆØ\™‚ˆØ\™XY\‚ˆ]‚ˆØ\™]OÛY[\Ù\œÏĞØ\™]O‚ˆØ\™\ØÜš\[Û“Y[X™\œÈÙˆ\ÈÛÜšÜÜXÙKĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœÜXÙK^KM‚ˆ[Û\ÜÓ˜[YOH™]šYK^H]šYK[[™H‚ˆÙ]K›Y[X™\œË›X\
+/** The billing tab: where the setup fee stands, the controls that change it (Super Admin only), the payments recorded for this client, and the invoice and terms form. */
+function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
+  const b = data.billing;
+  const copy = setupStatusCopy(b?.setup_payment_status);
+  const [recording, setRecording] = React.useState(false);
+  const [waiving, setWaiving] = React.useState(false);
+  const [refunding, setRefunding] = React.useState<AgencyPaymentView | null>(null);
+  const clientOption = [{ orgId: data.org.id, name: data.org.name, setupStatus: b?.setup_payment_status ?? "not_invoiced", setupFeeCents: b?.setup_fee_cents ?? 149900, cleared: b?.cleared === true }];
+  const clearingPayment = data.payments.find((p) => p.id === b?.verified_payment_id);
+  if (!b) return <Card className="max-w-3xl"><CardContent><p className="text-[14px] text-muted">Your role does not include this client&apos;s billing.</p></CardContent></Card>;
+  return (
+    <div className="space-y-6">
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <div>
+            <CardTitle>Setup payment</CardTitle>
+            <CardDescription>New workspace setup is activated only after the setup fee is confirmed. Core features are never held back by payment.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={copy.tone}>{copy.label}</Badge>
+            <span className="text-[14px] text-muted">{copy.detail}</span>
+          </div>
+          {b?.setup_payment_status === "waived" && (
+            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[14px] text-ink-2">
+              Waived{b.waived_by_name ? ` by ${b.waived_by_name}` : ""}{b.waived_at ? ` on ${formatDate(b.waived_at, timeZone)}` : ""}. Reason: {b.waiver_reason}
+              <span className="mt-1 block text-[12px] text-muted">The client is told the fee was waived, not why.</span>
+            </p>
+          )}
+          {b?.setup_payment_status === "paid" && (
+            <p className="text-[14px] text-ink-2">
+              {clearingPayment ? `Cleared by the ${clearingPayment.provider === "manual" ? "payment recorded" : "payment confirmed"} ${clearingPayment.paidAt ? formatDate(clearingPayment.paidAt, timeZone) : ""}.` : b.verified_payment_id ? "Cleared by a verified payment." : "Marked paid before payments were recorded in the portal. No payment record is attached."}
+            </p>
+          )}
+          {superAdmin && !b?.cleared && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="brand" onClick={() => setRecording(true)}><Banknote className="size-4" aria-hidden /> Record a payment</Button>
+              <Button variant="secondary" onClick={() => setWaiving(true)}><HandCoins className="size-4" aria-hidden /> Waive the setup fee</Button>
+            </div>
+          )}
+          {!superAdmin && !b?.cleared && <p className="text-[13px] text-muted">Only a Super Admin can record a payment or waive the fee.</p>}
+        </CardContent>
+      </Card>
+      <Card className="max-w-3xl overflow-hidden">
+        <CardHeader>
+          <div>
+            <CardTitle>Payments</CardTitle>
+            <CardDescription>iAcquire&apos;s own setup fee and plan payments for this client. Payments recorded by hand are labelled as such.</CardDescription>
+          </div>
+          {superAdmin && <Button size="sm" variant="secondary" onClick={() => setRecording(true)}><Banknote className="size-3.5" aria-hidden /> Record a payment</Button>}
+        </CardHeader>
+        {!data.canViewPayments ? (
+          <CardContent><p className="text-[14px] text-muted">Your role does not include payment records.</p></CardContent>
+        ) : data.payments.length === 0 ? (
+          <CardContent><p className="text-[14px] text-muted">No payments recorded yet.</p></CardContent>
+        ) : (
+          <ul className="divide-y divide-line">
+            {data.payments.map((p) => <PaymentRow key={p.id} p={p} canManage={superAdmin} onRefund={setRefunding} timeZone={timeZone} showClient={false} />)}
+          </ul>
+        )}
+      </Card>
+      <BillingDetailsForm data={data} superAdmin={superAdmin} timeZone={timeZone} />
+      <RecordPaymentDialog open={recording} onOpenChange={setRecording} clients={clientOption} orgId={data.org.id} timeZone={timeZone} />
+      <WaiveFeeDialog open={waiving} onOpenChange={setWaiving} orgId={data.org.id} orgName={data.org.name} />
+      <RefundDialog payment={refunding} onClose={() => setRefunding(null)} timeZone={timeZone} />
+    </div>
+  );
+}
 
-JHOˆ
-ˆHÙ^O^ÛK\Ù\—ÚYHÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\^LÈØ\^KLˆKL‹H^VÌMH‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH˜\Ú\ËM‚ˆÛ\ÜÓ˜[YOH[˜Ø]H›Û[YY][HÛK™[Û˜[YHK™[XZ[OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^VÌLœH^[]]YÛK™[XZ[OÜ‚ˆÙ]‚ˆ˜YÙHÛ™O^ÛKœİ]\ÈOOH˜Xİ]™HˆÈœš[X\Hˆˆ›™]]˜[ŸOÜÙ[[˜ÙPØ\ÙJKœ›ÛJ_OĞ˜YÙO‚ˆÜ[ˆÛ\ÜÓ˜[YOHšY[ˆ^VÌLœH^Y˜Z[ÛN˜›ØÚÈÛK›\İÛÙÚ[—Ø]ÈÙY[ˆ	Ü™[]]™U[YJK›\İÛÙÚ[—Ø]
-_Xˆ“™]™\ˆÚYÛ™Y[ˆŸOÜÜ[‚ˆÛO‚ˆ
-J_BˆÙ]Kš[š]][ÛœË›X\
+/** Invoice and receipt links, terms and the activation label. The setup payment itself is changed only by the controls above. */
+function BillingDetailsForm({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
+  const { run, pending } = useAction();
+  const b = data.billing;
+  const [form, setForm] = React.useState({
+    setupPaymentStatus: b?.setup_payment_status ?? "not_invoiced",
+    activationStatus: b?.activation_status ?? "pending",
+    invoiceUrl: b?.invoice_url ?? "",
+    receiptUrl: b?.receipt_url ?? "",
+    serviceTerms: b?.service_terms ?? "",
+  });
+  return (
+    <Card className="max-w-3xl">
+      <CardHeader>
+        <div>
+          <CardTitle>Setup &amp; activation</CardTitle>
+          <CardDescription>One-time setup fee of ${((b?.setup_fee_cents ?? 149900) / 100).toLocaleString()} {b?.currency ?? "USD"}. Maintenance and custom projects are managed separately. Invoice links and terms are kept here; this form does not collect or confirm payment.</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {["not_invoiced", "invoiced"].includes(form.setupPaymentStatus) ? (
+            <Field label="Setup invoice" htmlFor="b-pay" hint="Marking it invoiced does not confirm any payment.">
+              <Select id="b-pay" value={form.setupPaymentStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, setupPaymentStatus: e.target.value }))}>
+                <option value="not_invoiced">Not invoiced</option>
+                <option value="invoiced">Invoiced</option>
+              </Select>
+            </Field>
+          ) : (
+            <Field label="Setup payment" htmlFor="b-pay-ro" hint="Changed only by recording a payment, waiving the fee or recording a refund.">
+              <Input id="b-pay-ro" value={setupStatusCopy(form.setupPaymentStatus).label} readOnly />
+            </Field>
+          )}
+          <Field label="Activation" htmlFor="b-act">
+            <Select id="b-act" value={form.activationStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, activationStatus: e.target.value }))}>
+              {["pending", "active", "suspended"].map((s) => (
+                <option key={s} value={s}>
+                  {sentenceCase(s)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Invoice link (HTTPS)" htmlFor="b-inv" optional>
+            <Input id="b-inv" value={form.invoiceUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, invoiceUrl: e.target.value }))} />
+          </Field>
+          <Field label="Receipt link (HTTPS)" htmlFor="b-rec" optional>
+            <Input id="b-rec" value={form.receiptUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, receiptUrl: e.target.value }))} />
+          </Field>
+        </div>
+        <Field label="Service terms & operating limits shown to the client" htmlFor="b-terms" optional>
+          <Textarea id="b-terms" rows={4} maxLength={4000} value={form.serviceTerms} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, serviceTerms: e.target.value }))} />
+        </Field>
+        {superAdmin && (
+          <Button loading={pending === "billing"} onClick={() => run("billing", () => updateBillingAction(data.org.id, form as never), "Billing updated")}>
+            Save billing
+          </Button>
+        )}
+        {b?.paid_at && b.setup_payment_status === "paid" && <p className="text-[13px] text-muted">Confirmed paid {formatDateTime(b.paid_at, timeZone)}</p>}
+      </CardContent>
+    </Card>
+  );
+}
 
-JHOˆ
-ˆHÙ^O^ÚKšYHÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\^LÈØ\^KLˆKLÈ^VÌMH‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH˜\Ú\ËMLˆ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^[]]YÚK™[XZ[OÜ‚ˆÛ\ÜÓ˜[YOH^VÌLœH^Y˜Z[ˆİ\™\ÜÒY˜][Û•Ø\›š[™ÏÚK™^\™YÈ[š]][Ûˆ^\™Y	Ü™[]]™U[YJK™^\™\×Ø]
-_Xˆ[š]][Ûˆ[™[™È0­È^\™\È	Ü™[]]™U[YJK™^\™\×Ø]
-_XOÜ‚ˆ[š]][Û‘[XZ[İ]\È[š]][Û^Ú_HÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Úš[šËL›^]Ü˜\][\ËXÙ[\ˆØ\LˆÛN›[X]]È‚ˆ˜YÙHÛ™O^ÚK™^\™YÈ›™]]˜[ˆˆØ\›š[™ÈŸOÜÙ[[˜ÙPØ\ÙJKœ›ÛHÏÈ›Y[X™\ˆŠ_OĞ˜YÙO‚ˆÜİ\\YZ[ˆ	‰ˆ™\Ù[™[š]][Û]ÛˆÜ™ÒY^Ù]K›Ü™ËšYH[š]][Û^Ú_H˜\šX[HœÙXÛÛ™\HˆX™[H”™\Ù[™ˆÏŸBˆÜİ\\YZ[ˆ	‰ˆ
-ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[H™ÚÜİˆÛÛXÚÏ^Ê
-HOˆ[Š‹IÚKšYX
+/** What actually happened to the invitation email, taken from the outbox rather than assumed. */
+function InvitationEmailStatus({ invitation: i }: { invitation: Detail["invitations"][number] }) {
+  if (!i.email_status) return <p className="text-[12px] text-faint">No invitation email on record. Use Resend.</p>;
+  const s = deliverySummary(i.email_status, i.email_error, i.email);
+  const when = i.email_at ? ` ${relativeTime(i.email_at)}` : "";
+  const text =
+    i.email_status === "sent" ? `Email sent${when}`
+    : i.email_status === "captured" ? "Email was not delivered: email delivery is switched off for this environment"
+    : i.email_status === "failed" ? `Email failed${i.email_error ? `: ${i.email_error}` : ""}`
+    : "Email queued, delivery not confirmed";
+  return <p className={cn("text-[12px]", s.tone === "success" ? "text-success-ink" : s.tone === "danger" ? "text-danger-ink" : "text-warning-ink")} suppressHydrationWarning>{text}</p>;
+}
 
-HOˆ™]›ÚÙR[š]][ÛXİ[ÛŠKšY]K›Ü™ËšY
-K’[š]][Ûˆ™]›ÚÙYŠ_O‚ˆ™]›ÚÙBˆĞ]Û‚ˆ
-_BˆÙ]‚ˆÛO‚ˆ
-J_Bˆİ[‚ˆÜİ\\YZ[ˆ	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ›İ[™Y^›Ü™\ˆ›Ü™\‹[[™HLÈ‚ˆÛ\ÜÓ˜[YOH^VÌMH›Û[YY][H’[š]HÛÛY[Û™OÜ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LˆÛN™›^\›İÈ‚ˆX™[[›ÜHš[‹Y[XZ[ˆÛ\ÜÓ˜[YOHœÜ‹[Û›H‚ˆ[XZ[ˆÛX™[‚ˆ[œ]YHš[‹Y[XZ[ˆ\OH™[XZ[ˆXÙZÛ\H›˜[YPÛÛ\[K˜ÛÛHˆ˜[YO^Ù[XZ[HÛÚ[™ÙO^ÊJHOˆÙ][XZ[
-K\™Ù]˜[YJ_HÏ‚ˆX™[[›ÜHš[‹\›ÛHˆÛ\ÜÓ˜[YOHœÜ‹[Û›H‚ˆ›ÛBˆÛX™[‚ˆÙ[XİYHš[‹\›ÛHˆ˜[YO^Ü›Û_HÛÚ[™ÙO^ÊJHOˆÙ]›ÛJK\™Ù]˜[YH\È\[Ùˆ›ÛJ_HÛ\ÜÓ˜[YOHœÛNËLÍˆ‚ˆÜ[Ûˆ˜[YOH›İÛ™\ˆ“İÛ™\ÛÜ[Û‚ˆÜ[Ûˆ˜[YOH˜YZ[ˆYZ[ÛÜ[Û‚ˆÜ[Ûˆ˜[YOH›Y[X™\ˆ“Y[X™\ÛÜ[Û‚ˆÔÙ[Xİ‚ˆ]Û‚ˆØY[™Ï^Ü[™[™ÈOOHš[š]HŸBˆÛÛXÚÏ^Ø\Ş[˜È
-
-HOˆÂˆÛÛœİ™\ÈH]ØZ][Šš[š]H‹
-
-HOˆ[š]PÛY[\Ù\Xİ[ÛŠ]K›Ü™ËšY[XZ[›ÛJK
-
-HOˆ
-Ë™[]™\Kœİ]\ÈOOHœÙ[ˆÈ’[š]][Ûˆ[XZ[Yˆˆ’[š]][ÛˆÜ™X]Y]H[XZ[Ø\È›İ[]™\™YˆÛÜHH[šÈ™[İËˆŠJNÂˆYˆ
-™\È	‰ˆ™]Hˆ[ˆ™\È	‰ˆ™\Ë™]JHÙ][šÊ
-™\Ë™]H\ÈÈ[šÎˆİš[™ÈJK›[šÊNÂˆÙ][XZ[
-ˆŠNÂˆ_Bˆ‚ˆ\Ù\”\ÈÛ\ÜÓ˜[YOHœÚ^™KMˆÏˆ[š]BˆĞ]Û‚ˆÙ]‚ˆÛ[šÈ	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›İ[™Y[È™Ë\İ\™˜XÙKLˆLˆ‚ˆÛÙHÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH[˜Ø]H^VÌLœHÛ[šßOØÛÙO‚ˆ]ÛˆÚ^™OHœÛHˆ˜\šX[H™ÚÜİˆÛÛXÚÏ^Ê
-HOˆ˜]šYØ]Ü‹˜Û\›Ø\™Üš]U^
-[šÊK[Š
-
-HOˆØ\İœİXØÙ\ÜÊÛÜYYŠJ_O‚ˆÛÜHÛ\ÜÓ˜[YOHœÚ^™KLËHˆÏ‚ˆĞ]Û‚ˆÙ]‚ˆ
-_BˆÙ]‚ˆ
-_BˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆØ\™‚ˆØ\™XY\‚ˆ]‚ˆØ\™]O\ÜÚYÛ™YYÙ[˜ŞHİY™ĞØ\™]O‚ˆØ\™\ØÜš\[Û”İY™ˆÛ›HÙYHÛY[È^I˜\ÜÎÜ™H\ÜÚYÛ™YËĞØ\™\ØÜš\[Û‚ˆÙ]‚ˆĞØ\™XY\‚ˆØ\™ÛÛ[‚ˆÙ]KœİY™‹›[™İOOHÈ
-ˆÛ\ÜÓ˜[YOHœKM^VÌMH^[]]Y“›ÈYÙ[˜ŞHİY™ˆXØÛİ[ÈY]Ü‚ˆ
-Hˆ
-ˆ[Û\ÜÓ˜[YOH™]šYK^H]šYK[[™H‚ˆÙ]KœİY™‹›X\
-
-ÊHOˆ
-ˆHÙ^O^ÜË\Ù\—ÚYHÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆØ\LÈKL‹H^VÌMH‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL‚ˆÛ\ÜÓ˜[YOH[˜Ø]H›Û[YY][HÜË™[Û˜[YHË™[XZ[OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^VÌLœH^[]]YÜË™[XZ[OÜ‚ˆÙ]‚ˆİÚ]ÚˆÚXÚÙY^ÜË˜\ÜÚYÛ™YBˆ\ØX›Y^È\İ\\YZ[ŸBˆ\šXK[X™[^Ø\ÜÚYÛˆ	ÜË™[Û˜[YHË™[XZ[XBˆÛÚXÚÙYÚ[™ÙO^ÊŠHOˆ[ŠİIÜË\Ù\—ÚYX
-
-HOˆ\ÜÚYÛ”İY™Xİ[ÛŠ]K›Ü™ËšYË\Ù\—ÚYŠKˆÈ”İY™ˆ\ÜÚYÛ™Yˆˆ”İY™ˆ[˜\ÜÚYÛ™YŠ_BˆÏ‚ˆÛO‚ˆ
-J_Bˆİ[‚ˆ
-_BˆĞØ\™ÛÛ[‚ˆĞØ\™‚ˆÙ]‚ˆ
-NÂŸB
+function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+  const { run, pending } = useAction();
+  const [email, setEmail] = React.useState("");
+  const [role, setRole] = React.useState<"owner" | "admin" | "member">("owner");
+  const [link, setLink] = React.useState<string | null>(null);
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Client users</CardTitle>
+            <CardDescription>Members of this workspace.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ul className="divide-y divide-line">
+            {data.members.map((m) => (
+              <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-[14px]">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="truncate font-medium">{m.full_name || m.email}</p>
+                  <p className="truncate text-[12px] text-muted">{m.email}</p>
+                </div>
+                <Badge tone={m.status === "active" ? "primary" : "neutral"}>{sentenceCase(m.role)}</Badge>
+                <span className="hidden text-[12px] text-faint sm:block">{m.last_login_at ? `Seen ${relativeTime(m.last_login_at)}` : "Never signed in"}</span>
+              </li>
+            ))}
+            {data.invitations.map((i) => (
+              <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-[14px]">
+                <div className="min-w-0 flex-1 basis-52">
+                  <p className="truncate text-muted">{i.email}</p>
+                  <p className="text-[12px] text-faint" suppressHydrationWarning>{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending Â· expires ${relativeTime(i.expires_at)}`}</p>
+                  <InvitationEmailStatus invitation={i} />
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
+                  <Badge tone={i.expired ? "neutral" : "warning"}>{sentenceCase(i.role ?? "member")}</Badge>
+                  {superAdmin && <ResendInvitationButton orgId={data.org.id} invitation={i} variant="secondary" label="Resend" />}
+                  {superAdmin && (
+                    <Button size="sm" variant="ghost" onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
+                      Revoke
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {superAdmin && (
+            <div className="space-y-3 rounded-xl border border-line p-3">
+              <p className="text-[14px] font-medium">Invite someone</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <label htmlFor="inv-email" className="sr-only">
+                  Email
+                </label>
+                <Input id="inv-email" type="email" placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <label htmlFor="inv-role" className="sr-only">
+                  Role
+                </label>
+                <Select id="inv-role" value={role} onChange={(e) => setRole(e.target.value as typeof role)} className="sm:w-36">
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="member">Member</option>
+                </Select>
+                <Button
+                  loading={pending === "invite"}
+                  onClick={async () => {
+                    const res = await run("invite", () => inviteClientUserAction(data.org.id, email, role), (d) => (d?.delivery.status === "sent" ? "Invitation emailed" : "Invitation created, but the email was not delivered. Copy the link below."));
+                    if (res && "data" in res && res.data) setLink((res.data as { link: string }).link);
+                    setEmail("");
+                  }}
+                >
+                  <UserPlus className="size-4" /> Invite
+                </Button>
+              </div>
+              {link && (
+                <div className="flex items-center gap-2 rounded-lg bg-surface-2 p-2">
+                  <code className="min-w-0 flex-1 truncate text-[12px]">{link}</code>
+                  <Button size="sm" variant="ghost" onClick={() => navigator.clipboard.writeText(link).then(() => toast.success("Copied"))}>
+                    <Copy className="size-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Assigned agency staff</CardTitle>
+            <CardDescription>Staff only see clients they&apos;re assigned to.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.staff.length === 0 ? (
+            <p className="py-4 text-[14px] text-muted">No agency staff accounts yet.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.staff.map((s) => (
+                <li key={s.user_id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{s.full_name || s.email}</p>
+                    <p className="truncate text-[12px] text-muted">{s.email}</p>
+                  </div>
+                  <Switch
+                    checked={s.assigned}
+                    disabled={!superAdmin}
+                    aria-label={`Assign ${s.full_name || s.email}`}
+                    onCheckedChange={(v) => run(`st-${s.user_id}`, () => assignStaffAction(data.org.id, s.user_id, v), v ? "Staff assigned" : "Staff unassigned")}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
