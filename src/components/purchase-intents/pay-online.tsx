@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CreditCard, Loader2, LockKeyhole, Wallet } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, CreditCard, Loader2, LockKeyhole, TriangleAlert, Wallet } from "lucide-react";
 import { startPurchaseCheckoutAction } from "@/app/actions/purchase-intents";
 import { formatUsdCents } from "@/lib/purchase-intents/rules";
 
@@ -30,30 +29,41 @@ export function PayOnline({ token, setupFeeCents, previous, providers }: { token
   };
 
   const has = (id: Provider) => providers.some((p) => p.id === id);
+  // The first provider on offer is the highlighted one; with two, the other is a plain tile.
+  const primary: Provider | null = has("paymongo") ? "paymongo" : has("paypal") ? "paypal" : null;
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       {previous && (
-        <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[14px] leading-relaxed text-warning-ink">
-          The last payment attempt did not go through. Nothing was charged. You can try again.
+        <p role="status" className="room-note room-note-warn">
+          <TriangleAlert className="size-4" aria-hidden />
+          <span>The last payment attempt did not go through. Nothing was charged. You can try again.</span>
         </p>
       )}
-      {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-[14px] text-danger-ink">{error}</p>}
-      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+      {error && <p role="alert" className="room-note room-note-bad"><TriangleAlert className="size-4" aria-hidden /><span>{error}</span></p>}
+      <div className="room-pays">
         {has("paymongo") && (
-          <Button type="button" size="lg" variant="brand" onClick={() => void pay("paymongo")} disabled={busy !== null} loading={busy === "paymongo"} className="min-h-12 w-full sm:w-auto">
-            {busy === "paymongo" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <CreditCard className="size-4" aria-hidden />}
-            Pay {price} by card or e-wallet
-          </Button>
+          <button type="button" className="room-pay" data-primary={primary === "paymongo"} onClick={() => void pay("paymongo")} disabled={busy !== null} aria-busy={busy === "paymongo" || undefined}>
+            <span className="room-pay-icon" aria-hidden>{busy === "paymongo" ? <Loader2 className="size-5 animate-spin" /> : <CreditCard className="size-5" />}</span>
+            <span className="min-w-0">
+              <span className="room-pay-title">Pay {price} by card or e-wallet</span>{" "}
+              <span className="room-pay-sub">PayMongo, charged in pesos at iAcquire&apos;s published rate</span>
+            </span>
+            <ArrowRight className="room-pay-go size-5" aria-hidden />
+          </button>
         )}
         {has("paypal") && (
-          <Button type="button" size="lg" variant={has("paymongo") ? "secondary" : "brand"} onClick={() => void pay("paypal")} disabled={busy !== null} loading={busy === "paypal"} className="min-h-12 w-full sm:w-auto">
-            {busy === "paypal" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Wallet className="size-4" aria-hidden />}
-            Pay {price} with PayPal
-          </Button>
+          <button type="button" className="room-pay" data-primary={primary === "paypal"} onClick={() => void pay("paypal")} disabled={busy !== null} aria-busy={busy === "paypal" || undefined}>
+            <span className="room-pay-icon" aria-hidden>{busy === "paypal" ? <Loader2 className="size-5 animate-spin" /> : <Wallet className="size-5" />}</span>
+            <span className="min-w-0">
+              <span className="room-pay-title">Pay {price} with PayPal</span>{" "}
+              <span className="room-pay-sub">PayPal, in US dollars with your PayPal account or a card</span>
+            </span>
+            <ArrowRight className="room-pay-go size-5" aria-hidden />
+          </button>
         )}
       </div>
-      <p className="flex items-start gap-1.5 text-[14px] leading-relaxed text-muted">
-        <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+      <p className="room-small flex items-start gap-2">
+        <LockKeyhole className="mt-1 size-3.5 shrink-0" style={{ color: "var(--rm-blue)" }} aria-hidden />
         <span>
           {has("paymongo") && (
             <>

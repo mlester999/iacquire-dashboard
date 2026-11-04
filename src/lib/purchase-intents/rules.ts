@@ -153,6 +153,37 @@ export function checkoutReturnText(status: CheckoutStatus | null, purchase: Purc
   return { tone: "neutral", title: "Waiting for the payment provider", body: "This page does not decide whether you have paid: only the payment provider's confirmation does. Refresh in a minute; if you completed the payment, iAcquire will email you." };
 }
 
+/** Which of the page's states the payment page is in, from the same facts as its words (checkoutReturnText): the glyph and the "what happens next" list follow it. */
+export type ReturnStage = "review" | "ready" | "test" | "paid" | "failed" | "left" | "waiting";
+
+export function checkoutReturnStage(status: CheckoutStatus | null, purchase: PurchaseStatus | null, leftThePaymentPage = false, sandboxOnLive = false): ReturnStage {
+  if (status === "refunded" || status === "disputed" || status === "mismatch") return "review";
+  if (purchase === "provisioned") return "ready";
+  if (sandboxOnLive && (purchase === "payment_verified" || status === "paid")) return "test";
+  if (purchase === "payment_verified" || status === "paid") return "paid";
+  if (status === "failed" || status === "cancelled" || status === "expired") return "failed";
+  if (leftThePaymentPage && (status === "pending" || status === "creating")) return "left";
+  return "waiting";
+}
+
+export type JourneyStepState = "done" | "current" | "todo";
+export interface JourneyStep {
+  label: string;
+  state: JourneyStepState;
+}
+
+const JOURNEY_LABELS = ["Confirm", "Pay", "Verify", "Workspace"] as const;
+
+/**
+ * The four stops between the invitation and a workspace, for the progress the buyer sees: confirm the offer, pay, the payment is verified (by the provider, or by iAcquire), and the
+ * workspace is made. It only restates the purchase's own status. A purchase that was closed or ran out has no road to show.
+ */
+export function buyerJourney(status: PurchaseStatus): JourneyStep[] | null {
+  const current = status === "invited" ? 0 : status === "started" ? 1 : status === "payment_verified" ? 3 : status === "provisioned" ? 4 : null;
+  if (current === null) return null;
+  return JOURNEY_LABELS.map((label, i) => ({ label, state: i < current ? "done" : i === current ? "current" : "todo" }));
+}
+
 /** The whole commercial offer as one frozen row: a later price change cannot rewrite what a buyer was shown. */
 export interface PriceSnapshot {
   setupFeeCents: number;

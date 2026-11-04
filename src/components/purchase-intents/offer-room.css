@@ -1,0 +1,265 @@
+/*
+ * The offer room: the night-blue stage that the buyer's purchase page and payment page share. Plain CSS, not utilities, for what utilities cannot say: the orbit of the six AI employees,
+ * the ticket's notches, the progress path, the sheen on the main button and the drawn tick. The room does not follow the light or dark theme (a buyer has no portal theme): it is one
+ * considered colour world, with its own variables. Every animation ends in the state it would show without it, so "reduce motion" (last block) only has to make them instant.
+ */
+
+.room {
+  --rm-ink: #f4f7ff;
+  --rm-ink-2: rgb(228 235 255 / 0.9);
+  --rm-muted: rgb(206 216 246 / 0.82);
+  --rm-line: rgb(255 255 255 / 0.1);
+  --rm-line-strong: rgb(255 255 255 / 0.2);
+  --rm-glass: rgb(255 255 255 / 0.06);
+  --rm-glass-2: rgb(255 255 255 / 0.1);
+  --rm-blue: #7b9cff;
+  --rm-violet: #a995ff;
+  --rm-mint: #4de3b4;
+  --rm-amber: #f7bd57;
+  --rm-red: #ff8588;
+  --rm-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  isolation: isolate;
+  min-height: 100svh;
+  overflow-x: clip;
+  color: var(--rm-ink);
+  color-scheme: dark;
+  background: #050814;
+  font-feature-settings: "ss01", "cv11";
+}
+/* The page behind a rubber-band scroll stays the same colour as the room. */
+body:has(.room) { background: #050814; }
+
+/* ---- the stage ------------------------------------------------------------------------------------------------------------------- */
+.room-aurora { position: absolute; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+.room-aurora::before, .room-aurora::after { content: ""; position: absolute; border-radius: 50%; filter: blur(72px); will-change: transform; }
+.room-aurora::before { width: 64vmax; height: 64vmax; left: -24vmax; top: -32vmax; background: radial-gradient(circle, rgb(122 92 255 / 0.55), transparent 62%); animation: room-drift-a 34s ease-in-out infinite alternate; }
+.room-aurora::after { width: 60vmax; height: 60vmax; right: -22vmax; top: -18vmax; background: radial-gradient(circle, rgb(44 91 255 / 0.6), transparent 64%); animation: room-drift-b 40s ease-in-out infinite alternate; }
+.room-horizon { position: absolute; left: 0; right: 0; bottom: -34vmax; height: 64vmax; z-index: -2; pointer-events: none; background: radial-gradient(58% 50% at 50% 50%, rgb(0 190 160 / 0.15), transparent 70%); }
+.room-grid {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 72% 56% at 50% 16%, #000 0%, transparent 76%);
+  mask-image: radial-gradient(ellipse 72% 56% at 50% 16%, #000 0%, transparent 76%);
+}
+
+/* ---- words ------------------------------------------------------------------------------------------------------------------------ */
+.room-eyebrow { display: inline-flex; align-items: center; gap: 10px; font: 600 12px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--rm-ink-2); overflow-wrap: anywhere; }
+.room-eyebrow-dot { position: relative; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--rm-mint); }
+.room-eyebrow-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--rm-mint); animation: pulse-ring 2.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite; }
+.room-h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.7rem, 6.4vw, 4.9rem); line-height: 1.02; letter-spacing: -0.025em; color: var(--rm-ink); text-wrap: balance; overflow-wrap: anywhere; }
+.room-h1 em { padding-right: 0.06em; font-style: italic; background: linear-gradient(100deg, #9db6ff 0%, #c9b8ff 52%, #ffd3a3 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.room-h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(1.8rem, 3.6vw, 2.6rem); line-height: 1.08; letter-spacing: -0.02em; color: var(--rm-ink); text-wrap: balance; overflow-wrap: anywhere; }
+.room-lede { font-size: clamp(1rem, 1.5vw, 1.125rem); line-height: 1.65; color: var(--rm-ink-2); overflow-wrap: anywhere; text-wrap: pretty; }
+.room-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--rm-muted); }
+.room-small { font-size: 13px; line-height: 1.6; color: var(--rm-muted); }
+
+.room-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 12px; border: 1px solid var(--rm-line-strong); border-radius: 999px; background: var(--rm-glass); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); font-size: 12px; font-weight: 500; color: var(--rm-ink-2); white-space: nowrap; }
+.room-chip svg { flex: none; }
+.room-chip-good { border-color: rgb(77 227 180 / 0.45); background: rgb(77 227 180 / 0.12); color: #bff8e3; }
+.room-chip-quiet { border-color: var(--rm-line); color: var(--rm-ink-2); }
+
+.room-foot { padding-top: 56px; text-align: center; font-size: 12px; color: var(--rm-muted); }
+
+/* A short message in the middle of the room: a link that does not work, too many attempts. */
+.room-panel { max-width: 30rem; margin: 6vh auto 0; padding: 40px 28px; text-align: center; border: 1px solid var(--rm-line-strong); border-radius: 26px; background: linear-gradient(165deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04)), rgb(7 11 32 / 0.4); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 34px 60px -20px rgb(2 5 20 / 0.6); }
+.room-panel h1 { margin: 20px 0 0; font-family: var(--font-display); font-weight: 400; font-size: 2.1rem; line-height: 1.1; letter-spacing: -0.02em; color: #fff; }
+.room-panel p { margin: 12px auto 0; max-width: 24rem; font-size: 15px; line-height: 1.7; color: var(--rm-ink-2); }
+.room-panel-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto; border: 1px solid rgb(255 255 255 / 0.22); border-radius: 20px; background: rgb(255 255 255 / 0.08); color: var(--rm-blue); }
+
+/* ---- layout ----------------------------------------------------------------------------------------------------------------------- */
+.room-layout { display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "hero" "ticket" "orbit"; }
+.room-a-hero { grid-area: hero; min-width: 0; }
+.room-a-ticket { grid-area: ticket; min-width: 0; }
+.room-a-orbit { grid-area: orbit; min-width: 0; }
+@media (min-width: 1024px) {
+  .room-layout { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); column-gap: 64px; row-gap: 40px; grid-template-areas: "hero ticket" "orbit ticket"; }
+  .room-a-ticket { align-self: start; position: sticky; top: 28px; }
+}
+.room-included { margin-top: 72px; }
+
+.room-in { animation: room-rise 0.8s var(--rm-ease) both; animation-delay: calc(var(--d, 0) * 100ms); }
+
+/* ---- the team in orbit ------------------------------------------------------------------------------------------------------------ */
+.room-orbit { position: relative; width: 100%; max-width: 470px; aspect-ratio: 1; margin-inline: auto; container-type: inline-size; }
+.room-ring { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+.room-ring-1 { width: 72cqw; height: 72cqw; border: 1px dashed rgb(255 255 255 / 0.18); }
+.room-ring-2 { width: 47cqw; height: 47cqw; border: 1px solid rgb(255 255 255 / 0.07); }
+.room-ring-sweep { width: 72cqw; height: 72cqw; background: conic-gradient(from 0deg, transparent 0 72%, rgb(123 156 255 / 0.65) 96%, transparent 100%); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px)); animation: room-spin-center 9s linear infinite; }
+.room-orbit-spin { position: absolute; inset: 0; animation: room-spin 150s linear infinite; }
+.room-node { position: absolute; left: 50%; top: 50%; width: 17cqw; height: 17cqw; margin: -8.5cqw 0 0 -8.5cqw; transform: rotate(calc(var(--i) * 60deg)) translateY(-36cqw) rotate(calc(var(--i) * -60deg)); }
+.room-node-counter { width: 100%; height: 100%; animation: room-spin-rev 150s linear infinite; }
+.room-node-bob {
+  display: grid; place-items: center; width: 100%; height: 100%; border-radius: 30%;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  background: radial-gradient(120% 120% at 30% 12%, color-mix(in srgb, var(--accent) 42%, transparent), color-mix(in srgb, var(--accent) 12%, transparent) 62%, rgb(255 255 255 / 0.04)), rgb(9 14 32 / 0.78);
+  box-shadow: 0 12px 30px -10px color-mix(in srgb, var(--accent) 65%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.2);
+  animation: float 6s ease-in-out infinite; animation-delay: calc(var(--i) * -1s);
+}
+.room-node-bob img { width: 84%; height: 84%; object-fit: contain; }
+.room-core { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 27cqw; height: 27cqw; border-radius: 50%; transform: translate(-50%, -50%); border: 1px solid rgb(255 255 255 / 0.3); background: radial-gradient(circle at 30% 18%, rgb(255 255 255 / 0.28), rgb(255 255 255 / 0.05) 58%), linear-gradient(135deg, rgb(44 91 255 / 0.6), rgb(122 92 255 / 0.6)); box-shadow: 0 0 0 9px rgb(123 156 255 / 0.09), 0 0 90px rgb(123 156 255 / 0.5); }
+.room-core::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgb(177 196 255 / 0.7); animation: room-ring 3.2s ease-out infinite; }
+.room-core span { font-family: var(--font-display); font-size: 10.5cqw; line-height: 1; letter-spacing: -0.02em; color: #fff; text-shadow: 0 2px 18px rgb(20 40 140 / 0.6); }
+
+.room-roster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 22px 0 0; padding: 0; list-style: none; }
+@media (min-width: 560px) { .room-roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.room-roster li { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 13.5px; color: var(--rm-ink-2); }
+/* Pointing at a name in the list lifts that employee in the orbit (the list is the text, the orbit is the picture; this ties them together for anyone with a pointer). The individual `scale`
+   property is used so it composes with the floating animation instead of fighting it. */
+.room-roster li { margin: -4px -8px; padding: 4px 8px; border-radius: 10px; transition: background 0.2s; }
+.room-roster li:hover { background: var(--rm-glass); }
+.room-a-orbit:has(.room-roster li:nth-child(1):hover) .room-node:nth-child(1) .room-node-bob,
+.room-a-orbit:has(.room-roster li:nth-child(2):hover) .room-node:nth-child(2) .room-node-bob,
+.room-a-orbit:has(.room-roster li:nth-child(3):hover) .room-node:nth-child(3) .room-node-bob,
+.room-a-orbit:has(.room-roster li:nth-child(4):hover) .room-node:nth-child(4) .room-node-bob,
+.room-a-orbit:has(.room-roster li:nth-child(5):hover) .room-node:nth-child(5) .room-node-bob,
+.room-a-orbit:has(.room-roster li:nth-child(6):hover) .room-node:nth-child(6) .room-node-bob { scale: 1.24; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 38%, transparent), 0 20px 44px -8px color-mix(in srgb, var(--accent) 85%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.25); }
+.room-node-bob { transition: scale 0.3s var(--rm-ease), box-shadow 0.3s; }
+.room-roster-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent); }
+
+/* ---- what is included ------------------------------------------------------------------------------------------------------------- */
+.room-bento { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 22px; }
+@media (min-width: 720px) { .room-bento { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.room-tile { position: relative; padding: 20px 18px 18px; border: 1px solid var(--rm-line); border-radius: 20px; background: linear-gradient(160deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.025)); transition: transform 0.3s var(--rm-ease), border-color 0.3s, background 0.3s; }
+.room-tile:hover { transform: translateY(-3px); border-color: var(--rm-line-strong); background: linear-gradient(160deg, rgb(255 255 255 / 0.11), rgb(255 255 255 / 0.04)); }
+.room-tile-icon { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgb(255 255 255 / 0.22); border-radius: 13px; background: linear-gradient(135deg, rgb(44 91 255 / 0.55), rgb(122 92 255 / 0.55)); color: #fff; box-shadow: 0 8px 22px -8px rgb(66 99 255 / 0.7); }
+.room-tile h3 { margin: 16px 0 6px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--rm-ink); }
+.room-tile p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--rm-muted); overflow-wrap: anywhere; }
+
+.room-trust { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 40px; }
+@media (min-width: 768px) { .room-trust { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.room-trust p { display: flex; align-items: flex-start; gap: 11px; margin: 0; padding: 15px 16px; border: 1px solid var(--rm-line); border-radius: 16px; background: var(--rm-glass); font-size: 12.5px; line-height: 1.6; color: var(--rm-muted); }
+.room-trust svg { flex: none; margin-top: 2px; color: var(--rm-blue); }
+
+/* ---- the ticket ------------------------------------------------------------------------------------------------------------------- */
+.room-ticket { position: relative; filter: drop-shadow(0 34px 60px rgb(2 5 20 / 0.6)); }
+.room-ticket::before { content: ""; position: absolute; inset: -12% -8% -8%; z-index: -1; background: radial-gradient(55% 48% at 50% 38%, rgb(80 112 255 / 0.32), transparent 72%); filter: blur(34px); pointer-events: none; }
+.room-ticket-top, .room-ticket-bottom { position: relative; border: 1px solid var(--rm-line-strong); -webkit-backdrop-filter: blur(24px) saturate(150%); backdrop-filter: blur(24px) saturate(150%); }
+.room-ticket-top { padding: 26px 26px 26px; border-bottom: 0; border-radius: 28px 28px 0 0; background: linear-gradient(165deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04)), rgb(7 11 32 / 0.4); --notch: 14px; -webkit-mask: radial-gradient(circle var(--notch) at 0 100%, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 100%, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat; mask: radial-gradient(circle var(--notch) at 0 100%, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 100%, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat; }
+.room-ticket-bottom { display: grid; gap: 20px; padding: 26px; border-top: 0; border-radius: 0 0 28px 28px; background: linear-gradient(0deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.08)), rgb(7 11 32 / 0.4); --notch: 14px; -webkit-mask: radial-gradient(circle var(--notch) at 0 0, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 0, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat; mask: radial-gradient(circle var(--notch) at 0 0, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 0, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat; }
+.room-ticket-bottom::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 2px; background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.3) 0 7px, transparent 7px 14px); }
+.room-company { margin: 12px 0 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--rm-ink); overflow-wrap: anywhere; }
+.room-price { display: block; margin: 8px 0 0; font-family: var(--font-display); font-size: clamp(3.6rem, 9vw, 5rem); line-height: 0.95; letter-spacing: -0.035em; color: #fff; font-variant-numeric: lining-nums tabular-nums; text-shadow: 0 4px 40px rgb(66 99 255 / 0.5); }
+.room-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--rm-line); }
+.room-line dt { max-width: 18rem; font-size: 13.5px; line-height: 1.45; color: var(--rm-ink-2); }
+.room-line dd { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--rm-ink); }
+.room-line dd small { font-size: 12px; font-weight: 400; color: var(--rm-muted); }
+
+/* ---- the road from the invitation to a workspace ---------------------------------------------------------------------------------- */
+.room-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.room-step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px; min-width: 0; text-align: center; font-size: 12px; font-weight: 500; color: var(--rm-muted); }
+.room-step::before { content: ""; position: absolute; top: 13px; right: 50%; width: 100%; height: 2px; background: var(--rm-line); }
+.room-step:first-child::before { display: none; }
+.room-step[data-state="done"]::before, .room-step[data-state="current"]::before { background: linear-gradient(90deg, #2c5bff, #7a5cff); }
+.room-step-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid var(--rm-line-strong); border-radius: 50%; background: #0a1230; font-size: 12px; font-weight: 600; color: var(--rm-muted); }
+.room-step[data-state="done"] .room-step-dot { border-color: transparent; background: linear-gradient(135deg, #2c5bff, #7a5cff); color: #fff; }
+.room-step[data-state="current"] { color: var(--rm-ink); }
+.room-step[data-state="current"] .room-step-dot { border-color: #7b9cff; background: #0f1b4d; color: #fff; box-shadow: 0 0 0 4px rgb(123 156 255 / 0.2); }
+.room-step[data-state="current"] .room-step-dot::after { content: ""; position: absolute; inset: -6px; border: 2px solid rgb(123 156 255 / 0.55); border-radius: 50%; animation: room-ring 2.2s ease-out infinite; }
+
+/* ---- the action ------------------------------------------------------------------------------------------------------------------- */
+.room-cta {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 58px; padding: 0 22px; border: 0; border-radius: 17px; overflow: hidden;
+  background: linear-gradient(120deg, #2c5bff 0%, #5a4dff 52%, #7a55f2 100%); box-shadow: 0 1px 0 rgb(255 255 255 / 0.4) inset, 0 16px 34px -10px rgb(77 105 255 / 0.85);
+  color: #fff; font: 600 16.5px/1 var(--font-sans); letter-spacing: -0.012em; cursor: pointer; transition: transform 0.2s var(--rm-ease), filter 0.2s, box-shadow 0.2s;
+}
+.room-cta::after { content: ""; position: absolute; inset: 0; background: linear-gradient(108deg, transparent 32%, rgb(255 255 255 / 0.38) 50%, transparent 68%); transform: translateX(-130%); animation: room-sheen 4.6s ease-in-out 1.4s infinite; pointer-events: none; }
+.room-cta:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 1px 0 rgb(255 255 255 / 0.4) inset, 0 22px 40px -10px rgb(77 105 255 / 0.95); }
+.room-cta:active:not(:disabled) { transform: scale(0.985); }
+.room-cta:disabled { opacity: 0.65; cursor: progress; }
+.room-cta:disabled::after { animation: none; display: none; }
+.room-cta-arrow { transition: transform 0.25s var(--rm-ease); }
+.room-cta:hover:not(:disabled) .room-cta-arrow { transform: translateX(4px); }
+.room-cta:focus-visible, .room-pay:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 17px; }
+
+.room-pays { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.room-pay {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; min-height: 72px; padding: 14px 16px; border: 1px solid var(--rm-line-strong); border-radius: 18px;
+  background: var(--rm-glass); color: var(--rm-ink); text-align: left; cursor: pointer; transition: transform 0.22s var(--rm-ease), border-color 0.22s, background 0.22s, box-shadow 0.22s;
+}
+.room-pay[data-primary="true"] { border-color: rgb(123 156 255 / 0.6); background: linear-gradient(120deg, rgb(44 91 255 / 0.34), rgb(122 92 255 / 0.28)); box-shadow: 0 14px 34px -14px rgb(77 105 255 / 0.9); }
+.room-pay:hover:not(:disabled) { transform: translateY(-2px); border-color: rgb(177 196 255 / 0.85); box-shadow: 0 0 0 4px rgb(123 156 255 / 0.16), 0 18px 34px -14px rgb(77 105 255 / 0.9); }
+.room-pay:active:not(:disabled) { transform: scale(0.99); }
+.room-pay:disabled { opacity: 0.6; cursor: progress; }
+.room-pay-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgb(255 255 255 / 0.22); border-radius: 14px; background: rgb(255 255 255 / 0.1); color: #fff; }
+.room-pay-title { display: block; font-size: 15.5px; font-weight: 600; letter-spacing: -0.012em; line-height: 1.3; }
+.room-pay-sub { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--rm-muted); }
+.room-pay-go { color: var(--rm-ink-2); transition: transform 0.25s var(--rm-ease); }
+.room-pay:hover:not(:disabled) .room-pay-go { transform: translateX(4px); color: #fff; }
+
+.room-note { display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border: 1px solid var(--rm-line-strong); border-radius: 15px; background: var(--rm-glass); font-size: 14px; line-height: 1.6; color: var(--rm-ink-2); overflow-wrap: anywhere; }
+.room-note svg { flex: none; margin-top: 3px; }
+.room-note p { margin: 0; }
+.room-note-good { border-color: rgb(77 227 180 / 0.4); background: rgb(77 227 180 / 0.1); color: #d3fbee; }
+.room-note-good svg { color: var(--rm-mint); }
+.room-note-warn { border-color: rgb(247 189 87 / 0.45); background: rgb(247 189 87 / 0.1); color: #ffe9c2; }
+.room-note-warn svg { color: var(--rm-amber); }
+.room-note-bad { border-color: rgb(255 133 136 / 0.45); background: rgb(255 133 136 / 0.1); color: #ffd9da; }
+.room-note-bad svg { color: var(--rm-red); }
+
+/* ---- the payment page ------------------------------------------------------------------------------------------------------------- */
+.room-glyph { position: relative; display: grid; place-items: center; width: 132px; height: 132px; margin: 0 auto; }
+.room-glyph svg { width: 100%; height: 100%; overflow: visible; }
+.room-glyph-halo { position: absolute; inset: 14px; border-radius: 50%; background: radial-gradient(circle, var(--glyph, var(--rm-mint)), transparent 68%); opacity: 0.32; filter: blur(14px); animation: room-halo 3.4s ease-in-out infinite; }
+.room-glyph-track { fill: none; stroke: rgb(255 255 255 / 0.1); stroke-width: 5; }
+.room-glyph-ring { fill: none; stroke: var(--glyph, var(--rm-mint)); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; transform: rotate(-90deg); transform-origin: 60px 60px; animation: room-draw 0.95s cubic-bezier(0.3, 0.7, 0.2, 1) both; }
+.room-glyph-mark { fill: none; stroke: var(--glyph, var(--rm-mint)); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; animation: room-draw 0.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.65s both; }
+.room-glyph-arc { fill: none; stroke: var(--glyph, var(--rm-blue)); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 0.3 0.7; transform-origin: 60px 60px; animation: room-spin 1.5s linear infinite; }
+.room-glyph-hand { stroke: #fff; stroke-width: 5; stroke-linecap: round; fill: none; }
+.room-glyph-dot { fill: #fff; }
+.room-glyph[data-tone="good"] { --glyph: var(--rm-mint); }
+.room-glyph[data-tone="wait"] { --glyph: var(--rm-blue); }
+.room-glyph[data-tone="warn"] { --glyph: var(--rm-amber); }
+.room-glyph[data-tone="bad"] { --glyph: var(--rm-red); }
+.room-glyph[data-tone="test"] { --glyph: var(--rm-violet); }
+.room-glyph[data-tone="bad"] svg { animation: room-shake 0.55s 0.9s both; }
+.room-spark { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--c, var(--rm-mint)); opacity: 0; animation: room-spark 1.2s cubic-bezier(0.1, 0.8, 0.2, 1) 0.7s both; }
+
+.room-result { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.room-result h1 { margin: 6px 0 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.05; letter-spacing: -0.022em; color: #fff; text-wrap: balance; overflow-wrap: anywhere; }
+.room-result p { margin: 0; max-width: 34rem; font-size: 15.5px; line-height: 1.7; color: var(--rm-ink-2); text-wrap: pretty; }
+.room-ref { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 10px; max-width: 100%; padding: 9px 16px; border: 1px solid var(--rm-line-strong); border-radius: 12px; background: rgb(0 0 0 / 0.22); font: 500 12.5px/1.3 var(--font-mono); letter-spacing: 0.04em; }
+.room-ref-k { color: var(--rm-muted); }
+.room-ref-v { color: #fff; white-space: nowrap; }
+.room-next { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.room-next li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 14px; padding: 9px 0; font-size: 14.5px; line-height: 1.5; color: var(--rm-muted); }
+.room-next li[data-state="done"] { color: var(--rm-ink-2); }
+.room-next li[data-state="current"] { color: var(--rm-ink); font-weight: 500; }
+.room-next-dot { position: relative; display: grid; place-items: center; width: 24px; height: 24px; margin-top: 1px; border: 2px solid var(--rm-line-strong); border-radius: 50%; background: #0a1230; font-size: 11px; font-weight: 600; }
+.room-next li[data-state="done"] .room-next-dot { border-color: transparent; background: linear-gradient(135deg, #2c5bff, #7a5cff); color: #fff; }
+.room-next li[data-state="current"] .room-next-dot { border-color: #7b9cff; box-shadow: 0 0 0 4px rgb(123 156 255 / 0.2); }
+.room-next li[data-state="current"] .room-next-dot::after { content: ""; position: absolute; inset: -6px; border: 2px solid rgb(123 156 255 / 0.5); border-radius: 50%; animation: room-ring 2.2s ease-out infinite; }
+.room-live { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--rm-muted); }
+
+/* ---- motion ----------------------------------------------------------------------------------------------------------------------- */
+@keyframes room-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes room-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(9vmax, 6vmax, 0) scale(1.12); } }
+@keyframes room-drift-b { from { transform: translate3d(0, 0, 0) scale(1.05); } to { transform: translate3d(-8vmax, 7vmax, 0) scale(0.94); } }
+@keyframes room-spin { to { transform: rotate(360deg); } }
+@keyframes room-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes room-spin-center { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes room-sheen { 0%, 55% { transform: translateX(-130%); } 100% { transform: translateX(130%); } }
+@keyframes room-ring { 0% { transform: scale(0.85); opacity: 0.9; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes room-halo { 0%, 100% { opacity: 0.22; transform: scale(0.94); } 50% { opacity: 0.4; transform: scale(1.06); } }
+@keyframes room-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes room-spark {
+  0% { opacity: 1; transform: rotate(calc(var(--k) * 30deg)) translateY(-42px) scale(1); }
+  100% { opacity: 0; transform: rotate(calc(var(--k) * 30deg)) translateY(-84px) scale(0.2); }
+}
+@keyframes room-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .room *, .room *::before, .room *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
+
+@media (max-width: 640px) {
+  /* A phone keeps the colour but not the drifting: less to paint, less battery. */
+  .room-aurora::before, .room-aurora::after { animation: none; filter: blur(52px); }
+}
+
+@media (max-width: 480px) {
+  .room-ticket-top { padding: 22px 20px 24px; }
+  .room-ticket-bottom { padding: 24px 20px 22px; }
+  .room-step { font-size: 11.5px; }
+}

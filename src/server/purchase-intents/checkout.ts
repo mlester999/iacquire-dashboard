@@ -12,7 +12,7 @@ import { newPaymentReference, refundSentence } from "@/server/billing/payments";
 import type { NormalizedPaymentEvent } from "@/server/billing/providers/types";
 import { authorizerOf } from "@/server/admin/authorizer";
 import {
-  canStartCheckout, CHECKOUT_CREATING_GRACE_MINUTES, CHECKOUT_STALE_HOURS, checkoutReturnText, type CheckoutStatus, type PurchaseStatus,
+  canStartCheckout, CHECKOUT_CREATING_GRACE_MINUTES, CHECKOUT_STALE_HOURS, checkoutReturnStage, checkoutReturnText, type CheckoutStatus, type PurchaseStatus, type ReturnStage,
 } from "@/lib/purchase-intents/rules";
 import { checkoutAvailability, PROVIDER_LABEL, type CheckoutProvider } from "@/server/purchase-intents/availability";
 import { completePaypalOrder, openPaypalOrder, paidEventFromCheckout, paypalAdapter, paypalStatus, readPaypalOrder, type PaypalDeps } from "@/server/billing/providers/paypal";
@@ -158,6 +158,8 @@ export interface CheckoutReturn {
   needsCapture: boolean;
   checkoutStatus: CheckoutStatus | null;
   purchaseStatus: PurchaseStatus | null;
+  /** Which state the page is in (the glyph and the list of what happens next follow it); the words are the title and the body. */
+  stage: ReturnStage;
   title: string;
   body: string;
   tone: "neutral" | "success" | "warning" | "danger";
@@ -171,11 +173,13 @@ export async function getCheckoutReturn(reference: unknown, options: { leftThePa
         "select c.status, c.provider, c.livemode, i.status as purchase_status from purchase_intent_checkouts c join purchase_intents i on i.id = c.intent_id where c.reference_number = $1", [ref],
       ))).rows[0]
     : undefined;
-  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true, row?.livemode === false && isLiveDeployment());
+  const sandboxOnLive = row?.livemode === false && isLiveDeployment();
+  const text = checkoutReturnText(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true, sandboxOnLive);
   return {
     provider: row?.provider ?? null,
     needsCapture: row?.provider === "paypal" && row.status === "pending" && options.leftThePaymentPage !== true,
-    checkoutStatus: row?.status ?? null, purchaseStatus: row?.purchase_status ?? null, ...text,
+    checkoutStatus: row?.status ?? null, purchaseStatus: row?.purchase_status ?? null,
+    stage: checkoutReturnStage(row?.status ?? null, row?.purchase_status ?? null, options.leftThePaymentPage === true, sandboxOnLive), ...text,
   };
 }
 

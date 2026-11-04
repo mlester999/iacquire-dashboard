@@ -1,88 +1,120 @@
-import { BadgeCheck, Check, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
-import { Logo } from "@/components/brand";
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import * as React from "react";
+import { BadgeCheck, Layers, LockKeyhole, ShieldCheck, Workflow, Wrench } from "lucide-react";
 import { ConfirmPurchase } from "@/components/purchase-intents/confirm";
+import { JourneySteps } from "@/components/purchase-intents/journey-steps";
+import { PriceFigure } from "@/components/purchase-intents/price-figure";
+import { RoomShell } from "@/components/purchase-intents/room-shell";
+import { TeamOrbit } from "@/components/purchase-intents/team-orbit";
 import { formatExpiry } from "@/lib/purchase-intents/delivery";
-import { formatUsdCents } from "@/lib/purchase-intents/rules";
+import { buyerJourney, formatUsdCents, type PurchaseStatus } from "@/lib/purchase-intents/rules";
 import type { PublicPurchaseView } from "@/server/purchase-intents/service";
 
 // What the buyer sees at the secure link in their email, as plain presentation: the page (src/app/purchase/[token]/page.tsx) looks the purchase up and answers the rate limit, and this
-// draws it. Kept apart so a development preview can show every state at every width without a database or a link.
+// draws it. Kept apart so a development preview can show every state at every width without a database or a link. The look is the offer room (offer-room.css); the words are the same
+// promises the page always made: the price is frozen, no card is entered here, and a workspace exists only after the payment is verified.
 
 export function PublicPurchaseShell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen bg-bg px-4 py-8 sm:px-6 sm:py-14">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <Logo />
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted"><Sparkles className="size-3.5 shrink-0 text-primary" aria-hidden /> AI-powered client acquisition</span>
-        </div>
-        {children}
-      </div>
-    </main>
-  );
+  return <RoomShell>{children}</RoomShell>;
 }
 
 export function PublicPurchaseTooMany() {
   return (
-    <Card>
-      <CardContent className="py-10 text-center">
-        <p className="text-[15px] font-semibold text-ink">Too many attempts</p>
-        <p className="mt-1 text-[14px] text-muted">Wait a moment and open the link again.</p>
-      </CardContent>
-    </Card>
+    <div className="room-panel room-in">
+      <span className="room-panel-icon" aria-hidden><LockKeyhole className="size-7" /></span>
+      <h1>Too many attempts</h1>
+      <p>Wait a moment and open the link again.</p>
+    </div>
   );
 }
 
 export function PublicPurchaseInvalid() {
   return (
-    <Card>
-      <CardContent className="py-12 text-center">
-        <LockKeyhole className="mx-auto size-9 text-muted" aria-hidden />
-        <h1 className="mt-3 text-[19px] font-semibold text-ink">This link is not valid</h1>
-        <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-muted">Check that you copied the whole link from your email, or ask iAcquire for a new one. No details were looked up.</p>
-      </CardContent>
-    </Card>
+    <div className="room-panel room-in">
+      <span className="room-panel-icon" aria-hidden><LockKeyhole className="size-7" /></span>
+      <h1>This link is not valid</h1>
+      <p>Check that you copied the whole link from your email, or ask iAcquire for a new one. No details were looked up.</p>
+    </div>
   );
 }
 
+/** How the note under the order reads: a confirmed or paid purchase is good news, one that was closed or ran out is a warning, anything else is plain. */
+const NOTE_TONE: Record<PurchaseStatus, "neutral" | "good" | "warn"> = { invited: "neutral", started: "good", payment_verified: "good", provisioned: "good", cancelled: "warn", expired: "warn" };
+
+const step = (d: number) => ({ "--d": d }) as React.CSSProperties;
+
 export function PublicPurchaseBody({ purchase, token }: { purchase: PublicPurchaseView; token: string }) {
+  const first = purchase.buyerName.split(" ")[0];
+  const journey = buyerJourney(purchase.status);
   return (
-    <div className="space-y-4">
-      <div className="text-center">
-        <Badge tone="outline" className="mb-3 h-7 px-3">Purchase · {purchase.reference}</Badge>
-        <h1 className="text-[28px] font-semibold tracking-[-0.045em] text-ink [overflow-wrap:anywhere]">Welcome, {purchase.buyerName.split(" ")[0]}</h1>
-        <p className="mx-auto mt-2 max-w-lg text-[14px] leading-relaxed text-muted [overflow-wrap:anywhere]">This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; your card is never entered on this page.</p>
-      </div>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-[15px] [overflow-wrap:anywhere]">{purchase.company}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-line bg-surface-2 p-3">
-              <dt className="text-[12px] uppercase tracking-wide text-muted">One-time setup</dt>
-              <dd className="mt-1 text-[22px] font-semibold tabular-nums text-ink">{formatUsdCents(purchase.setupFeeCents)}</dd>
+    <>
+      <div className="room-layout">
+        <section className="room-a-hero" aria-labelledby="room-welcome">
+          <p className="room-eyebrow room-in" style={step(0)}><span className="room-eyebrow-dot" aria-hidden /> Launch offer &middot; {purchase.reference}</p>
+          <h1 id="room-welcome" className="room-h1 room-in mt-5" style={step(1)}>Welcome, <em>{first}</em></h1>
+          <p className="room-lede room-in mt-5 max-w-xl" style={step(2)}>This is the iAcquireOS launch offer prepared for {purchase.company}. Confirm the details below; your card is never entered on this page.</p>
+        </section>
+
+        <aside className="room-a-ticket room-in" style={step(3)} aria-label="Your order">
+          <div className="room-ticket">
+            <div className="room-ticket-top">
+              <div className="flex items-center justify-between gap-3">
+                <p className="room-label">Your order</p>
+                <span className="room-chip room-chip-quiet"><LockKeyhole className="size-3.5" aria-hidden /> Price frozen</span>
+              </div>
+              <p className="room-company">{purchase.company}</p>
+              <dl>
+                <div>
+                  <dt className="room-label mt-6">One-time setup</dt>
+                  <dd className="room-price"><PriceFigure cents={purchase.setupFeeCents} /></dd>
+                </div>
+                <div className="room-line">
+                  <dt>Managed Maintenance + Automation Studio</dt>
+                  <dd>
+                    <span>{formatUsdCents(purchase.maintenanceMonthlyCents)}<small>/month</small></span>
+                    <span className={`room-chip ${purchase.maintenanceSelected ? "room-chip-good" : "room-chip-quiet"}`}>{purchase.maintenanceSelected ? "Selected" : "Not selected"}</span>
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <div className="rounded-xl border border-line bg-surface-2 p-3">
-              <dt className="text-[12px] uppercase tracking-wide text-muted">Managed Maintenance + Automation Studio</dt>
-              <dd className="mt-1 text-[22px] font-semibold tabular-nums text-ink">{formatUsdCents(purchase.maintenanceMonthlyCents)}<span className="text-[14px] font-normal text-muted">/month</span></dd>
-              <dd className="text-[12px] text-muted">{purchase.maintenanceSelected ? "Selected" : "Not selected"}</dd>
+            <div className="room-ticket-bottom">
+              {journey && <JourneySteps steps={journey} />}
+              <ConfirmPurchase token={token} canConfirm={purchase.canConfirm} problem={purchase.problem} setupFeeCents={purchase.setupFeeCents} checkout={purchase.checkout} tone={NOTE_TONE[purchase.status]} />
             </div>
-          </dl>
-          <ul className="grid gap-2 text-[14px] leading-relaxed text-ink-2">
-            <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> A dedicated iAcquireOS client workspace and onboarding.</li>
-            <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> CRM setup, integrations and AI employee provisioning follow verification and onboarding.</li>
-            <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> {purchase.maintenanceSelected ? "The optional maintenance plan is recorded with your purchase." : "The maintenance plan is optional and was not selected."}</li>
-          </ul>
-          <ConfirmPurchase token={token} canConfirm={purchase.canConfirm} problem={purchase.problem} setupFeeCents={purchase.setupFeeCents} checkout={purchase.checkout} />
-        </CardContent>
-      </Card>
-      <div className="grid gap-3 text-[13px] leading-relaxed text-muted sm:grid-cols-3">
-        <p className="flex gap-1.5"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> The price and product version are frozen when the invitation is created.</p>
-        <p className="flex gap-1.5"><LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> Only a hash of this link is stored. It stops working on {formatExpiry(purchase.expiresAt, purchase.timezone)}.</p>
-        <p className="flex gap-1.5"><BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden /> A workspace is created only after the payment is verified: by the payment provider&apos;s confirmation, or by iAcquire.</p>
+          </div>
+        </aside>
+
+        <section className="room-a-orbit room-in" style={step(4)} aria-label="Your AI team">
+          <TeamOrbit company={purchase.company} />
+        </section>
+
       </div>
-    </div>
+
+      <section className="room-included room-in" style={step(5)} aria-labelledby="room-included">
+        <h2 id="room-included" className="room-h2">What your setup includes</h2>
+        <div className="room-bento">
+          <article className="room-tile">
+            <span className="room-tile-icon" aria-hidden><Layers className="size-5" /></span>
+            <h3>Your own workspace</h3>
+            <p>A dedicated iAcquireOS client workspace and onboarding.</p>
+          </article>
+          <article className="room-tile">
+            <span className="room-tile-icon" aria-hidden><Workflow className="size-5" /></span>
+            <h3>CRM, integrations and your AI team</h3>
+            <p>CRM setup, integrations and AI employee provisioning follow verification and onboarding.</p>
+          </article>
+          <article className="room-tile">
+            <span className="room-tile-icon" aria-hidden><Wrench className="size-5" /></span>
+            <h3>Maintenance and Automation Studio</h3>
+            <p>{purchase.maintenanceSelected ? "The optional maintenance plan is recorded with your purchase." : "The maintenance plan is optional and was not selected."}</p>
+          </article>
+        </div>
+      </section>
+
+      <div className="room-trust">
+        <p><ShieldCheck className="size-4" aria-hidden /> <span>The price and product version are frozen when the invitation is created.</span></p>
+        <p><LockKeyhole className="size-4" aria-hidden /> <span>Only a hash of this link is stored. It stops working on {formatExpiry(purchase.expiresAt, purchase.timezone)}.</span></p>
+        <p><BadgeCheck className="size-4" aria-hidden /> <span>A workspace is created only after the payment is verified: by the payment provider&apos;s confirmation, or by iAcquire.</span></p>
+      </div>
+    </>
   );
 }

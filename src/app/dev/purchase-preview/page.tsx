@@ -58,7 +58,7 @@ export default async function PurchasePreview({ searchParams }: { searchParams: 
   const view = purchase(state);
   return (
     <>
-      <nav aria-label="Samples" className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-[12px]">
+      <nav aria-label="Samples" className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 text-[12px]">
         <PreviewTheme />
         {STATES.map((s) => <Link key={s} href={`/dev/purchase-preview?state=${s}`} className="rounded-lg border border-line px-2.5 py-1 text-ink-2 hover:bg-surface-2">{s}</Link>)}
       </nav>
