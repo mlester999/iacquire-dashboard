@@ -16,9 +16,10 @@ RUN set -eu; \
     cp /opt/iacquire-hermes/catalog-overlay/model_tools.py /opt/hermes/model_tools.py; \
     cp /opt/iacquire-hermes/catalog-overlay/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server.py; \
     cp /opt/iacquire-hermes/catalog-overlay/gateway/platforms/api_server_tool_catalog.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py; \
-    chmod a+rX,go-w /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py; \
-    /opt/hermes/.venv/bin/python -m compileall -q /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py; \
-    /opt/hermes/.venv/bin/python -c 'import inspect,sys; sys.path.insert(0,"/opt/hermes"); from gateway.platforms.api_server import APIServerAdapter; from gateway.platforms.api_server_tool_catalog import build_model_tool_catalog; from model_tools import get_tool_definitions; assert hasattr(APIServerAdapter,"_handle_tools"); assert callable(build_model_tool_catalog); assert "update_last_resolved" in inspect.signature(get_tool_definitions).parameters'
+    cp /opt/iacquire-hermes/catalog-overlay/gateway/platforms/api_server_run_tool_scope.py /opt/hermes/gateway/platforms/api_server_run_tool_scope.py; \
+    chmod a+rX,go-w /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py /opt/hermes/gateway/platforms/api_server_run_tool_scope.py; \
+    /opt/hermes/.venv/bin/python -m compileall -q /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py /opt/hermes/gateway/platforms/api_server_run_tool_scope.py; \
+    /opt/hermes/.venv/bin/python -c 'import inspect,sys; sys.path.insert(0,"/opt/hermes"); from gateway.platforms.api_server import APIServerAdapter; from gateway.platforms.api_server_tool_catalog import build_model_tool_catalog; from gateway.platforms.api_server_run_tool_scope import toolsets_for_scope; from model_tools import get_tool_definitions; assert hasattr(APIServerAdapter,"_handle_tools"); assert callable(build_model_tool_catalog); assert toolsets_for_scope(["web"],"no_tools")==[]; assert "update_last_resolved" in inspect.signature(get_tool_definitions).parameters'
 COPY --chown=0:0 services/hermes-provisioner/hermes-client-entrypoint.sh /opt/iacquire-hermes/hermes-client-entrypoint.sh
 RUN chmod 0555 /opt/iacquire-hermes/hermes-client-entrypoint.sh
 ENTRYPOINT ["/opt/iacquire-hermes/hermes-client-entrypoint.sh"]

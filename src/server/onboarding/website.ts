@@ -124,6 +124,8 @@ export interface PublicPageFetchPolicy {
   allowUrl?: (url: URL) => boolean;
   /** Called immediately before every network request, including redirect hops. */
   beforeRequest?: (url: URL) => Promise<void> | void;
+  /** Called after each attempted network request; reserved source usage stays charged on a timeout. */
+  afterRequest?: (url: URL, result: { responseReceived: boolean; httpStatus: number | null }) => Promise<void> | void;
 }
 
 function requestOnce(url: URL): Promise<FetchedPage & { location?: string }> {
@@ -176,8 +178,10 @@ export async function fetchPublicPageWithPolicy(start: URL, policy: PublicPageFe
     try {
       res = await requestOnce(url);
     } catch {
+      await policy.afterRequest?.(url, { responseReceived: false, httpStatus: null });
       throw new AppError("upstream_error", "We couldn't reach that website. Check the address and try again.");
     }
+    await policy.afterRequest?.(url, { responseReceived: true, httpStatus: res.status });
     if (res.location) {
       url = new URL(res.location, url);
       continue;

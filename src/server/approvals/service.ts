@@ -2,11 +2,14 @@ import "server-only";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { env } from "@/server/env";
 import { notifyAgency, notifyUser } from "@/server/notifications";
+import { systemActor } from "@/server/crm/actor";
+import { createCompanyInTx } from "@/server/crm/companies";
+import { createContactInTx } from "@/server/crm/contacts";
 import { writeKnowledgeTextTx } from "@/server/knowledge/write";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { applyDraftVersion, loadConnection } from "@/server/workforce/service";
+import { appendWorkEvent } from "@/server/workforce/jobs";
 import { resolveRunApproval } from "@/server/integrations/hermes/client";
 import { classifyApproval, type EvidenceMarker } from "@/lib/evidence-class";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -66,6 +69,202 @@ export interface ApprovalOutcome {
 /** Kinds whose approval ends in a message to a customer, so "not sent" is the honest wording when it does not go out. */
 const MESSAGE_KINDS: ReadonlySet<ApprovalKind> = new Set<ApprovalKind>(["follow_up_message", "outreach"]);
 
+const LEAD_IMPORT_JOB_CAPABILITY = "crm_lead_import";
+
+function leadImportIds(action: Record<string, unknown>): string[] {
+  if (!Array.isArray(action.leadIds)) return [];
+  return [...new Set(action.leadIds.filter((id): id is string => typeof id === "string" && UUID.test(id)))].slice(0, 100);
+}
+
+function insertLeadImportNotice(db: Queryable, input: { orgId: string; conversationId: string | null; workJobId: string; approvalId: string; content: string }) {
+  if (!input.conversationId) return Promise.resolve();
+  return db.query(
+    `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, evidence, client_message_id)
+     select c.id, $2, 'notice', $5, 'complete', $3, $6::jsonb, $4
+       from chat_conversations c
+      where c.id = $1 and c.org_id = $2 and c.growth_partner_id is not null and c.deleted_at is null
+     on conflict (conversation_id, client_message_id) do nothing`,
+    [input.conversationId, input.orgId, input.workJobId, `lead-import-${input.approvalId}`, input.content,
+      JSON.stringify({ v: 1, class: "approved_write", ledger: { kind: "work_job", id: input.workJobId } })],
+  ).then(async (result) => {
+    if (result.rowCount) await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, input.orgId]);
+  });
+}
+
+/** Settles the Work Board item when an import is rejected, expires, or cannot be applied. */
+async function settleLeadImportWithoutWrite(
+  db: Queryable,
+  input: { orgId: string; approvalId: string; action: Record<string, unknown>; outcome: "rejected" | "changes_requested" | "expired" | "blocked" | "failed"; detail: string },
+) {
+  const workJobId = typeof input.action.workJobId === "string" && UUID.test(input.action.workJobId) ? input.action.workJobId : null;
+  const leadIds = leadImportIds(input.action);
+  const message = input.detail.slice(0, 500);
+  const status = input.outcome === "rejected" || input.outcome === "expired" ? "cancelled" : input.outcome === "changes_requested" || input.outcome === "blocked" ? "blocked" : "failed";
+  const stage = status;
+  const crmStatus = status === "blocked" ? "blocked" : status === "cancelled" ? "blocked" : "failed";
+
+  if (leadIds.length) {
+    await db.query(
+      `update leads set crm_sync_status = $3
+        where org_id = $1 and id = any($2::uuid[]) and crm_sync_status = 'awaiting_approval'`,
+      [input.orgId, leadIds, crmStatus],
+    );
+  }
+  if (!workJobId) return;
+
+  const { rows } = await db.query<{ conversation_id: string | null }>(
+    `update ai_work_jobs
+        set status = $3, stage = $4, result_summary = $5, failure_code = case when $3 in ('blocked','failed') then 'lead_import_not_applied' else null end,
+            failure_message = case when $3 in ('blocked','failed') then $5 else null end, finished_at = now()
+      where id = $1 and org_id = $2 and capability = $6 and status = 'waiting_for_approval'
+      returning conversation_id`,
+    [workJobId, input.orgId, status, stage, message, LEAD_IMPORT_JOB_CAPABILITY],
+  );
+  if (!rows[0]) return;
+  await appendWorkEvent(db, { jobId: workJobId, orgId: input.orgId, kind: status === "failed" ? "error" : "notice", stage, message });
+  await insertLeadImportNotice(db, {
+    orgId: input.orgId,
+    conversationId: rows[0].conversation_id,
+    workJobId,
+    approvalId: input.approvalId,
+    content: `${message} No CRM records were created and no customer message was sent.`,
+  });
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function textValue(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  return clean ? clean.slice(0, max) : null;
+}
+
+function companyLocation(value: string | null): { city?: string; region?: string; country?: string } {
+  if (!value) return {};
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 1 && parts[0]!.length <= 100) return { city: parts[0] };
+  if (parts.length < 2 || parts.length > 3) return {};
+  const last = parts.at(-1)!.toLowerCase();
+  const hasUsCountry = ["us", "usa", "united states", "united states of america"].includes(last);
+  const stateOrRegion = hasUsCountry ? parts[1] : parts[1];
+  return {
+    city: parts[0]!.slice(0, 100),
+    region: stateOrRegion.slice(0, 100),
+    ...(hasUsCountry ? { country: "US" } : {}),
+  };
+}
+
+async function executeApprovedLeadImport(input: {
+  orgId: string;
+  approvalId: string;
+  action: Record<string, unknown>;
+  actorUserId: string;
+}): Promise<ExecOutcome> {
+  const leadIds = leadImportIds(input.action);
+  const workJobId = typeof input.action.workJobId === "string" && UUID.test(input.action.workJobId) ? input.action.workJobId : null;
+  if (!leadIds.length || !workJobId) return { status: "failed", detail: "The reviewed CRM import request is incomplete. No CRM records were changed." };
+
+  return withSystem(async (db) => {
+    const { rows: jobs } = await db.query<{ id: string; status: string; conversation_id: string | null }>(
+      `select id, status, conversation_id from ai_work_jobs
+        where id = $1 and org_id = $2 and capability = $3 for update`,
+      [workJobId, input.orgId, LEAD_IMPORT_JOB_CAPABILITY],
+    );
+    if (!jobs[0] || jobs[0].status !== "waiting_for_approval") {
+      return { status: "blocked", detail: "This CRM import is no longer waiting for approval. No CRM records were changed." };
+    }
+
+    const { rows: leads } = await db.query<{
+      id: string; business_name: string; website: string | null; domain: string | null; industry: string | null; location: string | null;
+      qualification_summary: string | null; qualification_state: string; duplicate_status: string; review_status: string; crm_sync_status: string;
+      public_contact: unknown; score: number | null; crm_company_id: string | null; crm_contact_id: string | null; org_name: string; timezone: string;
+    }>(
+      `select l.id, l.business_name, l.website, l.domain, l.industry, l.location, l.qualification_summary,
+              l.qualification_state, l.duplicate_status, l.review_status, l.crm_sync_status, l.public_contact, l.score,
+              l.crm_company_id, l.crm_contact_id, o.name as org_name, o.timezone
+         from leads l join organizations o on o.id = l.org_id
+        where l.org_id = $1 and l.id = any($2::uuid[])
+        order by l.id for update of l`,
+      [input.orgId, leadIds],
+    );
+    const eligible = leads.length === leadIds.length && leads.every((lead) =>
+      lead.review_status === "approved" && lead.qualification_state === "evidence_backed" && lead.duplicate_status === "no_match"
+      && ["awaiting_approval", "synced"].includes(lead.crm_sync_status));
+    if (!eligible) return { status: "blocked", detail: "One or more leads no longer meet the approved, evidence-backed, non-duplicate import rules. No CRM records were changed." };
+
+    const actor = systemActor({ id: input.orgId, name: leads[0]?.org_name, timezone: leads[0]?.timezone }, "AI Growth Partner approved CRM import");
+    let contactCount = 0;
+    let reusedCompanies = 0;
+    for (const lead of leads) {
+      const location = companyLocation(lead.location);
+      const company = lead.crm_company_id
+        ? { id: lead.crm_company_id, created: false }
+        : await createCompanyInTx(db, actor, {
+            name: lead.business_name,
+            domain: lead.domain,
+            website: lead.website,
+            industry: lead.industry,
+            ...location,
+            description: lead.qualification_summary,
+          }, "import", { onDuplicate: "return_existing" });
+      if (!company.created) reusedCompanies += 1;
+
+      const publicContact = recordValue(lead.public_contact);
+      const name = textValue(publicContact.name, 200);
+      const email = textValue(publicContact.email, 320);
+      const phone = textValue(publicContact.phone, 40);
+      const role = textValue(publicContact.role, 120);
+      let contactId = lead.crm_contact_id;
+      if (!contactId && (name || email || phone)) {
+        const contact = await createContactInTx(db, actor, {
+          displayName: name ?? email ?? phone,
+          email,
+          phone,
+          source: "lead_research",
+          leadStatus: "new",
+          leadScore: lead.score,
+          companyId: company.id,
+          companyTitle: role,
+        }, { via: "import", onDuplicate: "return_existing", enforceRequiredFields: false });
+        contactId = contact.id;
+        if (contact.created) contactCount += 1;
+      }
+
+      await db.query(
+        `update leads set crm_company_id = $3, crm_contact_id = $4, crm_imported_by = $5, crm_imported_at = coalesce(crm_imported_at, now()), crm_sync_status = 'synced'
+          where id = $1 and org_id = $2`,
+        [lead.id, input.orgId, company.id, contactId, input.actorUserId],
+      );
+      await recordAudit({
+        orgId: input.orgId,
+        actorUserId: input.actorUserId,
+        actorKind: "user",
+        action: "leads.crm_imported",
+        targetType: "lead",
+        targetId: lead.id,
+        approvalId: input.approvalId,
+        result: "success",
+        metadata: { companyId: company.id, contactId, companyCreated: company.created, workJobId },
+      }, db);
+    }
+
+    const reusedCount = reusedCompanies;
+    const detail = `${leads.length} company record${leads.length === 1 ? " is" : "s are"} now linked in the native CRM${contactCount ? `, with ${contactCount} public contact record${contactCount === 1 ? "" : "s"}` : ""}. ${reusedCount} existing company record${reusedCount === 1 ? " was" : "s were"} reused. No customer message was sent.`;
+    await db.query(
+      `update ai_work_jobs
+          set status = 'completed', stage = 'completed', result = $3::jsonb, result_summary = $4, result_count = $5,
+              started_at = coalesce(started_at, now()), finished_at = now(), failure_code = null, failure_message = null
+        where id = $1 and org_id = $2 and status = 'waiting_for_approval'`,
+      [workJobId, input.orgId, JSON.stringify({ approvalId: input.approvalId, imported: leads.length, publicContactsCreated: contactCount, companiesReused: reusedCount }), detail.slice(0, 1000), leads.length],
+    );
+    await appendWorkEvent(db, { jobId: workJobId, orgId: input.orgId, kind: "evidence", stage: "completed", message: detail });
+    await insertLeadImportNotice(db, { orgId: input.orgId, conversationId: jobs[0]!.conversation_id, workJobId, approvalId: input.approvalId, content: `CRM import approved and completed. ${detail}` });
+    return { status: "succeeded", detail };
+  });
+}
+
 /**
  * What an approved request has actually come to, from its own row and, for a drafted message, the message's current status. "Completed" is only for a booking or an appointment
  * change, whose executor writes to the calendar before it reports success; "Sent" only once the message itself is sent or delivered; a queued draft is "waiting to send" and a
@@ -95,6 +294,8 @@ export function approvalOutcome(row: Pick<ApprovalRow, "kind" | "status" | "exec
       return { label: "Completed", tone: "success", detail };
     case "appointment_change":
       return { label: "Completed", tone: "success", detail };
+    case "lead_import":
+      return { label: "Imported to CRM", tone: "success", detail };
     case "follow_up_message": {
       const downstream = row.downstream_status;
       if (downstream === "sent" || downstream === "delivered" || downstream === "read") return { label: "Sent", tone: "success", detail };
@@ -158,13 +359,20 @@ export async function createApproval(
 
 async function expireStale(orgId: string) {
   await withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string }>(
+    const { rows } = await db.query<{ id: string; kind: ApprovalKind; action: Record<string, unknown> }>(
       `update approval_requests set status = 'expired'
-       where org_id = $1 and status = 'pending' and expires_at is not null and expires_at <= now() returning id`,
+       where org_id = $1 and status = 'pending' and expires_at is not null and expires_at <= now() returning id, kind, action`,
       [orgId],
     );
     for (const r of rows) {
       await db.query("insert into approval_events (approval_id, org_id, actor_kind, event) values ($1, $2, 'system', 'expired')", [r.id, orgId]);
+      if (r.kind === "lead_import") await settleLeadImportWithoutWrite(db, {
+        orgId,
+        approvalId: r.id,
+        action: r.action,
+        outcome: "expired",
+        detail: "The CRM import approval expired before a decision was made.",
+      });
     }
   });
 }
@@ -303,6 +511,15 @@ export async function decideApproval(ctx: OrgContext, approvalId: string, decisi
       { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", agentInstanceId: updated.agent_instance_id, action: `approval.${event}`, targetType: "approval", targetId: approvalId, approvalId, result: "success", metadata: { kind: updated.kind } },
       db,
     );
+    if (updated.kind === "lead_import" && decision !== "approve") {
+      await settleLeadImportWithoutWrite(db, {
+        orgId: ctx.org.orgId,
+        approvalId,
+        action: updated.action,
+        outcome: decision === "reject" ? "rejected" : "changes_requested",
+        detail: decision === "reject" ? "The CRM import was not approved." : `The CRM import was returned for changes: ${cleanNote}`,
+      });
+    }
     if (updated.requested_by && updated.requested_by !== ctx.user.id) {
       await notifyUser(db, updated.requested_by, ctx.org.orgId, {
         kind: "approval_decided",
@@ -390,6 +607,15 @@ export async function executeApproval(orgId: string, approvalId: string, actorUs
       { orgId, actorUserId, actorKind: "system", agentInstanceId: claimed.agent_instance_id, action: `approval.${event}`, targetType: "approval", targetId: approvalId, approvalId, result: outcome.status === "succeeded" ? "success" : "failure", metadata: { kind: claimed.kind } },
       db,
     );
+    if (claimed.kind === "lead_import" && outcome.status !== "succeeded") {
+      await settleLeadImportWithoutWrite(db, {
+        orgId,
+        approvalId,
+        action: claimed.action,
+        outcome: outcome.status,
+        detail: outcome.detail,
+      });
+    }
   });
   return outcome;
 }
@@ -437,23 +663,7 @@ async function runExecutor(
       return { status: "succeeded", detail: "Hermes accepted the approval and resumed the run." };
     }
     case "lead_import": {
-      const leadIds = Array.isArray(a.action.leadIds) ? a.action.leadIds.filter((x): x is string => typeof x === "string") : [];
-      const writesEnabled = env().GHL_WRITES_ENABLED;
-      const connected = await withSystem(async (db) => {
-        const { rows } = await db.query("select 1 from ghl_location_mappings where org_id = $1 and status = 'connected'", [orgId]);
-        return rows.length > 0;
-      });
-      await withSystem((db) =>
-        db.query(
-          `update leads set review_status = 'approved', reviewed_by = $3, reviewed_at = now(),
-             crm_sync_status = case when crm_sync_status = 'synced' then 'synced' else 'blocked' end
-           where org_id = $1 and id = any($2::uuid[])`,
-          [orgId, leadIds, actorUserId],
-        ),
-      );
-      if (!connected) return { status: "blocked", detail: "Leads approved in iAcquire. CRM import is waiting for your CRM connection." };
-      if (!writesEnabled) return { status: "blocked", detail: "Leads approved in iAcquire. CRM sync hasn't been enabled by the iAcquire team yet, so nothing was written to your CRM." };
-      return { status: "blocked", detail: "Leads approved. CRM import runs through a reviewed sync job that is not active yet." };
+      return executeApprovedLeadImport({ orgId, approvalId, action: a.action, actorUserId });
     }
     case "crm_update": {
       // A change a client's own AI employee asked to make through the CRM tools: re-validated and carried out now, as that employee.

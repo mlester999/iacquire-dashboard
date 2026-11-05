@@ -63,7 +63,7 @@ export function SummaryView() {
       </section>
 
       <section aria-labelledby="team-heading" className="space-y-6">
-        <SectionHead as="h2" eyebrow="One employee · six capabilities" title="One partner coordinates the acquisition journey" lead="The capabilities share one business context. Evidence and customer-facing decisions remain visible for the people responsible." />
+        <SectionHead as="h2" eyebrow="One identity · six capabilities" title="One partner coordinates the acquisition journey" lead="The capabilities share one business context. Evidence and customer-facing decisions remain visible for the people responsible." />
         <div className="sx-panel p-5 @xl:p-7">
           <div className="mb-5 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-4">
             <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface text-primary-ink"><Sparkles className="size-5" aria-hidden /></span>

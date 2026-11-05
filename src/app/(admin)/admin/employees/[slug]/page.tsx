@@ -17,7 +17,7 @@ import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return { title: AGENT_BY_SLUG[slug]?.name ?? "AI employee" };
+  return { title: AGENT_BY_SLUG[slug]?.name ?? "Retained AI profile" };
 }
 
 export default async function AgencyEmployeePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -152,8 +152,8 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
   if (!data) {
     return (
       <div className="module-stack">
-        <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Employees</Link>
-        <Card className="border-dashed p-8 text-sm text-muted">This internal employee record doesn&apos;t exist in the agency workspace yet.</Card>
+        <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> Retained profiles</Link>
+        <Card className="border-dashed p-8 text-sm text-muted">This internal role-profile record does not exist in the agency workspace yet.</Card>
       </div>
     );
   }
@@ -184,20 +184,20 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
 
   return (
     <div className="module-stack space-y-6">
-      <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Employees</Link>
+      <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal profiles</Link>
       <EmployeeProfileHero
         dark
         meta={meta}
         displayName={agent.display_name}
-        eyebrow="iAcquire internal employee"
-        description={`${meta.tagline} This employee works in iAcquire's own workspace and is never routed to a client tenant.`}
+        eyebrow="iAcquire internal runtime profile"
+        description={`${meta.tagline} This retained role profile works in iAcquire's own workspace and is never routed to a client tenant.`}
         readiness={readiness}
         actions={<AgencyWorkforceControls agentId={agent.id} orgId={agent.org_id} slug={meta.slug} employeeName={agent.display_name} enabled={agent.enabled} dark />}
         footer={
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-slate-300">
             <span className="inline-flex items-center gap-1.5"><Sparkles className="size-3.5 text-blue-200" /> {agent.config_version ? `Configuration v${agent.config_version}` : "No applied configuration"}</span>
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-blue-200" /> {agent.tool_inventory_tool_count ?? 0} approved tools</span>
-            <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} employee notes and documents</span>
+            <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} knowledge notes and documents</span>
             <Link href="/approvals" className="inline-flex items-center gap-1.5 text-blue-200 hover:text-white">{pendingApprovals} pending approvals <ArrowUpRight className="size-3" /></Link>
           </div>
         }
@@ -238,7 +238,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
                 <Link href={`/admin/employees/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-primary hover:bg-surface-2">
                   Open configuration and knowledge <ArrowUpRight className="size-3.5" />
                 </Link>
-                <p className="text-[12px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
+                <p className="text-[12px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this profile&apos;s active configuration.</p>
               </CardContent>
             </Card>
             <Card>
@@ -288,7 +288,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
         <CardContent className="space-y-3">
           <div className="flex justify-end"><CopyTextButton text={bundle.soul} label="Copy SOUL.md" /></div>
           <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink-2">{bundle.soul}</pre>
-          <p className="text-[12px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the employee&apos;s identity or history.</p>
+          <p className="text-[12px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the profile&apos;s identity or history.</p>
         </CardContent>
       </Card>
     </div>

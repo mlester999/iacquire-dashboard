@@ -41,6 +41,22 @@ describe("what a merge moves", () => {
     expect((await rows<{ status: string }>("select status from signature_requests where id = $1", [h.requestId]))[0].status).toBe("voided");
   });
 
+  it("keeps a reviewed lead's native CRM contact link on the kept contact", async () => {
+    const p = await signingOrg();
+    const owner = p.actor("owner");
+    const ctx = ctxFor(p.people.owner, p.org, "owner");
+    const merged = await createContact(owner, { firstName: "Ana", lastName: "Imported", email: `ana-imported-${uid()}@example.test` });
+    const kept = await createContact(owner, { firstName: "Ana", lastName: "Kept", email: `ana-kept-${uid()}@example.test` });
+    const leadId = (await withSystem((db) => db.query<{ id: string }>(
+      `insert into leads (org_id, business_name, crm_contact_id, crm_imported_at)
+       values ($1, 'Ana Imported Roofing', $2, now()) returning id`,
+      [p.org.id, merged.id],
+    ))).rows[0]!.id;
+
+    await mergeContacts(ctx, { keptId: kept.id, mergedId: merged.id, reason: REASON });
+    expect((await rows<{ crm_contact_id: string }>("select crm_contact_id from leads where id = $1", [leadId]))[0].crm_contact_id).toBe(kept.id);
+  });
+
   it("still reaches a proposal that was left on the merged-away contact (a merge made before the move existed), and removes the merged-away record's name and merge snapshot", async () => {
     const { ctx, gone, kept, h } = await twoWithAProposal();
     await mergeContacts(ctx, { keptId: kept, mergedId: gone, reason: REASON });
@@ -103,7 +119,7 @@ describe("a table that names a contact cannot be forgotten", () => {
   // someone decides which, so a privacy request can never silently miss it.
   const MOVED_BY_OWN_STATEMENT = [
     "contact_identities.contact_id", "contact_memories.contact_id", "conversations.contact_id", "human_escalations.contact_id", "follow_up_plans.contact_id", "crm_contact_tags.contact_id",
-    "crm_contact_companies.contact_id", "appointment_refs.contact_id", "retention_enrollments.contact_id", "signature_requests.signer_contact_id", "review_request_batch_items.contact_id",
+    "crm_contact_companies.contact_id", "appointment_refs.contact_id", "retention_enrollments.contact_id", "signature_requests.signer_contact_id", "review_request_batch_items.contact_id", "leads.crm_contact_id",
   ];
   const STAYS: Record<string, string> = {
     "contact_consent_events.contact_id": "append-only consent history; the merge carries the effective answer to the kept contact",

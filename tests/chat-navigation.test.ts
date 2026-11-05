@@ -6,15 +6,16 @@ import { AGENT_STATUS_LABEL, type AgentStatus } from "@/lib/agents";
 import { calendarDaysAgo, compactRelativeTime, conversationGroup, fullTimestamp, groupConversations } from "@/lib/conversation-time";
 
 describe("chat navigation targets", () => {
-  it("sends a client workspace to the product dashboard and the AI Employees directory", () => {
+  it("sends a client workspace to the dashboard and labels retained profiles accurately", () => {
     const t = chatNavTargets("client", "lead-hunter");
-    expect(t).toMatchObject({ home: "/overview", workforce: "/employees", profile: "/employees/lead-hunter", manage: "/employees/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
+    expect(t).toMatchObject({ home: "/overview", workforce: "/employees", workforceLabel: "previous employee profiles", profile: "/employees/lead-hunter", manage: "/employees/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
   });
 
   it("sends the agency workspace to the agency dashboard and the agency workforce area", () => {
     const t = chatNavTargets("agency", "operations-manager");
     expect(t.home).toBe("/admin");
     expect(t.workforce).toBe("/admin/employees");
+    expect(t.workforceLabel).toBe("iAcquire internal profiles");
     // The employee screens are shared: a Super Admin manages an internal employee through the same routes.
     expect(t.profile).toBe("/employees/operations-manager");
     expect(t.manage).toBe("/employees/operations-manager?tab=configure");

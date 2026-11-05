@@ -22,7 +22,7 @@ const CLAIM = /[$€£]\s?\d|\d+(\.\d+)?\s?%|\b\d+\s?x\b|\bguarantee|\bROI\b|\bs
 const flat = (v: unknown): string[] => (typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(flat) : v && typeof v === "object" ? Object.values(v).flatMap(flat) : []);
 
 describe("the AI Growth Partner in the showroom", () => {
-  it("presents one employee identity and six internal capability areas without inventing a result", () => {
+  it("presents one AI Growth Partner identity and six capability areas without inventing a result", () => {
     expect(DEMO_CAPABILITY_AREAS.map((area) => area.key)).toEqual([...AI_GROWTH_PARTNER_CAPABILITIES]);
     expect(DEMO_CAPABILITY_AREAS).toHaveLength(6);
     for (const area of DEMO_CAPABILITY_AREAS) {
@@ -31,6 +31,14 @@ describe("the AI Growth Partner in the showroom", () => {
       for (const t of flat(area)) expect(t, `${area.key}: ${t}`).not.toMatch(CLAIM);
     }
     expect(Object.keys(AI_GROWTH_PARTNER_CAPABILITY_INFO)).toEqual([...AI_GROWTH_PARTNER_CAPABILITIES]);
+    const partnerCopy = [
+      "src/components/demo/landing-sections.tsx",
+      "src/components/demo/showroom/why-content.tsx",
+      "src/components/demo/showroom/views/summary.tsx",
+      "src/components/demo/showroom/views/workforce.tsx",
+    ].map((file) => readFileSync(path.join(ROOT, file), "utf8")).join("\n");
+    expect(partnerCopy).toMatch(/One AI Growth Partner identity/);
+    expect(partnerCopy).not.toMatch(/one employee|employee identity/i);
     expect(SCOPE_NOTE).toMatch(/implementation/);
     expect(OVERSIGHT_FOOTER).toMatch(/approval/);
     expect(OVERSIGHT_FOOTER).toMatch(/authorized workspace data/);

@@ -6,7 +6,7 @@ import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/l
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { secretFingerprint } from "@/server/security/crypto";
-import type { AgentRoleKey, WorkforceRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 
 /**
  * Typed adapter for the Hermes Agent API server (gateway `api_server` platform).
@@ -395,8 +395,17 @@ export async function getToolCatalog(
 export async function startRun(
   conn: HermesConnection,
   input: StartRunInput,
-  options: { beforeSubmit?: () => Promise<void> } = {},
+  options: { beforeSubmit?: () => Promise<void>; toolScope?: "no_tools" } = {},
 ): Promise<{ runId: string }> {
+  if (options.toolScope !== undefined && options.toolScope !== "no_tools") {
+    throw new AgentRunNotReadyError("tool_scope_unavailable", "This run has an unsupported tool scope and cannot start.");
+  }
+  if (options.toolScope === "no_tools") {
+    if (input.sessionId) {
+      throw new AgentRunNotReadyError("tool_scope_unavailable", "A no-tools research run cannot target a separate Hermes conversation.");
+    }
+    await assertNoToolRunScopeAvailable(conn);
+  }
   // This gate is intentionally inside the adapter, not only in the caller: no code path can create
   // a live run without a fresh, complete and stable runtime inventory that matches the reviewed
   // allowlist and a digest recorded by a previous health check (`purpose: "run"` refuses a connection
@@ -411,8 +420,10 @@ export async function startRun(
   if (input.instructions) body.instructions = input.instructions;
   if (input.sessionId) body.session_id = input.sessionId;
   if (input.conversationHistory?.length) body.conversation_history = input.conversationHistory;
+  if (options.toolScope === "no_tools") body.iacquire_tool_scope = "no_tools";
   const extra: Record<string, string> = { "Content-Type": "application/json", "Idempotency-Key": input.idempotencyKey };
   if (input.memoryScope) extra["X-Hermes-Session-Key"] = input.memoryScope.slice(0, 256);
+  if (options.toolScope === "no_tools") extra["X-IAcquire-Tool-Scope"] = "no_tools";
   const res = await request(conn, "/v1/runs", { method: "POST", headers: headers(conn, extra), body: JSON.stringify(body), timeoutMs: 20000 });
   if (res.status === 409) throw new HermesError("bad_response", "Hermes reported an idempotency conflict.", 409);
   if (!res.ok) throw new HermesError("bad_response", `Unexpected run status ${res.status}.`, res.status);
@@ -431,6 +442,7 @@ async function startAcknowledgedInternalAgencyRun(
   conn: HermesConnection,
   input: StartRunInput,
   beforeSubmit: () => Promise<void>,
+  options: { toolScope?: "no_tools" } = {},
 ): Promise<{ runId: string }> {
   const { profile, currentAccess } = await withSystem(async (db) => {
     const { rows } = await db.query<{
@@ -528,7 +540,7 @@ async function startAcknowledgedInternalAgencyRun(
       || !capabilities.supportsRuns || !capabilities.supportsEvents || !identities.includes(expected)) {
     throw new HermesError("bad_response", "The authenticated Hermes API no longer verifies this internal profile.");
   }
-  return startRun(conn, input, { beforeSubmit });
+  return startRun(conn, input, { beforeSubmit, ...options });
 }
 
 export type AgentRunBlockReason =
@@ -542,6 +554,7 @@ export type AgentRunBlockReason =
   | "credential_unavailable"
   | "configuration_sync_required"
   | "permission_mismatch"
+  | "tool_scope_unavailable"
   | "readiness_unknown";
 
 /** The employee has not passed the checks that unlock live runs. The message is safe to show to workspace users. */
@@ -549,6 +562,28 @@ export class AgentRunNotReadyError extends HermesError {
   constructor(readonly reason: AgentRunBlockReason, message: string) {
     super("bad_response", message);
     this.name = "AgentRunNotReadyError";
+  }
+}
+
+/**
+ * Verify the gateway can suppress every Hermes tool for one research run. Call before collecting
+ * approved external sources, then startRun checks again immediately before submission.
+ */
+export async function assertNoToolRunScopeAvailable(conn: HermesConnection): Promise<void> {
+  let capabilities: HermesCapabilities;
+  try {
+    capabilities = await getCapabilities(conn);
+  } catch {
+    throw new AgentRunNotReadyError(
+      "tool_scope_unavailable",
+      "Research is blocked because this Hermes gateway's no-tools capability could not be verified. No discovery request was started.",
+    );
+  }
+  if (!capabilities.authenticated || !capabilities.supportsRuns || capabilities.features.run_tool_scope_no_tools !== true) {
+    throw new AgentRunNotReadyError(
+      "tool_scope_unavailable",
+      "Research is blocked because this Hermes gateway cannot guarantee a no-tools run. No discovery request was started.",
+    );
   }
 }
 
@@ -785,7 +820,7 @@ export async function startAgentRun(
   orgId: string,
   conn: HermesConnection,
   input: StartRunInput,
-  requirements: { expectedConfigVersionId?: string | null } = {},
+  requirements: { expectedConfigVersionId?: string | null; toolScope?: "no_tools" } = {},
 ): Promise<{ runId: string }> {
   await assertAgentRunPreflight(agentId, orgId);
   const gate = await loadAgentRunGate(agentId, orgId);
@@ -809,8 +844,8 @@ export async function startAgentRun(
       throw new AgentRunNotReadyError("not_ready", "The employee's verified tool inventory changed while the run was being prepared. Review the current inventory before trying again.");
     }
   };
-  if (gate.kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, bound, input, beforeSubmit);
-  return startRun(bound, input, { beforeSubmit });
+  if (gate.kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, bound, input, beforeSubmit, { toolScope: requirements.toolScope });
+  return startRun(bound, input, { beforeSubmit, toolScope: requirements.toolScope });
 }
 
 

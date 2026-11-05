@@ -24,6 +24,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHea
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
+import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import {
   BUSINESS_BRAIN_SECTIONS,
@@ -270,6 +271,8 @@ function MetricCard({
 export function GrowthPartnerControlCenter({
   state,
   canConfigure,
+  canConfigureResearch,
+  researchSourcePolicies,
   canOpenSetup,
   controlPermissions,
   legacyProfilesPresent,
@@ -280,6 +283,8 @@ export function GrowthPartnerControlCenter({
 }: {
   state: GrowthPartnerControlState | null;
   canConfigure: boolean;
+  canConfigureResearch: boolean;
+  researchSourcePolicies: ResearchSourcePoliciesView;
   canOpenSetup: boolean;
   controlPermissions: Record<string, boolean>;
   legacyProfilesPresent: boolean;
@@ -384,6 +389,8 @@ export function GrowthPartnerControlCenter({
           ))}
         </div>
       </section>
+
+      {canConfigureResearch && <ResearchSourceSettings policies={researchSourcePolicies} />}
 
       {state?.status === "paused" && (
         <div role="status" className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-warning-ink">

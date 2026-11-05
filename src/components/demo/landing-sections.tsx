@@ -98,11 +98,11 @@ export function FormStepper() {
   );
 }
 
-/** The six internal capability areas presented as parts of one employee. */
+/** The six internal capability areas presented as one AI Growth Partner. */
 export function TeamSection() {
   return (
     <section aria-label="AI Growth Partner capability areas" className="space-y-6">
-      <SectionHead eyebrow="One employee · six capabilities" title="Meet your AI Growth Partner" lead="One identity and shared business context, with six coordinated capability areas. The examples are illustrative and use sample data." />
+      <SectionHead eyebrow="One identity · six capabilities" title="Meet your AI Growth Partner" lead="One identity and shared business context, with six coordinated capability areas. The examples are illustrative and use sample data." />
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {DEMO_CAPABILITY_AREAS.map((area) => {
           return (

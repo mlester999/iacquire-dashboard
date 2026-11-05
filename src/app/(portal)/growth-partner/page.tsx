@@ -6,6 +6,8 @@ import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-sou
 import { listAgents } from "@/server/workforce/service";
 import { withUser } from "@/server/db";
 import { getControlState } from "@/server/automation/controls";
+import { getResearchSourcePolicy, type StoredResearchSourcePolicy } from "@/server/leads/research-source-policy";
+import type { ResearchSourcePoliciesView, ResearchSourcePolicyView } from "@/components/growth-partner/research-source-settings";
 
 export const metadata = { title: "AI Growth Partner" };
 
@@ -20,13 +22,37 @@ export default async function GrowthPartnerPage() {
     listAgents(ctx.user.id, ctx.org.orgId),
   ]);
   const canConfigure = ctx.can("agents.configure");
+  const canConfigureResearch = ctx.can("leads.research");
   const submittedSource = canConfigure ? await getSubmittedBrainSource(ctx) : null;
-  const controls = await withUser(ctx.user.id, (db) => getControlState(db, ctx.org.orgId));
+  const [controls, researchSourcePolicies] = await Promise.all([
+    withUser(ctx.user.id, (db) => getControlState(db, ctx.org.orgId)),
+    canConfigureResearch
+      ? withUser(ctx.user.id, async (db): Promise<ResearchSourcePoliciesView> => {
+          const openstreetmap = await getResearchSourcePolicy(db, ctx.org.orgId, "openstreetmap");
+          const companyWebsite = await getResearchSourcePolicy(db, ctx.org.orgId, "company_website");
+          const view = (policy: StoredResearchSourcePolicy | null): ResearchSourcePolicyView | null => policy ? ({
+            enabled: policy.enabled,
+            providerFeeUsdPerRequest: policy.providerFeeUsdPerRequest,
+            perJobRequestCap: policy.perJobRequestCap,
+            perDayRequestCap: policy.perDayRequestCap,
+            perJobSpendCapUsd: policy.perJobSpendCapUsd,
+            perDaySpendCapUsd: policy.perDaySpendCapUsd,
+            sourceConfig: { ...policy.sourceConfig } as Record<string, unknown>,
+          }) : null;
+          return {
+            openstreetmap: view(openstreetmap),
+            company_website: view(companyWebsite),
+          };
+        })
+      : Promise.resolve({ openstreetmap: null, company_website: null }),
+  ]);
 
   return (
     <GrowthPartnerControlCenter
       state={state}
       canConfigure={canConfigure}
+      canConfigureResearch={canConfigureResearch}
+      researchSourcePolicies={researchSourcePolicies}
       canOpenSetup={ctx.can("setup.view")}
       controlPermissions={{
         "agents.use": ctx.can("agents.use"),

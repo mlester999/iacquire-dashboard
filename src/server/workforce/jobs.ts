@@ -54,7 +54,7 @@ export const WORK_JOB_STAGE_LABELS: Record<WorkJobStage, string> = {
   verifying: "Verifying information against sources",
   qualifying: "Qualifying candidates against your criteria",
   checking_duplicates: "Checking candidate companies against existing CRM records",
-  preparing_results: "Research completed. Preparing qualified leads for review.",
+  preparing_results: "Research completed. Preparing results for review.",
   waiting_for_approval: "Waiting for your approval",
   completed: "Completed",
   blocked: "Blocked and needs a person",
@@ -119,6 +119,11 @@ export function countDraftStatuses(statuses: readonly DraftLiveStatus[]): DraftC
  * person has decided its drafts: approved drafts that are only queued are an approved write, and it is a confirmed action only when every approved draft has really been sent.
  */
 export function workJobEvidence(job: { id: string; capability: string; status: WorkJobStatus }, drafts?: DraftCounts | null): EvidenceMarker | null {
+  if (job.capability === "crm_lead_import") {
+    if (job.status === "waiting_for_approval") return { v: 1, class: "proposed_change", ledger: { kind: "work_job", id: job.id } };
+    if (job.status === "completed") return { v: 1, class: "approved_write", ledger: { kind: "work_job", id: job.id } };
+    return null;
+  }
   const definition = capabilityDefinition(job.capability);
   if (!definition) return null;
   const marker = (cls: EvidenceClass): EvidenceMarker => ({ v: 1, class: cls, ledger: { kind: "work_job", id: job.id } });
@@ -136,8 +141,9 @@ export function workJobEvidence(job: { id: string; capability: string; status: W
  * The status words for a job. A finished review keeps "Completed" (it ran to the end and read what it read), but finished work that only prepared something must not say it was
  * done: a draft job reads "Ready for review" until a person decides the drafts, and "Completed" is kept for work whose effect is confirmed.
  */
-export function workJobStatusLabel(job: { status: WorkJobStatus; recoveryPending: boolean }, evidence: EvidenceMarker | null, drafts?: DraftCounts | null): string {
+export function workJobStatusLabel(job: { status: WorkJobStatus; recoveryPending: boolean; capability?: string }, evidence: EvidenceMarker | null, drafts?: DraftCounts | null): string {
   if (job.recoveryPending) return "Recovery pending";
+  if (job.capability === "crm_lead_import" && job.status === "completed" && evidence?.class === "approved_write") return "Imported to CRM";
   if (job.status === "completed" && evidence) {
     if (evidence.class === "proposed_change") return "Ready for review";
     if (evidence.class === "approved_write") return drafts && drafts.blocked > 0 ? "Some drafts not sent" : "Approved, not yet sent";
@@ -767,7 +773,7 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     capability: job.capability,
     title: job.title,
     status: job.status,
-    statusLabel: workJobStatusLabel({ status: job.status, recoveryPending }, evidence, result.counts),
+    statusLabel: workJobStatusLabel({ status: job.status, recoveryPending, capability: job.capability }, evidence, result.counts),
     recoveryPending,
     evidence,
     stage: job.stage,
@@ -780,8 +786,8 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     failureMessage: job.failure_message,
     attempts: job.attempts,
     cancelRequested: Boolean(job.cancel_requested_at),
-    canCancel: !isTerminalWorkJobStatus(job.status) && !job.cancel_requested_at && canActOnJob(ctx, job, cancelPermission),
-    canRetry: ["failed", "blocked", "cancelled"].includes(job.status) && canActOnJob(ctx, job, cancelPermission),
+    canCancel: job.capability !== "crm_lead_import" && !isTerminalWorkJobStatus(job.status) && !job.cancel_requested_at && canActOnJob(ctx, job, cancelPermission),
+    canRetry: job.capability !== "crm_lead_import" && ["failed", "blocked", "cancelled"].includes(job.status) && canActOnJob(ctx, job, cancelPermission),
     canCreateTask: job.status === "completed" && ctx.can("tasks.manage"),
     conversationId: job.conversation_id,
     createdAt: new Date(job.created_at).toISOString(),
@@ -804,6 +810,7 @@ export async function cancelWorkJob(ctx: OrgContext, jobId: string): Promise<"ca
   const result = await withSystem(async (db) => {
     const job = await getWorkJob(db, ctx.org.orgId, jobId);
     if (!job) throw new AppError("not_found", "Work job not found.");
+    if (job.capability === "crm_lead_import") throw new AppError("forbidden", "Use the CRM import approval to decide this Work Board item.");
     const permission = CAPABILITY_CANCEL_PERMISSION[job.capability] ?? "agents.use";
     if (!canActOnJob(ctx, job, permission)) throw new AppError("forbidden", "You can't stop this work.");
     const outcome = await requestWorkJobCancel(db, { jobId, orgId: ctx.org.orgId });
@@ -825,6 +832,7 @@ export async function retryWorkJobForUser(ctx: OrgContext, jobId: string): Promi
   await withSystem(async (db) => {
     const job = await getWorkJob(db, ctx.org.orgId, jobId);
     if (!job) throw new AppError("not_found", "Work job not found.");
+    if (job.capability === "crm_lead_import") throw new AppError("forbidden", "Request a new CRM import approval before retrying this work.");
     const permission = CAPABILITY_CANCEL_PERMISSION[job.capability] ?? "agents.use";
     if (!canActOnJob(ctx, job, permission)) throw new AppError("forbidden", "You can't retry this work.");
     const retried = await retryWorkJob(db, { jobId, orgId: ctx.org.orgId });

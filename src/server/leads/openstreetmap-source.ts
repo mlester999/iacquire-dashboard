@@ -1,6 +1,7 @@
 import "server-only";
 import { AppError } from "@/server/errors";
 import { parsePublicUrl } from "@/server/onboarding/website";
+import type { ResearchSourceUsageTracker } from "@/server/leads/research-source-policy";
 
 const MAX_BOUNDS_SPAN = 1.5;
 const MAX_RESULTS = 50;
@@ -215,6 +216,11 @@ function configuredEndpoint(config: OpenStreetMapSourceConfig): URL {
   return endpoint;
 }
 
+/** Validates endpoint identity and request headers without making a network call. */
+export function validateOpenStreetMapSourceConfig(config: OpenStreetMapSourceConfig): URL {
+  return configuredEndpoint(config);
+}
+
 export type OverpassFetcher = (url: URL, init: RequestInit) => Promise<Response>;
 const MAX_RESPONSE_BYTES = 1_000_000;
 
@@ -251,6 +257,7 @@ export async function searchOpenStreetMap(
   config: OpenStreetMapSourceConfig,
   bounds: GeographicBounds,
   fetcher: OverpassFetcher = fetch,
+  usageTracker?: ResearchSourceUsageTracker,
 ): Promise<OpenStreetMapResearchResult> {
   if (config.enabled !== true) throw new AppError("forbidden", "OpenStreetMap research is disabled for this workspace.");
   if (!Number.isFinite(config.providerFeeUsdPerRequest)
@@ -259,12 +266,13 @@ export async function searchOpenStreetMap(
     || config.perJobSpendCapUsd < config.providerFeeUsdPerRequest) {
     throw new AppError("forbidden", "Set the selected endpoint's reviewed request fee and a sufficient per-job spend cap before running research.");
   }
-  const endpoint = configuredEndpoint(config);
+  const endpoint = validateOpenStreetMapSourceConfig(config);
   const maxResults = config.maxResults ?? 25;
   const timeoutSeconds = config.timeoutSeconds ?? 25;
   const query = buildOpenStreetMapQuery(bounds, maxResults, timeoutSeconds);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+  const usageId = usageTracker ? await usageTracker.reserveRequest(endpoint) : null;
   let response: Response;
   let payload: unknown;
   try {
@@ -280,14 +288,16 @@ export async function searchOpenStreetMap(
       cache: "no-store",
       redirect: "error",
     });
-    if (response.ok) payload = await readLimitedJson(response);
-    else await response.body?.cancel().catch(() => undefined);
   } catch (error) {
+    if (usageId) await usageTracker?.finishRequest(usageId, { responseReceived: false, httpStatus: null }).catch(() => undefined);
     if (error instanceof AppError) throw error;
     throw new AppError("upstream_error", "OpenStreetMap could not complete this bounded research request. No retry was attempted.");
   } finally {
     clearTimeout(timer);
   }
+  if (usageId) await usageTracker?.finishRequest(usageId, { responseReceived: true, httpStatus: response.status });
+  if (response.ok) payload = await readLimitedJson(response);
+  else await response.body?.cancel().catch(() => undefined);
   if (!response.ok) {
     throw new AppError("upstream_error", response.status === 429
       ? "OpenStreetMap asked us to slow down. The request stopped and will not be retried."

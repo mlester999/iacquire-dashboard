@@ -20,9 +20,10 @@ CATALOG_OVERLAY_V0215_SHA256 = {
     "tools/mcp_tool.py": "144bed331c2e4f9577e8b82564a714b8bfdc9beb172e477568e8925b4c9a9c0a",
 }
 CATALOG_OVERLAY_V0225_SHA256 = {
-    "gateway/platforms/api_server.py": "e20f4fdbb8099354934ab23e0ba6daea9c90f6488195509e3f52090d33f8e482",
-    "model_tools.py": "311867fa4fe1689e12a6097b729e05d4bc5e5bd39a19f8e502605c46a5082153",
+    "gateway/platforms/api_server.py": "8f687c01c32eccd5644ceec8f4ad7eaf6ec42de96cd3403b4d3cab6b92d32322",
+    "model_tools.py": "2e2bdc4d77a1f9a672ce1de79ae77929e5ea226370263bea9d949c01e233965d",
     "gateway/platforms/api_server_tool_catalog.py": "53682d305a91b802055bf00dfeee615045f3668a17a57b2c6e5cffdc13798327",
+    "gateway/platforms/api_server_run_tool_scope.py": "c8e63b7b5d070b4e2438e2cebe788f8bf246dcaeff12e056e9eea4f4f7457855",
 }
 CATALOG_OVERLAY_V0225_UPSTREAM_SHA256 = {
     "gateway/platforms/api_server.py": "71ac56c28683aa6b935a432b58e5bfe3753492363ef2cf9f8853b121d0e8214f",

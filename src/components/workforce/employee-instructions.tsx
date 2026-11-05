@@ -108,7 +108,7 @@ export function EmployeeInstructions({
         <Card>
           <CardHeader>
             <div>
-              <CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> SOUL.md and employee identity</CardTitle>
+              <CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> SOUL.md and profile identity</CardTitle>
               <CardDescription>The profile identity file is owned by iAcquire&apos;s Hermes administrator. This workspace does not rewrite it.</CardDescription>
             </div>
             <CopyTextButton text={overview.soul} label="Copy SOUL.md" />
@@ -118,14 +118,14 @@ export function EmployeeInstructions({
             <div className="rounded-xl border border-line p-3">
               <p className="text-[12px] font-semibold">Editing model</p>
               <p className="mt-1 text-[12px] leading-relaxed text-muted">
-                The verified Hermes API has no endpoint that writes a profile&apos;s SOUL.md. The portal therefore does not pretend a workspace save changes it. Your editable layer is the versioned configuration above; it is sent on every run and can be tested before it is applied. Changing the underlying AI model or provider does not erase this employee&apos;s identity, conversations or knowledge.
+                The verified Hermes API has no endpoint that writes a profile&apos;s SOUL.md. The portal therefore does not pretend a workspace save changes it. Your editable layer is the versioned configuration above; it is sent on every run and can be tested before it is applied. Changing the underlying AI model or provider does not erase this profile&apos;s identity, conversations or knowledge.
               </p>
             </div>
             {overview.active.compiledInstructions && (
               <details className="rounded-xl border border-line">
                 <summary className="cursor-pointer px-3 py-2 text-[13px] font-medium">View the exact applied instructions</summary>
                 <div className="border-t border-line p-3">
-                  <pre tabIndex={0} aria-label="Applied employee instructions" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-muted">{overview.active.compiledInstructions}</pre>
+                  <pre tabIndex={0} aria-label="Applied profile instructions" className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-muted">{overview.active.compiledInstructions}</pre>
                   <div className="mt-2 flex justify-end"><CopyTextButton text={overview.active.compiledInstructions} label="Copy instructions" /></div>
                 </div>
               </details>

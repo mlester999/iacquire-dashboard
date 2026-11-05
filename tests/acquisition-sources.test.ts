@@ -9,6 +9,7 @@ import {
 import {
   createCompanyWebsiteFetchPolicy,
   normalizeApprovedCompanyDomains,
+  researchApprovedCompanyWebsite,
   validateCompanyWebsiteTarget,
 } from "@/server/leads/company-website-source";
 import { analyzeWebsite, type PageFetcher } from "@/server/onboarding/website";
@@ -72,14 +73,22 @@ describe("OpenStreetMap acceptance adapter", () => {
 
   it("sends one metered request and stops without retrying on throttling", async () => {
     const calls: Array<[URL, RequestInit]> = [];
+    const usageEvents: string[] = [];
+    const usageTracker = {
+      reserveRequest: async (url: URL) => { usageEvents.push(`reserve:${url.pathname}`); return "usage-osm"; },
+      finishRequest: async (_id: string, result: { responseReceived: boolean; httpStatus: number | null }) => {
+        usageEvents.push(`finish:${result.httpStatus ?? "transport"}`);
+      },
+    };
     const fetcher = async (url: URL, init: RequestInit) => {
       calls.push([url, init]);
+      usageEvents.push("fetch");
       return new Response(JSON.stringify({
         osm3s: { timestamp_osm_base: "2026-10-30T12:00:00Z" },
         elements: [{ type: "node", id: 88, lat: 1.3, lon: 103.8, tags: { name: "Fixture Cafe", amenity: "cafe" } }],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     };
-    const result = await searchOpenStreetMap(OSM_CONFIG, BOUNDS, fetcher);
+    const result = await searchOpenStreetMap(OSM_CONFIG, BOUNDS, fetcher, usageTracker);
     const [urlSeen, initSeen] = calls[0]!;
     expect(urlSeen?.toString()).toBe(OSM_CONFIG.endpoint);
     expect(initSeen?.method).toBe("POST");
@@ -92,6 +101,7 @@ describe("OpenStreetMap acceptance adapter", () => {
       usage: { requests: 1, providerFeeUsd: 0, infrastructureCostUsd: null },
       candidates: [{ businessName: "Fixture Cafe", evidenceUrl: "https://www.openstreetmap.org/node/88" }],
     });
+    expect(usageEvents).toEqual(["reserve:/api/interpreter", "fetch", "finish:200"]);
 
     const throttled = vi.fn(async () => new Response("busy", { status: 429 }));
     await expect(searchOpenStreetMap(OSM_CONFIG, BOUNDS, throttled as never)).rejects.toThrow("will not be retried");
@@ -138,5 +148,47 @@ describe("approved company website adapter policy", () => {
       fetcher,
       { robotsFailureMode: "fail_closed" },
     )).rejects.toThrow("robots.txt");
+  });
+
+  it("reserves and finalizes persistent usage before and after each approved page request", async () => {
+    const host = "usage-fixture.example";
+    const events: string[] = [];
+    let nextId = 0;
+    const usageTracker = {
+      reserveRequest: async (url: URL) => {
+        events.push(`reserve:${url.pathname}`);
+        nextId += 1;
+        return `usage-${nextId}`;
+      },
+      finishRequest: async (_id: string, result: { responseReceived: boolean; httpStatus: number | null }) => {
+        events.push(`finish:${result.httpStatus ?? "transport"}`);
+      },
+    };
+    const result = await researchApprovedCompanyWebsite(
+      `https://${host}/`,
+      { enabled: true, approvedDomains: [host], maxRequests: 4 },
+      {
+        usageTracker,
+        now: () => 10_000,
+        wait: async () => undefined,
+        pageFetcher: async (url) => {
+          events.push(`read:${url.pathname}`);
+          return {
+            url: url.toString(),
+            status: 200,
+            contentType: url.pathname === "/robots.txt" ? "text/plain" : "text/html",
+            body: url.pathname === "/robots.txt"
+              ? "User-agent: *\nAllow: /"
+              : "<html><head><title>Fixture Services</title></head><body><h1>Roofing services</h1><p>We serve local roofing customers throughout the Orlando area.</p></body></html>",
+          };
+        },
+      },
+    );
+    expect(result.usage).toEqual({ requests: 2, providerFeeUsd: 0, infrastructureCostUsd: null });
+    expect(result.pages[0]?.title).toBe("Fixture Services");
+    expect(events).toEqual([
+      "reserve:/robots.txt", "read:/robots.txt", "finish:200",
+      "reserve:/", "read:/", "finish:200",
+    ]);
   });
 });

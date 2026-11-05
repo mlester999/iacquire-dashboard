@@ -191,7 +191,7 @@ async function ensureConversation(db: Queryable, widget: WidgetSettings, s: Sess
   if (owner === "unassigned") {
     await notifyOrgRoles(db, s.orgId, ["owner", "admin"], {
       kind: "web_chat_lead", severity: "info", title: "A website visitor started a chat and nobody is handling it",
-      body: "The website assistant is not answering (it is switched off, the business is closed or no AI employee is ready). Open the conversation to take it.",
+      body: "The website assistant is not answering (it is switched off, the business is closed or no assigned assistant is ready). Open the conversation to take it.",
       link: `/inbox?conversation=${conv.rows[0].id}`, dedupeKey: `webchat-unhandled:${conv.rows[0].id}`,
     });
   }

@@ -46,6 +46,8 @@ export interface MockInventory {
 
 export interface MockProfile {
   key: string;
+  /** Advertise that POST /v1/runs enforces the iAcquire per-run no-tools scope. */
+  runToolScopeNoTools?: boolean;
   /** Tools to report from /v1/toolsets. */
   tools?: string[];
   /** Complete runtime tool catalog controls for GET /v1/tools. */
@@ -86,6 +88,7 @@ export interface MockHermes {
   requests: Array<{ method: string; path: string; profile: string | null }>;
   /** Replace a profile's complete-inventory behaviour between assertions. */
   setInventory(profile: string, inventory: MockInventory | null): void;
+  setRunToolScopeNoTools(profile: string, enabled: boolean): void;
   close(): Promise<void>;
 }
 
@@ -145,7 +148,7 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
         platform: "hermes-agent",
         model: profile,
         auth: { type: "bearer", required: true },
-        features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: !p.polling, run_stop: true, run_approval_response: true, approval_events: true },
+        features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: !p.polling, run_stop: true, run_approval_response: true, approval_events: true, run_tool_scope_no_tools: p.runToolScopeNoTools === true },
         endpoints: {
           toolsets: ["GET", "/v1/toolsets"],
           ...(inventoryAdvertised ? { tools: ["GET", "/v1/tools"] } : {}),
@@ -316,6 +319,11 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
       if (!existing) throw new Error(`unknown mock profile: ${profile}`);
       state.set(profile, { ...existing, inventory: inventory ?? undefined });
       inventoryReads.delete(profile);
+    },
+    setRunToolScopeNoTools(profile: string, enabled: boolean) {
+      const existing = state.get(profile);
+      if (!existing) throw new Error("unknown mock profile: " + profile);
+      state.set(profile, { ...existing, runToolScopeNoTools: enabled });
     },
     close: () => new Promise<void>((resolve) => {
       server.closeAllConnections?.();

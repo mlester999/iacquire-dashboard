@@ -3,7 +3,7 @@ import { normalizeAqiNavigation, trimIncompleteLink, type AqiNavRoute } from "@/
 
 const OWNER: AqiNavRoute[] = [
   { path: "/overview", label: "Overview" },
-  { path: "/employees", label: "AI Employees" },
+  { path: "/employees", label: "Previous employee profiles" },
   { path: "/knowledge", label: "Knowledge Center" },
   { path: "/settings", label: "Settings" },
   { path: "/settings/integrations", label: "Integrations" },
@@ -34,8 +34,8 @@ describe("AQi navigation normalizer", () => {
   });
 
   it("C: a label-as-destination reference is linked only when authorized", () => {
-    expect(run("Employees live in [AI Employees](AI Employees).")).toBe("Employees live in [AI Employees](/employees).");
-    expect(run("Employees live in [AI Employees](AI Employees).", [])).toBe("Employees live in AI Employees.");
+    expect(run("Legacy profiles are under [Previous employee profiles](Previous employee profiles).")).toBe("Legacy profiles are under [Previous employee profiles](/employees).");
+    expect(run("Legacy profiles are under [Previous employee profiles](Previous employee profiles).", [])).toBe("Legacy profiles are under Previous employee profiles.");
   });
 
   it("D: a real internal path is linked only for an authorized route", () => {
@@ -82,18 +82,18 @@ describe("AQi navigation normalizer", () => {
   });
 
   it("is idempotent", () => {
-    const sample = "Open [Team] (Settings → Team) or [Integrations](Settings → Integrations); see [AI Employees](AI Employees). `[Team]`";
+    const sample = "Open [Team] (Settings → Team) or [Integrations](Settings → Integrations); see [Previous employee profiles](Previous employee profiles). `[Team]`";
     const once = run(sample);
     expect(run(once)).toBe(once);
   });
 
   it("F: streamed prefixes never expose raw bracket syntax and the final text matches the full result", () => {
-    const answer = "Add people under [Team] (Settings → Team), then connect tools in [Integrations](Settings → Integrations) or see [AI Employees](AI Employees).";
+    const answer = "Add people under [Team] (Settings → Team), then connect tools in [Integrations](Settings → Integrations) or see [Previous employee profiles](Previous employee profiles).";
     const final = run(answer);
     for (let end = 1; end <= answer.length; end += 1) {
       const partial = run(answer.slice(0, end), OWNER, { streaming: true });
       expect(partial).not.toMatch(/\]\((?!\/)/);
-      expect(partial).not.toMatch(/\[(?:Team|Integrations|AI Employees)\](?!\()/);
+      expect(partial).not.toMatch(/\[(?:Team|Integrations|Previous employee profiles)\](?!\()/);
       expect(partial).not.toMatch(/\[[^\]]*$/);
     }
     expect(run(answer, OWNER, { streaming: true })).toBe(final);

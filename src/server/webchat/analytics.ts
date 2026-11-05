@@ -153,10 +153,13 @@ export async function chatHealth(ctx: OrgContext): Promise<HealthCheck[]> {
   );
   const a = agent.rows[0];
   if (w.aiEnabled) {
-    // Mirrors what the chat itself does: it gives a chat to this employee when the employee is switched on (visitor.ts), whatever setup version it has.
+    const isGrowthPartner = w.aiRoleKey === "growth_partner";
+    const readinessLabel = isGrowthPartner ? "Your AI Growth Partner" : "The website assistant";
+    const setupHref = isGrowthPartner ? "/growth-partner" : "/employees";
+    // Mirrors what the chat itself does: it assigns a visitor chat only when the configured runtime is switched on.
     out.push(a?.enabled
-      ? { key: "employee", state: "ok", label: "The AI employee that answers is switched on", detail: "It owns each chat, so a person taking over or pausing it works the same as in your Inbox." }
-      : { key: "employee", state: "attention", label: "The AI employee that answers is not switched on", detail: "Chats will wait for a person until it is. Check it in AI Employees.", href: "/employees" });
+      ? { key: "employee", state: "ok", label: `${readinessLabel} is switched on`, detail: "It owns each chat, so a person taking over or pausing it works the same as in your Inbox." }
+      : { key: "employee", state: "attention", label: `${readinessLabel} is not switched on`, detail: "Website chats will wait for a person until the assigned assistant is ready. Review its setup.", href: setupHref });
     const llm = await resolveLlmConfigDetailed();
     out.push(llm.config
       ? { key: "model", state: "ok", label: "The AI language model is connected", detail: "The assistant can answer from the knowledge you chose." }

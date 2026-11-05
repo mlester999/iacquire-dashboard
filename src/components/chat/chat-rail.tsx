@@ -132,8 +132,8 @@ export function ChatRail(props: ChatRailProps) {
           </Tooltip>
         </div>
         <div className="scrollbar-thin flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-2 pb-3">
-          <Tooltip content="Back to AI Employees" side="right">
-            <Link href={targets.workforce} aria-label="Back to AI Employees" className={iconButton}>
+          <Tooltip content={`Back to ${targets.workforceLabel}`} side="right">
+            <Link href={targets.workforce} aria-label={`Back to ${targets.workforceLabel}`} className={iconButton}>
               <ArrowLeft className="size-[17px]" aria-hidden />
             </Link>
           </Tooltip>
@@ -226,14 +226,14 @@ export function ChatRail(props: ChatRailProps) {
       </div>
       <div className="shrink-0 px-3 pb-2">
         <Link href={targets.workforce} onClick={props.onNavigate} className={rowBase}>
-          <ArrowLeft className="size-[17px]" aria-hidden /> Back to AI Employees
+          <ArrowLeft className="size-[17px]" aria-hidden /> Back to {targets.workforceLabel}
         </Link>
       </div>
 
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* B. AI specialists: choosing one opens that employee's chat (and nothing else). */}
         <div className="flex shrink-0 items-baseline justify-between gap-2 px-6 pb-1.5 pt-3">
-          <h2 className="workspace-nav-section">AI specialists</h2>
+          <h2 className="workspace-nav-section">{targets.workforceLabel}</h2>
           <span className="min-w-0 truncate text-[12px] text-[var(--nav-muted)]" title={shell.org.name}>
             {shell.org.name}
           </span>

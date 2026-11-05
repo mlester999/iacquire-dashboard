@@ -6,8 +6,11 @@ import {
   fetchPublicPageWithPolicy,
   parsePublicUrl,
   type PageFacts,
+  type FetchedPage,
+  type PageFetcher,
   type PublicPageFetchPolicy,
 } from "@/server/onboarding/website";
+import type { ResearchSourceUsageTracker } from "@/server/leads/research-source-policy";
 
 const MAX_REQUESTS = 20;
 const DEFAULT_REQUESTS = 8;
@@ -77,7 +80,11 @@ function sleep(ms: number): Promise<void> {
 export function createCompanyWebsiteFetchPolicy(
   config: CompanyWebsiteSourceConfig,
   targetHost: string,
-  dependencies: { now?: () => number; wait?: (ms: number) => Promise<void> } = {},
+  dependencies: {
+    now?: () => number;
+    wait?: (ms: number) => Promise<void>;
+    usageTracker?: ResearchSourceUsageTracker;
+  } = {},
 ): PublicPageFetchPolicy & { requestCount: () => number } {
   if (config.enabled !== true) throw new AppError("forbidden", "Company website research is disabled for this workspace.");
   const host = normalizeApprovedDomain(targetHost);
@@ -90,6 +97,7 @@ export function createCompanyWebsiteFetchPolicy(
   const now = dependencies.now ?? Date.now;
   const wait = dependencies.wait ?? sleep;
   let requests = 0;
+  const reservations = new Map<string, string[]>();
 
   return {
     allowUrl: (url) => url.protocol === "https:" && url.hostname.toLowerCase().replace(/\.$/, "") === host,
@@ -98,11 +106,19 @@ export function createCompanyWebsiteFetchPolicy(
         throw new AppError("forbidden", "This company website redirected outside its approved HTTPS domain.");
       }
       if (requests >= maxRequests) throw new AppError("forbidden", "The approved company website request cap was reached.");
+      const usageId = await dependencies.usageTracker?.reserveRequest(url);
       requests += 1;
+      if (usageId) reservations.set(url.toString(), [...(reservations.get(url.toString()) ?? []), usageId]);
       const current = now();
       const reservedAt = Math.max(current, nextHostRequestAt.get(host) ?? current);
       nextHostRequestAt.set(host, reservedAt + MIN_HOST_INTERVAL_MS);
       if (reservedAt > current) await wait(reservedAt - current);
+    },
+    afterRequest: async (url, result) => {
+      const queue = reservations.get(url.toString());
+      const usageId = queue?.shift();
+      if (queue && queue.length === 0) reservations.delete(url.toString());
+      if (usageId) await dependencies.usageTracker?.finishRequest(usageId, result);
     },
     requestCount: () => requests,
   };
@@ -115,13 +131,33 @@ export function createCompanyWebsiteFetchPolicy(
 export async function researchApprovedCompanyWebsite(
   rawUrl: string,
   config: CompanyWebsiteSourceConfig,
+  dependencies: {
+    usageTracker?: ResearchSourceUsageTracker;
+    pageFetcher?: PageFetcher;
+    now?: () => number;
+    wait?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<CompanyWebsiteEvidence> {
   if (config.enabled !== true) throw new AppError("forbidden", "Company website research is disabled for this workspace.");
   const start = validateCompanyWebsiteTarget(rawUrl, config.approvedDomains);
-  const policy = createCompanyWebsiteFetchPolicy(config, start.hostname);
+  const policy = createCompanyWebsiteFetchPolicy(config, start.hostname, dependencies);
+  const fetcher: PageFetcher = dependencies.pageFetcher
+    ? async (url): Promise<FetchedPage> => {
+        await policy.beforeRequest?.(url);
+        let page: FetchedPage;
+        try {
+          page = await dependencies.pageFetcher!(url);
+        } catch (error) {
+          await Promise.resolve(policy.afterRequest?.(url, { responseReceived: false, httpStatus: null })).catch(() => undefined);
+          throw error;
+        }
+        await policy.afterRequest?.(url, { responseReceived: true, httpStatus: page.status });
+        return page;
+      }
+    : (url) => fetchPublicPageWithPolicy(url, policy);
   const result = await analyzeWebsite(
     start.toString(),
-    (url) => fetchPublicPageWithPolicy(url, policy),
+    fetcher,
     { robotsFailureMode: "fail_closed" },
   );
   return {

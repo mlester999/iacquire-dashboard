@@ -49,7 +49,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
         eyebrow="iAcquire internal operations"
         icon={<ShieldCheck className="size-5" />}
         title="iAcquire internal profiles"
-        description="The six existing iAcquire Hermes identities mapped to the shared protected gateway. Each keeps its own profile identity and API key; nothing here creates or overwrites a profile."
+        description="The product is one AI Growth Partner identity with six capabilities. This view preserves iAcquire's existing role-profile records for audit and staged migration; it does not create or overwrite profiles."
         action={<Link href="/admin/employees/open" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15">Open internal workspace <ArrowRight className="size-3.5" aria-hidden /></Link>}
         aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Profiles mapped" value={`${mapped}/${agents.length || 6}`} detail="Existing identities only" icon={<Bot className="size-4" />} /><MetricCard label="Ready for authorized work" value={verified} detail="Expired inventory refreshes before chat" tone="green" icon={<ShieldCheck className="size-4" />} /></div>}
       />
@@ -98,7 +98,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
             );
           })}
         </div>
-      ) : <Card className="border-dashed p-6 text-sm text-muted">No agency employee records were found in the local workforce registry. The existing Hermes profiles have not been recreated or changed.</Card>}
+      ) : <Card className="border-dashed p-6 text-sm text-muted">No internal role-profile records were found in the local registry. Existing Hermes profiles have not been recreated or changed.</Card>}
     </section>
   );
 }

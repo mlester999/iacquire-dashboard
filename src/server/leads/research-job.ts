@@ -8,6 +8,7 @@ import { buildRunInstructions, loadCompanyContext, loadConnection } from "@/serv
 import {
   AgentRunNotReadyError,
   HermesError,
+  assertNoToolRunScopeAvailable,
   startAgentRun,
   stopRun,
   streamRunEvents,
@@ -26,6 +27,7 @@ import {
 } from "@/server/workforce/jobs";
 import { targetingSchema } from "@/lib/leads-targeting";
 import { isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
+import { serverMarker } from "@/lib/evidence-class";
 import {
   findLeadDuplicates,
   normalizeDomain,
@@ -36,6 +38,12 @@ import {
   researchPrompt,
   stageForTool,
 } from "@/server/leads/research-contract";
+import {
+  bindResearchOutputToSourceBundle,
+  runApprovedResearchSources,
+  type ResearchSourceBundle,
+  type ResearchSourceRunnerDependencies,
+} from "@/server/leads/research-source-runner";
 
 /**
  * The Lead Hunter research handler.
@@ -53,7 +61,7 @@ const STAGE_COPY: Record<string, string> = {
   verifying: "Verifying information against the cited sources…",
   qualifying: "Qualifying candidates against your criteria…",
   checking_duplicates: "Checking candidate companies against existing CRM records…",
-  preparing_results: "Research completed. Preparing qualified leads for review.",
+  preparing_results: "Research completed. Preparing results for review.",
 };
 
 interface ResearchSetup {
@@ -94,6 +102,40 @@ async function updateRequest(db: Queryable, orgId: string, requestId: string, st
       where id = $1 and org_id = $2`,
     resultCount === undefined ? [requestId, orgId, status, failureReason] : [requestId, orgId, status, failureReason, resultCount],
   );
+}
+
+/** Adds an application-generated result summary to the existing canonical partner thread only. */
+async function appendGrowthPartnerResearchReport(
+  db: Queryable,
+  input: { orgId: string; agentId: string; jobId: string; conversationId: string | null; content: string },
+) {
+  const { rows } = await db.query<{ id: string }>(
+    `select c.id
+       from ai_growth_partners p
+       join chat_conversations c on c.growth_partner_id = p.id and c.org_id = p.org_id
+       join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
+      where p.org_id = $1 and p.runtime_agent_instance_id = $2
+        and c.agent_instance_id = $2 and c.deleted_at is null and a.role_key = 'growth_partner'
+        and ($3::uuid is null or c.id = $3::uuid)
+      limit 1`,
+    [input.orgId, input.agentId, input.conversationId],
+  );
+  const conversationId = rows[0]?.id;
+  if (!conversationId) return;
+
+  const clientMessageId = `research-report:${input.jobId}`;
+  const existing = await db.query<{ id: string }>(
+    "select id from chat_messages where org_id = $1 and conversation_id = $2 and client_message_id = $3 limit 1",
+    [input.orgId, conversationId, clientMessageId],
+  );
+  if (existing.rows[0]) return;
+
+  await db.query(
+    `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, client_message_id, evidence)
+     values ($1, $2, 'notice', $3, 'complete', $4, $5, $6::jsonb)`,
+    [conversationId, input.orgId, input.content, input.jobId, clientMessageId, JSON.stringify(serverMarker("record_retrieval", { kind: "work_job", id: input.jobId }))],
+  );
+  await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [conversationId, input.orgId]);
 }
 
 async function updateAgentRun(
@@ -198,7 +240,11 @@ async function noteProgress(job: WorkJobRow, workerId: string, counters: Record<
   });
 }
 
-export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runLeadResearchJob(
+  job: WorkJobRow,
+  context: { workerId: string; controller: AbortController },
+  dependencies: { researchSources?: ResearchSourceRunnerDependencies } = {},
+): Promise<void> {
   const requestId = typeof job.input.requestId === "string" ? job.input.requestId : null;
   if (!requestId) {
     await markRequestFailed(job, context.workerId, {
@@ -302,6 +348,11 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
   }
 
   let hermesRunId = "";
+  let sourceBundle: ResearchSourceBundle | null = null;
+  const counters = {
+    searches: counter(job.progress, "searches"),
+    pagesReviewed: counter(job.progress, "pagesReviewed"),
+  };
   let leaseLost = false;
   let heartbeatInFlight: Promise<boolean> | null = null;
   const renewLease = async () => {
@@ -325,12 +376,29 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     heartbeatInFlight = renewLease().finally(() => { heartbeatInFlight = null; });
   }, 20000);
   try {
+    const collected = await runApprovedResearchSources({
+      orgId: job.org_id,
+      jobId: job.id,
+      requestId,
+      beforeProviderRequest: () => assertNoToolRunScopeAvailable(setup.conn),
+      dependencies: dependencies.researchSources,
+      onProgress: async (stage) => {
+        await noteStage(job, context.workerId, stage, counters);
+      },
+    });
+    if (collected) {
+      sourceBundle = collected.bundle;
+      setup.input = `${setup.input}\n\n${collected.promptContext}`;
+      counters.searches += 1;
+      counters.pagesReviewed += sourceBundle.pagesReviewed;
+      await noteProgress(job, context.workerId, counters, "extracting");
+    }
     const started = await startAgentRun(job.agent_instance_id, job.org_id, setup.conn, {
       input: setup.input,
       instructions: setup.instructions,
       idempotencyKey: `research:${requestId}:${job.id}:${job.attempts}`,
       memoryScope: setup.memoryScope,
-    });
+    }, sourceBundle ? { toolScope: "no_tools" as const } : {});
     hermesRunId = started.runId;
     if (leaseLost || !await withSystem(async (db) => {
       if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId })) return false;
@@ -350,14 +418,16 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
       return;
     }
-    const message = err instanceof AgentRunNotReadyError
+    const message = err instanceof AppError
+      ? `The approved research source could not be used: ${err.message} No alternate source was tried.`
+      : err instanceof AgentRunNotReadyError
       ? err.message
       : err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")
         ? employeeName + "'s Hermes connection is unavailable, so no research was started."
         : "The research run could not be started. No provider run was accepted.";
     await markRequestFailed(job, context.workerId, {
       status: err instanceof AgentRunNotReadyError ? "blocked" : "failed",
-      code: err instanceof AgentRunNotReadyError ? "agent_not_ready" : "run_not_started",
+      code: err instanceof AppError ? "source_failed" : err instanceof AgentRunNotReadyError ? "agent_not_ready" : "run_not_started",
       message,
       requestId,
       agentRunId,
@@ -366,10 +436,6 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     return;
   }
 
-  const counters = {
-    searches: counter(job.progress, "searches"),
-    pagesReviewed: counter(job.progress, "pagesReviewed"),
-  };
   let lastStage: string = job.stage ?? "preparing";
   let output = "";
   let streamed = "";
@@ -378,6 +444,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
   let timedOut = false;
   let usage: TokenUsage | null = null;
   let approvalRequested = false;
+  let sourcePolicyToolAttempt: string | null = null;
   let lastCancelCheck = 0;
 
   const timer = setTimeout(() => {
@@ -390,6 +457,13 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       if (event.type === "delta") {
         streamed += event.text;
       } else if (event.type === "tool_started" || event.type === "tool_completed") {
+        if (sourceBundle && event.type === "tool_started" && /web[._-]?(search|extract)|browser|crawl|scrape/i.test(event.tool)) {
+          sourcePolicyToolAttempt = event.tool;
+          failure = "The research runtime requested a discovery tool outside the approved source bundle. The result was discarded.";
+          await stopRun(setup.conn, hermesRunId).catch(() => undefined);
+          context.controller.abort();
+          break;
+        }
         const phase = event.type === "tool_started" ? "started" : "completed";
         const stage = stageForTool(event.tool, phase);
         if (stage && stage !== lastStage) {
@@ -479,11 +553,11 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       : failure ?? "The research ended without a result.";
     await markRequestFailed(job, context.workerId, {
       status: "failed",
-      code: timedOut ? "timeout" : "run_failed",
       message,
       requestId,
       agentRunId: setup.runId,
       agentRunStatus: timedOut ? "timeout" : "failed",
+      code: sourcePolicyToolAttempt ? "source_policy_violation" : timedOut ? "timeout" : "run_failed",
       usage,
     });
     return;
@@ -501,6 +575,11 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       usage,
     });
     return;
+  }
+  if (sourceBundle) {
+    const sourceBound = bindResearchOutputToSourceBundle(parsed.leads, sourceBundle);
+    parsed.leads = sourceBound.leads;
+    parsed.rejected += sourceBound.rejected;
   }
 
   try {
@@ -530,11 +609,22 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       let evidenceBacked = 0;
       let needsEvidence = 0;
       let duplicates = 0;
+      let disqualified = 0;
+      const countOutcome = (state: ReturnType<typeof qualifyCandidate>["state"]) => {
+        if (state === "evidence_backed") evidenceBacked += 1;
+        else if (state === "needs_evidence") needsEvidence += 1;
+        else if (state === "disqualified") disqualified += 1;
+        else duplicates += 1;
+      };
       for (const lead of parsed.leads) {
         const duplicate = await findLeadDuplicates(db, job.org_id, lead);
         const qualification = qualifyCandidate(lead, duplicate);
         const domain = normalizeDomain(lead.website);
-        const { breakdown, total } = normalizeScore(lead.score, lead.evidence.length);
+        const normalizedScore = normalizeScore(lead.score, lead.evidence.length);
+        const breakdown = qualification.state === "disqualified"
+          ? { service_fit: 0, problem_evidence: 0, buying_intent: 0, market_fit: 0, source_quality: 0 }
+          : normalizedScore.breakdown;
+        const total = qualification.state === "disqualified" ? 0 : normalizedScore.total;
         const recordedAt = new Date().toISOString();
         const signalRecords = lead.signal_records.map((signal) => ({ ...signal, recorded_at: recordedAt }));
         // A retry after a crash must not create a second lead for a candidate this request already
@@ -548,9 +638,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         );
         if (existingLead.rows[0]) {
           leadIds.push(existingLead.rows[0].id);
-          if (qualification.state === "evidence_backed") evidenceBacked += 1;
-          else if (qualification.state === "needs_evidence") needsEvidence += 1;
-          else duplicates += 1;
+          countOutcome(qualification.state);
           continue;
         }
         const { rows } = await db.query<{ id: string }>(
@@ -584,10 +672,29 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
           ],
         );
         leadIds.push(rows[0].id);
-        if (qualification.state === "evidence_backed") evidenceBacked += 1;
-        else if (qualification.state === "needs_evidence") needsEvidence += 1;
-        else duplicates += 1;
+        countOutcome(qualification.state);
       }
+
+      const outcomeSummary = `${evidenceBacked} evidence-backed, ${disqualified} disqualified, ${duplicates} duplicate${duplicates === 1 ? "" : "s"}, and ${needsEvidence} needing more evidence`;
+      const sourceUsage = sourceBundle
+        ? await db.query<{ source: string; requests: number; provider_fee_usd: string; reserved: number; transport_failed: number }>(
+            `select source, count(*)::int as requests,
+                    coalesce(sum(provider_fee_usd), 0)::text as provider_fee_usd,
+                    count(*) filter (where status = 'reserved')::int as reserved,
+                    count(*) filter (where status = 'transport_failed')::int as transport_failed
+               from lead_research_source_usage
+              where org_id = $1 and work_job_id = $2
+              group by source
+              order by case source when 'openstreetmap' then 0 else 1 end`,
+            [job.org_id, job.id],
+          )
+        : null;
+      const sourceReport = sourceBundle
+        ? ` Sources: ${sourceBundle.sourceNames.join(" and ")} (${sourceBundle.requests} request${sourceBundle.requests === 1 ? "" : "s"}, $${sourceBundle.providerFeeUsd.toFixed(2)} provider spend).`
+        : "";
+      const sourceWarningReport = sourceBundle?.warnings.length
+        ? ` Source limitations: ${sourceBundle.warnings.join(" ")}`
+        : "";
 
       const rejectedNote = parsed.rejected
         ? `${parsed.rejected} result(s) were discarded because they didn't meet the evidence format.`
@@ -596,8 +703,8 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         jobId: job.id,
         orgId: job.org_id,
         workerId: context.workerId,
-        message: `${parsed.leads.length} candidate${parsed.leads.length === 1 ? "" : "s"} extracted: ${evidenceBacked} evidence-backed, ${needsEvidence} need more evidence, ${duplicates} duplicate${duplicates === 1 ? "" : "s"} flagged.`,
-        progress: { candidates: parsed.leads.length, evidenceBacked, needsEvidence, duplicates, rejected: parsed.rejected, ...counters },
+        message: `${parsed.leads.length} candidate${parsed.leads.length === 1 ? "" : "s"} extracted: ${outcomeSummary}.`,
+        progress: { candidates: parsed.leads.length, evidenceBacked, needsEvidence, duplicates, disqualified, rejected: parsed.rejected, ...counters },
       });
       await recordWorkStage(db, {
         jobId: job.id,
@@ -614,7 +721,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         stage: "completed",
         resultCount: leadIds.length,
         resultSummary: leadIds.length
-          ? `Research completed. ${leadIds.length} lead${leadIds.length === 1 ? "" : "s"} prepared for review.`
+          ? `Research completed. ${leadIds.length} candidate records saved: ${outcomeSummary}.`
           : "Research completed without evidence-backed candidates. No leads were invented to fill the request.",
         result: {
           requestId,
@@ -622,9 +729,18 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
           evidenceBacked,
           needsEvidence,
           duplicates,
+          disqualified,
           rejected: parsed.rejected,
           searches: counters.searches,
           pagesReviewed: counters.pagesReviewed,
+          sourceUsage: sourceUsage?.rows.map((row) => ({
+            source: row.source,
+            requests: row.requests,
+            providerFeeUsd: Number(row.provider_fee_usd),
+            reserved: row.reserved,
+            transportFailed: row.transport_failed,
+          })) ?? [],
+          sourceWarnings: sourceBundle?.warnings ?? [],
           limitation: leadIds.length < parsed.leads.length ? "Some candidates were flagged as duplicates or lacked evidence." : null,
         },
         event: {
@@ -638,6 +754,15 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       });
       // If a cancellation won the race, do not persist a "completed" request or any success claim.
       if (!finished) throw new Error("work_finished_elsewhere");
+      if (setup.sourcePlatform === "growth_partner") {
+        await appendGrowthPartnerResearchReport(db, {
+          orgId: job.org_id,
+          agentId: job.agent_instance_id,
+          jobId: job.id,
+          conversationId: job.conversation_id,
+          content: `Research finished. ${leadIds.length} candidate records were saved: ${outcomeSummary}.${sourceReport}${sourceWarningReport} No outreach was sent.`,
+        });
+      }
       await updateRequest(db, job.org_id, requestId, "completed", rejectedNote, leadIds.length);
       if (leadIds.length) {
         await notifyOrgRoles(db, job.org_id, ["owner", "admin"], {

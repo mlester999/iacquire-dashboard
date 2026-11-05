@@ -9,7 +9,7 @@ import { crmOrg } from "./support/crm";
 // execute and remove what the migrations added; with native data present they must refuse. Each run happens in a transaction that is always
 // rolled back, so the shared test database is untouched.
 
-const CRM_MIGRATION_NAMES = [
+const ROLLBACK_MIGRATION_NAMES = [
   "0027_native_crm.sql", "0028_crm_sales.sql", "0029_crm_calendars.sql", "0030_crm_scheduling.sql",
   "0031_crm_messaging.sql", "0032_crm_automation.sql", "0033_crm_growth.sql", "0054_crm_blueprints.sql",
   "0055_crm_ghl_migration.sql", "0056_crm_setup_native.sql", "0057_crm_performance.sql", "0058_crm_provider_switch.sql",
@@ -91,8 +91,10 @@ const CRM_MIGRATION_NAMES = [
   "0120_ai_growth_partner_foundation.sql",
   // A canonical shared thread depends on the Growth Partner identity and the workforce chat tables and permissions.
   "0121_ai_growth_partner_conversation.sql",
+  // Lead qualification and source-budget migrations hang off leads, lead_research_requests and ai_work_jobs.
+  "0127_lead_disqualification.sql", "0128_lead_research_source_budgets.sql", "0129_research_lead_crm_imports.sql",
 ];
-const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
+const ROLLBACK_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => ROLLBACK_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");
 class Done extends Error {}
 
@@ -115,13 +117,13 @@ function statements(sql: string): string[] {
 }
 
 const runAllDowns = async (db: { query: (sql: string) => Promise<unknown> }) => {
-  for (const file of [...CRM_MIGRATIONS].reverse()) for (const stmt of statements(downFor(file))) await db.query(stmt);
+  for (const file of [...ROLLBACK_MIGRATIONS].reverse()) for (const stmt of statements(downFor(file))) await db.query(stmt);
 };
 
-describe("Native CRM migrations and rollbacks", () => {
-  it("every CRM migration has a rollback script", () => {
-    expect(CRM_MIGRATIONS.length).toBeGreaterThanOrEqual(2);
-    for (const f of CRM_MIGRATIONS) expect(() => downFor(f)).not.toThrow();
+describe("native CRM and dependent-feature migration rollbacks", () => {
+  it("every included migration has a rollback script", () => {
+    expect(ROLLBACK_MIGRATIONS.length).toBeGreaterThanOrEqual(2);
+    for (const f of ROLLBACK_MIGRATIONS) expect(() => downFor(f)).not.toThrow();
   });
 
   it("rolls back cleanly, newest first, on a fully migrated database with no native data", async () => {
@@ -154,5 +156,40 @@ describe("Native CRM migrations and rollbacks", () => {
       await runAllDowns(db);
       throw new Done();
     })).rejects.toThrow(/Rollback refused/);
+  });
+
+  it("applies and rolls back the researched-lead CRM links inside an isolated transaction", async () => {
+    const migration = readFileSync("supabase/migrations/0129_research_lead_crm_imports.sql", "utf8");
+    const rollback = downFor("0129_research_lead_crm_imports.sql");
+    const observed: Record<string, unknown> = {};
+    await expect(withSystem(async (db) => {
+      for (const statement of statements(rollback)) await db.query(statement);
+      const removed = await db.query(
+        "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'leads' and column_name in ('crm_company_id','crm_contact_id','crm_imported_by','crm_imported_at')",
+      );
+      observed.removedColumns = removed.rows.map((row) => (row as { column_name: string }).column_name);
+      for (const statement of statements(migration)) await db.query(statement);
+      const restored = await db.query(
+        "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'leads' and column_name in ('crm_company_id','crm_contact_id','crm_imported_by','crm_imported_at') order by column_name",
+      );
+      observed.restoredColumns = restored.rows.map((row) => (row as { column_name: string }).column_name);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+    expect(observed).toMatchObject({ removedColumns: [], restoredColumns: ["crm_company_id", "crm_contact_id", "crm_imported_at", "crm_imported_by"] });
+  });
+
+  it("refuses the CRM-link rollback after a lead has been imported", async () => {
+    const org = await crmOrg();
+    const company = await withSystem(async (db) => (await db.query<{ id: string }>(
+      "insert into crm_companies (org_id, name, created_via) values ($1, 'Rollback Guard Company', 'import') returning id",
+      [org.org.id],
+    )).rows[0]);
+    await expect(withSystem(async (db) => {
+      await db.query(
+        "insert into leads (org_id, business_name, crm_company_id, crm_imported_at) values ($1, 'Rollback Guard Lead', $2, now())",
+        [org.org.id, company.id],
+      );
+      for (const statement of statements(downFor("0129_research_lead_crm_imports.sql"))) await db.query(statement);
+    })).rejects.toThrow(/Rollback refused: researched leads have native CRM import links/);
   });
 });

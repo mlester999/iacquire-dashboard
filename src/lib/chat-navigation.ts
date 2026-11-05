@@ -5,15 +5,16 @@ import { SETUP_REQUIRED_LABEL, type AgentStatus } from "@/lib/agents";
  * by the destination page (requireOrgContext / permission checks); links that need a permission are simply not rendered
  * for viewers who lack it.
  *
- * Management and chat are different intents. A management click opens the employee's profile; a chat click opens the
- * conversation. Neither silently becomes the other.
+ * Management and chat are different intents. A management click opens retained profile history; a chat click opens the
+ * selected profile's conversation. Neither silently becomes the other.
  */
 export interface ChatNavTargets {
   /** The product home for this kind of workspace. */
   home: string;
   homeLabel: string;
-  /** The AI Employees directory ("management mode"). */
+  /** The retained client profiles or iAcquire internal profile area. */
   workforce: string;
+  workforceLabel: string;
   /** This employee's profile (readiness, activity, knowledge, version history). */
   profile: string;
   /** This employee's configuration tab. Only offered to people who may configure employees. */
@@ -28,6 +29,7 @@ export function chatNavTargets(orgKind: string, slug: string): ChatNavTargets {
     home: agency ? "/admin" : "/overview",
     homeLabel: agency ? "Agency dashboard" : "Dashboard",
     workforce: agency ? "/admin/employees" : "/employees",
+    workforceLabel: agency ? "iAcquire internal profiles" : "previous employee profiles",
     profile: `/employees/${slug}`,
     manage: `/employees/${slug}?tab=configure`,
     chat: `/chat/${slug}`,

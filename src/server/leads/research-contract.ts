@@ -45,6 +45,8 @@ export const researchLeadSchema = z.object({
     .default([]),
   buying_signals: z.array(buyingSignalSchema).max(10).default([]),
   qualification_summary: z.string().trim().max(2000).optional().nullable(),
+  disqualification_reason: z.string().trim().max(600).optional().nullable(),
+  disqualification_evidence_url: httpsUrl.optional().nullable(),
   public_contact: publicContactSchema.optional().nullable(),
   score: z
     .object({
@@ -58,6 +60,12 @@ export const researchLeadSchema = z.object({
 });
 const researchOutputSchema = z.object({ leads: z.array(z.unknown()).max(50) });
 type ResearchLeadInput = z.infer<typeof researchLeadSchema>;
+export interface LeadSourceEvidence {
+  url: string;
+  observed_at?: string | null;
+  summary?: string | null;
+  source?: "openstreetmap" | "company_website" | null;
+}
 export interface LeadSignalRecord {
   signal: string;
   source: string | null;
@@ -66,7 +74,8 @@ export interface LeadSignalRecord {
   confidence: number | null;
   client_fit: string | null;
 }
-export type ResearchLead = Omit<ResearchLeadInput, "buying_signals"> & {
+export type ResearchLead = Omit<ResearchLeadInput, "buying_signals" | "evidence"> & {
+  evidence: LeadSourceEvidence[];
   buying_signals: string[];
   signal_records: LeadSignalRecord[];
 };
@@ -144,6 +153,10 @@ export function parseResearchOutput(output: string) {
     result.data.evidence = result.data.evidence.map((item) => ({ ...item, observed_at: null }));
     result.data.qualification_summary = sanitizeQualificationSummary(result.data.qualification_summary);
     const evidenceUrls = new Set(result.data.evidence.map((item) => item.url));
+    const disqualificationEvidenceUrl = result.data.disqualification_evidence_url
+      && evidenceUrls.has(result.data.disqualification_evidence_url)
+      ? result.data.disqualification_evidence_url
+      : null;
     const signalRecords: LeadSignalRecord[] = result.data.buying_signals.map((item) => {
       const signal = typeof item === "string" ? item : item.signal;
       const requestedEvidenceUrl = typeof item === "string" ? null : item.evidence_url ?? null;
@@ -169,6 +182,9 @@ export function parseResearchOutput(output: string) {
     });
     leads.push({
       ...result.data,
+      evidence: result.data.evidence.map((item) => ({ ...item, source: null })),
+      disqualification_reason: sanitizeQualificationSummary(result.data.disqualification_reason),
+      disqualification_evidence_url: disqualificationEvidenceUrl,
       buying_signals: signalRecords.map((item) => item.signal),
       signal_records: signalRecords,
     });
@@ -224,8 +240,9 @@ export function researchPrompt(prompt: string, targeting: Targeting, campaign: "
     "Use qualification_summary only for business fit or evidence gaps. Do not describe CRM or duplicate checks, tool availability, saving, persistence, imports or review queue state; those are checked and reported by the application.",
     "Public contact details are optional. Include them only when a cited public source states them; always include that source_url. Never guess an email address, phone number or person's name.",
     "Respond with JSON only, in this exact shape:",
-    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","summary":""}],"buying_signals":[{"signal":"","evidence_url":"https://…","confidence":0.0,"client_fit":""}],"qualification_summary":"","public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
+    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","summary":""}],"buying_signals":[{"signal":"","evidence_url":"https://…","confidence":0.0,"client_fit":""}],"qualification_summary":"","disqualification_reason":null,"disqualification_evidence_url":null,"public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
     "For each buying signal, cite the exact evidence URL already listed in this candidate's evidence. Confidence is an estimate, from 0 to 1, not verification or intent; leave confidence and client_fit null if no listed source supports the signal. The application supplies the recorded time and source host.",
+    "Use disqualification_reason only when the client's explicit targeting rules exclude the business and a cited first-party source directly supports that reason. disqualification_evidence_url must exactly match one URL in evidence. If the evidence is incomplete or conflicting, leave the reason null and explain the gap instead.",
     `Score maxima: service_fit ${SCORE_MAX.service_fit}, problem_evidence ${SCORE_MAX.problem_evidence}, buying_intent ${SCORE_MAX.buying_intent}, market_fit ${SCORE_MAX.market_fit}, source_quality ${SCORE_MAX.source_quality}. A score is a research priority, not consent or confirmed interest.`,
     "If you cannot verify a requested candidate, omit it and explain the limitation in qualification_summary. Never invent a business to reach the requested quantity.",
   ].join("\n");
@@ -281,7 +298,7 @@ export async function findLeadDuplicates(
 }
 
 export interface LeadQualification {
-  state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
+  state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate" | "disqualified";
   reasons: string[];
   recommended_next_action: string;
 }
@@ -296,6 +313,20 @@ export function qualifyCandidate(lead: ResearchLead, duplicates: DuplicateResult
   if (duplicates.status === "possible_duplicate") {
     reasons.push("A lead or CRM company has the same name but no matching domain; a person must resolve it.");
     return { state: "possible_duplicate", reasons, recommended_next_action: "Compare the possible match with this business before approving it." };
+  }
+  if (lead.disqualification_reason) {
+    if (lead.disqualification_evidence_url && lead.evidence.some((item) => item.url === lead.disqualification_evidence_url)) {
+      return {
+        state: "disqualified",
+        reasons: [lead.disqualification_reason],
+        recommended_next_action: "Exclude this candidate under the current targeting rules. Update targeting and research again if those rules change.",
+      };
+    }
+    return {
+      state: "needs_evidence",
+      reasons: ["A disqualification was proposed, but its cited evidence is missing or does not match a saved source."],
+      recommended_next_action: "Verify the cited source and targeting rule before excluding this candidate.",
+    };
   }
   if (lead.evidence.length === 0) reasons.push("No source URL supports this candidate yet.");
   if (!lead.website) reasons.push("No website was verified.");

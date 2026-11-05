@@ -1,0 +1,64 @@
+{
+  "synthetic": true,
+  "sourceLabel": "Synthetic OpenStreetMap-shaped fixture; not downloaded from OpenStreetMap",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-05T00:00:00Z"
+  },
+  "preexistingCrmCompany": {
+    "name": "Winter Park Roofing — synthetic CRM record",
+    "domain": "winter-park-roofing.test"
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 990001,
+      "lat": 28.5383,
+      "lon": -81.3792,
+      "tags": {
+        "name": "Orlando Roofing Alpha",
+        "craft": "roofer",
+        "website": "https://orlando-roofing-alpha.test",
+        "addr:city": "Orlando",
+        "addr:state": "Florida"
+      }
+    },
+    {
+      "type": "way",
+      "id": 990002,
+      "center": { "lat": 28.6, "lon": -81.3392 },
+      "tags": {
+        "name": "Winter Park Roofing",
+        "craft": "roofer",
+        "website": "https://winter-park-roofing.test",
+        "addr:city": "Winter Park",
+        "addr:state": "Florida"
+      }
+    },
+    {
+      "type": "node",
+      "id": 990003,
+      "lat": 28.292,
+      "lon": -81.4076,
+      "tags": {
+        "name": "Kissimmee Roofing",
+        "craft": "roofer",
+        "website": "https://kissimmee-roofing.test",
+        "addr:city": "Kissimmee",
+        "addr:state": "Florida"
+      }
+    },
+    {
+      "type": "node",
+      "id": 990004,
+      "lat": 28.545,
+      "lon": -81.37,
+      "tags": {
+        "name": "Orlando Plumbing Control",
+        "craft": "plumber",
+        "website": "https://orlando-plumbing-control.test",
+        "addr:city": "Orlando",
+        "addr:state": "Florida"
+      }
+    }
+  ]
+}

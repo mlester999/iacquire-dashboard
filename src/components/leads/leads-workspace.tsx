@@ -45,7 +45,7 @@ interface Lead {
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
-  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
+  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate" | "disqualified";
   qualification_reasons: string[];
   recommended_next_action: string;
   buying_signals: string[];
@@ -57,7 +57,7 @@ interface Lead {
     confidence: number | null;
     client_fit: string | null;
   }>;
-  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null }>;
+  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null; source?: "openstreetmap" | "company_website" | null }>;
   duplicate_status: string;
   duplicate_matches?: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
   public_contact?: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null };
@@ -88,12 +88,14 @@ const QUALIFICATION_LABEL: Record<Lead["qualification_state"], string> = {
   needs_evidence: "Needs more evidence",
   duplicate: "Duplicate found",
   possible_duplicate: "Possible duplicate",
+  disqualified: "Disqualified by targeting",
 };
 const QUALIFICATION_TONE: Record<Lead["qualification_state"], StatusTone> = {
   evidence_backed: "success",
   needs_evidence: "warning",
   duplicate: "danger",
   possible_duplicate: "warning",
+  disqualified: "danger",
 };
 
 interface Targeting {
@@ -498,6 +500,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                     <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1.5 break-all text-[14px] font-medium text-primary hover:underline">
                       {e.url} <ExternalLink className="size-3 shrink-0" />
                     </a>
+                    {e.source && <p className="mt-1 text-[12px] font-medium text-faint">Source: {e.source === "openstreetmap" ? "OpenStreetMap" : "Company website"}</p>}
                     {e.summary && <p className="mt-1 text-[13px] text-muted">{e.summary}</p>}
                     {e.observed_at && <p className="mt-0.5 text-[12px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
                   </li>
@@ -551,9 +554,11 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                   <Button variant="secondary" disabled={busy} onClick={() => onReview([lead.id], "reject")}>
                     <X className="size-4" /> Reject
                   </Button>
-                  <Button disabled={busy} onClick={() => onReview([lead.id], "approve")}>
-                    <Check className="size-4" /> Approve lead
-                  </Button>
+                  {lead.qualification_state !== "disqualified" && (
+                    <Button disabled={busy} onClick={() => onReview([lead.id], "approve")}>
+                      <Check className="size-4" /> Approve lead
+                    </Button>
+                  )}
                 </>
               )}
               {lead.review_status === "approved" && ["not_synced", "blocked", "failed"].includes(lead.crm_sync_status) && (

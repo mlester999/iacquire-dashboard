@@ -420,9 +420,9 @@ describe("every place that writes an assistant row stamps a marker", () => {
         at = text.indexOf("insert into chat_messages", at + 10);
       }
     }
-    // service.ts: the model placeholder twice, the schedule reply and the general reply; workforce-handoff.ts: the routed-work notice.
+    // service.ts: the model placeholder twice, the schedule reply and the general reply; the other writers persist system notices.
     expect(sites.sort()).toEqual([
-      "server/chat/service.ts", "server/chat/service.ts", "server/chat/service.ts", "server/chat/service.ts", "server/chat/workforce-handoff.ts",
+      "server/approvals/service.ts", "server/chat/service.ts", "server/chat/service.ts", "server/chat/service.ts", "server/chat/service.ts", "server/chat/workforce-handoff.ts", "server/leads/research-job.ts",
     ]);
   });
 });

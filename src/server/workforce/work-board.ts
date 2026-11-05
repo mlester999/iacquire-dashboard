@@ -98,7 +98,7 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       capability: row.capability,
       title: row.title,
       status: row.status,
-      statusLabel: workJobStatusLabel({ status: row.status, recoveryPending: row.recovery_pending }, evidence, drafts),
+      statusLabel: workJobStatusLabel({ status: row.status, recoveryPending: row.recovery_pending, capability: row.capability }, evidence, drafts),
       evidence,
       recoveryPending: row.recovery_pending,
       stage: row.stage,

@@ -140,6 +140,10 @@ from gateway.display_config import resolve_display_setting
 from gateway.platforms import api_server_room_dispatch as _room_dispatch
 from gateway.platforms import api_server_room_grants as _room_grants
 from gateway.platforms import api_server_runs as _api_runs
+from gateway.platforms.api_server_run_tool_scope import (
+    current_run_tool_scope, no_tool_scope_supported, parse_run_tool_scope,
+    scoped_run_tool_scope, toolsets_for_current_run,
+)
 from gateway.platforms.api_server_openai_routes import OpenAICompatRoutesMixin
 from gateway.platforms.api_server_memory_sessions import ApiServerMemorySessions
 from gateway.platforms.api_server_bot_chat import reset_local_title_owner
@@ -2326,6 +2330,9 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
             policy = RoomExecutionPolicy.from_mapping(room_execution_policy or {})
             enabled_toolsets = list(policy.enabled_toolsets)
             max_iterations = policy.max_iterations
+        # The tool scope is attached to this admitted run only. Passing an explicit empty list
+        # prevents the profile's normal tool catalog from reaching the model.
+        enabled_toolsets = toolsets_for_current_run(enabled_toolsets)
         # Reasoning resolves against the model that actually runs (per-model overrides), so only
         # after the precedence chain settles; an explicit request wins.
         if request_reasoning_config is None:
@@ -2354,6 +2361,16 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
         if request_service_tier is not _REQUEST_OPTION_MISSING:
             agent_kwargs["service_tier"] = request_service_tier
         agent = AIAgent(**agent_kwargs)
+        if current_run_tool_scope() == "no_tools":
+            original_run_conversation = agent.run_conversation
+
+            def _run_conversation_without_tools(*args, **kwargs):
+                # The run body executes in an executor thread; bind the scope there too so the
+                # final tool dispatcher blocks calls even if a model returns an undeclared tool.
+                with scoped_run_tool_scope("no_tools"):
+                    return original_run_conversation(*args, **kwargs)
+
+            agent.run_conversation = _run_conversation_without_tools
         route_source = (
             "session_model_lock" if confirmed_runtime_lock
             else "session_model_override" if session_override
@@ -2462,6 +2479,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
             "runs_idempotency": _api_runs._idempotency_capabilities(self, store_type=RunIdempotencyStore),
             **_STATIC_FEATURE_FLAGS,
             "run_unknown_resolution": getattr(runner, "session_authority", None) is not None,
+            "run_tool_scope_no_tools": no_tool_scope_supported(getattr(runner, "session_authority", None)),
             "cors": bool(self._cors_origins),
             # Always advertised for feature-detection; enabled follows config.
             "browser_extension_control": {
@@ -4431,7 +4449,38 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
 
     @_admit_api_agent_request
     async def _handle_runs(self, request: web.Request) -> web.Response:
-        return await _api_runs._handle_runs(self, request, _api_server=sys.modules[__name__])
+        # Read once and let aiohttp's request cache serve the upstream handler. The body marker
+        # is part of Hermes' idempotency fingerprint; the matching header is the execution scope.
+        try:
+            body = await request.json()
+        except Exception:
+            return _error_response("Invalid JSON", 400)
+        if not isinstance(body, dict):
+            return _error_response("Runs require a JSON object.", 400)
+        try:
+            scope = parse_run_tool_scope(
+                request.headers.get("X-IAcquire-Tool-Scope"),
+                body.get("iacquire_tool_scope"),
+            )
+        except ValueError as exc:
+            return _error_response(str(exc), 400, code="invalid_run_tool_scope")
+        if scope is None:
+            return await _api_runs._handle_runs(self, request, _api_server=sys.modules[__name__])
+        if not no_tool_scope_supported(getattr(getattr(self, "gateway_runner", None), "session_authority", None)):
+            return _error_response(
+                "This gateway cannot safely apply a per-run tool scope to session-authority turns.",
+                409, code="run_tool_scope_unavailable")
+        if _api_runs._uses_room_run_auth(self, request) or any(
+            body.get(field) for field in (
+                "session_id", "previous_response_id", "hosted_room_dispatch", "_room_execution_policy")
+        ):
+            return _error_response(
+                "A no-tools run cannot be routed through a room grant or a separate Hermes session.",
+                409, code="run_tool_scope_route_unsupported")
+        with scoped_run_tool_scope(scope):
+            # api_server_runs creates the long-lived asyncio task before returning. ContextVars
+            # are captured by that task, then _create_agent applies the scope before model setup.
+            return await _api_runs._handle_runs(self, request, _api_server=sys.modules[__name__])
 
     def _request_owns_run(self, request: web.Request, run_id: str) -> bool:
         return _api_runs._request_owns_run(self, request, run_id)

@@ -154,7 +154,7 @@ export function WhyContent({ setupFeeUsd, monthlyPlanUsd, actions, heading = "h1
           </h2>
           <ul className="space-y-2 text-[14px] leading-relaxed text-ink-2">
             <li>Customer-facing actions follow your approval rules</li>
-            <li>One employee identity has six capability areas, each subject to workspace and tool permissions</li>
+            <li>One AI Growth Partner coordinates six capability areas, each subject to workspace and tool permissions</li>
             <li>Actions and approvals are recorded with their outcome and time</li>
           </ul>
         </div>

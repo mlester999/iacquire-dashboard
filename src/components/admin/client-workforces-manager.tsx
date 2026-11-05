@@ -22,13 +22,13 @@ export function ClientWorkforcesManager({ clients, timeZone }: { clients: Client
   return (
     <section className="module-stack" aria-labelledby="client-workforces-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/admin/employees" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-primary hover:bg-surface-2"><ArrowLeft className="size-4" />Internal Workforce</Link>
+        <Link href="/admin/employees" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-primary hover:bg-surface-2"><ArrowLeft className="size-4" />Internal profiles</Link>
         <ButtonLink href="/admin/clients" variant="secondary">Open clients</ButtonLink>
       </div>
-      <PageHero tone="dark" eyebrow="Client operations" icon={<Building2 className="size-5" />} title="Client Workforces" description="Each client has a separate set of employee identities, credentials and health checks. Select a client to inspect its workforce." aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Client workspaces" value={clients.length} detail="Visible under your agency access" icon={<Users className="size-4" />} /><MetricCard label="Profiles verified" value={verified} detail="From each client’s latest saved checks" tone="green" icon={<ShieldCheck className="size-4" />} /></div>} />
+      <PageHero tone="dark" eyebrow="Client operations" icon={<Building2 className="size-5" />} title="Client runtime readiness" description="The product is one AI Growth Partner identity with six capabilities. This view keeps retained role profiles, credentials and health checks available for audit and staged migration." aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Client workspaces" value={clients.length} detail="Visible under your agency access" icon={<Users className="size-4" />} /><MetricCard label="Profiles verified" value={verified} detail="From each client’s latest saved checks" tone="green" icon={<ShieldCheck className="size-4" />} /></div>} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <MetricCard label="Profiles needing setup or verification" value={setupRequired} detail="Across the six-role client workforce" icon={<Users className="size-4" />} />
+        <MetricCard label="Retained profiles needing checks" value={setupRequired} detail="Legacy records kept for staged migration" icon={<Users className="size-4" />} />
         <MetricCard label="Recorded connection issues" value={needsAttention} detail="Offline or error states" tone="amber" icon={<ShieldCheck className="size-4" />} />
         <div className="relative col-span-2 lg:col-span-1"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" aria-hidden /><Input aria-label="Search client workforces" placeholder="Search client or industry…" className="min-h-11 pl-9" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
       </div>
@@ -46,15 +46,15 @@ export function ClientWorkforcesManager({ clients, timeZone }: { clients: Client
           return <Card key={client.id} className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
             <div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary"><Building2 className="size-5" /></span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold text-ink">{client.name}</h2><p className="mt-1 truncate text-xs text-muted">{client.industry || "Industry not recorded"}</p></div><StatusPill status={client.status} size="sm" /></div>
             <div className="grid grid-cols-2 gap-2 rounded-xl bg-surface-2 p-3 text-center sm:grid-cols-4">
-              <div><p className="text-lg font-semibold text-ink">{client.identities}</p><p className="text-[12px] text-muted">Identities</p></div>
+              <div><p className="text-lg font-semibold text-ink">{client.identities}</p><p className="text-[12px] text-muted">Retained profiles</p></div>
               <div><p className="text-lg font-semibold text-ink">{client.mapped}/6</p><p className="text-[12px] text-muted">Mapped</p></div>
-              <div><p className="text-lg font-semibold text-ink">{client.credentialed}/6</p><p className="text-[12px] text-muted">Keys saved</p></div>
-              <div><p className="text-lg font-semibold text-ink">{client.verified}/6</p><p className="text-[12px] text-muted">Verified</p></div>
+              <div><p className="text-lg font-semibold text-ink">{client.credentialed}/6</p><p className="text-[12px] text-muted">Credentials</p></div>
+              <div><p className="text-lg font-semibold text-ink">{client.verified}/6</p><p className="text-[12px] text-muted">Checks passed</p></div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><StatusPill status={ready ? "6_profiles_verified" : client.issues ? "needs_attention" : "setup_required"} size="sm" /><span className="text-muted">{client.issues ? `${client.issues} connection issue${client.issues === 1 ? "" : "s"}` : "No recorded connection issues"}</span></div>
             <div className="flex flex-wrap items-center gap-2 text-xs"><span className="text-muted">Provisioning:</span><StatusPill status={provisioningStatus} size="sm" /><span className="ml-auto text-muted">Hermes: {client.hermes_status ?? "not_configured"}</span></div>
             <p className="text-[12px] text-muted">Last successful profile check: {client.last_success_at ? formatDateTime(client.last_success_at, timeZone) : "None recorded"}</p>
-            <Link href={`/admin/clients/${client.id}?tab=workforce`} className="mt-auto flex min-h-10 items-center justify-center rounded-xl border border-line bg-surface text-sm font-medium text-primary transition hover:bg-primary-soft">Open client workforce</Link>
+            <Link href={`/admin/clients/${client.id}?tab=workforce`} className="mt-auto flex min-h-10 items-center justify-center rounded-xl border border-line bg-surface text-sm font-medium text-primary transition hover:bg-primary-soft">Open runtime readiness</Link>
           </Card>;
         })}
       </div> : <Card><EmptyState icon={<Search className="size-5" />} title={query ? "No matching client workforces" : "No client workforces are visible"} description={query ? "Try another client name or industry." : "Client workforces appear here only for clients your agency role may access."} action={query ? <button type="button" className="text-sm font-medium text-primary" onClick={() => setQuery("")}>Clear search</button> : undefined} /></Card>}

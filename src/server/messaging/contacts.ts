@@ -186,6 +186,7 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
 
   await db.query("update contact_identities set contact_id = $3 where org_id = $1 and contact_id = $2", [orgId, merged.id, kept.id]);
   await db.query("update contact_memories set contact_id = $3 where org_id = $1 and contact_id = $2", [orgId, merged.id, kept.id]);
+  await db.query("update leads set crm_contact_id = $3 where org_id = $1 and crm_contact_id = $2", [orgId, merged.id, kept.id]);
   await db.query("update follow_up_plans set status = 'cancelled', cancel_reason = 'contact_merged', closed_at = now() where org_id = $1 and contact_id = $2 and status = 'active'", [orgId, merged.id]);
   for (const conv of conversations.rows) {
     const twin = await db.query<{ id: string }>("select id from conversations where org_id = $1 and contact_id = $2 and channel = $3 and thread_key = $4", [orgId, kept.id, conv.channel, conv.thread_key]);

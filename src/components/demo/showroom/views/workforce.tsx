@@ -30,7 +30,7 @@ const SAMPLE_STEPS = [
   },
 ] as const;
 
-/** A sample view of one employee coordinating several capability areas. It performs no live research or business action. */
+/** A sample view of the AI Growth Partner coordinating several capability areas. It performs no live research or business action. */
 export function WorkforceView() {
   const { scenario, ask, aiEnabled, ended } = useShowroom();
   const canAsk = aiEnabled && !ended;
@@ -41,7 +41,7 @@ export function WorkforceView() {
         as="h1"
         eyebrow="Step 1 · AI Growth Partner"
         title="One partner. Six connected capabilities."
-        lead="One employee works from a shared business context across acquisition, sales, appointments, CRM, operations and analytics. You stay in control of the tools and decisions it is allowed to use."
+        lead="AI Growth Partner works from a shared business context across acquisition, sales, appointments, CRM, operations and analytics. You stay in control of the tools and decisions it is allowed to use."
       />
 
       <section aria-labelledby="partner-capabilities" className="grid gap-5 @4xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
@@ -51,7 +51,7 @@ export function WorkforceView() {
               <Sparkles className="size-6" aria-hidden />
             </span>
             <div>
-              <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-primary-ink">One employee identity</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-primary-ink">One AI Growth Partner identity</p>
               <h2 id="partner-capabilities" className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-ink">AI Growth Partner</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-ink-2">A stable product identity. The business-specific facts, limits and working preferences come from the approved Business Brain and connected workspace settings.</p>
             </div>
@@ -123,7 +123,7 @@ export function WorkforceView() {
       <ContextCta
         plan="core"
         title="Want an AI Growth Partner configured for your business?"
-        body="The product is designed around one employee identity and six connected capabilities. Your written scope, permissions, approved knowledge and connected tools determine what can actually run."
+        body="The product is designed around one AI Growth Partner identity and six connected capabilities. Your written scope, permissions, approved knowledge and connected tools determine what can actually run."
         consultLabel="Ask about an AI Growth Partner"
         secondary={{ view: "pricing", label: "See current pricing" }}
       />

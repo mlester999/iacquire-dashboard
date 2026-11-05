@@ -7,7 +7,7 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits } from "@/server/usage";
 import { assertJobAllowed, jobGate } from "@/server/automation/job-gate";
 import { createApproval } from "@/server/approvals/service";
-import { createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/server/workforce/jobs";
+import { appendWorkEvent, createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { canChat, isWorkforceRoleKey, type AgentStatus, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
@@ -230,12 +230,12 @@ export interface LeadRow {
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
-  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate";
+  qualification_state: "evidence_backed" | "needs_evidence" | "duplicate" | "possible_duplicate" | "disqualified";
   qualification_reasons: string[];
   recommended_next_action: string;
   buying_signals: string[];
   signal_records: LeadSignalRecord[];
-  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null }>;
+  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null; source?: "openstreetmap" | "company_website" | null }>;
   duplicate_status: string;
   duplicate_matches: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
   public_contact: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null };
@@ -294,7 +294,13 @@ export async function listLeads(ctx: OrgContext, status: "pending" | "approved" 
     // read time as well as when new research is saved; the underlying evidence rows stay intact.
     return rows.map((row) => {
       const summary = sanitizeQualificationSummary(row.qualification_summary);
-      const evidence = Array.isArray(row.evidence) ? row.evidence.map((item) => ({ ...item, observed_at: null })) : [];
+      const evidence = Array.isArray(row.evidence) ? row.evidence.map((item) => {
+        const source = item.source === "openstreetmap" || item.source === "company_website" ? item.source : null;
+        const observedAt = source && typeof item.observed_at === "string" && !Number.isNaN(Date.parse(item.observed_at))
+          ? new Date(item.observed_at).toISOString()
+          : null;
+        return { ...item, source, observed_at: observedAt };
+      }) : [];
       const legacy = legacyQualification(row, evidence.length, summary);
       return {
         ...row,
@@ -336,6 +342,15 @@ export async function reviewLeads(ctx: OrgContext, leadIds: string[], decision: 
   const ids = leadIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200);
   if (!ids.length) throw new AppError("invalid_input", "Select at least one lead.");
   const res = await withSystem(async (db) => {
+    if (decision === "approve") {
+      const disqualified = await db.query<{ business_name: string }>(
+        "select business_name from leads where org_id = $1 and id = any($2::uuid[]) and review_status = 'pending' and qualification_state = 'disqualified' limit 1",
+        [ctx.org.orgId, ids],
+      );
+      if (disqualified.rows[0]) {
+        throw new AppError("invalid_input", `${disqualified.rows[0].business_name} was disqualified under the current targeting rules and cannot be approved for CRM import.`);
+      }
+    }
     const r = await db.query(
       `update leads set review_status = $3, reviewed_by = $4, reviewed_at = now()
        where org_id = $1 and id = any($2::uuid[]) and review_status = 'pending'`,
@@ -350,28 +365,95 @@ export async function reviewLeads(ctx: OrgContext, leadIds: string[], decision: 
 /** Creates an Approval Center request to import approved leads into the CRM. */
 export async function requestCrmImport(ctx: OrgContext, leadIds: string[]) {
   if (!ctx.can("leads.review")) throw new AppError("forbidden", "Only owners and admins can send leads to the CRM.");
-  const ids = leadIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 100);
+  if (!Array.isArray(leadIds) || !leadIds.length || leadIds.length > 100
+    || leadIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+    throw new AppError("invalid_input", "Choose up to 100 valid leads for review.");
+  }
+  const ids = [...new Set(leadIds)];
   return withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string; business_name: string }>(
-      "select id, business_name from leads where org_id = $1 and id = any($2::uuid[]) and review_status = 'approved' and crm_sync_status in ('not_synced', 'blocked', 'failed')",
+    const { rows } = await db.query<{
+      id: string; business_name: string; review_status: string; qualification_state: string; duplicate_status: string; crm_sync_status: string;
+    }>(
+      `select id, business_name, review_status, qualification_state, duplicate_status, crm_sync_status
+         from leads where org_id = $1 and id = any($2::uuid[]) order by id for update`,
       [ctx.org.orgId, ids],
     );
-    if (!rows.length) throw new AppError("invalid_input", "Choose approved leads that haven't been sent to the CRM yet.");
+    if (rows.length !== ids.length || rows.some((row) => row.review_status !== "approved"
+      || row.qualification_state !== "evidence_backed" || row.duplicate_status !== "no_match"
+      || !["not_synced", "blocked", "failed"].includes(row.crm_sync_status))) {
+      throw new AppError("invalid_input", "Only approved leads with source evidence, no duplicate match, and no prior CRM import can be requested.");
+    }
+
+    const { rows: partnerRows } = await db.query<{ agent_id: string; conversation_id: string }>(
+      `select a.id as agent_id, c.id as conversation_id
+         from ai_growth_partners p
+         join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner' and a.enabled
+         join chat_conversations c on c.growth_partner_id = p.id and c.agent_instance_id = a.id and c.org_id = p.org_id and c.deleted_at is null
+        where p.org_id = $1 and p.status <> 'paused'
+        limit 1`,
+      [ctx.org.orgId],
+    );
+    const partner = partnerRows[0];
+    if (!partner) throw new AppError("conflict", "Set up the AI Growth Partner's permanent conversation before requesting a CRM import.");
+
+    const leadIdList = rows.map((row) => row.id).sort();
+    const serializedIds = JSON.stringify(leadIdList);
+    const pending = await db.query(
+      `select id from approval_requests
+        where org_id = $1 and kind = 'lead_import' and status = 'pending' and action -> 'leadIds' = $2::jsonb
+        limit 1`,
+      [ctx.org.orgId, serializedIds],
+    );
+    if (pending.rows.length) throw new AppError("conflict", "A CRM import approval is already waiting for these leads.");
+    const attempts = await db.query<{ count: number }>(
+      `select count(*)::int as count from approval_requests
+        where org_id = $1 and kind = 'lead_import' and action -> 'leadIds' = $2::jsonb`,
+      [ctx.org.orgId, serializedIds],
+    );
+    const attempt = Number(attempts.rows[0]?.count ?? 0) + 1;
+    const keyDigest = crypto.createHash("sha256").update(`${ctx.org.orgId}:${serializedIds}`).digest("hex").slice(0, 32);
+    const requestKey = `lead-import:${keyDigest}:${attempt}`;
+    const workJob = await createWorkJob(db, {
+      orgId: ctx.org.orgId,
+      agentId: partner.agent_id,
+      requestedBy: ctx.user.id,
+      capability: "crm_lead_import",
+      title: `Import ${rows.length} approved lead${rows.length === 1 ? "" : "s"} into the CRM`,
+      idempotencyKey: `crm-lead-import:${keyDigest}:${attempt}`,
+      conversationId: partner.conversation_id,
+      input: { leadIds: leadIdList },
+      maxAttempts: 1,
+    });
+    if (!workJob.created) throw new AppError("conflict", "A Work Board item already exists for this CRM import attempt.");
+    await db.query(
+      `update ai_work_jobs set status = 'waiting_for_approval', stage = 'waiting_for_approval', result_summary = 'Waiting for CRM import approval.'
+        where id = $1 and org_id = $2`,
+      [workJob.id, ctx.org.orgId],
+    );
+    await appendWorkEvent(db, {
+      jobId: workJob.id,
+      orgId: ctx.org.orgId,
+      kind: "approval",
+      stage: "waiting_for_approval",
+      message: "Waiting for an authorized workspace approver before creating native CRM records.",
+    });
+
     const approvalId = await createApproval(db, {
       orgId: ctx.org.orgId,
+      agentId: partner.agent_id,
       requestedBy: ctx.user.id,
       kind: "lead_import",
       title: `Import ${rows.length} researched lead${rows.length === 1 ? "" : "s"} into the CRM`,
-      action: { leadIds: rows.map((r) => r.id) },
+      action: { leadIds: leadIdList, workJobId: workJob.id },
       targetType: "leads",
       targetLabel: rows.slice(0, 3).map((r) => r.business_name).join(", ") + (rows.length > 3 ? ` +${rows.length - 3} more` : ""),
       reason: "These businesses were reviewed and approved as good fits.",
-      expectedEffect: "Creates or updates contacts in your connected CRM. It does not contact anyone and does not mark them as consenting to marketing.",
+      expectedEffect: "Creates or reuses native CRM company records and only creates contacts when public contact details were supplied. No customer message is sent and no marketing consent is inferred.",
       risk: "medium",
-      idempotencyKey: `lead-import:${crypto.createHash("sha256").update(rows.map((r) => r.id).sort().join(",")).digest("hex").slice(0, 32)}`,
+      idempotencyKey: requestKey,
     });
     if (!approvalId) throw new AppError("conflict", "An import request for these leads already exists.");
-    await db.query("update leads set crm_sync_status = 'awaiting_approval' where org_id = $1 and id = any($2::uuid[])", [ctx.org.orgId, rows.map((r) => r.id)]);
+    await db.query("update leads set crm_sync_status = 'awaiting_approval' where org_id = $1 and id = any($2::uuid[])", [ctx.org.orgId, leadIdList]);
     return approvalId;
   });
 }

@@ -181,16 +181,21 @@ describe("leads", () => {
     await expect(createResearchRequest(ctxFor(member, org, "member"), { prompt: "anything", campaignType: "business" })).rejects.toThrow(/owners and admins/);
   });
 
-  it("requires review before a CRM import approval, which stays blocked without CRM", async () => {
+  it("requires lead review and the permanent Growth Partner conversation before requesting CRM import", async () => {
     const { rows } = await withSystem((db) =>
-      db.query<{ id: string }>("insert into leads (org_id, business_name, website) values ($1, 'Desert Solar', 'https://desert.example') returning id", [org.id]),
+      db.query<{ id: string }>(
+        `insert into leads (org_id, business_name, website, domain, evidence, qualification_state, qualification_summary, duplicate_status)
+         values ($1, 'Desert Solar', 'https://desert.example/', 'desert.example',
+                 '[{"source":"company_website","url":"https://desert.example/","summary":"The company site describes solar installations."}]'::jsonb,
+                 'evidence_backed', 'The company site confirms the service and operating area.', 'no_match')
+         returning id`,
+        [org.id],
+      ),
     );
     const ctx = ctxFor(owner, org, "owner");
     await expect(requestCrmImport(ctx, [rows[0].id])).rejects.toThrow(/approved leads/);
     await reviewLeads(ctx, [rows[0].id], "approve");
-    const approvalId = await requestCrmImport(ctx, [rows[0].id]);
-    expect(approvalId).toBeTruthy();
-    await expect(requestCrmImport(ctx, [rows[0].id])).rejects.toThrow();
+    await expect(requestCrmImport(ctx, [rows[0].id])).rejects.toThrow(/permanent conversation/);
   });
 
   it("neutralises spreadsheet formulas in CSV export", () => {

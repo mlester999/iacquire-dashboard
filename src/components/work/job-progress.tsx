@@ -161,6 +161,7 @@ const PROGRESS_ITEMS: Array<[string, string]> = [
   ["candidates", "candidates extracted"],
   ["evidenceBacked", "evidence-backed"],
   ["needsEvidence", "need more evidence"],
+  ["disqualified", "disqualified"],
   ["duplicates", "duplicates flagged"],
 ];
 

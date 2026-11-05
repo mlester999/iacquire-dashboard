@@ -7,6 +7,16 @@ commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`. `UPSTREAM_SHA256SUMS` verifie
 source files before replacement; their hashes match the v0.22.5 source. `SHA256SUMS` verifies the
 reviewed patched files.
 
+The run-tool-scope overlay adds an explicit per-run `no_tools` mode for source-backed research.
+The capability is advertised only when the API run path owns agent creation. A scoped request must
+match its body marker and header; session, room, and response-chain routing are rejected. The
+gateway passes an empty toolset into agent construction and blocks any tool dispatch under the
+scope, including the special Kanban task toolset. The scope is rebound inside the agent execution
+thread. The application checks the capability before the first source transport and refuses the
+research run if the gateway does not advertise it. Ordinary runs retain their existing tool policy.
+This gives the source-backed AI review no tool route for search, browser, crawl, messaging, or other
+external actions. Source collection remains governed by the app's tenant allowlist and budget checks.
+
 The API route uses Hermes' current `model_tools.get_tool_definitions` path and its registered
 tool metadata. `update_last_resolved=False` keeps read-only catalog requests from changing the
 global last-tool snapshot. Each response echoes a fresh caller challenge and reports an explicit
@@ -21,4 +31,6 @@ This is a narrowly scoped iAcquire compatibility layer; it is not upstream Herme
 The previous v0.22.3 image locked Node.js v26.7.0, which is in the affected Node.js 26.x range for
 the high-severity Brotli decoder issue in the [October 21, 2026 Node.js security release](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases/).
 The v0.22.5 pin carries Node.js v26.12.1. This candidate must pass a fresh isolated image build and
-two-tenant runtime acceptance before production review.
+two-tenant runtime acceptance, including the scoped run, before production review. The local Python
+unit and source-runner tests do not replace a run against the pinned image; no real Hermes gateway
+runtime acceptance has yet been performed.

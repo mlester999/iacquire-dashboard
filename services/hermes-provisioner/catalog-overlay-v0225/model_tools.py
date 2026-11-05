@@ -24,6 +24,7 @@ from toolsets import resolve_toolset, validate_toolset
 from tools.arg_coercion import coerce_tool_args
 from tools.todo_tool import TODO_LEGACY_ALIASES, TODO_SCHEMA
 from utils import file_signature
+from gateway.platforms.api_server_run_tool_scope import current_run_tool_scope
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +321,8 @@ def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *, 
 
 def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]], quiet_mode: bool) -> set:
     """Tool names requested by the toolset selection (before check_fn filtering)."""
+    if current_run_tool_scope() == "no_tools":
+        return set()
     tools: set = set()
     if enabled_toolsets is not None:
         enabled = list(enabled_toolsets)
@@ -906,6 +909,10 @@ def handle_function_call(
         _emit_post_tool_call_hook(function_name=function_name, function_args=function_args, result=result,
                                   **asdict(ids), middleware_trace=list(trace), **extra)
         return result
+    if current_run_tool_scope() == "no_tools":
+        return _emit(
+            tool_error("Tool execution is disabled for this run."),
+            status="blocked", error_type="run_tool_scope", error_message="no_tools")
 
     # Tool Search bridge: tool_search / tool_describe are catalog reads handled
     # inline; tool_call is unwrapped so every downstream hook (pre/post, edit

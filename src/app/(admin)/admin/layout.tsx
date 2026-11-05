@@ -9,8 +9,8 @@ export const metadata = { title: { default: "Admin", template: "%s · iAcquire A
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAgency();
-  // The agency workspace is where a super admin chats with and configures iAcquire's own six employees. Preparing its
-  // owner membership here keeps the admin area usable without inventing a second employee registry or a second chat.
+  // The agency workspace is where a super admin chats with and configures iAcquire's AI Growth Partner. Preparing its
+  // owner membership here keeps the admin area usable without creating a second identity registry or conversation.
   try {
     await ensureAgencyWorkspace(user);
   } catch {
