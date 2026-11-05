@@ -1,10 +1,10 @@
 /**
- * Restart acceptance for the permanent Growth Partner conversation and Work Board ledger.
+ * Restart acceptance for app-owned Growth Partner memory, the permanent conversation and Work Board ledger.
  * Uses one disposable, file-backed PGlite database, closes it, then opens it in a fresh Node
  * process. This verifies application database recovery only; it does not exercise Hermes or its
  * separate long-term profile memory.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -39,9 +39,10 @@ async function runWorker() {
     import("../src/server/db/index"),
     import("../tests/support/fixtures"),
   ]);
-  const [{ getGrowthPartnerConversationPage, searchGrowthPartnerConversation }, { getWorkJobView }] = await Promise.all([
+  const [{ getGrowthPartnerConversationPage, searchGrowthPartnerConversation }, { getWorkJobView }, { listGrowthPartnerMemories, growthPartnerMemoryPromptContext }] = await Promise.all([
     import("../src/server/ai-growth-partner/service"),
     import("../src/server/workforce/jobs"),
+    import("../src/server/ai-growth-partner/memory"),
   ]);
 
   try {
@@ -67,6 +68,19 @@ async function runWorker() {
     }
     const matches = await searchGrowthPartnerConversation(ctx, "persistent conversation restart marker");
     if (!matches.length) throw new Error("Conversation search did not recover the persisted marker.");
+    const memories = await listGrowthPartnerMemories(ctx);
+    if (!memories.some((memory) => memory.content === "The business prefers concise progress updates.")) {
+      throw new Error("App-owned Growth Partner memory did not recover after process restart.");
+    }
+    const runtimeId = (await withSystem((db) => db.query<{ runtime_agent_instance_id: string }>(
+      "select runtime_agent_instance_id from ai_growth_partners where org_id = $1",
+      [orgId],
+    ))).rows[0]?.runtime_agent_instance_id;
+    if (!runtimeId) throw new Error("The persisted Growth Partner runtime link could not be read after restart.");
+    const promptMemory = await withSystem((db) => growthPartnerMemoryPromptContext(db, orgId, runtimeId, "concise progress updates"));
+    if (!promptMemory.includes(JSON.stringify("The business prefers concise progress updates."))) {
+      throw new Error("The persisted memory did not return as prompt context after process restart.");
+    }
     const job = await getWorkJobView(ctx, jobId);
     if (!job || job.status !== "completed" || job.resultSummary !== "Persistent restart acceptance task state.") {
       throw new Error("The completed Work Board task did not recover after restart.");
@@ -76,6 +90,8 @@ async function runWorker() {
       database: "disposable file-backed PGlite",
       conversationRecovered: true,
       conversationSearchRecovered: true,
+      applicationMemoryRecovered: true,
+      applicationMemoryPromptContextRecovered: true,
       workBoardTaskRecovered: true,
       hermesMemoryVerified: false,
     }));
@@ -122,6 +138,17 @@ async function seedAndRestart() {
          values ($1, $2, 'user', 'Remember this persistent conversation restart marker.', 'complete', $3, $4),
                 ($1, $2, 'assistant', 'I will keep this verified note in the shared conversation history.', 'complete', null, null)`,
         [conversationId, org.id, `restart-${randomUUID()}`, owner.id],
+      );
+      await db.query(
+        "insert into ai_growth_partner_memories (partner_id, org_id, kind, content, content_fingerprint, created_by, updated_by) " +
+        "values ($1, $2, 'preference', $3, $4, $5, $5)",
+        [
+          partnerId,
+          org.id,
+          "The business prefers concise progress updates.",
+          createHash("sha256").update("the business prefers concise progress updates").digest("hex"),
+          owner.id,
+        ],
       );
       return { runtimeId, conversationId };
     });

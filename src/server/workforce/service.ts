@@ -41,6 +41,7 @@ import { fitClientRunInstructions, fitRecord, type ClientPromptFitRecord, type C
 import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/reviews";
 import { clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { liveFactsBlock } from "@/server/workforce/live-facts";
+import { growthPartnerMemoryPromptContext } from "@/server/ai-growth-partner/memory";
 
 export interface AgentInstanceRow {
   id: string;
@@ -899,15 +900,20 @@ export async function composeRunInstructions(
   compiledInstructions: string,
   versionId: string | null,
   organization: { kind: WorkforceOrganizationKind; name: string },
+  memoryQuery = "",
 ): Promise<RunInstructions> {
   const knowledge = await employeeKnowledgeContext(db, orgId, agentId);
   // The booking rules and pipeline stages a client edits in the CRM are read at run time, for a client workspace only: the stored text would keep saying whatever they were when the
   // configuration was compiled. The internal agency tier is untouched (and costs no query).
   let live: { block: string; truncated: boolean } = { block: "", truncated: false };
+  let clientRole: string | null = null;
   if (organization.kind === "client") {
-    const role = (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [agentId, orgId])).rows[0]?.role_key;
-    if (role && isAgentRoleKey(role)) live = await liveFactsBlock(db, { orgId, orgKind: "client", role });
+    clientRole = (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [agentId, orgId])).rows[0]?.role_key ?? null;
+    if (clientRole && isAgentRoleKey(clientRole)) live = await liveFactsBlock(db, { orgId, orgKind: "client", role: clientRole });
   }
+  const memory = clientRole === AI_GROWTH_PARTNER_ROLE_KEY
+    ? await growthPartnerMemoryPromptContext(db, orgId, agentId, memoryQuery)
+    : "";
   // The live policy is source controlled and must not go stale when an employee's active config
   // predates a policy update. Workspace knowledge stays ahead of the policy so it cannot override it.
   const policyVersion = policyVersionFor(organization.kind);
@@ -924,7 +930,7 @@ export async function composeRunInstructions(
   // A client employee's instructions are held to the restricted path's budgets by priority (src/lib/client-prompt-fit.ts): the policy, the configuration and the live facts are never
   // shortened, and the knowledge is shortened (most important first, saying what was left out) only when the parts do not fit. Typical clients are unchanged, byte for byte.
   const clientParts: ClientPromptParts | null = organization.kind === "client"
-    ? { head, policy, live: live.block, knowledge: { block: knowledge.block, entryIds: knowledge.entryIds, documentIds: knowledge.documentIds, sections: knowledge.sections } }
+    ? { head, policy, live: live.block, ...(memory ? { memory } : {}), knowledge: { block: knowledge.block, entryIds: knowledge.entryIds, documentIds: knowledge.documentIds, sections: knowledge.sections } }
     : null;
   const fitted = clientParts ? fitClientRunInstructions(clientParts) : null;
   return {
@@ -941,7 +947,7 @@ export async function composeRunInstructions(
 }
 
 /** Run-time instructions for the employee's currently applied configuration. */
-export async function buildRunInstructions(db: Queryable, orgId: string, agentId: string): Promise<RunInstructions> {
+export async function buildRunInstructions(db: Queryable, orgId: string, agentId: string, memoryQuery = ""): Promise<RunInstructions> {
   const { rows } = await db.query<{
     compiled_instructions: string | null;
     id: string | null;
@@ -960,7 +966,7 @@ export async function buildRunInstructions(db: Queryable, orgId: string, agentId
   const instructions = base.role_key === AI_GROWTH_PARTNER_ROLE_KEY
     ? await insertActiveBusinessBrain(db, orgId, base.compiled_instructions)
     : base.compiled_instructions;
-  return composeRunInstructions(db, orgId, agentId, instructions, base.id, { kind: base.org_kind, name: base.org_name });
+  return composeRunInstructions(db, orgId, agentId, instructions, base.id, { kind: base.org_kind, name: base.org_name }, memoryQuery);
 }
 
 async function insertActiveBusinessBrain(db: Queryable, orgId: string, compiled: string): Promise<string> {

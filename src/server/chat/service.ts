@@ -28,6 +28,8 @@ import { insertEvidenceBlock } from "@/lib/employee-evidence";
 import { fitClientChatInstructions, fitRecord, type ClientPromptFitRecord } from "@/server/workforce/client-prompt";
 import { findUnbackedActionClaims, withActionClaimCorrection } from "@/lib/action-claims";
 import { classifyBookingResult, classifyModelTurn, parseEvidenceMarker, serverMarker, systemNoticeMarker, type EvidenceMarker, type ServerEvidenceMarker } from "@/lib/evidence-class";
+import { parseGrowthPartnerMemoryCommand } from "@/lib/ai-growth-partner-memory";
+import { forgetGrowthPartnerMemoryFromChat, rememberGrowthPartnerMemoryFromChat } from "@/server/ai-growth-partner/memory";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createResearchRequest, getTargeting, saveTargeting } from "@/server/leads/service";
@@ -2086,7 +2088,10 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: conversationId as string,
       userMessageId,
       userContent,
-      history: hist.map((h) => ({ role: h.role, content: h.content.slice(0, 4000) })),
+      // The commands stay in the visible transcript, but must not re-enter future model context.
+      history: hist
+        .filter((turn) => input.agentRole !== "growth_partner" || turn.role !== "user" || parseGrowthPartnerMemoryCommand(turn.content).kind === "none")
+        .map((turn) => ({ role: turn.role, content: turn.content.slice(0, 4000) })),
       sessionId: conv[0].hermes_session_id,
     };
   });
@@ -2146,6 +2151,44 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       evidence: systemNoticeMarker(),
     });
     return { conversationId: prepared.conversationId, userMessageId: null, assistantMessageId, runId: null, jobId: null };
+  }
+
+  if (input.agentRole === "growth_partner" && !input.regenerateMessageId) {
+    const memoryCommand = parseGrowthPartnerMemoryCommand(prepared.userContent);
+    if (memoryCommand.kind !== "none") {
+      let content: string;
+      if (memoryCommand.kind === "clarify") {
+        content = "To change saved Partner memory, use “Remember: [one note]” or “Forget: [the full saved note]”. Only a full saved note can be removed.";
+      } else if (!ctx.can("agents.configure")) {
+        content = "Your workspace role can use the AI Growth Partner but can't change its shared memory. No memory was saved or removed; ask an owner or admin.";
+      } else {
+        try {
+          if (memoryCommand.kind === "remember") {
+            const saved = await rememberGrowthPartnerMemoryFromChat(ctx, memoryCommand.content, prepared.userMessageId!);
+            content = saved.duplicate
+              ? "That note is already in the AI Growth Partner's workspace memory. You can review, correct or remove it in Partner Controls. This app-owned memory is separate from Hermes runtime memory."
+              : "Saved that note to the AI Growth Partner's workspace memory. You can review, correct or remove it in Partner Controls. This app-owned memory is separate from Hermes runtime memory.";
+          } else {
+            const removed = await forgetGrowthPartnerMemoryFromChat(ctx, memoryCommand.content);
+            content = removed.deleted
+              ? "Removed the matching note from AI Growth Partner workspace memory. Its original message remains in the permanent conversation. Hermes runtime memory is separate."
+              : "No full saved note matched, so nothing was removed. Use “Forget:” followed by the complete saved note.";
+          }
+        } catch (error) {
+          if (!(error instanceof AppError)) throw error;
+          content = "I didn't change saved memory. " + error.message;
+        }
+      }
+      const assistantMessageId = await persistChatAssistantMessage({
+        orgId: ctx.org.orgId,
+        userId: ctx.user.id,
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        content,
+        evidence: systemNoticeMarker(),
+      });
+      return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+    }
   }
 
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
@@ -2492,7 +2535,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         prepared.conversationId,
       ]);
     }
-    const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id);
+    const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id, input.agentRole === "growth_partner" ? prepared.userContent : "");
     let instructions: string;
     let knowledgeEntryIds = runInstructions.knowledgeEntryIds;
     let knowledgeDocumentIds = runInstructions.knowledgeDocumentIds;

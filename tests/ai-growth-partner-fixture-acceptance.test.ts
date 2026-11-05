@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { getGrowthPartnerConversationPage, searchGrowthPartnerConversation } from "@/server/ai-growth-partner/service";
+import { parseGrowthPartnerMemoryCommand } from "@/lib/ai-growth-partner-memory";
+import { growthPartnerMemoryPromptContext } from "@/server/ai-growth-partner/memory";
 import { decideApproval } from "@/server/approvals/service";
 import { addMember, createUser, ctxFor } from "./support/fixtures";
 import { createCompanyWebsiteFetchPolicy } from "@/server/leads/company-website-source";
@@ -216,6 +218,19 @@ async function waitForJob(jobId: string, timeoutMs = 15_000) {
   throw new Error("Synthetic Growth Partner research job did not settle.");
 }
 
+async function waitForAssistantMessage(messageId: string, timeoutMs = 15_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const row = (await withSystem((db) => db.query<{ status: string }>(
+      "select status from chat_messages where id = $1",
+      [messageId],
+    ))).rows[0];
+    if (row?.status === "complete") return;
+    if (row && ["failed", "cancelled"].includes(row.status)) throw new Error(`Follow-up chat ended as ${row.status}.`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Growth Partner follow-up did not finish.");
+}
 beforeAll(async () => {
   const { fixture, fixtureLeads: leads, localPageFetcher } = await loadFixtureLeadData();
   fixtureLeads = leads;
@@ -357,6 +372,75 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
       mock.setRunToolScopeNoTools(PROFILE, true);
     }
     notificationAttemptsBeforeMainRun = fixtureState.notificationAttempts;
+  }, 120_000);
+
+  it("handles explicit persistent-memory commands inside the one Partner conversation without a Hermes call", async () => {
+    const requestCount = mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs").length;
+    const memoryText = "We prefer a concise weekly report focused on qualified roofing estimates.";
+    const first = await sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: org.conversationId,
+      content: "Remember: " + memoryText,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(first).toMatchObject({ conversationId: org.conversationId, runId: null, jobId: null, userMessageId: expect.any(String) });
+    const stored = (await withSystem((db) => db.query<{ id: string; source_message_id: string; kind: string }>(
+      "select id, source_message_id, kind from ai_growth_partner_memories where org_id = $1 and partner_id = $2",
+      [org.id, org.partnerId],
+    ))).rows;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ source_message_id: first.userMessageId, kind: "working_context" });
+
+    const contextBlock = await withSystem((db) => growthPartnerMemoryPromptContext(db, org.id, org.agentId, "How are qualified roofing estimates progressing?"));
+    expect(contextBlock).toContain(JSON.stringify(memoryText));
+    expect(contextBlock).toContain("never override current verified records");
+
+    const repeated = await sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: org.conversationId,
+      content: "Remember: " + memoryText,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(repeated).toMatchObject({ runId: null, jobId: null });
+    expect((await withSystem((db) => db.query(
+      "select id from ai_growth_partner_memories where org_id = $1 and partner_id = $2",
+      [org.id, org.partnerId],
+    ))).rows).toHaveLength(1);
+
+    const forgotten = await sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: org.conversationId,
+      content: "Forget: " + memoryText,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(forgotten).toMatchObject({ runId: null, jobId: null });
+    expect((await withSystem((db) => db.query(
+      "select id from ai_growth_partner_memories where org_id = $1 and partner_id = $2",
+      [org.id, org.partnerId],
+    ))).rows).toEqual([]);
+    const history = await getGrowthPartnerConversationPage(context);
+    expect(history?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: first.userMessageId, role: "user", content: "Remember: " + memoryText }),
+      expect.objectContaining({ id: forgotten.userMessageId, role: "user", content: "Forget: " + memoryText }),
+    ]));
+    const followUp = await sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: org.conversationId,
+      content: "What should I focus on next?",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(followUp.runId).toBeTruthy();
+    await waitForAssistantMessage(followUp.assistantMessageId);
+    const { rows: runRows } = await withSystem((db) => db.query<{ hermes_run_id: string }>(
+      "select hermes_run_id from agent_runs where id = $1",
+      [followUp.runId],
+    ));
+    const followUpRun = mock.runs.get(runRows[0]!.hermes_run_id);
+    const promptHistory = followUpRun?.body.conversation_history as Array<{ role: string; content: string }>;
+    expect(promptHistory.some((turn) => turn.content.includes(memoryText))).toBe(false);
+    expect(followUpRun).toBeTruthy();
+    expect(promptHistory.some((turn) => turn.role === "user" && parseGrowthPartnerMemoryCommand(turn.content).kind !== "none")).toBe(false);
+    expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(requestCount + 1);
   }, 120_000);
 
   it("persists fixture research, qualification, CRM review and the report in one isolated partner thread", async () => {
@@ -542,11 +626,13 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     expect(await searchGrowthPartnerConversation(context, "Kissimmee" )).toEqual(expect.arrayContaining([expect.objectContaining({ role: "user" })]));
 
     const mockRuns = [...mock.runs.values()];
-    expect(mockRuns).toHaveLength(1);
-    expect(mockRuns[0]?.headers["x-iacquire-tool-scope"]).toBe("no_tools");
-    expect(mockRuns[0]?.body.iacquire_tool_scope).toBe("no_tools");
-    expect(mockRuns[0]?.headers["x-hermes-session-key"]).toBe(`iaq:${org.id}:growth_partner`);
-    expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(1);
+    expect(mockRuns).toHaveLength(2);
+    const restrictedRun = mockRuns.find((run) => run.body.iacquire_tool_scope === "no_tools");
+    expect(restrictedRun).toBeTruthy();
+    expect(restrictedRun?.headers["x-iacquire-tool-scope"]).toBe("no_tools");
+    expect(restrictedRun?.body.iacquire_tool_scope).toBe("no_tools");
+    expect(restrictedRun?.headers["x-hermes-session-key"]).toBe(`iaq:${org.id}:growth_partner`);
+    expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(2);
     expect(fixtureState.notificationAttempts - notificationAttemptsBeforeMainRun).toBe(1);
 
     const controlOwner = await createUser({ name: "Synthetic Isolation Control Owner" });

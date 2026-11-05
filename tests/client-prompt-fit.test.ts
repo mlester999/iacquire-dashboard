@@ -54,6 +54,34 @@ const blocks = (over: Partial<Record<"head" | "knowledge" | "evidence", number>>
 };
 
 describe("fitting blocks to a budget", () => {
+  it("shortens contextual memory before the verified snapshot and approved knowledge", () => {
+    const memory: PromptBlock = {
+      key: "memory",
+      text: "M".repeat(500),
+      giveUp: 4,
+      rebuild: (max) => "M".repeat(Math.max(0, max)),
+    };
+    const evidence: PromptBlock = {
+      key: "evidence",
+      text: "E".repeat(1_000),
+      giveUp: 3,
+      rebuild: (max) => "E".repeat(Math.max(0, max)),
+    };
+    const parts: PromptBlock[] = [
+      { key: "head", text: "H".repeat(1_000), giveUp: 0 },
+      memory,
+      evidence,
+      { key: "policy", text: "P".repeat(500), giveUp: 0 },
+    ];
+    const fit = fitPromptBlocks(parts, { chars: 2_700, bytes: 10_000 });
+    expect(fit.fits).toBe(true);
+    expect(fit.texts.memory.length).toBeLessThan(memory.text.length);
+    expect(fit.texts.evidence).toBe(evidence.text);
+    expect(fit.texts.head).toBe(parts[0]!.text);
+    expect(fit.texts.policy).toBe(parts[3]!.text);
+    expect(fit.steps.map((step) => step.key)).toEqual(["memory"]);
+  });
+
   it("shortens nothing when the parts already fit, and returns exactly their text", () => {
     const parts = blocks({ evidence: 500, knowledge: 500 });
     const fit = fitPromptBlocks(parts, instructionBudget());

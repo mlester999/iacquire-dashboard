@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { draftGrowthPartnerBusinessBrainFromOnboarding, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { deleteGrowthPartnerMemory, saveGrowthPartnerMemory, updateGrowthPartnerMemory } from "@/server/ai-growth-partner/memory";
+import type { GrowthPartnerMemoryKind } from "@/lib/ai-growth-partner-memory";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-source";
@@ -57,6 +59,47 @@ export async function saveGrowthPartnerBusinessBrainFactAction(input: {
     const result = await saveGrowthPartnerBusinessBrainFactDraft(ctx, input);
     revalidatePath("/growth-partner");
     return { ok: true as const, data: { version: result.version } };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveGrowthPartnerMemoryAction(input: { kind: GrowthPartnerMemoryKind; content: string }) {
+  try {
+    const ctx = await requireOrgContext();
+    if (ctx.org.kind !== "client") throw new AppError("forbidden", "AI Growth Partner memory is available in client workspaces.");
+    const result = await saveGrowthPartnerMemory(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function updateGrowthPartnerMemoryAction(input: {
+  memoryId: string;
+  baseRevision: number;
+  kind: GrowthPartnerMemoryKind;
+  content: string;
+}) {
+  try {
+    const ctx = await requireOrgContext();
+    if (ctx.org.kind !== "client") throw new AppError("forbidden", "AI Growth Partner memory is available in client workspaces.");
+    const result = await updateGrowthPartnerMemory(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function deleteGrowthPartnerMemoryAction(input: { memoryId: string; baseRevision: number }) {
+  try {
+    const ctx = await requireOrgContext();
+    if (ctx.org.kind !== "client") throw new AppError("forbidden", "AI Growth Partner memory is available in client workspaces.");
+    const result = await deleteGrowthPartnerMemory(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
   } catch (err) {
     return actionError(err);
   }

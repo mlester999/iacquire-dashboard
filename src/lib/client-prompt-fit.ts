@@ -48,7 +48,7 @@ export function instructionBudget(rest: { input?: string; history?: readonly str
   return { chars: CLIENT_PROMPT_LIMITS.instructionsChars, bytes: Math.max(0, CLIENT_PROMPT_LIMITS.messageBytes - input - history) };
 }
 
-export type PromptBlockKey = "head" | "knowledge" | "live_facts" | "evidence" | "policy";
+export type PromptBlockKey = "head" | "knowledge" | "live_facts" | "memory" | "evidence" | "policy";
 
 export interface PromptBlock {
   key: PromptBlockKey;
@@ -82,7 +82,7 @@ export interface PromptFit {
 }
 
 const SEPARATOR = "\n\n";
-const EMPTY_TEXTS = (): Record<PromptBlockKey, string> => ({ head: "", knowledge: "", live_facts: "", evidence: "", policy: "" });
+const EMPTY_TEXTS = (): Record<PromptBlockKey, string> => ({ head: "", knowledge: "", live_facts: "", memory: "", evidence: "", policy: "" });
 
 /** Shortens the most expendable block, then the next, until the joined text is within the budget in characters AND bytes (multi-byte text weighs more than its length). */
 export function fitPromptBlocks(blocks: readonly PromptBlock[], budget: PromptBudget): PromptFit {

@@ -24,6 +24,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHea
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
+import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
 import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import {
@@ -32,6 +33,7 @@ import {
   type BusinessBrainFact,
 } from "@/lib/ai-growth-partner";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import type { GrowthPartnerMemory } from "@/lib/ai-growth-partner-memory";
 import { prepareGrowthPartnerFromSubmittedOnboardingAction } from "@/app/actions/ai-growth-partner";
 
 const sectionTitles: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = {
@@ -270,6 +272,8 @@ function MetricCard({
 
 export function GrowthPartnerControlCenter({
   state,
+  memories,
+  canManageMemory,
   canConfigure,
   canConfigureResearch,
   researchSourcePolicies,
@@ -282,6 +286,8 @@ export function GrowthPartnerControlCenter({
   safetyControls,
 }: {
   state: GrowthPartnerControlState | null;
+  memories: GrowthPartnerMemory[];
+  canManageMemory: boolean;
   canConfigure: boolean;
   canConfigureResearch: boolean;
   researchSourcePolicies: ResearchSourcePoliciesView;
@@ -389,6 +395,8 @@ export function GrowthPartnerControlCenter({
           ))}
         </div>
       </section>
+
+      <GrowthPartnerMemoryPanel memories={memories} canManage={canManageMemory} hasPartner={Boolean(state)} timezone={timezone} />
 
       {canConfigureResearch && <ResearchSourceSettings policies={researchSourcePolicies} />}
 

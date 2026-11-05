@@ -22,6 +22,8 @@ export interface ClientPromptParts {
   policy: string;
   /** The live booking and pipeline facts, read at run time. Never shortened (they are capped at 1,200 characters on their own). */
   live: string;
+  /** Optional app-owned Growth Partner memory. It is contextual only and the first optional block shortened. */
+  memory?: string;
   knowledge: { block: string; entryIds: string[]; documentIds: string[]; sections: KnowledgeSection[] };
 }
 
@@ -72,6 +74,16 @@ function knowledgeBlock(parts: ClientPromptParts, memo: Map<string, FittedKnowle
   };
 }
 
+function memoryBlock(text: string | undefined): PromptBlock {
+  const memory = text ?? "";
+  return {
+    key: "memory",
+    text: memory,
+    giveUp: 4,
+    rebuild: (maxChars) => maxChars <= 0 ? "" : memory.slice(0, Math.max(0, maxChars - 1)) + (memory.length > maxChars ? "…" : ""),
+  };
+}
+
 function resultOf(parts: ClientPromptParts, fit: PromptFit, memo: Map<string, FittedKnowledge>): ClientPromptResult {
   const text = fit.texts.knowledge;
   const unchanged = text === parts.knowledge.block;
@@ -93,6 +105,7 @@ export function fitClientRunInstructions(parts: ClientPromptParts, budget: Promp
     headBlock(parts.head),
     knowledgeBlock(parts, memo),
     { key: "live_facts", text: parts.live, giveUp: 0 },
+    memoryBlock(parts.memory),
     { key: "policy", text: parts.policy, giveUp: 0 },
   ], budget);
   return resultOf(parts, fit, memo);
@@ -116,6 +129,7 @@ export function fitClientChatInstructions(
       headBlock(snapshotWording(parts.head)),
       knowledgeBlock(parts, memo),
       { key: "live_facts", text: parts.live, giveUp: 0 },
+      memoryBlock(parts.memory),
       { key: "evidence", text: snapshot.block, giveUp: 3, rebuild: (maxChars) => evidenceBlockWithin(snapshot.evidence, maxChars) },
       { key: "policy", text: parts.policy, giveUp: 0 },
     ],

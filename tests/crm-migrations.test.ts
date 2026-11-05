@@ -91,6 +91,8 @@ const ROLLBACK_MIGRATION_NAMES = [
   "0120_ai_growth_partner_foundation.sql",
   // A canonical shared thread depends on the Growth Partner identity and the workforce chat tables and permissions.
   "0121_ai_growth_partner_conversation.sql",
+  // Editable app-owned memory depends on that tenant-bound identity and shared thread.
+  "0130_ai_growth_partner_memory.sql",
   // Lead qualification and source-budget migrations hang off leads, lead_research_requests and ai_work_jobs.
   "0127_lead_disqualification.sql", "0128_lead_research_source_budgets.sql", "0129_research_lead_crm_imports.sql",
 ];
@@ -191,5 +193,44 @@ describe("native CRM and dependent-feature migration rollbacks", () => {
       );
       for (const statement of statements(downFor("0129_research_lead_crm_imports.sql"))) await db.query(statement);
     })).rejects.toThrow(/Rollback refused: researched leads have native CRM import links/);
+  });
+
+  it("applies and rolls back the empty Growth Partner memory table inside an isolated transaction", async () => {
+    const migration = readFileSync("supabase/migrations/0130_ai_growth_partner_memory.sql", "utf8");
+    const rollback = downFor("0130_ai_growth_partner_memory.sql");
+    let tableAfterRollback = 0;
+    let tableAfterApply = 0;
+    await expect(withSystem(async (db) => {
+      for (const statement of statements(rollback)) await db.query(statement);
+      tableAfterRollback = (await db.query(
+        "select 1 from information_schema.tables where table_schema = 'public' and table_name = 'ai_growth_partner_memories'",
+      )).rows.length;
+      for (const statement of statements(migration)) await db.query(statement);
+      tableAfterApply = (await db.query(
+        "select 1 from information_schema.tables where table_schema = 'public' and table_name = 'ai_growth_partner_memories'",
+      )).rows.length;
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+    expect({ tableAfterRollback, tableAfterApply }).toEqual({ tableAfterRollback: 0, tableAfterApply: 1 });
+  });
+
+  it("refuses the Growth Partner memory rollback while a saved note exists", async () => {
+    const c = await crmOrg({ name: "Growth Partner Memory Rollback Guard" });
+    const partner = (await withSystem((db) => db.query<{ id: string }>(
+      "insert into ai_growth_partners (org_id) values ($1) returning id",
+      [c.org.id],
+    ))).rows[0]!;
+    await withSystem((db) => db.query(
+      "insert into ai_growth_partner_memories (partner_id, org_id, kind, content, content_fingerprint) values ($1, $2, 'goal', 'Keep this memory during rollback review.', $3)",
+      [partner.id, c.org.id, "a".repeat(64)],
+    ));
+    await expect(withSystem(async (db) => {
+      for (const statement of statements(downFor("0130_ai_growth_partner_memory.sql"))) await db.query(statement);
+    })).rejects.toThrow(/Rollback refused: AI Growth Partner memory exists/);
+    const retained = await withSystem((db) => db.query<{ content: string }>(
+      "select content from ai_growth_partner_memories where partner_id = $1 and org_id = $2",
+      [partner.id, c.org.id],
+    ));
+    expect(retained.rows.map((row) => row.content)).toEqual(["Keep this memory during rollback review."]);
   });
 });

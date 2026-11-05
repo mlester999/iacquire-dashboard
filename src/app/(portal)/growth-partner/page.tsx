@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { GrowthPartnerControlCenter } from "@/components/growth-partner/control-center";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import { listGrowthPartnerMemories } from "@/server/ai-growth-partner/memory";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-source";
 import { listAgents } from "@/server/workforce/service";
@@ -17,9 +18,10 @@ export default async function GrowthPartnerPage() {
     redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
   }
 
-  const [state, legacyAgents] = await Promise.all([
+  const [state, legacyAgents, memories] = await Promise.all([
     getGrowthPartnerControlState(ctx),
     listAgents(ctx.user.id, ctx.org.orgId),
+    listGrowthPartnerMemories(ctx),
   ]);
   const canConfigure = ctx.can("agents.configure");
   const canConfigureResearch = ctx.can("leads.research");
@@ -50,6 +52,8 @@ export default async function GrowthPartnerPage() {
   return (
     <GrowthPartnerControlCenter
       state={state}
+      memories={memories}
+      canManageMemory={canConfigure}
       canConfigure={canConfigure}
       canConfigureResearch={canConfigureResearch}
       researchSourcePolicies={researchSourcePolicies}
