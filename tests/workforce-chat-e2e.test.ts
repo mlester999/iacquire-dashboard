@@ -6,9 +6,10 @@ import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
 import { decideApproval } from "@/server/approvals/service";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
-import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
+import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
+import { activateGrowthPartnerBusinessBrainVersion, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
 import { setScheduleEnabled } from "@/server/workforce/schedules";
 import { memberActor } from "@/server/crm/actor";
@@ -1372,5 +1373,25 @@ describe("AI Growth Partner chat to native workflow", () => {
       `select v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
        where a.org_id = $1 and a.role_key = 'growth_partner'`, [org.id],
     ))).rows[0].settings).toMatchObject({ tone: "premium", language: "Spanish" });
+  });
+
+  it("uses a reviewed Business Brain version in the next real Growth Partner run instructions", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const before = await withSystem((db) => buildRunInstructions(db, org.id, growthPartnerAgentId));
+    expect(before.instructions).toContain("(No confirmed Business Brain facts are available yet.)");
+
+    const draft = await saveGrowthPartnerBusinessBrainFactDraft(ctx, {
+      baseVersion: 1,
+      section: "policies",
+      key: "customerPolicies",
+      valueText: "Consultations are paid; do not offer free consultations.",
+    });
+    const beforeActivation = await withSystem((db) => buildRunInstructions(db, org.id, growthPartnerAgentId));
+    expect(beforeActivation.instructions).not.toContain("Consultations are paid");
+
+    await activateGrowthPartnerBusinessBrainVersion(ctx, { expectedCurrentVersion: 1, version: draft.version });
+    const afterActivation = await withSystem((db) => buildRunInstructions(db, org.id, growthPartnerAgentId));
+    expect(afterActivation.instructions).toContain("policies.customerPolicies: Consultations are paid; do not offer free consultations.");
+    expect(afterActivation.instructions).toContain("Active Business Brain (version 2)");
   });
 });

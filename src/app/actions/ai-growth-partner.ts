@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { draftGrowthPartnerBusinessBrainFromOnboarding, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBrainFromOnboarding, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { deleteGrowthPartnerMemory, saveGrowthPartnerMemory, updateGrowthPartnerMemory } from "@/server/ai-growth-partner/memory";
 import type { GrowthPartnerMemoryKind } from "@/lib/ai-growth-partner-memory";
 import { withSystem } from "@/server/db";
@@ -59,6 +59,20 @@ export async function saveGrowthPartnerBusinessBrainFactAction(input: {
     const result = await saveGrowthPartnerBusinessBrainFactDraft(ctx, input);
     revalidatePath("/growth-partner");
     return { ok: true as const, data: { version: result.version } };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function activateGrowthPartnerBusinessBrainVersionAction(input: {
+  expectedCurrentVersion: number | null;
+  version: number;
+}) {
+  try {
+    const ctx = await requireOrgContext();
+    const result = await activateGrowthPartnerBusinessBrainVersion(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: { version: result.version, activated: result.activated, alreadyActive: result.alreadyActive } };
   } catch (err) {
     return actionError(err);
   }

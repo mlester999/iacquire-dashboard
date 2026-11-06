@@ -24,6 +24,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHea
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
+import { BusinessBrainDraftReview } from "@/components/growth-partner/brain-draft-review";
 import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
 import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
@@ -435,6 +436,12 @@ export function GrowthPartnerControlCenter({
         />
         <div className="space-y-4">
           {draftBrain && <BrainSnapshot brain={draftBrain} title="Draft Business Brain" version={state?.draftVersion ?? null} active={false} timezone={timezone} canEdit={canConfigure} />}
+          {draftBrain && canConfigure && state?.draftVersion !== null && state?.draftVersion !== undefined && (
+            <div className="flex flex-col gap-3 rounded-xl border border-primary/15 bg-primary-soft/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-2xl text-[13px] leading-relaxed text-ink-2">Review the confirmed facts above, then apply the latest version when you are ready for the Partner to use them.</p>
+              <BusinessBrainDraftReview version={state.draftVersion} currentVersion={state.currentVersion} />
+            </div>
+          )}
           {activeBrain && <BrainSnapshot brain={activeBrain} title="Active Business Brain" version={state?.currentVersion ?? null} active timezone={timezone} canEdit={canConfigure && !draftBrain} />}
           {!hasAnyBrain && (
             <Card className="border border-line bg-surface shadow-soft">

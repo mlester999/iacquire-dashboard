@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_NAME, BUSINESS_BRAIN_SECTIONS, emptyBusinessBrain, generateBusinessBrainFromOnboarding, parseBusinessBrain, preserveClientOverrides } from "@/lib/ai-growth-partner";
 import type { StoredAnswers } from "@/lib/onboarding/types";
 import { withSystem, withUser, type Queryable } from "@/server/db";
-import { draftGrowthPartnerBusinessBrainFromOnboarding, ensureGrowthPartnerIdentity, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainDraft, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBrainFromOnboarding, ensureGrowthPartnerIdentity, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainDraft, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -284,7 +284,7 @@ describe("AI Growth Partner foundation", () => {
       updatedAt: "2026-11-04T00:00:00Z",
       clientOverride: true,
     };
-    const saved = await saveGrowthPartnerBusinessBrainDraft(ownerContext, { businessBrain: brain });
+    const saved = await saveGrowthPartnerBusinessBrainDraft(ownerContext, { businessBrain: brain, personaSettings: { tone: "warm", replyLength: "concise" } });
     expect(saved).toMatchObject({ partnerId: created.id, version: 1, status: "draft", activated: false });
     const state = await getGrowthPartnerControlState(ownerContext);
     expect(state).toMatchObject({ currentVersion: null, draftVersion: 1, draftBusinessBrain: brain });
@@ -308,12 +308,33 @@ describe("AI Growth Partner foundation", () => {
     });
     expect(editedState?.draftBusinessBrain?.sections.businessIdentity.companyName.provenance)
       .toContainEqual(expect.objectContaining({ source: "client_edit" }));
+    expect((await withSystem((db) => db.query<{ persona_settings: Record<string, unknown> }>(
+      "select persona_settings from ai_growth_partner_versions where org_id = $1 and partner_id = $2 and version = 2",
+      [serviceOrg.id, created.id],
+    ))).rows[0]?.persona_settings).toEqual({ tone: "warm", replyLength: "concise" });
     await expect(saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
       baseVersion: 1,
       section: "businessIdentity",
       key: "companyName",
       valueText: "Stale edit",
     })).rejects.toMatchObject({ code: "conflict" });
+
+    const applied = await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: null, version: 2 });
+    expect(applied).toEqual({ version: 2, previousVersion: null, activated: true, alreadyActive: false });
+    expect(await getGrowthPartnerControlState(ownerContext)).toMatchObject({
+      currentVersion: 2,
+      draftVersion: null,
+      currentBusinessBrain: { sections: { businessIdentity: { companyName: { value: "Updated Service Company" } } } },
+    });
+    expect(await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: null, version: 2 }))
+      .toEqual({ version: 2, previousVersion: 2, activated: false, alreadyActive: true });
+    await expect(activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: 2, version: 1 }))
+      .rejects.toMatchObject({ code: "conflict" });
+    const appliedAudit = (await withSystem((db) => db.query<{ action: string; metadata: Record<string, unknown> }>(
+      "select action, metadata from audit_logs where org_id = $1 and action = 'ai_growth_partner.business_brain_activated'",
+      [serviceOrg.id],
+    ))).rows[0];
+    expect(appliedAudit).toMatchObject({ action: "ai_growth_partner.business_brain_activated", metadata: { version: 2, previousVersion: null, activeVersionChanged: true } });
 
     await expect(saveGrowthPartnerBusinessBrainDraft(ctxFor(member, serviceOrg, "member"), { businessBrain: brain })).rejects.toMatchObject({ code: "forbidden" });
     await expect(ensureGrowthPartnerIdentity(ctxFor(member, serviceOrg, "member"))).rejects.toMatchObject({ code: "forbidden" });
@@ -323,6 +344,8 @@ describe("AI Growth Partner foundation", () => {
       key: "companyName",
       valueText: "Unauthorized edit",
     })).rejects.toMatchObject({ code: "forbidden" });
+    await expect(activateGrowthPartnerBusinessBrainVersion(ctxFor(member, serviceOrg, "member"), { expectedCurrentVersion: 2, version: 2 }))
+      .rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("reuses an onboarding snapshot when the preparation action is retried", async () => {

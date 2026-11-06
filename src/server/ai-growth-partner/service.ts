@@ -22,13 +22,17 @@ import { scanInstructionText } from "@/lib/instruction-risk";
 const personaSettingsSchema = z.record(z.string().min(1).max(120), z.unknown());
 const draftInputSchema = z.object({
   businessBrain: BusinessBrainSchema,
-  personaSettings: personaSettingsSchema.default({}),
+  personaSettings: personaSettingsSchema.optional(),
 }).strict();
 const factDraftInputSchema = z.object({
   baseVersion: z.number().int().positive(),
   section: z.enum(BUSINESS_BRAIN_SECTIONS),
   key: z.string().trim().min(1).max(120).refine((key) => !/[\u0000-\u001f\u007f]/.test(key) && !["__proto__", "prototype", "constructor"].includes(key)),
   valueText: z.string().max(16_000),
+}).strict();
+const activateVersionInputSchema = z.object({
+  expectedCurrentVersion: z.number().int().positive().nullable(),
+  version: z.number().int().positive(),
 }).strict();
 
 const MAX_BRAIN_BYTES = 1_048_576;
@@ -205,8 +209,8 @@ export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, r
     )).rows[0];
     if (!partner) throw new AppError("not_found", "Set up the AI Growth Partner before editing its Business Brain.");
 
-    const latest = (await db.query<{ version: number; business_brain: unknown }>(
-      `select version, business_brain from ai_growth_partner_versions
+    const latest = (await db.query<{ version: number; business_brain: unknown; persona_settings: unknown }>(
+      `select version, business_brain, persona_settings from ai_growth_partner_versions
        where org_id = $1 and partner_id = $2 order by version desc limit 1`,
       [ctx.org.orgId, partner.id],
     )).rows[0];
@@ -253,9 +257,9 @@ export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, r
     const snapshot = (await db.query<{ id: string }>(
       `insert into ai_growth_partner_versions
          (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
-       values ($1, $2, $3, $4::jsonb, '{}'::jsonb, 'client_edit', $5::jsonb, $6)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, 'client_edit', $6::jsonb, $7)
        returning id`,
-      [partner.id, ctx.org.orgId, nextVersion, JSON.stringify(brain), JSON.stringify({
+      [partner.id, ctx.org.orgId, nextVersion, JSON.stringify(brain), JSON.stringify(personaSettingsSchema.parse(latest.persona_settings ?? {})), JSON.stringify({
         submittedFrom: "partner_control_center",
         basedOnVersion: input.baseVersion,
         editedSection: input.section,
@@ -274,6 +278,60 @@ export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, r
       metadata: { version: nextVersion, basedOnVersion: input.baseVersion, section: input.section, fact: input.key, activeVersionChanged: false },
     }, db);
     return { id: snapshot.id, partnerId: partner.id, version: nextVersion, status: "draft" as const, activated: false as const };
+  });
+}
+
+/** Activates only the newest saved Business Brain draft after an owner/admin explicitly reviews it. */
+export async function activateGrowthPartnerBusinessBrainVersion(ctx: OrgContext, rawInput: unknown) {
+  if (ctx.org.kind !== "client") throw new AppError("forbidden", "The AI Growth Partner is available in client workspaces.");
+  if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only workspace owners and admins can activate a Business Brain version.");
+  const input = activateVersionInputSchema.parse(rawInput);
+
+  return withSystem(async (db) => {
+    const partner = (await db.query<{ id: string; current_version: number | null }>(
+      "select id, current_version from ai_growth_partners where org_id = $1 for update",
+      [ctx.org.orgId],
+    )).rows[0];
+    if (!partner) throw new AppError("not_found", "The AI Growth Partner is not set up for this workspace.");
+
+    const currentVersion = partner.current_version === null ? null : Number(partner.current_version);
+    if (currentVersion === input.version) {
+      return { version: input.version, previousVersion: currentVersion, activated: false, alreadyActive: true };
+    }
+    if (currentVersion !== input.expectedCurrentVersion) {
+      throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
+    }
+
+    const latest = (await db.query<{ id: string; version: number; business_brain: unknown; persona_settings: unknown }>(
+      `select id, version, business_brain, persona_settings from ai_growth_partner_versions
+       where org_id = $1 and partner_id = $2 order by version desc limit 1`,
+      [ctx.org.orgId, partner.id],
+    )).rows[0];
+    if (!latest || Number(latest.version) !== input.version || (currentVersion !== null && input.version <= currentVersion)) {
+      throw new AppError("conflict", "Only the latest saved Business Brain draft can be activated. Refresh and review the current draft.");
+    }
+    BusinessBrainSchema.parse(latest.business_brain);
+    personaSettingsSchema.parse(latest.persona_settings ?? {});
+
+    const updated = await db.query(
+      `update ai_growth_partners set current_version = $3, updated_at = now()
+       where id = $1 and org_id = $2 and current_version is not distinct from $4
+       returning id`,
+      [partner.id, ctx.org.orgId, input.version, currentVersion],
+    );
+    if (!updated.rowCount) throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
+
+    await recordAudit({
+      orgId: ctx.org.orgId,
+      actorUserId: ctx.user.id,
+      actorKind: "user",
+      action: "ai_growth_partner.business_brain_activated",
+      targetType: "ai_growth_partner_version",
+      targetId: latest.id,
+      result: "success",
+      metadata: { version: input.version, previousVersion: currentVersion, activeVersionChanged: true },
+    }, db);
+    return { version: input.version, previousVersion: currentVersion, activated: true, alreadyActive: false };
   });
 }
 
@@ -316,9 +374,7 @@ export async function saveGrowthPartnerBusinessBrainDraft(ctx: OrgContext, rawIn
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only workspace owners and admins can edit the AI Growth Partner.");
   const input = draftInputSchema.parse(rawInput);
   const brain = JSON.stringify(input.businessBrain);
-  const personaSettings = JSON.stringify(input.personaSettings);
   if (Buffer.byteLength(brain, "utf8") > MAX_BRAIN_BYTES) throw new AppError("invalid_input", "The Business Brain draft is too large to save.");
-  if (Buffer.byteLength(personaSettings, "utf8") > MAX_PERSONA_SETTINGS_BYTES) throw new AppError("invalid_input", "The partner settings draft is too large to save.");
 
   return withSystem(async (db) => {
     const partner = (await db.query<{ id: string }>(
@@ -326,6 +382,14 @@ export async function saveGrowthPartnerBusinessBrainDraft(ctx: OrgContext, rawIn
       [ctx.org.orgId],
     )).rows[0];
     if (!partner) throw new AppError("not_found", "Set up the AI Growth Partner before saving its Business Brain.");
+
+    const latest = (await db.query<{ persona_settings: unknown }>(
+      `select persona_settings from ai_growth_partner_versions
+       where org_id = $1 and partner_id = $2 order by version desc limit 1`,
+      [ctx.org.orgId, partner.id],
+    )).rows[0];
+    const personaSettings = JSON.stringify(personaSettingsSchema.parse(input.personaSettings ?? latest?.persona_settings ?? {}));
+    if (Buffer.byteLength(personaSettings, "utf8") > MAX_PERSONA_SETTINGS_BYTES) throw new AppError("invalid_input", "The partner settings draft is too large to save.");
 
     const nextVersion = Number((await db.query<{ next: number }>(
       "select coalesce(max(version), 0)::int + 1 as next from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
@@ -401,8 +465,8 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
     return { partnerId: partner.id, id: prior.id, version: Number(prior.version), factCount, activeVersionChanged, reused: true as const };
   }
 
-  const latest = (await db.query<{ business_brain: unknown }>(
-    `select business_brain from ai_growth_partner_versions
+  const latest = (await db.query<{ business_brain: unknown; persona_settings: unknown }>(
+    `select business_brain, persona_settings from ai_growth_partner_versions
      where org_id = $1 and partner_id = $2 order by version desc limit 1`,
     [ctx.org.orgId, partner.id],
   )).rows[0];
@@ -421,9 +485,9 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
   const snapshot = (await db.query<{ id: string }>(
     `insert into ai_growth_partner_versions
        (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
-     values ($1, $2, $3, $4::jsonb, '{}'::jsonb, 'onboarding', $5::jsonb, $6)
+     values ($1, $2, $3, $4::jsonb, $5::jsonb, 'onboarding', $6::jsonb, $7)
      returning id`,
-    [partner.id, ctx.org.orgId, version, JSON.stringify(brain), JSON.stringify(sourceMetadata), ctx.user.id],
+    [partner.id, ctx.org.orgId, version, JSON.stringify(brain), JSON.stringify(personaSettingsSchema.parse(latest?.persona_settings ?? {})), JSON.stringify(sourceMetadata), ctx.user.id],
   )).rows[0];
 
   const activated = partner.current_version === null
