@@ -753,18 +753,20 @@ describe("HTTP surface and the settings screen", () => {
 describe("settings screen and its emergency control", () => {
   const scope = (over: Partial<CrmScope> = {}): CrmScope => ({ base: "/crm", orgId: null, agency: false, readOnly: false, userId: null, timezone: "UTC", currency: "USD", can: {}, ...over });
 
-  it("renders each employee's tools, the honest not-live notice, the call log and the links out", async () => {
+  it("renders profile access, the runtime-verification boundary, the call log and the links out", async () => {
     const agent = await ready(a, "sales_assistant", "autonomous");
     await tokenFor(a, agent);
     const overview = await getAgentToolsOverview(a.actor("owner"));
     const html = renderToStaticMarkup(React.createElement(AiToolsScreen, { scope: scope(), overview }));
       expect(html).toContain("AI Tools");
-    expect(html).toContain("Not in use yet");
+    expect(html).toContain("CRM access by AI identity");
+    expect(html).toContain("Live access is not confirmed here");
+    expect(html).not.toContain("Live AI runs stay switched off");
     expect(html).toContain("Sales Assistant");
     expect(html).toContain("Always asks");
     expect(html).toContain("Asks first when it changes more than one contact.");
     expect(html).toContain('href="/approvals"');
-    expect(html).toContain('href="/employees"');
+    expect(html).toContain('href="/growth-partner"');
     expect(html).toContain('href="/employees/sales-assistant"');
     expect(html).toContain('aria-label="Stop tool access for Sales Assistant"');
     expect(html).toContain("Waiting for approval");
@@ -779,6 +781,17 @@ describe("settings screen and its emergency control", () => {
     expect(paused).toContain("Customer messaging paused");
     expect(paused).not.toContain("Outbound actions paused");
     expect(paused).toContain("Automation is on hold.");
+  });
+
+  it("names the unified runtime consistently and links its settings to the Partner Control Center", async () => {
+    await ready(a, "growth_partner");
+    const overview = await getAgentToolsOverview(a.actor("owner"));
+    const html = renderToStaticMarkup(React.createElement(AiToolsScreen, { scope: scope(), overview }));
+
+    expect(html).toContain("AI Growth Partner</h4>");
+    expect(html).toContain("Partner settings");
+    expect(html).toContain('href="/growth-partner"');
+    expect(html).not.toContain("What each employee can do");
   });
 
   it("the stop action needs the pause permission and ends every live credential", async () => {

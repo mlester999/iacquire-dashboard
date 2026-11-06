@@ -8,7 +8,7 @@ import { Badge, Card, EmptyState } from "@/components/ui/primitives";
 import { AgentAvatar } from "@/components/brand";
 import { ConfirmDialog, PageTitle, useCrmAction } from "@/components/crm/ui";
 import { revokeAgentToolAccessAction } from "@/app/actions/crm-agent-tools";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { RelativeTime } from "@/components/crm/relative-time";
 import type { AgentToolsOverview, EmployeeToolAccess, ToolBehaviour, ToolCallEntry } from "@/server/crm/agent-tools/overview";
@@ -17,7 +17,7 @@ import type { CrmScope } from "@/server/crm/page";
 type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "violet" | "outline";
 
 const MODE: Record<string, { label: string; tone: Tone; help: string }> = {
-  autonomous: { label: "Autonomous", tone: "success", help: "Makes routine CRM changes itself. High-impact changes still wait for a person." },
+  autonomous: { label: "Autonomous", tone: "success", help: "Runs permitted routine CRM changes. High-impact changes still wait for a person." },
   approval_required: { label: "Asks before changes", tone: "primary", help: "Looks things up freely. Every change waits in the Approval Center." },
   paused: { label: "Paused", tone: "warning", help: "Every tool call is refused until it is resumed." },
 };
@@ -27,7 +27,7 @@ const BEHAVIOUR: Record<Exclude<ToolBehaviour, "not_for_role">, { label: string;
   asks_first: { label: "Asks first", tone: "primary", description: "Waits for a person's approval" },
   always_asks: { label: "Always asks", tone: "warning", description: "Always waits for a person, whatever the mode" },
   proposes: { label: "Proposes", tone: "violet", description: "Prepares a draft or request; your rules decide" },
-  stopped: { label: "Stopped", tone: "neutral", description: "Refused while the employee is paused or not included" },
+  stopped: { label: "Stopped", tone: "neutral", description: "Refused while the profile is paused or not included" },
 };
 
 const OUTCOME: Record<ToolCallEntry["outcome"], { label: string; tone: Tone }> = {
@@ -50,20 +50,26 @@ const KIND_GROUPS = [
 export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: AgentToolsOverview }) {
   const { employees, calls, counts, pauses, liveRunsVerified } = overview;
   const canStop = overview.canStop && !scope.readOnly && !scope.agency;
+  const controlHref = scope.agency
+    ? scope.orgId ? `/admin/clients/${scope.orgId}?tab=workforce` : "/admin/employees"
+    : "/growth-partner";
+  const controlLabel = scope.agency
+    ? scope.orgId ? "Client partner status" : "Internal profile controls"
+    : "Partner Control Center";
   return (
     <div className="space-y-6">
       <PageTitle
         title="AI Tools"
-        description="The CRM tools available to your AI profiles and every call they make. Each call is checked against the profile's permissions, operating mode and workspace pauses. Anything that would reach a customer, close a deal or change several records at once always waits for a person."
-        actions={<ButtonLink href="/approvals" variant="secondary" size="sm"><Clock3 className="size-4" aria-hidden />Approval Center</ButtonLink>}
+        description="Review CRM access and recorded actions for your AI Growth Partner and any previous profiles. Every call is checked against the signed-in person's access and workspace rules. Changes that need approval wait for a person."
+        actions={<div className="flex flex-wrap gap-2"><ButtonLink href={controlHref} variant="secondary" size="sm"><Sparkles className="size-4" aria-hidden />{controlLabel}</ButtonLink><ButtonLink href="/approvals" variant="secondary" size="sm"><Clock3 className="size-4" aria-hidden />Approval Center</ButtonLink></div>}
       />
 
       {!liveRunsVerified && (
         <Card className="flex items-start gap-3 border-primary/25 bg-primary-soft/40 p-4">
           <Info className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
           <div className="text-[14px] leading-relaxed text-ink-2">
-            <p className="font-medium text-ink">Not in use yet</p>
-            <p className="mt-0.5">Live AI runs stay switched off until iAcquire verifies the complete tool permissions for your workspace, so these tools aren&apos;t being called yet. The rules on this page are already enforced for every call once they are.</p>
+            <p className="font-medium text-ink">Live access is not confirmed here</p>
+            <p className="mt-0.5">This page shows configured access and recorded activity; it does not prove that the current runtime can use these tools. Review runtime status in the {controlLabel}. Every call is checked again against the signed-in person&apos;s permissions and required approvals.</p>
           </div>
         </Card>
       )}
@@ -91,7 +97,7 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight text-ink">Emergency stop</h3>
               <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">
-                Pausing an employee refuses every CRM tool call from it at once. <span className="text-ink-2">Stop tool access</span> below also ends the credentials it holds right now.
+                Pausing a profile refuses its CRM tool calls. <span className="text-ink-2">Stop tool access</span> below also ends the credentials it holds right now.
                 The messaging and outbound pauses stop messages to customers (an approved draft is held), not CRM lookups or record changes.
               </p>
               {(pauses.messaging || pauses.outbound) && (
@@ -103,25 +109,25 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
               )}
             </div>
           </div>
-          <ButtonLink href="/employees" variant="secondary" size="sm" className="shrink-0"><ShieldCheck className="size-4" aria-hidden />Safety controls</ButtonLink>
+          <ButtonLink href={controlHref} variant="secondary" size="sm" className="shrink-0"><ShieldCheck className="size-4" aria-hidden />{scope.agency ? "Profile controls" : "Partner controls"}</ButtonLink>
         </div>
       </Card>
 
       <section aria-labelledby="ai-tools-employees">
-        <h3 id="ai-tools-employees" className="mb-3 text-[15px] font-semibold tracking-tight text-ink">What each employee can do</h3>
+        <h3 id="ai-tools-employees" className="mb-3 text-[15px] font-semibold tracking-tight text-ink">CRM access by AI identity</h3>
         {employees.length ? (
           <div className="grid gap-4 lg:grid-cols-2">
             {employees.map((e) => <EmployeeCard key={e.id} employee={e} canStop={canStop} />)}
           </div>
         ) : (
-          <Card><EmptyState icon={<Sparkles className="size-5" />} title="No AI profiles yet" description="Your AI Growth Partner appears here once your workspace is set up." /></Card>
+          <Card><EmptyState icon={<Sparkles className="size-5" />} title="No CRM access records yet" description="Your AI Growth Partner's access appears here after its runtime and allowed actions are configured." /></Card>
         )}
       </section>
 
       <section aria-labelledby="ai-tools-calls">
         <h3 id="ai-tools-calls" className="mb-3 text-[15px] font-semibold tracking-tight text-ink">Recent tool calls</h3>
         {calls.length ? <CallList calls={calls} timezone={scope.timezone} /> : (
-          <Card><EmptyState compact icon={<Wrench className="size-5" />} title="No tool calls yet" description="Every CRM tool call an AI profile makes is listed here with what happened, including refused ones." /></Card>
+          <Card><EmptyState compact icon={<Wrench className="size-5" />} title="No recorded tool calls yet" description="CRM tool calls appear here after the system records an outcome, including refused calls." /></Card>
         )}
       </section>
     </div>
@@ -148,13 +154,15 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
   const { run, busy } = useCrmAction();
   const [confirm, setConfirm] = React.useState(false);
   const meta = isAgentRoleKey(e.roleKey) ? AGENT_BY_KEY[e.roleKey] : null;
-  const mode = !e.enabled ? { label: "Not included", tone: "neutral" as Tone, help: "This employee isn't part of your workspace, so it can't use any tool." } : MODE[e.mode] ?? MODE.approval_required;
+  const isGrowthPartner = e.roleKey === AI_GROWTH_PARTNER_ROLE_KEY;
+  const displayName = isGrowthPartner ? "AI Growth Partner" : e.name;
+  const mode = !e.enabled ? { label: "Not included", tone: "neutral" as Tone, help: "This profile isn't part of your workspace, so it can't use any tool." } : MODE[e.mode] ?? MODE.approval_required;
   const available = e.tools.filter((t) => t.behaviour !== "not_for_role");
   const unavailable = e.tools.length - available.length;
   const headingId = `employee-${e.id}`;
 
   async function stop() {
-    const res = await run(`stop:${e.id}`, () => revokeAgentToolAccessAction(null, e.id), (d) => (d.revoked ? `Ended ${d.revoked} tool ${d.revoked === 1 ? "credential" : "credentials"} for ${e.name}.` : `${e.name} had no live tool credentials.`));
+    const res = await run(`stop:${e.id}`, () => revokeAgentToolAccessAction(null, e.id), (d) => (d.revoked ? `Ended ${d.revoked} tool ${d.revoked === 1 ? "credential" : "credentials"} for ${displayName}.` : `${displayName} had no live tool credentials.`));
     if (res) setConfirm(false);
   }
 
@@ -164,11 +172,11 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
         {meta ? <AgentAvatar role={meta} size="md" /> : <span className="flex size-10 items-center justify-center rounded-xl bg-surface-2"><Sparkles className="size-4" aria-hidden /></span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h4 id={headingId} className="truncate text-[14px] font-semibold text-ink">{e.name}</h4>
+            <h4 id={headingId} className="truncate text-[14px] font-semibold text-ink">{displayName}</h4>
             <Badge tone={mode.tone}>{mode.label}</Badge>
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{mode.help}</p>
-          {!e.connected && e.enabled && <p className="mt-1 text-[12px] text-muted">Not connected to its AI service yet.</p>}
+          {!e.connected && e.enabled && <p className="mt-1 text-[12px] text-muted">The AI runtime is not connected yet.</p>}
         </div>
       </div>
 
@@ -209,9 +217,11 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
           {e.liveTokens ? `${e.liveTokens} live tool ${e.liveTokens === 1 ? "credential" : "credentials"}` : "No live tool credentials"}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {meta && <ButtonLink href={`/employees/${meta.slug}`} variant="ghost" size="sm"><PenLine className="size-3.5" aria-hidden />Mode<span className="sr-only"> for {e.name}</span></ButtonLink>}
+          {isGrowthPartner
+            ? <ButtonLink href="/growth-partner" variant="ghost" size="sm"><PenLine className="size-3.5" aria-hidden />Partner settings</ButtonLink>
+            : meta && <ButtonLink href={`/employees/${meta.slug}`} variant="ghost" size="sm"><PenLine className="size-3.5" aria-hidden />Profile settings<span className="sr-only"> for {displayName}</span></ButtonLink>}
           {canStop && e.liveTokens > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setConfirm(true)} aria-label={`Stop tool access for ${e.name}`}>
+            <Button variant="outline" size="sm" onClick={() => setConfirm(true)} aria-label={`Stop tool access for ${displayName}`}>
               <Ban className="size-3.5" aria-hidden />Stop tool access
             </Button>
           )}
@@ -221,7 +231,7 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title={`Stop ${e.name}'s tool access?`}
+        title={`Stop ${displayName}'s tool access?`}
         description="Every live CRM tool credential it holds ends now, so its current work can't read or change your CRM. Its next run gets a new credential unless you also pause it."
         confirmLabel="Stop tool access"
         danger
@@ -236,7 +246,7 @@ function CallList({ calls, timezone }: { calls: ToolCallEntry[]; timezone: strin
   return (
     <Card className="overflow-hidden p-0">
       <div className="hidden grid-cols-[9rem_10rem_minmax(0,1fr)_11rem] gap-3 border-b border-line bg-surface-2/60 px-4 py-2.5 text-[12px] font-medium text-muted md:grid" aria-hidden>
-        <span>When</span><span>Employee</span><span>Tool and details</span><span className="text-right">Outcome</span>
+        <span>When</span><span>AI identity</span><span>Tool and details</span><span className="text-right">Outcome</span>
       </div>
       <ul className="divide-y divide-line">
         {calls.map((c) => {
@@ -244,7 +254,7 @@ function CallList({ calls, timezone }: { calls: ToolCallEntry[]; timezone: strin
           return (
             <li key={c.id} className="grid gap-1.5 px-4 py-3 text-[14px] md:grid-cols-[9rem_10rem_minmax(0,1fr)_11rem] md:items-center md:gap-3">
               <RelativeTime iso={c.at} timezone={timezone} className="text-[13px] text-muted" />
-              <span className="truncate font-medium text-ink">{c.employee ?? "AI profile"}</span>
+              <span className="truncate font-medium text-ink">{c.employee === "AI Growth Partner" ? "AI Growth Partner" : c.employee ?? "AI identity"}</span>
               <div className="min-w-0">
                 <p className="text-ink">{c.toolLabel}{c.approved && <span className="text-muted"> · approved by a person</span>}</p>
                 {c.detail && <p className="line-clamp-2 text-[13px] text-muted">{c.detail}</p>}
