@@ -112,17 +112,17 @@ export type BusinessBrain = z.infer<typeof BusinessBrainSchema>;
 export type BusinessBrainFact = z.infer<typeof BusinessBrainFactSchema>;
 
 const REQUIRED_UNKNOWN_FACTS: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], readonly string[]> = {
-  businessIdentity: ["companyName", "industry", "businessModel", "website", "locations", "serviceAreas", "background", "positioning", "differentiators"],
-  productsServicesOffers: ["products", "services", "approvedDescriptions", "pricing", "restrictions", "guarantees", "promotionRules", "consultationOffers", "conversionDestinations"],
-  idealCustomers: ["targetTypes", "industries", "companySize", "locations", "decisionMakerRoles", "needs", "painPoints", "qualification", "disqualifiers", "excludedProspects"],
-  acquisitionStrategy: ["bestFitProspects", "buyingSignals", "discoverySources", "qualificationApproach", "salesFunnel", "outreachMethods", "followUpStrategy", "conversionGoals", "bookingStrategy", "leadPriorities"],
-  salesKnowledge: ["talkingPoints", "valueProposition", "commonQuestions", "verifiedDifferentiators", "objectionHandling", "proposalRules", "escalationRequirements", "communicationBoundaries"],
+  businessIdentity: ["companyName", "industry", "businessModel", "localBusinessType", "website", "locations", "serviceAreas", "background", "positioning", "differentiators"],
+  productsServicesOffers: ["products", "services", "industrySpecificServices", "engagementTypes", "approvedDescriptions", "pricing", "pricingPolicy", "discountRules", "restrictions", "guarantees", "promotionRules", "consultationOffers", "conversionDestinations"],
+  idealCustomers: ["targetTypes", "clientSegments", "propertyTypes", "industries", "companySize", "locations", "decisionMakerRoles", "needs", "painPoints", "qualification", "minimumBudget", "disqualifiers", "excludedProspects"],
+  acquisitionStrategy: ["bestFitProspects", "buyingSignals", "discoverySources", "qualificationApproach", "salesFunnel", "salesModel", "outreachMethods", "followUpStrategy", "conversionGoals", "bookingStrategy", "leadPriorities", "otherPriorities"],
+  salesKnowledge: ["talkingPoints", "valueProposition", "commonQuestions", "discoveryQuestions", "verifiedDifferentiators", "objectionHandling", "proposalRules", "escalationRequirements", "communicationBoundaries"],
   brandCommunication: ["tone", "language", "formality", "style", "responseLength", "terminology", "brandVoice", "topicsToAvoid"],
-  businessOperations: ["operatingHours", "timeZone", "teamResponsibilities", "crmProcesses", "leadRouting", "pipelineDefinitions", "appointmentProcedures", "supportProcedures", "internalHandoffs", "escalationContacts"],
-  policies: ["customerPolicies", "cancellation", "rescheduling", "refunds", "privacy", "legalBoundaries", "authorizedPromises", "requiredApprovals"],
+  businessOperations: ["operatingHours", "timeZone", "teamResponsibilities", "crmProcesses", "leadRouting", "pipelineDefinitions", "appointmentProcedures", "appointmentTypes", "appointmentAvailability", "appointmentHost", "busyCalendar", "bookingNotice", "bookingBuffer", "bookingConfirmation", "appointmentChanges", "videoAppointmentRules", "videoMeetingLink", "propertyViewingProcedures", "emergencyProcedures", "supportProcedures", "internalHandoffs", "escalationContacts"],
+  policies: ["customerPolicies", "cancellation", "rescheduling", "refunds", "privacy", "legalBoundaries", "authorizedPromises", "prohibitedPromises", "emergencyCoverage", "insuranceRequirements", "requiredApprovals", "handoffRules"],
   employeeGoals: ["acquisitionTargets", "qualifiedLeadTargets", "bookingTargets", "conversionObjectives", "reportingCadence", "priorities", "constraints"],
-  productOperations: ["crmUsage", "calendarUsage", "inboxUsage", "campaignRules", "automationEntitlements", "workBoardUsage", "jobScheduling", "reporting", "approvalProcess"],
-  employeeBehavior: ["personality", "reliability", "initiative", "planning", "escalationBehavior", "reportingPreferences", "workingPriorities", "operatingLimits"],
+  productOperations: ["crmUsage", "calendarUsage", "inboxUsage", "enabledChannels", "smsSender", "whatsappNumber", "emailSender", "responseWindow", "websitePlan", "campaignRules", "automationEntitlements", "workBoardUsage", "jobScheduling", "reporting", "approvalProcess"],
+  employeeBehavior: ["personality", "reliability", "initiative", "planning", "assistantBehavior", "companyOperatingRules", "escalationBehavior", "reportingPreferences", "workingPriorities", "operatingLimits"],
 };
 
 function unknownFact(): BusinessBrainFact {
@@ -165,48 +165,84 @@ export function preserveClientOverrides(existingInput: unknown, generatedInput: 
   return parseBusinessBrain({ ...generated, sections });
 }
 
-function brainSectionForQuestion(id: string): (typeof BUSINESS_BRAIN_SECTIONS)[number] {
-  if (["a.target_customers", "b.ideal_customer", "b.qualification", "b.re_property_types", "b.re_buyers", "b.hc_patient_types"].includes(id)) return "idealCustomers";
-  if (["b.services", "e.products", "e.faqs", "b.hc_services", "b.hs_services"].includes(id)) return "productsServicesOffers";
-  if (["b.goals", "b.goal_other", "b.lead_target"].includes(id)) return "employeeGoals";
-  if (["a.hours", "a.timezone", "a.location", "a.contact_email", "a.contact_phone", "d.team", "d.appt_types", "d.appt_availability", "d.appt_host", "d.appt_busy_calendar", "d.appt_notice", "d.appt_buffer", "d.appt_confirmation", "d.appt_changes", "d.appt_video", "d.appt_video_link"].includes(id)) return "businessOperations";
-  if (["c.never_promise", "c.sensitive_topics", "c.human_escalation", "d.handoff_rules", "d.appt_cancellation", "d.pricing_policy", "d.pricing_info", "d.discount_rules", "e.policies", "b.hs_emergency", "d.hc_emergency"].includes(id)) return "policies";
-  if (["c.tone", "c.reply_length", "c.language", "c.company_rules"].includes(id)) return "brandCommunication";
-  if (["d.sales_process", "d.handoff_requirements", "d.hs_quote", "d.ag_discovery", "d.hc_insurance"].includes(id)) return "salesKnowledge";
-  if (["a.hours", "a.timezone", "e.support_info"].includes(id)) return "businessOperations";
-  if (["c.channels", "c.sms_sender", "c.whatsapp_number", "c.email_sender", "c.response_hours", "c.ai_behavior", "e.documents"].includes(id)) return "productOperations";
-  if (["d.followup", "b.lead_sources", "b.sales_model", "b.appointments", "b.appointment_goal"].includes(id)) return "acquisitionStrategy";
-  if (id.startsWith("a.")) return "businessIdentity";
-  if (id.startsWith("b.")) return "acquisitionStrategy";
-  if (id.startsWith("c.")) return "employeeBehavior";
-  if (id.startsWith("d.")) return "businessOperations";
-  if (id.startsWith("e.")) return "businessIdentity";
-  return "employeeBehavior";
-}
-
 const CANONICAL_BRAIN_FIELDS: Record<string, { section: (typeof BUSINESS_BRAIN_SECTIONS)[number]; key: string }> = {
   "a.business_name": { section: "businessIdentity", key: "companyName" },
   "a.industry": { section: "businessIdentity", key: "industry" },
+  "a.local_kind": { section: "businessIdentity", key: "localBusinessType" },
   "a.business_model": { section: "businessIdentity", key: "businessModel" },
   "a.website": { section: "businessIdentity", key: "website" },
   "a.location": { section: "businessIdentity", key: "locations" },
   "a.territories": { section: "businessIdentity", key: "serviceAreas" },
+  "a.timezone": { section: "businessOperations", key: "timeZone" },
+  "a.hours": { section: "businessOperations", key: "operatingHours" },
   "a.description": { section: "businessIdentity", key: "background" },
   "a.target_customers": { section: "idealCustomers", key: "targetTypes" },
+  "b.goals": { section: "employeeGoals", key: "priorities" },
+  "b.goal_other": { section: "acquisitionStrategy", key: "otherPriorities" },
+  "b.lead_target": { section: "employeeGoals", key: "acquisitionTargets" },
+  "b.ideal_customer": { section: "idealCustomers", key: "needs" },
+  "b.lead_sources": { section: "acquisitionStrategy", key: "discoverySources" },
+  "b.sales_model": { section: "acquisitionStrategy", key: "salesModel" },
+  "b.appointments": { section: "productOperations", key: "calendarUsage" },
+  "b.appointment_goal": { section: "acquisitionStrategy", key: "bookingStrategy" },
+  "b.re_property_types": { section: "idealCustomers", key: "propertyTypes" },
+  "b.re_buyers": { section: "idealCustomers", key: "decisionMakerRoles" },
+  "b.hc_services": { section: "productsServicesOffers", key: "industrySpecificServices" },
+  "b.hs_emergency": { section: "policies", key: "emergencyCoverage" },
+  "b.ag_target_clients": { section: "idealCustomers", key: "clientSegments" },
+  "b.ag_min_budget": { section: "idealCustomers", key: "minimumBudget" },
+  "b.pr_engagements": { section: "productsServicesOffers", key: "engagementTypes" },
   "b.services": { section: "productsServicesOffers", key: "services" },
   "b.qualification": { section: "idealCustomers", key: "qualification" },
   "c.tone": { section: "brandCommunication", key: "tone" },
   "c.language": { section: "brandCommunication", key: "language" },
   "c.reply_length": { section: "brandCommunication", key: "responseLength" },
+  "c.channels": { section: "productOperations", key: "enabledChannels" },
+  "c.sms_sender": { section: "productOperations", key: "smsSender" },
+  "c.whatsapp_number": { section: "productOperations", key: "whatsappNumber" },
+  "c.email_sender": { section: "productOperations", key: "emailSender" },
+  "c.response_hours": { section: "productOperations", key: "responseWindow" },
+  "c.ai_behavior": { section: "employeeBehavior", key: "assistantBehavior" },
+  "c.sensitive_topics": { section: "salesKnowledge", key: "communicationBoundaries" },
+  "c.never_promise": { section: "policies", key: "prohibitedPromises" },
+  "c.human_escalation": { section: "salesKnowledge", key: "escalationRequirements" },
+  "c.company_rules": { section: "employeeBehavior", key: "companyOperatingRules" },
+  "d.team": { section: "businessOperations", key: "teamResponsibilities" },
+  "d.appt_types": { section: "businessOperations", key: "appointmentTypes" },
+  "d.appt_availability": { section: "businessOperations", key: "appointmentAvailability" },
+  "d.appt_host": { section: "businessOperations", key: "appointmentHost" },
+  "d.appt_busy_calendar": { section: "businessOperations", key: "busyCalendar" },
+  "d.appt_notice": { section: "businessOperations", key: "bookingNotice" },
+  "d.appt_buffer": { section: "businessOperations", key: "bookingBuffer" },
+  "d.appt_confirmation": { section: "businessOperations", key: "bookingConfirmation" },
+  "d.appt_changes": { section: "businessOperations", key: "appointmentChanges" },
+  "d.appt_video": { section: "businessOperations", key: "videoAppointmentRules" },
+  "d.appt_video_link": { section: "businessOperations", key: "videoMeetingLink" },
+  "d.appt_cancellation": { section: "policies", key: "cancellation" },
+  "d.re_viewings": { section: "businessOperations", key: "propertyViewingProcedures" },
+  "d.hc_insurance": { section: "policies", key: "insuranceRequirements" },
+  "d.hc_emergency": { section: "businessOperations", key: "emergencyProcedures" },
+  "d.hs_quote": { section: "salesKnowledge", key: "proposalRules" },
+  "d.ag_discovery": { section: "salesKnowledge", key: "discoveryQuestions" },
+  "d.sales_process": { section: "acquisitionStrategy", key: "salesFunnel" },
+  "d.handoff_requirements": { section: "businessOperations", key: "internalHandoffs" },
+  "d.followup": { section: "acquisitionStrategy", key: "followUpStrategy" },
+  "d.pricing_policy": { section: "productsServicesOffers", key: "pricingPolicy" },
+  "d.pricing_info": { section: "productsServicesOffers", key: "pricing" },
+  "d.discount_rules": { section: "productsServicesOffers", key: "discountRules" },
+  "d.handoff_rules": { section: "policies", key: "handoffRules" },
   "e.products": { section: "productsServicesOffers", key: "products" },
   "e.faqs": { section: "salesKnowledge", key: "commonQuestions" },
   "e.policies": { section: "policies", key: "customerPolicies" },
+  "e.support_info": { section: "businessOperations", key: "supportProcedures" },
+  "b.website_need": { section: "productOperations", key: "websitePlan" },
 };
 
 /**
  * Builds a structured starting Business Brain from saved questionnaire answers only. Unconfirmed
- * suggestions remain marked as drafts, skipped and unknown question IDs are ignored, and no fact
- * is inferred from missing data. The caller supplies the existing onboarding answer ledger.
+ * suggestions remain marked as drafts, skipped and unmapped questions are ignored, and no fact
+ * is inferred from missing data. File references and presentation assets remain in their own
+ * subsystems instead of becoming employee instructions. The caller supplies the answer ledger.
  */
 export function generateBusinessBrainFromOnboarding(storedAnswers: StoredAnswers, generatedAt = new Date()): BusinessBrain {
   const brain = emptyBusinessBrain();
@@ -222,8 +258,8 @@ export function generateBusinessBrainFromOnboarding(storedAnswers: StoredAnswers
       : answer.source === "user" || !answer.needsConfirmation ? "client_confirmed"
         : "draft_suggestion";
     const canonical = CANONICAL_BRAIN_FIELDS[questionId];
-    const section = canonical?.section ?? brainSectionForQuestion(questionId);
-    const key = canonical?.key ?? questionId;
+    if (!canonical) continue;
+    const { section, key } = canonical;
     brain.sections[section][key] = {
       value: answer.value,
       state,

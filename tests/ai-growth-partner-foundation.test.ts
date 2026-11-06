@@ -110,6 +110,39 @@ describe("AI Growth Partner foundation", () => {
     expect(brain.sections.productsServicesOffers.pricing).toMatchObject({ value: null, state: "unknown" });
   });
 
+  it("maps submitted onboarding into named Brain facts and excludes upload references", () => {
+    const at = "2026-11-05T12:00:00.000Z";
+    const userAnswer = (value: StoredAnswers[string]["value"]) => ({
+      value,
+      skipped: false,
+      source: "user" as const,
+      needsConfirmation: false,
+      updatedAt: at,
+    });
+    const brain = generateBusinessBrainFromOnboarding({
+      "a.timezone": userAnswer("America/New_York"),
+      "a.hours": userAnswer({ monday: [{ start: "09:00", end: "17:00" }] }),
+      "b.goals": userAnswer(["qualified_leads"]),
+      "c.never_promise": userAnswer("Never guarantee insurance reimbursement."),
+      "d.appt_availability": userAnswer({ monday: [{ start: "10:00", end: "16:00" }] }),
+      "d.pricing_info": userAnswer("Inspections start at $150."),
+      "d.handoff_requirements": userAnswer("Route urgent roof damage to the owner."),
+      "e.documents": userAnswer(["upload-123"]),
+      "e.logo": userAnswer(["asset-456"]),
+    }, new Date(at));
+
+    expect(brain.sections.businessOperations.timeZone).toMatchObject({ value: "America/New_York", state: "client_confirmed", provenance: [{ sourceId: "a.timezone" }] });
+    expect(brain.sections.businessOperations.operatingHours.value).toEqual({ monday: [{ start: "09:00", end: "17:00" }] });
+    expect(brain.sections.businessOperations.appointmentAvailability.value).toEqual({ monday: [{ start: "10:00", end: "16:00" }] });
+    expect(brain.sections.businessOperations.internalHandoffs.value).toBe("Route urgent roof damage to the owner.");
+    expect(brain.sections.employeeGoals.priorities.value).toEqual(["qualified_leads"]);
+    expect(brain.sections.policies.prohibitedPromises.value).toBe("Never guarantee insurance reimbursement.");
+    expect(brain.sections.productsServicesOffers.pricing.value).toBe("Inspections start at $150.");
+    expect(Object.values(brain.sections).flatMap((section) => Object.keys(section))).not.toContain("e.documents");
+    expect(Object.values(brain.sections).flatMap((section) => Object.keys(section))).not.toContain("e.logo");
+    expect(brain.sections.businessIdentity.website.state).toBe("unknown");
+  });
+
   it("enforces a single logical partner per tenant and preserves independent role records", async () => {
     const partner = await withSystem(async (db) => {
       const inserted = (await db.query<{ id: string }>(

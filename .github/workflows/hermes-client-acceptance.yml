@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           [[ "$RUNNER_OS" == Linux ]]
           [[ "$(lsb_release -rs)" == "24.04" ]]
-          [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]
+          [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
           [[ "$GITHUB_EVENT_NAME" == push ]]
           docker buildx inspect --bootstrap >/dev/null
           docker compose version >/dev/null
