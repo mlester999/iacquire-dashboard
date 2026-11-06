@@ -39,7 +39,7 @@ import { setupStatusCopy } from "@/lib/billing-clearance";
 import type { AgencyPaymentView } from "@/server/billing/payments-view";
 import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
-import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
+import { AGENT_BY_KEY, workforceIdentityLabel } from "@/lib/agents";
 import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
 
 type Detail = TenantDetail;
@@ -118,8 +118,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
   const { run, pending } = useAction();
   const [reason, setReason] = React.useState("");
   const [confirm, setConfirm] = React.useState(false);
-  const online = data.agents.filter((a) => a.enabled && a.status === "online").length;
-  const enabled = data.agents.filter((a) => a.enabled).length;
+  const partnerOnline = data.growthPartner?.enabled === true && (data.growthPartner.runtime_status === "online" || data.growthPartner.runtime_status === "busy");
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2 overflow-hidden">
@@ -133,7 +132,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
           {[
             ["Owner accepted invitation", data.members.some((m) => m.role === "owner")],
             ["Onboarding completed", Boolean(data.org.onboarding_completed_at)],
-            [`Employees online (${online}/${enabled})`, enabled > 0 && online === enabled],
+            ["AI Growth Partner runtime online", partnerOnline],
             ["CRM location verified", data.ghl?.status === "connected"],
             ["Setup fee paid or waived", ["paid", "waived"].includes(data.billing?.setup_payment_status ?? "")],
           ].map(([label, done]) => (
@@ -185,7 +184,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
             <ul className="divide-y divide-line">
               {data.failedRuns.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
-                  <span className="font-medium">{AGENT_BY_KEY[r.agent_role].shortName}</span>
+                  <span className="font-medium">{workforceIdentityLabel(r.agent_role)}</span>
                   <span className="min-w-0 flex-1 truncate text-muted">{r.error_message ?? r.error_code}</span>
                   <span className="text-[12px] text-faint">{r.finished_at ? relativeTime(r.finished_at) : ""}</span>
                 </li>
@@ -260,11 +259,13 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
       <Card className="border-primary/20 bg-primary-soft/30">
         <CardContent className="pt-5 text-[14px] leading-relaxed text-primary-ink">
           <details><summary className="flex cursor-pointer items-center gap-2 font-medium"><ShieldAlert className="size-4 shrink-0" />Dedicated identities and restricted tool access<ChevronDown className="ml-auto size-3.5"/></summary><p className="mt-3">
-            Each employee needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
-            local terminal backend, so the portal only marks an employee online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
+            The AI Growth Partner is the current client identity. Previous role profiles are retained for history and staged migration. Each connected profile needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
+            local terminal backend, so a profile is only marked online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
           </p></details>
         </CardContent>
       </Card>
+      <section className="space-y-3" aria-label="Previous role profiles">
+        <div><h3 className="text-[15px] font-semibold text-ink">Previous role profiles</h3><p className="mt-1 text-[13px] text-muted">Saved role settings, credentials, run history and profile controls remain available for review. New client work belongs to the AI Growth Partner.</p></div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data.agents.map((a) => {
           const meta = AGENT_BY_KEY[a.role_key];
@@ -275,13 +276,13 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                 <div className="flex items-center gap-3">
                   <AgentAvatar role={meta} size="lg" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold" title={agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}>{agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}</p>
+                    <p className="truncate text-[14px] font-semibold" title={workforceIdentityLabel(a.role_key, a.display_name)}>{workforceIdentityLabel(a.role_key, a.display_name)}</p>
                     <AgentStatusBadge status={a.enabled ? a.status : "disabled"} />
                   </div>
                   {superAdmin && (
                     <Switch
                       checked={a.enabled}
-                      aria-label={`${a.enabled ? "Disable" : "Enable"} ${meta.shortName}`}
+                      aria-label={`${a.enabled ? "Disable" : "Enable"} ${workforceIdentityLabel(a.role_key, a.display_name)}`}
                       onCheckedChange={(v) => setPlanChange({ agent: a, enabled: v })}
                     />
                   )}
@@ -346,6 +347,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
           );
         })}
       </div>
+      </section>
 
       <Card>
         <CardHeader>
@@ -361,7 +363,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
             <ul className="divide-y divide-line">
               {data.provisioning.map((j) => (
                 <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[14px]">
-                  <span className="font-medium">{AGENT_BY_KEY[j.agent_role].shortName}</span>
+                  <span className="font-medium">{workforceIdentityLabel(j.agent_role)}</span>
                   {j.kind === "sync" && <Badge tone="neutral">Configuration sync{j.config_version ? " v" + j.config_version : ""}</Badge>}
                   <Badge tone={j.status === "succeeded" ? "success" : j.status === "failed" ? "danger" : j.status === "requested" ? "warning" : "primary"}>{sentenceCase(j.status)}</Badge>
                   <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}{j.attempt_count > 0 ? ` · Attempt ${j.attempt_count}/3` : ""}</span>
@@ -404,29 +406,29 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   );
 }
 
-/** What a plan change did, in words that do not claim more than happened: a queued request is not a working employee. */
+/** What a plan change did, in words that do not claim more than happened: a queued request is not a connected profile. */
 function planChangeSummary(d: { configuration: string; provisioning: string; syncQueued: boolean; cancelledJobs: number; runningJobs: number } | null | undefined, enabled: boolean): string {
-  if (!d) return enabled ? "Employee enabled" : "Employee disabled";
+  if (!d) return enabled ? "Profile enabled" : "Profile disabled";
   if (!enabled) {
     const stopped = d.cancelledJobs ? `${d.cancelledJobs} setup request${d.cancelledJobs === 1 ? "" : "s"} cancelled` : "No setup request was waiting";
-    return `Employee removed from the plan. ${stopped}${d.runningJobs ? `; ${d.runningJobs} already started and will finish first` : ""}.`;
+    return `Previous profile removed from the plan. ${stopped}${d.runningJobs ? `; ${d.runningJobs} already started and will finish first` : ""}.`;
   }
   const config = d.configuration === "built" ? "Configured from the client's confirmed answers." : d.configuration === "held" ? "Its configuration is waiting for review." : d.configuration === "waiting_for_client" ? "Not configured yet: the client has company changes they have not approved." : d.configuration === "not_needed" ? "The client has not finished the questionnaire, so it is configured when they do." : "";
   const setup = d.provisioning === "requested" ? "Setup requested." : d.provisioning === "already_open" ? "Setup was already requested." : d.provisioning === "waiting_for_payment" ? "Setup waits for the setup payment." : d.syncQueued ? "Profile update queued." : "";
-  return ["Employee added to the plan.", config, setup].filter(Boolean).join(" ");
+  return ["Previous profile added to the plan.", config, setup].filter(Boolean).join(" ");
 }
 
 function PlanChangeDialog({ orgId, change, onClose }: { orgId: string; change: { agent: Detail["agents"][number]; enabled: boolean } | null; onClose: () => void }) {
   const { run, pending } = useAction();
   const [reason, setReason] = React.useState("");
-  const name = change ? AGENT_BY_KEY[change.agent.role_key].shortName : "";
+  const name = change ? workforceIdentityLabel(change.agent.role_key, change.agent.display_name) : "";
   return (
     <Dialog
       open={Boolean(change)}
       onOpenChange={(o) => !o && onClose()}
       title={change ? `${change.enabled ? "Add" : "Remove"} ${name} ${change.enabled ? "to" : "from"} the plan?` : "Change the plan"}
       description={change?.enabled
-        ? "Once the client has finished the questionnaire, the employee is configured from their confirmed answers and its setup is requested (it still waits for the setup payment). Nothing is switched on for customers."
+        ? "Once the client has finished the questionnaire, this retained profile is configured from confirmed answers and setup is requested. It still waits for the setup payment; nothing is switched on for customers."
         : "Setup requests that were only requested are cancelled; one the worker already started finishes first. Conversations and knowledge are kept. The client's owners are told."}
       footer={
         <>
@@ -465,7 +467,7 @@ function ConnectDialog({ agent, onClose }: { agent: Detail["agents"][number] | n
     <Dialog
       open={Boolean(agent)}
       onOpenChange={(o) => !o && onClose()}
-      title={`Connect ${agent ? AGENT_BY_KEY[agent.role_key].shortName : ""}`}
+      title={`Connect ${agent ? workforceIdentityLabel(agent.role_key, agent.display_name) : ""}`}
       description="The key is encrypted at rest and never shown again. The portal runs an authenticated health check immediately."
       footer={
         <>
@@ -560,8 +562,8 @@ function RequeueDialog({ orgId, job, onClose }: { orgId: string; job: Detail["pr
     <Dialog
       open={Boolean(job)}
       onOpenChange={(o) => !o && onClose()}
-      title={job ? `Requeue ${AGENT_BY_KEY[job.agent_role].shortName}'s setup?` : "Requeue setup"}
-      description="This opens one new request for the same employee. It is refused while another request is open or the setup payment is not confirmed. The client's owner is told once."
+      title={job ? `Requeue ${workforceIdentityLabel(job.agent_role)} setup?` : "Requeue setup"}
+      description="This opens one new request for the same previous profile. It is refused while another request is open or the setup payment is not confirmed. The client's owner is told once."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -648,7 +650,7 @@ export function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZo
     if (held > 0) return <div className="space-y-4"><HeldContentNotice count={held} /></div>;
     return (
       <Card>
-        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[14px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
+        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[14px] text-muted">Held profile configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
       </Card>
     );
   }
@@ -686,7 +688,7 @@ export function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZo
         <Card key={n.id}>
           <CardContent className="space-y-3 pt-5">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[14px] font-semibold">Employee note · {AGENT_BY_KEY[n.agent_role]?.shortName ?? sentenceCase(n.agent_role)} · {n.title}</p>
+              <p className="text-[14px] font-semibold">Profile note · {workforceIdentityLabel(n.agent_role)} · {n.title}</p>
               {n.risk_flags.map((f) => (
                 <Badge key={f} tone="warning">
                   {f.replace(/_/g, " ")}
@@ -710,7 +712,7 @@ export function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZo
           <CardContent className="space-y-3 pt-5">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[14px] font-semibold">Document · {d.filename}</p>
-              <Badge tone="neutral">{d.scope === "shared" ? "Shared with every employee" : `Assigned to ${d.agent_role ? AGENT_BY_KEY[d.agent_role]?.shortName ?? sentenceCase(d.agent_role) : "one employee"}`}</Badge>
+              <Badge tone="neutral">{d.scope === "shared" ? "Shared across workspace profiles" : `Assigned to ${d.agent_role ? workforceIdentityLabel(d.agent_role) : "one profile"}`}</Badge>
               {d.risk_flags.map((f) => (
                 <Badge key={f} tone="warning">
                   {f.replace(/_/g, " ")}

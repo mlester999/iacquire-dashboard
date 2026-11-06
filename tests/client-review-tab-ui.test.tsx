@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The client page's Reviews tab: a waiting section edit, a held employee note and a flagged document each get Approve and Reject, wired to the decision for that item and that client; a
+// The client page's Reviews tab: a waiting section edit, a held profile note and a flagged document each get Approve and Reject, wired to the decision for that item and that client; a
 // person who may not decide sees them disabled; a document held before its text was kept can only be rejected. The actions are fakes; nothing here reaches a server.
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,9 +56,9 @@ describe("the Reviews tab", () => {
     fireEvent.click(within(cardOf(/Knowledge · Policies/)).getByRole("button", { name: "Reject" }));
     await waitFor(() => expect(actions.decideHeldKnowledgeAction).toHaveBeenCalledWith(ORG, "policies", false));
 
-    fireEvent.click(within(cardOf(/Employee note · .*Discount rule/)).getByRole("button", { name: "Reject" }));
+    fireEvent.click(within(cardOf(/Profile note · Previous profile · Sales Assistant · Discount rule/)).getByRole("button", { name: "Reject" }));
     await waitFor(() => expect(actions.decideHeldEmployeeNoteAction).toHaveBeenCalledWith(ORG, "note-1", false));
-    fireEvent.click(within(cardOf(/Employee note · .*Discount rule/)).getByRole("button", { name: "Approve" }));
+    fireEvent.click(within(cardOf(/Profile note · Previous profile · Sales Assistant · Discount rule/)).getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(actions.decideHeldEmployeeNoteAction).toHaveBeenCalledWith(ORG, "note-1", true));
 
     fireEvent.click(within(cardOf(/Document · price-list\.txt/)).getByRole("button", { name: "Approve" }));
@@ -66,7 +66,7 @@ describe("the Reviews tab", () => {
     fireEvent.click(within(cardOf(/Document · price-list\.txt/)).getByRole("button", { name: "Reject" }));
     await waitFor(() => expect(actions.decideHeldDocumentAction).toHaveBeenCalledWith(ORG, "doc-1", false));
     expect(screen.getByText("Held document text.")).toBeTruthy();
-    expect(screen.getByText("Shared with every employee")).toBeTruthy();
+    expect(screen.getByText("Shared across workspace profiles")).toBeTruthy();
   });
 
   it("lets a document held before its text was kept be rejected only, and says why", async () => {
