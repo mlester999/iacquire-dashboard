@@ -1275,4 +1275,70 @@ describe("six employee chat to native workflow", () => {
     expect(reply).toContain("preview has expired");
     expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, agents.performance_analyst]))).rows).toHaveLength(0);
   });
+
+  it("saves bounded persistent preferences from the permanent chat on the Growth Partner only", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const ctx = ctxFor(owner, org, "owner");
+    const legacyBefore = (await withSystem((db) => db.query<{ settings: Record<string, unknown>; version: number }>(
+      `select v.settings, v.version from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'lead_hunter'`, [org.id],
+    ))).rows[0];
+    const partnerVersionBefore = (await withSystem((db) => db.query<{ version: number }>(
+      "select v.version from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id where a.org_id = $1 and a.role_key = 'growth_partner'",
+      [org.id],
+    ))).rows[0].version;
+
+    const invalid = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set your tone to neon from now on.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const invalidReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1 and org_id = $2", [invalid.assistantMessageId, org.id]))).rows[0].content;
+    expect(invalidReply).toContain("Choose friendly, professional, casual, or premium");
+    expect((await withSystem((db) => db.query<{ version: number }>(
+      "select v.version from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id where a.org_id = $1 and a.role_key = 'growth_partner'",
+      [org.id],
+    ))).rows[0].version).toBe(partnerVersionBefore);
+
+    const result = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set your tone to premium and reply in Spanish from now on.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(result.conversationId).toBe(growthPartnerConversationId);
+    const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1 and org_id = $2", [result.assistantMessageId, org.id]))).rows[0].content;
+    expect(reply).toContain("Saved and applied premium tone, Spanish replies for future conversations.");
+
+    const partnerSettings = (await withSystem((db) => db.query<{ settings: Record<string, unknown> }>(
+      `select v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`, [org.id],
+    ))).rows[0].settings;
+    expect(partnerSettings).toMatchObject({ tone: "premium", language: "Spanish" });
+    expect((await withSystem((db) => db.query<{ ai_preferences: Record<string, unknown> }>(
+      "select ai_preferences from company_profiles where org_id = $1", [org.id],
+    ))).rows[0].ai_preferences).toMatchObject({ tone: "premium", language: "Spanish" });
+    expect((await withSystem((db) => db.query<{ settings: Record<string, unknown>; version: number }>(
+      `select v.settings, v.version from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'lead_hunter'`, [org.id],
+    ))).rows[0]).toEqual(legacyBefore);
+    expect((await withSystem((db) => db.query<{ apply: boolean }>(
+      "select (metadata->>'applyToEmployees')::boolean as apply from audit_logs where org_id = $1 and action = 'settings.ai_preferences_updated' order by created_at desc limit 1",
+      [org.id],
+    ))).rows[0].apply).toBe(true);
+
+    const viewer = await createUser({ name: "Preference Viewer" });
+    await addMember(org.id, viewer.id, "viewer");
+    await expect(sendChatMessage(ctxFor(viewer, org, "viewer"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Change your tone to casual from now on.",
+      clientMessageId: crypto.randomUUID(),
+    })).rejects.toMatchObject({ code: "forbidden" });
+    expect((await withSystem((db) => db.query<{ settings: Record<string, unknown> }>(
+      `select v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`, [org.id],
+    ))).rows[0].settings).toMatchObject({ tone: "premium", language: "Spanish" });
+  });
 });

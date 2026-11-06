@@ -357,7 +357,7 @@ export function PermanentGrowthPartnerConversation({
                 </Button>
               </div>
             </form>
-            <div role="note" className="flex items-start gap-2.5 rounded-xl border border-primary/15 bg-primary-soft/35 px-4 py-3 text-[12px] leading-relaxed text-ink-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>Replies use this workspace’s verified Growth Partner profile and active Business Brain. Work history stays in this shared conversation.</span></div>
+            <div role="note" className="flex items-start gap-2.5 rounded-xl border border-primary/15 bg-primary-soft/35 px-4 py-3 text-[12px] leading-relaxed text-ink-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>Replies use this workspace’s verified Growth Partner profile and active Business Brain. Owners and admins can change the saved tone, language or reply length by asking here. Work history stays in this shared conversation.</span></div>
           </CardContent>
         </Card>
       )}

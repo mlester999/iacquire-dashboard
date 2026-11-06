@@ -41,6 +41,7 @@ import { parseWorkforceChatCalendarCreateIntent, type WorkforceChatCalendarCreat
 import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
 import { parseWorkforceChatAppointmentChangeIntent, type WorkforceChatAppointmentChangeIntent } from "@/lib/workforce-chat-appointment-change-intent";
 import { parseWorkforceChatTargetingIntent } from "@/lib/workforce-chat-targeting-intent";
+import { parseWorkforceChatPreferencesIntent } from "@/lib/workforce-chat-preferences-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
 import { explicitlyAddressedWorkforceRole, isAutomationBuilderRequest, parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
@@ -76,6 +77,8 @@ import { abilityRefusal, capabilityNeed, type AbilityNeed } from "@/server/workf
 import { CHAT_ACTION_ABILITIES } from "@/lib/employee-tool-policy";
 import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
 import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
+import { agentSettingsSchema, aiPreferencesSchema } from "@/lib/agent-settings";
+import { getProfile, updateAiPreferences } from "@/server/settings/service";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -825,6 +828,79 @@ async function handleChatTargetingIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The targeting service could not save the change just now.";
     return reply(`I couldn't update saved lead targeting: ${chatSafeText(message)} No settings were confirmed as changed.`);
+  }
+}
+
+async function handleChatPreferencesIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatPreferencesIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "update") return reply("I couldn't identify a supported persistent preference. No settings were changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:partner_preferences_update"))) {
+    return reply("This Growth Partner can't change persistent preferences from chat right now. No settings were changed.");
+  }
+  if (!ctx.can("agents.configure")) {
+    return reply("Only a workspace owner or admin can change persistent AI Growth Partner preferences. No settings were changed.");
+  }
+
+  const preferences = input.intent.preferences;
+  const preferenceKeys = Object.keys(preferences) as Array<keyof typeof preferences>;
+  const summary = () => [
+    preferences.tone ? `${preferences.tone} tone` : null,
+    preferences.replyLength ? `${preferences.replyLength} replies` : null,
+    preferences.language ? `${preferences.language} replies` : null,
+  ].filter(Boolean).join(", ");
+
+  try {
+    const profile = await getProfile(ctx);
+    const current = aiPreferencesSchema.parse(profile?.ai_preferences ?? {});
+    const result = await updateAiPreferences(
+      ctx,
+      { ...current, ...preferences, applyToEmployees: true },
+      { growthPartnerOnly: true },
+    );
+    const active = await withSystem(async (db) => (await db.query<{ settings: unknown }>(
+      `select v.settings from agent_instances a
+       join agent_config_versions v on v.id = a.active_config_version_id and v.org_id = a.org_id
+       where a.org_id = $1 and a.role_key = 'growth_partner' and a.enabled limit 1`,
+      [ctx.org.orgId],
+    )).rows[0] ?? null);
+    if (!active) return reply(`Saved ${summary()} as workspace defaults, but the AI Growth Partner has no active settings version yet. Finish Partner setup before relying on this change.`, serverMarker("approved_write"));
+
+    if (result.held.includes("growth_partner")) {
+      return reply(`Saved ${summary()}, but the new Growth Partner settings are waiting for review. Current behavior remains active until they are approved.`, systemNoticeMarker());
+    }
+    const parsed = agentSettingsSchema.safeParse(active.settings);
+    if (!parsed.success) return reply("The Growth Partner settings could not be verified after saving. Please check Partner Settings before relying on the change.", systemNoticeMarker());
+    const appliedKeys = preferenceKeys.filter((key) => parsed.data[key] === preferences[key]);
+    const kept = result.skipped.some((item) => item.role === "growth_partner" && item.why === "client_edit");
+    if (appliedKeys.length === preferenceKeys.length) {
+      const message = result.updated.includes("growth_partner")
+        ? `Saved and applied ${summary()} for future conversations.${kept ? " Other client-edited settings were kept." : ""}`
+        : `Those preferences are already saved and active for the AI Growth Partner.`;
+      return reply(message, result.updated.includes("growth_partner") ? serverMarker("approved_write") : undefined);
+    }
+    if (appliedKeys.length > 0) {
+      const applied = [
+        preferences.tone && appliedKeys.includes("tone") ? `${preferences.tone} tone` : null,
+        preferences.replyLength && appliedKeys.includes("replyLength") ? `${preferences.replyLength} replies` : null,
+        preferences.language && appliedKeys.includes("language") ? `${preferences.language} replies` : null,
+      ].filter(Boolean).join(", ");
+      return reply(`Applied ${applied}. The Growth Partner's own wording for another requested preference was kept; update it in Partner Settings if you want to replace it.`, serverMarker("approved_write"));
+    }
+    return reply("I saved the workspace defaults, but the Growth Partner's own settings were kept. Change the client-edited values in Partner Settings if you want to replace them.", systemNoticeMarker());
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The settings service could not save the change just now.";
+    return reply(`I didn't change the Growth Partner's persistent preferences. ${chatSafeText(message)}`, systemNoticeMarker());
   }
 }
 
@@ -1949,6 +2025,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
       || parseWorkforceChatTargetingIntent(role, content).kind !== "none"
+      || parseWorkforceChatPreferencesIntent(role, content).kind !== "none"
       || isScheduleConfirmation(content)
       || parseWorkforceChatScheduleIntent(role, content).kind !== "none"
       || parseNamedWorkforceHandoff(role, content)
@@ -2287,6 +2364,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: targetingIntent,
+    });
+  }
+  const preferencesIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatPreferencesIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (preferencesIntent.kind !== "none" && !refusal) {
+    return handleChatPreferencesIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: preferencesIntent,
     });
   }
   const scheduleConfirmation = !input.regenerateMessageId && !namedOtherRole ? isScheduleConfirmation(prepared.userContent) : null;

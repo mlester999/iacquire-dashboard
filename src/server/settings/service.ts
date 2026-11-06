@@ -315,7 +315,11 @@ export async function previewAiPreferencesApply(ctx: OrgContext, input: z.input<
   };
 }
 
-export async function updateAiPreferences(ctx: OrgContext, input: z.input<typeof aiPrefsInputSchema>): Promise<AiPrefsApplyResult> {
+export async function updateAiPreferences(
+  ctx: OrgContext,
+  input: z.input<typeof aiPrefsInputSchema>,
+  options: { growthPartnerOnly?: boolean } = {},
+): Promise<AiPrefsApplyResult> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can change AI preferences.");
   const d = aiPrefsInputSchema.parse(input);
   const { applyToEmployees, replaceOwnEdits, chatRetentionDays, ...prefs } = d;
@@ -341,6 +345,7 @@ export async function updateAiPreferences(ctx: OrgContext, input: z.input<typeof
     await withSystem(async (db) => {
       const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
       for (const target of await applyTargets(db, ctx.org.orgId)) {
+        if (options.growthPartnerOnly && target.role !== AI_GROWTH_PARTNER_ROLE_KEY) continue;
         const { planned, own } = planApply(target, prefs);
         const write = replaceOwnEdits ? planned : planned.filter((field) => !own.includes(field));
         if (!replaceOwnEdits && own.length) result.skipped.push({ role: target.role, fields: own, why: "client_edit" });
