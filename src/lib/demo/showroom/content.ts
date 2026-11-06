@@ -25,7 +25,7 @@ export interface ViewDef {
 
 export const VIEWS: readonly ViewDef[] = [
   { id: "overview", label: "Overview", short: "Overview", icon: "layout", hint: "Your demo at a glance" },
-  { id: "workforce", label: "AI Growth Partner", short: "Partner", icon: "sparkles", hint: "One employee, six integrated capabilities" },
+  { id: "workforce", label: "AI Growth Partner", short: "Partner", icon: "sparkles", hint: "One partner, six integrated capabilities" },
   { id: "crm", label: "CRM & Pipeline", short: "CRM", icon: "kanban", hint: "Follow a lead to a won deal" },
   { id: "inbox", label: "Inbox & Appointments", short: "Inbox", icon: "inbox", hint: "Conversations and bookings" },
   { id: "automation", label: "Automation Studio", short: "Automations", icon: "workflow", hint: "Describe it, watch it built" },
@@ -46,7 +46,7 @@ export interface JourneyStep {
 }
 
 export const JOURNEY: readonly JourneyStep[] = [
-  { step: 1, view: "workforce", title: "Meet your AI Growth Partner", short: "Growth Partner", blurb: "One employee with six connected capabilities and one shared business context." },
+  { step: 1, view: "workforce", title: "Meet your AI Growth Partner", short: "Growth Partner", blurb: "One AI Growth Partner shares one Business Brain across six connected capabilities." },
   { step: 2, view: "crm", title: "See your client acquisition system", short: "Client system", blurb: "A lead's whole journey through the native CRM, from first message to won deal." },
   { step: 3, view: "automation", title: "Explore automations", short: "Automations", blurb: "Describe an automation and watch it get built, safely, in a simulation." },
   { step: 4, view: "summary", title: "Your business, powered by iAcquireOS", short: "Your business", blurb: "How it all comes together, what we set up for you, and your next steps." },
@@ -159,7 +159,7 @@ export const WHY_BLOCKS: readonly WhyBlock[] = [
   {
     id: "growth-partner",
     title: "One AI Growth Partner coordinates the work",
-    lead: "One employee brings six capabilities together: finding and qualifying leads, preparing outreach, coordinating appointments, managing CRM work, handling operations and explaining results.",
+    lead: "One AI Growth Partner brings six connected capabilities together: lead research, outreach preparation, appointment coordination, CRM work, business operations and reporting.",
     points: ["It prepares work; a person approves actions that require approval", "Its available tools follow your workspace permissions and approved scope", "Its work is recorded with the evidence and approvals"],
   },
   {

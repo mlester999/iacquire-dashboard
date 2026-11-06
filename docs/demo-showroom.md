@@ -16,7 +16,7 @@ Super Admin controls and the event record are the same code (`src/server/demo/*`
 | Calls to action (the only two things that can be recorded) | `src/components/demo/showroom/cta.tsx`, `context.tsx` |
 | The AI guide (same behaviour as before, restyled; `draft`, `suggestions`, `closedFooter` added) | `src/components/demo/chat.tsx` |
 | "Why iAcquireOS?" (shared by the room and the public page) | `src/components/demo/showroom/why-content.tsx`, `src/app/demo/why/page.tsx` |
-| Words and sample data (the six employees, the sample CRM, the plans, the FAQs) | `src/lib/demo/showroom/*` |
+| Words and sample data (the AI Growth Partner, its six capabilities, the sample CRM, the plans, the FAQs) | `src/lib/demo/showroom/*` |
 | A few token-only helper classes (panel, chip, button). No theme of its own: it reads the portal's tokens in `globals.css` | `src/components/demo/showroom/showroom.css` |
 | The light/dark/system control (the portal's own ThemeProvider) | `src/components/demo/showroom/theme-switch.tsx` |
 | The confirmation dialog for both requests, and its words | `src/components/demo/showroom/cta.tsx` (`ConfirmHost`), `src/lib/demo/showroom/confirm-copy.ts` |
@@ -26,19 +26,19 @@ The landing page and the emailed-link page keep their narrow frame (`PublicFrame
 
 ## Where each fact comes from
 
-* Name, business, industry: the visitor's own demo session, as before. The headline says "Meet the AI team that could help run [Business Name]" and nothing else about the business: the
+* Name, business, industry: the visitor's own demo session, as before. The headline introduces the AI Growth Partner for that business and nothing else about it: the
   sample leads, deals and prospects are invented per industry (`industry.ts`) and labelled as samples on the page.
 * Window, messages left, whether the chat can send, the transcript: `getRoom`. The countdown is drawn toward the server's end time; at zero the page asks the server again and the record decides.
 * Prices: `src/lib/billing.ts` through `RoomView.pricing` (US$1,499 once; optional US$299 a month). The plan's own list and change-request allowance come from the published catalog when it can be read.
-* Studio belongs to the optional Managed Maintenance plan; the CRM, the AI Employees, the inbox, booking and the website never wait on it; a core client can connect n8n, Zapier or Make
-  through APIs and webhooks. No tier, discount or number of employees is stated beyond what the code and the catalog say.
+* Studio belongs to the optional Managed Maintenance plan; the CRM, AI Growth Partner, inbox, booking and website never wait on it; a core client can connect n8n, Zapier or Make
+  through APIs and webhooks. The demo presents one Partner identity with six connected capabilities.
 
 ## The request page (`/demo`)
 
 Where a prospect asks for a demo. Two columns on a laptop (the pitch on the left, the form on the right, sticky while the page scrolls) and one on a phone, where the form comes straight after
 the headline. Left: a "Free guided demo" chip, the headline, the three things a demo is (a tour, the AI chat with its real allowance or a note that it is closed, the 24-hour window) and a small
-invented "one enquiry, three AI Employees" hand-off labelled "Sample preview". Right: the form (field icons, a three-step strip, the consent box in its own panel, a gradient button, the notice
-lines), then "Already started? Get a new link". Below: the six AI Employees by role name, what else is inside, and a link to `/demo/why`. Everything the old page said is still there, and the
+invented three-step workflow coordinated by one AI Growth Partner, labelled "Sample preview". Right: the form (field icons, a three-step strip, the consent box in its own panel, a gradient button, the notice
+lines), then "Already started? Get a new link". Below: six capability areas, what else is inside, and a link to `/demo/why`. The preview states that it researches no prospect and saves no CRM record, and the
 form's fields, labels, consent text, hidden campaign fields, trap field and JSON/native behaviour are unchanged (`tests/demo-interactive.test.tsx`, `tests/demo-pages.test.tsx`). It is built
 only from the form's own view: the allowance and window come from the settings in force, so it cannot promise more than they do. The closed and stopped states show only the message.
 Design QA without a database: `/dev/demo-landing-preview` (`state=open|full|ai_off|session|closed|stopped`, `r=`, `f=`, `theme=`).
@@ -47,7 +47,7 @@ Design QA without a database: `/dev/demo-landing-preview` (`state=open|full|ai_o
 
 Two cards of one anatomy, side by side from 768 px of content width and stacked below it: the plan's name and its chip, the price, one sentence of what it is, **the buttons directly under the
 price, as wide as the card and centred**, what is included (a ticked list), and a tinted panel at the bottom that takes up whatever height the other card needs, so neither card has an empty
-stretch at any width. The core implementation's panel shows the six AI Employees by role name; Managed Maintenance's says it is never needed to use the core system and, when the published plan
+stretch at any width. The core implementation's panel identifies one AI Growth Partner with six integrated capabilities; Managed Maintenance's says it is never needed to use the core system and, when the published plan
 gives one, how many change requests a month it covers (nothing is stated when the catalog could not be read). Under the cards: how the costs fit together (one time, optional monthly, billed
 separately, then what is in neither plan), a side-by-side table (each option's price in its header, the rows grouped into "In every implementation" and "Added by Managed Maintenance", every
 cell said in words for a screen reader), and five pricing questions with three buttons that put the same questions to AQi without sending them.
@@ -101,17 +101,15 @@ Without scripts the panel is drawn on the page (not hidden, and a `<noscript>` r
 
 Not checked: Safari and Firefox, a real phone (the on-screen keyboard was simulated by a shrinking `visualViewport`, not a real keyboard), a screen reader, a slow connection beyond the page's own loading and empty states.
 
-## AI Employee names
+## Growth Partner identity and demo isolation
 
-A role is universal; a display name belongs to one company (`agent_instances.display_name`, one row per organisation and role, set through the Configure screen's version flow). The public
-demo shows role labels only: `alias: "Zeng"` was removed from the showroom's role data, and the workforce chat's "no task-assignment action" message now uses the company's own employee
-name (or "The Operations Manager"), where it used to say Zeng for everyone. `tests/employee-name-isolation.test.ts` holds this: the agency's Zeng, a client's Alex and another's Nova stay
-in their own company; renaming one employee changes nothing else (same ids, roles, profiles, switches); names survive provisioning retries. `tests/demo-pages.test.tsx` renames the
-agency's Operations Manager to Zeng and checks that no demo view shows it.
+The demo presents one AI Growth Partner with six connected capability areas and invented sample data; it never reads an internal profile's private display name. Internal and retained legacy
+role records still keep their company-specific display names in `agent_instances.display_name`. `tests/employee-name-isolation.test.ts` checks that names remain tenant-scoped and renaming a
+legacy role profile leaves its ids, roles, runtime profiles and switches intact. `tests/demo-pages.test.tsx` renames the agency's Operations Manager to Zeng and checks that no demo view shows it.
 
 ## The two confirmations
 
-"Book a free consultation" (and every equivalent: Talk to a person, Ask about Managed Maintenance, Get this AI team for my business) and "I'm ready to get started" open a dialog first. **What the button says matches what it does:** it reads "Book a free consultation" only when the Super Admin has set a real https scheduling page; otherwise it reads **"Request a consultation"**, because all it does is ask, and no label, note or confirmation claims a meeting is booked when only a request was recorded. The purchase button reads **"Request my purchase link"** for the same reason: it records the request and tells the team; a Super Admin then reviews it and emails an invitation (see `docs/purchase-intents.md`). Pressing either creates no meeting, invitation, payment or workspace.
+"Book a free consultation" (and every equivalent: Talk to a person, Ask about Managed Maintenance, Set up my AI Growth Partner) and "I'm ready to get started" open a dialog first. **What the button says matches what it does:** it reads "Book a free consultation" only when the Super Admin has set a real https scheduling page; otherwise it reads **"Request a consultation"**, because all it does is ask, and no label, note or confirmation claims a meeting is booked when only a request was recorded. The purchase button reads **"Request my purchase link"** for the same reason: it records the request and tells the team; a Super Admin then reviews it and emails an invitation (see `docs/purchase-intents.md`). Pressing either creates no meeting, invitation, payment or workspace.
 Nothing is recorded until the visitor presses the confirming button; a failure keeps the dialog open with the message; a success is drawn only after the server's answer. Consultation:
 free, what it is for, what happens next, and, when a real https scheduling page is set, a "Choose a meeting time" button after recording (confirming interest does not reserve a meeting).
 Implementation: US$1,499 starting price, optional US$299/month, usage and provider costs separate, and that confirming only informs the team (no payment, subscription or workspace). Without
@@ -122,7 +120,7 @@ scripts the button is a link to `?confirm=...`, which shows the same confirmatio
 * Moving between views, replaying a simulation, moving a sample lead or approving a sample reply uses no AI message and sends nothing. Only pressing Send in the guide counts a message.
 * "Book a free consultation" and "I'm ready to get started" record one event each (`/api/public/demo/cta`) and say plainly that nothing is booked or charged. The scheduling link appears only
   when the Super Admin has set a real https address.
-* No price, percentage, hour saved or result is written about the AI Employees' work; the sample report's figures are labelled invented; comparisons with doing it yourself are in words.
+* No price, percentage, hours saved or result is written as a claim about the Growth Partner's work; the sample report's figures are labelled invented; comparisons with doing it yourself are in words.
 * The tour's progress is four step numbers, and whether the navigation rail is folded is one word (`compact` or `full`), in this browser's `localStorage`; nothing about the visitor is stored there or sent anywhere.
 * The public `/demo/why` page needs no session, shows nothing about anyone, records nothing, and stays open after a window ends.
 * `/dev/showroom-preview` is development-only (404 in production, guarded twice like every `/dev` page).

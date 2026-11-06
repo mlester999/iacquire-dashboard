@@ -36,9 +36,11 @@ describe("the AI Growth Partner in the showroom", () => {
       "src/components/demo/showroom/why-content.tsx",
       "src/components/demo/showroom/views/summary.tsx",
       "src/components/demo/showroom/views/workforce.tsx",
+      "src/lib/demo/showroom/content.ts",
     ].map((file) => readFileSync(path.join(ROOT, file), "utf8")).join("\n");
     expect(partnerCopy).toMatch(/One AI Growth Partner identity/);
     expect(partnerCopy).not.toMatch(/one employee|employee identity/i);
+    expect(JOURNEY[0].blurb).toBe("One AI Growth Partner shares one Business Brain across six connected capabilities.");
     expect(SCOPE_NOTE).toMatch(/implementation/);
     expect(OVERSIGHT_FOOTER).toMatch(/approval/);
     expect(OVERSIGHT_FOOTER).toMatch(/authorized workspace data/);
